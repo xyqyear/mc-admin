@@ -10,11 +10,11 @@ WIP
 
 - [ ] login page: password and bot login
 - [ ] dashboard page
-  - [ ] system cpu, ram and disk usage.
-  - [ ] total player count (player count queried from mc-health)
+  - [x] system cpu, ram and disk usage.
+  - [x] total player count (player count queried from mc-health)
   - [ ] component check (docker, restic)
-  - [ ] listing, running state (down, created, running, running(paused)), player count
-  - [ ] restart, start, stop, down, up
+  - [x] listing, running state (down, created, running, running(paused)), player count
+  - [x] restart, start, stop, down, up
 - [ ] server management page
   - [ ] overview: console, online players (same as bellow), cpu & memory usage (w/docker), disk space usage (w/du), warning for backup mod
   - [ ] player listing (use log tracking and occasional sync using rcon. info queried from 25565 isn't reliable)

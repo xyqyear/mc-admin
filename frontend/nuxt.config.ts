@@ -3,7 +3,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
-  modules: ['@nuxtjs/tailwindcss', '@element-plus/nuxt', '@pinia/nuxt'],
+  modules: ['@nuxtjs/tailwindcss', '@element-plus/nuxt', '@pinia/nuxt', '@nuxt/icon'],
   // does this do anything?
   // css: ['element-plus/dist/index.css'],
   elementPlus: {
@@ -21,4 +21,7 @@ export default defineNuxtConfig({
       }
     }
   },
+  icon: {
+    componentName: 'NuxtIcon',
+  }
 })
