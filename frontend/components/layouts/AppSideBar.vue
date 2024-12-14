@@ -87,7 +87,7 @@ const menuItems = computed<MenuItem[]>(() => {
       class="flex items-center px-3 h-12 border-t-2 cursor-pointer"
       @click="onToggleCollapse"
     >
-      <div class="collapse-button w-full">
+      <div class="collapse-button w-full flex items-center p-2 rounded-md">
         <ElIcon class="flex items-center" v-if="collapsed" :size="18">
           <ElIconExpand></ElIconExpand>
         </ElIcon>
@@ -101,10 +101,6 @@ const menuItems = computed<MenuItem[]>(() => {
 </template>
 
 <style lang="scss" scoped>
-.collapse-button {
-  @apply flex items-center p-2 rounded-md;
-}
-
 .collapse-button:hover {
   background-color: var(--el-menu-hover-bg-color);
 }
