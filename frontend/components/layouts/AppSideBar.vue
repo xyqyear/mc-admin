@@ -38,7 +38,13 @@ const menuItems = computed<MenuItem[]>(() => {
       items: servers.map((server) => ({
         title: server.id,
         icon: "Monitor",
+        items: [
+          {
+            title: "概览",
+            icon: "View",
         path: `/server/${server.id}`,
+          },
+        ],
       })),
     },
   ];
