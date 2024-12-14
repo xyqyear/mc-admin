@@ -52,17 +52,52 @@ const menuItems = computed<MenuItem[]>(() => {
     {
       title: "服务器管理",
       icon: "Operation",
-      items: servers.map((server) => ({
-        title: server.id,
-        icon: "Monitor",
-        items: [
+      items: servers
+        .map(
+          (server): MenuItem => ({
+            title: server.id,
+            icon: "Monitor",
+            items: [
+              {
+                title: "概览",
+                icon: "View",
+                path: `/server/${server.id}`,
+              },
+              {
+                title: "玩家列表",
+                icon: "User",
+                path: `/server/${server.id}/players`,
+              },
+              {
+                title: "设置",
+                icon: "Setting",
+                path: `/server/${server.id}/compose`,
+              },
+              {
+                title: "文件",
+                icon: "Folder",
+                path: `/server/${server.id}/files`,
+              },
+              {
+                title: "白名单",
+                icon: "Filter",
+                path: `/server/${server.id}/whitelist`,
+              },
+            ],
+          })
+        )
+        .concat([
           {
-            title: "概览",
-            icon: "View",
-            path: `/server/${server.id}`,
+            title: "新建",
+            icon: "Plus",
+            path: "/server/new",
           },
-        ],
-      })),
+        ]),
+    },
+    {
+      title: "备份管理",
+      icon: "RefreshLeft",
+      path: "/backups",
     },
   ];
 });

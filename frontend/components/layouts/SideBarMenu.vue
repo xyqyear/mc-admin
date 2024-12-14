@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import {
   Coin,
+  Filter,
+  Folder,
   HomeFilled,
   Monitor,
   Operation,
+  Plus,
+  RefreshLeft,
+  Setting,
+  User,
   View,
 } from "@element-plus/icons-vue";
 import type MenuItem from "~/types/MenuItem";
@@ -25,6 +31,18 @@ const stringToComponent = (name: string) => {
       return Operation;
     case "View":
       return View;
+    case "RefreshLeft":
+      return RefreshLeft;
+    case "Plus":
+      return Plus;
+    case "User":
+      return User;
+    case "Setting":
+      return Setting;
+    case "Folder":
+      return Folder;
+    case "Filter":
+      return Filter;
     default:
       return null;
   }
