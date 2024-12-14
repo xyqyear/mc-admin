@@ -1,52 +1,10 @@
 <script setup lang="ts">
-import {
-  Coin,
-  Filter,
-  Folder,
-  HomeFilled,
-  Monitor,
-  Odometer,
-  Operation,
-  Plus,
-  RefreshLeft,
-  Setting,
-  User,
-} from "@element-plus/icons-vue";
 import type MenuItem from "~/types/MenuItem";
 
 // depth is used to calculate the left margin of the menu items
 const { items } = defineProps<{
   items: MenuItem[];
 }>();
-
-const stringToComponent = (name: string) => {
-  switch (name) {
-    case "Coin":
-      return Coin;
-    case "HomeFilled":
-      return HomeFilled;
-    case "Monitor":
-      return Monitor;
-    case "Operation":
-      return Operation;
-    case "Odometer":
-      return Odometer;
-    case "RefreshLeft":
-      return RefreshLeft;
-    case "Plus":
-      return Plus;
-    case "User":
-      return User;
-    case "Setting":
-      return Setting;
-    case "Folder":
-      return Folder;
-    case "Filter":
-      return Filter;
-    default:
-      return null;
-  }
-};
 </script>
 <template>
   <template v-for="item in items">
@@ -56,16 +14,16 @@ const stringToComponent = (name: string) => {
       class="sub-menu"
     >
       <template #title>
-        <ElIcon v-if="item.icon">
-          <component :is="stringToComponent(item.icon)"></component>
+        <ElIcon v-if="item.icon" size="20">
+          <NuxtIcon :name="item.icon" />
         </ElIcon>
         <span class="text-base">{{ item.title }}</span>
       </template>
       <SideBarMenu :items="item.items" />
     </ElSubMenu>
     <ElMenuItem v-else :index="item.path" class="menu-item rounded-md">
-      <ElIcon v-if="item.icon">
-        <component :is="stringToComponent(item.icon)"></component>
+      <ElIcon v-if="item.icon" size="20">
+        <NuxtIcon :name="item.icon" />
       </ElIcon>
       <span class="text-base">{{ item.title }}</span>
     </ElMenuItem>

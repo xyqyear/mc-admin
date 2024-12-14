@@ -41,46 +41,46 @@ const menuItems = computed<MenuItem[]>(() => {
   return [
     {
       title: "首页",
-      icon: "HomeFilled",
+      icon: "material-symbols:home",
       path: "/",
     },
     {
-      title: "服务器列表",
-      icon: "Coin",
-      path: "/servers",
+      title: "服务器总览",
+      icon: "material-symbols:dashboard",
+      path: "/overview",
     },
     {
       title: "服务器管理",
-      icon: "Operation",
+      icon: "material-symbols:stacks",
       items: servers
         .map(
           (server): MenuItem => ({
             title: server.id,
-            icon: "Monitor",
+            icon: "material-symbols:host",
             items: [
               {
                 title: "概览",
-                icon: "Odometer",
+                icon: "material-symbols:speed",
                 path: `/server/${server.id}`,
               },
               {
                 title: "玩家列表",
-                icon: "User",
+                icon: "material-symbols:person",
                 path: `/server/${server.id}/players`,
               },
               {
                 title: "设置",
-                icon: "Setting",
+                icon: "material-symbols:settings",
                 path: `/server/${server.id}/compose`,
               },
               {
                 title: "文件",
-                icon: "Folder",
+                icon: "material-symbols:folder",
                 path: `/server/${server.id}/files`,
               },
               {
                 title: "白名单",
-                icon: "Filter",
+                icon: "material-symbols:shield",
                 path: `/server/${server.id}/whitelist`,
               },
             ],
@@ -89,14 +89,14 @@ const menuItems = computed<MenuItem[]>(() => {
         .concat([
           {
             title: "新建",
-            icon: "Plus",
+            icon: "material-symbols:add",
             path: "/server/new",
           },
         ]),
     },
     {
       title: "备份管理",
-      icon: "RefreshLeft",
+      icon: "material-symbols:settings-backup-restore",
       path: "/backups",
     },
   ];
@@ -123,11 +123,11 @@ const menuItems = computed<MenuItem[]>(() => {
       @click="onToggleCollapse"
     >
       <div class="collapse-button w-full flex items-center p-2 rounded-md">
-        <ElIcon class="flex items-center" v-if="collapsed" :size="18">
-          <ElIconExpand></ElIconExpand>
+        <ElIcon class="flex items-center" v-if="collapsed" :size="20">
+          <NuxtIcon name="material-symbols:left-panel-open" />
         </ElIcon>
-        <ElIcon class="flex items-center" v-else :size="18">
-          <ElIconFold></ElIconFold>
+        <ElIcon class="flex items-center" v-else :size="20">
+          <NuxtIcon name="material-symbols:left-panel-close" />
         </ElIcon>
         <span class="text-base ml-2" :style="collapseButtonStyle">折叠</span>
       </div>
