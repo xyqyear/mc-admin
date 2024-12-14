@@ -19,6 +19,23 @@ const servers = reactive([
 ]);
 
 const collapsed = ref(false);
+const collapseButtonVisible = ref(true);
+const collapseButtonStyle = computed(() => {
+  return {
+    display: collapseButtonVisible.value ? "block" : "none",
+  };
+});
+const onToggleCollapse = () => {
+  collapsed.value = !collapsed.value;
+  // when expand, wait for the animation to finish before showing the text
+  if (!collapsed.value) {
+    setTimeout(() => {
+      collapseButtonVisible.value = true;
+    }, 300);
+  } else {
+    collapseButtonVisible.value = false;
+  }
+};
 
 const menuItems = computed<MenuItem[]>(() => {
   return [
@@ -42,7 +59,7 @@ const menuItems = computed<MenuItem[]>(() => {
           {
             title: "概览",
             icon: "View",
-        path: `/server/${server.id}`,
+            path: `/server/${server.id}`,
           },
         ],
       })),
@@ -55,9 +72,9 @@ const menuItems = computed<MenuItem[]>(() => {
   <div
     class="sidebar-container flex flex-col h-full border-r-2 border-gray-100"
   >
-    <ElScrollbar class="sidebar flex-1 flex-shrink-0" view-class="h-full">
+    <ElScrollbar class="sidebar flex-1 flex-shrink-0 p-2" view-class="h-full">
       <ElMenu
-        class="!p-2 !border-r-0"
+        class="menu !border-r-0"
         :collapse="collapsed"
         :router="true"
         :default-active="currentPath"
@@ -67,19 +84,17 @@ const menuItems = computed<MenuItem[]>(() => {
       </ElMenu>
     </ElScrollbar>
     <div
-      class="flex items-center px-2 h-12 border-t-2 cursor-pointer"
-      @click="collapsed = !collapsed"
+      class="flex items-center px-3 h-12 border-t-2 cursor-pointer"
+      @click="onToggleCollapse"
     >
-      <div class="collapse-button" v-if="collapsed">
-        <ElIcon class="flex items-center" :size="20">
+      <div class="collapse-button w-full">
+        <ElIcon class="flex items-center" v-if="collapsed" :size="18">
           <ElIconExpand></ElIconExpand>
         </ElIcon>
-      </div>
-      <div class="collapse-button w-full" v-else>
-        <ElIcon :size="20" class="mr-2">
+        <ElIcon class="flex items-center" v-else :size="18">
           <ElIconFold></ElIconFold>
         </ElIcon>
-        <span class="text-base">折叠</span>
+        <span class="text-base ml-2" :style="collapseButtonStyle">折叠</span>
       </div>
     </div>
   </div>
@@ -92,5 +107,12 @@ const menuItems = computed<MenuItem[]>(() => {
 
 .collapse-button:hover {
   background-color: var(--el-menu-hover-bg-color);
+}
+
+.menu {
+  --el-menu-base-level-padding: 0.5rem;
+  --el-menu-item-height: 2.5rem;
+  --el-menu-sub-item-height: 2.5rem;
+  --el-menu-level-padding: 0.5rem;
 }
 </style>

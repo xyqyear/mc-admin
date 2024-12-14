@@ -1,22 +1,17 @@
 <script setup lang="ts">
-import { Coin, HomeFilled, Monitor, Operation } from "@element-plus/icons-vue";
+import {
+  Coin,
+  HomeFilled,
+  Monitor,
+  Operation,
+  View,
+} from "@element-plus/icons-vue";
 import type MenuItem from "~/types/MenuItem";
 
 // depth is used to calculate the left margin of the menu items
-const { items, depth = 0 } = defineProps<{
+const { items } = defineProps<{
   items: MenuItem[];
-  depth?: number;
 }>();
-
-const leftMarginStyleValue = computed(() => {
-  return `${depth / 2}rem`;
-});
-
-const leftMarginStyle = computed(() => {
-  return {
-    marginLeft: leftMarginStyleValue.value,
-  };
-});
 
 const stringToComponent = (name: string) => {
   switch (name) {
@@ -28,6 +23,8 @@ const stringToComponent = (name: string) => {
       return Monitor;
     case "Operation":
       return Operation;
+    case "View":
+      return View;
     default:
       return null;
   }
@@ -41,20 +38,15 @@ const stringToComponent = (name: string) => {
       class="sub-menu"
     >
       <template #title>
-        <ElIcon v-if="item.icon" class="!mr-2 !w-5" :size="20">
+        <ElIcon v-if="item.icon">
           <component :is="stringToComponent(item.icon)"></component>
         </ElIcon>
         <span class="text-base">{{ item.title }}</span>
       </template>
-      <SideBarMenu :items="item.items" :depth="depth + 1" />
+      <SideBarMenu :items="item.items" />
     </ElSubMenu>
-    <ElMenuItem
-      v-else
-      :index="item.path"
-      class="menu-item rounded-md !h-10 !pl-2"
-      :style="leftMarginStyle"
-    >
-      <ElIcon v-if="item.icon" class="!mr-2 !w-5" :size="20">
+    <ElMenuItem v-else :index="item.path" class="menu-item rounded-md">
+      <ElIcon v-if="item.icon">
         <component :is="stringToComponent(item.icon)"></component>
       </ElIcon>
       <span class="text-base">{{ item.title }}</span>
@@ -65,7 +57,6 @@ const stringToComponent = (name: string) => {
 <style lang="scss" scoped>
 // a bit hacky, but works
 .sub-menu > :deep(div) {
-  margin-left: v-bind(leftMarginStyleValue);
-  @apply rounded-md !h-10 !pl-2;
+  @apply rounded-md;
 }
 </style>
