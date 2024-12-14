@@ -13,7 +13,7 @@ import AppSideBar from "~/components/layouts/AppSideBar.vue";
       <AppSideBar />
       <!-- can be replaced with a div with overflow-y-auto -->
       <!-- it's just that ElScrollbar's scrollbar is prettier -->
-      <ElScrollbar class="content flex-1">
+      <ElScrollbar class="content flex-1" view-class="h-full">
         <slot />
       </ElScrollbar>
     </div>
