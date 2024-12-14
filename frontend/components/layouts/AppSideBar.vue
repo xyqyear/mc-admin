@@ -55,6 +55,7 @@ const menuItems = computed<MenuItem[]>(() => {
         :collapse="collapsed"
         :router="true"
         :default-active="currentPath"
+        :unique-opened="true"
       >
         <SideBarMenu :items="menuItems" />
       </ElMenu>
