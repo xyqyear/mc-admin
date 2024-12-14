@@ -60,7 +60,7 @@ const menuItems = computed<MenuItem[]>(() => {
             items: [
               {
                 title: "概览",
-                icon: "View",
+                icon: "Odometer",
                 path: `/server/${server.id}`,
               },
               {

@@ -5,12 +5,12 @@ import {
   Folder,
   HomeFilled,
   Monitor,
+  Odometer,
   Operation,
   Plus,
   RefreshLeft,
   Setting,
   User,
-  View,
 } from "@element-plus/icons-vue";
 import type MenuItem from "~/types/MenuItem";
 
@@ -29,8 +29,8 @@ const stringToComponent = (name: string) => {
       return Monitor;
     case "Operation":
       return Operation;
-    case "View":
-      return View;
+    case "Odometer":
+      return Odometer;
     case "RefreshLeft":
       return RefreshLeft;
     case "Plus":
