@@ -125,7 +125,7 @@ const operationIconClass = (operation: string, server: ServerInfo) => {
     <div class="server-list flex-1">
       <ElCard>
         <ElTable :data="serversInfo" class="w-full h-full">
-          <ElTableColumn prop="id" label="服务器" />
+          <ElTableColumn prop="id" label="服务器" width="120" />
           <ElTableColumn
             prop="port"
             label="端口"
