@@ -3,3 +3,5 @@ __pycache__/
 *.sqlite3
 app/.env
 app/config.toml
+app/logs/
+notebooks/
