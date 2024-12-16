@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { defineProps } from "vue";
 import TagIconWithTooltip from "./TagIconWithTooltip.vue";
 
 const { state } = defineProps<{

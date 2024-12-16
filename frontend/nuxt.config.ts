@@ -1,9 +1,16 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 
 export default defineNuxtConfig({
-  compatibilityDate: '2024-11-01',
+  compatibilityDate: "2024-11-01",
   devtools: { enabled: true },
-  modules: ['@nuxtjs/tailwindcss', '@element-plus/nuxt', '@pinia/nuxt', '@nuxt/icon'],
+  modules: [
+    "@nuxtjs/tailwindcss",
+    "@element-plus/nuxt",
+    "@pinia/nuxt",
+    "@nuxt/icon",
+    "@vueuse/nuxt",
+  ],
+  ssr: false,
   // does this do anything?
   // css: ['element-plus/dist/index.css'],
   elementPlus: {
@@ -16,12 +23,17 @@ export default defineNuxtConfig({
       // prevent sass from complaining about old api version
       preprocessorOptions: {
         scss: {
-          api: 'modern-compiler',
-        }
-      }
-    }
+          api: "modern-compiler",
+        },
+      },
+    },
   },
   icon: {
-    componentName: 'NuxtIcon',
-  }
-})
+    componentName: "NuxtIcon",
+  },
+  runtimeConfig: {
+    public: {
+      apiBaseUrl: process.env.API_BASE_URL,
+    },
+  },
+});

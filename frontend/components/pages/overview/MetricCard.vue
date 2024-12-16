@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { type ProgressFn } from "element-plus";
-import { defineProps } from "vue";
 
 interface Props {
   value: number;

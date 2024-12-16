@@ -197,7 +197,11 @@ const operationIconClass = (operation: string, server: ServerInfo) => {
                 </ElIcon>
               </ElTooltip>
               <ElTooltip content="详情" placement="top" effect="light">
-                <ElIcon size="24" class="operation-icon ml-2">
+                <ElIcon
+                  size="24"
+                  class="operation-icon ml-2"
+                  @click="navigateTo(`/server/${scope.row.id}`)"
+                >
                   <NuxtIcon name="material-symbols:arrow-outward"></NuxtIcon>
                 </ElIcon>
               </ElTooltip>
