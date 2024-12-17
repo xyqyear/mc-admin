@@ -8,7 +8,7 @@ WIP
 
 ### fronend
 
-- [ ] login page: password and bot login
+- [x] login page: password and bot login
 - [ ] dashboard page
   - [x] system cpu, ram and disk usage.
   - [x] total player count (player count queried from mc-health)
