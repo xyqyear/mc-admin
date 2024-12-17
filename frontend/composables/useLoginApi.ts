@@ -1,4 +1,5 @@
 import { type Ref } from "vue";
+import { useTokenStore } from "~/stores/useTokenStore";
 import { useCustomFetch } from "./useCustomFetch";
 
 interface LoginResponse {
@@ -10,7 +11,7 @@ export async function useLoginApi(
   username: Ref<string> | ComputedRef<string>,
   password: Ref<string> | ComputedRef<string>
 ) {
-  const authStore = useTokenStore();
+  const { setToken } = useTokenStore();
   const body = computed(() => {
     const formData = new FormData();
     formData.append("grant_type", "password");
@@ -36,7 +37,7 @@ export async function useLoginApi(
 
   watch(data, (newData) => {
     if (!error.value && newData) {
-      authStore.setToken(newData.access_token);
+      setToken(newData.access_token);
     }
   });
 
