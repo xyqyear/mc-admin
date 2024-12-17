@@ -2,9 +2,9 @@
 import MetricCard from "~/components/pages/overview/MetricCard.vue";
 import ServerStateTag from "~/components/pages/overview/ServerStateTag.vue";
 
+// system info
+
 const systemInfo = ref({
-  serverNum: 4,
-  onlinePlayerNum: 2,
   cpuPercentage: 10,
   cpuLoad1Min: 1.0,
   cpuLoad5Min: 1.0,
@@ -24,6 +24,8 @@ interface ServerInfo {
   diskUsedGB: number;
   port: number;
 }
+
+// server info
 
 const serversInfo = reactive<ServerInfo[]>([
   {
@@ -55,6 +57,13 @@ const serversInfo = reactive<ServerInfo[]>([
     port: 25568,
   },
 ]);
+
+const serverNum = computed(() => serversInfo.length);
+const onlinePlayerNum = computed(() =>
+  serversInfo.reduce((acc, server) => acc + server.onlinePlayers.length, 0)
+);
+
+// ui
 
 const operationAvailable = (operation: string, server: ServerInfo) => {
   switch (operation) {
@@ -91,8 +100,8 @@ const operationIconClass = (operation: string, server: ServerInfo) => {
 <template>
   <div class="main-container flex flex-col h-full w-full">
     <div class="metrics-list flex flex-wrap gap-4 mb-4">
-      <MetricCard :value="systemInfo.serverNum" title="服务器总数" />
-      <MetricCard :value="systemInfo.onlinePlayerNum" title="在线玩家总数" />
+      <MetricCard :value="serverNum" title="服务器总数" />
+      <MetricCard :value="onlinePlayerNum" title="在线玩家总数" />
       <MetricCard
         :value="systemInfo.cpuPercentage"
         :extra-values="`${systemInfo.cpuLoad1Min.toFixed(
