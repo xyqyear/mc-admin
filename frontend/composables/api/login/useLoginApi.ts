@@ -1,6 +1,6 @@
 import { type Ref } from "vue";
 import { useTokenStore } from "~/stores/useTokenStore";
-import { useCustomFetch } from "./useCustomFetch";
+import { useCustomFetch } from "../common/useCustomFetch";
 
 interface LoginResponse {
   access_token: string;

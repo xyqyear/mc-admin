@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
+import { useCodeLoginApi } from "~/composables/api/login/useCodeLoginApi";
+import { useLoginApi } from "~/composables/api/login/useLoginApi";
 import { useLoginPreferenceStore } from "~/stores/useLoginPreferenceStore";
 
 definePageMeta({
