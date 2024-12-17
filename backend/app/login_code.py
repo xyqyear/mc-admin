@@ -22,7 +22,7 @@ class LoginCodeManager:
         logger.info(
             f"Websocket from {websocket.client.host}:{websocket.client.port} connected"
         )
-        asyncio.create_task(self.rotate_code_loop(websocket))
+        rotate_code_task = asyncio.create_task(self.rotate_code_loop(websocket))
         try:
             while True:
                 received = await websocket.receive_text()
@@ -33,6 +33,7 @@ class LoginCodeManager:
                 f"Websocket from {websocket.client.host}:{websocket.client.port} disconnected"
             )
             self.websocket_code_map.pop(websocket, None)
+            rotate_code_task.cancel()
 
     async def rotate_code_loop(self, websocket: WebSocket):
         while True:
