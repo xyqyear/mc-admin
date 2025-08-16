@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import BaseModel
 from pydantic_settings import (
     BaseSettings,
@@ -22,6 +24,9 @@ class Settings(BaseSettings):
     database_url: str
     master_token: str
     jwt: JWTSettings
+
+    server_path: Path
+    backup_path: Path
 
     @classmethod
     def settings_customise_sources(
