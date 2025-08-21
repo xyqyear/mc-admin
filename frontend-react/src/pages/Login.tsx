@@ -18,6 +18,7 @@ const Login: React.FC = () => {
     timeout,
     countdown,
     connected,
+    isConnecting,
     error: codeError,
     connect,
     disconnect,
@@ -148,13 +149,13 @@ const Login: React.FC = () => {
                   <div className="text-sm text-gray-500 mb-4">
                     {connected ? 
                       (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期') : 
-                      '连接中...'
+                      (isConnecting ? '连接中...' : (codeError ? '连接失败' : '连接中...'))
                     }
                   </div>
                 </div>
               </Form.Item>
 
-              {codeError && (
+              {codeError && !isConnecting && (
                 <Form.Item>
                   <Alert type="error" message={codeError} showIcon />
                 </Form.Item>

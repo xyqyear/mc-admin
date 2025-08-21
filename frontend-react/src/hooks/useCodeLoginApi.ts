@@ -23,9 +23,11 @@ export const useCodeLoginApi = () => {
   const [success, setSuccess] = useState(false)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
   
   const wsRef = useRef<WebSocket | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { setToken } = useTokenStore()
   const { message } = App.useApp()
   const navigate = useNavigate()
@@ -38,27 +40,51 @@ export const useCodeLoginApi = () => {
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
-      wsRef.current.close()
+      wsRef.current.close(1000) // Normal closure
       wsRef.current = null
     }
     if (countdownRef.current) {
       clearInterval(countdownRef.current)
       countdownRef.current = null
     }
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current)
+      errorTimeoutRef.current = null
+    }
     setConnected(false)
+    setIsConnecting(false)
+    setError(null) // 清除错误状态
+    setCode('加载中') // 重置code，像新访问一样
+    setCountdown(0)
   }, [])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
+    // 重置状态，像新访问一样
     setError(null)
+    setCode('连接中...')
+    setConnected(false)
+    setIsConnecting(true)
+    
+    // 清除之前的错误超时
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current)
+      errorTimeoutRef.current = null
+    }
     
     try {
       wsRef.current = new WebSocket(`${wsBaseUrl}/auth/code`)
       
       wsRef.current.onopen = () => {
         setConnected(true)
+        setIsConnecting(false)
         setError(null)
+        // 清除错误超时，因为连接成功了
+        if (errorTimeoutRef.current) {
+          clearTimeout(errorTimeoutRef.current)
+          errorTimeoutRef.current = null
+        }
       }
 
       wsRef.current.onmessage = (event) => {
@@ -85,16 +111,27 @@ export const useCodeLoginApi = () => {
 
       wsRef.current.onclose = (event) => {
         setConnected(false)
-        if (event.code !== 1000) { // Not a normal closure
-          setError('连接已断开')
+        setIsConnecting(false)
+        // 只有在异常关闭且已经连接过的情况下才显示错误
+        if (event.code !== 1000 && event.code !== 1001 && event.code !== 1006) {
+          // 延迟显示错误，避免初始连接失败时立即显示
+          errorTimeoutRef.current = window.setTimeout(() => {
+            setError('连接已断开')
+          }, 1000) as unknown as ReturnType<typeof setTimeout>
         }
       }
 
       wsRef.current.onerror = () => {
         setConnected(false)
-        setError('连接失败，请检查网络')
+        setIsConnecting(false)
+        // 延迟显示错误，给连接一些时间
+        errorTimeoutRef.current = window.setTimeout(() => {
+          setError('连接失败，请检查网络')
+        }, 2000) as unknown as ReturnType<typeof setTimeout>
       }
     } catch (err) {
+      console.error('WebSocket connection failed:', err)
+      setIsConnecting(false)
       setError('无法建立连接')
     }
   }, [wsBaseUrl, setToken, message, navigate, disconnect])
@@ -137,6 +174,7 @@ export const useCodeLoginApi = () => {
     countdown,
     success,
     connected,
+    isConnecting,
     error,
     connect,
     disconnect,
