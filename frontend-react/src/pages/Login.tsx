@@ -1,43 +1,33 @@
-import React, { useState, useEffect } from 'react'
-import { Card, Form, Input, Button, Progress, App } from 'antd'
+import React, { useEffect } from 'react'
+import { Card, Form, Input, Button, Progress, App, Alert } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { useLoginApi } from '@/hooks/useLoginApi'
+import { useLoginMutation } from '@/hooks/useLoginApi'
 import { useCodeLoginApi } from '@/hooks/useCodeLoginApi'
 import { useLoginPreferenceStore } from '@/stores/useLoginPreferenceStore'
-import { useHasToken } from '@/stores/useTokenStore'
+import { useIsAuthenticated } from '@/stores/useTokenStore'
 
 const Login: React.FC = () => {
   const navigate = useNavigate()
-  const hasToken = useHasToken()
+  const isAuthenticated = useIsAuthenticated()
   const { message } = App.useApp()
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
-  const { login, loading, error } = useLoginApi()
+  const loginMutation = useLoginMutation()
   
   const {
     code,
     timeout,
     countdown,
-    success,
     connected,
+    error: codeError,
     connect,
     disconnect,
   } = useCodeLoginApi()
 
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [form] = Form.useForm()
 
-  const handlePasswordLogin = async () => {
-    await login(username, password)
-    // Don't navigate here - let the useEffect handle it
+  const handlePasswordLogin = async (values: { username: string; password: string }) => {
+    loginMutation.mutate(values)
   }
-
-  // Add effect to handle navigation when token changes
-  useEffect(() => {
-    if (hasToken) {
-      message.success('登录成功')
-      navigate('/')
-    }
-  }, [hasToken, navigate])
 
   const handleSwitchLoginMethod = () => {
     const newPreference = loginPreference === 'password' ? 'code' : 'password'
@@ -59,34 +49,27 @@ const Login: React.FC = () => {
     }
   }
 
+  // Initialize code login if preferred
   useEffect(() => {
     if (loginPreference === 'code') {
       connect()
-    } else {
-      disconnect()
     }
     
     return () => {
       disconnect()
     }
-  }, [loginPreference])
+  }, [loginPreference, connect, disconnect])
 
+  // Redirect if already authenticated
   useEffect(() => {
-    if (success) {
-      message.success('登录成功')
-      navigate('/')
+    if (isAuthenticated) {
+      navigate('/', { replace: true })
     }
-  }, [success, navigate])
+  }, [isAuthenticated, navigate])
 
-  useEffect(() => {
-    if (error) {
-      message.error(error)
-    }
-  }, [error])
-
-  // Redirect if already logged in - do this after all hooks are called
-  if (hasToken) {
-    return null // or a loading spinner
+  // Early return if already authenticated
+  if (isAuthenticated) {
+    return null
   }
 
   return (
@@ -98,35 +81,51 @@ const Login: React.FC = () => {
           </div>
 
           {loginPreference === 'password' ? (
-            <Form layout="vertical" onFinish={handlePasswordLogin}>
-              <Form.Item label="用户名" required>
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="请输入用户名"
-                />
+            <Form 
+              form={form}
+              layout="vertical" 
+              onFinish={handlePasswordLogin}
+              disabled={loginMutation.isPending}
+            >
+              <Form.Item 
+                label="用户名" 
+                name="username"
+                rules={[{ required: true, message: '请输入用户名' }]}
+              >
+                <Input placeholder="请输入用户名" />
               </Form.Item>
               
-              <Form.Item label="密码" required>
-                <Input.Password
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="请输入密码"
-                />
+              <Form.Item 
+                label="密码" 
+                name="password"
+                rules={[{ required: true, message: '请输入密码' }]}
+              >
+                <Input.Password placeholder="请输入密码" />
               </Form.Item>
+
+              {loginMutation.isError && (
+                <Form.Item>
+                  <Alert 
+                    type="error" 
+                    message={loginMutation.error?.message || '登录失败'} 
+                    showIcon 
+                  />
+                </Form.Item>
+              )}
               
               <Form.Item>
                 <div className="flex gap-4">
                   <Button 
                     onClick={handleSwitchLoginMethod}
                     className="flex-1"
+                    disabled={loginMutation.isPending}
                   >
                     机器人登录
                   </Button>
                   <Button
                     type="primary"
                     htmlType="submit"
-                    loading={loading}
+                    loading={loginMutation.isPending}
                     className="flex-1"
                   >
                     登录
@@ -140,16 +139,26 @@ const Login: React.FC = () => {
                 <div className="text-center">
                   <div className="text-2xl font-mono mb-2">{code}</div>
                   <Progress
-                    percent={(countdown / timeout) * 100}
+                    percent={timeout > 0 ? (countdown / timeout) * 100 : 0}
                     showInfo={false}
                     strokeWidth={4}
+                    status={countdown === 0 ? 'exception' : 'active'}
                     className="mb-4"
                   />
                   <div className="text-sm text-gray-500 mb-4">
-                    {connected ? `${countdown}秒后过期` : '连接中...'}
+                    {connected ? 
+                      (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期') : 
+                      '连接中...'
+                    }
                   </div>
                 </div>
               </Form.Item>
+
+              {codeError && (
+                <Form.Item>
+                  <Alert type="error" message={codeError} showIcon />
+                </Form.Item>
+              )}
               
               <Form.Item>
                 <div className="flex gap-4">
@@ -162,6 +171,7 @@ const Login: React.FC = () => {
                   <Button
                     type="primary"
                     onClick={handleCopyCode}
+                    disabled={!connected || countdown === 0}
                     className="flex-1"
                   >
                     复制

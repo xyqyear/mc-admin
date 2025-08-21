@@ -1,167 +1,94 @@
-import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { Layout } from 'antd'
-import { useHasToken } from '@/stores/useTokenStore'
+import React, { Suspense, ErrorInfo } from 'react'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { App as AntdApp } from 'antd'
+import { ErrorBoundary } from 'react-error-boundary'
+import { useTokenStore } from './stores/useTokenStore'
+import { LoadingSpinner } from './components/layout/LoadingSpinner'
+import { ErrorFallback } from './components/layout/ErrorFallback'
+import { MainLayout } from './components/layout/MainLayout'
 
-// Layout Components
-import AppHeader from '@/components/layout/AppHeader'
-import AppSidebar from '@/components/layout/AppSidebar'
+// Lazy load pages for better performance
+const Login = React.lazy(() => import('./pages/Login'))
+const Home = React.lazy(() => import('./pages/Home'))
+const Overview = React.lazy(() => import('./pages/Overview'))
+const Backups = React.lazy(() => import('./pages/Backups'))
+const ServerNew = React.lazy(() => import('./pages/server/new'))
+const ServerDetail = React.lazy(() => import('./pages/server/[id]'))
+const ServerPlayers = React.lazy(() => import('./pages/server/[id]/players'))
+const ServerFiles = React.lazy(() => import('./pages/server/[id]/files'))
+const ServerWhitelist = React.lazy(() => import('./pages/server/[id]/whitelist'))
+const ServerArchive = React.lazy(() => import('./pages/server/[id]/archive'))
+const ServerCompose = React.lazy(() => import('./pages/server/[id]/compose'))
 
-// Pages
-import Login from '@/pages/Login'
-import Home from '@/pages/Home'
-import Overview from '@/pages/Overview'
-import Backups from '@/pages/Backups'
-import ServerDetail from '@/pages/server/[id]'
-import ServerPlayers from '@/pages/server/[id]/players'
-import ServerFiles from '@/pages/server/[id]/files'
-import ServerWhitelist from '@/pages/server/[id]/whitelist'
-import ServerArchive from '@/pages/server/[id]/archive'
-import ServerCompose from '@/pages/server/[id]/compose'
-import ServerNew from '@/pages/server/new'
-
-const { Content } = Layout
-
-// Protected Route component
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const hasToken = useHasToken()
+// Protected route wrapper using React Router 6 outlet pattern
+function ProtectedRoutes() {
+  const token = useTokenStore((state) => state.token)
   
-  if (!hasToken) {
+  if (!token) {
     return <Navigate to="/login" replace />
   }
   
-  return <>{children}</>
-}
-
-// Main Layout component
-const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <Layout className="h-screen">
-      <AppHeader />
-      <Layout>
-        <AppSidebar />
-        <Layout>
-          <Content className="p-4 overflow-auto">
-            {children}
-          </Content>
-        </Layout>
-      </Layout>
-    </Layout>
+    <MainLayout>
+      <Outlet />
+    </MainLayout>
   )
 }
 
+// Auth route wrapper (redirects to home if already authenticated)
+function AuthRoutes() {
+  const token = useTokenStore((state) => state.token)
+  
+  if (token) {
+    return <Navigate to="/" replace />
+  }
+  
+  return <Outlet />
+}
+
 function App() {
+  const { notification } = AntdApp.useApp()
+  
+  // Global error handler
+  const handleError = (error: Error, errorInfo: ErrorInfo) => {
+    console.error('Application error:', error, errorInfo)
+    notification.error({
+      message: 'Application Error',
+      description: 'An unexpected error occurred. Please refresh the page.',
+      duration: 0,
+    })
+  }
+
   return (
-    <Router
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <Home />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/overview"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <Overview />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/backups"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <Backups />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/new"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerNew />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerDetail />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id/players"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerPlayers />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id/files"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerFiles />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id/whitelist"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerWhitelist />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id/archive"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerArchive />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/server/:id/compose"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ServerCompose />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </Router>
+    <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleError}>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
+          {/* Public routes */}
+          <Route element={<AuthRoutes />}>
+            <Route path="/login" element={<Login />} />
+          </Route>
+
+          {/* Protected routes with nested structure */}
+          <Route element={<ProtectedRoutes />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/overview" element={<Overview />} />
+            <Route path="/backups" element={<Backups />} />
+            <Route path="/server">
+              <Route path="new" element={<ServerNew />} />
+              <Route path=":id" element={<ServerDetail />} />
+              <Route path=":id/players" element={<ServerPlayers />} />
+              <Route path=":id/files" element={<ServerFiles />} />
+              <Route path=":id/whitelist" element={<ServerWhitelist />} />
+              <Route path=":id/archive" element={<ServerArchive />} />
+              <Route path=":id/compose" element={<ServerCompose />} />
+            </Route>
+          </Route>
+
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 

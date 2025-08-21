@@ -1,37 +1,69 @@
 import { useTokenStore } from '@/stores/useTokenStore'
-import { api } from '@/utils/api'
-import { useState } from 'react'
+import { api, ApiError } from '@/utils/api'
+import { useMutation } from '@tanstack/react-query'
+import { App } from 'antd'
+import { useNavigate } from 'react-router-dom'
+
+interface LoginRequest {
+  username: string
+  password: string
+}
 
 interface LoginResponse {
   access_token: string
   token_type: 'bearer'
 }
 
-export const useLoginApi = () => {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+// Login API function
+const loginApi = async ({ username, password }: LoginRequest): Promise<LoginResponse> => {
+  const formData = new FormData()
+  formData.append('grant_type', 'password')
+  formData.append('username', username)
+  formData.append('password', password)
+
+  const response = await api.post<LoginResponse>('/auth/token', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  
+  return response.data
+}
+
+// Modern hook using TanStack Query
+export const useLoginMutation = () => {
   const { setToken } = useTokenStore()
+  const navigate = useNavigate()
+  const { message } = App.useApp()
+  
+  return useMutation({
+    mutationFn: loginApi,
+    onSuccess: (data) => {
+      setToken(data.access_token)
+      message.success('登录成功')
+      navigate('/')
+    },
+    onError: (error: ApiError) => {
+      const errorMessage = error.message || '登录失败，请检查用户名和密码'
+      message.error(errorMessage)
+    },
+  })
+}
 
-  const login = async (username: string, password: string) => {
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const formData = new FormData()
-      formData.append('grant_type', 'password')
-      formData.append('username', username)
-      formData.append('password', password)
-
-      const response = await api.post<LoginResponse>('/auth/token', formData)
-      setToken(response.data.access_token)
-      return true
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败')
-      return false
-    } finally {
-      setLoading(false)
-    }
+// Legacy compatibility hook
+export const useLoginApi = () => {
+  const mutation = useLoginMutation()
+  
+  return {
+    login: async (username: string, password: string) => {
+      try {
+        await mutation.mutateAsync({ username, password })
+        return true
+      } catch {
+        return false
+      }
+    },
+    loading: mutation.isPending,
+    error: mutation.error?.message || null,
   }
-
-  return { login, loading, error }
 }

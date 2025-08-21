@@ -1,13 +1,16 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 interface SidebarStore {
   openKeys: string[]
   lastPath: string | null
+  collapsed: boolean
   setOpenKeys: (keys: string[]) => void
   updateForNavigation: (pathname: string) => void
   addOpenKey: (key: string) => void
   removeOpenKey: (key: string) => void
+  toggleCollapsed: () => void
+  setCollapsed: (collapsed: boolean) => void
 }
 
 export const useSidebarStore = create<SidebarStore>()(
@@ -15,6 +18,7 @@ export const useSidebarStore = create<SidebarStore>()(
     (set, get) => ({
       openKeys: ['服务器管理'], // Default open keys
       lastPath: null,
+      collapsed: false,
       setOpenKeys: (keys: string[]) => set({ openKeys: keys }),
       updateForNavigation: (pathname: string) => {
         const { lastPath } = get()
@@ -34,12 +38,26 @@ export const useSidebarStore = create<SidebarStore>()(
         const { openKeys } = get()
         set({ openKeys: openKeys.filter(k => k !== key) })
       },
+      toggleCollapsed: () => {
+        const { collapsed } = get()
+        set({ collapsed: !collapsed })
+      },
+      setCollapsed: (collapsed: boolean) => set({ collapsed }),
     }),
     {
-      name: 'sidebar-state',
+      name: 'mc-admin-sidebar',
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
     }
   )
 )
+
+// Selector hooks for better performance
+export const useSidebarOpenKeys = () => 
+  useSidebarStore((state) => state.openKeys)
+
+export const useSidebarCollapsed = () => 
+  useSidebarStore((state) => state.collapsed)
 
 // Helper function to get open keys based on current path
 export const getOpenKeysFromPath = (pathname: string): string[] => {
