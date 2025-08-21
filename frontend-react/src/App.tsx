@@ -30,7 +30,9 @@ function ProtectedRoutes() {
   
   return (
     <MainLayout>
-      <Outlet />
+      <Suspense fallback={<LoadingSpinner />}>
+        <Outlet />
+      </Suspense>
     </MainLayout>
   )
 }
@@ -61,33 +63,35 @@ function App() {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleError}>
-      <Suspense fallback={<LoadingSpinner />}>
-        <Routes>
-          {/* Public routes */}
-          <Route element={<AuthRoutes />}>
-            <Route path="/login" element={<Login />} />
-          </Route>
+      <Routes>
+        {/* Public routes */}
+        <Route element={<AuthRoutes />}>
+          <Route path="/login" element={
+            <Suspense fallback={<LoadingSpinner fullscreen />}>
+              <Login />
+            </Suspense>
+          } />
+        </Route>
 
-          {/* Protected routes with nested structure */}
-          <Route element={<ProtectedRoutes />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/overview" element={<Overview />} />
-            <Route path="/backups" element={<Backups />} />
-            <Route path="/server">
-              <Route path="new" element={<ServerNew />} />
-              <Route path=":id" element={<ServerDetail />} />
-              <Route path=":id/players" element={<ServerPlayers />} />
-              <Route path=":id/files" element={<ServerFiles />} />
-              <Route path=":id/whitelist" element={<ServerWhitelist />} />
-              <Route path=":id/archive" element={<ServerArchive />} />
-              <Route path=":id/compose" element={<ServerCompose />} />
-            </Route>
+        {/* Protected routes with nested structure */}
+        <Route element={<ProtectedRoutes />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/overview" element={<Overview />} />
+          <Route path="/backups" element={<Backups />} />
+          <Route path="/server">
+            <Route path="new" element={<ServerNew />} />
+            <Route path=":id" element={<ServerDetail />} />
+            <Route path=":id/players" element={<ServerPlayers />} />
+            <Route path=":id/files" element={<ServerFiles />} />
+            <Route path=":id/whitelist" element={<ServerWhitelist />} />
+            <Route path=":id/archive" element={<ServerArchive />} />
+            <Route path=":id/compose" element={<ServerCompose />} />
           </Route>
+        </Route>
 
-          {/* Catch all route */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+        {/* Catch all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </ErrorBoundary>
   )
 }
