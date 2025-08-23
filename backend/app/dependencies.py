@@ -10,6 +10,7 @@ from sqlmodel import Session
 from .config import settings
 from .db.crud.user import get_user_by_username
 from .db.database import get_session
+from .logger import logger
 from .models import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
@@ -32,6 +33,10 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    # Allow master token to act as a privileged SYSTEM user
+    if token == settings.master_token:
+        logger.info("Master token used; acting as SYSTEM user")
+        return get_system_user()
     token_data: TokenData | None = None
     try:
         payload = jwt.decode(token, settings.jwt.secret_key, [settings.jwt.algorithm])
@@ -72,3 +77,12 @@ def verify_master_token(authorization: Annotated[str, Header()]):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint requires a master token",
         )
+
+
+def get_system_user() -> User:
+    """Return a synthetic OWNER user representing system actions.
+
+    This user is not persisted to the database and is used when the master token
+    is presented in place of a JWT bearer token.
+    """
+    return User(id=0, username="SYSTEM", role=UserRole.OWNER, hashed_password="")

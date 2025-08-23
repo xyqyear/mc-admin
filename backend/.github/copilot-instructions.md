@@ -76,6 +76,7 @@ Assume Linux + bash. Always use the repo’s virtualenv and Poetry.
   - OAuth2 password token endpoint: `POST /api/auth/token` with form data (username, password).
   - Registration `POST /api/auth/register` requires owner role via JWT; typically seeded by creating an OWNER user directly or via DB.
   - Login-code flow: connect websocket `/api/auth/code` to receive rotating 8-digit codes; verify via `POST /api/auth/verifyCode` with `Authorization: Bearer <master_token>`.
+  - Master token access: Any endpoint that depends on `dependencies.get_current_user` also accepts `Authorization: Bearer <master_token>`. When used, the request is authenticated as a synthetic user `SYSTEM` with role `owner` (not persisted). This allows OWNER-gated routes to be invoked with the master token. A log entry is written when the master token is used.
 
 - System info endpoint
   - `GET /api/system/info` requires bearer token; uses `settings.server_path` and `settings.backup_path` for disk stats.
