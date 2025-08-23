@@ -70,8 +70,6 @@ Assume Linux + bash. Always use the repo’s virtualenv and Poetry.
   - `poetry run black .`
 
 - Database
-  - If `database_url` is a relative SQLite URL (e.g., `sqlite:///./db.sqlite3`), it is resolved against the current working directory.
-  - You can force an absolute SQLite path via env var `MC_ADMIN_DB_PATH` (overrides `database_url`).
   - Tables auto-create on startup via `init_db()` in app lifespan.
 
 - Auth and security
