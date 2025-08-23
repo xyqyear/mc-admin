@@ -1,12 +1,16 @@
+import os
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+_CONFIG_PATH = os.getenv("MC_ADMIN_CONFIG", "config.toml")
+_ENV_PATH = os.getenv("MC_ADMIN_ENV", ".env")
 
 
 class JWTSettings(BaseModel):
@@ -18,7 +22,8 @@ class JWTSettings(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
-        toml_file="config.toml",
+        toml_file=_CONFIG_PATH,
+        env_file=_ENV_PATH,
     )
 
     database_url: str
@@ -27,6 +32,8 @@ class Settings(BaseSettings):
 
     server_path: Path
     backup_path: Path
+
+    logs_dir: Path = Field(default=Path("logs"))
 
     @classmethod
     def settings_customise_sources(
@@ -37,7 +44,14 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (TomlConfigSettingsSource(settings_cls),)
+        # Source order: init args > OS env > .env > config.toml > secrets
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            TomlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )
 
 
 settings = Settings()  # type: ignore We want the app to fail if the settings are not loaded correctly

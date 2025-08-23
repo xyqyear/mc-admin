@@ -1,12 +1,13 @@
-from auth.jwt_utils import create_access_token, get_password_hash, verify_password
-from auth.login_code import loginCodeManager
-from db.crud.user import create_user, get_user_by_username
-from dependencies import RequireRole, UserRole, get_db, verify_master_token
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
 from fastapi.security import OAuth2PasswordRequestForm
-from models import User, UserCreate
 from pydantic import BaseModel
 from sqlmodel import Session
+
+from ..auth.jwt_utils import create_access_token, get_password_hash, verify_password
+from ..auth.login_code import loginCodeManager
+from ..db.crud.user import create_user, get_user_by_username
+from ..dependencies import RequireRole, UserRole, get_db, verify_master_token
+from ..models import User, UserCreate
 
 router = APIRouter(
     prefix="/auth",

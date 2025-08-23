@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 
-import uvicorn
-from db.database import init_db
 from fastapi import FastAPI
-from routers import auth, system, user
 from starlette.middleware.cors import CORSMiddleware
+
+from .db.database import init_db
+from .routers import auth, system, user
 
 
 @asynccontextmanager
@@ -31,7 +31,3 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(user.router)
 app.include_router(system.router)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5678)

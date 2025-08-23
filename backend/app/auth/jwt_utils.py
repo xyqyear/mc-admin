@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
-from config import settings
 from joserfc import jwt
 from passlib.context import CryptContext
+
+from ..config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -21,7 +22,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(
-            settings.jwt.access_token_expire_minutes
+            minutes=settings.jwt.access_token_expire_minutes
         )
     claims.update({"exp": expire})
     encoded_jwt = jwt.encode(

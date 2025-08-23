@@ -1,5 +1,6 @@
-from models import User
 from sqlmodel import Session, select
+
+from ...models import User
 
 
 def get_user_by_username(session: Session, username: str) -> User | None:

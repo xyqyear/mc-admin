@@ -1,15 +1,16 @@
 from typing import Annotated, Generator, cast
 
-from config import settings
-from db.crud.user import get_user_by_username
-from db.database import get_session
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from joserfc import jwt
 from joserfc.errors import BadSignatureError, DecodeError
-from models import User, UserRole
 from pydantic import BaseModel
 from sqlmodel import Session
+
+from .config import settings
+from .db.crud.user import get_user_by_username
+from .db.database import get_session
+from .models import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -31,6 +32,7 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token_data: TokenData | None = None
     try:
         payload = jwt.decode(token, settings.jwt.secret_key, [settings.jwt.algorithm])
         claims = payload.claims
@@ -40,7 +42,7 @@ def get_current_user(
     except (BadSignatureError, DecodeError):
         raise credentials_exception
 
-    if token_data.username is None:
+    if token_data is None or token_data.username is None:
         raise credentials_exception
 
     user = get_user_by_username(db, token_data.username)

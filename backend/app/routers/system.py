@@ -1,8 +1,9 @@
-from config import settings
-from dependencies import get_current_user
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from system.resources import (
+
+from ..config import settings
+from ..dependencies import get_current_user
+from ..system.resources import (
     get_cpu_load,
     get_cpu_percent,
     get_disk_info,

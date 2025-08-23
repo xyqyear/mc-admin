@@ -2,11 +2,12 @@ import asyncio
 import random
 
 from asyncer import syncify
-from auth.jwt_utils import create_access_token
-from db.crud.user import get_user_by_username
-from db.database import get_session
 from fastapi import WebSocket, WebSocketDisconnect
-from logger import logger
+
+from ..db.crud.user import get_user_by_username
+from ..db.database import get_session
+from ..logger import logger
+from .jwt_utils import create_access_token
 
 
 class LoginCodeManager:

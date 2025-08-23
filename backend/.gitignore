@@ -1,7 +1,7 @@
 __pycache__/
 *.db
 *.sqlite3
-app/.env
-app/config.toml
-app/logs/
+.env
+config.toml
+logs/
 notebooks/

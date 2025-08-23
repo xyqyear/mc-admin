@@ -1,9 +1,10 @@
 from contextlib import contextmanager
 
 from asyncer import asyncify
-from config import settings
-from models import SQLModel
 from sqlmodel import Session, create_engine
+
+from ..config import settings
+from ..models import SQLModel
 
 engine = create_engine(settings.database_url, echo=True)
 
