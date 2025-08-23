@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Card, Form, Input, Button, Progress, App, Alert } from 'antd'
+import { Card, Form, Input, Button, App, Alert, Progress } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useLoginMutation } from '@/hooks/useLoginApi'
 import { useCodeLoginApi } from '@/hooks/useCodeLoginApi'
@@ -12,11 +12,11 @@ const Login: React.FC = () => {
   const { message } = App.useApp()
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
   const loginMutation = useLoginMutation()
-  
+
   const {
     code,
-    timeout,
     countdown,
+    codeTimeout,
     connected,
     isConnecting,
     error: codeError,
@@ -33,12 +33,6 @@ const Login: React.FC = () => {
   const handleSwitchLoginMethod = () => {
     const newPreference = loginPreference === 'password' ? 'code' : 'password'
     setLoginPreference(newPreference)
-    
-    if (newPreference === 'code') {
-      connect()
-    } else {
-      disconnect()
-    }
   }
 
   const handleCopyCode = async () => {
@@ -50,25 +44,23 @@ const Login: React.FC = () => {
     }
   }
 
-  // Initialize code login if preferred
   useEffect(() => {
     if (loginPreference === 'code') {
       connect()
-    }
-    
-    return () => {
+      return () => {
+        disconnect()
+      }
+    } else {
       disconnect()
     }
   }, [loginPreference, connect, disconnect])
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/', { replace: true })
     }
   }, [isAuthenticated, navigate])
 
-  // Early return if already authenticated
   if (isAuthenticated) {
     return null
   }
@@ -82,22 +74,22 @@ const Login: React.FC = () => {
           </div>
 
           {loginPreference === 'password' ? (
-            <Form 
+            <Form
               form={form}
-              layout="vertical" 
+              layout="vertical"
               onFinish={handlePasswordLogin}
               disabled={loginMutation.isPending}
             >
-              <Form.Item 
-                label="用户名" 
+              <Form.Item
+                label="用户名"
                 name="username"
                 rules={[{ required: true, message: '请输入用户名' }]}
               >
                 <Input placeholder="请输入用户名" />
               </Form.Item>
-              
-              <Form.Item 
-                label="密码" 
+
+              <Form.Item
+                label="密码"
                 name="password"
                 rules={[{ required: true, message: '请输入密码' }]}
               >
@@ -106,17 +98,17 @@ const Login: React.FC = () => {
 
               {loginMutation.isError && (
                 <Form.Item>
-                  <Alert 
-                    type="error" 
-                    message={loginMutation.error?.message || '登录失败'} 
-                    showIcon 
+                  <Alert
+                    type="error"
+                    message={loginMutation.error?.message || '登录失败'}
+                    showIcon
                   />
                 </Form.Item>
               )}
-              
+
               <Form.Item>
                 <div className="flex gap-4">
-                  <Button 
+                  <Button
                     onClick={handleSwitchLoginMethod}
                     className="flex-1"
                     disabled={loginMutation.isPending}
@@ -139,16 +131,16 @@ const Login: React.FC = () => {
               <Form.Item label="动态码">
                 <div className="text-center">
                   <div className="text-2xl font-mono mb-2">{code}</div>
-                  <Progress
-                    percent={timeout > 0 ? (countdown / timeout) * 100 : 0}
-                    showInfo={false}
-                    strokeWidth={4}
-                    status={countdown === 0 ? 'exception' : 'active'}
-                    className="mb-4"
-                  />
+                  <div className="mb-2">
+                    <Progress
+                      percent={codeTimeout > 0 ? Math.max(0, Math.min(100, (countdown / codeTimeout) * 100)) : 0}
+                      status={connected && countdown > 0 ? 'active' : (countdown === 0 ? 'exception' : (isConnecting ? 'normal' : 'exception'))}
+                      showInfo={false}
+                    />
+                  </div>
                   <div className="text-sm text-gray-500 mb-4">
-                    {connected ? 
-                      (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期') : 
+                    {connected ?
+                      (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期') :
                       (isConnecting ? '连接中...' : (codeError ? '连接失败' : '连接中...'))
                     }
                   </div>
@@ -160,10 +152,10 @@ const Login: React.FC = () => {
                   <Alert type="error" message={codeError} showIcon />
                 </Form.Item>
               )}
-              
+
               <Form.Item>
                 <div className="flex gap-4">
-                  <Button 
+                  <Button
                     onClick={handleSwitchLoginMethod}
                     className="flex-1"
                   >

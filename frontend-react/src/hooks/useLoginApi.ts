@@ -49,21 +49,3 @@ export const useLoginMutation = () => {
     },
   })
 }
-
-// Legacy compatibility hook
-export const useLoginApi = () => {
-  const mutation = useLoginMutation()
-  
-  return {
-    login: async (username: string, password: string) => {
-      try {
-        await mutation.mutateAsync({ username, password })
-        return true
-      } catch {
-        return false
-      }
-    },
-    loading: mutation.isPending,
-    error: mutation.error?.message || null,
-  }
-}
