@@ -12,20 +12,8 @@ import {
 import MetricCard from '@/components/overview/MetricCard'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerInfo, SystemInfo } from '@/types/Server'
-
-// Mock data - in a real app this would come from API
-const mockSystemInfo: SystemInfo = {
-  cpuPercentage: 10,
-  cpuLoad1Min: 1.0,
-  cpuLoad5Min: 1.0,
-  cpuLoad15Min: 1.0,
-  ramUsedGB: 20.0,
-  ramTotalGB: 48.0,
-  diskUsedGB: 40.0,
-  diskTotalGB: 400.0,
-  backupUsedGB: 80.0,
-  backupTotalGB: 256.0,
-}
+import api, { ApiError, queryKeys } from '@/utils/api'
+import { useQuery } from '@tanstack/react-query'
 
 const mockServersInfo: ServerInfo[] = [
   {
@@ -60,6 +48,14 @@ const mockServersInfo: ServerInfo[] = [
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
+  const { data: systemInfo, isError, error } = useQuery<SystemInfo, ApiError>({
+    queryKey: queryKeys.overview(),
+    queryFn: async () => {
+      const res = await api.get<SystemInfo>('/system/info')
+      return res.data
+    },
+  refetchInterval: 2000,
+  })
   
   const serverNum = mockServersInfo.length
   const onlinePlayerNum = mockServersInfo.reduce(
@@ -195,30 +191,61 @@ const Overview: React.FC = () => {
         <MetricCard value={serverNum} title="服务器总数" />
         <MetricCard value={onlinePlayerNum} title="在线玩家总数" />
         <MetricCard
-          value={mockSystemInfo.cpuPercentage}
+          value={systemInfo?.cpuPercentage ?? 0}
           title="CPU占用"
-          extraValues={`${mockSystemInfo.cpuLoad1Min.toFixed(2)}, ${mockSystemInfo.cpuLoad5Min.toFixed(2)}, ${mockSystemInfo.cpuLoad15Min.toFixed(2)}`}
+          extraValues={
+            systemInfo
+              ? `${systemInfo.cpuLoad1Min.toFixed(2)}, ${systemInfo.cpuLoad5Min.toFixed(2)}, ${systemInfo.cpuLoad15Min.toFixed(2)}`
+              : '-'
+          }
           isProgress
         />
         <MetricCard
-          value={(mockSystemInfo.ramUsedGB / mockSystemInfo.ramTotalGB) * 100}
+          value={
+            systemInfo
+              ? (systemInfo.ramUsedGB / systemInfo.ramTotalGB) * 100
+              : 0
+          }
           title="RAM占用"
-          extraValues={`${mockSystemInfo.ramUsedGB}GB / ${mockSystemInfo.ramTotalGB}GB`}
+          extraValues={
+            systemInfo
+              ? `${systemInfo.ramUsedGB.toFixed(2)}GB / ${systemInfo.ramTotalGB.toFixed(2)}GB`
+              : '-'
+          }
           isProgress
         />
         <MetricCard
-          value={(mockSystemInfo.diskUsedGB / mockSystemInfo.diskTotalGB) * 100}
+          value={
+            systemInfo
+              ? (systemInfo.diskUsedGB / systemInfo.diskTotalGB) * 100
+              : 0
+          }
           title="硬盘使用"
-          extraValues={`${mockSystemInfo.diskUsedGB}GB / ${mockSystemInfo.diskTotalGB}GB`}
+          extraValues={
+            systemInfo
+              ? `${systemInfo.diskUsedGB.toFixed(2)}GB / ${systemInfo.diskTotalGB.toFixed(2)}GB`
+              : '-'
+          }
           isProgress
         />
         <MetricCard
-          value={(mockSystemInfo.backupUsedGB / mockSystemInfo.backupTotalGB) * 100}
+          value={
+            systemInfo
+              ? (systemInfo.backupUsedGB / systemInfo.backupTotalGB) * 100
+              : 0
+          }
           title="备份空间"
-          extraValues={`${mockSystemInfo.backupUsedGB}GB / ${mockSystemInfo.backupTotalGB}GB`}
+          extraValues={
+            systemInfo
+              ? `${systemInfo.backupUsedGB.toFixed(2)}GB / ${systemInfo.backupTotalGB.toFixed(2)}GB`
+              : '-'
+          }
           isProgress
         />
       </div>
+      {isError && (
+        <div className="text-red-500 text-sm mb-2">{error?.message || '加载系统信息失败'}</div>
+      )}
       
       <div className="flex-1">
         <Card>
