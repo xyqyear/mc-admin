@@ -3,12 +3,13 @@
 These instructions prime any new Copilot session to work effectively in this repository. Trust these instructions first; only search the codebase when something here is missing or incorrect. If you introduce new technologies, add features, or change structure, update this file in the same PR.
 
 ## What this repo is
-Backend API for a Minecraft admin dashboard. Built with FastAPI + SQLModel on Python 3.12+, using JWT auth and a websocket-based login code flow. SQLite is the default DB; configuration is read from `config.toml` (location configurable; defaults to current working directory). Optional `.env` supported.
+Backend API for a Minecraft admin dashboard. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, using JWT auth, async database operations, and a websocket-based login code flow. SQLite with aiosqlite is the default DB; configuration is read from `config.toml` (location configurable; defaults to current working directory). Optional `.env` supported.
 
 ## Tech stack and key libraries
 - Language/runtime: Python 3.12+ (local venv present). Package manager: Poetry.
 - Web API: FastAPI (Starlette under the hood), Uvicorn ASGI server, CORS middleware.
-- Data & ORM: SQLModel (SQLAlchemy + Pydantic), SQLite by default.
+- Data & ORM: SQLAlchemy 2.0 Declarative Models with async support, SQLite with aiosqlite driver.
+- Async support: greenlet for SQLAlchemy async operations, full async/await patterns.
 - Validation & settings: Pydantic v2, pydantic-settings (loads from TOML).
 - Auth: OAuth2 password flow + JWT (joserfc). Password hashing: passlib[bcrypt].
 - Async helpers: asyncer (syncify/asyncify).
@@ -19,18 +20,18 @@ Backend API for a Minecraft admin dashboard. Built with FastAPI + SQLModel on Py
 - `app/`
   - `main.py` — FastAPI app entrypoint, root_path `/api`; mounts routers and CORS; runs uvicorn if `__main__`.
   - `config.py` — Settings model. Loads from root `config.toml` and optional root `.env`.
-  - `models.py` — SQLModel models (User, roles), Pydantic request/response models.
+  - `models.py` — SQLAlchemy 2.0 Declarative models (User, UserRole), Pydantic request/response models.
   - `db/` — DB engine/session and CRUD.
-    - `database.py` — SQLModel engine from `settings.database_url`; `init_db()` creates tables.
-    - `crud/user.py` — basic user queries and create.
+    - `database.py` — Async SQLAlchemy engine from `settings.database_url`; `init_db()` creates tables; async session factory and FastAPI dependency.
+    - `crud/user.py` — async user queries and create using SQLAlchemy 2.0 patterns.
   - `auth/` — auth utilities and login-code websocket flow.
     - `jwt_utils.py` — password hashing and JWT create/verify helpers.
     - `login_code.py` — websocket code rotation + master-token verified exchange.
   - `routers/` — FastAPI routers.
-    - `auth.py` — /auth endpoints: register, token, verifyCode, websocket /auth/code.
-    - `user.py` — /user/me returns current user.
-    - `system.py` — /system/info server/disk/ram metrics.
-  - `dependencies.py` — DI for DB session, current user, role guard, and master-token check.
+    - `auth.py` — /auth endpoints: register, token, verifyCode, websocket /auth/code (all async).
+    - `user.py` — /user/me returns current user (async).
+    - `system.py` — /system/info server/disk/ram metrics (async).
+  - `dependencies.py` — DI for async DB session, current user, role guard, and master-token check.
   - `logger.py` — timed rotating file + stdout logger to `${ROOT}/logs/app.log`.
   - `system/resources.py` — psutil wrappers for system info.
 - `config.toml` — runtime configuration (recommended at repo root, but can be placed elsewhere).
@@ -83,17 +84,18 @@ Assume Linux + bash. Always use the repo’s virtualenv and Poetry.
 
 ## Conventions and tips
 - Keep settings nested under TOML keys exactly as modeled in `Settings`.
-- Inside `app/`, prefer package-relative imports (e.g., `from .db.database import get_session`, `from .routers import auth`). Avoid relying on CWD.
+- Inside `app/`, prefer package-relative imports (e.g., `from .db.database import get_db`, `from .routers import auth`). Avoid relying on CWD.
 - When adding dependencies or new subsystems, update `pyproject.toml` and this file.
-- Prefer SQLModel models for DB entities and Pydantic BaseModel for request bodies where additional validation is needed.
+- Use SQLAlchemy 2.0 Declarative models for DB entities and Pydantic BaseModel for request bodies where additional validation is needed.
 - Use `dependencies.RequireRole` for role gating and `dependencies.get_current_user` for auth-protected routes.
+- Database sessions: Use `get_db()` dependency for db session.
 - Logging already configured: set log directory via env var `MC_ADMIN_LOG_DIR` (default: `./logs` relative to CWD). From outside the package use `from app.logger import logger`; inside the package use relative import.
   - The logs directory is configurable via settings `logs_dir` (env: `MC_ADMIN_LOG_DIR` or `LOGS_DIR`), default `./logs` relative to CWD.
 
 ## External docs with Context7
 - When you need documentation for external libraries, prefer Context7 docs retrieval with these IDs:
   - FastAPI: `/tiangolo/fastapi`
-  - SQLModel: `/tiangolo/sqlmodel`
+  - SQLAlchemy: `/websites/sqlalchemy-en-20`
   - Pydantic: `/pydantic/pydantic`
   - pydantic-settings: `/pydantic/pydantic-settings`
   - Starlette: `/encode/starlette`

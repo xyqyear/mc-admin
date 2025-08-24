@@ -1,15 +1,15 @@
-from typing import Annotated, Generator, cast
+from typing import Annotated, cast
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from joserfc import jwt
 from joserfc.errors import BadSignatureError, DecodeError
 from pydantic import BaseModel
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db.crud.user import get_user_by_username
-from .db.database import get_session
+from .db.database import get_db
 from .logger import logger
 from .models import User, UserRole
 
@@ -20,13 +20,8 @@ class TokenData(BaseModel):
     username: str
 
 
-def get_db() -> Generator[Session, None, None]:
-    with get_session() as session:
-        yield session
-
-
-def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+async def get_current_user(
+    db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,7 +45,7 @@ def get_current_user(
     if token_data is None or token_data.username is None:
         raise credentials_exception
 
-    user = get_user_by_username(db, token_data.username)
+    user = await get_user_by_username(db, token_data.username)
 
     if user is None:
         raise credentials_exception
@@ -62,7 +57,7 @@ class RequireRole:
     def __init__(self, roles: tuple[UserRole, ...] | UserRole):
         self.roles = roles if isinstance(roles, tuple) else (roles,)
 
-    def __call__(self, user: User = Depends(get_current_user)):
+    async def __call__(self, user: User = Depends(get_current_user)):
         if user.role not in self.roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
@@ -85,4 +80,10 @@ def get_system_user() -> User:
     This user is not persisted to the database and is used when the master token
     is presented in place of a JWT bearer token.
     """
-    return User(id=0, username="SYSTEM", role=UserRole.OWNER, hashed_password="")
+    # Create a User object that won't be persisted
+    user = User()
+    user.id = 0
+    user.username = "SYSTEM"
+    user.role = UserRole.OWNER
+    user.hashed_password = ""
+    return user

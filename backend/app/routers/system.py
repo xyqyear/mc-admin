@@ -32,7 +32,7 @@ class ServerInfo(BaseModel):
 @router.get(
     "/info", dependencies=[Depends(get_current_user)], response_model=ServerInfo
 )
-def get_server_info():
+async def get_server_info():
     cpu_percent = get_cpu_percent()
     cpu_load = get_cpu_load()
     memory_info = get_memory_info()

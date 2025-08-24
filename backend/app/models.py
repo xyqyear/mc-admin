@@ -1,8 +1,17 @@
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlmodel import Field, SQLModel
+from sqlalchemy import Enum as SQLAlchemyEnum
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(AsyncAttrs, DeclarativeBase):
+    """SQLAlchemy declarative base for all ORM models with async support."""
+    pass
 
 
 class UserRole(str, Enum):
@@ -10,21 +19,29 @@ class UserRole(str, Enum):
     OWNER = "owner"
 
 
-class UserBase(SQLModel):
-    username: str = Field(unique=True, index=True)
-    role: UserRole = Field(default=UserRole.ADMIN)
+class User(Base):
+    """User table ORM model."""
+    __tablename__ = "user"
+
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    role: Mapped[UserRole] = mapped_column(SQLAlchemyEnum(UserRole), default=UserRole.ADMIN)
 
 
-class User(UserBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    hashed_password: str
+# Pydantic models for request/response serialization
+class UserBase(BaseModel):
+    """Base Pydantic model for User."""
+    username: str
+    role: UserRole = UserRole.ADMIN
 
 
 class UserPublic(UserBase):
+    """Public User model for API responses."""
     id: int
 
 
 class UserCreate(BaseModel):
-    # we need pydantic field to add validation
+    """User creation model with validation."""
     username: str = PydanticField(min_length=3, max_length=50)
     password: str

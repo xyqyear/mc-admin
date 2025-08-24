@@ -1,11 +1,9 @@
 import asyncio
 import random
 
-from asyncer import syncify
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..db.crud.user import get_user_by_username
-from ..db.database import get_session
 from ..logger import logger
 from .jwt_utils import create_access_token
 
@@ -56,18 +54,17 @@ class LoginCodeManager:
                 return websocket
         return None
 
-    def verify_user_with_code(self, username: str, code: str):
-        with get_session() as session:
-            user = get_user_by_username(session, username=username)
-            if user is None:
-                return False
+    async def verify_user_with_code(self, session, username: str, code: str):
+        user = await get_user_by_username(session, username=username)
+        if user is None:
+            return False
         websocket = self.find_websocket_by_code(code)
         if websocket is None:
             return False
 
         access_token = create_access_token(data={"sub": user.username})
         try:
-            syncify(websocket.send_json)(
+            await websocket.send_json(
                 {"type": "verified", "access_token": access_token}
             )
         except WebSocketDisconnect:

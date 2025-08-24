@@ -12,7 +12,9 @@ python = "^3.12"
 fastapi = "^0.112.0"
 pydantic = "^2.8.2"
 pydantic-settings = "^2.4.0"
-sqlmodel = "^0.0.21"
+sqlalchemy = "^2.0.0"
+aiosqlite = "^0.20.0"
+greenlet = "^3.0.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 asyncer = "^0.0.7"
 python-multipart = "^0.0.9"
@@ -20,6 +22,7 @@ pip = "^24.2"
 setuptools = "^72.1.0"
 uvicorn = {extras = ["standard"], version = "^0.34.0"}
 joserfc = "^1.0.0"
+psutil = "^6.0.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"

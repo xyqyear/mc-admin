@@ -1,20 +1,33 @@
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
-from asyncer import asyncify
-from sqlmodel import Session, create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from ..config import settings
-from ..models import SQLModel
+from ..models import Base
 
-engine = create_engine(settings.database_url, echo=True)
+# Create async SQLAlchemy engine
+# For SQLite, we need to use aiosqlite driver
+async_database_url = settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
+engine = create_async_engine(async_database_url, echo=True)
+
+# Create async session factory
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine, 
+    class_=AsyncSession,
+    autocommit=False, 
+    autoflush=False,
+    expire_on_commit=False
+)
 
 
-@contextmanager
-def get_session():
-    with Session(engine) as session:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency for async database sessions."""
+    async with AsyncSessionLocal() as session:
         yield session
 
 
-@asyncify
-def init_db():
-    SQLModel.metadata.create_all(engine)
+async def init_db():
+    """Initialize database tables asynchronously."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

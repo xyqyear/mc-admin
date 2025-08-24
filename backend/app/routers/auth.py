@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.jwt_utils import create_access_token, get_password_hash, verify_password
 from ..auth.login_code import loginCodeManager
 from ..db.crud.user import create_user, get_user_by_username
-from ..dependencies import RequireRole, UserRole, get_db, verify_master_token
+from ..db.database import get_db
+from ..dependencies import RequireRole, UserRole, verify_master_token
 from ..models import User, UserCreate
 
 router = APIRouter(
@@ -34,30 +35,32 @@ class VerifyTokenResponse(BaseModel):
     response_model=Token,
     dependencies=[Depends(RequireRole(UserRole.OWNER))],
 )
-def register(
+async def register(
     user_create: UserCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> Token:
-    db_user = get_user_by_username(db, user_create.username)
+    db_user = await get_user_by_username(db, user_create.username)
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
 
     hashed_password = get_password_hash(user_create.password)
-    new_user = User.model_validate(
-        user_create, update={"hashed_password": hashed_password}
+    new_user = User(
+        username=user_create.username,
+        hashed_password=hashed_password,
+        role=UserRole.ADMIN,  # Default role
     )
-    create_user(db, new_user)
+    await create_user(db, new_user)
 
     access_token = create_access_token(data={"sub": new_user.username})
     return Token(access_token=access_token, token_type="bearer")
 
 
 @router.post("/token", response_model=Token)
-def login_for_access_token(
+async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> Token:
-    user = get_user_by_username(db, form_data.username)
+    user = await get_user_by_username(db, form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -69,8 +72,8 @@ def login_for_access_token(
 
 
 @router.post("/verifyCode", dependencies=[Depends(verify_master_token)])
-def verify_code(request: VerifyTokenRequest):
-    result = loginCodeManager.verify_user_with_code(request.username, request.code)
+async def verify_code(request: VerifyTokenRequest, db: AsyncSession = Depends(get_db)):
+    result = await loginCodeManager.verify_user_with_code(db, request.username, request.code)
     if result:
         return VerifyTokenResponse(result="success")
     else:
