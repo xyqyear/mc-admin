@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -36,8 +38,10 @@ async def get_server_info():
     cpu_percent = get_cpu_percent()
     cpu_load = get_cpu_load()
     memory_info = get_memory_info()
-    server_disk_info = get_disk_info(settings.server_path)
-    backup_disk_info = get_disk_info(settings.backup_path)
+    server_disk_info, backup_disk_info = await asyncio.gather(
+        get_disk_info(settings.server_path),
+        get_disk_info(settings.backup_path)
+    )
 
     return ServerInfo(
         cpuPercentage=cpu_percent,

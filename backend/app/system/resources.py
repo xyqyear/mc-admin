@@ -1,6 +1,8 @@
 import dataclasses
+import shutil
 
 import psutil
+from asyncer import asyncify
 
 
 @dataclasses.dataclass
@@ -32,7 +34,8 @@ def get_memory_info() -> SpaceInfo:
     return SpaceInfo(total=mem.total, used=mem.used)
 
 
+@asyncify
 def get_disk_info(path) -> SpaceInfo:
     """Get disk space information for specified path in bytes"""
-    disk = psutil.disk_usage(path)
+    disk = shutil.disk_usage(path)
     return SpaceInfo(total=disk.total, used=disk.used)
