@@ -18,16 +18,19 @@ class CPULoad:
     fifteen_minutes: float
 
 
+@asyncify
 def get_cpu_percent() -> float:
     """Get CPU usage percentage"""
     return psutil.cpu_percent()
 
 
+@asyncify
 def get_cpu_load() -> CPULoad:
     """Get CPU load averages for 1, 5, and 15 minutes"""
     return CPULoad(*psutil.getloadavg())
 
 
+@asyncify
 def get_memory_info() -> SpaceInfo:
     """Get memory usage information in bytes"""
     mem = psutil.virtual_memory()

@@ -35,12 +35,18 @@ class ServerInfo(BaseModel):
     "/info", dependencies=[Depends(get_current_user)], response_model=ServerInfo
 )
 async def get_server_info():
-    cpu_percent = get_cpu_percent()
-    cpu_load = get_cpu_load()
-    memory_info = get_memory_info()
-    server_disk_info, backup_disk_info = await asyncio.gather(
+    (
+        cpu_percent,
+        cpu_load,
+        memory_info,
+        server_disk_info,
+        backup_disk_info,
+    ) = await asyncio.gather(
+        get_cpu_percent(),
+        get_cpu_load(),
+        get_memory_info(),
         get_disk_info(settings.server_path),
-        get_disk_info(settings.backup_path)
+        get_disk_info(settings.backup_path),
     )
 
     return ServerInfo(
