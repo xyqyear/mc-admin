@@ -18,23 +18,22 @@ import {
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
+import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
 const { Sider } = Layout
 
 type MenuItemType = Required<MenuProps>['items'][number]
-
-// Mock server data - in real app this would come from API
-const servers = [
-  { id: 'vanilla' },
-  { id: 'creative' },
-  { id: 'fc4' },
-]
 
 const AppSidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
+  
+  // 获取服务器列表数据
+  const { useServerInfos } = useServerQueries()
+  const serverInfosQuery = useServerInfos()
+  const servers = serverInfosQuery.data || []
 
   // Update open keys when route changes (only for real navigation)
   useEffect(() => {
@@ -56,7 +55,7 @@ const AppSidebar: React.FC = () => {
       title: '服务器管理',
       icon: <DatabaseOutlined />,
       items: [
-        ...servers.map(server => ({
+        ...servers.map((server) => ({
           title: server.id,
           icon: <DesktopOutlined />,
           items: [

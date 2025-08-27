@@ -1,20 +1,63 @@
-export interface ServerInfo {
-  id: string
-  onlinePlayers: string[]
-  state: 'running' | 'paused' | 'stopped' | 'down'
-  diskUsedGB: number
-  port: number
+// 重新导出新的类型定义，保持向后兼容
+export type { ServerInfo, ServerStatus, ServerType } from './ServerInfo'
+export type { ServerFullInfo, ServerRuntime, SystemInfo } from './ServerRuntime'
+
+// 保持现有的类型定义以兼容老代码
+export interface Player {
+  username: string
+  uuid: string
+  firstJoined?: string
+  lastSeen?: string
+  playtimeHours?: number
+  isOnline: boolean
 }
 
-export interface SystemInfo {
-  cpuPercentage: number
-  cpuLoad1Min: number
-  cpuLoad5Min: number
-  cpuLoad15Min: number
-  ramUsedGB: number
-  ramTotalGB: number
-  diskUsedGB: number
-  diskTotalGB: number
-  backupUsedGB: number
-  backupTotalGB: number
+export interface Backup {
+  id: string
+  serverId: string
+  name: string
+  size: number
+  createdAt: string
+  type: 'manual' | 'auto' | 'pre-update'
+  description?: string
+}
+
+export interface ServerLog {
+  timestamp: string
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
+  message: string
+  source?: string
+}
+
+export interface FileItem {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  modifiedAt: string
+  isEditable?: boolean
+  isConfig?: boolean
+}
+
+export interface ServerSettings {
+  // Basic settings
+  serverName: string
+  motd: string
+  maxPlayers: number
+  gamemode: 'survival' | 'creative' | 'adventure' | 'spectator'
+  difficulty: 'peaceful' | 'easy' | 'normal' | 'hard'
+  hardcore: boolean
+  pvp: boolean
+  enableWhitelist: boolean
+  
+  // World settings
+  seed?: string
+  spawnProtection: number
+  viewDistance: number
+  simulationDistance: number
+  
+  // Advanced settings
+  onlineMode: boolean
+  enableCommandBlock: boolean
+  opPermissionLevel: number
 }

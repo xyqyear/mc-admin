@@ -1,11 +1,12 @@
-import React, { Suspense, ErrorInfo } from 'react'
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+
 import { App as AntdApp } from 'antd'
+import React, { ErrorInfo, Suspense } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
-import { useTokenStore } from './stores/useTokenStore'
-import { LoadingSpinner } from './components/layout/LoadingSpinner'
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { ErrorFallback } from './components/layout/ErrorFallback'
+import { LoadingSpinner } from './components/layout/LoadingSpinner'
 import { MainLayout } from './components/layout/MainLayout'
+import { useTokenStore } from './stores/useTokenStore'
 
 // Lazy load pages for better performance
 const Login = React.lazy(() => import('./pages/Login'))
@@ -20,14 +21,16 @@ const ServerWhitelist = React.lazy(() => import('./pages/server/[id]/whitelist')
 const ServerArchive = React.lazy(() => import('./pages/server/[id]/archive'))
 const ServerCompose = React.lazy(() => import('./pages/server/[id]/compose'))
 
+
+
 // Protected route wrapper using React Router 6 outlet pattern
 function ProtectedRoutes() {
   const token = useTokenStore((state) => state.token)
-  
+
   if (!token) {
     return <Navigate to="/login" replace />
   }
-  
+
   return (
     <MainLayout>
       <Suspense fallback={<LoadingSpinner />}>
@@ -40,17 +43,17 @@ function ProtectedRoutes() {
 // Auth route wrapper (redirects to home if already authenticated)
 function AuthRoutes() {
   const token = useTokenStore((state) => state.token)
-  
+
   if (token) {
     return <Navigate to="/" replace />
   }
-  
+
   return <Outlet />
 }
 
 function App() {
   const { notification } = AntdApp.useApp()
-  
+
   // Global error handler
   const handleError = (error: Error, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)

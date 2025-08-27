@@ -81,6 +81,44 @@ export const sleep = (ms: number): Promise<void> =>
 
 // Query key factory for consistent cache keys
 export const queryKeys = {
+  // 系统级别
+  system: {
+    all: ['system'] as const,
+    info: () => [...queryKeys.system.all, 'info'] as const,
+  },
+  
+  // 服务器配置 (相对静态，长缓存)
+  serverInfos: {
+    all: ['serverInfos'] as const,
+    lists: () => [...queryKeys.serverInfos.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.serverInfos.all, 'detail', id] as const,
+  },
+  
+  // 服务器运行时 (动态，短缓存)
+  serverRuntimes: {
+    all: ['serverRuntimes'] as const,
+    detail: (id: string) => [...queryKeys.serverRuntimes.all, 'detail', id] as const,
+  },
+  
+  // 服务器状态 (中等频率更新)
+  serverStatuses: {
+    all: ['serverStatuses'] as const,
+    detail: (id: string) => [...queryKeys.serverStatuses.all, 'detail', id] as const,
+  },
+  
+  // 玩家相关 (仅健康状态时有效)
+  players: {
+    all: ['players'] as const,
+    online: (id: string) => [...queryKeys.players.all, 'online', id] as const,
+  },
+  
+  // Compose文件
+  compose: {
+    all: ['compose'] as const,
+    file: (id: string) => [...queryKeys.compose.all, 'file', id] as const,
+  },
+  
+  // 兼容现有代码
   all: ['api'] as const,
   servers: () => [...queryKeys.all, 'servers'] as const,
   server: (id: string) => [...queryKeys.servers(), id] as const,

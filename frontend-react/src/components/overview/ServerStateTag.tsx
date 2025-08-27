@@ -3,55 +3,78 @@ import { Tag, Tooltip } from 'antd'
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
-  StopOutlined,
   ToolOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
+  ExclamationCircleOutlined,
+  MinusCircleOutlined,
 } from '@ant-design/icons'
+import type { ServerStatus } from '@/types/Server'
 
 interface ServerStateTagProps {
-  state: 'running' | 'paused' | 'stopped' | 'down'
+  state: ServerStatus
 }
 
 const ServerStateTag: React.FC<ServerStateTagProps> = ({ state }) => {
   const getTagConfig = () => {
     switch (state) {
-      case 'running':
+      case 'HEALTHY':
         return {
           color: 'success',
-          icon: <PlayCircleOutlined />,
-          text: '运行中',
+          icon: <CheckCircleOutlined />,
+          text: 'Healthy',
+          description: 'Server is running and responding normally'
         }
-      case 'paused':
+      case 'RUNNING':
+        return {
+          color: 'processing',
+          icon: <PlayCircleOutlined />,
+          text: 'Running',
+          description: 'Server is running but health status unknown'
+        }
+      case 'STARTING':
         return {
           color: 'warning',
-          icon: <PauseCircleOutlined />,
-          text: '暂停',
+          icon: <LoadingOutlined spin />,
+          text: 'Starting',
+          description: 'Server is starting up'
         }
-      case 'stopped':
-        return {
-          color: 'error',
-          icon: <StopOutlined />,
-          text: '停止',
-        }
-      case 'down':
+      case 'CREATED':
         return {
           color: 'default',
-          icon: <ToolOutlined />,
-          text: '未创建',
+          icon: <PauseCircleOutlined />,
+          text: 'Created',
+          description: 'Container created but not running'
+        }
+      case 'EXISTS':
+        return {
+          color: 'warning',
+          icon: <ExclamationCircleOutlined />,
+          text: 'Exists',
+          description: 'Server files exist but no container'
+        }
+      case 'REMOVED':
+        return {
+          color: 'error',
+          icon: <MinusCircleOutlined />,
+          text: 'Removed',
+          description: 'Server has been removed'
         }
       default:
         return {
           color: 'default',
-          icon: null,
-          text: '未知',
+          icon: <ToolOutlined />,
+          text: 'Unknown',
+          description: 'Unknown server status'
         }
     }
   }
 
-  const { color, icon, text } = getTagConfig()
+  const { color, icon, text, description } = getTagConfig()
 
   return (
-    <Tooltip title={text}>
-      <Tag color={color} icon={icon} className="flex items-center">
+    <Tooltip title={description}>
+      <Tag color={color} icon={icon}>
         {text}
       </Tag>
     </Tooltip>

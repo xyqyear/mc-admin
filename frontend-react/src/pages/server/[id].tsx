@@ -1,18 +1,344 @@
 import React from 'react'
-import { Typography } from 'antd'
-import { useParams } from 'react-router-dom'
+import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Typography, Tooltip } from 'antd'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  PlayCircleOutlined,
+  StopOutlined,
+  ReloadOutlined,
+  UserOutlined,
+  HddOutlined,
+  WifiOutlined,
+  GlobalOutlined,
+} from '@ant-design/icons'
+import ServerStateTag from '@/components/overview/ServerStateTag'
+import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
+import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { serverStatusUtils } from '@/utils/serverUtils'
+import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  
+  // 获取所有服务器列表用于错误提示
+  const { useServerInfos } = useServerQueries()
+  const allServersQuery = useServerInfos()
+  
+  // 使用新的数据管理系统
+  const { useServerDetailData } = useServerDetailQueries(id || '')
+  const { useServerOperation } = useServerMutations()
+  
+  // 获取服务器详情数据
+  const {
+    serverInfo,
+    status,
+    runtime,
+    players,
+    isLoading,
+    isError,
+    error,
+    hasServerInfo,
+    hasRuntimeData,
+    isRunning,
+    isHealthy,
+  } = useServerDetailData()
+  
+  // 服务器操作
+  const serverOperationMutation = useServerOperation()
+
+  // 如果没有服务器ID，返回错误
+  if (!id) {
+    return (
+      <div className="flex justify-center items-center min-h-64">
+        <Alert
+          message="参数错误"
+          description="缺少服务器ID参数"
+          type="error"
+          action={
+            <Button size="small" onClick={() => navigate('/overview')}>
+              返回概览
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
+
+  // 错误状态
+  if (isError) {
+    const isServerNotFound = error?.message.includes('not found')
+    const availableServers = allServersQuery.data || []
+    
+    return (
+      <div className="flex justify-center items-center min-h-64">
+        <Card className="max-w-md">
+          <Alert
+            message={isServerNotFound ? "服务器未找到" : "加载失败"}
+            description={
+              isServerNotFound ? (
+                <div className="space-y-3">
+                  <p>服务器 "{id}" 不存在。</p>
+                  {availableServers.length > 0 && (
+                    <div>
+                      <p className="font-medium">可用的服务器：</p>
+                      <div className="space-y-1">
+                        {availableServers.map(server => (
+                          <Button
+                            key={server.id}
+                            type="link"
+                            size="small"
+                            className="block text-left p-0 h-auto"
+                            onClick={() => navigate(`/server/${server.id}`)}
+                          >
+                            {server.name} ({server.id})
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                error?.message || `无法加载服务器 "${id}" 的信息`
+              )
+            }
+            type="error"
+            action={
+              <Space direction="vertical">
+                <Button size="small" onClick={() => navigate('/overview')}>
+                  返回概览
+                </Button>
+                {isServerNotFound && availableServers.length > 0 && (
+                  <Button size="small" type="primary" onClick={() => navigate(`/server/${availableServers[0].id}`)}>
+                    访问 {availableServers[0].name}
+                  </Button>
+                )}
+              </Space>
+            }
+          />
+        </Card>
+      </div>
+    )
+  }
+
+  // 加载状态
+  if (isLoading || !hasServerInfo || !serverInfo) {
+    return (
+      <div className="flex justify-center items-center min-h-64">
+        <div className="text-center">
+          <div className="mb-4">加载中...</div>
+          <Progress percent={30} status="active" showInfo={false} />
+        </div>
+      </div>
+    )
+  }
+
+  // 服务器操作处理
+  const handleServerOperation = (action: string) => {
+    serverOperationMutation.mutate({ action, serverId: id })
+  }
+
+  // 检查操作是否可用
+  const isOperationAvailable = (operation: string) => {
+    if (!status) return false
+    return serverStatusUtils.isOperationAvailable(operation, status)
+  }
 
   return (
-    <div>
-      <Title level={2}>服务器详情</Title>
-      <div className="flex justify-center items-center min-h-64">
-        <span className="text-xl">服务器 ID: {id}</span>
-      </div>
+    <div className="space-y-6">
+      {/* 服务器基本信息和操作 */}
+      <Card>
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <Title level={2} className="!mb-0">{serverInfo.name}</Title>
+              {status && <ServerStateTag state={status} />}
+            </div>
+            <Text type="secondary" className="text-base">
+              {serverInfo.serverType} {serverInfo.gameVersion} | Java {serverInfo.javaVersion}
+            </Text>
+          </div>
+          <Space>
+            <Tooltip title="启动服务器">
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                disabled={!isOperationAvailable('start')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('start')}
+              >
+                启动
+              </Button>
+            </Tooltip>
+            <Tooltip title="停止服务器">
+              <Button
+                icon={<StopOutlined />}
+                disabled={!isOperationAvailable('stop')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('stop')}
+              >
+                停止
+              </Button>
+            </Tooltip>
+            <Tooltip title="重启服务器">
+              <Button
+                icon={<ReloadOutlined />}
+                disabled={!isOperationAvailable('restart')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('restart')}
+              >
+                重启
+              </Button>
+            </Tooltip>
+            <Button onClick={() => navigate('/overview')}>返回概览</Button>
+          </Space>
+        </div>
+
+        {/* 服务器状态统计 */}
+        <Row gutter={16}>
+          <Col span={6}>
+            <Statistic
+              title="在线玩家"
+              value={players?.length || 0}
+              suffix={`/ ${20}`} // 默认最大玩家数，后续可从配置获取
+              prefix={<UserOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="游戏端口"
+              value={serverInfo.gamePort}
+              formatter={(value) => `${value}`}
+              prefix={<GlobalOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="RCON端口"
+              value={serverInfo.rconPort}
+              formatter={(value) => `${value}`}
+              prefix={<HddOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="运行时间"
+              value={isRunning ? '运行中' : '未运行'}
+              prefix={<WifiOutlined />}
+            />
+          </Col>
+        </Row>
+      </Card>
+
+      {/* 资源使用情况 - 仅在运行状态显示 */}
+      {isRunning && hasRuntimeData && runtime && (
+        <Card title="资源使用情况">
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>CPU 使用率</span>
+                    <span>{runtime.cpuPercentage.toFixed(1)}%</span>
+                  </div>
+                  <Progress 
+                    percent={runtime.cpuPercentage} 
+                    strokeColor={runtime.cpuPercentage > 80 ? '#ff4d4f' : runtime.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                    showInfo={false}
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>内存使用</span>
+                    <span>
+                      {(runtime.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                      {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
+                    </span>
+                  </div>
+                  <Progress 
+                    percent={(runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
+                    strokeColor={(runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
+                                (runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                    showInfo={false}
+                  />
+                </div>
+              </div>
+            </Col>
+            <Col span={12}>
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Statistic
+                    title="磁盘读取"
+                    value={(runtime.diskReadBytes / (1024 ** 2)).toFixed(1)}
+                    suffix="MB"
+                    prefix={<HddOutlined />}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="磁盘写入"
+                    value={(runtime.diskWriteBytes / (1024 ** 2)).toFixed(1)}
+                    suffix="MB"
+                    prefix={<HddOutlined />}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="网络接收"
+                    value={(runtime.networkReceiveBytes / (1024 ** 2)).toFixed(1)}
+                    suffix="MB"
+                    prefix={<WifiOutlined />}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="网络发送"
+                    value={(runtime.networkSendBytes / (1024 ** 2)).toFixed(1)}
+                    suffix="MB"
+                    prefix={<WifiOutlined />}
+                  />
+                </Col>
+              </Row>
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* 在线玩家列表 */}
+      {isHealthy && players && players.length > 0 && (
+        <Card title={`在线玩家 (${players.length})`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {players.map((player) => (
+              <div key={player} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                  <UserOutlined className="text-white" />
+                </div>
+                <div>
+                  <div className="font-medium">{player}</div>
+                  <div className="text-sm text-gray-500">在线</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* 服务器详细信息 */}
+      <Card title="服务器详情">
+        <Descriptions column={2}>
+          <Descriptions.Item label="服务器ID">{serverInfo.id}</Descriptions.Item>
+          <Descriptions.Item label="服务器类型">{serverInfo.serverType}</Descriptions.Item>
+          <Descriptions.Item label="游戏版本">{serverInfo.gameVersion}</Descriptions.Item>
+          <Descriptions.Item label="Java版本">{serverInfo.javaVersion}</Descriptions.Item>
+          <Descriptions.Item label="游戏端口">{serverInfo.gamePort}</Descriptions.Item>
+          <Descriptions.Item label="RCON端口">{serverInfo.rconPort}</Descriptions.Item>
+          <Descriptions.Item label="最大内存">
+            {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
+          </Descriptions.Item>
+          <Descriptions.Item label="服务器路径">{serverInfo.path}</Descriptions.Item>
+        </Descriptions>
+      </Card>
     </div>
   )
 }

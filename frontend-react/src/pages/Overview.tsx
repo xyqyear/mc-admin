@@ -1,183 +1,340 @@
 import React from 'react'
-import { Card, Table, Button, Tooltip, Space } from 'antd'
+import { 
+  Card, 
+  Table, 
+  Tag, 
+  Button, 
+  Dropdown, 
+  message, 
+  Progress, 
+  Modal, 
+  Alert,
+  Space,
+  Tooltip,
+  type TableProps
+} from 'antd'
 import { useNavigate } from 'react-router-dom'
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
   StopOutlined,
   ReloadOutlined,
-  DownOutlined,
+  DeleteOutlined,
   ExportOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  CloudDownloadOutlined,
+  HistoryOutlined,
+  SettingOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  MinusCircleOutlined,
+  LoadingOutlined,
+  DownOutlined,
 } from '@ant-design/icons'
 import MetricCard from '@/components/overview/MetricCard'
-import ServerStateTag from '@/components/overview/ServerStateTag'
-import type { ServerInfo, SystemInfo } from '@/types/Server'
-import api, { ApiError, queryKeys } from '@/utils/api'
-import { useQuery } from '@tanstack/react-query'
-
-const mockServersInfo: ServerInfo[] = [
-  {
-    id: 'vanilla',
-    onlinePlayers: ['player1', 'player2'],
-    state: 'running',
-    diskUsedGB: 20,
-    port: 25565,
-  },
-  {
-    id: 'creative',
-    onlinePlayers: [],
-    state: 'paused',
-    diskUsedGB: 30,
-    port: 25566,
-  },
-  {
-    id: 'fc4',
-    onlinePlayers: [],
-    state: 'stopped',
-    diskUsedGB: 40,
-    port: 25567,
-  },
-  {
-    id: 'monifactory',
-    onlinePlayers: [],
-    state: 'down',
-    diskUsedGB: 50,
-    port: 25568,
-  },
-]
+import type { ServerStatus } from '@/types/Server'
+import { useOverviewPageQueries } from '@/hooks/queries/useServerPageQueries'
+import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { serverStatusUtils } from '@/utils/serverUtils'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
-  const { data: systemInfo, isError, error } = useQuery<SystemInfo, ApiError>({
-    queryKey: queryKeys.overview(),
-    queryFn: async () => {
-      const res = await api.get<SystemInfo>('/system/info')
-      return res.data
-    },
-  refetchInterval: 2000,
-  })
   
-  const serverNum = mockServersInfo.length
-  const onlinePlayerNum = mockServersInfo.reduce(
-    (acc, server) => acc + server.onlinePlayers.length,
-    0
-  )
+  // 使用新的查询架构
+  const { 
+    serverInfosQuery, 
+    systemInfoQuery, 
+    useAllServerStatuses, 
+    useAllServerRuntimes 
+  } = useOverviewPageQueries()
+  
+  const { useServerOperation } = useServerMutations()
+  const serverOperationMutation = useServerOperation()
+  
+  // 获取所有服务器状态
+  const statusQueries = useAllServerStatuses()
+  
+  // 获取所有服务器运行时信息
+  const runtimeQueries = useAllServerRuntimes(statusQueries)
+  
+  // 计算统计数据
+  const serverInfos = serverInfosQuery.data || []
+  const systemInfo = systemInfoQuery.data
+  
+  const serverNum = serverInfos.length
+  const runningServers = statusQueries.filter(q => 
+    q.data && ['RUNNING', 'STARTING', 'HEALTHY'].includes(q.data)
+  ).length
+  const onlinePlayerNum = runtimeQueries
+    .filter(q => q.data?.onlinePlayers)
+    .reduce((acc, q) => acc + (q.data?.onlinePlayers?.length || 0), 0)
 
-  const isOperationAvailable = (operation: string, server: ServerInfo) => {
-    switch (operation) {
-      case 'start':
-        return ['stopped', 'paused', 'down'].includes(server.state)
-      case 'pause':
-        return server.state === 'running'
-      case 'stop':
-        return ['running', 'paused'].includes(server.state)
-      case 'restart':
-        return ['running', 'paused'].includes(server.state)
-      case 'down':
-        return ['running', 'stopped', 'paused'].includes(server.state)
+  const getStatusIcon = (status: ServerStatus) => {
+    switch (status) {
+      case 'HEALTHY':
+        return <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      case 'RUNNING':
+        return <PlayCircleOutlined style={{ color: '#1890ff' }} />
+      case 'STARTING':
+        return <LoadingOutlined style={{ color: '#faad14' }} />
+      case 'CREATED':
+        return <PauseCircleOutlined style={{ color: '#d9d9d9' }} />
+      case 'EXISTS':
+        return <ExclamationCircleOutlined style={{ color: '#faad14' }} />
+      case 'REMOVED':
+        return <MinusCircleOutlined style={{ color: '#ff4d4f' }} />
       default:
-        return false
+        return <ExclamationCircleOutlined />
     }
   }
 
-  const handleServerOperation = (operation: string, serverId: string) => {
-    console.log(`${operation} server ${serverId}`)
-    // TODO: Implement server operations
+  const getStatusColor = (status: ServerStatus) => {
+    return serverStatusUtils.getStatusColor(status)
   }
 
-  const columns = [
+  const isOperationAvailable = (operation: string, status: ServerStatus) => {
+    return serverStatusUtils.isOperationAvailable(operation, status)
+  }
+
+  const handleServerOperation = (operation: string, serverId: string) => {
+    const confirmConfigs = {
+      start: {
+        title: '确认启动',
+        content: `确定要启动服务器 "${serverId}" 吗？`,
+        okText: '确认启动',
+        okType: 'primary' as const
+      },
+      stop: {
+        title: '确认停止',
+        content: `确定要停止服务器 "${serverId}" 吗？这将断开所有玩家连接。`,
+        okText: '确认停止',
+        okType: 'primary' as const
+      },
+      restart: {
+        title: '确认重启',
+        content: `确定要重启服务器 "${serverId}" 吗？这将暂时断开所有玩家连接。`,
+        okText: '确认重启',
+        okType: 'primary' as const
+      },
+      remove: {
+        title: '确认删除',
+        content: `确定要删除服务器 "${serverId}" 吗？此操作无法撤销。`,
+        okText: '确认删除',
+        okType: 'danger' as const
+      }
+    }
+
+    const config = confirmConfigs[operation as keyof typeof confirmConfigs]
+    if (config) {
+      Modal.confirm({
+        ...config,
+        cancelText: '取消',
+        onOk: () => {
+          serverOperationMutation.mutate({ action: operation, serverId })
+        }
+      })
+    } else {
+      serverOperationMutation.mutate({ action: operation, serverId })
+    }
+  }
+
+  // 构建表格数据
+  const tableData = serverInfos.map((serverInfo, index) => {
+    const status = statusQueries[index]?.data || 'REMOVED'
+    const runtime = runtimeQueries[index]?.data
+    
+    return {
+      ...serverInfo,
+      status,
+      runtime,
+      onlinePlayers: runtime?.onlinePlayers || [],
+      maxPlayers: 20, // 默认值，后续可从配置获取
+    }
+  })
+
+  const moreActions = (record: typeof tableData[0]) => [
     {
-      title: '服务器',
-      dataIndex: 'id',
-      key: 'id',
-      width: 120,
+      key: 'backup',
+      label: '创建备份',
+      icon: <CloudDownloadOutlined />,
+      onClick: () => message.info(`正在为 ${record.name} 创建备份...`)
     },
     {
-      title: '端口',
-      dataIndex: 'port',
-      key: 'port',
-      width: 70,
+      key: 'logs',
+      label: '查看日志',
+      icon: <HistoryOutlined />,
+      onClick: () => navigate(`/server/${record.id}/logs`)
+    },
+    {
+      key: 'settings',
+      label: '服务器设置',
+      icon: <SettingOutlined />,
+      onClick: () => navigate(`/server/${record.id}/settings`)
+    }
+  ]
+
+  const columns: TableProps<typeof tableData[0]>['columns'] = [
+    {
+      title: '服务器',
+      dataIndex: 'name',
+      key: 'name',
+      width: 100,
+      render: (name: string, record: typeof tableData[0]) => (
+        <div>
+          <div className="font-semibold flex items-center gap-2">
+            {getStatusIcon(record.status)}
+            <span>{name}</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            {record.serverType} {record.gameVersion}
+          </div>
+        </div>
+      ),
     },
     {
       title: '状态',
-      dataIndex: 'state',
-      key: 'state',
-      width: 100,
-      render: (state: ServerInfo['state']) => <ServerStateTag state={state} />,
+      dataIndex: 'status',
+      key: 'status',
+      width: 80,
+      render: (status: ServerStatus) => (
+        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
+          {status}
+        </Tag>
+      ),
     },
     {
-      title: '硬盘使用',
-      dataIndex: 'diskUsedGB',
-      key: 'diskUsedGB',
-      width: 100,
-      render: (diskUsedGB: number) => `${diskUsedGB.toFixed(1)}GB`,
+      title: '玩家',
+      key: 'players',
+      width: 120,
+      render: (_: any, record: typeof tableData[0]) => (
+        <div className="text-center">
+          <div className="font-semibold">
+            {record.onlinePlayers.length}/{record.maxPlayers}
+          </div>
+          {record.onlinePlayers.length > 0 && (
+            <div className="text-xs text-gray-500">
+              {record.onlinePlayers.join(', ')}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
-      title: '玩家数量',
-      dataIndex: 'onlinePlayers',
-      key: 'playerCount',
-      width: 100,
-      render: (onlinePlayers: string[]) => onlinePlayers.length,
+      title: '资源',
+      key: 'resources',
+      width: 120,
+      render: (_: any, record: typeof tableData[0]) => {
+        if (!record.runtime) return <span className="text-gray-400">未运行</span>
+        const { cpuPercentage, memoryUsageBytes } = record.runtime
+        const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
+        const memoryLimitMB = record.maxMemoryBytes / (1024 * 1024)
+        const memoryPercent = (memoryUsageMB / memoryLimitMB) * 100
+        
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span>CPU:</span>
+              <Progress 
+                percent={cpuPercentage} 
+                size="small" 
+                style={{ width: 60 }} 
+                showInfo={false}
+                strokeColor={cpuPercentage > 80 ? '#ff4d4f' : cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+              />
+              <span className="text-gray-500">{cpuPercentage.toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span>内存:</span>
+              <Progress 
+                percent={memoryPercent} 
+                size="small" 
+                style={{ width: 60 }} 
+                showInfo={false}
+                strokeColor={memoryPercent > 80 ? '#ff4d4f' : memoryPercent > 60 ? '#faad14' : '#52c41a'}
+              />
+              <span className="text-gray-500">{(memoryUsageMB / 1024).toFixed(1)}GB</span>
+            </div>
+          </div>
+        )
+      },
     },
     {
-      title: '在线玩家',
-      dataIndex: 'onlinePlayers',
-      key: 'onlinePlayers',
-      render: (onlinePlayers: string[]) => onlinePlayers.join(', ') || '-',
+      title: '端口',
+      dataIndex: 'gamePort',
+      key: 'gamePort',
+      width: 80,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 280,
-      fixed: 'right' as const,
-      render: (_: any, record: ServerInfo) => (
+      width: 220,
+      render: (_: any, record: typeof tableData[0]) => (
         <Space>
-          <Tooltip title="启动">
+          <Tooltip title="启动服务器">
             <Button
               icon={<PlayCircleOutlined />}
               size="small"
-              disabled={!isOperationAvailable('start', record)}
+              type={record.status === 'CREATED' ? 'primary' : 'default'}
+              disabled={!isOperationAvailable('start', record.status)}
+              loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('start', record.id)}
             />
           </Tooltip>
-          <Tooltip title="暂停">
-            <Button
-              icon={<PauseCircleOutlined />}
-              size="small"
-              disabled={!isOperationAvailable('pause', record)}
-              onClick={() => handleServerOperation('pause', record.id)}
-            />
-          </Tooltip>
-          <Tooltip title="停止">
+          <Tooltip title="停止服务器">
             <Button
               icon={<StopOutlined />}
               size="small"
-              disabled={!isOperationAvailable('stop', record)}
+              disabled={!isOperationAvailable('stop', record.status)}
+              loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('stop', record.id)}
             />
           </Tooltip>
-          <Tooltip title="重启">
+          <Tooltip title="重启服务器">
             <Button
               icon={<ReloadOutlined />}
               size="small"
-              disabled={!isOperationAvailable('restart', record)}
+              disabled={!isOperationAvailable('restart', record.status)}
+              loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('restart', record.id)}
             />
           </Tooltip>
-          <Tooltip title="离线">
+          <Tooltip title="下线服务器">
             <Button
               icon={<DownOutlined />}
               size="small"
-              disabled={!isOperationAvailable('down', record)}
+              disabled={!isOperationAvailable('down', record.status)}
+              loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('down', record.id)}
             />
           </Tooltip>
-          <Tooltip title="详情">
+          <Tooltip title="服务器详情">
             <Button
               icon={<ExportOutlined />}
               size="small"
               type="primary"
               onClick={() => navigate(`/server/${record.id}`)}
+            />
+          </Tooltip>
+          <Dropdown
+            menu={{
+              items: moreActions(record).map(action => ({
+                ...action,
+                onClick: action.onClick
+              }))
+            }}
+            trigger={['click']}
+          >
+            <Button size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+          <Tooltip title="删除服务器">
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
+              danger
+              disabled={!isOperationAvailable('remove', record.status)}
+              loading={serverOperationMutation.isPending}
+              onClick={() => handleServerOperation('remove', record.id)}
             />
           </Tooltip>
         </Space>
@@ -186,16 +343,21 @@ const Overview: React.FC = () => {
   ]
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <div className="flex flex-wrap gap-4 mb-4">
+    <div className="h-full w-full flex flex-col space-y-4">
+      {/* 系统概览卡片 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <MetricCard value={serverNum} title="服务器总数" />
-        <MetricCard value={onlinePlayerNum} title="在线玩家总数" />
+        <MetricCard value={runningServers} title="运行中" />
+        <MetricCard 
+          value={onlinePlayerNum} 
+          title="在线玩家" 
+        />
         <MetricCard
           value={systemInfo?.cpuPercentage ?? 0}
-          title="CPU占用"
+          title="CPU使用率"
           extraValues={
             systemInfo
-              ? `${systemInfo.cpuLoad1Min.toFixed(2)}, ${systemInfo.cpuLoad5Min.toFixed(2)}, ${systemInfo.cpuLoad15Min.toFixed(2)}`
+              ? `负载: ${systemInfo.cpuLoad1Min.toFixed(2)} ${systemInfo.cpuLoad5Min.toFixed(2)} ${systemInfo.cpuLoad15Min.toFixed(2)}`
               : '-'
           }
           isProgress
@@ -206,10 +368,10 @@ const Overview: React.FC = () => {
               ? (systemInfo.ramUsedGB / systemInfo.ramTotalGB) * 100
               : 0
           }
-          title="RAM占用"
+          title="内存使用率"
           extraValues={
             systemInfo
-              ? `${systemInfo.ramUsedGB.toFixed(2)}GB / ${systemInfo.ramTotalGB.toFixed(2)}GB`
+              ? `${systemInfo.ramUsedGB.toFixed(1)}/${systemInfo.ramTotalGB.toFixed(1)}GB`
               : '-'
           }
           isProgress
@@ -220,44 +382,54 @@ const Overview: React.FC = () => {
               ? (systemInfo.diskUsedGB / systemInfo.diskTotalGB) * 100
               : 0
           }
-          title="硬盘使用"
+          title="存储使用率"
           extraValues={
             systemInfo
-              ? `${systemInfo.diskUsedGB.toFixed(2)}GB / ${systemInfo.diskTotalGB.toFixed(2)}GB`
-              : '-'
-          }
-          isProgress
-        />
-        <MetricCard
-          value={
-            systemInfo
-              ? (systemInfo.backupUsedGB / systemInfo.backupTotalGB) * 100
-              : 0
-          }
-          title="备份空间"
-          extraValues={
-            systemInfo
-              ? `${systemInfo.backupUsedGB.toFixed(2)}GB / ${systemInfo.backupTotalGB.toFixed(2)}GB`
+              ? `${systemInfo.diskUsedGB.toFixed(1)}/${systemInfo.diskTotalGB.toFixed(1)}GB`
               : '-'
           }
           isProgress
         />
       </div>
-      {isError && (
-        <div className="text-red-500 text-sm mb-2">{error?.message || '加载系统信息失败'}</div>
+
+      {/* 错误提示 */}
+      {systemInfoQuery.isError && (
+        <Alert
+          message="加载系统信息失败"
+          description={systemInfoQuery.error?.message || '发生未知错误'}
+          type="error"
+          showIcon
+          closable
+        />
       )}
-      
-      <div className="flex-1">
-        <Card>
-          <Table
-            dataSource={mockServersInfo}
-            columns={columns}
-            rowKey="id"
-            scroll={{ x: 1000 }}
-            pagination={false}
-          />
-        </Card>
-      </div>
+
+      {/* 服务器表格 */}
+      <Card 
+        title="Minecraft 服务器" 
+        extra={
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/server/new')}
+          >
+            创建服务器
+          </Button>
+        }
+      >
+        <Table
+          dataSource={tableData}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 'max-content' }}
+          loading={serverInfosQuery.isLoading}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个服务器`
+          }}
+        />
+      </Card>
     </div>
   )
 }

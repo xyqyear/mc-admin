@@ -12,10 +12,13 @@
   "dependencies": {
     "@ant-design/icons": "^5.2.6",
     "@ant-design/pro-components": "^2.7.0",
+    "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-query": "^5.85.5",
     "@tanstack/react-query-devtools": "^5.85.5",
     "antd": "^5.13.3",
     "axios": "^1.6.7",
+    "monaco-editor": "^0.52.2",
+    "monaco-yaml": "^5.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-error-boundary": "^6.0.0",
