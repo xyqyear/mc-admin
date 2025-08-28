@@ -16,7 +16,7 @@ import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -147,55 +147,60 @@ const ServerDetail: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 服务器基本信息和操作 */}
-      <Card>
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Title level={2} className="!mb-0">{serverInfo.name}</Title>
-              {status && <ServerStateTag state={status} />}
-            </div>
-            <Text type="secondary" className="text-base">
-              {serverInfo.serverType} {serverInfo.gameVersion} | Java {serverInfo.javaVersion}
-            </Text>
-          </div>
-          <Space>
-            <Tooltip title="启动服务器">
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                disabled={!isOperationAvailable('start')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('start')}
-              >
-                启动
-              </Button>
-            </Tooltip>
-            <Tooltip title="停止服务器">
-              <Button
-                icon={<StopOutlined />}
-                disabled={!isOperationAvailable('stop')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('stop')}
-              >
-                停止
-              </Button>
-            </Tooltip>
-            <Tooltip title="重启服务器">
-              <Button
-                icon={<ReloadOutlined />}
-                disabled={!isOperationAvailable('restart')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('restart')}
-              >
-                重启
-              </Button>
-            </Tooltip>
-            <Button onClick={() => navigate('/overview')}>返回概览</Button>
-          </Space>
+      {/* 页面头部 */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <Title level={2} className="!mb-0 !mt-0">{serverInfo.name}</Title>
+          {status && <ServerStateTag state={status} />}
         </div>
+        <Space>
+          <Tooltip title="启动服务器">
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              disabled={!isOperationAvailable('start')}
+              loading={serverOperationMutation.isPending}
+              onClick={() => handleServerOperation('start')}
+            >
+              启动
+            </Button>
+          </Tooltip>
+          <Tooltip title="停止服务器">
+            <Button
+              icon={<StopOutlined />}
+              disabled={!isOperationAvailable('stop')}
+              loading={serverOperationMutation.isPending}
+              onClick={() => handleServerOperation('stop')}
+            >
+              停止
+            </Button>
+          </Tooltip>
+          <Tooltip title="重启服务器">
+            <Button
+              icon={<ReloadOutlined />}
+              disabled={!isOperationAvailable('restart')}
+              loading={serverOperationMutation.isPending}
+              onClick={() => handleServerOperation('restart')}
+            >
+              重启
+            </Button>
+          </Tooltip>
+          <Button onClick={() => navigate('/overview')}>返回概览</Button>
+        </Space>
+      </div>
 
-        {/* 服务器状态统计 */}
+      {/* 服务器详情卡片 */}
+      <Card title="服务器详情">
+        <Descriptions column={2} size="small">
+          <Descriptions.Item label="服务器类型">{serverInfo.serverType} {serverInfo.gameVersion}</Descriptions.Item>
+          <Descriptions.Item label="Java版本">Java {serverInfo.javaVersion}</Descriptions.Item>
+          <Descriptions.Item label="游戏端口">{serverInfo.gamePort}</Descriptions.Item>
+          <Descriptions.Item label="RCON端口">{serverInfo.rconPort}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {/* 服务器状态统计 */}
+      <Card>
         <Row gutter={16}>
           <Col span={6}>
             <Statistic

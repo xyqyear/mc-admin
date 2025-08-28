@@ -15,15 +15,14 @@ import {
   ReloadOutlined,
   ExclamationCircleOutlined,
   CloudServerOutlined,
-  DiffOutlined,
-  ArrowLeftOutlined
+  DiffOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 
 const ServerCompose: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -73,6 +72,26 @@ const ServerCompose: React.FC = () => {
     return () => clearInterval(checkInterval)
   }, [composeQuery.data, id])
 
+  // 实时检查浏览器存储和服务器配置的一致性
+  const checkConfigConsistency = () => {
+    const currentSavedConfig = localStorage.getItem(`compose-${id}`)
+    const serverConfig = composeQuery.data
+    
+    if (!currentSavedConfig || !serverConfig) {
+      return { hasSavedConfig: false, hasOnlineChanges: false }
+    }
+    
+    const hasSavedConfig = !!currentSavedConfig
+    const hasOnlineChanges = hasSavedConfig && currentSavedConfig.trim() !== serverConfig.trim()
+    
+    return { hasSavedConfig, hasOnlineChanges }
+  }
+  
+  // 使用useMemo来优化一致性检查，依赖于checkTrigger和composeQuery.data
+  const { hasSavedConfig, hasOnlineChanges } = useMemo(() => {
+    return checkConfigConsistency()
+  }, [checkTrigger, composeQuery.data, id])
+
   // 如果没有服务器ID，返回错误
   if (!id) {
     return (
@@ -101,14 +120,9 @@ const ServerCompose: React.FC = () => {
           description={errorMessage}
           type="error"
           action={
-            <Space direction="vertical">
-              <Button size="small" onClick={() => navigate('/overview')}>
-                返回概览
-              </Button>
-              <Button size="small" type="primary" onClick={() => navigate(`/server/${id}`)}>
-                返回服务器详情
-              </Button>
-            </Space>
+            <Button size="small" onClick={() => navigate('/overview')}>
+              返回概览
+            </Button>
           }
         />
       </div>
@@ -126,26 +140,6 @@ const ServerCompose: React.FC = () => {
       </div>
     )
   }
-
-  // 实时检查浏览器存储和服务器配置的一致性
-  const checkConfigConsistency = () => {
-    const currentSavedConfig = localStorage.getItem(`compose-${id}`)
-    const serverConfig = composeQuery.data
-    
-    if (!currentSavedConfig || !serverConfig) {
-      return { hasSavedConfig: false, hasOnlineChanges: false }
-    }
-    
-    const hasSavedConfig = !!currentSavedConfig
-    const hasOnlineChanges = hasSavedConfig && currentSavedConfig.trim() !== serverConfig.trim()
-    
-    return { hasSavedConfig, hasOnlineChanges }
-  }
-  
-  // 使用useMemo来优化一致性检查，依赖于checkTrigger和composeQuery.data
-  const { hasSavedConfig, hasOnlineChanges } = useMemo(() => {
-    return checkConfigConsistency()
-  }, [checkTrigger, composeQuery.data, id])
   
   // 只有当有本地配置且与在线配置不同时才显示未保存更改
   const showUnsavedChanges = hasUnsavedChanges && hasSavedConfig
@@ -197,7 +191,7 @@ const ServerCompose: React.FC = () => {
   const handleReset = () => {
     Modal.confirm({
       title: '重新载入配置',
-      content: '确定要重新载入配置吗？这将丢失所有未保存的更改，恢复到服务器的原始配置。',
+      content: '确定要重新载入配置吗？这将丢失所有未保存的更改，恢复到服务器的在线配置。',
       okText: '确认',
       cancelText: '取消',
       icon: <ExclamationCircleOutlined />,
@@ -221,7 +215,7 @@ const ServerCompose: React.FC = () => {
           }
         }, 100)
         
-        message.info('配置已重新载入到服务器原始状态')
+        message.info('配置已重新载入到服务器在线状态')
       }
     })
   }
@@ -244,19 +238,8 @@ const ServerCompose: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-start">
-        <div className="flex items-center gap-4">
-          <Button 
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/server/${id}`)}
-          >
-            返回服务器详情
-          </Button>
-          <div>
-            <Title level={3} className="!mb-0">Compose 配置 - {serverInfo.name}</Title>
-            <Text type="secondary">Docker Compose 配置文件编辑</Text>
-          </div>
-        </div>
+      <div className="flex justify-between items-center">
+        <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 设置</Title>
         <Space>
           {showUnsavedChanges && (
             <Alert

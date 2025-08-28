@@ -38,26 +38,3 @@ export interface FileItem {
   isEditable?: boolean
   isConfig?: boolean
 }
-
-export interface ServerSettings {
-  // Basic settings
-  serverName: string
-  motd: string
-  maxPlayers: number
-  gamemode: 'survival' | 'creative' | 'adventure' | 'spectator'
-  difficulty: 'peaceful' | 'easy' | 'normal' | 'hard'
-  hardcore: boolean
-  pvp: boolean
-  enableWhitelist: boolean
-  
-  // World settings
-  seed?: string
-  spawnProtection: number
-  viewDistance: number
-  simulationDistance: number
-  
-  // Advanced settings
-  onlineMode: boolean
-  enableCommandBlock: boolean
-  opPermissionLevel: number
-}

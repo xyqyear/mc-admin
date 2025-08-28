@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Layout, Menu } from 'antd'
+import { Layout, Menu, Button } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { MenuProps } from 'antd'
 import {
@@ -14,11 +14,12 @@ import {
   UserOutlined,
   SettingOutlined,
   FolderOutlined,
-  SecurityScanOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useTokenStore } from '@/stores/useTokenStore'
 
 const { Sider } = Layout
 
@@ -29,6 +30,7 @@ const AppSidebar: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
+  const { clearToken } = useTokenStore()
   
   // 获取服务器列表数据
   const { useServerInfos } = useServerQueries()
@@ -39,6 +41,11 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     updateForNavigation(location.pathname)
   }, [location.pathname, updateForNavigation])
+
+  const handleLogout = () => {
+    clearToken()
+    navigate('/login')
+  }
 
   const menuItemsData: MenuItem[] = [
     {
@@ -78,11 +85,6 @@ const AppSidebar: React.FC = () => {
               title: '文件',
               icon: <FolderOutlined />,
               path: `/server/${server.id}/files`,
-            },
-            {
-              title: '白名单',
-              icon: <SecurityScanOutlined />,
-              path: `/server/${server.id}/whitelist`,
             },
           ],
         })),
@@ -142,14 +144,32 @@ const AppSidebar: React.FC = () => {
         </div>
       }
     >
-      <Menu
-        mode="inline"
-        selectedKeys={[location.pathname]}
-        openKeys={openKeys}
-        onOpenChange={handleOpenChange}
-        items={menuItems}
-        className="border-r-0"
-      />
+      <div className="flex flex-col h-full">
+        {/* 退出登录按钮 */}
+        <div className="p-3 border-b border-gray-200">
+          <Button
+            icon={<LogoutOutlined />}
+            onClick={handleLogout}
+            type="text"
+            block
+            className="flex items-center justify-center"
+          >
+            {!collapsed && "退出登录"}
+          </Button>
+        </div>
+        
+        {/* 菜单 */}
+        <div className="flex-1">
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            openKeys={openKeys}
+            onOpenChange={handleOpenChange}
+            items={menuItems}
+            className="border-r-0"
+          />
+        </div>
+      </div>
     </Sider>
   )
 }

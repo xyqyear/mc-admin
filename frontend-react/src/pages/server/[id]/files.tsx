@@ -40,7 +40,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor } from '@/components/editors'
 import type { FileItem } from '@/types/Server'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 const { Option } = Select
 
 // Mock file data - expanded with nested structure
@@ -63,15 +63,6 @@ const mockAllFiles: FileItem[] = [
     isConfig: true,
     isEditable: true,
     path: '/bukkit.yml'
-  },
-  {
-    name: 'whitelist.json',
-    type: 'file',
-    size: 512,
-    modifiedAt: '2025-08-27T08:30:00Z',
-    isConfig: true,
-    isEditable: true,
-    path: '/whitelist.json'
   },
   // Root directories
   {
@@ -466,11 +457,8 @@ const ServerFiles: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-start">
-        <div>
-          <Title level={3}>文件管理</Title>
-          <Text type="secondary">服务器文件浏览和编辑 - {id}</Text>
-        </div>
+      <div className="flex justify-between items-center">
+        <Title level={2} className="!mb-0 !mt-0">{id} - 文件管理</Title>
         <Space>
           {currentPath !== '/' && (
             <Button
@@ -509,27 +497,33 @@ const ServerFiles: React.FC = () => {
 
       <Card>
         <div className="space-y-4">
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <HomeOutlined />
-              <span 
-                className="cursor-pointer ml-1"
-                onClick={() => handleNavigateToPath('/')}
-              >
-                根目录
-              </span>
-            </Breadcrumb.Item>
-            {pathSegments.map((segment, index) => (
-              <Breadcrumb.Item key={index}>
-                <span
-                  className="cursor-pointer"
-                  onClick={() => handleNavigateToPath('/' + pathSegments.slice(0, index + 1).join('/'))}
-                >
-                  {segment}
-                </span>
-              </Breadcrumb.Item>
-            ))}
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              {
+                title: (
+                  <>
+                    <HomeOutlined />
+                    <span 
+                      className="cursor-pointer ml-1"
+                      onClick={() => handleNavigateToPath('/')}
+                    >
+                      根目录
+                    </span>
+                  </>
+                )
+              },
+              ...pathSegments.map((segment, index) => ({
+                title: (
+                  <span
+                    className="cursor-pointer"
+                    onClick={() => handleNavigateToPath('/' + pathSegments.slice(0, index + 1).join('/'))}
+                  >
+                    {segment}
+                  </span>
+                )
+              }))
+            ]}
+          />
 
           <Alert
             message="文件管理说明"

@@ -34,7 +34,6 @@ services:
       VERSION: "LATEST"
       MEMORY: "2G"
       DIFFICULTY: "normal"
-      WHITELIST_FILE: "/whitelist.json"
       OPS_FILE: "/ops.json"
       MOTD: "Welcome to \${SERVER_NAME}!"
       ENABLE_RCON: "true"
@@ -42,7 +41,6 @@ services:
       RCON_PORT: 25575
     volumes:
       - ./data:/data
-      - ./whitelist.json:/whitelist.json:ro
       - ./ops.json:/ops.json:ro
     restart: unless-stopped
     stdin_open: true

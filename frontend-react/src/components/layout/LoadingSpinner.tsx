@@ -10,7 +10,7 @@ interface LoadingSpinnerProps {
 
 export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = 'large',
-  tip = 'Loading...',
+  tip = '加载中...',
   className = '',
   fullscreen = false
 }) => {
@@ -20,7 +20,9 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   
   return (
     <div className={containerClass}>
-      <Spin size={size} tip={tip} />
+      <Spin size={size} tip={tip}>
+        <div className="min-h-[100px] min-w-[100px]" />
+      </Spin>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import React from 'react'
 import { Typography, Button, Space, Table, Tag, Alert, Progress, Card } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserOutlined, SecurityScanOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { UserOutlined } from '@ant-design/icons'
 import type { Player } from '@/types/Server'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -67,14 +67,9 @@ const ServerPlayers: React.FC = () => {
           description={error?.message || `无法加载服务器 "${id}" 的信息`}
           type="error"
           action={
-            <Space direction="vertical">
-              <Button size="small" onClick={() => navigate('/overview')}>
-                返回概览
-              </Button>
-              <Button size="small" type="primary" onClick={() => navigate(`/server/${id}`)}>
-                返回服务器详情
-              </Button>
-            </Space>
+            <Button size="small" onClick={() => navigate('/overview')}>
+              返回概览
+            </Button>
           }
         />
       </div>
@@ -189,17 +184,7 @@ const ServerPlayers: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <Button 
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/server/${id}`)}
-          >
-            返回服务器详情
-          </Button>
-          <Title level={2} className="!mb-0">
-            玩家管理 - {serverInfo.name}
-          </Title>
-        </div>
+        <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 玩家列表</Title>
         <Space>
           <Button 
             type="primary"
@@ -211,12 +196,6 @@ const ServerPlayers: React.FC = () => {
             }}
           >
             添加玩家
-          </Button>
-          <Button 
-            icon={<SecurityScanOutlined />}
-            onClick={() => navigate(`/server/${id}/whitelist`)}
-          >
-            白名单管理
           </Button>
         </Space>
       </div>
