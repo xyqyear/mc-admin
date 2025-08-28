@@ -182,7 +182,7 @@ const ServerPlayers: React.FC = () => {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 玩家列表</Title>
         <Space>
