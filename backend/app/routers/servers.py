@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from minecraft_docker_manager_lib import DockerMCManager, MCInstance, MCServerStatus
+from ..minecraft import DockerMCManager, MCInstance, MCServerStatus
 from pydantic import BaseModel
 
 from ..config import settings
