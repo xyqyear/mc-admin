@@ -15,6 +15,9 @@ interface ServerListItem {
   rconPort: number
   cpuPercentage?: number
   memoryUsageBytes?: number
+  diskUsageBytes?: number
+  diskTotalBytes?: number
+  diskAvailableBytes?: number
 }
 
 interface ServerStatusResponse {
@@ -28,6 +31,16 @@ interface ServerResourcesResponse {
 
 interface ServerPlayersResponse {
   onlinePlayers: string[]
+}
+
+interface ServerIOStatsResponse {
+  diskReadBytes: number
+  diskWriteBytes: number
+  networkReceiveBytes: number
+  networkSendBytes: number
+  diskUsageBytes: number
+  diskTotalBytes: number
+  diskAvailableBytes: number
 }
 
 interface ServerOperationRequest {
@@ -87,6 +100,12 @@ export const serverApi = {
   getServerPlayers: async (id: string): Promise<string[]> => {
     const res = await api.get<ServerPlayersResponse>(`/servers/${id}/players`)
     return res.data.onlinePlayers
+  },
+
+  // 获取单个服务器I/O统计信息 (在RUNNING/STARTING/HEALTHY状态下可用)
+  getServerIOStats: async (id: string): Promise<ServerIOStatsResponse> => {
+    const res = await api.get<ServerIOStatsResponse>(`/servers/${id}/iostats`)
+    return res.data
   },
   
   // 服务器操作 (统一的操作API)
@@ -159,4 +178,4 @@ export const systemApi = {
 }
 
 // Export types for use in other modules
-export type { ServerListItem, ServerStatusResponse }
+export type { ServerListItem, ServerStatusResponse, ServerIOStatsResponse }

@@ -973,7 +973,7 @@ traitlets = "*"
 
 [[package]]
 name = "minecraft-docker-manager-lib"
-version = "0.3.1"
+version = "0.3.3"
 description = "A manager lib for Minecraft server in Docker container"
 optional = false
 python-versions = "^3.12"
@@ -992,8 +992,8 @@ pyyaml = "^6.0.2"
 [package.source]
 type = "git"
 url = "https://github.com/xyqyear/minecraft-docker-manager-lib"
-reference = "v0.3.1"
-resolved_reference = "b61ba561af0d87adc662b9aaa073625300118f87"
+reference = "v0.3.3"
+resolved_reference = "36b689f6a653c425f6815536d411cb6cea3cdea6"
 
 [[package]]
 name = "mypy-extensions"
@@ -2215,4 +2215,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "9272512a42b0a7c3fd660c6f86e29727d8171d03b2f18ff7890b3267f223e350"
+content-hash = "8bfaf5a81558fe9afc322647f2dff22662af70cf97c67ce43b1c5bafdce6a552"

@@ -11,6 +11,8 @@ export interface ServerRuntime {
   networkReceiveBytes: number   // 网络接收(字节)
   networkSendBytes: number      // 网络发送(字节)
   diskUsageBytes: number        // 磁盘使用量(字节)
+  diskTotalBytes: number        // 磁盘总空间(字节)
+  diskAvailableBytes: number    // 磁盘可用空间(字节)
   onlinePlayers: string[]       // 在线玩家列表
   containerId?: string          // 容器ID
   pid?: number                  // 进程PID

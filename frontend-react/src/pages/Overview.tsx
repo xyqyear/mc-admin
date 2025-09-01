@@ -155,6 +155,9 @@ const Overview: React.FC = () => {
     maxPlayers: 20, // 默认值，后续可从配置获取
     cpuPercentage: server.cpuPercentage,
     memoryUsageBytes: server.memoryUsageBytes,
+    diskUsageBytes: server.diskUsageBytes,
+    diskTotalBytes: server.diskTotalBytes,
+    diskAvailableBytes: server.diskAvailableBytes,
   }))
 
   const columns: TableProps<typeof tableData[0]>['columns'] = [
@@ -206,11 +209,15 @@ const Overview: React.FC = () => {
     {
       title: '资源',
       key: 'resources',
-      width: 120,
+      width: 150,
       render: (_: any, record: typeof tableData[0]) => {
-        if (!record.cpuPercentage && !record.memoryUsageBytes) {
-          return <span className="text-gray-400">未运行</span>
+        const hasRuntimeData = record.cpuPercentage || record.memoryUsageBytes
+        const hasDiskData = record.diskUsageBytes
+        
+        if (!hasRuntimeData && !hasDiskData) {
+          return <span className="text-gray-400">暂无数据</span>
         }
+        
         const cpuPercentage = record.cpuPercentage || 0
         const memoryUsageBytes = record.memoryUsageBytes || 0
         const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
@@ -219,28 +226,55 @@ const Overview: React.FC = () => {
         
         return (
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs">
-              <span>CPU:</span>
-              <Progress 
-                percent={cpuPercentage} 
-                size="small" 
-                style={{ width: 60 }} 
-                showInfo={false}
-                strokeColor={cpuPercentage > 80 ? '#ff4d4f' : cpuPercentage > 60 ? '#faad14' : '#52c41a'}
-              />
-              <span className="text-gray-500">{cpuPercentage.toFixed(1)}%</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span>内存:</span>
-              <Progress 
-                percent={memoryPercent} 
-                size="small" 
-                style={{ width: 60 }} 
-                showInfo={false}
-                strokeColor={memoryPercent > 80 ? '#ff4d4f' : memoryPercent > 60 ? '#faad14' : '#52c41a'}
-              />
-              <span className="text-gray-500">{(memoryUsageMB / 1024).toFixed(1)}GB</span>
-            </div>
+            {hasRuntimeData && (
+              <>
+                <div className="flex items-center gap-2 text-xs">
+                  <span>CPU:</span>
+                  <Progress 
+                    percent={cpuPercentage} 
+                    size="small" 
+                    style={{ width: 60 }} 
+                    showInfo={false}
+                    strokeColor={cpuPercentage > 80 ? '#ff4d4f' : cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                  />
+                  <span className="text-gray-500">{cpuPercentage.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span>内存:</span>
+                  <Progress 
+                    percent={memoryPercent} 
+                    size="small" 
+                    style={{ width: 60 }} 
+                    showInfo={false}
+                    strokeColor={memoryPercent > 80 ? '#ff4d4f' : memoryPercent > 60 ? '#faad14' : '#52c41a'}
+                  />
+                  <span className="text-gray-500">{(memoryUsageMB / 1024).toFixed(1)}GB</span>
+                </div>
+              </>
+            )}
+            {hasDiskData && (
+              <div className="flex items-center gap-2 text-xs">
+                <span>磁盘:</span>
+                {record.diskTotalBytes ? (
+                  <>
+                    <Progress 
+                      percent={(record.diskUsageBytes! / record.diskTotalBytes!) * 100} 
+                      size="small" 
+                      style={{ width: 60 }} 
+                      showInfo={false}
+                      strokeColor={(record.diskUsageBytes! / record.diskTotalBytes!) > 0.8 ? '#ff4d4f' : (record.diskUsageBytes! / record.diskTotalBytes!) > 0.6 ? '#faad14' : '#52c41a'}
+                    />
+                    <span className="text-gray-500">
+                      {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes! / (1024 ** 3)).toFixed(1)}GB
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-gray-500 ml-auto">
+                    {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}GB
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )
       },

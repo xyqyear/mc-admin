@@ -8,7 +8,8 @@ export const useServerDetailQueries = (serverId: string) => {
     useServerInfo, 
     useServerStatus, 
     useServerResources,
-    useServerPlayers
+    useServerPlayers,
+    useServerIOStats
   } = useServerQueries()
   
   // 服务器详情页面的主要数据 (使用分离API)
@@ -24,6 +25,9 @@ export const useServerDetailQueries = (serverId: string) => {
     
     // 玩家列表 (5秒刷新，仅HEALTHY时可用)
     const playersQuery = useServerPlayers(serverId, statusQuery.data)
+    
+    // I/O统计信息 (5秒刷新，RUNNING/STARTING/HEALTHY时可用)
+    const iostatsQuery = useServerIOStats(serverId, statusQuery.data)
 
     return {
       // 原始查询对象
@@ -31,12 +35,14 @@ export const useServerDetailQueries = (serverId: string) => {
       statusQuery, 
       resourcesQuery,
       playersQuery,
+      iostatsQuery,
       
       // 便捷的数据访问
       serverInfo: configQuery.data,
       status: statusQuery.data,
       resources: resourcesQuery.data,
       players: playersQuery.data || [],
+      iostats: iostatsQuery.data,
       
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -47,6 +53,7 @@ export const useServerDetailQueries = (serverId: string) => {
       hasServerInfo: !!configQuery.data,
       hasResourcesData: !!resourcesQuery.data,
       hasPlayersData: !!(playersQuery.data?.length),
+      hasIOStatsData: !!iostatsQuery.data,
       
       // 状态判断
       isRunning: statusQuery.data && ['RUNNING', 'STARTING', 'HEALTHY'].includes(statusQuery.data),

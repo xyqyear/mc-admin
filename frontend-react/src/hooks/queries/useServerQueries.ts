@@ -1,4 +1,4 @@
-import { serverApi, systemApi, type ServerListItem } from '@/hooks/api/serverApi'
+import { serverApi, systemApi, type ServerListItem, type ServerIOStatsResponse } from '@/hooks/api/serverApi'
 import type { ServerInfo, ServerStatus } from '@/types/ServerInfo'
 import type { SystemInfo } from '@/types/ServerRuntime'
 import { queryKeys } from '@/utils/api'
@@ -80,6 +80,25 @@ export const useServerQueries = () => {
     })
   }
 
+  // 单个服务器I/O统计 (在RUNNING/STARTING/HEALTHY状态下可用)
+  const useServerIOStats = (id: string, status?: ServerStatus, options?: UseQueryOptions<ServerIOStatsResponse>) => {
+    const iostatsAvailable = status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status)
+    
+    return useQuery({
+      queryKey: [...queryKeys.serverRuntimes.detail(id), 'iostats'],
+      queryFn: () => serverApi.getServerIOStats(id),
+      enabled: !!id && iostatsAvailable,
+      refetchInterval: iostatsAvailable ? 5000 : false, // 5秒刷新I/O数据
+      staleTime: 2000,                                   // 2秒 - I/O数据需要较好实时性
+      retry: (failureCount, error: any) => {
+        // 如果服务器状态不支持I/O统计，不要重试
+        if (error?.response?.status === 409) return false
+        return failureCount < 2
+      },
+      ...options
+    })
+  }
+
   // 系统信息 (中等频率更新)
   const useSystemInfo = (options?: UseQueryOptions<SystemInfo>) => {
     return useQuery({
@@ -97,6 +116,7 @@ export const useServerQueries = () => {
     useServerStatus,    // 单个状态监控
     useServerResources, // 单个服务器系统资源 (CPU/内存)
     useServerPlayers,   // 单个服务器玩家列表
+    useServerIOStats,   // 单个服务器I/O统计信息 (磁盘和网络)
     useSystemInfo,      // 系统信息
   }
 }

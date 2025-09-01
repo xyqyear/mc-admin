@@ -72,6 +72,8 @@ export const mockServerRuntimes: Record<string, ServerRuntime> = {
     networkReceiveBytes: 0,
     networkSendBytes: 0,
     diskUsageBytes: 172 * 1024 * 1024, // 172MB
+    diskTotalBytes: 10 * 1024 * 1024 * 1024, // 10GB
+    diskAvailableBytes: (10 * 1024 * 1024 * 1024) - (172 * 1024 * 1024), // 10GB - 172MB
     onlinePlayers: [],
     containerId: 'd34ad1b43f7e12345678',
     pid: 1066064,
@@ -86,6 +88,8 @@ export const mockServerRuntimes: Record<string, ServerRuntime> = {
     networkReceiveBytes: 12.4 * 1024 * 1024,
     networkSendBytes: 18.9 * 1024 * 1024,
     diskUsageBytes: 180 * 1024 * 1024,
+    diskTotalBytes: 8 * 1024 * 1024 * 1024, // 8GB
+    diskAvailableBytes: (8 * 1024 * 1024 * 1024) - (180 * 1024 * 1024), // 8GB - 180MB
     onlinePlayers: ['Steve', 'Alex'],
     containerId: 'a1b2c3d4e5f6789',
     pid: 1066123,
@@ -100,6 +104,8 @@ export const mockServerRuntimes: Record<string, ServerRuntime> = {
     networkReceiveBytes: 5 * 1024 * 1024,
     networkSendBytes: 8 * 1024 * 1024,
     diskUsageBytes: 150 * 1024 * 1024,
+    diskTotalBytes: 12 * 1024 * 1024 * 1024, // 12GB
+    diskAvailableBytes: (12 * 1024 * 1024 * 1024) - (150 * 1024 * 1024), // 12GB - 150MB
     onlinePlayers: [],
     containerId: 'abc123def456',
     pid: 1066456,
@@ -114,6 +120,8 @@ export const mockServerRuntimes: Record<string, ServerRuntime> = {
     networkReceiveBytes: 25 * 1024 * 1024,
     networkSendBytes: 35 * 1024 * 1024,
     diskUsageBytes: 200 * 1024 * 1024,
+    diskTotalBytes: 15 * 1024 * 1024 * 1024, // 15GB
+    diskAvailableBytes: (15 * 1024 * 1024 * 1024) - (200 * 1024 * 1024), // 15GB - 200MB
     onlinePlayers: ['Player1', 'Player2', 'Player3'],
     containerId: 'vanilla123abc456',
     pid: 1066789,

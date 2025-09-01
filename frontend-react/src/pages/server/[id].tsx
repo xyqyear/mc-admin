@@ -36,11 +36,13 @@ const ServerDetail: React.FC = () => {
     status,
     resources,
     players,
+    iostats,
     isLoading,
     isError,
     error,
     hasServerInfo,
     hasResourcesData,
+    hasIOStatsData,
     isRunning,
     isHealthy,
   } = useServerDetailData()
@@ -227,44 +229,104 @@ const ServerDetail: React.FC = () => {
         </Row>
       </Card>
 
-      {/* 资源使用情况 - 仅在运行状态显示 */}
-      {isRunning && hasResourcesData && resources && (
-        <Card title="资源使用情况">
+      {/* 系统资源使用情况 - 仅在运行状态显示 */}
+      {isRunning && (hasResourcesData || hasIOStatsData) && (
+        <Card title="系统资源使用情况">
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <div className="space-y-4">
+                {hasResourcesData && resources && (
+                  <>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>CPU 使用率</span>
+                        <span>{resources.cpuPercentage.toFixed(1)}%</span>
+                      </div>
+                      <Progress 
+                        percent={resources.cpuPercentage} 
+                        strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                        showInfo={false}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>内存使用</span>
+                        <span>
+                          {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                          {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
+                        </span>
+                      </div>
+                      <Progress 
+                        percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
+                        strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
+                                    (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                        showInfo={false}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </Col>
+            <Col span={12}>
+              <div className="space-y-4">
+                {hasIOStatsData && iostats ? (
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span>磁盘使用空间</span>
+                      <span>{(iostats.diskUsageBytes / (1024 ** 3)).toFixed(1)}/{(iostats.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB</span>
+                    </div>
+                    <Progress 
+                      percent={(iostats.diskUsageBytes / iostats.diskTotalBytes) * 100}
+                      strokeColor="#722ed1"
+                      showInfo={false}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500 pt-8">
+                    <p>磁盘使用信息</p>
+                    <p>服务器运行时可用</p>
+                  </div>
+                )}
+              </div>
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* I/O统计 - 仅在运行状态且有I/O数据时显示 */}
+      {isRunning && hasIOStatsData && iostats && (
+        <Card title="I/O统计">
           <Row gutter={[16, 16]}>
             <Col span={12}>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span>CPU 使用率</span>
-                    <span>{resources.cpuPercentage.toFixed(1)}%</span>
+                    <span>磁盘读取</span>
+                    <span>{(iostats.diskReadBytes / (1024 ** 2)).toFixed(1)}MB</span>
                   </div>
-                  <Progress 
-                    percent={resources.cpuPercentage} 
-                    strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
-                    showInfo={false}
-                  />
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span>内存使用</span>
-                    <span>
-                      {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
-                      {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
-                    </span>
+                    <span>磁盘写入</span>
+                    <span>{(iostats.diskWriteBytes / (1024 ** 2)).toFixed(1)}MB</span>
                   </div>
-                  <Progress 
-                    percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                    strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
-                                (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
-                    showInfo={false}
-                  />
                 </div>
               </div>
             </Col>
             <Col span={12}>
-              <div className="text-center text-gray-500 pt-8">
-                <p>磁盘和网络统计信息</p>
-                <p>将在后续版本中提供</p>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>网络接收</span>
+                    <span>{(iostats.networkReceiveBytes / (1024 ** 2)).toFixed(1)}MB</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>网络发送</span>
+                    <span>{(iostats.networkSendBytes / (1024 ** 2)).toFixed(1)}MB</span>
+                  </div>
+                </div>
               </div>
             </Col>
           </Row>

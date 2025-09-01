@@ -53,6 +53,22 @@ class ServerListItem(BaseModel):
     rconPort: int
     cpuPercentage: Optional[float] = None
     memoryUsageBytes: Optional[int] = None
+    diskUsageBytes: Optional[int] = None
+    diskTotalBytes: Optional[int] = None
+    diskAvailableBytes: Optional[int] = None
+
+
+class ServerIOStats(BaseModel):
+    # Disk I/O statistics
+    diskReadBytes: int
+    diskWriteBytes: int
+    # Network I/O statistics  
+    networkReceiveBytes: int
+    networkSendBytes: int
+    # Disk usage and space information
+    diskUsageBytes: int
+    diskTotalBytes: int
+    diskAvailableBytes: int
 
 
 class ServerOperation(BaseModel):
@@ -192,6 +208,42 @@ async def get_server_players(server_id: str, _: str = Depends(get_current_user))
         raise HTTPException(status_code=500, detail=f"Failed to get server players: {str(e)}")
 
 
+@router.get("/{server_id}/iostats", response_model=ServerIOStats)
+async def get_server_iostats(server_id: str, _: str = Depends(get_current_user)):
+    """Get comprehensive I/O statistics for a specific server (disk I/O, network I/O, disk usage)"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+        
+        # Check if server is in a state where I/O monitoring is available
+        status = await instance.get_status()
+        if status not in [MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY]:
+            raise HTTPException(status_code=409, detail=f"Server '{server_id}' I/O stats not available (status: {status})")
+        
+        # Get I/O statistics concurrently
+        disk_io_task = instance.get_disk_io()
+        network_io_task = instance.get_network_io()
+        disk_space_task = instance.get_disk_space_info()
+        
+        disk_io, network_io, disk_space = await asyncio.gather(
+            disk_io_task, network_io_task, disk_space_task
+        )
+        
+        return ServerIOStats(
+            diskReadBytes=disk_io.total_read_bytes,
+            diskWriteBytes=disk_io.total_write_bytes,
+            networkReceiveBytes=network_io.total_rx_bytes,
+            networkSendBytes=network_io.total_tx_bytes,
+            diskUsageBytes=disk_space.used_bytes,
+            diskTotalBytes=disk_space.total_bytes,
+            diskAvailableBytes=disk_space.available_bytes,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get server I/O stats: {str(e)}")
+
+
 @router.post("/{server_id}/operations")
 async def server_operation(
     server_id: str, 
@@ -275,6 +327,16 @@ async def _get_server_list_item(instance: MCInstance) -> ServerListItem:
             except Exception:
                 # Resource data is optional, continue without it
                 pass
+        
+        # Get disk space information for any server that exists (doesn't require running state)
+        try:
+            disk_space = await instance.get_disk_space_info()
+            list_item.diskUsageBytes = disk_space.used_bytes
+            list_item.diskTotalBytes = disk_space.total_bytes
+            list_item.diskAvailableBytes = disk_space.available_bytes
+        except Exception:
+            # Disk space information is optional, continue without it
+            pass
         
         # Get player data only if server is healthy
         if status == MCServerStatus.HEALTHY:
