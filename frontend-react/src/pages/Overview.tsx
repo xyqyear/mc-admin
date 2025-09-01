@@ -32,7 +32,8 @@ import {
   LoadingOutlined,
   DownOutlined,
 } from '@ant-design/icons'
-import MetricCard from '@/components/overview/MetricCard'
+import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
+import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
 import type { ServerStatus } from '@/types/Server'
 import { useOverviewPageQueries } from '@/hooks/queries/useServerPageQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -345,51 +346,59 @@ const Overview: React.FC = () => {
   return (
     <div className="h-full w-full flex flex-col space-y-4">
       {/* 系统概览卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <MetricCard value={serverNum} title="服务器总数" />
-        <MetricCard value={runningServers} title="运行中" />
-        <MetricCard 
-          value={onlinePlayerNum} 
-          title="在线玩家" 
-        />
-        <MetricCard
-          value={systemInfo?.cpuPercentage ?? 0}
-          title="CPU使用率"
-          extraValues={
-            systemInfo
-              ? `负载: ${systemInfo.cpuLoad1Min.toFixed(2)} ${systemInfo.cpuLoad5Min.toFixed(2)} ${systemInfo.cpuLoad15Min.toFixed(2)}`
-              : '-'
-          }
-          isProgress
-        />
-        <MetricCard
-          value={
-            systemInfo
-              ? (systemInfo.ramUsedGB / systemInfo.ramTotalGB) * 100
-              : 0
-          }
-          title="内存使用率"
-          extraValues={
-            systemInfo
-              ? `${systemInfo.ramUsedGB.toFixed(1)}/${systemInfo.ramTotalGB.toFixed(1)}GB`
-              : '-'
-          }
-          isProgress
-        />
-        <MetricCard
-          value={
-            systemInfo
-              ? (systemInfo.diskUsedGB / systemInfo.diskTotalGB) * 100
-              : 0
-          }
-          title="存储使用率"
-          extraValues={
-            systemInfo
-              ? `${systemInfo.diskUsedGB.toFixed(1)}/${systemInfo.diskTotalGB.toFixed(1)}GB`
-              : '-'
-          }
-          isProgress
-        />
+      <div className="grid gap-3 sm:gap-4" style={{
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+      }}>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <SimpleMetricCard value={serverNum} title="服务器总数" />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <SimpleMetricCard value={runningServers} title="运行中" />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <SimpleMetricCard value={onlinePlayerNum} title="在线玩家" />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <ProgressMetricCard
+            value={systemInfo?.cpuPercentage ?? 0}
+            title="CPU使用率"
+            extraInfo={
+              systemInfo
+                ? `负载: ${systemInfo.cpuLoad1Min.toFixed(2)} ${systemInfo.cpuLoad5Min.toFixed(2)} ${systemInfo.cpuLoad15Min.toFixed(2)}`
+                : '-'
+            }
+          />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <ProgressMetricCard
+            value={
+              systemInfo
+                ? (systemInfo.ramUsedGB / systemInfo.ramTotalGB) * 100
+                : 0
+            }
+            title="内存使用率"
+            extraInfo={
+              systemInfo
+                ? `${systemInfo.ramUsedGB.toFixed(1)}/${systemInfo.ramTotalGB.toFixed(1)}GB`
+                : '-'
+            }
+          />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <ProgressMetricCard
+            value={
+              systemInfo
+                ? (systemInfo.diskUsedGB / systemInfo.diskTotalGB) * 100
+                : 0
+            }
+            title="存储使用率"
+            extraInfo={
+              systemInfo
+                ? `${systemInfo.diskUsedGB.toFixed(1)}/${systemInfo.diskTotalGB.toFixed(1)}GB`
+                : '-'
+            }
+          />
+        </div>
       </div>
 
       {/* 错误提示 */}
