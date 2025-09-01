@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
 from joserfc import jwt
+from joserfc.jwk import OctKey
 from passlib.context import CryptContext
 
 from ..config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+key = OctKey.import_key(settings.jwt.secret_key)
 
 def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(plain_password, hashed_password)
@@ -28,6 +29,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(
         header={"alg": settings.jwt.algorithm},
         claims=claims,
-        key=settings.jwt.secret_key,
+        key=key,
     )
     return encoded_jwt

@@ -33,11 +33,6 @@ pytest = "^8.3.2"
 pyperclip = "^1.9.0"
 alembic = "^1.13.3"
 
-[[tool.poetry.source]]
-name = "mirrors"
-url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
-priority = "primary"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
