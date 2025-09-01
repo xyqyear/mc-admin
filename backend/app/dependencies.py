@@ -1,6 +1,6 @@
 from typing import Annotated, cast
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Query, WebSocket, WebSocketException, status
 from fastapi.security import OAuth2PasswordBearer
 from joserfc import jwt
 from joserfc.errors import BadSignatureError, DecodeError
@@ -73,6 +73,38 @@ def verify_master_token(authorization: Annotated[str, Header()]):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint requires a master token",
         )
+
+
+async def get_websocket_user(
+    token: Annotated[str | None, Query()] = None,
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    WebSocket authentication dependency.
+    Extracts JWT token from query parameter and validates it.
+    Note: WebSocket parameter should not be included in dependencies.
+    """
+    if token is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    
+    # Allow master token to act as a privileged SYSTEM user
+    if token == settings.master_token:
+        logger.info("Master token used via WebSocket; acting as SYSTEM user")
+        return get_system_user()
+    
+    try:
+        payload = jwt.decode(token, key, [settings.jwt.algorithm])
+        claims = payload.claims
+        if claims is not None:
+            username = cast(str, claims.get("sub"))
+            if username:
+                user = await get_user_by_username(db, username)
+                if user is not None:
+                    return user
+    except (BadSignatureError, DecodeError):
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    
+    raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
 
 def get_system_user() -> User:

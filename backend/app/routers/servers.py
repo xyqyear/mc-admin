@@ -1,12 +1,14 @@
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from pydantic import BaseModel
 
 from ..config import settings
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_websocket_user
 from ..minecraft import DockerMCManager, MCInstance, MCServerStatus
+from ..models import User
+from ..websocket.console import ConsoleWebSocketHandler
 
 router = APIRouter(
     prefix="/servers",
@@ -77,6 +79,10 @@ class ServerOperation(BaseModel):
 
 class ComposeConfig(BaseModel):
     yaml_content: str
+
+
+class RconCommand(BaseModel):
+    command: str
 
 
 # API Endpoints
@@ -396,6 +402,49 @@ async def server_operation(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+
+
+@router.post("/{server_id}/rcon")
+async def send_rcon_command(
+    server_id: str, rcon_command: RconCommand, _: str = Depends(get_current_user)
+):
+    """Send RCON command to a specific server"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+
+        # Check if server exists and is healthy
+        if not await instance.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Server '{server_id}' not found"
+            )
+
+        status = await instance.get_status()
+        if status != MCServerStatus.HEALTHY:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Server '{server_id}' must be healthy to send RCON commands (current status: {status})",
+            )
+
+        # Send RCON command
+        result = await instance.send_command_rcon(rcon_command.command)
+
+        return {"result": result, "command": rcon_command.command}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send RCON command: {str(e)}"
+        )
+
+
+@router.websocket("/{server_id}/console")
+async def console_websocket(
+    websocket: WebSocket, server_id: str, user: User = Depends(get_websocket_user)
+):
+    instance = mc_manager.get_instance(server_id)
+    handler = ConsoleWebSocketHandler(websocket, instance)
+    await handler.handle_connection(server_id)
 
 
 # Helper function
