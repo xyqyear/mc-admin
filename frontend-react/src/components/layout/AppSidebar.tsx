@@ -137,9 +137,9 @@ const AppSidebar: React.FC = () => {
       collapsible
       collapsed={collapsed}
       onCollapse={setCollapsed}
-      className="bg-white border-r border-gray-200"
+      className="bg-white border-r border-gray-200 [&_.ant-layout-sider-trigger]:flex [&_.ant-layout-sider-trigger]:items-center [&_.ant-layout-sider-trigger]:justify-center [&_.ant-layout-sider-trigger]:p-0"
       trigger={
-        <div className="flex items-center justify-center p-2">
+        <div className="flex items-center justify-center w-full h-full text-center">
           {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
         </div>
       }
