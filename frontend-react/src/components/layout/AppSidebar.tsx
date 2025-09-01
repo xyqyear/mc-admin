@@ -33,9 +33,9 @@ const AppSidebar: React.FC = () => {
   const { clearToken } = useTokenStore()
   
   // 获取服务器列表数据
-  const { useServerInfos } = useServerQueries()
-  const serverInfosQuery = useServerInfos()
-  const servers = serverInfosQuery.data || []
+  const { useServers } = useServerQueries()
+  const serversQuery = useServers()
+  const servers = serversQuery.data || []
 
   // Update open keys when route changes (only for real navigation)
   useEffect(() => {
@@ -62,7 +62,7 @@ const AppSidebar: React.FC = () => {
       title: '服务器管理',
       icon: <DatabaseOutlined />,
       items: [
-        ...servers.map((server) => ({
+        ...servers.map(server => ({
           title: server.id,
           icon: <DesktopOutlined />,
           items: [

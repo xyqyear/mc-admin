@@ -20,7 +20,7 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
-import { useServerQueries } from '@/hooks/queries/useServerQueries'
+// import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
 const { Title } = Typography
 
@@ -30,7 +30,7 @@ const ServerCompose: React.FC = () => {
   
   // 使用新的数据管理系统
   const { useServerDetailData } = useServerDetailQueries(id || '')
-  const { useComposeFile } = useServerQueries()
+  // Note: useComposeFile not yet implemented in new API
   
   // 获取服务器详情数据
   const {
@@ -41,8 +41,14 @@ const ServerCompose: React.FC = () => {
     hasServerInfo,
   } = useServerDetailData()
   
-  // 获取 Compose 文件
-  const composeQuery = useComposeFile(id || '')
+  // TODO: Implement compose file query when backend supports it
+  const composeQuery = { 
+    data: '' as string | undefined, 
+    isLoading: false, 
+    isError: false, 
+    error: null,
+    refetch: () => Promise.resolve()
+  }
   
   // 本地状态
   const [rawYaml, setRawYaml] = useState('')
@@ -112,7 +118,7 @@ const ServerCompose: React.FC = () => {
 
   // 错误状态
   if (serverError || composeQuery.isError || !hasServerInfo) {
-    const errorMessage = serverErrorMessage?.message || composeQuery.error?.message || `无法加载服务器 "${id}" 的配置信息`
+    const errorMessage = (serverErrorMessage as any)?.message || `无法加载服务器 "${id}" 的配置信息`
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert

@@ -7,8 +7,7 @@ export const useServerDetailQueries = (serverId: string) => {
   const { 
     useServerInfo, 
     useServerStatus, 
-    useServerRuntime, 
-    useOnlinePlayers 
+    useServerRuntime
   } = useServerQueries()
   
   // 服务器详情页面的主要数据
@@ -22,21 +21,17 @@ export const useServerDetailQueries = (serverId: string) => {
     // 运行时信息 (依赖状态，2秒刷新)
     const runtimeQuery = useServerRuntime(serverId, statusQuery.data)
     
-    // 在线玩家信息 (依赖状态，5秒刷新)
-    const playersQuery = useOnlinePlayers(serverId, statusQuery.data)
-    
     return {
       // 原始查询对象
       configQuery,
       statusQuery, 
       runtimeQuery,
-      playersQuery,
       
       // 便捷的数据访问
       serverInfo: configQuery.data,
       status: statusQuery.data,
       runtime: runtimeQuery.data,
-      players: playersQuery.data,
+      players: runtimeQuery.data?.onlinePlayers || [],
       
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -46,7 +41,7 @@ export const useServerDetailQueries = (serverId: string) => {
       // 检查数据可用性
       hasServerInfo: !!configQuery.data,
       hasRuntimeData: !!runtimeQuery.data,
-      hasPlayersData: !!playersQuery.data,
+      hasPlayersData: !!(runtimeQuery.data?.onlinePlayers?.length),
       
       // 状态判断
       isRunning: statusQuery.data && ['RUNNING', 'STARTING', 'HEALTHY'].includes(statusQuery.data),
@@ -57,7 +52,7 @@ export const useServerDetailQueries = (serverId: string) => {
         ...configQuery.data,
         status: statusQuery.data,
         runtime: runtimeQuery.data,
-        onlinePlayers: playersQuery.data || [],
+        onlinePlayers: runtimeQuery.data?.onlinePlayers || [],
         // 添加计算属性
         memoryUsagePercent: runtimeQuery.data && configQuery.data
           ? (runtimeQuery.data.memoryUsageBytes / configQuery.data.maxMemoryBytes) * 100

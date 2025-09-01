@@ -23,8 +23,8 @@ const ServerDetail: React.FC = () => {
   const navigate = useNavigate()
   
   // 获取所有服务器列表用于错误提示
-  const { useServerInfos } = useServerQueries()
-  const allServersQuery = useServerInfos()
+  const { useServers } = useServerQueries()
+  const allServersQuery = useServers()
   
   // 使用新的数据管理系统
   const { useServerDetailData } = useServerDetailQueries(id || '')
@@ -305,7 +305,7 @@ const ServerDetail: React.FC = () => {
       {isHealthy && players && players.length > 0 && (
         <Card title={`在线玩家 (${players.length})`}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {players.map((player) => (
+            {players.map(player => (
               <div key={player} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                   <UserOutlined className="text-white" />

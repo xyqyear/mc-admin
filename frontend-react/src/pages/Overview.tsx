@@ -35,41 +35,28 @@ import {
 import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
 import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
 import type { ServerStatus } from '@/types/Server'
-import { useOverviewPageQueries } from '@/hooks/queries/useServerPageQueries'
+import { useOverviewData } from '@/hooks/queries/useServerQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
   
-  // 使用新的查询架构
+  // 使用新的简化数据架构
   const { 
-    serverInfosQuery, 
-    systemInfoQuery, 
-    useAllServerStatuses, 
-    useAllServerRuntimes 
-  } = useOverviewPageQueries()
+    servers, 
+    systemInfo, 
+    serverNum, 
+    runningServers, 
+    onlinePlayerNum,
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useOverviewData()
   
   const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
-  
-  // 获取所有服务器状态
-  const statusQueries = useAllServerStatuses()
-  
-  // 获取所有服务器运行时信息
-  const runtimeQueries = useAllServerRuntimes(statusQueries)
-  
-  // 计算统计数据
-  const serverInfos = serverInfosQuery.data || []
-  const systemInfo = systemInfoQuery.data
-  
-  const serverNum = serverInfos.length
-  const runningServers = statusQueries.filter(q => 
-    q.data && ['RUNNING', 'STARTING', 'HEALTHY'].includes(q.data)
-  ).length
-  const onlinePlayerNum = runtimeQueries
-    .filter(q => q.data?.onlinePlayers)
-    .reduce((acc, q) => acc + (q.data?.onlinePlayers?.length || 0), 0)
 
   const getStatusIcon = (status: ServerStatus) => {
     switch (status) {
@@ -140,19 +127,20 @@ const Overview: React.FC = () => {
     }
   }
 
-  // 构建表格数据
-  const tableData = serverInfos.map((serverInfo, index) => {
-    const status = statusQueries[index]?.data || 'REMOVED'
-    const runtime = runtimeQueries[index]?.data
-    
-    return {
-      ...serverInfo,
-      status,
-      runtime,
-      onlinePlayers: runtime?.onlinePlayers || [],
-      maxPlayers: 20, // 默认值，后续可从配置获取
-    }
-  })
+  // 构建表格数据 - 现在直接使用服务器数据
+  const tableData = servers.map(server => ({
+    id: server.id,
+    name: server.name,
+    serverType: server.serverType,
+    gameVersion: server.gameVersion,
+    gamePort: server.gamePort,
+    maxMemoryBytes: server.maxMemoryBytes,
+    status: server.status,
+    onlinePlayers: server.onlinePlayers,
+    maxPlayers: 20, // 默认值，后续可从配置获取
+    cpuPercentage: server.cpuPercentage,
+    memoryUsageBytes: server.memoryUsageBytes,
+  }))
 
   const moreActions = (record: typeof tableData[0]) => [
     {
@@ -226,8 +214,11 @@ const Overview: React.FC = () => {
       key: 'resources',
       width: 120,
       render: (_: any, record: typeof tableData[0]) => {
-        if (!record.runtime) return <span className="text-gray-400">未运行</span>
-        const { cpuPercentage, memoryUsageBytes } = record.runtime
+        if (!record.cpuPercentage && !record.memoryUsageBytes) {
+          return <span className="text-gray-400">未运行</span>
+        }
+        const cpuPercentage = record.cpuPercentage || 0
+        const memoryUsageBytes = record.memoryUsageBytes || 0
         const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
         const memoryLimitMB = record.maxMemoryBytes / (1024 * 1024)
         const memoryPercent = (memoryUsageMB / memoryLimitMB) * 100
@@ -402,13 +393,18 @@ const Overview: React.FC = () => {
       </div>
 
       {/* 错误提示 */}
-      {systemInfoQuery.isError && (
+      {isError && (
         <Alert
-          message="加载系统信息失败"
-          description={systemInfoQuery.error?.message || '发生未知错误'}
+          message="加载数据失败"
+          description={error?.message || '发生未知错误'}
           type="error"
           showIcon
           closable
+          action={
+            <Button size="small" danger onClick={refetch}>
+              重试
+            </Button>
+          }
         />
       )}
 
@@ -430,7 +426,7 @@ const Overview: React.FC = () => {
           columns={columns}
           rowKey="id"
           scroll={{ x: 'max-content' }}
-          loading={serverInfosQuery.isLoading}
+          loading={isLoading}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
