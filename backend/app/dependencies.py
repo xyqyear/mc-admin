@@ -7,6 +7,7 @@ from joserfc.errors import BadSignatureError, DecodeError
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .auth.jwt_utils import key
 from .config import settings
 from .db.crud.user import get_user_by_username
 from .db.database import get_db
@@ -34,7 +35,7 @@ async def get_current_user(
         return get_system_user()
     token_data: TokenData | None = None
     try:
-        payload = jwt.decode(token, settings.jwt.secret_key, [settings.jwt.algorithm])
+        payload = jwt.decode(token, key, [settings.jwt.algorithm])
         claims = payload.claims
         if claims is not None:
             username = cast(str, claims.get("sub"))
