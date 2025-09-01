@@ -17,6 +17,12 @@ export const useServerMutations = () => {
             return serverApi.stopServer(serverId)
           case 'restart': 
             return serverApi.restartServer(serverId)
+          case 'up':
+            return serverApi.upServer(serverId)
+          case 'down':
+            return serverApi.downServer(serverId)
+          case 'remove':
+            return serverApi.serverOperation(serverId, 'remove')
           default:
             throw new Error(`Unknown action: ${action}`)
         }
@@ -24,15 +30,26 @@ export const useServerMutations = () => {
       onSuccess: (_, { action, serverId }) => {
         message.success(`服务器 ${serverId} ${action} 操作完成`)
         
-        // 智能缓存失效
-        queryClient.invalidateQueries({ queryKey: queryKeys.serverStatuses.detail(serverId) })
-        queryClient.invalidateQueries({ queryKey: queryKeys.serverRuntimes.detail(serverId) })
-        queryClient.invalidateQueries({ queryKey: queryKeys.players.online(serverId) })
-        
-        // 如果是start操作，可能需要更新整体列表
-        if (action === 'start') {
+        // 延迟1秒后触发所有相关数据的重新更新
+        setTimeout(() => {
+          // 失效单个服务器的所有相关缓存
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverInfos.detail(serverId) })
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverStatuses.detail(serverId) })
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverRuntimes.detail(serverId) })
+          queryClient.invalidateQueries({ queryKey: queryKeys.players.online(serverId) })
+          
+          // 失效服务器列表和概览数据，确保整体状态更新
           queryClient.invalidateQueries({ queryKey: queryKeys.serverInfos.lists() })
-        }
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverStatuses.all })
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverRuntimes.all })
+          queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
+          
+          // 失效系统信息，因为服务器状态变化可能影响系统资源使用
+          queryClient.invalidateQueries({ queryKey: queryKeys.system.info() })
+          
+          // 失效兼容的servers查询
+          queryClient.invalidateQueries({ queryKey: queryKeys.servers() })
+        }, 1000)
       },
       onError: (error: Error, { action, serverId }) => {
         message.error(`服务器 ${serverId} ${action} 操作失败: ${error.message}`)

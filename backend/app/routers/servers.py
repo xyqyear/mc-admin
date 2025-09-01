@@ -136,9 +136,10 @@ async def get_server_runtime(server_id: str, _: str = Depends(get_current_user))
     try:
         instance = mc_manager.get_instance(server_id)
         
-        # Check if server is running
-        if not await instance.running():
-            raise HTTPException(status_code=409, detail=f"Server '{server_id}' is not running")
+        # Check if server is running (includes RUNNING, STARTING, HEALTHY states)
+        status = await instance.get_status()
+        if status not in [MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY]:
+            raise HTTPException(status_code=409, detail=f"Server '{server_id}' is not running (status: {status})")
         
         # Get runtime data concurrently
         players_task = instance.list_players()
@@ -190,6 +191,8 @@ async def server_operation(
             await instance.up()
         elif action == "down":
             await instance.down()
+        elif action == "remove":
+            await instance.remove()
         else:
             raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
         

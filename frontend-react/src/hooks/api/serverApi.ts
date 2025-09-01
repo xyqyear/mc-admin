@@ -116,6 +116,10 @@ export const serverApi = {
   downServer: async (id: string): Promise<void> => {
     await serverApi.serverOperation(id, 'down')
   },
+
+  removeServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, 'remove')
+  },
   
   // 获取在线玩家 (从运行时信息中提取)
   getOnlinePlayers: async (id: string): Promise<string[]> => {

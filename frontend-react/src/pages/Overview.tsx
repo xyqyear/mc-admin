@@ -4,8 +4,6 @@ import {
   Table, 
   Tag, 
   Button, 
-  Dropdown, 
-  message, 
   Progress, 
   Modal, 
   Alert,
@@ -21,11 +19,7 @@ import {
   ReloadOutlined,
   DeleteOutlined,
   ExportOutlined,
-  MoreOutlined,
   PlusOutlined,
-  CloudDownloadOutlined,
-  HistoryOutlined,
-  SettingOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   MinusCircleOutlined,
@@ -85,14 +79,29 @@ const Overview: React.FC = () => {
     return serverStatusUtils.isOperationAvailable(operation, status)
   }
 
+  // 智能启动：根据服务器状态决定使用 start 还是 up
+  const handleStartServer = (serverId: string, status: ServerStatus) => {
+    const server = servers.find(s => s.id === serverId)
+    if (!server) return
+
+    // 根据状态决定操作类型
+    const operation = status === 'CREATED' ? 'start' : 'up'
+    const operationText = status === 'CREATED' ? '启动' : '启动(up)'
+    
+    Modal.confirm({
+      title: '确认启动',
+      content: `确定要${operationText}服务器 "${server.name}" 吗？`,
+      okText: `确认${operationText}`,
+      okType: 'primary',
+      cancelText: '取消',
+      onOk: () => {
+        serverOperationMutation.mutate({ action: operation, serverId })
+      }
+    })
+  }
+
   const handleServerOperation = (operation: string, serverId: string) => {
     const confirmConfigs = {
-      start: {
-        title: '确认启动',
-        content: `确定要启动服务器 "${serverId}" 吗？`,
-        okText: '确认启动',
-        okType: 'primary' as const
-      },
       stop: {
         title: '确认停止',
         content: `确定要停止服务器 "${serverId}" 吗？这将断开所有玩家连接。`,
@@ -103,6 +112,12 @@ const Overview: React.FC = () => {
         title: '确认重启',
         content: `确定要重启服务器 "${serverId}" 吗？这将暂时断开所有玩家连接。`,
         okText: '确认重启',
+        okType: 'primary' as const
+      },
+      down: {
+        title: '确认下线',
+        content: `确定要下线服务器 "${serverId}" 吗？这将停止服务器并清理资源。`,
+        okText: '确认下线',
         okType: 'primary' as const
       },
       remove: {
@@ -141,27 +156,6 @@ const Overview: React.FC = () => {
     cpuPercentage: server.cpuPercentage,
     memoryUsageBytes: server.memoryUsageBytes,
   }))
-
-  const moreActions = (record: typeof tableData[0]) => [
-    {
-      key: 'backup',
-      label: '创建备份',
-      icon: <CloudDownloadOutlined />,
-      onClick: () => message.info(`正在为 ${record.name} 创建备份...`)
-    },
-    {
-      key: 'logs',
-      label: '查看日志',
-      icon: <HistoryOutlined />,
-      onClick: () => navigate(`/server/${record.id}/logs`)
-    },
-    {
-      key: 'settings',
-      label: '服务器设置',
-      icon: <SettingOutlined />,
-      onClick: () => navigate(`/server/${record.id}/settings`)
-    }
-  ]
 
   const columns: TableProps<typeof tableData[0]>['columns'] = [
     {
@@ -267,10 +261,10 @@ const Overview: React.FC = () => {
             <Button
               icon={<PlayCircleOutlined />}
               size="small"
-              type={record.status === 'CREATED' ? 'primary' : 'default'}
-              disabled={!isOperationAvailable('start', record.status)}
+              type={record.status === 'CREATED' || record.status === 'EXISTS' ? 'primary' : 'default'}
+              disabled={!isOperationAvailable('start', record.status) && !isOperationAvailable('up', record.status)}
               loading={serverOperationMutation.isPending}
-              onClick={() => handleServerOperation('start', record.id)}
+              onClick={() => handleStartServer(record.id, record.status)}
             />
           </Tooltip>
           <Tooltip title="停止服务器">
@@ -308,17 +302,6 @@ const Overview: React.FC = () => {
               onClick={() => navigate(`/server/${record.id}`)}
             />
           </Tooltip>
-          <Dropdown
-            menu={{
-              items: moreActions(record).map(action => ({
-                ...action,
-                onClick: action.onClick
-              }))
-            }}
-            trigger={['click']}
-          >
-            <Button size="small" icon={<MoreOutlined />} />
-          </Dropdown>
           <Tooltip title="删除服务器">
             <Button
               icon={<DeleteOutlined />}
