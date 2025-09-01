@@ -189,15 +189,6 @@ const ServerDetail: React.FC = () => {
         </Space>
       </div>
 
-      {/* 服务器详情卡片 */}
-      <Card title="服务器详情">
-        <Descriptions column={2} size="small">
-          <Descriptions.Item label="服务器类型">{serverInfo.serverType} {serverInfo.gameVersion}</Descriptions.Item>
-          <Descriptions.Item label="Java版本">Java {serverInfo.javaVersion}</Descriptions.Item>
-          <Descriptions.Item label="游戏端口">{serverInfo.gamePort}</Descriptions.Item>
-          <Descriptions.Item label="RCON端口">{serverInfo.rconPort}</Descriptions.Item>
-        </Descriptions>
-      </Card>
 
       {/* 服务器状态统计 */}
       <Card>
