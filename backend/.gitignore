@@ -6,3 +6,5 @@ config.toml
 logs/
 notebooks/
 dev-servers*/
+cov.xml
+.coverage
