@@ -2,20 +2,29 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, and real-time system monitoring.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, and integrated Minecraft Docker management capabilities.
 
 ## Tech Stack
 
+### Core Backend Stack
 - **Language**: Python 3.12+ with Poetry package management
 - **Web Framework**: FastAPI + Uvicorn ASGI server with CORS middleware 
 - **Database**: SQLAlchemy 2.0 Declarative Models (async) + SQLite + aiosqlite driver
 - **Authentication**: JWT (joserfc) + OAuth2 password flow + WebSocket login codes
-- **Validation**: Pydantic v2 + pydantic-settings (TOML + environment variables)
-- **Container Integration**: minecraft-docker-manager-lib v0.3.1 (git dependency)
+- **Validation**: Pydantic v2.11.7 + pydantic-settings v2.10.1 (TOML + environment variables)
 - **Async Support**: Full async/await with greenlet for SQLAlchemy async operations
-- **System Monitoring**: psutil for CPU, memory, and disk metrics
-- **Development**: pytest, black formatter, ipykernel for notebooks
-- **Additional**: python-multipart, asyncer, alembic (dev)
+- **System Monitoring**: psutil v7.0.0 for CPU, memory, and disk metrics
+- **Development**: pytest v8.3.3, black formatter, ipykernel for notebooks
+- **Additional**: python-multipart, asyncer v0.0.8, alembic (dev)
+
+### Integrated Minecraft Management Stack
+- **Container Platform**: Docker Engine + Docker Compose integration
+- **Async Framework**: asyncio with comprehensive async/await patterns throughout codebase
+- **File Operations**: aiofiles v24.1.0 for async file I/O operations
+- **YAML Processing**: PyYAML v6.0.2 for Docker Compose file parsing and generation
+- **Resource Monitoring**: Real-time CPU, memory, disk I/O, and network monitoring via cgroup v2
+- **Configuration Management**: Strongly-typed Minecraft Docker Compose file handling with Pydantic validation
+- **Testing**: pytest-asyncio v0.24.0 + pytest-cov v5.0.0 for comprehensive async testing
 
 ## Development Commands
 
@@ -83,9 +92,33 @@ app/
 ├── routers/
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
 │   ├── user.py             # User profile endpoints
-│   └── system.py           # System metrics endpoints
-└── system/
-    └── resources.py        # psutil wrappers for system info
+│   ├── system.py           # System metrics endpoints
+│   └── servers.py          # Minecraft server management endpoints
+├── system/
+│   └── resources.py        # psutil wrappers for system info
+└── minecraft/              # Integrated Minecraft Docker Management Module
+    ├── __init__.py         # Public API exports (DockerMCManager, MCInstance, etc.)
+    ├── manager.py          # DockerMCManager main class
+    ├── instance.py         # MCInstance + server lifecycle management
+    ├── compose.py          # Minecraft-specific compose file handling (MCComposeFile)
+    ├── utils.py            # Async utility functions
+    ├── docker/             # Docker integration submodule
+    │   ├── __init__.py     # Docker module exports
+    │   ├── manager.py      # ComposeManager + DockerManager classes
+    │   ├── compose_file.py # Generic ComposeFile Pydantic models
+    │   ├── cgroup.py       # Container resource monitoring via cgroup v2
+    │   └── network.py      # Network statistics collection
+    └── tests/              # Comprehensive test suite
+        ├── __init__.py
+        ├── test_instance.py     # MCInstance functionality
+        ├── test_compose_file.py # Compose file parsing and validation
+        ├── test_compose.py      # MCComposeFile functionality
+        ├── test_monitoring.py   # Resource monitoring with real containers
+        ├── test_integration.py  # Full integration tests (slow)
+        └── fixtures/            # Test utilities and fixtures
+            ├── __init__.py
+            ├── test_utils.py    # Test helper functions
+            └── mcc_docker_wrapper.py # Minecraft Console Client wrapper
 ```
 
 ### Current API Endpoints
@@ -101,6 +134,15 @@ app/
 
 **System Routes (`/api/system/`)**:
 - `GET /system/info` - System metrics (CPU, memory, disk usage for server/backup paths)
+
+**Server Routes (`/api/servers/`)**:
+- `GET /servers/` - List all servers with basic info, status, and runtime data
+- `GET /servers/{id}/` - Get detailed configuration for a specific server
+- `GET /servers/{id}/status` - Get current status of a specific server
+- `GET /servers/{id}/resources` - Get system resources (CPU, memory) for running servers
+- `GET /servers/{id}/players` - Get online players for healthy servers
+- `GET /servers/{id}/iostats` - Get comprehensive I/O statistics (disk, network, storage)
+- `POST /servers/{id}/operations` - Perform server operations (start, stop, restart, up, down, remove)
 
 ### Authentication Patterns
 
@@ -129,6 +171,99 @@ app/
 - **Models**: SQLAlchemy 2.0 Declarative models in `models.py`
 - **Initialization**: Tables auto-create on startup via `init_db()` in app lifespan
 - **CRUD**: Async patterns with SQLAlchemy 2.0 syntax (see `db/crud/user.py`)
+
+## Integrated Minecraft Management Module
+
+### Module Architecture
+
+The `app.minecraft` module provides comprehensive Minecraft server management capabilities that were previously handled by the external `minecraft-docker-manager-lib`. This integration offers better performance, simplified deployment, and tighter integration with the backend.
+
+### Core Classes
+
+**DockerMCManager** (`app.minecraft.DockerMCManager`):
+- Main entry point for managing multiple Minecraft servers
+- Handles server discovery and batch operations across server directory
+- Usage: `from app.minecraft import DockerMCManager`
+
+**MCInstance** (`app.minecraft.MCInstance`):
+- Represents individual Minecraft server with complete lifecycle management
+- Provides comprehensive monitoring APIs for resource usage
+- Manages Docker Compose operations for single server
+
+**MCComposeFile** (`app.minecraft.MCComposeFile`):
+- Strongly-typed wrapper for Minecraft-specific Docker Compose configurations
+- Extends generic ComposeFile with Minecraft server validation
+- Provides Pydantic-based configuration validation and defaults
+
+### Server Status Lifecycle
+
+```
+REMOVED → EXISTS → CREATED → STARTING → HEALTHY
+                                     ↗ RUNNING (fallback)
+```
+
+**Status Definitions:**
+1. **REMOVED**: Server directory/configuration doesn't exist
+2. **EXISTS**: Server directory exists, no Docker container created  
+3. **CREATED**: Docker container created but not running
+4. **STARTING**: Container running but not yet healthy (health checks failing)
+5. **HEALTHY**: Container running and passing all health checks
+6. **RUNNING**: Container operational but health status unknown (fallback state)
+
+### Resource Monitoring
+
+**Available Monitoring APIs** (via MCInstance):
+- `get_container_id()`: Full Docker container ID for direct Docker API access
+- `get_pid()`: Container main process ID for system-level monitoring  
+- `get_memory_usage()`: Current memory usage in bytes (via cgroup v2)
+- `get_cpu_percentage()`: CPU usage percentage (requires two calls over time interval)
+- `get_disk_io()`: Disk I/O read/write statistics from block devices
+- `get_network_io()`: Network I/O receive/transmit statistics from container interfaces
+- `get_disk_space_info()`: Complete disk space information (used, total, available)
+
+**Monitoring Implementation:**
+- Uses cgroup v2 interfaces for accurate container-level metrics
+- Handles both rootful and rootless Docker configurations
+- Provides real-time metrics without container inspection overhead
+- Error handling for missing cgroup interfaces or permissions
+
+### Integration Patterns
+
+```python
+# Import the integrated minecraft module
+from app.minecraft import DockerMCManager, MCInstance, MCServerStatus
+
+# Initialize manager with servers directory
+manager = DockerMCManager(settings.server_path)
+
+# Get all server instances
+servers = await manager.get_all_server_names()
+
+# Work with individual server
+instance = manager.get_instance("my_server")
+status = await instance.get_status()
+disk_info = await instance.get_disk_space_info()  # Returns DiskSpaceInfo with used/total/available
+```
+
+### Testing Architecture
+
+**Test Categories:**
+1. **Unit Tests**: Fast tests for individual components (majority of test suite)
+2. **Integration Tests**: Full Docker workflow tests (marked for exclusion during development)
+3. **Monitoring Tests**: Real container tests with session-scoped fixtures for efficiency
+
+**Running Tests:**
+```bash
+# Run minecraft module tests specifically
+poetry run pytest app/minecraft/tests/ -v
+
+# Run specific test categories
+poetry run pytest app/minecraft/tests/test_instance.py -v
+poetry run pytest app/minecraft/tests/test_monitoring.py -v
+
+# Avoid slow integration tests during development
+poetry run pytest app/minecraft/tests/ -v -k "not test_integration"
+```
 
 ## Development Conventions
 
