@@ -7,10 +7,11 @@ export const useServerDetailQueries = (serverId: string) => {
   const { 
     useServerInfo, 
     useServerStatus, 
-    useServerRuntime
+    useServerResources,
+    useServerPlayers
   } = useServerQueries()
   
-  // 服务器详情页面的主要数据
+  // 服务器详情页面的主要数据 (使用分离API)
   const useServerDetailData = () => {
     // 基础配置信息 (长缓存)
     const configQuery = useServerInfo(serverId)
@@ -18,20 +19,24 @@ export const useServerDetailQueries = (serverId: string) => {
     // 服务器状态 (10秒刷新) 
     const statusQuery = useServerStatus(serverId)
     
-    // 运行时信息 (依赖状态，2秒刷新)
-    const runtimeQuery = useServerRuntime(serverId, statusQuery.data)
+    // 系统资源信息 (3秒刷新，RUNNING/STARTING/HEALTHY时可用)
+    const resourcesQuery = useServerResources(serverId, statusQuery.data)
     
+    // 玩家列表 (5秒刷新，仅HEALTHY时可用)
+    const playersQuery = useServerPlayers(serverId, statusQuery.data)
+
     return {
       // 原始查询对象
       configQuery,
       statusQuery, 
-      runtimeQuery,
+      resourcesQuery,
+      playersQuery,
       
       // 便捷的数据访问
       serverInfo: configQuery.data,
       status: statusQuery.data,
-      runtime: runtimeQuery.data,
-      players: runtimeQuery.data?.onlinePlayers || [],
+      resources: resourcesQuery.data,
+      players: playersQuery.data || [],
       
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -40,8 +45,8 @@ export const useServerDetailQueries = (serverId: string) => {
       
       // 检查数据可用性
       hasServerInfo: !!configQuery.data,
-      hasRuntimeData: !!runtimeQuery.data,
-      hasPlayersData: !!(runtimeQuery.data?.onlinePlayers?.length),
+      hasResourcesData: !!resourcesQuery.data,
+      hasPlayersData: !!(playersQuery.data?.length),
       
       // 状态判断
       isRunning: statusQuery.data && ['RUNNING', 'STARTING', 'HEALTHY'].includes(statusQuery.data),
@@ -51,26 +56,26 @@ export const useServerDetailQueries = (serverId: string) => {
       serverData: configQuery.data ? {
         ...configQuery.data,
         status: statusQuery.data,
-        runtime: runtimeQuery.data,
-        onlinePlayers: runtimeQuery.data?.onlinePlayers || [],
+        resources: resourcesQuery.data,
+        onlinePlayers: playersQuery.data || [],
         // 添加计算属性
-        memoryUsagePercent: runtimeQuery.data && configQuery.data
-          ? (runtimeQuery.data.memoryUsageBytes / configQuery.data.maxMemoryBytes) * 100
+        memoryUsagePercent: resourcesQuery.data && configQuery.data
+          ? (resourcesQuery.data.memoryUsageBytes / configQuery.data.maxMemoryBytes) * 100
           : 0,
         
         // 格式化的显示值
-        displayMemoryUsage: runtimeQuery.data && configQuery.data
-          ? `${(runtimeQuery.data.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / ${(configQuery.data.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB`
+        displayMemoryUsage: resourcesQuery.data && configQuery.data
+          ? `${(resourcesQuery.data.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / ${(configQuery.data.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB`
           : '未知',
           
-        displayCpuUsage: runtimeQuery.data
-          ? `${runtimeQuery.data.cpuPercentage.toFixed(1)}%`
+        displayCpuUsage: resourcesQuery.data
+          ? `${resourcesQuery.data.cpuPercentage.toFixed(1)}%`
           : '未知'
       } : undefined
     }
   }
-  
+
   return {
-    useServerDetailData
+    useServerDetailData          // 使用新分离API的详情数据hook
   }
 }

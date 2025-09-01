@@ -5,20 +5,20 @@ import { useQueries } from '@tanstack/react-query'
 import { useServerQueries } from './useServerQueries'
 
 export const useServerPageQueries = (serverId: string) => {
-  const { useServerInfo, useServerStatus, useServerRuntime } = useServerQueries()
+  const { useServerInfo, useServerStatus, useServerResources, useServerPlayers } = useServerQueries()
   
-  // 服务器概览页面数据
+  // 服务器概览页面数据 (使用分离API)
   const useServerOverviewData = () => {
     const configQuery = useServerInfo(serverId)
     const statusQuery = useServerStatus(serverId)
-    const runtimeQuery = useServerRuntime(serverId, statusQuery.data)
-    // Players data is included in runtime data
+    const resourcesQuery = useServerResources(serverId, statusQuery.data)
+    const playersQuery = useServerPlayers(serverId, statusQuery.data)
     
     return {
       config: configQuery,
       status: statusQuery,
-      runtime: runtimeQuery,
-      // players data available in runtime.onlinePlayers
+      resources: resourcesQuery,
+      players: playersQuery,
       
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -27,7 +27,8 @@ export const useServerPageQueries = (serverId: string) => {
       // 组合数据 (前端展示用)
       fullInfo: configQuery.data ? {
         ...configQuery.data,
-        runtime: runtimeQuery.data
+        resources: resourcesQuery.data,
+        onlinePlayers: playersQuery.data || []
       } : undefined
     }
   }
@@ -57,7 +58,7 @@ export const useOverviewPageQueries = () => {
     })
   }
   
-  const useAllServerRuntimes = (statuses: Array<{ data?: ServerStatus }>) => {
+  const useAllServerResources = (statuses: Array<{ data?: ServerStatus }>) => {
     const serverIds = serverInfosQuery.data?.map((s: ServerListItem) => s.id) || []
     
     return useQueries({
@@ -66,11 +67,31 @@ export const useOverviewPageQueries = () => {
         const isRunning = Boolean(status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status))
         
         return {
-          queryKey: queryKeys.serverRuntimes.detail(id),
-          queryFn: () => serverApi.getServerRuntime(id),
+          queryKey: [...queryKeys.serverRuntimes.detail(id), 'resources'],
+          queryFn: () => serverApi.getServerResources(id),
           enabled: isRunning,
-          refetchInterval: isRunning ? 2000 : false,
+          refetchInterval: isRunning ? 3000 : false,
           staleTime: 1000,
+          retry: 1,
+        } as const
+      })
+    })
+  }
+
+  const useAllServerPlayers = (statuses: Array<{ data?: ServerStatus }>) => {
+    const serverIds = serverInfosQuery.data?.map((s: ServerListItem) => s.id) || []
+    
+    return useQueries({
+      queries: serverIds.map((id: string, index: number) => {
+        const status = statuses[index]?.data
+        const isHealthy = Boolean(status === 'HEALTHY')
+        
+        return {
+          queryKey: [...queryKeys.players.online(id)],
+          queryFn: () => serverApi.getServerPlayers(id),
+          enabled: isHealthy,
+          refetchInterval: isHealthy ? 5000 : false,
+          staleTime: 2000,
           retry: 1,
         } as const
       })
@@ -81,6 +102,7 @@ export const useOverviewPageQueries = () => {
     serverInfosQuery,
     systemInfoQuery,
     useAllServerStatuses,
-    useAllServerRuntimes
+    useAllServerResources,
+    useAllServerPlayers
   }
 }

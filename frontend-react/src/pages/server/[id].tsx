@@ -34,13 +34,13 @@ const ServerDetail: React.FC = () => {
   const {
     serverInfo,
     status,
-    runtime,
+    resources,
     players,
     isLoading,
     isError,
     error,
     hasServerInfo,
-    hasRuntimeData,
+    hasResourcesData,
     isRunning,
     isHealthy,
   } = useServerDetailData()
@@ -228,7 +228,7 @@ const ServerDetail: React.FC = () => {
       </Card>
 
       {/* 资源使用情况 - 仅在运行状态显示 */}
-      {isRunning && hasRuntimeData && runtime && (
+      {isRunning && hasResourcesData && resources && (
         <Card title="资源使用情况">
           <Row gutter={[16, 16]}>
             <Col span={12}>
@@ -236,11 +236,11 @@ const ServerDetail: React.FC = () => {
                 <div>
                   <div className="flex justify-between mb-1">
                     <span>CPU 使用率</span>
-                    <span>{runtime.cpuPercentage.toFixed(1)}%</span>
+                    <span>{resources.cpuPercentage.toFixed(1)}%</span>
                   </div>
                   <Progress 
-                    percent={runtime.cpuPercentage} 
-                    strokeColor={runtime.cpuPercentage > 80 ? '#ff4d4f' : runtime.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                    percent={resources.cpuPercentage} 
+                    strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
                     showInfo={false}
                   />
                 </div>
@@ -248,54 +248,24 @@ const ServerDetail: React.FC = () => {
                   <div className="flex justify-between mb-1">
                     <span>内存使用</span>
                     <span>
-                      {(runtime.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                      {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
                       {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
                     </span>
                   </div>
                   <Progress 
-                    percent={(runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                    strokeColor={(runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
-                                (runtime.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                    percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
+                    strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
+                                (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
                     showInfo={false}
                   />
                 </div>
               </div>
             </Col>
             <Col span={12}>
-              <Row gutter={[16, 16]}>
-                <Col span={12}>
-                  <Statistic
-                    title="磁盘读取"
-                    value={(runtime.diskReadBytes / (1024 ** 2)).toFixed(1)}
-                    suffix="MB"
-                    prefix={<HddOutlined />}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Statistic
-                    title="磁盘写入"
-                    value={(runtime.diskWriteBytes / (1024 ** 2)).toFixed(1)}
-                    suffix="MB"
-                    prefix={<HddOutlined />}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Statistic
-                    title="网络接收"
-                    value={(runtime.networkReceiveBytes / (1024 ** 2)).toFixed(1)}
-                    suffix="MB"
-                    prefix={<WifiOutlined />}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Statistic
-                    title="网络发送"
-                    value={(runtime.networkSendBytes / (1024 ** 2)).toFixed(1)}
-                    suffix="MB"
-                    prefix={<WifiOutlined />}
-                  />
-                </Col>
-              </Row>
+              <div className="text-center text-gray-500 pt-8">
+                <p>磁盘和网络统计信息</p>
+                <p>将在后续版本中提供</p>
+              </div>
             </Col>
           </Row>
         </Card>

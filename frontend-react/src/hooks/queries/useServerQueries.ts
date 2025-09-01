@@ -1,6 +1,6 @@
 import { serverApi, systemApi, type ServerListItem } from '@/hooks/api/serverApi'
 import type { ServerInfo, ServerStatus } from '@/types/ServerInfo'
-import type { ServerRuntime, SystemInfo } from '@/types/ServerRuntime'
+import type { SystemInfo } from '@/types/ServerRuntime'
 import { queryKeys } from '@/utils/api'
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 
@@ -41,18 +41,38 @@ export const useServerQueries = () => {
     })
   }
 
-  // 单个服务器运行时信息 (最快更新，仅运行状态时有效)
-  const useServerRuntime = (id: string, status?: ServerStatus, options?: UseQueryOptions<ServerRuntime>) => {
-    const isRunning = status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status)
+
+  // 单个服务器系统资源 (CPU/内存，在RUNNING/STARTING/HEALTHY状态下可用)
+  const useServerResources = (id: string, status?: ServerStatus, options?: UseQueryOptions<{ cpuPercentage: number; memoryUsageBytes: number }>) => {
+    const resourcesAvailable = status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status)
     
     return useQuery({
-      queryKey: queryKeys.serverRuntimes.detail(id),
-      queryFn: () => serverApi.getServerRuntime(id),
-      enabled: !!id && isRunning,
-      refetchInterval: isRunning ? 3000 : false, // 3秒刷新运行时数据
-      staleTime: 1000,                           // 1秒 - 运行时数据需要实时性
+      queryKey: [...queryKeys.serverRuntimes.detail(id), 'resources'],
+      queryFn: () => serverApi.getServerResources(id),
+      enabled: !!id && resourcesAvailable,
+      refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新资源数据
+      staleTime: 1000,                                     // 1秒 - 资源数据需要实时性
       retry: (failureCount, error: any) => {
-        // 如果服务器停止运行，不要重试
+        // 如果服务器状态不支持资源监控，不要重试
+        if (error?.response?.status === 409) return false
+        return failureCount < 2
+      },
+      ...options
+    })
+  }
+
+  // 单个服务器玩家列表 (仅在HEALTHY状态下可用)
+  const useServerPlayers = (id: string, status?: ServerStatus, options?: UseQueryOptions<string[]>) => {
+    const playersAvailable = status === 'HEALTHY'
+    
+    return useQuery({
+      queryKey: [...queryKeys.players.online(id)],
+      queryFn: () => serverApi.getServerPlayers(id),
+      enabled: !!id && playersAvailable,
+      refetchInterval: playersAvailable ? 5000 : false, // 5秒刷新玩家数据
+      staleTime: 2000,                                   // 2秒 - 玩家数据需要较好实时性
+      retry: (failureCount, error: any) => {
+        // 如果服务器不健康，不要重试
         if (error?.response?.status === 409) return false
         return failureCount < 2
       },
@@ -72,10 +92,11 @@ export const useServerQueries = () => {
   }
 
   return {
-    useServers,         // 🌟 新的主要API - 用于总览页面
+    useServers,         // 🌟 主要API - 用于总览页面
     useServerInfo,      // 详细配置信息
     useServerStatus,    // 单个状态监控
-    useServerRuntime,   // 单个运行时监控
+    useServerResources, // 单个服务器系统资源 (CPU/内存)
+    useServerPlayers,   // 单个服务器玩家列表
     useSystemInfo,      // 系统信息
   }
 }
@@ -120,29 +141,3 @@ export const useOverviewData = () => {
   }
 }
 
-// 🎯 服务器详情页面专用的组合hooks
-export const useServerDetail = (id: string) => {
-  const { useServerInfo, useServerStatus, useServerRuntime } = useServerQueries()
-  
-  const infoQuery = useServerInfo(id)
-  const statusQuery = useServerStatus(id)
-  const runtimeQuery = useServerRuntime(id, statusQuery.data)
-
-  return {
-    serverInfo: infoQuery.data,
-    status: statusQuery.data,
-    runtime: runtimeQuery.data,
-    
-    isLoading: infoQuery.isLoading || statusQuery.isLoading,
-    isError: infoQuery.isError || statusQuery.isError,
-    error: infoQuery.error || statusQuery.error,
-    
-    refetch: () => {
-      infoQuery.refetch()
-      statusQuery.refetch() 
-      if (runtimeQuery.isEnabled) {
-        runtimeQuery.refetch()
-      }
-    }
-  }
-}

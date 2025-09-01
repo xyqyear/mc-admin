@@ -1,5 +1,5 @@
 import type { ServerInfo, ServerStatus } from '@/types/ServerInfo'
-import type { ServerRuntime, SystemInfo } from '@/types/ServerRuntime'
+import type { SystemInfo } from '@/types/ServerRuntime'
 import { api } from '@/utils/api'
 
 // Backend API response types (matching backend Pydantic models)
@@ -21,10 +21,13 @@ interface ServerStatusResponse {
   status: ServerStatus
 }
 
-interface ServerRuntimeResponse {
-  onlinePlayers: string[]
+interface ServerResourcesResponse {
   cpuPercentage: number
   memoryUsageBytes: number
+}
+
+interface ServerPlayersResponse {
+  onlinePlayers: string[]
 }
 
 interface ServerOperationRequest {
@@ -70,25 +73,20 @@ export const serverApi = {
     return res.data.status
   },
   
-  // 获取单个服务器运行时信息 (仅在服务器运行时可用)
-  getServerRuntime: async (id: string): Promise<ServerRuntime> => {
-    const res = await api.get<ServerRuntimeResponse>(`/servers/${id}/runtime`)
-    
-    // Transform to match frontend ServerRuntime type
+
+  // 获取单个服务器系统资源 (在RUNNING/STARTING/HEALTHY状态下可用)
+  getServerResources: async (id: string): Promise<{ cpuPercentage: number; memoryUsageBytes: number }> => {
+    const res = await api.get<ServerResourcesResponse>(`/servers/${id}/resources`)
     return {
-      serverId: id,
-      status: 'RUNNING' as ServerStatus, // Assume running if we can get runtime data
       cpuPercentage: res.data.cpuPercentage,
       memoryUsageBytes: res.data.memoryUsageBytes,
-      diskReadBytes: 0, // TODO: Add when backend supports disk I/O stats
-      diskWriteBytes: 0,
-      networkReceiveBytes: 0, // TODO: Add when backend supports network stats  
-      networkSendBytes: 0,
-      diskUsageBytes: 0, // TODO: Add disk usage calculation
-      onlinePlayers: res.data.onlinePlayers,
-      containerId: undefined, // Optional fields
-      pid: undefined,
     }
+  },
+
+  // 获取单个服务器玩家列表 (仅在HEALTHY状态下可用)
+  getServerPlayers: async (id: string): Promise<string[]> => {
+    const res = await api.get<ServerPlayersResponse>(`/servers/${id}/players`)
+    return res.data.onlinePlayers
   },
   
   // 服务器操作 (统一的操作API)
@@ -121,16 +119,6 @@ export const serverApi = {
     await serverApi.serverOperation(id, 'remove')
   },
   
-  // 获取在线玩家 (从运行时信息中提取)
-  getOnlinePlayers: async (id: string): Promise<string[]> => {
-    try {
-      const runtime = await serverApi.getServerRuntime(id)
-      return runtime.onlinePlayers
-    } catch (error) {
-      // Server might not be running
-      return []
-    }
-  },
   
   // Compose文件API (保持现有接口，但需要后端支持)
   getComposeFile: async (_id: string): Promise<string> => {
@@ -161,28 +149,6 @@ export const serverApi = {
     return statusMap
   },
   
-  // 批量获取服务器运行时信息 
-  getAllServerRuntimes: async (serverIds: string[]): Promise<Record<string, ServerRuntime | null>> => {
-    const runtimePromises = serverIds.map(async (id) => {
-      try {
-        const runtime = await serverApi.getServerRuntime(id)
-        return { id, runtime }
-      } catch (error) {
-        return { id, runtime: null }
-      }
-    })
-    
-    const results = await Promise.allSettled(runtimePromises)
-    
-    const runtimeMap: Record<string, ServerRuntime | null> = {}
-    results.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value) {
-        runtimeMap[result.value.id] = result.value.runtime
-      }
-    })
-    
-    return runtimeMap
-  }
 }
 
 export const systemApi = {
@@ -193,4 +159,4 @@ export const systemApi = {
 }
 
 // Export types for use in other modules
-export type { ServerListItem, ServerRuntimeResponse, ServerStatusResponse }
+export type { ServerListItem, ServerStatusResponse }

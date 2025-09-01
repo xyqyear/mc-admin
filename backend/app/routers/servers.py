@@ -32,10 +32,13 @@ class ServerStatus(BaseModel):
     status: MCServerStatus
 
 
-class ServerRuntime(BaseModel):
-    onlinePlayers: list[str]
+class ServerResources(BaseModel):
     cpuPercentage: float
     memoryUsageBytes: int
+
+
+class ServerPlayers(BaseModel):
+    onlinePlayers: list[str]
 
 
 class ServerListItem(BaseModel):
@@ -130,31 +133,31 @@ async def get_server_status(server_id: str, _: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to get server status: {str(e)}")
 
 
-@router.get("/{server_id}/runtime", response_model=ServerRuntime)
-async def get_server_runtime(server_id: str, _: str = Depends(get_current_user)):
-    """Get runtime information for a specific server (only available when running)"""
+
+
+@router.get("/{server_id}/resources", response_model=ServerResources)
+async def get_server_resources(server_id: str, _: str = Depends(get_current_user)):
+    """Get system resource information for a specific server (available when running/starting/healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)
         
-        # Check if server is running (includes RUNNING, STARTING, HEALTHY states)
+        # Check if server is in a state where resource monitoring is available
         status = await instance.get_status()
         if status not in [MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY]:
-            raise HTTPException(status_code=409, detail=f"Server '{server_id}' is not running (status: {status})")
+            raise HTTPException(status_code=409, detail=f"Server '{server_id}' resources not available (status: {status})")
         
-        # Get runtime data concurrently
-        players_task = instance.list_players()
+        # Get resource data concurrently
         cpu_task = instance.get_cpu_percentage() 
         memory_task = instance.get_memory_usage()
         
-        players, cpu_percentage, memory_stats = await asyncio.gather(
-            players_task, cpu_task, memory_task
+        cpu_percentage, memory_stats = await asyncio.gather(
+            cpu_task, memory_task
         )
         
         # Calculate actual memory usage from memory stats (anon + file is commonly used memory)
         memory_usage_bytes = memory_stats.anon + memory_stats.file
         
-        return ServerRuntime(
-            onlinePlayers=players,
+        return ServerResources(
             cpuPercentage=cpu_percentage,
             memoryUsageBytes=memory_usage_bytes,
         )
@@ -162,7 +165,31 @@ async def get_server_runtime(server_id: str, _: str = Depends(get_current_user))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get server runtime: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get server resources: {str(e)}")
+
+
+@router.get("/{server_id}/players", response_model=ServerPlayers)
+async def get_server_players(server_id: str, _: str = Depends(get_current_user)):
+    """Get online players for a specific server (only available when healthy)"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+        
+        # Check if server is healthy (required for player list)
+        status = await instance.get_status()
+        if status != MCServerStatus.HEALTHY:
+            raise HTTPException(status_code=409, detail=f"Server '{server_id}' players not available - server must be healthy (current status: {status})")
+        
+        # Get player list
+        players = await instance.list_players()
+        
+        return ServerPlayers(
+            onlinePlayers=players,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get server players: {str(e)}")
 
 
 @router.post("/{server_id}/operations")
@@ -229,28 +256,33 @@ async def _get_server_list_item(instance: MCInstance) -> ServerListItem:
             rconPort=server_info.rcon_port or 25575,  # Use real RCON port from compose file
         )
         
-        # If server is running, get runtime data
-        if status in [MCServerStatus.RUNNING, MCServerStatus.HEALTHY]:
+        # Get resource data if server is in a state where resource monitoring is available
+        if status in [MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY]:
             try:
-                players_task = instance.list_players()
                 cpu_task = instance.get_cpu_percentage()
                 memory_task = instance.get_memory_usage()
                 
-                results = await asyncio.gather(
-                    players_task, cpu_task, memory_task, return_exceptions=True
+                cpu_percentage, memory_stats = await asyncio.gather(
+                    cpu_task, memory_task, return_exceptions=True
                 )
-                players, cpu_percentage, memory_stats = results
                 
-                # Update runtime data if successful
-                if not isinstance(players, BaseException):
-                    list_item.onlinePlayers = players
+                # Update resource data if successful
                 if not isinstance(cpu_percentage, BaseException):
                     list_item.cpuPercentage = cpu_percentage
                 if not isinstance(memory_stats, BaseException):
                     list_item.memoryUsageBytes = memory_stats.anon + memory_stats.file
                     
             except Exception:
-                # Runtime data is optional, continue without it
+                # Resource data is optional, continue without it
+                pass
+        
+        # Get player data only if server is healthy
+        if status == MCServerStatus.HEALTHY:
+            try:
+                players = await instance.list_players()
+                list_item.onlinePlayers = players
+            except Exception:
+                # Player data is optional, continue without it
                 pass
         
         return list_item
