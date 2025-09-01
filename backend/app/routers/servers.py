@@ -75,6 +75,10 @@ class ServerOperation(BaseModel):
     action: str  # start, stop, restart, up, down
 
 
+class ComposeConfig(BaseModel):
+    yaml_content: str
+
+
 # API Endpoints
 
 @router.get("/", response_model=list[ServerListItem])
@@ -242,6 +246,84 @@ async def get_server_iostats(server_id: str, _: str = Depends(get_current_user))
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get server I/O stats: {str(e)}")
+
+
+@router.get("/{server_id}/compose")
+async def get_server_compose(server_id: str, _: str = Depends(get_current_user)):
+    """Get the Docker Compose configuration for a specific server"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+        
+        # Check if server exists
+        if not await instance.exists():
+            raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
+        
+        # Get compose file content
+        compose_content = await instance.get_compose_file()
+        
+        return {"yaml_content": compose_content}
+        
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Compose file not found for server '{server_id}'")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get compose configuration: {str(e)}")
+
+
+@router.post("/{server_id}/compose")
+async def update_server_compose(
+    server_id: str,
+    compose_config: ComposeConfig,
+    _: str = Depends(get_current_user)
+):
+    """Update the Docker Compose configuration for a specific server"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+        
+        # Check if server exists
+        if not await instance.exists():
+            raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
+        
+        # First validate the YAML content by trying to parse it
+        try:
+            import yaml
+            yaml.safe_load(compose_config.yaml_content)
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid YAML content: {str(e)}")
+        
+        # Get current server status
+        status = await instance.get_status()
+        
+        # If server is running, stop it first
+        server_was_running = False
+        if status in [MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY]:
+            server_was_running = True
+            await instance.down()
+        
+        try:
+            # Update the compose file
+            await instance.update_compose_file(compose_config.yaml_content)
+            
+            # If server was running, start it again
+            if server_was_running:
+                await instance.up()
+                
+            return {"message": f"Server '{server_id}' compose configuration updated successfully"}
+            
+        except Exception as e:
+            # If something goes wrong and server was running, try to start it again with the original config
+            if server_was_running:
+                try:
+                    await instance.up()
+                except:
+                    pass  # Best effort to restart
+            raise HTTPException(status_code=500, detail=f"Failed to update compose configuration: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update compose configuration: {str(e)}")
 
 
 @router.post("/{server_id}/operations")

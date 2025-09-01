@@ -9,7 +9,8 @@ export const useServerDetailQueries = (serverId: string) => {
     useServerStatus, 
     useServerResources,
     useServerPlayers,
-    useServerIOStats
+    useServerIOStats,
+    useComposeFile
   } = useServerQueries()
   
   // 服务器详情页面的主要数据 (使用分离API)
@@ -82,7 +83,46 @@ export const useServerDetailQueries = (serverId: string) => {
     }
   }
 
+  // Compose页面专用的数据查询
+  const useServerComposeData = () => {
+    // 服务器基本信息
+    const serverInfoQuery = useServerInfo(serverId)
+    
+    // Compose文件内容
+    const composeQuery = useComposeFile(serverId)
+    
+    return {
+      // 查询对象
+      serverInfoQuery,
+      composeQuery,
+      
+      // 数据
+      serverInfo: serverInfoQuery.data,
+      composeContent: composeQuery.data,
+      
+      // 加载状态
+      isLoading: serverInfoQuery.isLoading,
+      serverLoading: serverInfoQuery.isLoading,
+      
+      // 错误状态
+      isError: serverInfoQuery.isError,
+      serverError: serverInfoQuery.isError,
+      error: serverInfoQuery.error,
+      serverErrorMessage: serverInfoQuery.error,
+      
+      // 数据可用性
+      hasServerInfo: !!serverInfoQuery.data,
+      
+      // 刷新方法
+      refetch: () => {
+        serverInfoQuery.refetch()
+        composeQuery.refetch()
+      }
+    }
+  }
+
   return {
-    useServerDetailData          // 使用新分离API的详情数据hook
+    useServerDetailData,    // 使用新分离API的详情数据hook
+    useServerComposeData    // Compose页面专用数据hook
   }
 }

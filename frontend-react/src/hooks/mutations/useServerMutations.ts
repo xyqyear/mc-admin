@@ -77,9 +77,41 @@ export const useServerMutations = () => {
       }
     })
   }
+
+  // Compose文件更新
+  const useUpdateCompose = (serverId: string) => {
+    return useMutation({
+      mutationFn: async (yamlContent: string) => {
+        return serverApi.updateComposeFile(serverId, yamlContent)
+      },
+      onSuccess: () => {
+        message.success(`服务器 ${serverId} compose 配置更新成功`)
+        
+        // 延迟1秒后失效相关缓存
+        setTimeout(() => {
+          // 失效compose文件缓存
+          queryClient.invalidateQueries({ queryKey: queryKeys.compose.detail(serverId) })
+          
+          // 失效服务器信息缓存（compose配置变化可能影响服务器信息）
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverInfos.detail(serverId) })
+          
+          // 失效状态和运行时数据（服务器可能重启）
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverStatuses.detail(serverId) })
+          queryClient.invalidateQueries({ queryKey: queryKeys.serverRuntimes.detail(serverId) })
+          
+          // 失效服务器列表
+          queryClient.invalidateQueries({ queryKey: queryKeys.servers() })
+        }, 1000)
+      },
+      onError: (error: Error) => {
+        message.error(`compose 配置更新失败: ${error.message}`)
+      }
+    })
+  }
   
   return {
     useServerOperation,
-    useRconCommand
+    useRconCommand,
+    useUpdateCompose
   }
 }

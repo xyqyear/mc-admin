@@ -99,6 +99,23 @@ export const useServerQueries = () => {
     })
   }
 
+  // Compose文件内容 (长缓存，手动刷新)
+  const useComposeFile = (id: string, options?: UseQueryOptions<string>) => {
+    return useQuery({
+      queryKey: queryKeys.compose.detail(id),
+      queryFn: () => serverApi.getComposeFile(id),
+      enabled: !!id,
+      staleTime: 10 * 60 * 1000,  // 10分钟 - Compose文件变化较少
+      gcTime: 15 * 60 * 1000,     // 15分钟
+      retry: (failureCount, error: any) => {
+        // 如果文件不存在，不要重试
+        if (error?.response?.status === 404) return false
+        return failureCount < 2
+      },
+      ...options
+    })
+  }
+
   // 系统信息 (中等频率更新)
   const useSystemInfo = (options?: UseQueryOptions<SystemInfo>) => {
     return useQuery({
@@ -117,6 +134,7 @@ export const useServerQueries = () => {
     useServerResources, // 单个服务器系统资源 (CPU/内存)
     useServerPlayers,   // 单个服务器玩家列表
     useServerIOStats,   // 单个服务器I/O统计信息 (磁盘和网络)
+    useComposeFile,     // Compose文件内容
     useSystemInfo,      // 系统信息
   }
 }

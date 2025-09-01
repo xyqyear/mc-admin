@@ -20,7 +20,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
-// import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
 const { Title } = Typography
 
@@ -29,26 +29,22 @@ const ServerCompose: React.FC = () => {
   const navigate = useNavigate()
   
   // 使用新的数据管理系统
-  const { useServerDetailData } = useServerDetailQueries(id || '')
-  // Note: useComposeFile not yet implemented in new API
+  const { useServerComposeData } = useServerDetailQueries(id || '')
+  const { useUpdateCompose } = useServerMutations()
   
-  // 获取服务器详情数据
+  // 获取服务器详情数据和compose文件
   const {
     serverInfo,
-    isLoading: serverLoading,
-    isError: serverError,
-    error: serverErrorMessage,
+    composeContent,
+    serverLoading,
+    serverError,
+    serverErrorMessage,
     hasServerInfo,
-  } = useServerDetailData()
+    composeQuery
+  } = useServerComposeData()
   
-  // TODO: Implement compose file query when backend supports it
-  const composeQuery = { 
-    data: '' as string | undefined, 
-    isLoading: false, 
-    isError: false, 
-    error: null,
-    refetch: () => Promise.resolve()
-  }
+  // Compose更新mutation
+  const updateComposeMutation = useUpdateCompose(id || '')
   
   // 本地状态
   const [rawYaml, setRawYaml] = useState('')
@@ -60,15 +56,15 @@ const ServerCompose: React.FC = () => {
 
   // 当 composeFile 数据加载完成时，初始化编辑器内容
   useEffect(() => {
-    if (composeQuery.data) {
+    if (composeContent) {
       const savedConfig = localStorage.getItem(`compose-${id}`)
-      setRawYaml(savedConfig || composeQuery.data)
+      setRawYaml(savedConfig || composeContent)
     }
-  }, [composeQuery.data, id])
+  }, [composeContent, id])
 
   // 定期检查配置一致性，确保状态及时更新
   useEffect(() => {
-    if (!composeQuery.data) return
+    if (!composeContent) return
     
     const checkInterval = setInterval(() => {
       // 触发一致性检查更新
@@ -76,12 +72,12 @@ const ServerCompose: React.FC = () => {
     }, 3000) // 每3秒检查一次
     
     return () => clearInterval(checkInterval)
-  }, [composeQuery.data, id])
+  }, [composeContent, id])
 
   // 实时检查浏览器存储和服务器配置的一致性
   const checkConfigConsistency = () => {
     const currentSavedConfig = localStorage.getItem(`compose-${id}`)
-    const serverConfig = composeQuery.data
+    const serverConfig = composeContent
     
     if (!currentSavedConfig || !serverConfig) {
       return { hasSavedConfig: false, hasOnlineChanges: false }
@@ -93,10 +89,10 @@ const ServerCompose: React.FC = () => {
     return { hasSavedConfig, hasOnlineChanges }
   }
   
-  // 使用useMemo来优化一致性检查，依赖于checkTrigger和composeQuery.data
+  // 使用useMemo来优化一致性检查，依赖于checkTrigger和composeContent
   const { hasSavedConfig, hasOnlineChanges } = useMemo(() => {
     return checkConfigConsistency()
-  }, [checkTrigger, composeQuery.data, id])
+  }, [checkTrigger, composeContent, id])
 
   // 如果没有服务器ID，返回错误
   if (!id) {
@@ -136,7 +132,7 @@ const ServerCompose: React.FC = () => {
   }
 
   // 加载状态
-  if (serverLoading || composeQuery.isLoading || !serverInfo || !composeQuery.data) {
+  if (serverLoading || composeQuery.isLoading || !serverInfo || !composeContent) {
     return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
   }
   
@@ -168,8 +164,8 @@ const ServerCompose: React.FC = () => {
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
         try {
-          // TODO: 调用 API 提交配置并重建服务器
-          message.success('配置提交成功，服务器重建中...')
+          // 调用 API 提交配置并重建服务器
+          await updateComposeMutation.mutateAsync(rawYaml)
           message.info('服务器重建需要几分钟时间，请稍候')
           setHasUnsavedChanges(false)
           
@@ -183,8 +179,8 @@ const ServerCompose: React.FC = () => {
           setCheckTrigger(prev => prev + 1)
           setEditorKey(prev => prev + 1)
           
-        } catch (error) {
-          message.error('提交配置或重建服务器时发生错误')
+        } catch (error: any) {
+          message.error(`配置提交失败: ${error.message}`)
         }
       }
     })
@@ -199,7 +195,7 @@ const ServerCompose: React.FC = () => {
       icon: <ExclamationCircleOutlined />,
       onOk: () => {
         // 重新载入应该恢复到服务器的原始配置，而不是本地存储的配置
-        const originalConfig = composeQuery.data || ''
+        const originalConfig = composeContent || ''
         setRawYaml(originalConfig)
         setHasUnsavedChanges(false)
         
@@ -341,10 +337,10 @@ const ServerCompose: React.FC = () => {
           />
           <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
             <MonacoDiffEditor
-              key={`${composeQuery.data?.length || 0}-${rawYaml.length}`}
+              key={`${composeContent?.length || 0}-${rawYaml.length}`}
               height="600px"
               language="yaml"
-              original={composeQuery.data || ''}
+              original={composeContent || ''}
               modified={rawYaml}
               originalTitle="服务器当前配置"
               modifiedTitle="本地编辑配置"

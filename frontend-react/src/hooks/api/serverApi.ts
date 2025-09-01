@@ -47,6 +47,14 @@ interface ServerOperationRequest {
   action: string
 }
 
+interface ComposeConfigResponse {
+  yaml_content: string
+}
+
+interface ComposeConfigRequest {
+  yaml_content: string
+}
+
 export const serverApi = {
   // 获取所有服务器信息 (新的综合API，替代之前分离的配置和状态API)
   getServers: async (): Promise<ServerListItem[]> => {
@@ -139,12 +147,15 @@ export const serverApi = {
   },
   
   
-  // Compose文件API (保持现有接口，但需要后端支持)
-  getComposeFile: async (_id: string): Promise<string> => {
-    // TODO: Implement when backend adds compose file endpoint
-    // const res = await api.get<{content: string}>(`/servers/${id}/compose`)
-    // return res.data.content
-    throw new Error('Compose file API not yet implemented in backend')
+  // Compose文件API
+  getComposeFile: async (id: string): Promise<string> => {
+    const res = await api.get<ComposeConfigResponse>(`/servers/${id}/compose`)
+    return res.data.yaml_content
+  },
+
+  // 更新Compose文件
+  updateComposeFile: async (id: string, yamlContent: string): Promise<void> => {
+    await api.post(`/servers/${id}/compose`, { yaml_content: yamlContent } as ComposeConfigRequest)
   },
   
   // RCON命令API (保持现有接口，但需要后端支持) 
