@@ -11,6 +11,7 @@ import {
   GlobalOutlined,
 } from '@ant-design/icons'
 import ServerStateTag from '@/components/overview/ServerStateTag'
+import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
@@ -126,14 +127,7 @@ const ServerDetail: React.FC = () => {
 
   // 加载状态
   if (isLoading || !hasServerInfo || !serverInfo) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <div className="text-center">
-          <div className="mb-4">加载中...</div>
-          <Progress percent={30} status="active" showInfo={false} />
-        </div>
-      </div>
-    )
+    return <LoadingSpinner height="16rem" />
   }
 
   // 服务器操作处理

@@ -1,8 +1,9 @@
 import React from 'react'
-import { Typography, Button, Space, Table, Tag, Alert, Progress, Card } from 'antd'
+import { Typography, Button, Space, Table, Tag, Alert, Card } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import { UserOutlined } from '@ant-design/icons'
 import type { Player } from '@/types/Server'
+import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
@@ -78,14 +79,7 @@ const ServerPlayers: React.FC = () => {
 
   // 加载状态
   if (isLoading || !serverInfo) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <div className="text-center">
-          <div className="mb-4">加载玩家数据中...</div>
-          <Progress percent={30} status="active" showInfo={false} />
-        </div>
-      </div>
-    )
+    return <LoadingSpinner height="16rem" tip="加载玩家数据中..." />
   }
 
   // 玩家操作处理

@@ -7,8 +7,7 @@ import {
   Typography, 
   Alert,
   message,
-  Modal,
-  Progress
+  Modal
 } from 'antd'
 import { 
   SaveOutlined, 
@@ -19,6 +18,7 @@ import {
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
+import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 // import { useServerQueries } from '@/hooks/queries/useServerQueries'
 
@@ -137,14 +137,7 @@ const ServerCompose: React.FC = () => {
 
   // 加载状态
   if (serverLoading || composeQuery.isLoading || !serverInfo || !composeQuery.data) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <div className="text-center">
-          <div className="mb-4">加载配置文件中...</div>
-          <Progress percent={30} status="active" showInfo={false} />
-        </div>
-      </div>
-    )
+    return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
   }
   
   // 只有当有本地配置且与在线配置不同时才显示未保存更改
