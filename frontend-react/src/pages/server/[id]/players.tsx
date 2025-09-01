@@ -185,19 +185,6 @@ const ServerPlayers: React.FC = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 玩家列表</Title>
-        <Space>
-          <Button 
-            type="primary"
-            icon={<UserOutlined />}
-            disabled={!isHealthy}
-            onClick={() => {
-              // TODO: 实现添加玩家功能 (通过 RCON 命令)
-              console.log('Add player functionality')
-            }}
-          >
-            添加玩家
-          </Button>
-        </Space>
       </div>
 
       <Card>
