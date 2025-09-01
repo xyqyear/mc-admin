@@ -150,6 +150,9 @@ const ServerCompose: React.FC = () => {
       localStorage.setItem(`compose-${id}`, rawYaml)
       message.success('配置已保存到浏览器本地')
       setHasUnsavedChanges(false)
+      
+      // 立即触发一致性检查
+      setCheckTrigger(prev => prev + 1)
     } catch (error) {
       message.error('保存到浏览器失败')
     }
