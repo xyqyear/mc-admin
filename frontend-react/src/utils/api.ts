@@ -1,132 +1,138 @@
-import { useTokenStore } from '@/stores/useTokenStore'
-import axios, { AxiosError, AxiosResponse } from 'axios'
+import { useTokenStore } from "@/stores/useTokenStore";
+import axios, { AxiosError, AxiosResponse } from "axios";
 
 // Types for better error handling
 export interface ApiError {
-  message: string
-  status?: number
-  code?: string
+  message: string;
+  status?: number;
+  code?: string;
 }
 
 export interface ApiResponse<T = any> {
-  data: T
-  message?: string
-  success: boolean
+  data: T;
+  message?: string;
+  success: boolean;
 }
 
 // Create axios instance with better defaults
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5678/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api",
   timeout: 30000, // Increased timeout for larger operations
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
-})
+});
 
 // Token management with better error handling
 const getAuthToken = () => {
   try {
-    return useTokenStore.getState().token
+    return useTokenStore.getState().token;
   } catch (error) {
-    console.error('Failed to get auth token:', error)
-    return null
+    console.error("Failed to get auth token:", error);
+    return null;
   }
-}
+};
 
 // Request interceptor with improved auth handling
 api.interceptors.request.use(
   (config) => {
-    const token = getAuthToken()
+    const token = getAuthToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return config
+    return config;
   },
   (error: AxiosError) => {
-    console.error('Request interceptor error:', error)
-    return Promise.reject(error)
-  }
-)
+    console.error("Request interceptor error:", error);
+    return Promise.reject(error);
+  },
+);
 
 // Response interceptor with comprehensive error handling
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    const status = error.response?.status
-    
+    const status = error.response?.status;
+
     // Handle different error types
     if (status === 401) {
       // Clear token and let the app handle redirect through router
       try {
-        useTokenStore.getState().clearToken()
+        useTokenStore.getState().clearToken();
       } catch (e) {
-        console.error('Failed to clear token:', e)
+        console.error("Failed to clear token:", e);
       }
     }
-    
+
     // Create standardized error object
     const apiError: ApiError = {
-      message: (error.response?.data as any)?.message || error.message || 'Network error',
+      message:
+        (error.response?.data as any)?.message ||
+        error.message ||
+        "Network error",
       status,
       code: error.code,
-    }
-    
-    return Promise.reject(apiError)
-  }
-)
+    };
+
+    return Promise.reject(apiError);
+  },
+);
 
 // Utility function for sleep (useful for demos/testing)
 export const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms))
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 // Query key factory for consistent cache keys
 export const queryKeys = {
   // 系统级别
   system: {
-    all: ['system'] as const,
-    info: () => [...queryKeys.system.all, 'info'] as const,
+    all: ["system"] as const,
+    info: () => [...queryKeys.system.all, "info"] as const,
   },
-  
+
   // 服务器配置 (相对静态，长缓存)
   serverInfos: {
-    all: ['serverInfos'] as const,
-    lists: () => [...queryKeys.serverInfos.all, 'list'] as const,
-    detail: (id: string) => [...queryKeys.serverInfos.all, 'detail', id] as const,
+    all: ["serverInfos"] as const,
+    lists: () => [...queryKeys.serverInfos.all, "list"] as const,
+    detail: (id: string) =>
+      [...queryKeys.serverInfos.all, "detail", id] as const,
   },
-  
+
   // 服务器运行时 (动态，短缓存)
   serverRuntimes: {
-    all: ['serverRuntimes'] as const,
-    detail: (id: string) => [...queryKeys.serverRuntimes.all, 'detail', id] as const,
+    all: ["serverRuntimes"] as const,
+    detail: (id: string) =>
+      [...queryKeys.serverRuntimes.all, "detail", id] as const,
   },
-  
+
   // 服务器状态 (中等频率更新)
   serverStatuses: {
-    all: ['serverStatuses'] as const,
-    detail: (id: string) => [...queryKeys.serverStatuses.all, 'detail', id] as const,
+    all: ["serverStatuses"] as const,
+    detail: (id: string) =>
+      [...queryKeys.serverStatuses.all, "detail", id] as const,
   },
-  
+
   // 玩家相关 (仅健康状态时有效)
   players: {
-    all: ['players'] as const,
-    online: (id: string) => [...queryKeys.players.all, 'online', id] as const,
+    all: ["players"] as const,
+    online: (id: string) => [...queryKeys.players.all, "online", id] as const,
   },
-  
+
   // Compose文件
   compose: {
-    all: ['compose'] as const,
-    detail: (id: string) => [...queryKeys.compose.all, 'detail', id] as const,
-    file: (id: string) => [...queryKeys.compose.all, 'file', id] as const,
+    all: ["compose"] as const,
+    detail: (id: string) => [...queryKeys.compose.all, "detail", id] as const,
+    file: (id: string) => [...queryKeys.compose.all, "file", id] as const,
   },
-  
-  // 兼容现有代码
-  all: ['api'] as const,
-  servers: () => [...queryKeys.all, 'servers'] as const,
-  server: (id: string) => [...queryKeys.servers(), id] as const,
-  serverPlayers: (id: string) => [...queryKeys.server(id), 'players'] as const,
-  serverFiles: (id: string) => [...queryKeys.server(id), 'files'] as const,
-  overview: () => [...queryKeys.all, 'overview'] as const,
-  backups: () => [...queryKeys.all, 'backups'] as const,
-} as const
 
-export default api
+  // 兼容现有代码
+  all: ["api"] as const,
+  servers: () => [...queryKeys.all, "servers"] as const,
+  server: (id: string) => [...queryKeys.servers(), id] as const,
+  serverPlayers: (id: string) => [...queryKeys.server(id), "players"] as const,
+  serverFiles: (id: string) => [...queryKeys.server(id), "files"] as const,
+  overview: () => [...queryKeys.all, "overview"] as const,
+  backups: () => [...queryKeys.all, "backups"] as const,
+} as const;
+
+export default api;
