@@ -61,7 +61,7 @@ const ServerDetail: React.FC = () => {
           type="error"
           action={
             <Button size="small" onClick={() => navigate('/overview')}>
-              返回概览
+              返回总览
             </Button>
           }
         />
@@ -110,7 +110,7 @@ const ServerDetail: React.FC = () => {
             action={
               <Space direction="vertical">
                 <Button size="small" onClick={() => navigate('/overview')}>
-                  返回概览
+                  返回总览
                 </Button>
                 {isServerNotFound && availableServers.length > 0 && (
                   <Button size="small" type="primary" onClick={() => navigate(`/server/${availableServers[0].id}`)}>
@@ -181,7 +181,7 @@ const ServerDetail: React.FC = () => {
               重启
             </Button>
           </Tooltip>
-          <Button onClick={() => navigate('/overview')}>返回概览</Button>
+          <Button onClick={() => navigate('/overview')}>返回总览</Button>
         </Space>
       </div>
 
