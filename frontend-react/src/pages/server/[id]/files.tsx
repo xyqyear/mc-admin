@@ -8,12 +8,11 @@ import {
   Modal, 
   Form, 
   Select, 
-  message, 
+  App,
   Breadcrumb, 
   Typography, 
   Dropdown, 
   Tooltip,
-  Tag,
   Alert,
   Popconfirm,
   Upload
@@ -51,6 +50,7 @@ const ServerFiles: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [form] = Form.useForm()
+  const { message } = App.useApp()
   
   // Get server data for state tag
   const { useServerDetailData } = useServerDetailQueries(id || "")

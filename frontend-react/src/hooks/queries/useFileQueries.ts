@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { message } from 'antd'
+import { App } from 'antd'
 import { fileApi } from '../api/fileApi'
 import { queryKeys } from '@/utils/api'
 import type { CreateFileRequest, RenameFileRequest } from '@/types/Server'
@@ -25,6 +25,7 @@ export const useFileContent = (serverId: string | undefined, path: string | null
 
 export const useFileOperations = (serverId: string | undefined) => {
   const queryClient = useQueryClient()
+  const { message } = App.useApp()
 
   const invalidateFileList = () => {
     queryClient.invalidateQueries({
