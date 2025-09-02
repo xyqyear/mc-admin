@@ -125,6 +125,14 @@ export const queryKeys = {
     file: (id: string) => [...queryKeys.compose.all, "file", id] as const,
   },
 
+  // 文件管理
+  files: {
+    all: ["files"] as const,
+    lists: (serverId: string) => [...queryKeys.files.all, serverId] as const,
+    list: (serverId: string, path: string) => [...queryKeys.files.all, serverId, path] as const,
+    content: (serverId: string, path: string) => [...queryKeys.files.all, serverId, 'content', path] as const,
+  },
+
   // 兼容现有代码
   all: ["api"] as const,
   servers: () => [...queryKeys.all, "servers"] as const,

@@ -33,8 +33,28 @@ export interface FileItem {
   name: string
   path: string
   type: 'file' | 'directory'
-  size?: number
-  modifiedAt: string
-  isEditable?: boolean
-  isConfig?: boolean
+  size: number
+  modified_at: string
+  is_editable: boolean
+  is_config: boolean
+}
+
+export interface FileListResponse {
+  items: FileItem[]
+  current_path: string
+}
+
+export interface FileContent {
+  content: string
+}
+
+export interface CreateFileRequest {
+  name: string
+  type: 'file' | 'directory'
+  path: string
+}
+
+export interface RenameFileRequest {
+  old_path: string
+  new_name: string
 }

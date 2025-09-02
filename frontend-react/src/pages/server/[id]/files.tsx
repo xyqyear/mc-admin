@@ -15,7 +15,8 @@ import {
   Tooltip,
   Tag,
   Alert,
-  Popconfirm
+  Popconfirm,
+  Upload
 } from 'antd'
 import { 
   FolderOutlined, 
@@ -32,177 +33,72 @@ import {
   FilePdfOutlined,
   FileZipOutlined,
   MoreOutlined,
-  CopyOutlined,
-  CloudDownloadOutlined,
-  ArrowUpOutlined
+  ArrowUpOutlined,
+  UploadOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor } from '@/components/editors'
+import ServerStateTag from '@/components/overview/ServerStateTag'
+import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
+import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
 import type { FileItem } from '@/types/Server'
 
 const { Title } = Typography
 const { Option } = Select
-
-// Mock file data - expanded with nested structure
-const mockAllFiles: FileItem[] = [
-  // Root files
-  {
-    name: 'server.properties',
-    type: 'file',
-    size: 2048,
-    modifiedAt: '2025-08-27T10:00:00Z',
-    isConfig: true,
-    isEditable: true,
-    path: '/server.properties'
-  },
-  {
-    name: 'bukkit.yml',
-    type: 'file',
-    size: 1536,
-    modifiedAt: '2025-08-27T08:45:00Z',
-    isConfig: true,
-    isEditable: true,
-    path: '/bukkit.yml'
-  },
-  // Root directories
-  {
-    name: 'world',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-27T09:30:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/world'
-  },
-  {
-    name: 'plugins',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-27T09:15:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/plugins'
-  },
-  {
-    name: 'logs',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-27T08:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/logs'
-  },
-  // Files in /world
-  {
-    name: 'level.dat',
-    type: 'file',
-    size: 8192,
-    modifiedAt: '2025-08-27T07:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/world/level.dat'
-  },
-  {
-    name: 'region',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-27T06:30:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/world/region'
-  },
-  {
-    name: 'data',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-27T06:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/world/data'
-  },
-  // Files in /plugins
-  {
-    name: 'EssentialsX.jar',
-    type: 'file',
-    size: 1048576,
-    modifiedAt: '2025-08-26T15:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/plugins/EssentialsX.jar'
-  },
-  {
-    name: 'WorldEdit.jar',
-    type: 'file',
-    size: 2097152,
-    modifiedAt: '2025-08-26T14:30:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/plugins/WorldEdit.jar'
-  },
-  {
-    name: 'Essentials',
-    type: 'directory',
-    size: 0,
-    modifiedAt: '2025-08-26T14:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/plugins/Essentials'
-  },
-  // Files in /logs
-  {
-    name: 'latest.log',
-    type: 'file',
-    size: 65536,
-    modifiedAt: '2025-08-27T11:00:00Z',
-    isConfig: false,
-    isEditable: true,
-    path: '/logs/latest.log'
-  },
-  {
-    name: '2025-08-26-1.log.gz',
-    type: 'file',
-    size: 32768,
-    modifiedAt: '2025-08-26T23:59:59Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/logs/2025-08-26-1.log.gz'
-  },
-  // Files in nested directories
-  {
-    name: 'r.0.0.mca',
-    type: 'file',
-    size: 4194304,
-    modifiedAt: '2025-08-26T10:00:00Z',
-    isConfig: false,
-    isEditable: false,
-    path: '/world/region/r.0.0.mca'
-  },
-  {
-    name: 'config.yml',
-    type: 'file',
-    size: 1024,
-    modifiedAt: '2025-08-26T13:00:00Z',
-    isConfig: true,
-    isEditable: true,
-    path: '/plugins/Essentials/config.yml'
-  }
-]
 
 const ServerFiles: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const [form] = Form.useForm()
-  const [allFiles] = useState<FileItem[]>(mockAllFiles)
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false)
-  const [editingFile, setEditingFile] = useState<FileItem | null>(null)
-  const [fileContent, setFileContent] = useState('')
-
+  
+  // Get server data for state tag
+  const { useServerDetailData } = useServerDetailQueries(id || "")
+  const { serverInfo, status, hasServerInfo } = useServerDetailData()
+  
   // Get current path from URL search params
   const searchParams = new URLSearchParams(location.search)
   const currentPath = searchParams.get('path') || '/'
+  
+  // File management hooks
+  const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
+  const {
+    updateFile,
+    uploadFile,
+    createFile,
+    deleteFile,
+    renameFile,
+    downloadFile,
+    isUpdating,
+    isUploading,
+    isCreating,
+    isDeleting,
+    isRenaming
+  } = useFileOperations(id)
+
+  // Local state
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false)
+  const [isUploadModalVisible, setIsUploadModalVisible] = useState(false)
+  const [isRenameModalVisible, setIsRenameModalVisible] = useState(false)
+  const [editingFile, setEditingFile] = useState<FileItem | null>(null)
+  const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
+  const [fileContent, setFileContent] = useState('')
+  const [uploadFileList, setUploadFileList] = useState<any[]>([])
+
+  // Get file content for editing
+  const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
+    id, 
+    editingFile?.path || null
+  )
+
+  // Update file content when data is loaded
+  React.useEffect(() => {
+    if (fileContentData && editingFile) {
+      setFileContent(fileContentData.content)
+    }
+  }, [fileContentData, editingFile])
 
   // Update URL when path changes
   const updatePath = (newPath: string) => {
@@ -214,28 +110,9 @@ const ServerFiles: React.FC = () => {
     }
     const newSearch = newSearchParams.toString()
     const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
-    navigate(newUrl, { replace: false }) // Use push instead of replace to create history
+    navigate(newUrl, { replace: false })
     setSelectedFiles([]) // Clear selection when navigating
   }
-
-  // Filter files based on current path
-  const currentFiles = allFiles.filter(file => {
-    const filePath = file.path
-    const pathParts = filePath.split('/').filter(Boolean)
-    const currentParts = currentPath.split('/').filter(Boolean)
-    
-    // If we're at root, show only files and directories directly in root
-    if (currentPath === '/') {
-      return pathParts.length === 1
-    }
-    
-    // Check if file is in current directory
-    if (pathParts.length === currentParts.length + 1) {
-      return pathParts.slice(0, currentParts.length).join('/') === currentParts.join('/')
-    }
-    
-    return false
-  })
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '-'
@@ -245,8 +122,9 @@ const ServerFiles: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('zh-CN')
+  const formatDate = (timestamp: string) => {
+    const date = new Date(parseFloat(timestamp) * 1000)
+    return date.toLocaleString('zh-CN')
   }
 
   const getFileIcon = (file: FileItem) => {
@@ -282,14 +160,17 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleFileEdit = (file: FileItem) => {
+    if (!file.is_editable) {
+      message.warning('该文件不可编辑')
+      return
+    }
     setEditingFile(file)
-    setFileContent(`# 示例文件内容 - ${file.name}\n# 这里是模拟的文件内容\n\n`)
     setIsEditModalVisible(true)
   }
 
   const handleFileSave = () => {
-    if (editingFile) {
-      message.success(`文件 ${editingFile.name} 保存成功`)
+    if (editingFile && id) {
+      updateFile({ path: editingFile.path, content: fileContent })
       setIsEditModalVisible(false)
       setEditingFile(null)
       setFileContent('')
@@ -297,13 +178,40 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleFileDelete = (file: FileItem) => {
-    // In a real implementation, this would need to remove from allFiles
-    message.success(`文件 ${file.name} 删除成功`)
-    message.info('注意：这是演示版本，文件不会真正删除')
+    if (id) {
+      deleteFile(file.path)
+    }
   }
 
   const handleFileDownload = (file: FileItem) => {
-    message.info(`开始下载 ${file.name}`)
+    if (file.type === 'directory') {
+      message.info('文件夹下载暂不开放')
+      return
+    }
+    
+    if (id) {
+      downloadFile(file.path, file.name)
+    }
+  }
+
+  const handleFileRename = (file: FileItem) => {
+    setRenamingFile(file)
+    form.setFieldsValue({ newName: file.name })
+    setIsRenameModalVisible(true)
+  }
+
+  const handleRenameSubmit = () => {
+    if (!renamingFile || !id) return
+    
+    form.validateFields().then(values => {
+      renameFile({
+        old_path: renamingFile.path,
+        new_name: values.newName
+      })
+      setIsRenameModalVisible(false)
+      setRenamingFile(null)
+      form.resetFields()
+    })
   }
 
   const handleFolderOpen = (folder: FileItem) => {
@@ -317,12 +225,16 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleCreateFile = () => {
+    if (!id) return
+    
     form.validateFields().then(values => {
-      // In a real implementation, this would create a new file in allFiles
+      createFile({
+        name: values.fileName,
+        type: values.fileType,
+        path: currentPath
+      })
       setIsCreateModalVisible(false)
       form.resetFields()
-      message.success(`${values.fileType === 'file' ? '文件' : '文件夹'} ${values.fileName} 创建成功`)
-      message.info('注意：这是演示版本，文件不会真正创建')
     })
   }
 
@@ -336,26 +248,32 @@ const ServerFiles: React.FC = () => {
       title: '确认删除',
       content: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
       onOk: () => {
-        // In a real implementation, this would update allFiles
-        setSelectedFiles([])
-        message.success(`成功删除 ${selectedFiles.length} 个文件`)
-        message.info('注意：这是演示版本，文件不会真正删除')
+        if (id) {
+          selectedFiles.forEach(filePath => {
+            deleteFile(filePath)
+          })
+          setSelectedFiles([])
+        }
       }
     })
   }
 
+  const handleUpload = () => {
+    if (!id || uploadFileList.length === 0) return
+    
+    uploadFileList.forEach(fileItem => {
+      uploadFile({ path: currentPath, file: fileItem.originFileObj })
+    })
+    setUploadFileList([])
+    setIsUploadModalVisible(false)
+  }
+
   const moreActions = (file: FileItem) => [
     {
-      key: 'copy',
-      label: '复制',
-      icon: <CopyOutlined />,
-      onClick: () => message.info(`复制 ${file.name}`)
-    },
-    {
-      key: 'backup',
-      label: '备份',
-      icon: <CloudDownloadOutlined />,
-      onClick: () => message.info(`备份 ${file.name}`)
+      key: 'rename',
+      label: '重命名',
+      icon: <EditOutlined />,
+      onClick: () => handleFileRename(file)
     }
   ]
 
@@ -373,10 +291,6 @@ const ServerFiles: React.FC = () => {
           >
             {name}
           </span>
-          <div className="flex space-x-1">
-            {file.isConfig && <Tag color="blue">配置</Tag>}
-            {file.isEditable && <Tag color="green">可编辑</Tag>}
-          </div>
         </div>
       ),
     },
@@ -389,10 +303,10 @@ const ServerFiles: React.FC = () => {
     },
     {
       title: '修改时间',
-      dataIndex: 'lastModified',
-      key: 'lastModified',
+      dataIndex: 'modified_at',
+      key: 'modified_at',
       width: 180,
-      render: (date: string) => formatDate(date),
+      render: (timestamp: string) => formatDate(timestamp),
     },
     {
       title: '操作',
@@ -409,7 +323,7 @@ const ServerFiles: React.FC = () => {
               />
             </Tooltip>
           )}
-          {file.isEditable && (
+          {file.is_editable && (
             <Tooltip title="编辑文件">
               <Button
                 icon={<EditOutlined />}
@@ -455,10 +369,21 @@ const ServerFiles: React.FC = () => {
 
   const pathSegments = currentPath.split('/').filter(Boolean)
 
+  if (!hasServerInfo) {
+    return <div>加载中...</div>
+  }
+
+  if (filesError) {
+    return <div>加载文件列表失败: {filesError.message}</div>
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <Title level={2} className="!mb-0 !mt-0">{id} - 文件管理</Title>
+        <div className="flex items-center gap-3">
+          <Title level={2} className="!mb-0 !mt-0">{serverInfo?.name} - 文件管理</Title>
+          {status && <ServerStateTag state={status} />}
+        </div>
         <Space>
           {currentPath !== '/' && (
             <Button
@@ -472,6 +397,12 @@ const ServerFiles: React.FC = () => {
             </Button>
           )}
           <Button
+            icon={<UploadOutlined />}
+            onClick={() => setIsUploadModalVisible(true)}
+          >
+            上传文件
+          </Button>
+          <Button
             icon={<PlusOutlined />}
             onClick={() => setIsCreateModalVisible(true)}
           >
@@ -479,7 +410,8 @@ const ServerFiles: React.FC = () => {
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={() => message.info('刷新文件列表')}
+            onClick={() => refetch()}
+            loading={isLoadingFiles}
           >
             刷新
           </Button>
@@ -488,6 +420,7 @@ const ServerFiles: React.FC = () => {
               icon={<DeleteOutlined />}
               danger
               onClick={handleBulkDelete}
+              loading={isDeleting}
             >
               批量删除 ({selectedFiles.length})
             </Button>
@@ -525,18 +458,11 @@ const ServerFiles: React.FC = () => {
             ]}
           />
 
-          <Alert
-            message="文件管理说明"
-            description="您可以浏览、编辑和管理服务器文件。点击文件夹名称或文件夹图标可以进入目录。配置文件可以直接编辑，其他文件可以下载查看。"
-            type="info"
-            showIcon
-            closable
-          />
-
           <Table
-            dataSource={currentFiles}
+            dataSource={fileData?.items || []}
             columns={columns}
-            rowKey="name"
+            rowKey="path"
+            loading={isLoadingFiles}
             rowSelection={{
               selectedRowKeys: selectedFiles,
               onChange: (selectedRowKeys: React.Key[]) => {
@@ -563,6 +489,32 @@ const ServerFiles: React.FC = () => {
         </div>
       </Card>
 
+      {/* 上传文件模态框 */}
+      <Modal
+        title="上传文件"
+        open={isUploadModalVisible}
+        onOk={handleUpload}
+        onCancel={() => {
+          setIsUploadModalVisible(false)
+          setUploadFileList([])
+        }}
+        okText="上传"
+        cancelText="取消"
+        confirmLoading={isUploading}
+      >
+        <Upload
+          fileList={uploadFileList}
+          onChange={({ fileList }) => setUploadFileList(fileList)}
+          beforeUpload={() => false} // Prevent automatic upload
+          multiple
+        >
+          <Button icon={<UploadOutlined />}>选择文件</Button>
+        </Upload>
+        <div className="mt-2 text-gray-500">
+          文件将上传到当前目录: {currentPath}
+        </div>
+      </Modal>
+
       {/* 创建文件/文件夹模态框 */}
       <Modal
         title="新建文件/文件夹"
@@ -571,6 +523,7 @@ const ServerFiles: React.FC = () => {
         onCancel={() => setIsCreateModalVisible(false)}
         okText="创建"
         cancelText="取消"
+        confirmLoading={isCreating}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -597,15 +550,48 @@ const ServerFiles: React.FC = () => {
         </Form>
       </Modal>
 
+      {/* 重命名模态框 */}
+      <Modal
+        title="重命名"
+        open={isRenameModalVisible}
+        onOk={handleRenameSubmit}
+        onCancel={() => {
+          setIsRenameModalVisible(false)
+          setRenamingFile(null)
+          form.resetFields()
+        }}
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={isRenaming}
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item
+            name="newName"
+            label="新名称"
+            rules={[
+              { required: true, message: '请输入新名称' },
+              { pattern: /^[^<>:"/\\|?*]+$/, message: '名称包含非法字符' }
+            ]}
+          >
+            <Input placeholder="输入新名称" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* 文件编辑模态框 */}
       <Modal
         title={`编辑文件: ${editingFile?.name}`}
         open={isEditModalVisible}
         onOk={handleFileSave}
-        onCancel={() => setIsEditModalVisible(false)}
+        onCancel={() => {
+          setIsEditModalVisible(false)
+          setEditingFile(null)
+          setFileContent('')
+        }}
         width={800}
         okText="保存"
         cancelText="取消"
+        confirmLoading={isUpdating}
       >
         <div className="space-y-4">
           <Alert
@@ -614,16 +600,30 @@ const ServerFiles: React.FC = () => {
             type="warning"
             showIcon
           />
-          <SimpleEditor
-            height="500px"
-            language="text"
-            value={fileContent}
-            onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
-            theme="vs-light"
-          />
+          {isLoadingContent ? (
+            <div className="text-center py-8">加载文件内容中...</div>
+          ) : (
+            <SimpleEditor
+              height="500px"
+              language="text"
+              value={fileContent}
+              onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
+              theme="vs-light"
+            />
+          )}
         </div>
       </Modal>
+
+      {/* 文件管理说明 */}
+      <Alert
+        message="文件管理说明"
+        description="您可以浏览、编辑和管理服务器文件。点击文件夹名称或文件夹图标可以进入目录。配置文件可以直接编辑，其他文件可以下载查看。上传的文件将保存到当前目录中。"
+        type="info"
+        showIcon
+        closable
+      />
     </div>
   )
 }
+
 export default ServerFiles
