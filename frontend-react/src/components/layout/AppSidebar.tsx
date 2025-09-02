@@ -15,6 +15,7 @@ import {
   SettingOutlined,
   FolderOutlined,
   LogoutOutlined,
+  CodeOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
@@ -85,6 +86,11 @@ const AppSidebar: React.FC = () => {
               title: '文件',
               icon: <FolderOutlined />,
               path: `/server/${server.id}/files`,
+            },
+            {
+              title: '控制台',
+              icon: <CodeOutlined />,
+              path: `/server/${server.id}/console`,
             },
           ],
         })),

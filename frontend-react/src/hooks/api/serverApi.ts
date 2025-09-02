@@ -164,12 +164,10 @@ export const serverApi = {
     } as ComposeConfigRequest);
   },
 
-  // RCON命令API (保持现有接口，但需要后端支持)
-  sendRconCommand: async (_id: string, _command: string): Promise<string> => {
-    // TODO: Implement when backend adds RCON endpoint
-    // const res = await api.post<{result: string}>(`/servers/${id}/rcon`, { command })
-    // return res.data.result
-    throw new Error("RCON API not yet implemented in backend");
+  // RCON命令API
+  sendRconCommand: async (id: string, command: string): Promise<string> => {
+    const res = await api.post<{result: string}>(`/servers/${id}/rcon`, { command })
+    return res.data.result
   },
 
   // 批量获取服务器状态 (优化的API，减少网络请求)

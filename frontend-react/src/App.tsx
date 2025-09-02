@@ -18,6 +18,7 @@ const ServerDetail = React.lazy(() => import('./pages/server/[id]'))
 const ServerPlayers = React.lazy(() => import('./pages/server/[id]/players'))
 const ServerFiles = React.lazy(() => import('./pages/server/[id]/files'))
 const ServerCompose = React.lazy(() => import('./pages/server/[id]/compose'))
+const ServerConsole = React.lazy(() => import('./pages/server/[id]/console'))
 
 
 
@@ -85,6 +86,7 @@ function App() {
             <Route path=":id/players" element={<ServerPlayers />} />
             <Route path=":id/files" element={<ServerFiles />} />
             <Route path=":id/compose" element={<ServerCompose />} />
+            <Route path=":id/console" element={<ServerConsole />} />
           </Route>
         </Route>
 

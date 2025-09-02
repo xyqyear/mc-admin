@@ -19,6 +19,7 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
@@ -29,7 +30,7 @@ const ServerCompose: React.FC = () => {
   const navigate = useNavigate()
 
   // 使用新的数据管理系统
-  const { useServerComposeData } = useServerDetailQueries(id || '')
+  const { useServerComposeData, useServerDetailData } = useServerDetailQueries(id || '')
   const { useUpdateCompose } = useServerMutations()
 
   // 获取服务器详情数据和compose文件
@@ -42,6 +43,9 @@ const ServerCompose: React.FC = () => {
     hasServerInfo,
     composeQuery
   } = useServerComposeData()
+
+  // 获取服务器状态数据
+  const { status } = useServerDetailData()
 
   // Compose更新mutation
   const updateComposeMutation = useUpdateCompose(id || '')
@@ -237,7 +241,10 @@ const ServerCompose: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 设置</Title>
+        <div className="flex items-center gap-3">
+          <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 设置</Title>
+          {status && <ServerStateTag state={status} />}
+        </div>
         <Space>
           {showUnsavedChanges && (
             <Alert
