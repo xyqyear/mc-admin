@@ -227,6 +227,63 @@ class MCInstance:
     async def get_logs_from_docker(self, tail: int = 1000) -> str:
         return await self._compose_manager.logs(tail)
 
+    @staticmethod
+    def filter_rcon_logs(content: str) -> str:
+        """
+        Filter out RCON-related log lines from log content.
+        
+        Args:
+            content: Raw log content
+            
+        Returns:
+            Log content with RCON lines removed (empty lines are also removed for cleaner output)
+        """
+        if not content:
+            return content
+        
+        lines = content.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            # Filter out RCON Client and RCON Listener log lines
+            if '[RCON Client' not in line and '[RCON Listener' not in line:
+                filtered_lines.append(line)
+        
+        # Join and then split again to remove any empty lines that result from filtering
+        result = '\n'.join(filtered_lines)
+        # Remove any sequences of multiple newlines, keeping only single newlines
+        import re
+        result = re.sub(r'\n\s*\n', '\n', result)
+        return result
+
+    async def get_logs_from_file_filtered(self, start: int = 0, filter_rcon: bool = True) -> LogType:
+        """
+        Get logs from file with optional RCON filtering and 1M character limit.
+        
+        Args:
+            start: Starting position for reading logs
+            filter_rcon: Whether to filter out RCON-related logs
+            
+        Returns:
+            LogType with filtered content, truncated to 1M characters if needed
+        """
+        # Get the raw logs first
+        raw_logs = await self.get_logs_from_file(start)
+        content = raw_logs.content
+        
+        # Apply RCON filtering if requested
+        if filter_rcon:
+            content = self.filter_rcon_logs(content)
+        
+        # If content is larger than 1M characters after filtering, truncate from the end
+        max_chars = 1024 * 1024  # 1M characters
+        
+        if len(content) > max_chars:
+            # Truncate from the end (keep the most recent logs)
+            content = content[-max_chars:]
+        
+        return LogType(content=content, pointer=raw_logs.pointer)
+
     async def create(self, compose_yaml: str) -> None:
         """
         create a new directory for the server and write the compose file to it

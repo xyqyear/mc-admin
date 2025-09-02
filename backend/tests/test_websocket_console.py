@@ -76,6 +76,47 @@ class MockMCInstance:
         from app.minecraft import MCServerStatus
         return MCServerStatus.HEALTHY
 
+    @staticmethod
+    def filter_rcon_logs(content: str) -> str:
+        """Mock method for RCON filtering."""
+        if not content:
+            return content
+        
+        lines = content.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            # Filter out RCON Client and RCON Listener log lines
+            if '[RCON Client' not in line and '[RCON Listener' not in line:
+                filtered_lines.append(line)
+        
+        # Remove empty lines for cleaner output
+        import re
+        result = '\n'.join(filtered_lines)
+        result = re.sub(r'\n\s*\n', '\n', result)
+        return result
+
+    async def get_logs_from_file_filtered(self, start: int = 0, filter_rcon: bool = True):
+        """Mock method to get filtered logs from file."""
+        from app.minecraft import LogType
+        
+        # Get raw logs first
+        raw_logs = await self.get_logs_from_file(start)
+        content = raw_logs.content
+        
+        # Apply RCON filtering if requested
+        if filter_rcon:
+            content = self.filter_rcon_logs(content)
+        
+        # Simulate 1M character truncation
+        max_chars = 1024 * 1024  # 1M characters
+        
+        if len(content) > max_chars:
+            # Truncate from the end (keep the most recent logs)
+            content = content[-max_chars:]
+        
+        return LogType(content=content, pointer=raw_logs.pointer)
+
     def setup_test_structure(self):
         """Create the test directory structure and initial log file."""
         # Create directories
@@ -193,7 +234,7 @@ def test_websocket_console_file_reading_and_streaming():
 
 def test_websocket_console_large_file_initial_limit():
     """
-    Test that the WebSocket console respects the 1MB initial file limit.
+    Test that the WebSocket console respects the 1M character initial file limit.
     """
     client = TestClient(app)
     
@@ -205,9 +246,9 @@ def test_websocket_console_large_file_initial_limit():
         mock_instance = MockMCInstance(server_id, temp_path)
         mock_instance.logs_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create a large log file (larger than 1MB)
+        # Create a large log file (larger than 1M characters)
         large_content_line = "[15:30:01] [Server thread/INFO]: This is a test line that will be repeated many times to create a large file\n"
-        lines_needed = (1024 * 1024 + 1000) // len(large_content_line.encode("utf-8")) + 100  # Ensure > 1MB
+        lines_needed = (1024 * 1024 + 1000) // len(large_content_line) + 100  # Ensure > 1M characters
         
         large_content = large_content_line * lines_needed
         
@@ -215,9 +256,8 @@ def test_websocket_console_large_file_initial_limit():
         with open(mock_instance.log_file, "w", encoding="utf-8") as f:
             f.write(large_content)
         
-        # Verify file is actually larger than 1MB
-        file_size = mock_instance.log_file.stat().st_size
-        assert file_size > 1024 * 1024, f"Test file should be larger than 1MB, got {file_size} bytes"
+        # Verify file is actually larger than 1M characters
+        assert len(large_content) > 1024 * 1024, f"Test file should be larger than 1M characters, got {len(large_content)} characters"
         
         # Mock the mc_manager and authentication
         with patch("app.routers.servers.mc_manager") as mock_router_manager, \
@@ -246,14 +286,14 @@ def test_websocket_console_large_file_initial_limit():
                 # Verify we received some content but not the entire large file
                 assert len(total_content_received) > 0, "Should have received some log content"
                 
-                # The received content should be approximately 1MB or less (allowing for some overhead)
-                # Since we're sending the last 1MB, we should get content from the end of the file
-                received_bytes = len(total_content_received.encode("utf-8"))
-                assert received_bytes <= 1024 * 1024 + 10000, f"Should not receive more than ~1MB, got {received_bytes} bytes"  # Allow some overhead
+                # The received content should be approximately 1M characters or less
+                # Since we're sending the last 1M characters, we should get content from the end of the file
+                received_chars = len(total_content_received)
+                assert received_chars <= 1024 * 1024, f"Should not receive more than 1M characters, got {received_chars} characters"
                 
-                # The content should be from the end of the file (last 1MB)
+                # The content should be from the end of the file (last 1M characters)
                 # Since all lines are identical, we can just verify we got reasonable amount of content
-                assert received_bytes > 500000, f"Should receive substantial content (>500KB), got {received_bytes} bytes"
+                assert received_chars > 500000, f"Should receive substantial content (>500K chars), got {received_chars} characters"
 
 
 if __name__ == "__main__":

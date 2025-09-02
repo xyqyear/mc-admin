@@ -23,11 +23,12 @@ const { TextArea } = Input
 
 // WebSocket消息类型
 interface WebSocketMessage {
-  type: 'log' | 'command_result' | 'error' | 'info'
+  type: 'log' | 'command_result' | 'error' | 'info' | 'filter_updated' | 'logs_refreshed'
   content?: string
   command?: string
   result?: string
   message?: string
+  filter_rcon?: boolean
 }
 
 const ServerConsole: React.FC = () => {
@@ -52,24 +53,29 @@ const ServerConsole: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [filterRcon, setFilterRcon] = useState(true) // 默认开启RCON过滤
-  const [rawLogs, setRawLogs] = useState<string>('') // 保存原始日志用于重新过滤
   const [autoScroll, setAutoScroll] = useState(true) // 自动滚动开关
   
   // Refs
   const wsRef = useRef<WebSocket | null>(null)
   const logsRef = useRef<any>(null) // 使用any类型避免TypeScript错误
   
-  // 过滤 RCON 日志的函数
-  const filterRconLogs = (content: string): string => {
-    if (!filterRcon) return content
-    
-    return content
-      .split('\n')
-      .filter(line => {
-        const trimmedLine = line.trim()
-        return !trimmedLine.includes('[RCON Client') && !trimmedLine.includes('[RCON Listener')
-      })
-      .join('\n')
+  // 发送过滤设置到后端的函数
+  const sendFilterUpdate = (newFilterRcon: boolean) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_filter',
+        filter_rcon: newFilterRcon
+      }))
+    }
+  }
+  
+  // 请求刷新日志的函数
+  const requestLogRefresh = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'refresh_logs'
+      }))
+    }
   }
   
   // WebSocket连接
@@ -99,6 +105,11 @@ const ServerConsole: React.FC = () => {
         setIsConnected(true)
         setIsConnecting(false)
         log.log('WebSocket connected to server console, state updated')
+        
+        // Send initial filter setting to backend
+        setTimeout(() => {
+          sendFilterUpdate(filterRcon)
+        }, 100)
       }
       
       wsRef.current.onmessage = (event) => {
@@ -112,18 +123,28 @@ const ServerConsole: React.FC = () => {
             case 'log':
               if (message.content) {
                 log.log('Adding log content to display')
-                
-                setRawLogs(prev => prev + message.content)
-                
-                // 更新过滤后的显示日志
-                const filteredContent = filterRconLogs(message.content)
-                if (filteredContent.trim()) { // 只有过滤后还有内容才添加到显示
-                  setLogs(prev => {
-                    const newLogs = prev + filteredContent
-                    log.log('New logs length:', newLogs.length)
-                    return newLogs
-                  })
-                }
+                // 后端已经处理了过滤，直接添加到显示
+                setLogs(prev => {
+                  const newLogs = prev + message.content
+                  log.log('New logs length:', newLogs.length)
+                  return newLogs
+                })
+              }
+              break
+              
+            case 'logs_refreshed':
+              // 刷新日志时替换整个日志内容
+              if (message.content !== undefined) {
+                log.log('Refreshing logs with filtered content')
+                setLogs(message.content)
+                setAutoScroll(true) // 刷新后自动滚动到底部
+              }
+              break
+              
+            case 'filter_updated':
+              // 过滤器更新确认
+              if (message.filter_rcon !== undefined) {
+                log.log('Filter updated confirmation received:', message.filter_rcon)
               }
               break
               
@@ -229,14 +250,17 @@ const ServerConsole: React.FC = () => {
     }
   }, [id, hasServerInfo, token])
 
-  // 当过滤开关变化时重新过滤日志
+  // 当过滤开关变化时，发送设置到后端并请求刷新日志
   useEffect(() => {
-    if (rawLogs) {
-      const filteredLogs = filterRconLogs(rawLogs)
-      setLogs(filteredLogs)
-      log.log('Logs re-filtered on toggle change', { filterRcon, rawLogsLength: rawLogs.length, filteredLogsLength: filteredLogs.length })
+    if (isConnected) {
+      log.log('Filter setting changed, updating backend and refreshing logs', { filterRcon })
+      sendFilterUpdate(filterRcon)
+      // 短暂延迟后请求刷新，确保后端已处理过滤设置
+      setTimeout(() => {
+        requestLogRefresh()
+      }, 100)
     }
-  }, [filterRcon])
+  }, [filterRcon, isConnected])
 
   // 当日志内容更新时，如果应该自动滚动，则滚动到底部
   useEffect(() => {

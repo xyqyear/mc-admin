@@ -30,15 +30,22 @@ class LogFileHandler(FileSystemEventHandler):
             asyncio.run(self._send_new_logs())
 
     async def _send_new_logs(self):
-        """Send new log content to WebSocket client."""
+        """Send new log content to WebSocket client with RCON filtering."""
         try:
             logs = await self.handler.instance.get_logs_from_file(
                 self.handler.file_pointer["position"]
             )
             if logs.content.strip():
-                await self.handler.websocket.send_text(
-                    json.dumps({"type": "log", "content": logs.content})
-                )
+                # Apply RCON filtering to new content
+                content = logs.content
+                if self.handler.filter_rcon:
+                    content = self.handler.instance.filter_rcon_logs(content)
+                
+                # Only send if there's content after filtering
+                if content.strip():
+                    await self.handler.websocket.send_text(
+                        json.dumps({"type": "log", "content": content})
+                    )
                 self.handler.file_pointer["position"] = logs.pointer
         except Exception:
             pass
@@ -52,6 +59,7 @@ class ConsoleWebSocketHandler:
         self.instance = instance
         self.file_pointer: Dict[str, Any] = {"position": 0}
         self.observer: Optional[BaseObserver] = None
+        self.filter_rcon: bool = True  # Default to filtering RCON logs
 
     async def handle_connection(self, server_id: str):
         """Handle the WebSocket connection lifecycle."""
@@ -78,12 +86,14 @@ class ConsoleWebSocketHandler:
         self.observer = self._setup_file_monitoring(log_path)
 
     async def _send_initial_logs(self, log_path: Path):
-        """Send initial log content."""
+        """Send initial log content with RCON filtering."""
         try:
             if log_path.exists():
                 file_size = log_path.stat().st_size
-                initial_logs = await self.instance.get_logs_from_file(
-                    -1024 * 1024 if file_size > 1024 * 1024 else 0
+                # Read last 1M characters worth of bytes (approximate)
+                start_position = -1024 * 1024 if file_size > 1024 * 1024 else 0
+                initial_logs = await self.instance.get_logs_from_file_filtered(
+                    start_position, filter_rcon=self.filter_rcon
                 )
                 if initial_logs.content.strip():
                     await self.websocket.send_text(
@@ -125,8 +135,14 @@ class ConsoleWebSocketHandler:
         """Process a single message."""
         try:
             data = json.loads(message)
-            if data.get("type") == "command":
+            message_type = data.get("type")
+            
+            if message_type == "command":
                 await self._handle_command(data)
+            elif message_type == "set_filter":
+                await self._handle_filter_change(data)
+            elif message_type == "refresh_logs":
+                await self._handle_log_refresh(data)
         except json.JSONDecodeError:
             await self._send_error("Invalid JSON format")
 
@@ -151,6 +167,66 @@ class ConsoleWebSocketHandler:
                 )
         except Exception as e:
             await self._send_error(f"Failed to send command: {str(e)}")
+
+    async def _handle_filter_change(self, data: dict):
+        """Handle RCON filter toggle."""
+        try:
+            filter_rcon = data.get("filter_rcon", True)
+            self.filter_rcon = bool(filter_rcon)
+            
+            # Send confirmation
+            await self.websocket.send_text(
+                json.dumps({
+                    "type": "filter_updated",
+                    "filter_rcon": self.filter_rcon
+                })
+            )
+        except Exception as e:
+            await self._send_error(f"Failed to update filter: {str(e)}")
+
+    async def _handle_log_refresh(self, data: dict):
+        """Handle log refresh request with current filter settings."""
+        try:
+            log_path = self.instance._get_log_path()
+            
+            if not log_path.exists():
+                await self.websocket.send_text(
+                    json.dumps({
+                        "type": "info",
+                        "message": "Log file not found. Logs will appear when the server starts generating them.",
+                    })
+                )
+                return
+            
+            # Get fresh logs with current filter settings
+            file_size = log_path.stat().st_size
+            # Read last 1M characters worth of bytes (approximate)
+            start_position = -1024 * 1024 if file_size > 1024 * 1024 else 0
+            fresh_logs = await self.instance.get_logs_from_file_filtered(
+                start_position, filter_rcon=self.filter_rcon
+            )
+            
+            # Send fresh logs
+            if fresh_logs.content.strip():
+                await self.websocket.send_text(
+                    json.dumps({
+                        "type": "logs_refreshed", 
+                        "content": fresh_logs.content
+                    })
+                )
+            else:
+                await self.websocket.send_text(
+                    json.dumps({
+                        "type": "logs_refreshed", 
+                        "content": ""
+                    })
+                )
+                
+            # Update file pointer to current end
+            self.file_pointer["position"] = await self.instance.get_log_file_end_pointer()
+            
+        except Exception as e:
+            await self._send_error(f"Failed to refresh logs: {str(e)}")
 
     async def _send_error(self, message: str):
         """Send error message."""
