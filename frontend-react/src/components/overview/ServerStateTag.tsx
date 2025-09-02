@@ -22,50 +22,50 @@ const ServerStateTag: React.FC<ServerStateTagProps> = ({ state }) => {
         return {
           color: 'success',
           icon: <CheckCircleOutlined />,
-          text: 'Healthy',
-          description: 'Server is running and responding normally'
+          text: '健康',
+          description: '服务器正在运行且响应正常'
         }
       case 'RUNNING':
         return {
           color: 'processing',
           icon: <PlayCircleOutlined />,
-          text: 'Running',
-          description: 'Server is running but health status unknown'
+          text: '运行中',
+          description: '服务器正在运行但健康状态未知'
         }
       case 'STARTING':
         return {
-          color: 'warning',
+          color: 'processing',
           icon: <LoadingOutlined spin />,
-          text: 'Starting',
-          description: 'Server is starting up'
+          text: '启动中',
+          description: '服务器正在启动'
         }
       case 'CREATED':
         return {
-          color: 'default',
+          color: 'error',
           icon: <PauseCircleOutlined />,
-          text: 'Created',
-          description: 'Container created but not running'
+          text: '已停止',
+          description: '容器已创建但未运行'
         }
       case 'EXISTS':
         return {
-          color: 'warning',
+          color: 'default',
           icon: <ExclamationCircleOutlined />,
-          text: 'Exists',
-          description: 'Server files exist but no container'
+          text: '未创建',
+          description: '服务器文件存在但无容器'
         }
       case 'REMOVED':
         return {
-          color: 'error',
+          color: 'red',
           icon: <MinusCircleOutlined />,
-          text: 'Removed',
-          description: 'Server has been removed'
+          text: '已删除',
+          description: '服务器已被删除'
         }
       default:
         return {
           color: 'default',
           icon: <ToolOutlined />,
-          text: 'Unknown',
-          description: 'Unknown server status'
+          text: '未知',
+          description: '未知服务器状态'
         }
     }
   }
