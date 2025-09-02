@@ -269,6 +269,15 @@ const ServerFiles: React.FC = () => {
     setIsUploadModalVisible(false)
   }
 
+  const handleRefresh = async () => {
+    try {
+      await refetch()
+      message.success('刷新成功')
+    } catch (error) {
+      message.error('刷新失败')
+    }
+  }
+
   const moreActions = (file: FileItem) => [
     {
       key: 'rename',
@@ -411,7 +420,7 @@ const ServerFiles: React.FC = () => {
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={() => refetch()}
+            onClick={handleRefresh}
             loading={isLoadingFiles}
           >
             刷新
