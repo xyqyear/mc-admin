@@ -49,7 +49,8 @@ const ServerFiles: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const [form] = Form.useForm()
+  const [createForm] = Form.useForm()
+  const [renameForm] = Form.useForm()
   const { message } = App.useApp()
   
   // Get server data for state tag
@@ -196,21 +197,21 @@ const ServerFiles: React.FC = () => {
 
   const handleFileRename = (file: FileItem) => {
     setRenamingFile(file)
-    form.setFieldsValue({ newName: file.name })
+    renameForm.setFieldsValue({ newName: file.name })
     setIsRenameModalVisible(true)
   }
 
   const handleRenameSubmit = () => {
     if (!renamingFile || !id) return
     
-    form.validateFields().then(values => {
+    renameForm.validateFields().then(values => {
       renameFile({
         old_path: renamingFile.path,
         new_name: values.newName
       })
       setIsRenameModalVisible(false)
       setRenamingFile(null)
-      form.resetFields()
+      renameForm.resetFields()
     })
   }
 
@@ -227,14 +228,14 @@ const ServerFiles: React.FC = () => {
   const handleCreateFile = () => {
     if (!id) return
     
-    form.validateFields().then(values => {
+    createForm.validateFields().then(values => {
       createFile({
         name: values.fileName,
         type: values.fileType,
         path: currentPath
       })
       setIsCreateModalVisible(false)
-      form.resetFields()
+      createForm.resetFields()
     })
   }
 
@@ -525,7 +526,7 @@ const ServerFiles: React.FC = () => {
         cancelText="取消"
         confirmLoading={isCreating}
       >
-        <Form form={form} layout="vertical">
+        <Form form={createForm} layout="vertical">
           <Form.Item
             name="fileType"
             label="类型"
@@ -558,13 +559,13 @@ const ServerFiles: React.FC = () => {
         onCancel={() => {
           setIsRenameModalVisible(false)
           setRenamingFile(null)
-          form.resetFields()
+          renameForm.resetFields()
         }}
         okText="确定"
         cancelText="取消"
         confirmLoading={isRenaming}
       >
-        <Form form={form} layout="vertical">
+        <Form form={renameForm} layout="vertical">
           <Form.Item
             name="newName"
             label="新名称"

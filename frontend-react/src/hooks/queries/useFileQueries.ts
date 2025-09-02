@@ -28,8 +28,9 @@ export const useFileOperations = (serverId: string | undefined) => {
   const { message } = App.useApp()
 
   const invalidateFileList = () => {
+    // Invalidate all file-related queries for this server
     queryClient.invalidateQueries({
-      queryKey: queryKeys.files.lists(serverId || "")
+      queryKey: [...queryKeys.files.all, serverId || ""]
     })
   }
 
