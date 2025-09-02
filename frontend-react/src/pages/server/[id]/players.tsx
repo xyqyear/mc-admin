@@ -186,9 +186,6 @@ const ServerPlayers: React.FC = () => {
           <div className="flex items-center gap-4 text-sm text-gray-600">
             <span>在线玩家: {playersData.length}</span>
             <span>服务器状态: {isHealthy ? '健康' : '未运行'}</span>
-            {!isHealthy && (
-              <span className="text-orange-600">注意: 服务器未运行时无法执行玩家操作</span>
-            )}
           </div>
         </div>
         
