@@ -100,33 +100,6 @@ Each component has dedicated development instructions:
 - **Real-time Updates**: WebSocket integration for console and live data
 - **Error Boundaries**: Graceful error handling with fallback components
 
-## Actual API Endpoints (From Codebase Analysis)
-
-### Authentication (`/api/auth/`)
-- `POST /auth/register` - User registration (requires OWNER role)
-- `POST /auth/token` - OAuth2 password flow login
-- `POST /auth/verifyCode` - WebSocket login code verification (master token required)
-- `WebSocket /auth/code` - Rotating 8-digit login code distribution
-
-### User Management (`/api/user/`)
-- `GET /user/me` - Get current user profile (JWT required)
-
-### System Monitoring (`/api/system/`)
-- `GET /system/info` - System metrics (CPU, memory, disk for server/backup paths)
-
-### Server Management (`/api/servers/`)
-- `GET /servers/` - List all servers with status, runtime data, and metrics
-- `GET /servers/{id}` - Detailed server configuration and info
-- `GET /servers/{id}/status` - Current server status
-- `GET /servers/{id}/resources` - Real-time CPU/memory usage (cgroup v2)
-- `GET /servers/{id}/players` - Online players list (for healthy servers)
-- `GET /servers/{id}/iostats` - Comprehensive I/O statistics (disk + network)
-- `GET /servers/{id}/compose` - Get Docker Compose configuration
-- `POST /servers/{id}/compose` - Update Docker Compose configuration
-- `POST /servers/{id}/operations` - Server operations (start/stop/restart/up/down/remove)
-- `POST /servers/{id}/rcon` - Send RCON commands to running servers
-- `WebSocket /servers/{id}/console` - Real-time console log streaming + command execution
-
 ## External Documentation
 
 **IMPORTANT**: Always use Context7 for external library documentation before coding with unfamiliar APIs.
@@ -152,25 +125,6 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 - **WebSocket Auto-Derivation**: WS endpoints automatically derived from HTTP base URL
 - **CORS Configuration**: Backend configured for localhost:3000 development
 - **Consistent Async Patterns**: Full async/await throughout both components
-
-## Development Commands Quick Reference
-
-### Backend
-```bash
-poetry install                           # Install dependencies
-poetry shell                            # Activate virtual environment
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload  # Dev server
-poetry run pytest                       # Run tests
-poetry run black .                      # Format code
-```
-
-### Frontend
-```bash
-pnpm install        # Install dependencies (preferred)
-pnpm build         # TypeScript check + Vite bundle
-pnpm lint          # ESLint with TypeScript/React plugins
-pnpm preview       # Preview production build
-```
 
 ## Maintenance Instructions
 

@@ -69,20 +69,20 @@ poetry run python -m app.main
 
 ### Testing and Quality
 ```bash
-poetry run pytest           # Run tests
+poetry run pytest           # Run all tests
 poetry run black .          # Format code
 
 # Run specific test categories
-poetry run pytest app/minecraft/tests/ -v                    # Minecraft module tests
-poetry run pytest app/minecraft/tests/test_monitoring.py -v  # Resource monitoring tests
-poetry run pytest -k "not test_integration" -v              # Skip slow integration tests
+poetry run pytest tests/ -v                    # All tests
+poetry run pytest tests/test_monitoring.py -v  # Resource monitoring tests
+poetry run pytest -k "not test_integration" -v # Skip slow integration tests
 ```
 
 ## API Architecture
 
-### Project Structure
+### Project Structure (Actual File Layout)
 ```
-app/
+app/                        # Main application package
 ├── main.py                 # FastAPI app entrypoint, CORS, router mounting, lifespan management
 ├── config.py               # Settings model with TOML + env loading (pydantic-settings)
 ├── models.py               # SQLAlchemy + Pydantic models with async support
@@ -90,12 +90,17 @@ app/
 ├── logger.py               # Rotating file + stdout logging configuration
 ├── __main__.py             # Module execution entry point
 ├── db/
+│   ├── __init__.py
 │   ├── database.py         # Async engine, session factory, init_db()
-│   └── crud/user.py        # User CRUD operations with SQLAlchemy 2.0 async syntax
+│   └── crud/
+│       ├── __init__.py
+│       └── user.py         # User CRUD operations with SQLAlchemy 2.0 async syntax
 ├── auth/
+│   ├── __init__.py
 │   ├── jwt_utils.py        # Password hashing (bcrypt), JWT create/verify
 │   └── login_code.py       # WebSocket rotating 8-digit codes + master token verification
 ├── routers/
+│   ├── __init__.py
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
 │   ├── user.py             # User profile endpoints
 │   ├── system.py           # System metrics endpoints (psutil integration)
@@ -104,6 +109,7 @@ app/
 │   ├── __init__.py         # WebSocket module exports
 │   └── console.py          # Real-time console streaming with Watchdog file monitoring
 ├── system/
+│   ├── __init__.py
 │   └── resources.py        # psutil wrappers for system resource information
 └── minecraft/              # **FULLY INTEGRATED** Minecraft Docker Management Module
     ├── __init__.py         # Public API exports (DockerMCManager, MCInstance, etc.)
@@ -111,21 +117,25 @@ app/
     ├── instance.py         # MCInstance + individual server lifecycle management
     ├── compose.py          # Minecraft-specific compose file handling (MCComposeFile)
     ├── utils.py            # Async utility functions for file operations
-    ├── docker/             # Docker integration submodule
-    │   ├── __init__.py     # Docker module exports
-    │   ├── manager.py      # ComposeManager + DockerManager classes
-    │   ├── compose_file.py # Generic ComposeFile Pydantic models with full YAML support
-    │   ├── cgroup.py       # Container resource monitoring via **direct cgroup v2 filesystem**
-    │   └── network.py      # Network statistics collection via /proc/{pid}/net/dev
-    └── tests/              # Comprehensive test suite with real Docker integration
-        ├── test_instance.py     # MCInstance functionality with container tests
-        ├── test_compose_file.py # Compose file parsing and validation
-        ├── test_compose.py      # MCComposeFile functionality
-        ├── test_monitoring.py   # Resource monitoring with real containers
-        ├── test_integration.py  # Full integration tests (marked slow)
-        └── fixtures/            # Test utilities and fixtures
-            ├── test_utils.py    # Test helper functions and cleanup utilities
-            └── mcc_docker_wrapper.py # Minecraft Console Client wrapper for testing
+    └── docker/             # Docker integration submodule
+        ├── __init__.py     # Docker module exports
+        ├── manager.py      # ComposeManager + DockerManager classes
+        ├── compose_file.py # Generic ComposeFile Pydantic models with full YAML support
+        ├── cgroup.py       # Container resource monitoring via **direct cgroup v2 filesystem**
+        └── network.py      # Network statistics collection via /proc/{pid}/net/dev
+
+tests/                      # Test suite (separate from app package)
+├── __init__.py
+├── test_compose.py         # Compose file parsing and validation tests
+├── test_instance.py        # MCInstance functionality with container tests
+├── test_integration.py     # Full integration tests (marked slow)
+├── test_monitoring.py      # Resource monitoring with real containers
+├── test_compose_file.py    # ComposeFile Pydantic model tests
+├── test_websocket_console.py # WebSocket console streaming tests
+└── fixtures/               # Test utilities and fixtures
+    ├── __init__.py
+    ├── test_utils.py       # Test helper functions and cleanup utilities
+    └── mcc_docker_wrapper.py # Minecraft Console Client wrapper for testing
 ```
 
 ### Current API Endpoints (From Actual Codebase)
@@ -303,16 +313,19 @@ result = await instance.send_rcon_command("list")  # Returns command output
 
 **Running Tests:**
 ```bash
-# Run minecraft module tests specifically
-poetry run pytest app/minecraft/tests/ -v
+# Run all tests
+poetry run pytest tests/ -v
 
 # Run specific test categories
-poetry run pytest app/minecraft/tests/test_instance.py -v      # Instance functionality
-poetry run pytest app/minecraft/tests/test_monitoring.py -v   # Resource monitoring with containers
+poetry run pytest tests/test_instance.py -v      # Instance functionality
+poetry run pytest tests/test_monitoring.py -v   # Resource monitoring with containers
 poetry run pytest tests/test_websocket_console.py -v          # WebSocket console streaming
+poetry run pytest tests/test_compose.py -v      # Compose file parsing tests
+poetry run pytest tests/test_compose_file.py -v # ComposeFile Pydantic model tests
 
 # Avoid slow integration tests during development
-poetry run pytest app/minecraft/tests/ -v -k "not test_integration"
+poetry run pytest tests/ -v -k "not test_integration"
+# Remember to use at least 5 min timeout for tests to finish
 ```
 
 ## Development Conventions
