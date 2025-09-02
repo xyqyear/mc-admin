@@ -2,7 +2,6 @@ import React from 'react'
 import { 
   Card, 
   Table, 
-  Tag, 
   Button, 
   Progress, 
   Modal, 
@@ -14,20 +13,16 @@ import {
 import { useNavigate } from 'react-router-dom'
 import {
   PlayCircleOutlined,
-  PauseCircleOutlined,
   StopOutlined,
   ReloadOutlined,
   DeleteOutlined,
   ExportOutlined,
   PlusOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  MinusCircleOutlined,
-  LoadingOutlined,
   DownOutlined,
 } from '@ant-design/icons'
 import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
 import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
+import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerStatus } from '@/types/Server'
 import { useOverviewData } from '@/hooks/queries/useServerQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -52,28 +47,6 @@ const Overview: React.FC = () => {
   const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
 
-  const getStatusIcon = (status: ServerStatus) => {
-    switch (status) {
-      case 'HEALTHY':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />
-      case 'RUNNING':
-        return <PlayCircleOutlined style={{ color: '#1890ff' }} />
-      case 'STARTING':
-        return <LoadingOutlined style={{ color: '#faad14' }} />
-      case 'CREATED':
-        return <PauseCircleOutlined style={{ color: '#d9d9d9' }} />
-      case 'EXISTS':
-        return <ExclamationCircleOutlined style={{ color: '#faad14' }} />
-      case 'REMOVED':
-        return <MinusCircleOutlined style={{ color: '#ff4d4f' }} />
-      default:
-        return <ExclamationCircleOutlined />
-    }
-  }
-
-  const getStatusColor = (status: ServerStatus) => {
-    return serverStatusUtils.getStatusColor(status)
-  }
 
   const isOperationAvailable = (operation: string, status: ServerStatus) => {
     return serverStatusUtils.isOperationAvailable(operation, status)
@@ -168,10 +141,7 @@ const Overview: React.FC = () => {
       width: 100,
       render: (name: string, record: typeof tableData[0]) => (
         <div>
-          <div className="font-semibold flex items-center gap-2">
-            {getStatusIcon(record.status)}
-            <span>{name}</span>
-          </div>
+          <div className="font-semibold">{name}</div>
           <div className="text-xs text-gray-500">
             {record.serverType} {record.gameVersion}
           </div>
@@ -184,9 +154,7 @@ const Overview: React.FC = () => {
       key: 'status',
       width: 80,
       render: (status: ServerStatus) => (
-        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
-          {status}
-        </Tag>
+        <ServerStateTag state={status} />
       ),
     },
     {
