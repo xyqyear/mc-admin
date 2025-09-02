@@ -301,26 +301,17 @@ const ServerCompose: React.FC = () => {
       </div>
 
       <Card title="Docker Compose 配置">
-        <div className="space-y-4">
-          <Alert
-            message="编辑说明"
-            description="请直接编辑下方的 Docker Compose YAML 配置文件。保存后需要重建服务器才能生效。"
-            type="info"
-            showIcon
-          />
-
-          <ComposeYamlEditor
-            key={editorKey}
-            height="600px"
-            value={rawYaml}
-            onChange={handleYamlChange}
-            onMount={(editor: any) => {
-              editorRef.current = editor
-            }}
-            theme="vs-light"
-            path="docker-compose.yml"
-          />
-        </div>
+        <ComposeYamlEditor
+          key={editorKey}
+          height="600px"
+          value={rawYaml}
+          onChange={handleYamlChange}
+          onMount={(editor: any) => {
+            editorRef.current = editor
+          }}
+          theme="vs-light"
+          path="docker-compose.yml"
+        />
       </Card>
 
       {/* 对比窗口 */}
@@ -359,6 +350,14 @@ const ServerCompose: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* 编辑说明 */}
+      <Alert
+        message="编辑说明"
+        description="请直接编辑上方的 Docker Compose YAML 配置文件。保存后需要重建服务器才能生效。"
+        type="info"
+        showIcon
+      />
     </div>
   )
 }
