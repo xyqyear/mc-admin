@@ -122,7 +122,6 @@ const ServerConsole: React.FC = () => {
               if (message.content) {
                 log.log('Adding log content to display')
                 
-                // 更新原始日志
                 setRawLogs(prev => prev + message.content)
                 
                 // 更新过滤后的显示日志
@@ -133,14 +132,6 @@ const ServerConsole: React.FC = () => {
                     log.log('New logs length:', newLogs.length)
                     return newLogs
                   })
-                  // 自动滚动到底部
-                  setTimeout(() => {
-                    if (autoScroll && logsRef.current && (logsRef.current as any).resizableTextArea?.textArea) {
-                      const textArea = (logsRef.current as any).resizableTextArea.textArea
-                      textArea.scrollTop = textArea.scrollHeight
-                      log.log('Auto scrolled to bottom')
-                    }
-                  }, 10)
                 }
               }
               break
@@ -149,13 +140,7 @@ const ServerConsole: React.FC = () => {
               if (message.command && message.result) {
                 const commandLog = `> ${message.command}\n${message.result}\n`
                 setLogs(prev => prev + commandLog)
-                setTimeout(() => {
-                  if (autoScroll && logsRef.current && (logsRef.current as any).resizableTextArea?.textArea) {
-                    const textArea = (logsRef.current as any).resizableTextArea.textArea
-                    textArea.scrollTop = textArea.scrollHeight
-                    log.log('Auto scrolled to bottom after command result')
-                  }
-                }, 10)
+                setAutoScroll(true)
               }
               break
               
@@ -253,14 +238,6 @@ const ServerConsole: React.FC = () => {
         setAutoScroll(false)
         log.log('Auto scroll disabled - user scrolled away from bottom')
       }
-      
-      log.log('Scroll position:', {
-        scrollTop,
-        scrollHeight,
-        clientHeight,
-        isAtBottom,
-        shouldAutoScroll: autoScroll
-      })
     }
   }
   
@@ -277,7 +254,6 @@ const ServerConsole: React.FC = () => {
     return () => {
       disconnectWebSocket()
     }
-    // 移除 isConnecting 和 isConnected 从依赖项以避免无限循环
   }, [id, hasServerInfo, token])
 
   // 当过滤开关变化时重新过滤日志
@@ -296,7 +272,7 @@ const ServerConsole: React.FC = () => {
         if (logsRef.current && (logsRef.current as any).resizableTextArea?.textArea) {
           const textArea = (logsRef.current as any).resizableTextArea.textArea
           textArea.scrollTop = textArea.scrollHeight
-          log.log('Auto scrolled to bottom due to logs update')
+          log.log('Auto scrolled to bottom due to logs update or autoScroll enabled')
         }
       }, 10)
     }
