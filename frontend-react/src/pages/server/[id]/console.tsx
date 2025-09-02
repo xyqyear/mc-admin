@@ -10,11 +10,7 @@ import {
   Switch
 } from 'antd'
 import { 
-  SendOutlined, 
-  ClearOutlined,
-  DownloadOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined
+  SendOutlined
 } from '@ant-design/icons'
 import { useParams } from 'react-router-dom'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
@@ -54,7 +50,6 @@ const ServerConsole: React.FC = () => {
   const [logs, setLogs] = useState<string>('')
   const [command, setCommand] = useState('')
   const [isConnected, setIsConnected] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [filterRcon, setFilterRcon] = useState(true) // 默认开启RCON过滤
   const [rawLogs, setRawLogs] = useState<string>('') // 保存原始日志用于重新过滤
@@ -108,10 +103,6 @@ const ServerConsole: React.FC = () => {
       
       wsRef.current.onmessage = (event) => {
         log.log('WebSocket message received:', event.data)
-        if (isPaused) {
-          log.log('Message ignored - logs are paused')
-          return
-        }
         
         try {
           const message: WebSocketMessage = JSON.parse(event.data)
@@ -202,24 +193,6 @@ const ServerConsole: React.FC = () => {
     }
   }
   
-  // 清空日志
-  const clearLogs = () => {
-    setLogs('')
-    setRawLogs('')
-  }
-  
-  // 下载日志
-  const downloadLogs = () => {
-    const blob = new Blob([logs], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${serverInfo?.name || id}_console_${new Date().toISOString().split('T')[0]}.log`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
   
   // 处理滚动
   const handleScroll = () => {
@@ -331,29 +304,6 @@ const ServerConsole: React.FC = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 控制台</Title>
-        <Space>
-          <Button
-            type={isPaused ? "primary" : "default"}
-            icon={isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
-            onClick={() => setIsPaused(!isPaused)}
-          >
-            {isPaused ? '恢复' : '暂停'}
-          </Button>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={downloadLogs}
-            disabled={!logs.trim()}
-          >
-            下载日志
-          </Button>
-          <Button
-            icon={<ClearOutlined />}
-            onClick={clearLogs}
-            disabled={!logs.trim()}
-          >
-            清空日志
-          </Button>
-        </Space>
       </div>
       
       {/* 连接状态 */}
