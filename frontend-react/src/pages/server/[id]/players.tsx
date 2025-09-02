@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { UserOutlined } from '@ant-design/icons'
 import type { Player } from '@/types/Server'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
@@ -20,6 +21,7 @@ const ServerPlayers: React.FC = () => {
   // 获取服务器详情数据
   const {
     serverInfo,
+    status,
     players,
     isLoading,
     isError,
@@ -178,14 +180,16 @@ const ServerPlayers: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 玩家列表</Title>
+        <div className="flex items-center gap-3">
+          <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 玩家列表</Title>
+          {status && <ServerStateTag state={status} />}
+        </div>
       </div>
 
       <Card>
         <div className="mb-4">
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <span>在线玩家: {playersData.length}</span>
-            <span>服务器状态: {isHealthy ? '健康' : '未运行'}</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-600">在线玩家: {playersData.length}</span>
           </div>
         </div>
         
