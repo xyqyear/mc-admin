@@ -87,6 +87,8 @@ const ServerFiles: React.FC = () => {
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [uploadFileList, setUploadFileList] = useState<any[]>([])
+  const [pageSize, setPageSize] = useState(20)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
@@ -100,6 +102,11 @@ const ServerFiles: React.FC = () => {
       setFileContent(fileContentData.content)
     }
   }, [fileContentData, editingFile])
+
+  // Reset pagination when path changes
+  React.useEffect(() => {
+    setCurrentPage(1)
+  }, [currentPath])
 
   // Update URL when path changes
   const updatePath = (newPath: string) => {
@@ -482,10 +489,22 @@ const ServerFiles: React.FC = () => {
               }),
             }}
             pagination={{
-              pageSize: 20,
+              current: currentPage,
+              pageSize: pageSize,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个文件`
+              showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个文件`,
+              onChange: (page, size) => {
+                setCurrentPage(page)
+                if (size !== pageSize) {
+                  setPageSize(size)
+                  setCurrentPage(1) // Reset to first page when page size changes
+                }
+              },
+              onShowSizeChange: (current, size) => {
+                setPageSize(size)
+                setCurrentPage(1) // Reset to first page when page size changes
+              }
             }}
             onRow={(record) => ({
               onDoubleClick: () => {
