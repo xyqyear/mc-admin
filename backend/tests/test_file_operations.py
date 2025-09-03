@@ -4,6 +4,7 @@ Tests file management functionality using temporary directories.
 """
 
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +62,25 @@ class MockMCInstance:
         )
 
 
+@contextmanager
+def mock_file_operations_setup(instance):
+    """Context manager for mocking file operations dependencies.
+    
+    Args:
+        instance: The MockMCInstance to use for testing
+        
+    Yields:
+        None: The context is set up with mocked dependencies
+    """
+    with (
+        patch("app.routers.servers.files.mc_manager") as mock_manager,
+        patch("app.dependencies.settings") as mock_settings,
+    ):
+        mock_manager.get_instance.return_value = instance
+        mock_settings.master_token = "test_master_token"
+        yield
+
+
 class TestFileOperations:
     """Test file operations API endpoints."""
 
@@ -89,12 +109,7 @@ class TestFileOperations:
         """Test listing files in root directory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files",
@@ -140,12 +155,7 @@ class TestFileOperations:
         """Test listing files in subdirectory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files?path=/plugins",
@@ -166,12 +176,7 @@ class TestFileOperations:
         """Test listing files in nonexistent directory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files?path=/nonexistent",
@@ -186,12 +191,7 @@ class TestFileOperations:
         """Test basic file listing functionality."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files",
@@ -212,12 +212,7 @@ class TestFileOperations:
         """Test getting file content."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files/content?path=/server.properties",
@@ -236,12 +231,7 @@ class TestFileOperations:
         """Test getting content of nonexistent file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files/content?path=/nonexistent.txt",
@@ -255,12 +245,7 @@ class TestFileOperations:
         """Test updating file content."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             new_content = (
                 "# Updated server properties\nserver-port=25566\nmax-players=20\n"
@@ -283,12 +268,7 @@ class TestFileOperations:
         """Test that backup is restored on write error."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             # Mock file write to raise an exception
             with patch("builtins.open", side_effect=Exception("Write error")):
@@ -305,12 +285,7 @@ class TestFileOperations:
         """Test downloading a file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.get(
                 f"/servers/{server_id}/files/download?path=/server.properties",
@@ -325,12 +300,7 @@ class TestFileOperations:
         """Test uploading a file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             # Create test file content
             test_content = b"This is test file content for upload"
@@ -353,12 +323,7 @@ class TestFileOperations:
         """Test uploading a file to subdirectory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             test_content = b"Plugin configuration"
 
@@ -379,12 +344,7 @@ class TestFileOperations:
         """Test uploading file that already exists."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/upload?path=/",
@@ -399,12 +359,7 @@ class TestFileOperations:
         """Test creating a new file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/create",
@@ -424,12 +379,7 @@ class TestFileOperations:
         """Test creating a new directory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/create",
@@ -449,12 +399,7 @@ class TestFileOperations:
         """Test creating file that already exists."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/create",
@@ -469,12 +414,7 @@ class TestFileOperations:
         """Test deleting a file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.delete(
                 f"/servers/{server_id}/files?path=/readme.txt",
@@ -492,12 +432,7 @@ class TestFileOperations:
         """Test deleting a directory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.delete(
                 f"/servers/{server_id}/files?path=/world",
@@ -515,12 +450,7 @@ class TestFileOperations:
         """Test deleting nonexistent file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.delete(
                 f"/servers/{server_id}/files?path=/nonexistent.txt",
@@ -534,12 +464,7 @@ class TestFileOperations:
         """Test renaming a file."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/rename",
@@ -560,12 +485,7 @@ class TestFileOperations:
         """Test renaming a directory."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/rename",
@@ -587,12 +507,7 @@ class TestFileOperations:
         """Test renaming to existing name."""
         server_id, instance = mock_instance
 
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
+        with mock_file_operations_setup(instance):
 
             response = client.post(
                 f"/servers/{server_id}/files/rename",
@@ -605,19 +520,15 @@ class TestFileOperations:
 
     def test_server_not_found(self, client):
         """Test operations on nonexistent server."""
-        with (
-            patch("app.routers.servers.files.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            # Mock instance that doesn't exist
-            mock_instance = MockMCInstance("nonexistent", Path("/tmp"))
+        # Mock instance that doesn't exist
+        mock_instance = MockMCInstance("nonexistent", Path("/tmp"))
 
-            async def mock_exists():
-                return False
+        async def mock_exists():
+            return False
 
-            mock_instance.exists = mock_exists  # type: ignore
-            mock_manager.get_instance.return_value = mock_instance
-            mock_settings.master_token = "test_master_token"
+        mock_instance.exists = mock_exists  # type: ignore
+        
+        with mock_file_operations_setup(mock_instance):
 
             response = client.get(
                 "/servers/nonexistent/files",
@@ -629,7 +540,7 @@ class TestFileOperations:
 
     def test_unauthorized_access(self, client, mock_instance):
         """Test unauthorized access to file operations."""
-        server_id, instance = mock_instance
+        server_id, _ = mock_instance
 
         response = client.get(f"/servers/{server_id}/files")
 
