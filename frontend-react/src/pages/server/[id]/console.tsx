@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { 
   Card, 
   Input, 
@@ -16,20 +16,11 @@ import { useParams } from 'react-router-dom'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useToken } from '@/stores/useTokenStore'
+import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket'
 import { log } from '@/utils/devLogger'
 
 const { Title } = Typography
 const { TextArea } = Input
-
-// WebSocket消息类型
-interface WebSocketMessage {
-  type: 'log' | 'command_result' | 'error' | 'info' | 'filter_updated' | 'logs_refreshed'
-  content?: string
-  command?: string
-  result?: string
-  message?: string
-  filter_rcon?: boolean
-}
 
 const ServerConsole: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -50,168 +41,64 @@ const ServerConsole: React.FC = () => {
   // 本地状态
   const [logs, setLogs] = useState<string>('')
   const [command, setCommand] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
-  const [isConnecting, setIsConnecting] = useState(false)
   const [filterRcon, setFilterRcon] = useState(true) // 默认开启RCON过滤
   const [autoScroll, setAutoScroll] = useState(true) // 自动滚动开关
   
   // Refs
-  const wsRef = useRef<WebSocket | null>(null)
   const logsRef = useRef<any>(null) // 使用any类型避免TypeScript错误
-  const prevFilterRconRef = useRef<boolean>(filterRcon) // 跟踪上一次的filter值
   
-  // 发送过滤设置到后端的函数
-  const sendFilterUpdate = (newFilterRcon: boolean) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'set_filter',
-        filter_rcon: newFilterRcon
-      }))
-    }
-  }
+  // WebSocket回调函数
+  const handleLogsUpdate = useCallback((content: string) => {
+    setLogs(prev => prev + content)
+  }, [])
   
-  // 请求刷新日志的函数
-  const requestLogRefresh = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'refresh_logs'
-      }))
-    }
-  }
+  const handleLogsRefresh = useCallback((content: string) => {
+    setLogs(content)
+    setAutoScroll(true)
+  }, [])
   
-  // WebSocket连接
-  const connectWebSocket = () => {
-    if (!id || !token) {
-      log.log('Cannot connect WebSocket: missing id or token', { id, token: !!token })
-      return
-    }
-    
-    log.log('Starting WebSocket connection...')
-    setIsConnecting(true)
-    
-    // Get the API base URL from the same configuration as HTTP requests
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api"
-    const protocol = apiBaseUrl.startsWith('https:') ? 'wss:' : 'ws:'
-    const host = apiBaseUrl.replace(/^https?:\/\//, '').replace('/api', '')
-    const wsUrl = `${protocol}//${host}/api/servers/${id}/console?token=${encodeURIComponent(token)}`
-    log.log('WebSocket URL:', wsUrl)
-    log.log('API Base URL:', apiBaseUrl)
-    
-    try {
-      wsRef.current = new WebSocket(wsUrl)
-      log.log('WebSocket object created')
-      
-      wsRef.current.onopen = () => {
-        log.log('WebSocket onopen event fired')
-        setIsConnected(true)
-        setIsConnecting(false)
-        log.log('WebSocket connected to server console, state updated')
-        
-        // Send initial filter setting to backend
-        setTimeout(() => {
-          sendFilterUpdate(filterRcon)
-        }, 100)
-      }
-      
-      wsRef.current.onmessage = (event) => {
-        log.log('WebSocket message received:', event.data)
-        
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data)
-          log.log('Parsed message:', message)
-          
-          switch (message.type) {
-            case 'log':
-              if (message.content) {
-                log.log('Adding log content to display')
-                // 后端已经处理了过滤，直接添加到显示
-                setLogs(prev => {
-                  const newLogs = prev + message.content
-                  log.log('New logs length:', newLogs.length)
-                  return newLogs
-                })
-              }
-              break
-              
-            case 'logs_refreshed':
-              // 刷新日志时替换整个日志内容
-              if (message.content !== undefined) {
-                log.log('Refreshing logs with filtered content')
-                setLogs(message.content)
-                setAutoScroll(true) // 刷新后自动滚动到底部
-              }
-              break
-              
-            case 'filter_updated':
-              // 过滤器更新确认
-              if (message.filter_rcon !== undefined) {
-                log.log('Filter updated confirmation received:', message.filter_rcon)
-              }
-              break
-              
-            case 'command_result':
-              if (message.command && message.result) {
-                const commandLog = `> ${message.command}\n${message.result}\n`
-                setLogs(prev => prev + commandLog)
-                setAutoScroll(true)
-              }
-              break
-              
-            case 'error':
-              if (message.message) {
-                setLogs(prev => prev + `[ERROR] ${message.message}\n`)
-              }
-              break
-              
-            case 'info':
-              if (message.message) {
-                setLogs(prev => prev + `[INFO] ${message.message}\n`)
-              }
-              break
-          }
-        } catch (e) {
-          log.error('Failed to parse WebSocket message:', e)
-        }
-      }
-      
-      wsRef.current.onclose = (event) => {
-        setIsConnected(false)
-        setIsConnecting(false)
-        log.log('WebSocket disconnected from server console', { code: event.code, reason: event.reason, wasClean: event.wasClean })
-      }
-      
-      wsRef.current.onerror = (error) => {
-        setIsConnecting(false)
-        log.error('WebSocket error:', error)
-        log.log('WebSocket state when error occurred:', wsRef.current?.readyState)
-      }
-      
-    } catch (error) {
-      setIsConnecting(false)
-      log.error('Failed to create WebSocket connection:', error)
-    }
-  }
+  const handleCommandResult = useCallback((command: string, result: string) => {
+    const commandLog = `> ${command}\n${result}\n`
+    setLogs(prev => prev + commandLog)
+    setAutoScroll(true)
+  }, [])
   
-  // 断开WebSocket连接
-  const disconnectWebSocket = () => {
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
-    }
-  }
+  const handleError = useCallback((message: string) => {
+    setLogs(prev => prev + `[ERROR] ${message}\n`)
+  }, [])
+  
+  const handleInfo = useCallback((message: string) => {
+    setLogs(prev => prev + `[INFO] ${message}\n`)
+  }, [])
+  
+  const handleAutoScrollEnable = useCallback(() => {
+    setAutoScroll(true)
+  }, [])
+  
+  // 使用WebSocket hook
+  const {
+    isConnected,
+    isConnecting,
+    connect: connectWebSocket,
+    sendCommand: wsCommandSend
+  } = useServerConsoleWebSocket({
+    serverId: id || '',
+    token: token || '',
+    filterRcon,
+    onLogsUpdate: handleLogsUpdate,
+    onLogsRefresh: handleLogsRefresh,
+    onCommandResult: handleCommandResult,
+    onError: handleError,
+    onInfo: handleInfo,
+    onAutoScrollEnable: handleAutoScrollEnable
+  })
   
   // 发送命令
   const sendCommand = () => {
-    if (!command.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    if (!command.trim() || !isConnected) return
     
-    try {
-      wsRef.current.send(JSON.stringify({
-        type: 'command',
-        command: command.trim()
-      }))
+    if (wsCommandSend(command)) {
       setCommand('')
-    } catch (error) {
-      log.error('Failed to send command:', error)
     }
   }
   
@@ -238,39 +125,11 @@ const ServerConsole: React.FC = () => {
   
   // 组件挂载时连接WebSocket
   useEffect(() => {
-    log.log('Console useEffect triggered:', { id, hasServerInfo, token: !!token, isConnecting, isConnected })
-    
     // 只有在有必要信息且未连接时才尝试连接
     if (id && token && hasServerInfo && !isConnecting && !isConnected) {
-      log.log('Attempting WebSocket connection...')
       connectWebSocket()
     }
-    
-    return () => {
-      disconnectWebSocket()
-    }
-  }, [id, hasServerInfo, token])
-
-  // 当过滤开关变化时，发送设置到后端并请求刷新日志
-  useEffect(() => {
-    const prevFilterRcon = prevFilterRconRef.current
-    
-    // 只有在连接建立且filter值真正改变时才处理
-    if (isConnected && prevFilterRcon !== filterRcon) {
-      log.log('Filter setting changed, updating backend and refreshing logs', { 
-        from: prevFilterRcon, 
-        to: filterRcon 
-      })
-      sendFilterUpdate(filterRcon)
-      // 短暂延迟后请求刷新，确保后端已处理过滤设置
-      setTimeout(() => {
-        requestLogRefresh()
-      }, 100)
-    }
-    
-    // 更新上一次的值
-    prevFilterRconRef.current = filterRcon
-  }, [filterRcon, isConnected])
+  }, [id, hasServerInfo, token, connectWebSocket, isConnecting, isConnected])
 
   // 当日志内容更新时，如果应该自动滚动，则滚动到底部
   useEffect(() => {
