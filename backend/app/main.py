@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from .db.database import init_db
-from .routers import auth, files, system, user
-from .routers.servers import console, misc, rcon
+from .routers import auth, system, user
+from .routers.servers import console, files, misc, rcon
 
 
 @asynccontextmanager
