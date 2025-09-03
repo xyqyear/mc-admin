@@ -3,9 +3,9 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..config import settings
-from ..dependencies import get_current_user
-from ..minecraft import DockerMCManager, MCServerStatus
+from ...config import settings
+from ...dependencies import get_current_user
+from ...minecraft import DockerMCManager, MCServerStatus
 from .utils.server_list import ServerListItem, get_server_list_item
 
 router = APIRouter(

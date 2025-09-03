@@ -106,7 +106,7 @@ def test_websocket_console_file_reading_and_streaming():
         mock_instance = MockHealthyMCInstance(real_instance)
         
         # Mock the mc_manager and authentication
-        with patch("app.routers.console.mc_manager") as mock_router_manager, \
+        with patch("app.routers.servers.console.mc_manager") as mock_router_manager, \
              patch("app.dependencies.settings") as mock_settings:
             # Mock the manager in the router 
             mock_router_manager.get_instance.return_value = mock_instance
@@ -195,7 +195,7 @@ def test_websocket_console_large_file_initial_limit():
         assert len(large_content) > 1024 * 1024, f"Test file should be larger than 1M characters, got {len(large_content)} characters"
         
         # Mock the mc_manager and authentication
-        with patch("app.routers.console.mc_manager") as mock_router_manager, \
+        with patch("app.routers.servers.console.mc_manager") as mock_router_manager, \
              patch("app.dependencies.settings") as mock_settings:
             # Mock the manager in the router 
             mock_router_manager.get_instance.return_value = mock_instance

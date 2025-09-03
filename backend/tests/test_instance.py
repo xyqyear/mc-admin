@@ -183,26 +183,6 @@ async def test_get_disk_space_info(teardown: list[str]):
 
 
 @pytest.mark.asyncio
-async def test_get_disk_usage_backward_compatibility(teardown: list[str]):
-    """Test that get_disk_usage maintains backward compatibility"""
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
-    server = docker_mc_manager.get_instance("disk-usage-compat-test")
-    teardown.append("mc-disk-usage-compat-test")
-
-    # Create server to set up data directory
-    await server.create(
-        create_mc_server_compose_yaml("disk-usage-compat-test", 34652, 34653)
-    )
-
-    # Test that get_disk_usage returns the same as get_disk_space_info.used_bytes
-    disk_usage = await server.get_disk_usage()
-    disk_space_info = await server.get_disk_space_info()
-
-    assert disk_usage == disk_space_info.used_bytes
-    assert isinstance(disk_usage, int)
-
-
-@pytest.mark.asyncio
 async def test_server_running_info_with_disk_space(teardown: list[str]):
     """Test that MCServerRunningInfo includes complete disk space information"""
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)

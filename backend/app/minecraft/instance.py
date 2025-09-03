@@ -424,15 +424,6 @@ class MCInstance:
         while not await self.healthy():
             await asyncio.sleep(0.5)
 
-    async def get_disk_usage(self) -> int:
-        """
-        获取服务器数据目录的磁盘使用量，单位为字节
-
-        Note: This method is deprecated. Use get_disk_space_info() instead.
-        """
-        disk_info = await self.get_disk_space_info()
-        return disk_info.used_bytes
-
     async def get_disk_space_info(self) -> DiskSpaceInfo:
         """
         获取服务器数据目录的完整磁盘空间信息

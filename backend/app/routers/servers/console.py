@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, WebSocket
 
-from ..config import settings
-from ..dependencies import get_websocket_user
-from ..minecraft import DockerMCManager
-from ..models import User
-from ..websocket.console import ConsoleWebSocketHandler
+from ...config import settings
+from ...dependencies import get_websocket_user
+from ...minecraft import DockerMCManager
+from ...models import User
+from ...websocket.console import ConsoleWebSocketHandler
 
 router = APIRouter(
     prefix="/servers",

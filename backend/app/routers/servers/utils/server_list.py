@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from ...minecraft import MCInstance, MCServerStatus
+from ....minecraft import MCInstance, MCServerStatus
 
 
 class ServerListItem(BaseModel):
