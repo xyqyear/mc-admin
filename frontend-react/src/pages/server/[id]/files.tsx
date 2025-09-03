@@ -513,7 +513,7 @@ const ServerFiles: React.FC = () => {
                   setCurrentPage(1) // Reset to first page when page size changes
                 }
               },
-              onShowSizeChange: (current, size) => {
+              onShowSizeChange: (_, size) => {
                 setPageSize(size)
                 setCurrentPage(1) // Reset to first page when page size changes
               }
