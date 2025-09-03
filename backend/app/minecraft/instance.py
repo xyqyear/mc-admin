@@ -8,6 +8,7 @@ import aiofiles
 import aiofiles.os as aioos
 import yaml
 
+from .compose import MCComposeFile, ServerType
 from .docker.cgroup import (
     BlockIOStats,
     MemoryStats,
@@ -17,7 +18,6 @@ from .docker.cgroup import (
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
 from .docker.network import NetworkStats, read_container_network_stats
-from .compose import MCComposeFile, ServerType
 from .utils import async_rmtree, exec_command, get_process_cpu_usage
 
 PLAYER_MESSAGE_PATTERN = re.compile(
@@ -54,6 +54,7 @@ class MCServerInfo:
     game_port: int
     rcon_port: int
 
+
 @dataclass(frozen=True)
 class MCServerRunningInfo:
     cpu_percentage: float
@@ -77,6 +78,7 @@ class MCServerRunningInfo:
 @dataclass(frozen=True)
 class DiskSpaceInfo:
     """Disk space information for server data directory"""
+
     used_bytes: int
     total_bytes: int
     available_bytes: int
@@ -231,57 +233,60 @@ class MCInstance:
     def filter_rcon_logs(content: str) -> str:
         """
         Filter out RCON-related log lines from log content.
-        
+
         Args:
             content: Raw log content
-            
+
         Returns:
             Log content with RCON lines removed (empty lines are also removed for cleaner output)
         """
         if not content:
             return content
-        
-        lines = content.split('\n')
+
+        lines = content.split("\n")
         filtered_lines = []
-        
+
         for line in lines:
             # Filter out RCON Client and RCON Listener log lines
-            if '[RCON Client' not in line and '[RCON Listener' not in line:
+            if "[RCON Client" not in line and "[RCON Listener" not in line:
                 filtered_lines.append(line)
-        
+
         # Join and then split again to remove any empty lines that result from filtering
-        result = '\n'.join(filtered_lines)
+        result = "\n".join(filtered_lines)
         # Remove any sequences of multiple newlines, keeping only single newlines
         import re
-        result = re.sub(r'\n\s*\n', '\n', result)
+
+        result = re.sub(r"\n\s*\n", "\n", result)
         return result
 
-    async def get_logs_from_file_filtered(self, start: int = 0, filter_rcon: bool = True) -> LogType:
+    async def get_logs_from_file_filtered(
+        self, start: int = 0, filter_rcon: bool = True
+    ) -> LogType:
         """
         Get logs from file with optional RCON filtering and 1M character limit.
-        
+
         Args:
             start: Starting position for reading logs
             filter_rcon: Whether to filter out RCON-related logs
-            
+
         Returns:
             LogType with filtered content, truncated to 1M characters if needed
         """
         # Get the raw logs first
         raw_logs = await self.get_logs_from_file(start)
         content = raw_logs.content
-        
+
         # Apply RCON filtering if requested
         if filter_rcon:
             content = self.filter_rcon_logs(content)
-        
+
         # If content is larger than 1M characters after filtering, truncate from the end
         max_chars = 1024 * 1024  # 1M characters
-        
+
         if len(content) > max_chars:
             # Truncate from the end (keep the most recent logs)
             content = content[-max_chars:]
-        
+
         return LogType(content=content, pointer=raw_logs.pointer)
 
     async def create(self, compose_yaml: str) -> None:
@@ -422,7 +427,7 @@ class MCInstance:
     async def get_disk_usage(self) -> int:
         """
         获取服务器数据目录的磁盘使用量，单位为字节
-        
+
         Note: This method is deprecated. Use get_disk_space_info() instead.
         """
         disk_info = await self.get_disk_space_info()
@@ -431,10 +436,10 @@ class MCInstance:
     async def get_disk_space_info(self) -> DiskSpaceInfo:
         """
         获取服务器数据目录的完整磁盘空间信息
-        
+
         Returns:
             DiskSpaceInfo: Contains used, total, and available disk space in bytes
-            
+
         Raises:
             RuntimeError: If data directory does not exist
         """
@@ -453,20 +458,22 @@ class MCInstance:
         df_result = await exec_command("df", "-B1", str(self._project_path / "data"))
         # df output format: Filesystem 1B-blocks Used Available Use% Mounted on
         # We want the second line with the actual data
-        df_lines = df_result.strip().split('\n')
+        df_lines = df_result.strip().split("\n")
         if len(df_lines) < 2:
-            raise RuntimeError(f"Unable to get filesystem info for {self._project_path / 'data'}")
-        
+            raise RuntimeError(
+                f"Unable to get filesystem info for {self._project_path / 'data'}"
+            )
+
         # Parse df output - handle case where filesystem name might be on separate line
         df_data_line = df_lines[1]
         if len(df_lines) > 2 and not df_data_line.strip().split()[0].isdigit():
             # Filesystem name is on separate line, data is on next line
             df_data_line = df_lines[2] if len(df_lines) > 2 else df_lines[1]
-        
+
         df_parts = df_data_line.strip().split()
         if len(df_parts) < 4:
             raise RuntimeError(f"Unable to parse df output: {df_result}")
-        
+
         try:
             total_bytes = int(df_parts[1])  # 1B-blocks (total)
             available_bytes = int(df_parts[3])  # Available
@@ -476,7 +483,7 @@ class MCInstance:
         return DiskSpaceInfo(
             used_bytes=used_bytes,
             total_bytes=total_bytes,
-            available_bytes=available_bytes
+            available_bytes=available_bytes,
         )
 
     async def get_server_running_info(self):
@@ -487,7 +494,13 @@ class MCInstance:
         if not await self.running():
             raise RuntimeError(f"Server {self._name} is not running")
 
-        memory_stats, cpu_percentage, disk_io, network_io, disk_space_info = await asyncio.gather(
+        (
+            memory_stats,
+            cpu_percentage,
+            disk_io,
+            network_io,
+            disk_space_info,
+        ) = await asyncio.gather(
             self.get_memory_usage(),
             self.get_cpu_percentage(),
             self.get_disk_io(),
@@ -558,52 +571,56 @@ class MCInstance:
     async def get_container_id(self) -> str:
         """
         Get the Docker container ID for the mc service.
-        
+
         Returns:
             str: The container ID
-            
+
         Raises:
             RuntimeError: If the container is not running or not found
         """
         if not await self.running():
             raise RuntimeError(f"Server {self._name} is not running")
-        
+
         container_id = await self._compose_manager.run_compose_command("ps", "-q", "mc")
         container_id = container_id.strip()
-        
+
         if not container_id:
-            raise RuntimeError(f"Could not find container ID for service 'mc' in server {self._name}")
-        
+            raise RuntimeError(
+                f"Could not find container ID for service 'mc' in server {self._name}"
+            )
+
         return container_id
 
     async def get_pid(self) -> int:
         """
         Get the main process PID of the Docker container.
-        
+
         Returns:
             int: The process ID
-            
+
         Raises:
             RuntimeError: If the container is not running or PID cannot be retrieved
         """
         container_id = await self.get_container_id()
-        
+
         # Use docker inspect to get the PID
-        result = await exec_command("docker", "inspect", "--format={{.State.Pid}}", container_id)
+        result = await exec_command(
+            "docker", "inspect", "--format={{.State.Pid}}", container_id
+        )
         pid_str = result.strip()
-        
+
         if not pid_str or pid_str == "0":
             raise RuntimeError(f"Could not retrieve PID for container {container_id}")
-        
+
         return int(pid_str)
 
     async def get_memory_usage(self) -> MemoryStats:
         """
         Get memory usage statistics from cgroup for the container.
-        
+
         Returns:
             MemoryStats: Memory usage statistics
-            
+
         Raises:
             RuntimeError: If the container is not running or stats cannot be retrieved
         """
@@ -613,10 +630,10 @@ class MCInstance:
     async def get_cpu_percentage(self) -> float:
         """
         Get CPU usage percentage for the container process.
-        
+
         Returns:
             float: CPU usage percentage (0.0 to 100.0+)
-            
+
         Raises:
             RuntimeError: If the container is not running or CPU stats cannot be retrieved
         """
@@ -626,10 +643,10 @@ class MCInstance:
     async def get_disk_io(self) -> BlockIOStats:
         """
         Get disk I/O statistics from cgroup for the container.
-        
+
         Returns:
             BlockIOStats: Disk I/O statistics
-            
+
         Raises:
             RuntimeError: If the container is not running or stats cannot be retrieved
         """
@@ -639,10 +656,10 @@ class MCInstance:
     async def get_network_io(self) -> NetworkStats:
         """
         Get network I/O statistics for the container process.
-        
+
         Returns:
             NetworkStats: Network I/O statistics
-            
+
         Raises:
             RuntimeError: If the container is not running or stats cannot be retrieved
         """

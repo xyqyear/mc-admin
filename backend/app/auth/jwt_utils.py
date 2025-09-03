@@ -9,6 +9,7 @@ from ..config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 key = OctKey.import_key(settings.jwt.secret_key)
 
+
 def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(plain_password, hashed_password)
 

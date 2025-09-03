@@ -55,11 +55,17 @@ class Service(BaseModel):
 
 
 class ComposeSpecification(BaseModel):
-    version: Annotated[str | None, Field(None, description='declared for backward compatibility, ignored.')] = None
-    name: Annotated[str | None, Field(
-        None,
-        description='define the Compose project name, until user defines one explicitly.',
-    )] = None
+    version: Annotated[
+        str | None,
+        Field(None, description="declared for backward compatibility, ignored."),
+    ] = None
+    name: Annotated[
+        str | None,
+        Field(
+            None,
+            description="define the Compose project name, until user defines one explicitly.",
+        ),
+    ] = None
     services: Mapping[str, Service] | None = None
     volumes: Mapping[str, Any] | None = None
 

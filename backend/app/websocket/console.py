@@ -24,7 +24,14 @@ class LogFileHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         """Handle file modification events."""
-        if not event.is_directory and event.src_path.endswith("latest.log"):
+        # Handle both str and bytes types for src_path
+        src_path = event.src_path
+        if isinstance(src_path, bytes):
+            src_path = src_path.decode('utf-8', errors='replace')
+        else:
+            src_path = str(src_path)
+        
+        if not event.is_directory and src_path.endswith("latest.log"):
             # asyncio.create_task sometimes fails with "RuntimeError: no running event loop"
             # TODO find a way to reuse the existing event loop instead of creating a new one
             asyncio.run(self._send_new_logs())
@@ -184,7 +191,7 @@ class ConsoleWebSocketHandler:
         except Exception as e:
             await self._send_error(f"Failed to update filter: {str(e)}")
 
-    async def _handle_log_refresh(self, data: dict):
+    async def _handle_log_refresh(self, _data: dict):
         """Handle log refresh request with current filter settings."""
         try:
             log_path = self.instance._get_log_path()

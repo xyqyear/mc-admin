@@ -3,9 +3,9 @@ from pathlib import Path
 
 from aiofiles import os as aioos
 
+from .compose import MCComposeFile
 from .docker.manager import DockerManager
 from .instance import MCInstance, MCServerInfo
-from .compose import MCComposeFile
 
 
 class DockerMCManager:
@@ -27,10 +27,7 @@ class DockerMCManager:
         iterate through all the subdirectories and filter out the ones that looks like a minecraft server
         """
         compose_obj_list = await self.get_all_server_compose_obj()
-        return [
-            mc_compose.get_server_name()
-            for mc_compose in compose_obj_list
-        ]
+        return [mc_compose.get_server_name() for mc_compose in compose_obj_list]
 
     async def get_all_instances(self) -> list[MCInstance]:
         return [

@@ -11,11 +11,11 @@ async_database_url = settings.database_url.replace("sqlite:///", "sqlite+aiosqli
 engine = create_async_engine(async_database_url, echo=True)
 
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine, 
+    bind=engine,
     class_=AsyncSession,
-    autocommit=False, 
+    autocommit=False,
     autoflush=False,
-    expire_on_commit=False
+    expire_on_commit=False,
 )
 
 

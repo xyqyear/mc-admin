@@ -73,7 +73,9 @@ async def login_for_access_token(
 
 @router.post("/verifyCode", dependencies=[Depends(verify_master_token)])
 async def verify_code(request: VerifyTokenRequest, db: AsyncSession = Depends(get_db)):
-    result = await loginCodeManager.verify_user_with_code(db, request.username, request.code)
+    result = await loginCodeManager.verify_user_with_code(
+        db, request.username, request.code
+    )
     if result:
         return VerifyTokenResponse(result="success")
     else:
