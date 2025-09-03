@@ -14,130 +14,64 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.minecraft import LogType
+from app.minecraft import MCInstance
 
 
-class MockMCInstance:
-    """Mock MCInstance for testing the WebSocket console functionality."""
+def setup_test_minecraft_server(server_name: str, servers_path: Path) -> tuple[MCInstance, str]:
+    """Set up a test Minecraft server directory structure with log files."""
+    # Create server directory structure
+    server_path = servers_path / server_name
+    data_path = server_path / "data"
+    logs_path = data_path / "logs"
+    logs_path.mkdir(parents=True, exist_ok=True)
+    
+    # Create initial log content with RCON logs for filtering test
+    initial_content = """[15:30:01] [Server thread/INFO]: Starting minecraft server version 1.20.1
+[15:30:02] [Server thread/INFO]: Loading properties
+[15:30:03] [Server thread/INFO]: Default game type: SURVIVAL
+[15:30:04] [RCON Client /127.0.0.1:54321]: Running RCON connection
+[15:30:05] [Server thread/INFO]: Starting Minecraft server on *:25565
+[15:30:06] [RCON Listener thread/INFO]: RCON port binding successful
+[15:30:07] [Server thread/INFO]: Using epoll channel type
+[15:30:08] [RCON Client /127.0.0.1:54322]: Authentication successful
+[15:30:09] [Server thread/INFO]: Preparing level "world"
+[15:30:10] [RCON Listener thread/DEBUG]: RCON command received
+[15:30:11] [Server thread/INFO]: Done (3.2s)! For help, type "help"
+"""
+    
+    # Write initial content to log file
+    log_file = logs_path / "latest.log"
+    with open(log_file, "w", encoding="utf-8") as f:
+        f.write(initial_content)
+    
+    # Create MCInstance
+    instance = MCInstance(servers_path, server_name)
+    
+    return instance, initial_content
 
-    def __init__(self, server_id: str, base_path: Path):
-        self.server_id = server_id
-        self.base_path = base_path
-        self.server_path = base_path / server_id
-        self.logs_dir = self.server_path / "logs"
-        self.log_file = self.logs_dir / "latest.log"
 
+class MockHealthyMCInstance:
+    """Wrapper to make MCInstance appear healthy for WebSocket testing."""
+    
+    def __init__(self, real_instance: MCInstance):
+        self._real_instance = real_instance
+    
+    def __getattr__(self, name):
+        """Delegate all attribute access to the real instance."""
+        return getattr(self._real_instance, name)
+    
     async def exists(self):
-        """Return True to indicate server exists."""
+        """Mock exists to return True."""
         return True
-
-    def _get_log_path(self) -> Path:
-        """Return the path to the log file."""
-        return self.log_file
-
-    async def get_logs_from_file(self, start: int = 0) -> LogType:
-        """Mock method to get logs from file."""
-        if not self.log_file.exists():
-            return LogType(content="", pointer=0)
-        
-        try:
-            file_size = self.log_file.stat().st_size
-            
-            # If start is negative, read from the end
-            if start < 0:
-                abs_start = abs(start)
-                start_position = max(0, file_size - abs_start)
-                with open(self.log_file, "r", encoding="utf-8") as f:
-                    f.seek(start_position)
-                    content = f.read(abs_start)
-                return LogType(content=content, pointer=file_size)
-            
-            # If start is 0 or positive, read from that position
-            with open(self.log_file, "r", encoding="utf-8") as f:
-                f.seek(start)
-                content = f.read()
-                return LogType(content=content, pointer=file_size)
-        except Exception:
-            return LogType(content="", pointer=0)
-
+    
+    async def get_status(self):
+        """Mock status to return HEALTHY."""
+        from app.minecraft import MCServerStatus
+        return MCServerStatus.HEALTHY
+    
     async def send_command_rcon(self, command: str) -> str:
         """Mock RCON command execution."""
         return f"Mock result for command: {command}"
-    
-    async def get_log_file_end_pointer(self) -> int:
-        """Mock method to get the end pointer of the log file."""
-        if not self.log_file.exists():
-            return 0
-        return self.log_file.stat().st_size
-    
-    async def get_status(self):
-        """Return mock status."""
-        # Import here to avoid circular imports
-        from app.minecraft import MCServerStatus
-        return MCServerStatus.HEALTHY
-
-    @staticmethod
-    def filter_rcon_logs(content: str) -> str:
-        """Mock method for RCON filtering."""
-        if not content:
-            return content
-        
-        lines = content.split('\n')
-        filtered_lines = []
-        
-        for line in lines:
-            # Filter out RCON Client and RCON Listener log lines
-            if '[RCON Client' not in line and '[RCON Listener' not in line:
-                filtered_lines.append(line)
-        
-        # Remove empty lines for cleaner output
-        import re
-        result = '\n'.join(filtered_lines)
-        result = re.sub(r'\n\s*\n', '\n', result)
-        return result
-
-    async def get_logs_from_file_filtered(self, start: int = 0, filter_rcon: bool = True):
-        """Mock method to get filtered logs from file."""
-        from app.minecraft import LogType
-        
-        # Get raw logs first
-        raw_logs = await self.get_logs_from_file(start)
-        content = raw_logs.content
-        
-        # Apply RCON filtering if requested
-        if filter_rcon:
-            content = self.filter_rcon_logs(content)
-        
-        # Simulate 1M character truncation
-        max_chars = 1024 * 1024  # 1M characters
-        
-        if len(content) > max_chars:
-            # Truncate from the end (keep the most recent logs)
-            content = content[-max_chars:]
-        
-        return LogType(content=content, pointer=raw_logs.pointer)
-
-    def setup_test_structure(self):
-        """Create the test directory structure and initial log file."""
-        # Create directories
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create initial log content
-        initial_content = """[15:30:01] [Server thread/INFO]: Starting minecraft server version 1.20.1
-[15:30:02] [Server thread/INFO]: Loading properties
-[15:30:03] [Server thread/INFO]: Default game type: SURVIVAL
-[15:30:04] [Server thread/INFO]: Generating keypair
-[15:30:05] [Server thread/INFO]: Starting Minecraft server on *:25565
-[15:30:06] [Server thread/INFO]: Using epoll channel type
-[15:30:07] [Server thread/INFO]: Preparing level "world"
-[15:30:08] [Server thread/INFO]: Done (3.2s)! For help, type "help"
-"""
-        
-        # Write initial content to log file
-        with open(self.log_file, "w", encoding="utf-8") as f:
-            f.write(initial_content)
-        
-        return initial_content
 
 
 def write_to_log_file(log_file: Path, new_content: str, delay: float = 0.1):
@@ -167,9 +101,9 @@ def test_websocket_console_file_reading_and_streaming():
         temp_path = Path(temp_dir)
         server_id = "test_server"
         
-        # Create mock instance and set up test structure
-        mock_instance = MockMCInstance(server_id, temp_path)
-        mock_instance.setup_test_structure()
+        # Set up real MCInstance with test structure
+        real_instance, initial_content = setup_test_minecraft_server(server_id, temp_path)
+        mock_instance = MockHealthyMCInstance(real_instance)
         
         # Mock the mc_manager and authentication
         with patch("app.routers.servers.mc_manager") as mock_router_manager, \
@@ -242,18 +176,19 @@ def test_websocket_console_large_file_initial_limit():
         temp_path = Path(temp_dir)
         server_id = "large_test_server"
         
-        # Create mock instance
-        mock_instance = MockMCInstance(server_id, temp_path)
-        mock_instance.logs_dir.mkdir(parents=True, exist_ok=True)
+        # Set up basic structure first
+        real_instance, _ = setup_test_minecraft_server(server_id, temp_path)
+        mock_instance = MockHealthyMCInstance(real_instance)
         
-        # Create a large log file (larger than 1M characters)
+        # Create a large log file (larger than 1M characters)  
         large_content_line = "[15:30:01] [Server thread/INFO]: This is a test line that will be repeated many times to create a large file\n"
         lines_needed = (1024 * 1024 + 1000) // len(large_content_line) + 100  # Ensure > 1M characters
         
         large_content = large_content_line * lines_needed
         
         # Write large content to log file
-        with open(mock_instance.log_file, "w", encoding="utf-8") as f:
+        log_file = temp_path / server_id / "data" / "logs" / "latest.log"
+        with open(log_file, "w", encoding="utf-8") as f:
             f.write(large_content)
         
         # Verify file is actually larger than 1M characters
@@ -296,8 +231,74 @@ def test_websocket_console_large_file_initial_limit():
                 assert received_chars > 500000, f"Should receive substantial content (>500K chars), got {received_chars} characters"
 
 
+def test_get_logs_from_file_filtered_coverage():
+    """
+    Test the get_logs_from_file_filtered function directly to ensure test coverage.
+    This test specifically targets the function that was previously mocked.
+    """
+    with tempfile.TemporaryDirectory(prefix="mc_filter_test_", dir="/tmp") as temp_dir:
+        temp_path = Path(temp_dir)
+        server_id = "filter_test_server"
+        
+        # Set up real MCInstance with test structure
+        real_instance, initial_content = setup_test_minecraft_server(server_id, temp_path)
+        
+        # Test 1: Basic functionality - get filtered logs from beginning
+        import asyncio
+        
+        async def run_test():
+            # Test reading from beginning with RCON filtering enabled (default)
+            result = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=True)
+            
+            # Verify content is returned
+            assert result.content, "Should return log content"
+            assert isinstance(result.pointer, int), "Should return valid pointer"
+            
+            # Verify RCON lines are filtered out
+            assert "[RCON Client" not in result.content, "RCON Client logs should be filtered out"
+            assert "[RCON Listener" not in result.content, "RCON Listener logs should be filtered out"
+            
+            # Verify normal logs are preserved
+            assert "Starting minecraft server" in result.content, "Normal logs should be preserved"
+            assert "Done (3.2s)!" in result.content, "Normal logs should be preserved"
+            
+            # Test 2: Without RCON filtering
+            result_no_filter = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=False)
+            
+            # Verify RCON lines are preserved when filtering is disabled
+            assert "[RCON Client" in result_no_filter.content, "RCON Client logs should be preserved when filter_rcon=False"
+            assert "[RCON Listener" in result_no_filter.content, "RCON Listener logs should be preserved when filter_rcon=False"
+            
+            # Test 3: Reading from negative position (from end of file)
+            result_from_end = await real_instance.get_logs_from_file_filtered(start=-500, filter_rcon=True)
+            assert result_from_end.content, "Should return content when reading from end"
+            
+            # Test 4: Large file truncation test
+            log_file = temp_path / server_id / "data" / "logs" / "latest.log"
+            
+            # Create content larger than 1M characters
+            large_line = "[15:30:01] [Server thread/INFO]: " + "X" * 1000 + "\n"
+            lines_needed = (1024 * 1024 + 1000) // len(large_line) + 100  
+            large_content = large_line * lines_needed
+            
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.write(large_content)
+            
+            # Test truncation behavior
+            result_large = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=True)
+            
+            # Should be truncated to 1M characters or less
+            assert len(result_large.content) <= 1024 * 1024, f"Content should be truncated to 1M chars, got {len(result_large.content)}"
+            
+            print("get_logs_from_file_filtered function tests passed!")
+            
+        # Run the async test
+        asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     # Run individual test
     test_websocket_console_file_reading_and_streaming()
     test_websocket_console_large_file_initial_limit()
+    test_get_logs_from_file_filtered_coverage()
     print("All WebSocket console tests passed!")
