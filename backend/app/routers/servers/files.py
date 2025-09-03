@@ -209,28 +209,8 @@ async def update_file_content(
         if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
-        # Create backup
-        backup_path = file_path.with_suffix(file_path.suffix + ".backup")
-        async with aiofiles.open(file_path, "rb") as src:
-            async with aiofiles.open(backup_path, "wb") as dst:
-                content = await src.read()
-                await dst.write(content)
-
-        try:
-            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
-                await f.write(file_content.content)
-        except Exception as e:
-            # Restore from backup if write fails
-            if await aioos.path.exists(backup_path):
-                async with aiofiles.open(backup_path, "rb") as src:
-                    async with aiofiles.open(file_path, "wb") as dst:
-                        backup_content = await src.read()
-                        await dst.write(backup_content)
-            raise e
-        finally:
-            # Clean up backup
-            if await aioos.path.exists(backup_path):
-                await aioos.unlink(backup_path)
+        async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+            await f.write(file_content.content)
 
         return {"message": "File updated successfully"}
 
