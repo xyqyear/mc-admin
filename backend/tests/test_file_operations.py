@@ -271,7 +271,7 @@ class TestFileOperations:
         with mock_file_operations_setup(instance):
 
             # Mock file write to raise an exception
-            with patch("builtins.open", side_effect=Exception("Write error")):
+            with patch("aiofiles.open", side_effect=Exception("Write error")):
                 response = client.post(
                     f"/servers/{server_id}/files/content?path=/server.properties",
                     headers={"Authorization": "Bearer test_master_token"},

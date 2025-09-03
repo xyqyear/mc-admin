@@ -1,7 +1,10 @@
 import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 
+import aiofiles
+from aiofiles import os as aioos
+from asyncer import asyncify
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -22,7 +25,7 @@ mc_manager = DockerMCManager(settings.server_path)
 # Pydantic models for file operations
 class FileItem(BaseModel):
     name: str
-    type: str  # 'file' or 'directory'
+    type: Literal["file", "directory"]
     size: int
     modified_at: str
     path: str
@@ -39,7 +42,7 @@ class FileContent(BaseModel):
 
 class CreateFileRequest(BaseModel):
     name: str
-    type: str  # 'file' or 'directory'
+    type: Literal["file", "directory"]
     path: str
 
 
@@ -54,36 +57,47 @@ def _get_server_data_path(instance) -> Path:
     return instance.get_project_path() / "data"
 
 
-def _get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
+@asyncify
+def _rmtree_async(path: Path):
+    shutil.rmtree(path)
+
+
+async def _get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
     """Get list of files and directories in the specified path."""
     if current_path.startswith("/"):
         current_path = current_path[1:]  # Remove leading slash
 
     actual_path = base_path / current_path if current_path else base_path
 
-    if not actual_path.exists() or not actual_path.is_dir():
+    if not await aioos.path.exists(actual_path) or not await aioos.path.isdir(
+        actual_path
+    ):
         return []
 
     items = []
 
     try:
-        for item in actual_path.iterdir():
-            relative_path = item.relative_to(base_path)
+        file_list = await aioos.listdir(actual_path)
+        for file_name in file_list:
+            item_path = actual_path / file_name
+            relative_path = item_path.relative_to(base_path)
             file_path = "/" + str(relative_path).replace("\\", "/")
 
-            if item.is_file():
-                size = item.stat().st_size
+            stat_result = await aioos.stat(item_path)
+
+            if await aioos.path.isfile(item_path):
+                size = stat_result.st_size
                 file_type = "file"
             else:
                 size = 0
                 file_type = "directory"
 
-            modified_at = item.stat().st_mtime
+            modified_at = stat_result.st_mtime
             modified_at_str = f"{modified_at:.0f}"  # Unix timestamp as string
 
             items.append(
                 FileItem(
-                    name=item.name,
+                    name=file_name,
                     type=file_type,
                     size=size,
                     modified_at=modified_at_str,
@@ -116,7 +130,7 @@ async def list_files(
             )
 
         base_path = _get_server_data_path(instance)
-        items = _get_file_items(base_path, path)
+        items = await _get_file_items(base_path, path)
 
         return FileListResponse(items=items, current_path=path)
 
@@ -143,19 +157,19 @@ async def get_file_content(
         base_path = _get_server_data_path(instance)
         file_path = base_path / path.lstrip("/")
 
-        if not file_path.exists():
+        if not await aioos.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        if not file_path.is_file():
+        if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                content = await f.read()
         except UnicodeDecodeError:
             try:
-                with open(file_path, "r", encoding="latin1") as f:
-                    content = f.read()
+                async with aiofiles.open(file_path, "r", encoding="latin1") as f:
+                    content = await f.read()
             except Exception:
                 raise HTTPException(
                     status_code=400, detail="Unable to read file as text"
@@ -189,28 +203,34 @@ async def update_file_content(
         base_path = _get_server_data_path(instance)
         file_path = base_path / path.lstrip("/")
 
-        if not file_path.exists():
+        if not await aioos.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        if not file_path.is_file():
+        if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
         # Create backup
         backup_path = file_path.with_suffix(file_path.suffix + ".backup")
-        shutil.copy2(file_path, backup_path)
+        async with aiofiles.open(file_path, "rb") as src:
+            async with aiofiles.open(backup_path, "wb") as dst:
+                content = await src.read()
+                await dst.write(content)
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(file_content.content)
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(file_content.content)
         except Exception as e:
             # Restore from backup if write fails
-            if backup_path.exists():
-                shutil.copy2(backup_path, file_path)
+            if await aioos.path.exists(backup_path):
+                async with aiofiles.open(backup_path, "rb") as src:
+                    async with aiofiles.open(file_path, "wb") as dst:
+                        backup_content = await src.read()
+                        await dst.write(backup_content)
             raise e
         finally:
             # Clean up backup
-            if backup_path.exists():
-                backup_path.unlink()
+            if await aioos.path.exists(backup_path):
+                await aioos.unlink(backup_path)
 
         return {"message": "File updated successfully"}
 
@@ -235,10 +255,10 @@ async def download_file(server_id: str, path: str, _: str = Depends(get_current_
         base_path = _get_server_data_path(instance)
         file_path = base_path / path.lstrip("/")
 
-        if not file_path.exists():
+        if not await aioos.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        if not file_path.is_file():
+        if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
         return FileResponse(
@@ -276,9 +296,9 @@ async def upload_file(
         target_dir = base_path / path.lstrip("/")
 
         # Ensure target directory exists
-        target_dir.mkdir(parents=True, exist_ok=True)
+        await aioos.makedirs(target_dir, exist_ok=True)
 
-        if not target_dir.is_dir():
+        if not await aioos.path.isdir(target_dir):
             raise HTTPException(
                 status_code=400, detail="Target path is not a directory"
             )
@@ -286,13 +306,13 @@ async def upload_file(
         file_path = target_dir / (file.filename or "unnamed_file")
 
         # Check if file already exists
-        if file_path.exists():
+        if await aioos.path.exists(file_path):
             raise HTTPException(status_code=409, detail="File already exists")
 
         # Write file
-        with open(file_path, "wb") as f:
+        async with aiofiles.open(file_path, "wb") as f:
             content = await file.read()
-            f.write(content)
+            await f.write(content)
 
         return {"message": f"File '{file.filename}' uploaded successfully"}
 
@@ -322,20 +342,21 @@ async def create_file_or_directory(
         target_path = base_path / create_request.path.lstrip("/") / create_request.name
 
         # Check if already exists
-        if target_path.exists():
+        if await aioos.path.exists(target_path):
             raise HTTPException(
                 status_code=409,
                 detail=f"{'Directory' if create_request.type == 'directory' else 'File'} already exists",
             )
 
         # Create parent directories if needed
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        await aioos.makedirs(target_path.parent, exist_ok=True)
 
         if create_request.type == "directory":
-            target_path.mkdir()
+            await aioos.mkdir(target_path)
             message = f"Directory '{create_request.name}' created successfully"
         elif create_request.type == "file":
-            target_path.touch()
+            async with aiofiles.open(target_path, "w"):
+                pass  # Create empty file
             message = f"File '{create_request.name}' created successfully"
         else:
             raise HTTPException(
@@ -370,14 +391,14 @@ async def delete_file_or_directory(
         base_path = _get_server_data_path(instance)
         target_path = base_path / path.lstrip("/")
 
-        if not target_path.exists():
+        if not await aioos.path.exists(target_path):
             raise HTTPException(status_code=404, detail="File or directory not found")
 
-        if target_path.is_file():
-            target_path.unlink()
+        if await aioos.path.isfile(target_path):
+            await aioos.unlink(target_path)
             message = f"File '{target_path.name}' deleted successfully"
-        elif target_path.is_dir():
-            shutil.rmtree(target_path)
+        elif await aioos.path.isdir(target_path):
+            await _rmtree_async(target_path)
             message = f"Directory '{target_path.name}' deleted successfully"
         else:
             raise HTTPException(status_code=400, detail="Invalid path")
@@ -410,15 +431,15 @@ async def rename_file_or_directory(
         old_path = base_path / rename_request.old_path.lstrip("/")
         new_path = old_path.parent / rename_request.new_name
 
-        if not old_path.exists():
+        if not await aioos.path.exists(old_path):
             raise HTTPException(status_code=404, detail="File or directory not found")
 
-        if new_path.exists():
+        if await aioos.path.exists(new_path):
             raise HTTPException(status_code=409, detail="Target name already exists")
 
-        old_path.rename(new_path)
+        await aioos.rename(old_path, new_path)
 
-        item_type = "Directory" if new_path.is_dir() else "File"
+        item_type = "Directory" if await aioos.path.isdir(new_path) else "File"
         return {"message": f"{item_type} renamed successfully"}
 
     except HTTPException:
