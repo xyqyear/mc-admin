@@ -31,14 +31,6 @@ export interface ComposeOverrideWarning {
   severity: 'warning' | 'info' | 'error'
 }
 
-/**
- * File editability configuration
- */
-export interface FileEditabilityConfig {
-  isEditable: boolean
-  maxSizeBytes?: number
-  requiresWarning?: boolean
-}
 
 // ========================================================================================
 // Language Mapping Configuration
@@ -166,42 +158,26 @@ export const BACKEND_EDITABLE_EXTENSIONS = new Set([
 ])
 
 /**
- * Extended file editability map for frontend-only features
- * Note: The backend determines actual editability, this is for UI enhancements
+ * Set of editable file extensions
+ * Files with these extensions can be edited in the frontend
  */
-export const FILE_EDITABILITY_MAP: Record<string, FileEditabilityConfig> = {
-  // Backend-supported editable files
-  '.yml': { isEditable: true },
-  '.yaml': { isEditable: true },
-  '.properties': { isEditable: true, requiresWarning: true },
-  '.json': { isEditable: true },
-  '.toml': { isEditable: true },
-  '.conf': { isEditable: true },
-  '.cfg': { isEditable: true },
-  '.txt': { isEditable: true },
-  '.log': { isEditable: true, maxSizeBytes: 10 * 1024 * 1024 }, // 10MB limit
-  
-  // Additional text formats that might be editable (frontend suggestion)
-  '.json5': { isEditable: true },
-  '.jsonc': { isEditable: true },
-  '.ini': { isEditable: true },
-  '.config': { isEditable: true },
-  '.env': { isEditable: true },
-  '.md': { isEditable: true },
-  '.markdown': { isEditable: true },
-  
-  // Binary files (definitely not editable)
-  '.jar': { isEditable: false },
-  '.zip': { isEditable: false },
-  '.png': { isEditable: false },
-  '.jpg': { isEditable: false },
-  '.jpeg': { isEditable: false },
-  '.gif': { isEditable: false },
-  '.pdf': { isEditable: false },
-  '.db': { isEditable: false },
-  '.sqlite': { isEditable: false },
-  '.class': { isEditable: false }
-}
+export const EDITABLE_EXTENSIONS = new Set([
+  '.yaml',
+  '.yml', 
+  '.properties',
+  '.json',
+  '.json5',
+  '.toml',
+  '.conf',
+  '.cfg',
+  '.txt',
+  '.log',
+  '.jsonc',
+  '.ini',
+  '.config',
+  '.env',
+  '.md'
+])
 
 // ========================================================================================
 // Compose Override Warning Configuration
@@ -424,15 +400,14 @@ export function isBackendEditableFile(fileName: string): boolean {
 }
 
 /**
- * Gets file editability configuration for frontend features
- * Note: Actual editability is determined by backend's is_editable field
+ * Checks if a file is editable based on its extension
  * 
  * @param fileName - The name of the file (can include path)
- * @returns File editability configuration for frontend features
+ * @returns True if the file is editable, false otherwise
  */
-export function getFileEditability(fileName: string): FileEditabilityConfig {
+export function isFileEditable(fileName: string): boolean {
   if (!fileName) {
-    return { isEditable: false }
+    return false
   }
   
   const normalizedName = fileName.toLowerCase()
@@ -440,11 +415,9 @@ export function getFileEditability(fileName: string): FileEditabilityConfig {
   
   if (dotIndex > -1) {
     const extension = normalizedName.substring(dotIndex)
-    if (FILE_EDITABILITY_MAP[extension]) {
-      return FILE_EDITABILITY_MAP[extension]
-    }
+    return EDITABLE_EXTENSIONS.has(extension)
   }
   
-  // Default: assume not editable if not explicitly configured
-  return { isEditable: false }
+  // Default: not editable if no extension
+  return false
 }

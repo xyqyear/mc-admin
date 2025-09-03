@@ -93,8 +93,6 @@ class FileItem(BaseModel):
     type: str  # 'file' or 'directory'
     size: int
     modified_at: str
-    is_config: bool
-    is_editable: bool
     path: str
 
 
@@ -126,36 +124,6 @@ def _get_server_data_path(instance: MCInstance) -> Path:
     return instance.get_project_path() / "data"
 
 
-def _is_config_file(file_path: Path) -> bool:
-    """Determine if a file is a configuration file based on extension."""
-    config_extensions = {
-        ".yml",
-        ".yaml",
-        ".properties",
-        ".json",
-        ".toml",
-        ".conf",
-        ".cfg",
-        ".txt",
-        ".log",
-    }
-    return file_path.suffix.lower() in config_extensions
-
-
-def _is_editable_file(file_path: Path) -> bool:
-    """Determine if a file is editable based on extension and type."""
-    editable_extensions = {
-        ".yml",
-        ".yaml",
-        ".properties",
-        ".json",
-        ".toml",
-        ".conf",
-        ".cfg",
-        ".txt",
-        ".log",
-    }
-    return file_path.suffix.lower() in editable_extensions and file_path.is_file()
 
 
 def _get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
@@ -185,17 +153,12 @@ def _get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
             modified_at = item.stat().st_mtime
             modified_at_str = f"{modified_at:.0f}"  # Unix timestamp as string
 
-            is_config = _is_config_file(item) if item.is_file() else False
-            is_editable = _is_editable_file(item)
-
             items.append(
                 FileItem(
                     name=item.name,
                     type=file_type,
                     size=size,
                     modified_at=modified_at_str,
-                    is_config=is_config,
-                    is_editable=is_editable,
                     path=file_path,
                 )
             )
@@ -613,9 +576,6 @@ async def get_file_content(
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail="Path is not a file")
 
-        # Check if file is editable
-        if not _is_editable_file(file_path):
-            raise HTTPException(status_code=400, detail="File is not editable")
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -663,9 +623,6 @@ async def update_file_content(
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail="Path is not a file")
 
-        # Check if file is editable
-        if not _is_editable_file(file_path):
-            raise HTTPException(status_code=400, detail="File is not editable")
 
         # Create backup
         backup_path = file_path.with_suffix(file_path.suffix + ".backup")

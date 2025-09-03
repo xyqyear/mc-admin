@@ -35,8 +35,6 @@ export interface FileItem {
   type: 'file' | 'directory'
   size: number
   modified_at: string
-  is_editable: boolean
-  is_config: boolean
 }
 
 export interface FileListResponse {

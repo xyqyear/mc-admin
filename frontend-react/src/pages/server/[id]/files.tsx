@@ -41,7 +41,7 @@ import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
-import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning } from '@/config/fileEditingConfig'
+import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import type { FileItem } from '@/types/Server'
 
 const { Title } = Typography
@@ -189,7 +189,7 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleFileEdit = (file: FileItem) => {
-    if (!file.is_editable) {
+    if (!isFileEditable(file.name)) {
       message.warning('该文件不可编辑')
       return
     }
@@ -366,7 +366,7 @@ const ServerFiles: React.FC = () => {
               />
             </Tooltip>
           )}
-          {file.is_editable && (
+          {isFileEditable(file.name) && (
             <Tooltip title="编辑文件">
               <Button
                 icon={<EditOutlined />}

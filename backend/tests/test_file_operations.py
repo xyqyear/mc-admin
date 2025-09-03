@@ -182,8 +182,8 @@ class TestFileOperations:
             data = response.json()
             assert data["items"] == []
 
-    def test_file_classification(self, client, mock_instance):
-        """Test file type classification (config, editable)."""
+    def test_file_listing(self, client, mock_instance):
+        """Test basic file listing functionality."""
         server_id, instance = mock_instance
 
         with (
@@ -202,21 +202,11 @@ class TestFileOperations:
             data = response.json()
             items = {item["name"]: item for item in data["items"]}
 
-            # server.properties should be config and editable
-            assert items["server.properties"]["is_config"] is True
-            assert items["server.properties"]["is_editable"] is True
-
-            # bukkit.yml should be config and editable
-            assert items["bukkit.yml"]["is_config"] is True
-            assert items["bukkit.yml"]["is_editable"] is True
-
-            # readme.txt should be config and editable (text file)
-            assert items["readme.txt"]["is_config"] is True
-            assert items["readme.txt"]["is_editable"] is True
-
-            # binary.jar should not be config or editable
-            assert items["binary.jar"]["is_config"] is False
-            assert items["binary.jar"]["is_editable"] is False
+            # Check that files are properly listed
+            assert "server.properties" in items
+            assert "bukkit.yml" in items
+            assert "readme.txt" in items
+            assert "binary.jar" in items
 
     def test_get_file_content(self, client, mock_instance):
         """Test getting file content."""
@@ -241,24 +231,6 @@ class TestFileOperations:
             assert "server-port=25565" in data["content"]
             assert "# Test server properties" in data["content"]
 
-    def test_get_file_content_noneditable(self, client, mock_instance):
-        """Test getting content of non-editable file."""
-        server_id, instance = mock_instance
-
-        with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
-        ):
-            mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
-
-            response = client.get(
-                f"/servers/{server_id}/files/content?path=/binary.jar",
-                headers={"Authorization": "Bearer test_master_token"},
-            )
-
-            assert response.status_code == 400
-            assert "File is not editable" in response.json()["detail"]
 
     def test_get_file_content_nonexistent(self, client, mock_instance):
         """Test getting content of nonexistent file."""
