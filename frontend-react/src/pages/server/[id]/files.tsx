@@ -18,7 +18,6 @@ import {
   Upload
 } from 'antd'
 import {
-  EditOutlined,
   DeleteOutlined,
   DownloadOutlined,
   PlusOutlined,
@@ -267,7 +266,6 @@ const ServerFiles: React.FC = () => {
     {
       key: 'rename',
       label: '重命名',
-      icon: <EditOutlined />,
       onClick: () => handleFileRename(file)
     }
   ]
@@ -277,47 +275,61 @@ const ServerFiles: React.FC = () => {
       title: '文件名',
       dataIndex: 'name',
       key: 'name',
-      render: (name: string, file: FileItem) => (
-        <div className="flex items-center space-x-2">
-          <FileIcon file={file} />
-          <span
-            className={file.type === 'directory' ? 'font-medium cursor-pointer hover:text-blue-600' : 'font-medium'}
-            onClick={() => file.type === 'directory' ? handleFolderOpen(file) : undefined}
-          >
-            {name}
-          </span>
-        </div>
-      ),
+      render: (name: string, file: FileItem) => {
+        const isEditable = isFileEditable(file.name)
+        const isDirectory = file.type === 'directory'
+        
+        return (
+          <div className="flex items-center space-x-2">
+            <FileIcon file={file} />
+            <Tooltip 
+              title={
+                isDirectory ? '点击打开文件夹' : 
+                isEditable ? '点击编辑文件' : 
+                undefined
+              }
+            >
+              <span
+                className={
+                  isDirectory ? 'font-medium cursor-pointer hover:text-blue-600' :
+                  isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
+                  'font-medium'
+                }
+                onClick={() => {
+                  if (isDirectory) {
+                    handleFolderOpen(file)
+                  } else if (isEditable) {
+                    handleFileEdit(file)
+                  }
+                }}
+              >
+                {name}
+              </span>
+            </Tooltip>
+          </div>
+        )
+      },
     },
     {
       title: '大小',
       dataIndex: 'size',
       key: 'size',
-      width: 100,
+      width: 90,
       render: (size: number) => formatFileSize(size),
     },
     {
       title: '修改时间',
       dataIndex: 'modified_at',
       key: 'modified_at',
-      width: 180,
+      width: 150,
       render: (timestamp: string) => formatDate(timestamp),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 150,
       render: (_: any, file: FileItem) => (
         <Space>
-          {isFileEditable(file.name) && (
-            <Tooltip title="编辑文件">
-              <Button
-                icon={<EditOutlined />}
-                size="small"
-                onClick={() => handleFileEdit(file)}
-              />
-            </Tooltip>
-          )}
           <Tooltip title="下载">
             <Button
               icon={<DownloadOutlined />}
