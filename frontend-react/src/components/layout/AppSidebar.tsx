@@ -11,7 +11,6 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   DesktopOutlined,
-  UserOutlined,
   SettingOutlined,
   FolderOutlined,
   LogoutOutlined,
@@ -71,11 +70,6 @@ const AppSidebar: React.FC = () => {
               title: '概览',
               icon: <DashboardOutlined />,
               path: `/server/${server.id}`,
-            },
-            {
-              title: '玩家列表',
-              icon: <UserOutlined />,
-              path: `/server/${server.id}/players`,
             },
             {
               title: '设置',

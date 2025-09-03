@@ -3,14 +3,6 @@ export type { ServerInfo, ServerStatus, ServerType } from './ServerInfo'
 export type { ServerFullInfo, ServerRuntime, SystemInfo } from './ServerRuntime'
 
 // 保持现有的类型定义以兼容老代码
-export interface Player {
-  username: string
-  uuid: string
-  firstJoined?: string
-  lastSeen?: string
-  playtimeHours?: number
-  isOnline: boolean
-}
 
 export interface Backup {
   id: string
