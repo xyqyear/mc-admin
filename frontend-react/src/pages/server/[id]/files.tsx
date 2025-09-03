@@ -470,6 +470,7 @@ const ServerFiles: React.FC = () => {
             dataSource={fileData?.items || []}
             columns={columns}
             rowKey="path"
+            size="small"
             loading={isLoadingFiles}
             rowSelection={{
               selectedRowKeys: selectedFiles,
