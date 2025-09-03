@@ -41,6 +41,7 @@ import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
+import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning } from '@/config/fileEditingConfig'
 import type { FileItem } from '@/types/Server'
 
 const { Title } = Typography
@@ -98,6 +99,22 @@ const ServerFiles: React.FC = () => {
     id, 
     editingFile?.path || null
   )
+
+  // Get language configuration for the currently editing file
+  const getCurrentFileLanguageConfig = () => {
+    if (!editingFile) return { language: 'text', options: {}, config: undefined, composeWarning: undefined }
+    
+    const languageConfig = detectFileLanguage(editingFile.name)
+    const editorOptions = getLanguageEditorOptions(languageConfig.language)
+    const composeWarning = getComposeOverrideWarning(editingFile.name)
+    
+    return {
+      language: languageConfig.language,
+      options: editorOptions,
+      config: languageConfig,
+      composeWarning: composeWarning.shouldWarn ? composeWarning : undefined
+    }
+  }
 
   // Update file content when data is loaded
   React.useEffect(() => {
@@ -670,13 +687,53 @@ const ServerFiles: React.FC = () => {
           {isLoadingContent ? (
             <div className="text-center py-8">加载文件内容中...</div>
           ) : (
-            <SimpleEditor
-              height="500px"
-              language="text"
-              value={fileContent}
-              onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
-              theme="vs-light"
-            />
+            (() => {
+              const { language, options, config, composeWarning } = getCurrentFileLanguageConfig()
+              return (
+                <div className="space-y-3">
+                  {/* Compose override warning */}
+                  {composeWarning && (
+                    <Alert
+                      message={composeWarning.title}
+                      description={
+                        <div className="space-y-2">
+                          <p>{composeWarning.message}</p>
+                          <Button 
+                            type="link" 
+                            size="small" 
+                            className="p-0 h-auto"
+                            onClick={() => navigate(`/server/${id}/compose`)}
+                          >
+                            {composeWarning.linkText}
+                          </Button>
+                        </div>
+                      }
+                      type={composeWarning.severity}
+                      showIcon
+                      closable
+                    />
+                  )}
+                  
+                  {/* Language support indicator */}
+                  {config?.supportsValidation && (
+                    <div className="text-xs text-gray-500 px-2">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {config?.description} - 支持语法检查
+                      </span>
+                    </div>
+                  )}
+                  
+                  <SimpleEditor
+                    height="500px"
+                    language={language}
+                    value={fileContent}
+                    onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
+                    theme="vs-light"
+                    options={options}
+                  />
+                </div>
+              )
+            })()
           )}
         </div>
       </Modal>
@@ -700,16 +757,58 @@ const ServerFiles: React.FC = () => {
             type="info"
             showIcon
           />
+          {/* Compose override warning for diff view */}
+          {(() => {
+            const { composeWarning } = getCurrentFileLanguageConfig()
+            return composeWarning && (
+              <div className="mb-3">
+                <Alert
+                  message={composeWarning.title}
+                  description={
+                    <div className="space-y-2">
+                      <p>{composeWarning.message}</p>
+                      <Button 
+                        type="link" 
+                        size="small" 
+                        className="p-0 h-auto"
+                        onClick={() => navigate(`/server/${id}/compose`)}
+                      >
+                        {composeWarning.linkText}
+                      </Button>
+                    </div>
+                  }
+                  type={composeWarning.severity}
+                  showIcon
+                  closable
+                />
+              </div>
+            )
+          })()}
+          
           <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
-            <MonacoDiffEditor
-              height="600px"
-              language="text"
-              original={originalFileContent}
-              modified={fileContent}
-              originalTitle="文件原始内容"
-              modifiedTitle="当前编辑内容"
-              theme="vs-light"
-            />
+            {(() => {
+              const { language, config } = getCurrentFileLanguageConfig()
+              return (
+                <div className="h-full">
+                  {config?.supportsValidation && (
+                    <div className="px-3 py-2 bg-gray-50 border-b text-xs text-gray-600">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {config?.description} - 语法高亮已启用
+                      </span>
+                    </div>
+                  )}
+                  <MonacoDiffEditor
+                    height={config?.supportsValidation ? "570px" : "600px"}
+                    language={language}
+                    original={originalFileContent}
+                    modified={fileContent}
+                    originalTitle="文件原始内容"
+                    modifiedTitle="当前编辑内容"
+                    theme="vs-light"
+                  />
+                </div>
+              )
+            })()}
           </div>
         </div>
       </Modal>
