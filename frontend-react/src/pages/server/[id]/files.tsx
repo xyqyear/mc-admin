@@ -1,36 +1,29 @@
 import React, { useState } from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Space, 
+import {
+  Card,
+  Table,
+  Button,
+  Space,
   Input,
-  Modal, 
-  Form, 
-  Select, 
+  Modal,
+  Form,
+  Select,
   App,
-  Breadcrumb, 
-  Typography, 
-  Dropdown, 
+  Breadcrumb,
+  Typography,
+  Dropdown,
   Tooltip,
   Alert,
   Popconfirm,
   Upload
 } from 'antd'
-import { 
-  FolderOutlined, 
-  FileOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  DownloadOutlined, 
-  PlusOutlined, 
+import {
+  EditOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  PlusOutlined,
   HomeOutlined,
   ReloadOutlined,
-  FileTextOutlined,
-  DatabaseOutlined,
-  FileImageOutlined,
-  FilePdfOutlined,
-  FileZipOutlined,
   MoreOutlined,
   ArrowUpOutlined,
   UploadOutlined,
@@ -38,10 +31,12 @@ import {
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
+import FileIcon from '@/components/files/FileIcon'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
+import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import type { FileItem } from '@/types/Server'
 
 const { Title } = Typography
@@ -54,15 +49,15 @@ const ServerFiles: React.FC = () => {
   const [createForm] = Form.useForm()
   const [renameForm] = Form.useForm()
   const { message } = App.useApp()
-  
+
   // Get server data for state tag
   const { useServerDetailData } = useServerDetailQueries(id || "")
   const { serverInfo, status, hasServerInfo } = useServerDetailData()
-  
+
   // Get current path from URL search params
   const searchParams = new URLSearchParams(location.search)
   const currentPath = searchParams.get('path') || '/'
-  
+
   // File management hooks
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
   const {
@@ -96,18 +91,18 @@ const ServerFiles: React.FC = () => {
 
   // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
-    id, 
+    id,
     editingFile?.path || null
   )
 
   // Get language configuration for the currently editing file
   const getCurrentFileLanguageConfig = () => {
     if (!editingFile) return { language: 'text', options: {}, config: undefined, composeWarning: undefined }
-    
+
     const languageConfig = detectFileLanguage(editingFile.name)
     const editorOptions = getLanguageEditorOptions(languageConfig.language)
     const composeWarning = getComposeOverrideWarning(editingFile.name)
-    
+
     return {
       language: languageConfig.language,
       options: editorOptions,
@@ -143,50 +138,7 @@ const ServerFiles: React.FC = () => {
     setSelectedFiles([]) // Clear selection when navigating
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '-'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
 
-  const formatDate = (timestamp: string) => {
-    const date = new Date(parseFloat(timestamp) * 1000)
-    return date.toLocaleString('zh-CN')
-  }
-
-  const getFileIcon = (file: FileItem) => {
-    if (file.type === 'directory') {
-      return <FolderOutlined style={{ color: '#1890ff' }} />
-    }
-    
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    switch (ext) {
-      case 'txt':
-      case 'log':
-      case 'yml':
-      case 'yaml':
-      case 'json':
-      case 'properties':
-        return <FileTextOutlined style={{ color: '#52c41a' }} />
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-        return <FileImageOutlined style={{ color: '#fa8c16' }} />
-      case 'pdf':
-        return <FilePdfOutlined style={{ color: '#f5222d' }} />
-      case 'zip':
-      case 'jar':
-        return <FileZipOutlined style={{ color: '#722ed1' }} />
-      case 'db':
-      case 'sqlite':
-        return <DatabaseOutlined style={{ color: '#13c2c2' }} />
-      default:
-        return <FileOutlined />
-    }
-  }
 
   const handleFileEdit = (file: FileItem) => {
     if (!isFileEditable(file.name)) {
@@ -222,7 +174,7 @@ const ServerFiles: React.FC = () => {
       message.info('文件夹下载暂不开放')
       return
     }
-    
+
     if (id) {
       downloadFile(file.path, file.name)
     }
@@ -236,7 +188,7 @@ const ServerFiles: React.FC = () => {
 
   const handleRenameSubmit = () => {
     if (!renamingFile || !id) return
-    
+
     renameForm.validateFields().then(values => {
       renameFile({
         old_path: renamingFile.path,
@@ -260,7 +212,7 @@ const ServerFiles: React.FC = () => {
 
   const handleCreateFile = () => {
     if (!id) return
-    
+
     createForm.validateFields().then(values => {
       createFile({
         name: values.fileName,
@@ -277,7 +229,7 @@ const ServerFiles: React.FC = () => {
       message.warning('请选择要删除的文件')
       return
     }
-    
+
     Modal.confirm({
       title: '确认删除',
       content: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
@@ -294,7 +246,7 @@ const ServerFiles: React.FC = () => {
 
   const handleUpload = () => {
     if (!id || uploadFileList.length === 0) return
-    
+
     uploadFileList.forEach(fileItem => {
       uploadFile({ path: currentPath, file: fileItem.originFileObj })
     })
@@ -327,8 +279,8 @@ const ServerFiles: React.FC = () => {
       key: 'name',
       render: (name: string, file: FileItem) => (
         <div className="flex items-center space-x-2">
-          {getFileIcon(file)}
-          <span 
+          <FileIcon file={file} />
+          <span
             className={file.type === 'directory' ? 'font-medium cursor-pointer hover:text-blue-600' : 'font-medium'}
             onClick={() => file.type === 'directory' ? handleFolderOpen(file) : undefined}
           >
@@ -357,15 +309,6 @@ const ServerFiles: React.FC = () => {
       width: 200,
       render: (_: any, file: FileItem) => (
         <Space>
-          {file.type === 'directory' && (
-            <Tooltip title="打开文件夹">
-              <Button
-                icon={<FolderOutlined />}
-                size="small"
-                onClick={() => handleFolderOpen(file)}
-              />
-            </Tooltip>
-          )}
           {isFileEditable(file.name) && (
             <Tooltip title="编辑文件">
               <Button
@@ -477,7 +420,7 @@ const ServerFiles: React.FC = () => {
                 title: (
                   <>
                     <HomeOutlined />
-                    <span 
+                    <span
                       className="cursor-pointer ml-1"
                       onClick={() => handleNavigateToPath('/')}
                     >
@@ -651,9 +594,9 @@ const ServerFiles: React.FC = () => {
         cancelText="取消"
         confirmLoading={isUpdating}
         footer={[
-          <Button 
-            key="diff" 
-            icon={<DiffOutlined />} 
+          <Button
+            key="diff"
+            icon={<DiffOutlined />}
             onClick={handleShowDiff}
             disabled={!originalFileContent || fileContent === originalFileContent}
           >
@@ -667,9 +610,9 @@ const ServerFiles: React.FC = () => {
           }}>
             取消
           </Button>,
-          <Button 
-            key="save" 
-            type="primary" 
+          <Button
+            key="save"
+            type="primary"
             onClick={handleFileSave}
             loading={isUpdating}
           >
@@ -698,9 +641,9 @@ const ServerFiles: React.FC = () => {
                       description={
                         <div className="space-y-2">
                           <p>{composeWarning.message}</p>
-                          <Button 
-                            type="link" 
-                            size="small" 
+                          <Button
+                            type="link"
+                            size="small"
                             className="p-0 h-auto"
                             onClick={() => navigate(`/server/${id}/compose`)}
                           >
@@ -713,7 +656,7 @@ const ServerFiles: React.FC = () => {
                       closable
                     />
                   )}
-                  
+
                   {/* Language support indicator */}
                   {config?.supportsValidation && (
                     <div className="text-xs text-gray-500 px-2">
@@ -722,7 +665,7 @@ const ServerFiles: React.FC = () => {
                       </span>
                     </div>
                   )}
-                  
+
                   <SimpleEditor
                     height="500px"
                     language={language}
@@ -767,9 +710,9 @@ const ServerFiles: React.FC = () => {
                   description={
                     <div className="space-y-2">
                       <p>{composeWarning.message}</p>
-                      <Button 
-                        type="link" 
-                        size="small" 
+                      <Button
+                        type="link"
+                        size="small"
                         className="p-0 h-auto"
                         onClick={() => navigate(`/server/${id}/compose`)}
                       >
@@ -784,7 +727,7 @@ const ServerFiles: React.FC = () => {
               </div>
             )
           })()}
-          
+
           <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
             {(() => {
               const { language, config } = getCurrentFileLanguageConfig()
