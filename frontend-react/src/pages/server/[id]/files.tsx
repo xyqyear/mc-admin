@@ -379,10 +379,6 @@ const ServerFiles: React.FC = () => {
 
   const pathSegments = currentPath.split('/').filter(Boolean)
 
-  if (!hasServerInfo) {
-    return <div>加载中...</div>
-  }
-
   if (filesError) {
     return <div>加载文件列表失败: {filesError.message}</div>
   }
@@ -391,7 +387,9 @@ const ServerFiles: React.FC = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <Title level={2} className="!mb-0 !mt-0">{serverInfo?.name} - 文件管理</Title>
+          <Title level={2} className="!mb-0 !mt-0">
+            {hasServerInfo ? `${serverInfo?.name} - 文件管理` : "文件管理"}
+          </Title>
           {status && <ServerStateTag state={status} />}
         </div>
         <Space>
