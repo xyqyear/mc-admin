@@ -58,6 +58,7 @@ const ServerConsole: React.FC = () => {
   // Refs
   const wsRef = useRef<WebSocket | null>(null)
   const logsRef = useRef<any>(null) // 使用any类型避免TypeScript错误
+  const prevFilterRconRef = useRef<boolean>(filterRcon) // 跟踪上一次的filter值
   
   // 发送过滤设置到后端的函数
   const sendFilterUpdate = (newFilterRcon: boolean) => {
@@ -252,14 +253,23 @@ const ServerConsole: React.FC = () => {
 
   // 当过滤开关变化时，发送设置到后端并请求刷新日志
   useEffect(() => {
-    if (isConnected) {
-      log.log('Filter setting changed, updating backend and refreshing logs', { filterRcon })
+    const prevFilterRcon = prevFilterRconRef.current
+    
+    // 只有在连接建立且filter值真正改变时才处理
+    if (isConnected && prevFilterRcon !== filterRcon) {
+      log.log('Filter setting changed, updating backend and refreshing logs', { 
+        from: prevFilterRcon, 
+        to: filterRcon 
+      })
       sendFilterUpdate(filterRcon)
       // 短暂延迟后请求刷新，确保后端已处理过滤设置
       setTimeout(() => {
         requestLogRefresh()
       }, 100)
     }
+    
+    // 更新上一次的值
+    prevFilterRconRef.current = filterRcon
   }, [filterRcon, isConnected])
 
   // 当日志内容更新时，如果应该自动滚动，则滚动到底部
