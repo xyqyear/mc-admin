@@ -33,10 +33,11 @@ import {
   FileZipOutlined,
   MoreOutlined,
   ArrowUpOutlined,
-  UploadOutlined
+  UploadOutlined,
+  DiffOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { SimpleEditor } from '@/components/editors'
+import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
@@ -89,6 +90,8 @@ const ServerFiles: React.FC = () => {
   const [uploadFileList, setUploadFileList] = useState<any[]>([])
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
+  const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
+  const [originalFileContent, setOriginalFileContent] = useState('')
 
   // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
@@ -100,6 +103,7 @@ const ServerFiles: React.FC = () => {
   React.useEffect(() => {
     if (fileContentData && editingFile) {
       setFileContent(fileContentData.content)
+      setOriginalFileContent(fileContentData.content) // 保存原始内容用于差异对比
     }
   }, [fileContentData, editingFile])
 
@@ -182,7 +186,12 @@ const ServerFiles: React.FC = () => {
       setIsEditModalVisible(false)
       setEditingFile(null)
       setFileContent('')
+      setOriginalFileContent('')
     }
+  }
+
+  const handleShowDiff = () => {
+    setIsDiffModalVisible(true)
   }
 
   const handleFileDelete = (file: FileItem) => {
@@ -618,11 +627,38 @@ const ServerFiles: React.FC = () => {
           setIsEditModalVisible(false)
           setEditingFile(null)
           setFileContent('')
+          setOriginalFileContent('')
         }}
         width={800}
         okText="保存"
         cancelText="取消"
         confirmLoading={isUpdating}
+        footer={[
+          <Button 
+            key="diff" 
+            icon={<DiffOutlined />} 
+            onClick={handleShowDiff}
+            disabled={!originalFileContent || fileContent === originalFileContent}
+          >
+            差异对比
+          </Button>,
+          <Button key="cancel" onClick={() => {
+            setIsEditModalVisible(false)
+            setEditingFile(null)
+            setFileContent('')
+            setOriginalFileContent('')
+          }}>
+            取消
+          </Button>,
+          <Button 
+            key="save" 
+            type="primary" 
+            onClick={handleFileSave}
+            loading={isUpdating}
+          >
+            保存
+          </Button>,
+        ]}
       >
         <div className="space-y-4">
           <Alert
@@ -642,6 +678,39 @@ const ServerFiles: React.FC = () => {
               theme="vs-light"
             />
           )}
+        </div>
+      </Modal>
+
+      {/* 文件差异对比模态框 */}
+      <Modal
+        title="文件差异对比"
+        open={isDiffModalVisible}
+        onCancel={() => setIsDiffModalVisible(false)}
+        width={1400}
+        footer={[
+          <Button key="close" onClick={() => setIsDiffModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+      >
+        <div className="space-y-4">
+          <Alert
+            message="差异对比视图"
+            description="左侧为文件原始内容，右侧为当前编辑的内容。高亮显示的是差异部分。"
+            type="info"
+            showIcon
+          />
+          <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
+            <MonacoDiffEditor
+              height="600px"
+              language="text"
+              original={originalFileContent}
+              modified={fileContent}
+              originalTitle="文件原始内容"
+              modifiedTitle="当前编辑内容"
+              theme="vs-light"
+            />
+          </div>
         </div>
       </Modal>
 
