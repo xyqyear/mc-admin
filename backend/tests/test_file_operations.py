@@ -90,7 +90,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -141,7 +141,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -167,7 +167,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -187,7 +187,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -213,7 +213,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -237,7 +237,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -256,7 +256,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -284,7 +284,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -306,7 +306,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -326,7 +326,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -354,7 +354,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -380,7 +380,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -400,7 +400,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -425,7 +425,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -450,7 +450,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -470,7 +470,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -493,7 +493,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -516,7 +516,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -535,7 +535,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -561,7 +561,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -588,7 +588,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -606,7 +606,7 @@ class TestFileOperations:
     def test_server_not_found(self, client):
         """Test operations on nonexistent server."""
         with (
-            patch("app.routers.servers.mc_manager") as mock_manager,
+            patch("app.routers.files.mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             # Mock instance that doesn't exist
