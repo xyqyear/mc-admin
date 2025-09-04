@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   Card,
   Button,
@@ -10,7 +10,6 @@ import {
   Modal
 } from 'antd'
 import {
-  SaveOutlined,
   ReloadOutlined,
   ExclamationCircleOutlined,
   CloudServerOutlined,
@@ -52,51 +51,17 @@ const ServerCompose: React.FC = () => {
 
   // 本地状态
   const [rawYaml, setRawYaml] = useState('')
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isCompareVisible, setIsCompareVisible] = useState(false)
   const [editorKey, setEditorKey] = useState(0) // 用于强制重新渲染编辑器
-  const [checkTrigger, setCheckTrigger] = useState(0) // 用于触发一致性检查
   const editorRef = useRef<any>(null)
 
   // 当 composeFile 数据加载完成时，初始化编辑器内容
   useEffect(() => {
     if (composeContent) {
-      const savedConfig = localStorage.getItem(`compose-${id}`)
-      setRawYaml(savedConfig || composeContent)
+      setRawYaml(composeContent)
     }
   }, [composeContent, id])
 
-  // 定期检查配置一致性，确保状态及时更新
-  useEffect(() => {
-    if (!composeContent) return
-
-    const checkInterval = setInterval(() => {
-      // 触发一致性检查更新
-      setCheckTrigger(prev => prev + 1)
-    }, 3000) // 每3秒检查一次
-
-    return () => clearInterval(checkInterval)
-  }, [composeContent, id])
-
-  // 实时检查浏览器存储和服务器配置的一致性
-  const checkConfigConsistency = () => {
-    const currentSavedConfig = localStorage.getItem(`compose-${id}`)
-    const serverConfig = composeContent
-
-    if (!currentSavedConfig || !serverConfig) {
-      return { hasSavedConfig: false, hasOnlineChanges: false }
-    }
-
-    const hasSavedConfig = !!currentSavedConfig
-    const hasOnlineChanges = hasSavedConfig && currentSavedConfig.trim() !== serverConfig.trim()
-
-    return { hasSavedConfig, hasOnlineChanges }
-  }
-
-  // 使用useMemo来优化一致性检查，依赖于checkTrigger和composeContent
-  const { hasSavedConfig, hasOnlineChanges } = useMemo(() => {
-    return checkConfigConsistency()
-  }, [checkTrigger, composeContent, id])
 
   // 如果没有服务器ID，返回错误
   if (!id) {
@@ -140,22 +105,7 @@ const ServerCompose: React.FC = () => {
     return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
   }
 
-  // 只有当有本地配置且与在线配置不同时才显示未保存更改
-  const showUnsavedChanges = hasUnsavedChanges && hasSavedConfig
 
-  // 保存到浏览器本地存储
-  const handleSaveLocal = () => {
-    try {
-      localStorage.setItem(`compose-${id}`, rawYaml)
-      message.success('配置已保存到浏览器本地')
-      setHasUnsavedChanges(false)
-
-      // 立即触发一致性检查
-      setCheckTrigger(prev => prev + 1)
-    } catch (error) {
-      message.error('保存到浏览器失败')
-    }
-  }
 
   // 提交并重建服务器
   const handleSubmitAndRebuild = async () => {
@@ -228,16 +178,11 @@ const ServerCompose: React.FC = () => {
           // 调用 API 提交配置并重建服务器
           await updateComposeMutation.mutateAsync(rawYaml)
           message.info('服务器重建需要几分钟时间，请稍候')
-          setHasUnsavedChanges(false)
-
-          // 清除浏览器存储
-          localStorage.removeItem(`compose-${id}`)
 
           // 重新获取最新配置，这会触发组件重新渲染和一致性检查
           await composeQuery.refetch()
 
-          // 强制触发一致性检查
-          setCheckTrigger(prev => prev + 1)
+          // 强制重新渲染编辑器
           setEditorKey(prev => prev + 1)
 
         } catch (error: any) {
@@ -250,22 +195,17 @@ const ServerCompose: React.FC = () => {
   const handleReset = () => {
     Modal.confirm({
       title: '重新载入配置',
-      content: '确定要重新载入配置吗？这将丢失所有未保存的更改，恢复到服务器的在线配置。',
+      content: '确定要重新载入配置吗？这将丢失当前编辑器中的更改，恢复到服务器的在线配置。',
       okText: '确认',
       cancelText: '取消',
       icon: <ExclamationCircleOutlined />,
       onOk: () => {
-        // 重新载入应该恢复到服务器的原始配置，而不是本地存储的配置
+        // 重新载入到服务器的原始配置
         const originalConfig = composeContent || ''
         setRawYaml(originalConfig)
-        setHasUnsavedChanges(false)
 
-        // 同时清除本地存储的配置
-        localStorage.removeItem(`compose-${id}`)
-
-        // 强制重新渲染编辑器和触发一致性检查
+        // 强制重新渲染编辑器
         setEditorKey(prev => prev + 1)
-        setCheckTrigger(prev => prev + 1)
 
         // 延迟更新编辑器内容，确保重新渲染完成
         setTimeout(() => {
@@ -293,12 +233,6 @@ const ServerCompose: React.FC = () => {
   const handleYamlChange = (value: string | undefined) => {
     if (value !== undefined) {
       setRawYaml(value)
-      // 只有当有本地配置或者当前值与在线数据不同时才标记为未保存
-      const currentSavedConfig = localStorage.getItem(`compose-${id}`)
-      const hasLocalConfig = !!currentSavedConfig
-      const isDifferentFromOnline = value.trim() !== composeQuery.data?.trim()
-
-      setHasUnsavedChanges(hasLocalConfig || isDifferentFromOnline)
     }
   }
 
@@ -310,31 +244,6 @@ const ServerCompose: React.FC = () => {
           {status && <ServerStateTag state={status} />}
         </div>
         <Space>
-          {showUnsavedChanges && (
-            <Alert
-              message="有未保存的更改"
-              type="warning"
-              showIcon
-              className="mb-0"
-            />
-          )}
-          {hasOnlineChanges && (
-            <Alert
-              message="本地配置与服务器配置不一致"
-              type="info"
-              showIcon
-              className="mb-0"
-              action={
-                <Button
-                  size="small"
-                  type="link"
-                  onClick={handleCompare}
-                >
-                  查看差异
-                </Button>
-              }
-            />
-          )}
           <Button
             icon={<DiffOutlined />}
             onClick={handleCompare}
@@ -346,12 +255,6 @@ const ServerCompose: React.FC = () => {
             onClick={handleReset}
           >
             重新载入
-          </Button>
-          <Button
-            icon={<SaveOutlined />}
-            onClick={handleSaveLocal}
-          >
-            保存到本地
           </Button>
           <Button
             type="primary"
@@ -418,7 +321,7 @@ const ServerCompose: React.FC = () => {
       {/* 编辑说明 */}
       <Alert
         message="编辑说明"
-        description="请直接编辑上方的 Docker Compose YAML 配置文件。保存后需要重建服务器才能生效。"
+        description="请直接编辑上方的 Docker Compose YAML 配置文件。需要点击提交并重建才能生效。"
         type="info"
         showIcon
       />
