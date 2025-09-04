@@ -3,11 +3,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.jwt_utils import create_access_token, get_password_hash, verify_password
+from ..auth.jwt_utils import create_access_token, get_password_hash, get_token_expiry, verify_password
 from ..auth.login_code import loginCodeManager
 from ..db.crud.user import create_user, get_user_by_username
 from ..db.database import get_db
-from ..dependencies import RequireRole, UserRole, verify_master_token
+from ..dependencies import JwtClaims, RequireRole, UserRole, verify_master_token
 from ..models import User, UserCreate
 
 router = APIRouter(
@@ -42,7 +42,23 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token = create_access_token(data={"sub": user.username})
+    # 用户登录时 id 不应该为 None
+    if user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User ID is missing"
+        )
+    
+    # 使用 JwtClaims 创建 JWT 数据
+    jwt_claims = JwtClaims(
+        sub=user.username,
+        user_id=user.id,
+        username=user.username,
+        role=user.role.value,
+        created_at=user.created_at.isoformat(),
+        exp=get_token_expiry(),
+    )
+    access_token = create_access_token(jwt_claims)
     return Token(access_token=access_token, token_type="bearer")
 
 

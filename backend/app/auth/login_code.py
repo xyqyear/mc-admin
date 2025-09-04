@@ -4,8 +4,9 @@ import random
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..db.crud.user import get_user_by_username
+from ..dependencies import JwtClaims
 from ..logger import logger
-from .jwt_utils import create_access_token
+from .jwt_utils import create_access_token, get_token_expiry
 
 
 class LoginCodeManager:
@@ -62,7 +63,20 @@ class LoginCodeManager:
         if websocket is None:
             return False
 
-        access_token = create_access_token(data={"sub": user.username})
+        # 用户登录时 id 不应该为 None
+        if user.id is None:
+            return False
+        
+        # 使用 JwtClaims 创建 JWT 数据
+        jwt_claims = JwtClaims(
+            sub=user.username,
+            user_id=user.id,
+            username=user.username,
+            role=user.role.value,
+            created_at=user.created_at.isoformat(),
+            exp=get_token_expiry(),
+        )
+        access_token = create_access_token(jwt_claims)
         try:
             await websocket.send_json(
                 {"type": "verified", "access_token": access_token}

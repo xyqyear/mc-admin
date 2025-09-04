@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import DockerMCManager
+from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
@@ -113,7 +114,7 @@ async def _get_file_items(base_path: Path, current_path: str = "/") -> List[File
 # File management endpoints
 @router.get("/{server_id}/files", response_model=FileListResponse)
 async def list_files(
-    server_id: str, path: str = "/", _: str = Depends(get_current_user)
+    server_id: str, path: str = "/", _: UserPublic = Depends(get_current_user)
 ):
     """List files and directories in the specified server path"""
     try:
@@ -138,7 +139,7 @@ async def list_files(
 
 @router.get("/{server_id}/files/content")
 async def get_file_content(
-    server_id: str, path: str, _: str = Depends(get_current_user)
+    server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Get content of a specific file"""
     try:
@@ -184,7 +185,7 @@ async def update_file_content(
     server_id: str,
     path: str,
     file_content: FileContent,
-    _: str = Depends(get_current_user),
+    _: UserPublic = Depends(get_current_user),
 ):
     """Update content of a specific file"""
     try:
@@ -217,7 +218,7 @@ async def update_file_content(
 
 
 @router.get("/{server_id}/files/download")
-async def download_file(server_id: str, path: str, _: str = Depends(get_current_user)):
+async def download_file(server_id: str, path: str, _: UserPublic = Depends(get_current_user)):
     """Download a specific file"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -256,7 +257,7 @@ async def upload_file(
     server_id: str,
     path: str = "/",
     file: UploadFile = File(...),
-    _: str = Depends(get_current_user),
+    _: UserPublic = Depends(get_current_user),
 ):
     """Upload a file to the specified server path"""
     try:
@@ -302,7 +303,7 @@ async def upload_file(
 async def create_file_or_directory(
     server_id: str,
     create_request: CreateFileRequest,
-    _: str = Depends(get_current_user),
+    _: UserPublic = Depends(get_current_user),
 ):
     """Create a new file or directory"""
     try:
@@ -352,7 +353,7 @@ async def create_file_or_directory(
 
 @router.delete("/{server_id}/files")
 async def delete_file_or_directory(
-    server_id: str, path: str, _: str = Depends(get_current_user)
+    server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Delete a file or directory"""
     try:
@@ -391,7 +392,7 @@ async def delete_file_or_directory(
 async def rename_file_or_directory(
     server_id: str,
     rename_request: RenameFileRequest,
-    _: str = Depends(get_current_user),
+    _: UserPublic = Depends(get_current_user),
 ):
     """Rename a file or directory"""
     try:

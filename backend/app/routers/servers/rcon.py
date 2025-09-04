@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import DockerMCManager, MCServerStatus
+from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
@@ -20,7 +21,7 @@ class RconCommand(BaseModel):
 
 @router.post("/{server_id}/rcon")
 async def send_rcon_command(
-    server_id: str, rcon_command: RconCommand, _: str = Depends(get_current_user)
+    server_id: str, rcon_command: RconCommand, _: UserPublic = Depends(get_current_user)
 ):
     """Send RCON command to a specific server"""
     try:

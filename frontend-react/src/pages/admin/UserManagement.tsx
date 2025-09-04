@@ -91,8 +91,8 @@ const UserManagement: React.FC = () => {
       title: '注册日期',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date: string | null) => 
-        date ? new Date(date).toLocaleString('zh-CN') : '未知',
+      render: (date: string) => 
+        new Date(date).toLocaleString('zh-CN'),
     },
     {
       title: '操作',

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import DockerMCManager, MCServerStatus
+from ...models import UserPublic
 from .utils.server_list import ServerListItem, get_server_list_item
 
 router = APIRouter(
@@ -66,7 +67,7 @@ class ComposeConfig(BaseModel):
 
 
 @router.get("/", response_model=list[ServerListItem])
-async def get_servers(_: str = Depends(get_current_user)):
+async def get_servers(_: UserPublic = Depends(get_current_user)):
     """Get list of all servers with their basic info and current status"""
     try:
         # Get all server instances
@@ -92,7 +93,7 @@ async def get_servers(_: str = Depends(get_current_user)):
 
 
 @router.get("/{server_id}", response_model=ServerInfo)
-async def get_server(server_id: str, _: str = Depends(get_current_user)):
+async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get detailed information about a specific server"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -126,7 +127,7 @@ async def get_server(server_id: str, _: str = Depends(get_current_user)):
 
 
 @router.get("/{server_id}/status", response_model=ServerStatus)
-async def get_server_status(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get current status of a specific server"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -141,7 +142,7 @@ async def get_server_status(server_id: str, _: str = Depends(get_current_user)):
 
 
 @router.get("/{server_id}/resources", response_model=ServerResources)
-async def get_server_resources(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_resources(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get system resource information for a specific server (available when running/starting/healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -181,7 +182,7 @@ async def get_server_resources(server_id: str, _: str = Depends(get_current_user
 
 
 @router.get("/{server_id}/players", response_model=ServerPlayers)
-async def get_server_players(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_players(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get online players for a specific server (only available when healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -210,7 +211,7 @@ async def get_server_players(server_id: str, _: str = Depends(get_current_user))
 
 
 @router.get("/{server_id}/iostats", response_model=ServerIOStats)
-async def get_server_iostats(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_iostats(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get comprehensive I/O statistics for a specific server (disk I/O, network I/O, disk usage)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -249,7 +250,7 @@ async def get_server_iostats(server_id: str, _: str = Depends(get_current_user))
 
 
 @router.get("/{server_id}/disk-usage", response_model=ServerDiskUsage)
-async def get_server_disk_usage(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_disk_usage(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get disk usage information for a specific server (always available regardless of server status)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -278,7 +279,7 @@ async def get_server_disk_usage(server_id: str, _: str = Depends(get_current_use
 
 
 @router.get("/{server_id}/compose")
-async def get_server_compose(server_id: str, _: str = Depends(get_current_user)):
+async def get_server_compose(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get the Docker Compose configuration for a specific server"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -308,7 +309,7 @@ async def get_server_compose(server_id: str, _: str = Depends(get_current_user))
 
 @router.post("/{server_id}/compose")
 async def update_server_compose(
-    server_id: str, compose_config: ComposeConfig, _: str = Depends(get_current_user)
+    server_id: str, compose_config: ComposeConfig, _: UserPublic = Depends(get_current_user)
 ):
     """Update the Docker Compose configuration for a specific server"""
     try:
@@ -367,7 +368,7 @@ async def update_server_compose(
 
 @router.post("/{server_id}/operations")
 async def server_operation(
-    server_id: str, operation: ServerOperation, _: str = Depends(get_current_user)
+    server_id: str, operation: ServerOperation, _: UserPublic = Depends(get_current_user)
 ):
     """Perform operations on a server (start, stop, restart, up, down)"""
     try:

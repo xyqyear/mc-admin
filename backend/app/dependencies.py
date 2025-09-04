@@ -1,29 +1,30 @@
-from typing import Annotated, cast
+from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Query, WebSocketException, status
 from fastapi.security import OAuth2PasswordBearer
 from joserfc import jwt
 from joserfc.errors import BadSignatureError, DecodeError
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth.jwt_utils import key
 from .config import settings
-from .db.crud.user import get_user_by_username
-from .db.database import get_db
 from .logger import logger
-from .models import User, UserRole
+from .models import UserPublic, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 
-class TokenData(BaseModel):
+class JwtClaims(BaseModel):
+    sub: str  # username
+    user_id: int
     username: str
+    role: str
+    created_at: str
+    exp: datetime  # expiration time
 
 
-async def get_current_user(
-    db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
-) -> User:
+def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -33,32 +34,35 @@ async def get_current_user(
     if token == settings.master_token:
         logger.info("Master token used; acting as SYSTEM user")
         return get_system_user()
-    token_data: TokenData | None = None
+
     try:
         payload = jwt.decode(token, key, [settings.jwt.algorithm])
-        claims = payload.claims
-        if claims is not None:
-            username = cast(str, claims.get("sub"))
-            token_data = TokenData(username=username)
-    except (BadSignatureError, DecodeError):
+        if payload.claims is not None:
+            # 使用 Pydantic 模型解析 JWT claims
+            jwt_claims = JwtClaims.model_validate(payload.claims)
+            
+            # 检查过期时间
+            if jwt_claims.exp < datetime.now(timezone.utc):
+                raise credentials_exception
+                
+            return UserPublic(
+                id=jwt_claims.user_id,
+                username=jwt_claims.username,
+                role=UserRole(jwt_claims.role),
+                created_at=datetime.fromisoformat(jwt_claims.created_at),
+            )
+
+    except (BadSignatureError, DecodeError, ValueError):
         raise credentials_exception
 
-    if token_data is None or token_data.username is None:
-        raise credentials_exception
-
-    user = await get_user_by_username(db, token_data.username)
-
-    if user is None:
-        raise credentials_exception
-
-    return user
+    raise credentials_exception
 
 
 class RequireRole:
     def __init__(self, roles: tuple[UserRole, ...] | UserRole):
         self.roles = roles if isinstance(roles, tuple) else (roles,)
 
-    async def __call__(self, user: User = Depends(get_current_user)):
+    async def __call__(self, user: UserPublic = Depends(get_current_user)):
         if user.role not in self.roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
@@ -75,9 +79,7 @@ def verify_master_token(authorization: Annotated[str, Header()]):
         )
 
 
-async def get_websocket_user(
-    token: Annotated[str | None, Query()] = None, db: AsyncSession = Depends(get_db)
-) -> User:
+def get_websocket_user(token: Annotated[str | None, Query()] = None) -> UserPublic:
     """
     WebSocket authentication dependency.
     Extracts JWT token from query parameter and validates it.
@@ -93,29 +95,32 @@ async def get_websocket_user(
 
     try:
         payload = jwt.decode(token, key, [settings.jwt.algorithm])
-        claims = payload.claims
-        if claims is not None:
-            username = cast(str, claims.get("sub"))
-            if username:
-                user = await get_user_by_username(db, username)
-                if user is not None:
-                    return user
-    except (BadSignatureError, DecodeError):
+        if payload.claims is not None:
+            # 使用 Pydantic 模型解析 JWT claims
+            jwt_claims = JwtClaims.model_validate(payload.claims)
+            
+            # 检查过期时间
+            if jwt_claims.exp < datetime.now(timezone.utc):
+                raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+                
+            return UserPublic(
+                id=jwt_claims.user_id,
+                username=jwt_claims.username,
+                role=UserRole(jwt_claims.role),
+                created_at=datetime.fromisoformat(jwt_claims.created_at),
+            )
+    except (BadSignatureError, DecodeError, ValueError):
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
 
-def get_system_user() -> User:
+def get_system_user() -> UserPublic:
     """Return a synthetic OWNER user representing system actions.
 
     This user is not persisted to the database and is used when the master token
     is presented in place of a JWT bearer token.
     """
-    # Create a User object that won't be persisted
-    user = User()
-    user.id = 0
-    user.username = "SYSTEM"
-    user.role = UserRole.OWNER
-    user.hashed_password = ""
-    return user
+    return UserPublic(
+        id=0, username="SYSTEM", role=UserRole.OWNER, created_at=datetime.now()
+    )
