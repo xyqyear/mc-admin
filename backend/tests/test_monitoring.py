@@ -65,7 +65,7 @@ async def mc_server_session(teardown_session: list[str]):
 
 
 @pytest.mark.asyncio
-async def test_get_container_id(mc_server_session: MCInstance):
+async def test_get_container_id_with_docker(mc_server_session: MCInstance):
     """Test that get_container_id() returns the correct Docker container ID"""
     # Get container ID from API
     api_container_id = await mc_server_session.get_container_id()
@@ -107,7 +107,7 @@ async def test_get_container_id(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_pid(mc_server_session: MCInstance):
+async def test_get_pid_with_docker(mc_server_session: MCInstance):
     """Test that get_pid() returns the correct process ID"""
     # Get PID from API
     api_pid = await mc_server_session.get_pid()
@@ -132,7 +132,7 @@ async def test_get_pid(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_memory_usage(mc_server_session: MCInstance):
+async def test_get_memory_usage_with_docker(mc_server_session: MCInstance):
     """Test that get_memory_usage() returns valid memory statistics"""
     memory_stats = await mc_server_session.get_memory_usage()
 
@@ -154,7 +154,7 @@ async def test_get_memory_usage(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_cpu_percentage(mc_server_session: MCInstance):
+async def test_get_cpu_percentage_with_docker(mc_server_session: MCInstance):
     """Test that get_cpu_percentage() works correctly with two-call pattern"""
     # First call establishes baseline
     cpu_1 = await mc_server_session.get_cpu_percentage()
@@ -170,7 +170,7 @@ async def test_get_cpu_percentage(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_disk_io(mc_server_session: MCInstance):
+async def test_get_disk_io_with_docker(mc_server_session: MCInstance):
     """Test that get_disk_io() returns valid disk I/O statistics"""
     disk_io = await mc_server_session.get_disk_io()
 
@@ -198,7 +198,7 @@ async def test_get_disk_io(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_network_io(mc_server_session: MCInstance):
+async def test_get_network_io_with_docker(mc_server_session: MCInstance):
     """Test that get_network_io() returns valid network I/O statistics"""
     network_io = await mc_server_session.get_network_io()
 
@@ -225,7 +225,7 @@ async def test_get_network_io(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_all_apis_integration(mc_server_session: MCInstance):
+async def test_all_apis_integration_with_docker(mc_server_session: MCInstance):
     """Integration test that verifies all monitoring APIs work together"""
     # Test that we can get all metrics without errors
     container_id = await mc_server_session.get_container_id()

@@ -39,7 +39,7 @@ async def test_minecraft_instance(teardown: list[str]):
 
 
 @pytest.mark.asyncio
-async def test_server_status_lifecycle(teardown: list[str]):
+async def test_server_status_lifecycle_with_docker(teardown: list[str]):
     """Test the complete lifecycle of server status changes"""
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
     server = docker_mc_manager.get_instance("status-test-server")
@@ -124,7 +124,7 @@ async def test_server_status_lifecycle(teardown: list[str]):
 
 
 @pytest.mark.asyncio
-async def test_get_disk_space_info(teardown: list[str]):
+async def test_get_disk_space_info_with_docker(teardown: list[str]):
     """Test get_disk_space_info method"""
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
     server = docker_mc_manager.get_instance("disk-space-test")
@@ -137,7 +137,7 @@ async def test_get_disk_space_info(teardown: list[str]):
     # Create server to set up data directory
     await server.create(create_mc_server_compose_yaml("disk-space-test", 34650, 34651))
 
-    # Test successful disk space info retrieval
+    # Test successful disk space info retrieval (without bringing up container)
     disk_info = await server.get_disk_space_info()
     assert isinstance(disk_info, DiskSpaceInfo)
     assert disk_info.used_bytes >= 0

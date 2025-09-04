@@ -22,7 +22,7 @@ from .fixtures.test_utils import (
 
 
 @pytest.mark.asyncio
-async def test_integration(teardown: list[str]):
+async def test_integration_with_docker(teardown: list[str]):
     # setting up
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
 
