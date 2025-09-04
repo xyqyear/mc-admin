@@ -123,6 +123,28 @@ export const useServerQueries = () => {
     });
   };
 
+  // 单个服务器磁盘使用信息 (始终可用，不依赖运行状态)
+  const useServerDiskUsage = (
+    id: string,
+    options?: UseQueryOptions<ServerIOStatsResponse>,
+  ) => {
+    return useQuery({
+      queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
+      queryFn: () => serverApi.getServerIOStats(id),
+      enabled: !!id,
+      refetchInterval: 30000, // 30秒刷新磁盘数据，频率较低
+      staleTime: 15000, // 15秒 - 磁盘使用变化较慢
+      retry: (failureCount, error: any) => {
+        // 对于磁盘信息，只在服务器可访问时重试
+        if (error?.response?.status === 404 || error?.response?.status === 409) {
+          return false;
+        }
+        return failureCount < 3;
+      },
+      ...options,
+    });
+  };
+
   // Compose文件内容 (长缓存，手动刷新)
   const useComposeFile = (id: string, options?: UseQueryOptions<string>) => {
     return useQuery({
@@ -158,6 +180,7 @@ export const useServerQueries = () => {
     useServerResources, // 单个服务器系统资源 (CPU/内存)
     useServerPlayers, // 单个服务器玩家列表
     useServerIOStats, // 单个服务器I/O统计信息 (磁盘和网络)
+    useServerDiskUsage, // 单个服务器磁盘使用信息 (始终可用)
     useComposeFile, // Compose文件内容
     useSystemInfo, // 系统信息
   };

@@ -37,12 +37,14 @@ const ServerDetail: React.FC = () => {
     resources,
     players,
     iostats,
+    diskUsage,
     isLoading,
     isError,
     error,
     hasServerInfo,
     hasResourcesData,
     hasIOStatsData,
+    hasDiskUsageData,
     isRunning,
     isHealthy,
   } = useServerDetailData()
@@ -221,72 +223,74 @@ const ServerDetail: React.FC = () => {
         </Row>
       </Card>
 
-      {/* 系统资源使用情况 - 仅在运行状态显示 */}
-      {isRunning && (hasResourcesData || hasIOStatsData) && (
+      {/* 磁盘使用空间 - 始终显示 */}
+      <Card title="磁盘使用空间">
+        {hasDiskUsageData && diskUsage ? (
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-base font-medium">存储空间分配</span>
+              <span className="text-sm text-gray-600">
+                服务器: {(diskUsage.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                剩余: {(diskUsage.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB / 
+                总计: {(diskUsage.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
+              </span>
+            </div>
+            <Progress
+              percent={((diskUsage.diskTotalBytes - diskUsage.diskAvailableBytes) / diskUsage.diskTotalBytes) * 100}
+              success={{ 
+                percent: (diskUsage.diskUsageBytes / diskUsage.diskTotalBytes) * 100,
+                strokeColor: '#52c41a'
+              }}
+              strokeColor="#faad14"
+              showInfo={false}
+              size="default"
+            />
+            <div className="mt-2 text-xs text-gray-500">
+              <span className="inline-block w-3 h-3 bg-green-500 rounded mr-1"></span>该服务器使用
+              <span className="inline-block w-3 h-3 bg-yellow-500 rounded mx-1 ml-4"></span>其他文件使用
+              <span className="ml-4">未填充部分为剩余空间</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-8">
+            <p>磁盘使用信息暂不可用</p>
+            <p className="text-xs">请检查服务器连接状态</p>
+          </div>
+        )}
+      </Card>
+
+      {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
+      {isRunning && hasResourcesData && resources && (
         <Card title="系统资源使用情况">
           <Row gutter={[16, 16]}>
             <Col span={12}>
-              <div className="space-y-4">
-                {hasResourcesData && resources && (
-                  <>
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span>CPU 使用率</span>
-                        <span>{resources.cpuPercentage.toFixed(1)}%</span>
-                      </div>
-                      <Progress
-                        percent={resources.cpuPercentage}
-                        strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
-                        showInfo={false}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span>内存使用</span>
-                        <span>
-                          {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
-                          {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
-                        </span>
-                      </div>
-                      <Progress
-                        percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                        strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
-                          (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
-                        showInfo={false}
-                      />
-                    </div>
-                  </>
-                )}
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span>CPU 使用率</span>
+                  <span>{resources.cpuPercentage.toFixed(1)}%</span>
+                </div>
+                <Progress
+                  percent={resources.cpuPercentage}
+                  strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                  showInfo={false}
+                />
               </div>
             </Col>
             <Col span={12}>
-              <div className="space-y-4">
-                {hasIOStatsData && iostats ? (
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span>磁盘使用空间</span>
-                      <span>
-                        服务器: {(iostats.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
-                        剩余: {(iostats.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB / 
-                        总计: {(iostats.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
-                      </span>
-                    </div>
-                    <Progress
-                      percent={((iostats.diskTotalBytes - iostats.diskAvailableBytes) / iostats.diskTotalBytes) * 100}
-                      success={{ 
-                        percent: (iostats.diskUsageBytes / iostats.diskTotalBytes) * 100,
-                        strokeColor: '#52c41a'
-                      }}
-                      strokeColor="#faad14"
-                      showInfo={false}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-500 pt-8">
-                    <p>磁盘使用信息</p>
-                    <p>服务器运行时可用</p>
-                  </div>
-                )}
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span>内存使用</span>
+                  <span>
+                    {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
+                    {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
+                  </span>
+                </div>
+                <Progress
+                  percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
+                  strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
+                    (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                  showInfo={false}
+                />
               </div>
             </Col>
           </Row>

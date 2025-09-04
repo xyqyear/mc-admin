@@ -10,6 +10,7 @@ export const useServerDetailQueries = (serverId: string) => {
     useServerResources,
     useServerPlayers,
     useServerIOStats,
+    useServerDiskUsage,
     useComposeFile,
   } = useServerQueries();
 
@@ -30,6 +31,9 @@ export const useServerDetailQueries = (serverId: string) => {
     // I/O统计信息 (5秒刷新，RUNNING/STARTING/HEALTHY时可用)
     const iostatsQuery = useServerIOStats(serverId, statusQuery.data);
 
+    // 磁盘使用信息 (30秒刷新，始终可用)
+    const diskUsageQuery = useServerDiskUsage(serverId);
+
     return {
       // 原始查询对象
       configQuery,
@@ -37,6 +41,7 @@ export const useServerDetailQueries = (serverId: string) => {
       resourcesQuery,
       playersQuery,
       iostatsQuery,
+      diskUsageQuery,
 
       // 便捷的数据访问
       serverInfo: configQuery.data,
@@ -44,6 +49,7 @@ export const useServerDetailQueries = (serverId: string) => {
       resources: resourcesQuery.data,
       players: playersQuery.data || [],
       iostats: iostatsQuery.data,
+      diskUsage: diskUsageQuery.data,
 
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -55,6 +61,7 @@ export const useServerDetailQueries = (serverId: string) => {
       hasResourcesData: !!resourcesQuery.data,
       hasPlayersData: !!playersQuery.data?.length,
       hasIOStatsData: !!iostatsQuery.data,
+      hasDiskUsageData: !!diskUsageQuery.data,
 
       // 状态判断
       isRunning:
