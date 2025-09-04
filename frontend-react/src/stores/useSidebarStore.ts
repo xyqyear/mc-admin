@@ -76,6 +76,9 @@ export const getOpenKeysFromPath = (pathname: string): string[] => {
       // For new server page, just open the main server menu
       openKeys.push('服务器管理')
     }
+  } else if (pathname.startsWith('/admin/')) {
+    // Check if we're on an admin page
+    openKeys.push('超管')
   } else if (pathname === '/overview' || pathname === '/backups') {
     // For other main pages, don't open any submenus by default
     // User can manually open them if needed
