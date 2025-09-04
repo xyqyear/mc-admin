@@ -65,10 +65,10 @@ class MockMCInstance:
 @contextmanager
 def mock_file_operations_setup(instance):
     """Context manager for mocking file operations dependencies.
-    
+
     Args:
         instance: The MockMCInstance to use for testing
-        
+
     Yields:
         None: The context is set up with mocked dependencies
     """
@@ -110,7 +110,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -150,7 +149,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files?path=/plugins",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -171,7 +169,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files?path=/nonexistent",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -186,7 +183,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -207,7 +203,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files/content?path=/server.properties",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -220,13 +215,11 @@ class TestFileOperations:
             assert "server-port=25565" in data["content"]
             assert "# Test server properties" in data["content"]
 
-
     def test_get_file_content_nonexistent(self, client, mock_instance):
         """Test getting content of nonexistent file."""
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files/content?path=/nonexistent.txt",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -240,7 +233,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             new_content = (
                 "# Updated server properties\nserver-port=25566\nmax-players=20\n"
             )
@@ -263,7 +255,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             # Mock file write to raise an exception
             with patch("aiofiles.open", side_effect=Exception("Write error")):
                 response = client.post(
@@ -280,7 +271,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.get(
                 f"/servers/{server_id}/files/download?path=/server.properties",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -295,7 +285,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             # Create test file content
             test_content = b"This is test file content for upload"
 
@@ -318,7 +307,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             test_content = b"Plugin configuration"
 
             response = client.post(
@@ -339,7 +327,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/upload?path=/",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -354,7 +341,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/create",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -374,7 +360,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/create",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -394,7 +379,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/create",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -409,7 +393,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.delete(
                 f"/servers/{server_id}/files?path=/readme.txt",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -427,7 +410,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.delete(
                 f"/servers/{server_id}/files?path=/world",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -445,7 +427,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.delete(
                 f"/servers/{server_id}/files?path=/nonexistent.txt",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -459,7 +440,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/rename",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -480,7 +460,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/rename",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -502,7 +481,6 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-
             response = client.post(
                 f"/servers/{server_id}/files/rename",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -521,9 +499,8 @@ class TestFileOperations:
             return False
 
         mock_instance.exists = mock_exists  # type: ignore
-        
-        with mock_file_operations_setup(mock_instance):
 
+        with mock_file_operations_setup(mock_instance):
             response = client.get(
                 "/servers/nonexistent/files",
                 headers={"Authorization": "Bearer test_master_token"},

@@ -4,11 +4,11 @@
  * @returns Formatted file size string
  */
 export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '-'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  if (bytes === 0) return "-";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
 /**
@@ -17,7 +17,7 @@ export function formatFileSize(bytes: number): string {
  * @returns Formatted date string
  */
 export function formatDate(timestamp: number | string): string {
-  const ts = typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp
-  const date = new Date(ts * 1000)
-  return date.toLocaleString('zh-CN')
+  const ts = typeof timestamp === "string" ? parseFloat(timestamp) : timestamp;
+  const date = new Date(ts * 1000);
+  return date.toLocaleString("zh-CN");
 }

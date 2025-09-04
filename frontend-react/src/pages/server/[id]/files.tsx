@@ -288,22 +288,22 @@ const ServerFiles: React.FC = () => {
       render: (name: string, file: FileItem) => {
         const isEditable = isFileEditable(file.name)
         const isDirectory = file.type === 'directory'
-        
+
         return (
           <div className="flex items-center space-x-2">
             <FileIcon file={file} />
-            <Tooltip 
+            <Tooltip
               title={
-                isDirectory ? '点击打开文件夹' : 
-                isEditable ? '点击编辑文件' : 
-                undefined
+                isDirectory ? '点击打开文件夹' :
+                  isEditable ? '点击编辑文件' :
+                    undefined
               }
             >
               <span
                 className={
                   isDirectory ? 'font-medium cursor-pointer hover:text-blue-600' :
-                  isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
-                  'font-medium'
+                    isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
+                      'font-medium'
                 }
                 onClick={() => {
                   if (isDirectory) {

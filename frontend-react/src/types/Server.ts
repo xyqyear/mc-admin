@@ -1,50 +1,54 @@
 // 重新导出新的类型定义，保持向后兼容
-export type { ServerInfo, ServerStatus, ServerType } from './ServerInfo'
-export type { ServerFullInfo, ServerRuntime, SystemInfo } from './ServerRuntime'
+export type { ServerInfo, ServerStatus, ServerType } from "./ServerInfo";
+export type {
+  ServerFullInfo,
+  ServerRuntime,
+  SystemInfo
+} from "./ServerRuntime";
 
 // 保持现有的类型定义以兼容老代码
 
 export interface Backup {
-  id: string
-  serverId: string
-  name: string
-  size: number
-  createdAt: string
-  type: 'manual' | 'auto' | 'pre-update'
-  description?: string
+  id: string;
+  serverId: string;
+  name: string;
+  size: number;
+  createdAt: string;
+  type: "manual" | "auto" | "pre-update";
+  description?: string;
 }
 
 export interface ServerLog {
-  timestamp: string
-  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
-  message: string
-  source?: string
+  timestamp: string;
+  level: "INFO" | "WARN" | "ERROR" | "DEBUG";
+  message: string;
+  source?: string;
 }
 
 export interface FileItem {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  size: number
-  modified_at: number  // Unix timestamp as number
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size: number;
+  modified_at: number; // Unix timestamp as number
 }
 
 export interface FileListResponse {
-  items: FileItem[]
-  current_path: string
+  items: FileItem[];
+  current_path: string;
 }
 
 export interface FileContent {
-  content: string
+  content: string;
 }
 
 export interface CreateFileRequest {
-  name: string
-  type: 'file' | 'directory'
-  path: string
+  name: string;
+  type: "file" | "directory";
+  path: string;
 }
 
 export interface RenameFileRequest {
-  old_path: string
-  new_name: string
+  old_path: string;
+  new_name: string;
 }

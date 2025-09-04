@@ -27,7 +27,7 @@ class FileItem(BaseModel):
     name: str
     type: Literal["file", "directory"]
     size: int
-    modified_at: float  # Unix timestamp as float
+    modified_at: float
     path: str
 
 
@@ -99,7 +99,7 @@ async def _get_file_items(base_path: Path, current_path: str = "/") -> List[File
                     name=file_name,
                     type=file_type,
                     size=size,
-                    modified_at=modified_at,  # Send raw timestamp to frontend
+                    modified_at=modified_at,
                     path=file_path,
                 )
             )
