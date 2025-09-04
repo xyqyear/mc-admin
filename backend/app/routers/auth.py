@@ -30,31 +30,6 @@ class VerifyTokenResponse(BaseModel):
     result: str
 
 
-@router.post(
-    "/register",
-    response_model=Token,
-    dependencies=[Depends(RequireRole(UserRole.OWNER))],
-)
-async def register(
-    user_create: UserCreate,
-    db: AsyncSession = Depends(get_db),
-) -> Token:
-    db_user = await get_user_by_username(db, user_create.username)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-
-    hashed_password = get_password_hash(user_create.password)
-    new_user = User(
-        username=user_create.username,
-        hashed_password=hashed_password,
-        role=UserRole.ADMIN,  # Default role
-    )
-    await create_user(db, new_user)
-
-    access_token = create_access_token(data={"sub": new_user.username})
-    return Token(access_token=access_token, token_type="bearer")
-
-
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),

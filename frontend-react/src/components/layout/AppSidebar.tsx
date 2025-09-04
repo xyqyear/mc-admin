@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Layout, Menu, Button } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import type { MenuProps } from 'antd'
 import {
   HomeOutlined,
@@ -14,11 +15,15 @@ import {
   FolderOutlined,
   LogoutOutlined,
   CodeOutlined,
+  CrownOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useCurrentUser } from '@/hooks/queries/useUserQueries'
 import { useTokenStore } from '@/stores/useTokenStore'
+import { UserRole } from '@/types/User'
 import ServerMenuIcon from './ServerMenuIcon'
 
 const { Sider } = Layout
@@ -29,6 +34,7 @@ const AppSidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
   const { clearToken } = useTokenStore()
 
@@ -37,6 +43,11 @@ const AppSidebar: React.FC = () => {
   const serversQuery = useServers()
   const servers = serversQuery.data || []
 
+  // 获取当前用户数据
+  const currentUserQuery = useCurrentUser()
+  const currentUser = currentUserQuery.data
+  const isOwner = currentUser?.role === UserRole.OWNER
+
   // Update open keys when route changes (only for real navigation)
   useEffect(() => {
     updateForNavigation(location.pathname)
@@ -44,6 +55,8 @@ const AppSidebar: React.FC = () => {
 
   const handleLogout = () => {
     clearToken()
+    // 清除所有缓存数据
+    queryClient.clear()
     navigate('/login')
   }
 
@@ -95,6 +108,18 @@ const AppSidebar: React.FC = () => {
         },
       ],
     },
+    // 只有OWNER角色才能看到超管菜单
+    ...(isOwner ? [{
+      title: '超管',
+      icon: <CrownOutlined />,
+      items: [
+        {
+          title: '用户管理',
+          icon: <UserOutlined />,
+          path: '/admin/users',
+        },
+      ],
+    }] : []),
     {
       title: '备份管理',
       icon: <SaveOutlined />,

@@ -133,6 +133,18 @@ export const queryKeys = {
     content: (serverId: string, path: string) => [...queryKeys.files.all, serverId, 'content', path] as const,
   },
 
+  // 用户管理
+  user: {
+    all: ["user"] as const,
+    me: () => [...queryKeys.user.all, "me"] as const,
+  },
+
+  // 管理员功能
+  admin: {
+    all: ["admin"] as const,
+    users: () => [...queryKeys.admin.all, "users"] as const,
+  },
+
   // 兼容现有代码
   all: ["api"] as const,
   servers: () => [...queryKeys.all, "servers"] as const,

@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import Enum as SQLAlchemyEnum
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum
 from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -31,6 +32,9 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         SQLAlchemyEnum(UserRole), default=UserRole.ADMIN
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 # Pydantic models for request/response serialization
@@ -45,6 +49,7 @@ class UserPublic(UserBase):
     """Public User model for API responses."""
 
     id: int
+    created_at: datetime
 
 
 class UserCreate(BaseModel):
@@ -52,3 +57,4 @@ class UserCreate(BaseModel):
 
     username: str = PydanticField(min_length=3, max_length=50)
     password: str
+    role: UserRole = UserRole.ADMIN

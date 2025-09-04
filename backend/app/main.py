@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from .db.database import init_db
-from .routers import auth, system, user
+from .routers import admin, auth, system, user
 from .routers.servers import console, files, misc, rcon
 
 
@@ -26,6 +26,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(user.router)
+app.include_router(admin.router)
 app.include_router(system.router)
 app.include_router(misc.router)
 app.include_router(console.router)
