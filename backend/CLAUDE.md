@@ -10,7 +10,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Language**: Python 3.12+ with Poetry package management
 - **Web Framework**: FastAPI + Uvicorn ASGI server with CORS middleware
 - **Database**: SQLAlchemy 2.0 Declarative Models (async) + SQLite + aiosqlite driver
-- **Authentication**: JWT (joserfc) + OAuth2 password flow + WebSocket login codes + Master token system
+- **Authentication**: JWT (joserfc) + OAuth2 + WebSocket login codes + Master token system
 - **Validation**: Pydantic v2 + pydantic-settings (TOML + environment variables)
 - **Async Support**: Full async/await with comprehensive asyncio patterns throughout
 - **System Monitoring**: psutil v7.0.0 for CPU, memory, disk metrics
@@ -68,14 +68,53 @@ poetry run python -m app.main
 ```
 
 ### Testing and Quality
-```bash
-poetry run pytest           # Run all tests
-poetry run black .          # Format code
 
-# Run specific test categories
-poetry run pytest tests/ -v                    # All tests
-poetry run pytest tests/test_monitoring.py -v  # Resource monitoring tests
-poetry run pytest -k "not test_integration" -v # Skip slow integration tests
+**⚠️ CRITICAL TESTING GUIDELINES:**
+
+During development iteration, **NEVER run Docker container tests** to avoid timeouts. Only run safe tests that don't bring up containers:
+
+```bash
+# ✅ Safe for frequent development iteration
+poetry run pytest tests/test_compose.py -v
+poetry run pytest tests/test_compose_file.py -v
+poetry run pytest tests/test_rcon_filtering.py -v
+poetry run pytest tests/test_file_operations.py -v
+poetry run pytest tests/test_websocket_console.py -v
+
+# ✅ Safe unit tests (don't bring up containers)
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+poetry run pytest tests/test_instance.py::test_minecraft_instance -v
+
+# ✅ Skip all Docker container tests during development
+poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
+
+# ✅ Test only changes related to specific functionality (example)
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+
+# ❌ AVOID - These bring up Docker containers and will timeout/slow development
+# poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
+# poetry run pytest tests/test_integration.py::test_integration_with_docker
+# poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
+# poetry run pytest tests/test_instance.py::test_get_disk_space_info_with_docker
+
+# ❌ NEVER run all tests during development
+# poetry run pytest tests/ -v  # Will timeout due to container tests
+```
+
+**Docker Container Tests (Renamed with `_with_docker` suffix):**
+- `test_monitoring.py`: All 8 functions now end with `_with_docker`
+- `test_integration.py`: `test_integration_with_docker` 
+- `test_instance.py`: `test_server_status_lifecycle_with_docker`, `test_get_disk_space_info_with_docker`
+
+**Code Quality:**
+```bash
+poetry run black .          # Format code
+```
+
+**Pre-commit Testing (with container tests):**
+```bash
+# Run with longer timeout for container tests (use sparingly)
+poetry run pytest tests/ -v --timeout=600
 ```
 
 ## API Architecture
@@ -104,7 +143,9 @@ app/                        # Main application package
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
 │   ├── user.py             # User profile endpoints
 │   ├── system.py           # System metrics endpoints (psutil integration)
-│   └── servers.py          # Minecraft server management endpoints (FULL CRUD + operations)
+│   └── servers/
+│       ├── __init__.py
+│       └── misc.py         # Minecraft server management endpoints (FULL CRUD + operations)
 ├── websocket/
 │   ├── __init__.py         # WebSocket module exports
 │   └── console.py          # Real-time console streaming with Watchdog file monitoring
@@ -126,12 +167,14 @@ app/                        # Main application package
 
 tests/                      # Test suite (separate from app package)
 ├── __init__.py
-├── test_compose.py         # Compose file parsing and validation tests
-├── test_instance.py        # MCInstance functionality with container tests
-├── test_integration.py     # Full integration tests (marked slow)
-├── test_monitoring.py      # Resource monitoring with real containers
-├── test_compose_file.py    # ComposeFile Pydantic model tests
-├── test_websocket_console.py # WebSocket console streaming tests
+├── test_compose.py         # ✅ SAFE - Compose file parsing and validation tests
+├── test_compose_file.py    # ✅ SAFE - ComposeFile Pydantic model tests  
+├── test_rcon_filtering.py  # ✅ SAFE - RCON utility function tests
+├── test_file_operations.py # ✅ SAFE - Mocked API endpoint tests
+├── test_websocket_console.py # ✅ SAFE - WebSocket protocol tests with mocks
+├── test_instance.py        # ⚠️ MIXED - Some safe unit tests, some _with_docker container tests
+├── test_monitoring.py      # ❌ DOCKER - All functions end with _with_docker  
+├── test_integration.py     # ❌ DOCKER - test_integration_with_docker
 └── fixtures/               # Test utilities and fixtures
     ├── __init__.py
     ├── test_utils.py       # Test helper functions and cleanup utilities
@@ -158,12 +201,40 @@ tests/                      # Test suite (separate from app package)
 - `GET /servers/{id}/status` - Get current server status (REMOVED/EXISTS/CREATED/RUNNING/STARTING/HEALTHY)
 - `GET /servers/{id}/resources` - Get system resources (CPU, memory via cgroup v2) for running servers
 - `GET /servers/{id}/players` - Get online players for healthy servers
-- `GET /servers/{id}/iostats` - Get comprehensive I/O statistics (disk, network, storage)
+- `GET /servers/{id}/iostats` - **NEW: I/O statistics only** (disk I/O, network I/O - no disk space)
+- `GET /servers/{id}/disk-usage` - **NEW: Disk usage only** (disk space info, always available)
 - `GET /servers/{id}/compose` - Get current Docker Compose configuration as YAML
 - `POST /servers/{id}/compose` - Update Docker Compose configuration from YAML
 - `POST /servers/{id}/operations` - Perform server operations (start, stop, restart, up, down, remove)
 - `POST /servers/{id}/rcon` - Send RCON commands to running servers
 - `WebSocket /servers/{id}/console` - **Real-time console log streaming + command execution**
+
+### Recent API Improvements
+
+**Separated Disk Usage API (Latest Update):**
+- **Problem**: Disk space information was bundled with I/O statistics, causing it to be unavailable when servers weren't running
+- **Solution**: Split into two focused endpoints:
+  - `/servers/{id}/iostats` - I/O performance metrics (disk I/O, network I/O) - requires running server
+  - `/servers/{id}/disk-usage` - Disk space information (used, total, available) - always available
+- **Benefits**: 
+  - Disk space info now available regardless of server status
+  - Cleaner API separation of concerns
+  - Better frontend reliability for disk usage displays
+
+**Pydantic Models:**
+```python
+# Separated models for better API design
+class ServerIOStats(BaseModel):
+    diskReadBytes: int
+    diskWriteBytes: int
+    networkReceiveBytes: int
+    networkSendBytes: int
+
+class ServerDiskUsage(BaseModel):
+    diskUsageBytes: int
+    diskTotalBytes: int
+    diskAvailableBytes: int
+```
 
 ### Authentication Patterns
 
@@ -247,7 +318,7 @@ REMOVED → EXISTS → CREATED → RUNNING → STARTING → HEALTHY
 - `get_cpu_percentage()`: CPU usage percentage (requires two calls over time interval)
 - `get_disk_io()`: Disk I/O read/write statistics from block devices
 - `get_network_io()`: Network I/O receive/transmit statistics from container interfaces (via /proc/{pid}/net/dev)
-- `get_disk_space_info()`: Complete disk space information (used, total, available)
+- `get_disk_space_info()`: **Enhanced**: Complete disk space information (used, total, available) - **always available**
 
 **Monitoring Implementation:**
 - Uses **direct cgroup v2 filesystem access** for accurate container-level metrics
@@ -293,11 +364,17 @@ servers = await manager.get_all_server_names()
 # Work with individual server
 instance = manager.get_instance("my_server")
 status = await instance.get_status()
+
+# Enhanced disk space info (always available)
 disk_info = await instance.get_disk_space_info()  # Returns DiskSpaceInfo with used/total/available
 
 # Resource monitoring
 memory_usage = await instance.get_memory_usage()  # Bytes from cgroup v2
 cpu_percent = await instance.get_cpu_percentage()  # Percentage over time
+
+# I/O statistics (separated from disk space)
+disk_io = await instance.get_disk_io()  # Disk I/O performance only
+network_io = await instance.get_network_io()  # Network I/O statistics
 
 # RCON command execution
 result = await instance.send_rcon_command("list")  # Returns command output
@@ -306,26 +383,38 @@ result = await instance.send_rcon_command("list")  # Returns command output
 ### Testing Architecture
 
 **Test Categories:**
-1. **Unit Tests**: Fast tests for individual components (majority of test suite)
-2. **Integration Tests**: Full Docker workflow tests (marked for exclusion during development)
-3. **Monitoring Tests**: Real container tests with session-scoped fixtures for efficiency
-4. **WebSocket Tests**: Console streaming and real-time communication testing
+1. **✅ Safe Unit Tests**: Fast tests for individual components (majority during development)
+2. **❌ Container Tests**: Full Docker workflow tests (avoid during development iteration)
+3. **⚠️ Mixed Tests**: Some safe, some container tests (test selectively)
+
+**Safe Tests for Development:**
+- `test_compose.py` - Pure Pydantic model validation
+- `test_compose_file.py` - File operations and YAML parsing
+- `test_rcon_filtering.py` - Utility function testing
+- `test_file_operations.py` - Mocked API endpoint testing
+- `test_websocket_console.py` - WebSocket protocol with mocks
+- `test_instance.py::test_disk_space_info_dataclass` - Data model testing
+- `test_instance.py::test_minecraft_instance` - Configuration testing (no container startup)
+
+**Container Tests (Avoid During Development):**
+- `test_monitoring.py` - All functions ending with `_with_docker`
+- `test_integration.py::test_integration_with_docker` - Full workflow
+- `test_instance.py::test_server_status_lifecycle_with_docker` - Container lifecycle
+- `test_instance.py::test_get_disk_space_info_with_docker` - Disk space with container
 
 **Running Tests:**
 ```bash
-# Run all tests
-poetry run pytest tests/ -v
+# ✅ Development iteration - safe tests only
+poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
 
-# Run specific test categories
-poetry run pytest tests/test_instance.py -v      # Instance functionality
-poetry run pytest tests/test_monitoring.py -v   # Resource monitoring with containers
-poetry run pytest tests/test_websocket_console.py -v          # WebSocket console streaming
-poetry run pytest tests/test_compose.py -v      # Compose file parsing tests
-poetry run pytest tests/test_compose_file.py -v # ComposeFile Pydantic model tests
+# ✅ Test specific functionality related to changes
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
 
-# Avoid slow integration tests during development
-poetry run pytest tests/ -v -k "not test_integration"
-# Remember to use at least 5 min timeout for tests to finish
+# ❌ Avoid during development (will timeout)
+# poetry run pytest tests/test_monitoring.py -v
+
+# ✅ Pre-commit (with timeout)
+poetry run pytest tests/ -v --timeout=600
 ```
 
 ## Development Conventions
@@ -385,6 +474,7 @@ Always resolve library ID first, then fetch focused docs for the specific featur
 - **WebSocket Support**: Built-in WebSocket routing with FastAPI native support
 - **File Monitoring**: Watchdog for real-time log file monitoring
 - **Container Management**: Direct Docker CLI integration without Python SDK dependency
+- **Separated APIs**: Disk usage and I/O statistics split for better reliability and performance
 
 ## Update Instructions
 
@@ -398,5 +488,7 @@ When adding new features, dependencies, or changing the API:
 6. **External libraries**: Add Context7 library IDs to this file
 7. **Minecraft module changes**: Update integration patterns and test coverage
 8. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
+9. **Test changes**: Mark Docker container tests with `_with_docker` suffix
+10. **API separations**: Document endpoint purpose and data separation rationale
 
-Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, and development patterns.
+Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, testing guidelines, and development patterns.

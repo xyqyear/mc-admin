@@ -17,6 +17,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Real-time console streaming and RCON command execution via WebSocket
 - Comprehensive resource monitoring with cgroup v2 integration
 - Sophisticated data fetching with React Query and intelligent caching strategies
+- **Separated disk usage API**: Disk space information available regardless of server status
 
 ## Architecture
 
@@ -27,6 +28,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
+- **API Architecture**: Separated I/O statistics and disk usage endpoints for better reliability
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
@@ -87,6 +89,7 @@ Each component has dedicated development instructions:
 - **cgroup v2 Monitoring**: Direct filesystem monitoring for accurate container metrics
 - **TOML Configuration**: Nested settings with environment variable override support
 - **Comprehensive Testing**: pytest with asyncio support and real Docker integration
+- **Separated API Design**: Disk usage info separated from I/O statistics for better reliability
 
 ### Frontend Patterns (Actual Implementation)
 - **Three-Layer Data Architecture**: 
@@ -99,6 +102,63 @@ Each component has dedicated development instructions:
 - **Dual Authentication UI**: WebSocket code login + traditional password login
 - **Real-time Updates**: WebSocket integration for console and live data
 - **Error Boundaries**: Graceful error handling with fallback components
+
+## Testing Strategy & Guidelines
+
+### Test Categories
+
+**Safe Tests (Fast, No Docker Containers):**
+- `test_compose.py` - Pure unit tests for Pydantic models
+- `test_compose_file.py` - File operations and YAML parsing
+- `test_rcon_filtering.py` - Utility function testing
+- `test_file_operations.py` - Mocked API endpoint testing
+- `test_websocket_console.py` - WebSocket protocol testing with mocks
+
+**Container Tests (Slow, Docker Required):**
+- `test_monitoring.py` - Real container monitoring (functions end with `_with_docker`)
+- `test_integration.py` - Full workflow testing (`test_integration_with_docker`)
+- `test_instance.py` - Container lifecycle testing (`*_with_docker` functions)
+
+### Development Testing Guidelines
+
+**⚠️ CRITICAL: During development iteration, NEVER run Docker container tests to avoid timeouts:**
+
+```bash
+# ✅ Safe for development - Run these frequently
+poetry run pytest tests/test_compose.py -v
+poetry run pytest tests/test_compose_file.py -v
+poetry run pytest tests/test_rcon_filtering.py -v
+poetry run pytest tests/test_file_operations.py -v
+poetry run pytest tests/test_websocket_console.py -v
+
+# ✅ Safe unit tests from test_instance.py (don't bring up containers)
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+poetry run pytest tests/test_instance.py::test_minecraft_instance -v
+
+# ❌ AVOID during development - These bring up Docker containers
+# poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
+# poetry run pytest tests/test_integration.py::test_integration_with_docker
+# poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
+# poetry run pytest tests/test_instance.py::test_get_disk_space_info_with_docker
+
+# ✅ Skip container tests during development
+poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
+
+# ✅ Test only specific changes (example for disk usage changes)
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+```
+
+**Docker Test Functions (Renamed with `_with_docker` suffix):**
+- All functions in `test_monitoring.py` now end with `_with_docker`
+- `test_server_status_lifecycle_with_docker` in `test_instance.py`
+- `test_get_disk_space_info_with_docker` in `test_instance.py`
+- `test_integration_with_docker` in `test_integration.py`
+
+**Testing Recommendations:**
+1. **During Active Development**: Only run safe tests and specific unit tests related to your changes
+2. **Pre-commit**: Run container tests with longer timeout (`--timeout=600`)
+3. **CI/CD**: Run full test suite with proper Docker cleanup
+4. **Never run `pytest tests/` without filters** - will timeout due to container tests
 
 ## External Documentation
 
@@ -125,6 +185,15 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 - **WebSocket Auto-Derivation**: WS endpoints automatically derived from HTTP base URL
 - **CORS Configuration**: Backend configured for localhost:3000 development
 - **Consistent Async Patterns**: Full async/await throughout both components
+- **Separated API Endpoints**: Disk usage information separated from I/O statistics for better reliability
+
+## Recent Updates
+
+### API Improvements (Latest)
+- **Separated Disk Usage API**: Created dedicated `/servers/{id}/disk-usage` endpoint
+- **Improved I/O Statistics**: `/servers/{id}/iostats` now focuses on I/O performance metrics only
+- **Enhanced Reliability**: Disk space information now available regardless of server status
+- **Frontend Integration**: Updated React Query hooks to use new disk usage endpoint
 
 ## Maintenance Instructions
 
@@ -138,6 +207,8 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 4. **Document new development commands**, environment variables, or build processes
 5. **Update architecture descriptions** for new services, APIs, or integration patterns
 6. **Include dependency version updates** in pyproject.toml or package.json changes
+7. **Update test categorization** when adding new tests (safe vs Docker-requiring)
+8. **Rename test functions** with `_with_docker` suffix if they bring up containers
 
 **Examples of changes requiring updates:**
 - New FastAPI routers or endpoints
@@ -147,5 +218,6 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 - New WebSocket endpoints or features
 - Build process or deployment changes
 - Container management improvements
+- Test structure changes
 
 These CLAUDE.md files are automatically loaded into Claude's context - keep them accurate, concise, and focused on development-relevant information that reflects the actual codebase implementation.

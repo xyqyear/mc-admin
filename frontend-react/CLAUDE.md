@@ -88,6 +88,7 @@ src/
 - HTTP client configuration with request/response interceptors
 - Automatic JWT token injection and 401 handling
 - Type-safe request/response interfaces for all endpoints
+- **Recent Update**: Separated disk usage and I/O statistics APIs
 
 **Layer 2: Query Hooks** (`hooks/queries/`):
 - **`useServerQueries.ts`**: Base React Query hooks with intelligent caching strategies  
@@ -95,7 +96,8 @@ src/
   - Server configs: 5min stale time (rarely change)
   - Server status: 10s refetch interval (frequent updates needed)
   - Server runtime: 3-5s refetch interval (real-time monitoring)
-  - Players/resources: Conditional queries (only when server is healthy)
+  - **Disk usage**: 30s refetch interval (always available, independent of server status)
+  - Players/resources: Conditional queries (only when server is healthy/running)
 - Smart error retry logic with 4xx differentiation (don't retry auth errors)
 
 **Layer 3: Composed Query Hooks** (`useServerDetailQueries.ts`, `useServerPageQueries.ts`):
@@ -104,6 +106,38 @@ src/
 - **`useServerPageQueries()`**: Page-specific query compositions with dependency management
 - Intelligent dependency chains (e.g., runtime queries only enabled when status is available)
 - Centralized loading states and error handling for complex pages
+
+### API Integration Updates
+
+**Separated Disk Usage API (Latest Changes):**
+- **Problem**: Disk space was bundled with I/O stats, unavailable when servers weren't running
+- **Solution**: Two focused API functions and query hooks:
+  ```typescript
+  // API Layer
+  getServerIOStats(id: string): Promise<ServerIOStatsResponse>     // I/O performance only
+  getServerDiskUsage(id: string): Promise<ServerDiskUsageResponse> // Disk space only
+  
+  // Query Layer
+  useServerIOStats(id, status)    // Conditional on server running
+  useServerDiskUsage(id)          // Always available, 30s refetch
+  ```
+- **Benefits**: Disk usage now displays reliably regardless of server status
+
+**Type Definitions:**
+```typescript
+interface ServerIOStatsResponse {
+  diskReadBytes: number;
+  diskWriteBytes: number;
+  networkReceiveBytes: number;
+  networkSendBytes: number;
+}
+
+interface ServerDiskUsageResponse {
+  diskUsageBytes: number;
+  diskTotalBytes: number;
+  diskAvailableBytes: number;
+}
+```
 
 ### State Management (Zustand Stores)
 
@@ -286,6 +320,7 @@ export const queryKeys = {
 - **Runtime Metrics**: Very short cache (1-3 seconds) - needs real-time updates
 - **Status Information**: Medium cache (5-10 seconds) - moderate update frequency
 - **Player Data**: Conditional queries - only enabled when server is healthy
+- **Disk Usage**: Medium cache (30 seconds) - now always available regardless of server status
 
 ### WebSocket Integration
 
@@ -320,6 +355,32 @@ export const queryKeys = {
 - **User Feedback**: Toast notifications, error alerts, and loading states
 - **Graceful Degradation**: Fallback behavior when features are unavailable
 
+### Recent Updates & Features
+
+**Separated Disk Usage Integration:**
+- Updated `useServerDiskUsage` hook to use dedicated `/disk-usage` endpoint
+- Removed disk space information from I/O statistics queries
+- Enhanced reliability for disk usage displays when servers are offline
+- Improved caching strategy with appropriate refetch intervals
+
+**Query Hook Improvements:**
+```typescript
+// Updated hook using separated API
+const useServerDiskUsage = (id: string) => {
+  return useQuery({
+    queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
+    queryFn: () => serverApi.getServerDiskUsage(id), // New dedicated endpoint
+    enabled: !!id,
+    refetchInterval: 30000, // 30s refetch - always available
+    staleTime: 15000,       // 15s stale time
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false; // Don't retry if server doesn't exist
+      return failureCount < 3;
+    },
+  });
+};
+```
+
 ## External Documentation
 
 **Always use Context7 for external library documentation:**
@@ -346,12 +407,33 @@ export const queryKeys = {
 - **WebSocket**: Auto-derived from HTTP base URL for real-time console and authentication
 - **CORS**: Backend configured for localhost:3000 development with credentials support
 - **Authentication**: JWT token system with master token fallback support
+- **API Reliability**: Separated disk usage and I/O statistics APIs for better data availability
 
 **Build & Deployment:**
 - **Static Build**: Vite produces optimized static files for deployment
 - **Environment Variables**: All config via `VITE_` prefixed variables
 - **Asset Optimization**: Automatic code splitting, tree shaking, and asset optimization
 - **Future Compatibility**: React Router v7 future flags enabled for smooth migration
+
+## Development Guidelines
+
+**Data Fetching Best Practices:**
+- Use the three-layer architecture: API → Query Hooks → Composed Queries
+- Choose appropriate caching strategies based on data volatility
+- Implement conditional queries for features requiring specific server states
+- Handle errors gracefully with appropriate retry strategies
+
+**Performance Considerations:**
+- Leverage lazy loading for route components
+- Use Zustand selectors to minimize re-renders
+- Implement proper query dependencies and invalidation
+- Monitor bundle size and implement code splitting where needed
+
+**Testing and Development:**
+- Focus on component unit tests and integration tests
+- Mock API calls appropriately for testing
+- Use React Query devtools for debugging data flow
+- Test authentication flows and error boundaries
 
 ## Update Instructions
 
@@ -367,5 +449,7 @@ When adding new features, libraries, or changing architecture:
 8. **Build configuration**: Update Vite configuration and document changes in build scripts
 9. **Environment variables**: Document new `VITE_` prefixed variables and their usage
 10. **WebSocket features**: Follow existing WebSocket patterns and connection management
+11. **API integrations**: Document new endpoint purposes and data flow patterns
+12. **Query optimizations**: Update caching strategies and refetch intervals appropriately
 
 **Critical**: Update this CLAUDE.md when introducing new architectural patterns, state management approaches, data fetching strategies, or external integrations that future development sessions should understand and follow.
