@@ -158,10 +158,67 @@ const ServerCompose: React.FC = () => {
   }
 
   // 提交并重建服务器
-  const handleSubmitAndRebuild = () => {
+  const handleSubmitAndRebuild = async () => {
+    try {
+      // 强制重新获取最新的服务器配置，确保diff对比是准确的
+      await composeQuery.refetch()
+    } catch (error) {
+      message.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
+    }
+    
+    const hasChanges = rawYaml.trim() !== composeContent?.trim()
+    
     Modal.confirm({
       title: '提交并重建服务器',
-      content: '确定要提交配置并重建服务器吗？这将停止当前服务器并使用新配置重新创建。',
+      content: (
+        <div className="space-y-4">
+          <p>确定要提交配置并重建服务器吗？这将停止当前服务器并使用新配置重新创建。</p>
+          {hasChanges && (
+            <div>
+              <div className="mb-2">
+                <strong>配置差异预览：</strong>
+              </div>
+              <div style={{ 
+                border: '1px solid #d9d9d9', 
+                borderRadius: '6px', 
+                overflow: 'hidden', 
+                height: '600px',
+                backgroundColor: '#fafafa'
+              }}>
+                <MonacoDiffEditor
+                  height="600px"
+                  language="yaml"
+                  original={composeContent || ''}
+                  modified={rawYaml}
+                  theme="vs-light"
+                  options={{
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 12,
+                    lineNumbers: 'off',
+                    folding: false,
+                    wordWrap: 'on',
+                    scrollbar: {
+                      vertical: 'visible',
+                      horizontal: 'visible'
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {!hasChanges && (
+            <Alert
+              message="没有检测到配置更改"
+              description="当前编辑的配置与服务器配置相同，重建后不会有任何变化。"
+              type="info"
+              showIcon
+              className="mt-2"
+            />
+          )}
+        </div>
+      ),
+      width: 800,
       okText: '确认重建',
       okType: 'danger',
       cancelText: '取消',
@@ -222,8 +279,15 @@ const ServerCompose: React.FC = () => {
     })
   }
 
-  const handleCompare = () => {
-    setIsCompareVisible(true)
+  const handleCompare = async () => {
+    try {
+      // 强制重新获取最新的服务器配置
+      await composeQuery.refetch()
+      setIsCompareVisible(true)
+    } catch (error) {
+      message.error('获取最新配置失败，使用当前缓存的配置进行对比')
+      setIsCompareVisible(true)
+    }
   }
 
   const handleYamlChange = (value: string | undefined) => {
