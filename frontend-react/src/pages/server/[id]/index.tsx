@@ -265,11 +265,19 @@ const ServerDetail: React.FC = () => {
                   <div>
                     <div className="flex justify-between mb-1">
                       <span>磁盘使用空间</span>
-                      <span>{(iostats.diskUsageBytes / (1024 ** 3)).toFixed(1)}/{(iostats.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB</span>
+                      <span>
+                        服务器: {(iostats.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                        剩余: {(iostats.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB / 
+                        总计: {(iostats.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
+                      </span>
                     </div>
                     <Progress
-                      percent={(iostats.diskUsageBytes / iostats.diskTotalBytes) * 100}
-                      strokeColor="#722ed1"
+                      percent={((iostats.diskTotalBytes - iostats.diskAvailableBytes) / iostats.diskTotalBytes) * 100}
+                      success={{ 
+                        percent: (iostats.diskUsageBytes / iostats.diskTotalBytes) * 100,
+                        strokeColor: '#52c41a'
+                      }}
+                      strokeColor="#faad14"
                       showInfo={false}
                     />
                   </div>

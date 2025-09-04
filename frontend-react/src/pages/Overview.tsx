@@ -226,14 +226,18 @@ const Overview: React.FC = () => {
                 {record.diskTotalBytes ? (
                   <>
                     <Progress 
-                      percent={(record.diskUsageBytes! / record.diskTotalBytes!) * 100} 
+                      percent={((record.diskTotalBytes! - record.diskAvailableBytes!) / record.diskTotalBytes!) * 100} 
+                      success={{
+                        percent: (record.diskUsageBytes! / record.diskTotalBytes!) * 100,
+                        strokeColor: '#52c41a'
+                      }}
                       size="small" 
                       style={{ width: 60 }} 
                       showInfo={false}
-                      strokeColor={(record.diskUsageBytes! / record.diskTotalBytes!) > 0.8 ? '#ff4d4f' : (record.diskUsageBytes! / record.diskTotalBytes!) > 0.6 ? '#faad14' : '#52c41a'}
+                      strokeColor="#faad14"
                     />
                     <span className="text-gray-500">
-                      {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes! / (1024 ** 3)).toFixed(1)}GB
+                      {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskAvailableBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes! / (1024 ** 3)).toFixed(1)}GB
                     </span>
                   </>
                 ) : (
