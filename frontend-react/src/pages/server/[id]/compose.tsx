@@ -18,7 +18,6 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
-import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
@@ -29,7 +28,7 @@ const ServerCompose: React.FC = () => {
   const navigate = useNavigate()
 
   // 使用新的数据管理系统
-  const { useServerComposeData, useServerDetailData } = useServerDetailQueries(id || '')
+  const { useServerComposeData } = useServerDetailQueries(id || '')
   const { useUpdateCompose } = useServerMutations()
 
   // 获取服务器详情数据和compose文件
@@ -43,8 +42,6 @@ const ServerCompose: React.FC = () => {
     composeQuery
   } = useServerComposeData()
 
-  // 获取服务器状态数据
-  const { status } = useServerDetailData()
 
   // Compose更新mutation
   const updateComposeMutation = useUpdateCompose(id || '')
@@ -115,9 +112,9 @@ const ServerCompose: React.FC = () => {
     } catch (error) {
       message.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
     }
-    
+
     const hasChanges = rawYaml.trim() !== composeContent?.trim()
-    
+
     Modal.confirm({
       title: '提交并重建服务器',
       content: (
@@ -128,10 +125,10 @@ const ServerCompose: React.FC = () => {
               <div className="mb-2">
                 <strong>配置差异预览：</strong>
               </div>
-              <div style={{ 
-                border: '1px solid #d9d9d9', 
-                borderRadius: '6px', 
-                overflow: 'hidden', 
+              <div style={{
+                border: '1px solid #d9d9d9',
+                borderRadius: '6px',
+                overflow: 'hidden',
                 height: '600px',
                 backgroundColor: '#fafafa'
               }}>
@@ -241,7 +238,6 @@ const ServerCompose: React.FC = () => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 设置</Title>
-          {status && <ServerStateTag state={status} />}
         </div>
         <Space>
           <Button

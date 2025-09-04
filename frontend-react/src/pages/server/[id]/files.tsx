@@ -31,7 +31,6 @@ import {
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import FileIcon from '@/components/files/FileIcon'
-import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
@@ -50,9 +49,9 @@ const ServerFiles: React.FC = () => {
   const [renameForm] = Form.useForm()
   const { message } = App.useApp()
 
-  // Get server data for state tag
+  // Get server data for page info
   const { useServerDetailData } = useServerDetailQueries(id || "")
-  const { serverInfo, status, hasServerInfo } = useServerDetailData()
+  const { serverInfo, hasServerInfo } = useServerDetailData()
 
   // Get current path from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -392,7 +391,6 @@ const ServerFiles: React.FC = () => {
           <Title level={2} className="!mb-0 !mt-0">
             {hasServerInfo ? `${serverInfo?.name} - 文件管理` : "文件管理"}
           </Title>
-          {status && <ServerStateTag state={status} />}
         </div>
         <Space>
           {currentPath !== '/' && (

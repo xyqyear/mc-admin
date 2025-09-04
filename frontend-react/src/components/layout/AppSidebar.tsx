@@ -10,7 +10,6 @@ import {
   SaveOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  DesktopOutlined,
   SettingOutlined,
   FolderOutlined,
   LogoutOutlined,
@@ -20,6 +19,7 @@ import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
 import { useTokenStore } from '@/stores/useTokenStore'
+import ServerMenuIcon from './ServerMenuIcon'
 
 const { Sider } = Layout
 
@@ -31,7 +31,7 @@ const AppSidebar: React.FC = () => {
   const location = useLocation()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
   const { clearToken } = useTokenStore()
-  
+
   // 获取服务器列表数据
   const { useServers } = useServerQueries()
   const serversQuery = useServers()
@@ -64,7 +64,7 @@ const AppSidebar: React.FC = () => {
       items: [
         ...servers.map(server => ({
           title: server.id,
-          icon: <DesktopOutlined />,
+          icon: <ServerMenuIcon serverId={server.id} />,
           items: [
             {
               title: '概览',
@@ -120,7 +120,7 @@ const AppSidebar: React.FC = () => {
           children: convertToMenuItems(item.items),
         }
       }
-      
+
       return {
         key: item.path!,
         icon: item.icon,
@@ -157,7 +157,7 @@ const AppSidebar: React.FC = () => {
             {!collapsed && "退出登录"}
           </Button>
         </div>
-        
+
         {/* 菜单 */}
         <div className="flex-1">
           <Menu

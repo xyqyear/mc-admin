@@ -10,7 +10,6 @@ import {
   WifiOutlined,
   GlobalOutlined,
 } from '@ant-design/icons'
-import ServerStateTag from '@/components/overview/ServerStateTag'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -22,15 +21,15 @@ const { Title } = Typography
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  
+
   // 获取所有服务器列表用于错误提示
   const { useServers } = useServerQueries()
   const allServersQuery = useServers()
-  
+
   // 使用新的数据管理系统
   const { useServerDetailData } = useServerDetailQueries(id || '')
   const { useServerOperation } = useServerMutations()
-  
+
   // 获取服务器详情数据
   const {
     serverInfo,
@@ -47,7 +46,7 @@ const ServerDetail: React.FC = () => {
     isRunning,
     isHealthy,
   } = useServerDetailData()
-  
+
   // 服务器操作
   const serverOperationMutation = useServerOperation()
 
@@ -73,7 +72,7 @@ const ServerDetail: React.FC = () => {
   if (isError) {
     const isServerNotFound = error?.message.includes('not found')
     const availableServers = allServersQuery.data || []
-    
+
     return (
       <div className="flex justify-center items-center min-h-64">
         <Card className="max-w-md">
@@ -147,7 +146,6 @@ const ServerDetail: React.FC = () => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <Title level={2} className="!mb-0 !mt-0">{serverInfo.name}</Title>
-          {status && <ServerStateTag state={status} />}
         </div>
         <Space>
           <Tooltip title="启动服务器">
@@ -236,8 +234,8 @@ const ServerDetail: React.FC = () => {
                         <span>CPU 使用率</span>
                         <span>{resources.cpuPercentage.toFixed(1)}%</span>
                       </div>
-                      <Progress 
-                        percent={resources.cpuPercentage} 
+                      <Progress
+                        percent={resources.cpuPercentage}
                         strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
                         showInfo={false}
                       />
@@ -246,14 +244,14 @@ const ServerDetail: React.FC = () => {
                       <div className="flex justify-between mb-1">
                         <span>内存使用</span>
                         <span>
-                          {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
+                          {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
                           {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
                         </span>
                       </div>
-                      <Progress 
+                      <Progress
                         percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                        strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' : 
-                                    (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                        strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
+                          (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
                         showInfo={false}
                       />
                     </div>
@@ -269,7 +267,7 @@ const ServerDetail: React.FC = () => {
                       <span>磁盘使用空间</span>
                       <span>{(iostats.diskUsageBytes / (1024 ** 3)).toFixed(1)}/{(iostats.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB</span>
                     </div>
-                    <Progress 
+                    <Progress
                       percent={(iostats.diskUsageBytes / iostats.diskTotalBytes) * 100}
                       strokeColor="#722ed1"
                       showInfo={false}
