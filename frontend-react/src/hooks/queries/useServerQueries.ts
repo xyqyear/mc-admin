@@ -2,6 +2,7 @@ import {
   serverApi,
   systemApi,
   type ServerIOStatsResponse,
+  type ServerDiskUsageResponse,
   type ServerListItem,
 } from "@/hooks/api/serverApi";
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
@@ -126,17 +127,17 @@ export const useServerQueries = () => {
   // 单个服务器磁盘使用信息 (始终可用，不依赖运行状态)
   const useServerDiskUsage = (
     id: string,
-    options?: UseQueryOptions<ServerIOStatsResponse>,
+    options?: UseQueryOptions<ServerDiskUsageResponse>,
   ) => {
     return useQuery({
       queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
-      queryFn: () => serverApi.getServerIOStats(id),
+      queryFn: () => serverApi.getServerDiskUsage(id),
       enabled: !!id,
       refetchInterval: 30000, // 30秒刷新磁盘数据，频率较低
       staleTime: 15000, // 15秒 - 磁盘使用变化较慢
       retry: (failureCount, error: any) => {
-        // 对于磁盘信息，只在服务器可访问时重试
-        if (error?.response?.status === 404 || error?.response?.status === 409) {
+        // 对于磁盘信息，只在服务器存在时重试
+        if (error?.response?.status === 404) {
           return false;
         }
         return failureCount < 3;
@@ -179,8 +180,8 @@ export const useServerQueries = () => {
     useServerStatus, // 单个状态监控
     useServerResources, // 单个服务器系统资源 (CPU/内存)
     useServerPlayers, // 单个服务器玩家列表
-    useServerIOStats, // 单个服务器I/O统计信息 (磁盘和网络)
-    useServerDiskUsage, // 单个服务器磁盘使用信息 (始终可用)
+    useServerIOStats, // 单个服务器I/O统计信息 (磁盘I/O和网络I/O，不包含磁盘空间)
+    useServerDiskUsage, // 单个服务器磁盘使用信息 (磁盘空间，始终可用)
     useComposeFile, // Compose文件内容
     useSystemInfo, // 系统信息
   };

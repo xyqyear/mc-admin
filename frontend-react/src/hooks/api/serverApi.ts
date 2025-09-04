@@ -38,6 +38,9 @@ interface ServerIOStatsResponse {
   diskWriteBytes: number;
   networkReceiveBytes: number;
   networkSendBytes: number;
+}
+
+interface ServerDiskUsageResponse {
   diskUsageBytes: number;
   diskTotalBytes: number;
   diskAvailableBytes: number;
@@ -119,6 +122,12 @@ export const serverApi = {
     return res.data;
   },
 
+  // 获取单个服务器磁盘使用信息 (始终可用，不依赖服务器状态)
+  getServerDiskUsage: async (id: string): Promise<ServerDiskUsageResponse> => {
+    const res = await api.get<ServerDiskUsageResponse>(`/servers/${id}/disk-usage`);
+    return res.data;
+  },
+
   // 服务器操作 (统一的操作API)
   serverOperation: async (id: string, action: string): Promise<void> => {
     await api.post(`/servers/${id}/operations`, {
@@ -194,5 +203,5 @@ export const systemApi = {
 };
 
 // Export types for use in other modules
-export type { ServerIOStatsResponse, ServerListItem, ServerStatusResponse };
+export type { ServerIOStatsResponse, ServerDiskUsageResponse, ServerListItem, ServerStatusResponse };
 

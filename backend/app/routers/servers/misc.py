@@ -48,6 +48,9 @@ class ServerIOStats(BaseModel):
     # Network I/O statistics
     networkReceiveBytes: int
     networkSendBytes: int
+
+
+class ServerDiskUsage(BaseModel):
     # Disk usage and space information
     diskUsageBytes: int
     diskTotalBytes: int
@@ -224,20 +227,43 @@ async def get_server_iostats(server_id: str, _: str = Depends(get_current_user))
                 detail=f"Server '{server_id}' I/O stats not available (status: {status})",
             )
 
-        # Get I/O statistics concurrently
+        # Get I/O statistics concurrently (disk I/O and network I/O only)
         disk_io_task = instance.get_disk_io()
         network_io_task = instance.get_network_io()
-        disk_space_task = instance.get_disk_space_info()
 
-        disk_io, network_io, disk_space = await asyncio.gather(
-            disk_io_task, network_io_task, disk_space_task
-        )
+        disk_io, network_io = await asyncio.gather(disk_io_task, network_io_task)
 
         return ServerIOStats(
             diskReadBytes=disk_io.total_read_bytes,
             diskWriteBytes=disk_io.total_write_bytes,
             networkReceiveBytes=network_io.total_rx_bytes,
             networkSendBytes=network_io.total_tx_bytes,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get server I/O stats: {str(e)}"
+        )
+
+
+@router.get("/{server_id}/disk-usage", response_model=ServerDiskUsage)
+async def get_server_disk_usage(server_id: str, _: str = Depends(get_current_user)):
+    """Get disk usage information for a specific server (always available regardless of server status)"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+
+        # Check if server exists
+        if not await instance.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Server '{server_id}' not found"
+            )
+
+        # Get disk space information - this is always available regardless of server status
+        disk_space = await instance.get_disk_space_info()
+
+        return ServerDiskUsage(
             diskUsageBytes=disk_space.used_bytes,
             diskTotalBytes=disk_space.total_bytes,
             diskAvailableBytes=disk_space.available_bytes,
@@ -247,7 +273,7 @@ async def get_server_iostats(server_id: str, _: str = Depends(get_current_user))
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get server I/O stats: {str(e)}"
+            status_code=500, detail=f"Failed to get server disk usage: {str(e)}"
         )
 
 

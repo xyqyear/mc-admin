@@ -477,40 +477,6 @@ class MCInstance:
             available_bytes=available_bytes,
         )
 
-    async def get_server_running_info(self):
-        """
-        获取服务器运行时信息，包括CPU、内存、磁盘写入和读取，网络写入和读取以及使用量（使用du命令）
-        du命令使用execute_command在project_path/data目录下执行，获取该目录的磁盘使用量
-        """
-        if not await self.running():
-            raise RuntimeError(f"Server {self._name} is not running")
-
-        (
-            memory_stats,
-            cpu_percentage,
-            disk_io,
-            network_io,
-            disk_space_info,
-        ) = await asyncio.gather(
-            self.get_memory_usage(),
-            self.get_cpu_percentage(),
-            self.get_disk_io(),
-            self.get_network_io(),
-            self.get_disk_space_info(),
-        )
-
-        return MCServerRunningInfo(
-            cpu_percentage=cpu_percentage,
-            memory_usage_bytes=memory_stats.anon,
-            disk_read_bytes=disk_io.total_read_bytes,
-            disk_write_bytes=disk_io.total_write_bytes,
-            network_receive_bytes=network_io.total_rx_bytes,
-            network_send_bytes=network_io.total_tx_bytes,
-            disk_usage_bytes=disk_space_info.used_bytes,
-            disk_total_bytes=disk_space_info.total_bytes,
-            disk_available_bytes=disk_space_info.available_bytes,
-        )
-
     async def get_server_info(self):
         """
         获取服务器信息
