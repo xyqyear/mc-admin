@@ -26,7 +26,7 @@ export interface FileItem {
   path: string
   type: 'file' | 'directory'
   size: number
-  modified_at: string
+  modified_at: number  // Unix timestamp as number
 }
 
 export interface FileListResponse {

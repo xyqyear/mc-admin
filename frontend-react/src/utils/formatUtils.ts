@@ -13,10 +13,11 @@ export function formatFileSize(bytes: number): string {
 
 /**
  * Format timestamp to localized date string
- * @param timestamp - Unix timestamp (in seconds)
+ * @param timestamp - Unix timestamp (in seconds) as number or string
  * @returns Formatted date string
  */
-export function formatDate(timestamp: string): string {
-  const date = new Date(parseFloat(timestamp) * 1000)
+export function formatDate(timestamp: number | string): string {
+  const ts = typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp
+  const date = new Date(ts * 1000)
   return date.toLocaleString('zh-CN')
 }

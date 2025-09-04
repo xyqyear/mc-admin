@@ -37,6 +37,7 @@ import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import type { FileItem } from '@/types/Server'
+import type { SortOrder, ColumnType } from 'antd/es/table/interface'
 
 const { Title } = Typography
 const { Option } = Select
@@ -270,11 +271,20 @@ const ServerFiles: React.FC = () => {
     }
   ]
 
-  const columns = [
+  const columns: ColumnType<FileItem>[] = [
     {
       title: '文件名',
       dataIndex: 'name',
       key: 'name',
+      sorter: (a: FileItem, b: FileItem) => {
+        // Custom sorting: directories first, then files, both alphabetically
+        if (a.type !== b.type) {
+          return a.type === 'directory' ? -1 : 1
+        }
+        return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' })
+      },
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
+      defaultSortOrder: 'ascend' as SortOrder,
       render: (name: string, file: FileItem) => {
         const isEditable = isFileEditable(file.name)
         const isDirectory = file.type === 'directory'
@@ -315,6 +325,8 @@ const ServerFiles: React.FC = () => {
       dataIndex: 'size',
       key: 'size',
       width: 90,
+      sorter: (a: FileItem, b: FileItem) => a.size - b.size,
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (size: number) => formatFileSize(size),
     },
     {
@@ -322,7 +334,9 @@ const ServerFiles: React.FC = () => {
       dataIndex: 'modified_at',
       key: 'modified_at',
       width: 150,
-      render: (timestamp: string) => formatDate(timestamp),
+      sorter: (a: FileItem, b: FileItem) => a.modified_at - b.modified_at,
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
+      render: (timestamp: number) => formatDate(timestamp),
     },
     {
       title: '操作',

@@ -27,7 +27,7 @@ class FileItem(BaseModel):
     name: str
     type: Literal["file", "directory"]
     size: int
-    modified_at: str
+    modified_at: float  # Unix timestamp as float
     path: str
 
 
@@ -93,23 +93,19 @@ async def _get_file_items(base_path: Path, current_path: str = "/") -> List[File
                 file_type = "directory"
 
             modified_at = stat_result.st_mtime
-            modified_at_str = f"{modified_at:.0f}"  # Unix timestamp as string
 
             items.append(
                 FileItem(
                     name=file_name,
                     type=file_type,
                     size=size,
-                    modified_at=modified_at_str,
+                    modified_at=modified_at,  # Send raw timestamp to frontend
                     path=file_path,
                 )
             )
     except PermissionError:
         # Handle permission errors gracefully
         pass
-
-    # Sort items: directories first, then files, both alphabetically
-    items.sort(key=lambda x: (x.type == "file", x.name.lower()))
 
     return items
 

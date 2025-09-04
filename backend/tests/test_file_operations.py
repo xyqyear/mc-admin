@@ -123,29 +123,23 @@ class TestFileOperations:
             assert "current_path" in data
             assert data["current_path"] == "/"
 
-            # Check that items are sorted (directories first, then files, both alphabetical)
+            # Check that items are returned (sorting will be handled by frontend)
             items = data["items"]
             assert len(items) > 0
 
-            # Should have directories first
+            # Collect directories and files for verification
             directories = [item for item in items if item["type"] == "directory"]
             files = [item for item in items if item["type"] == "file"]
 
-            # Directories should be alphabetically sorted
-            dir_names = [d["name"] for d in directories]
-            assert dir_names == sorted(dir_names, key=str.lower)
-
-            # Files should be alphabetically sorted
-            file_names = [f["name"] for f in files]
-            assert file_names == sorted(file_names, key=str.lower)
-
             # Check specific files exist
+            file_names = [f["name"] for f in files]
             file_names_set = set(file_names)
             assert "server.properties" in file_names_set
             assert "bukkit.yml" in file_names_set
             assert "readme.txt" in file_names_set
 
             # Check directory names
+            dir_names = [d["name"] for d in directories]
             dir_names_set = set(dir_names)
             assert "plugins" in dir_names_set
             assert "world" in dir_names_set
