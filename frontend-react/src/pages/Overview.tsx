@@ -24,7 +24,7 @@ import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
 import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerStatus } from '@/types/Server'
-import { useOverviewData } from '@/hooks/queries/useServerQueries'
+import { useOverviewData } from '@/hooks/queries/useOverviewData'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 
