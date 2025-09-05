@@ -40,11 +40,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
         if payload.claims is not None:
             # 使用 Pydantic 模型解析 JWT claims
             jwt_claims = JwtClaims.model_validate(payload.claims)
-            
+
             # 检查过期时间
             if jwt_claims.exp < datetime.now(timezone.utc):
                 raise credentials_exception
-                
+
             return UserPublic(
                 id=jwt_claims.user_id,
                 username=jwt_claims.username,
@@ -98,11 +98,11 @@ def get_websocket_user(token: Annotated[str | None, Query()] = None) -> UserPubl
         if payload.claims is not None:
             # 使用 Pydantic 模型解析 JWT claims
             jwt_claims = JwtClaims.model_validate(payload.claims)
-            
+
             # 检查过期时间
             if jwt_claims.exp < datetime.now(timezone.utc):
                 raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-                
+
             return UserPublic(
                 id=jwt_claims.user_id,
                 username=jwt_claims.username,

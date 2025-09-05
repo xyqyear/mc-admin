@@ -1,5 +1,5 @@
-import { api } from "@/utils/api";
 import type { User, UserCreate } from "@/types/User";
+import { api } from "@/utils/api";
 
 // Get current user info
 export const getCurrentUser = async (): Promise<User> => {

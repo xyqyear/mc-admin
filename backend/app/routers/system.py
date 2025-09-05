@@ -69,7 +69,7 @@ async def get_server_info():
 async def get_cpu_percent_endpoint():
     """Get system CPU percentage (takes 1-2 seconds to calculate)"""
     cpu_percent = await get_cpu_percent()
-    
+
     return CpuPercent(
         cpuPercentage=cpu_percent,
     )

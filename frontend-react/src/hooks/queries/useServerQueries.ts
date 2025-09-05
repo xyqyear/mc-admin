@@ -38,7 +38,7 @@ export const useServerQueries = () => {
   // 单个服务器状态 (快速更新，用于实时状态监控)
   const useServerStatus = (
     id: string,
-    options?: UseQueryOptions<ServerStatus>,
+    options?: UseQueryOptions<ServerStatus>
   ) => {
     return useQuery({
       queryKey: queryKeys.serverStatuses.detail(id),
@@ -56,7 +56,7 @@ export const useServerQueries = () => {
     status?: ServerStatus,
     options?: UseQueryOptions<{
       cpuPercentage: number;
-    }>,
+    }>
   ) => {
     const resourcesAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -82,7 +82,7 @@ export const useServerQueries = () => {
     status?: ServerStatus,
     options?: UseQueryOptions<{
       memoryUsageBytes: number;
-    }>,
+    }>
   ) => {
     const resourcesAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -106,7 +106,7 @@ export const useServerQueries = () => {
   const useServerPlayers = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<string[]>,
+    options?: UseQueryOptions<string[]>
   ) => {
     const playersAvailable = status === "HEALTHY";
 
@@ -129,7 +129,7 @@ export const useServerQueries = () => {
   const useServerIOStats = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<ServerIOStatsResponse>,
+    options?: UseQueryOptions<ServerIOStatsResponse>
   ) => {
     const iostatsAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -152,7 +152,7 @@ export const useServerQueries = () => {
   // 单个服务器磁盘使用信息 (始终可用，不依赖运行状态)
   const useServerDiskUsage = (
     id: string,
-    options?: UseQueryOptions<ServerDiskUsageResponse>,
+    options?: UseQueryOptions<ServerDiskUsageResponse>
   ) => {
     return useQuery({
       queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
@@ -200,7 +200,9 @@ export const useServerQueries = () => {
   };
 
   // 系统CPU百分比 (较慢更新，因为需要1-2秒计算时间)
-  const useSystemCpuPercent = (options?: UseQueryOptions<{ cpuPercentage: number }>) => {
+  const useSystemCpuPercent = (
+    options?: UseQueryOptions<{ cpuPercentage: number }>
+  ) => {
     return useQuery({
       queryKey: [...queryKeys.system.info(), "cpu"],
       queryFn: systemApi.getSystemCpuPercent,
@@ -224,4 +226,3 @@ export const useServerQueries = () => {
     useSystemCpuPercent, // 系统CPU百分比 (分离后的接口)
   };
 };
-

@@ -8,7 +8,7 @@ interface SimpleMetricCardProps {
 
 const SimpleMetricCard: React.FC<SimpleMetricCardProps> = ({ value, title }) => {
   return (
-    <Card 
+    <Card
       className="h-full w-full"
       styles={{
         body: {

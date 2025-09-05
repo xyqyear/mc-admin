@@ -22,12 +22,12 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
     return <Spin size={size} className={className} />
   }
 
-  const containerClass = fullscreen 
+  const containerClass = fullscreen
     ? `flex items-center justify-center h-screen ${className}`
     : `flex items-center justify-center ${height ? '' : 'min-h-[400px]'} ${className}`
-  
+
   const containerStyle = height ? { height } : {}
-  
+
   return (
     <div className={containerClass} style={containerStyle}>
       <Spin size={size} tip={tip}>

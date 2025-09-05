@@ -529,7 +529,7 @@ export function detectFileLanguage(fileName: string): LanguageConfig {
  * @returns Warning configuration if the file can be overridden
  */
 export function getComposeOverrideWarning(
-  fileName: string,
+  fileName: string
 ): ComposeOverrideWarning {
   if (!fileName) {
     return {

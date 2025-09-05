@@ -10,7 +10,7 @@ export const fileApi = {
   // List files and directories
   listFiles: async (
     serverId: string,
-    path: string = "/",
+    path: string = "/"
   ): Promise<FileListResponse> => {
     const response = await api.get(`/servers/${serverId}/files`, {
       params: { path },
@@ -21,7 +21,7 @@ export const fileApi = {
   // Get file content
   getFileContent: async (
     serverId: string,
-    path: string,
+    path: string
   ): Promise<FileContent> => {
     const response = await api.get(`/servers/${serverId}/files/content`, {
       params: { path },
@@ -33,12 +33,12 @@ export const fileApi = {
   updateFileContent: async (
     serverId: string,
     path: string,
-    content: string,
+    content: string
   ): Promise<{ message: string }> => {
     const response = await api.post(
       `/servers/${serverId}/files/content`,
       { content },
-      { params: { path } },
+      { params: { path } }
     );
     return response.data;
   },
@@ -56,7 +56,7 @@ export const fileApi = {
   uploadFile: async (
     serverId: string,
     path: string,
-    file: File,
+    file: File
   ): Promise<{ message: string }> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -69,7 +69,7 @@ export const fileApi = {
         headers: {
           "Content-Type": "multipart/form-data",
         },
-      },
+      }
     );
     return response.data;
   },
@@ -77,11 +77,11 @@ export const fileApi = {
   // Create file or directory
   createFileOrDirectory: async (
     serverId: string,
-    createRequest: CreateFileRequest,
+    createRequest: CreateFileRequest
   ): Promise<{ message: string }> => {
     const response = await api.post(
       `/servers/${serverId}/files/create`,
-      createRequest,
+      createRequest
     );
     return response.data;
   },
@@ -89,7 +89,7 @@ export const fileApi = {
   // Delete file or directory
   deleteFileOrDirectory: async (
     serverId: string,
-    path: string,
+    path: string
   ): Promise<{ message: string }> => {
     const response = await api.delete(`/servers/${serverId}/files`, {
       params: { path },
@@ -100,11 +100,11 @@ export const fileApi = {
   // Rename file or directory
   renameFileOrDirectory: async (
     serverId: string,
-    renameRequest: RenameFileRequest,
+    renameRequest: RenameFileRequest
   ): Promise<{ message: string }> => {
     const response = await api.post(
       `/servers/${serverId}/files/rename`,
-      renameRequest,
+      renameRequest
     );
     return response.data;
   },

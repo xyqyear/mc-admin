@@ -45,7 +45,7 @@ api.interceptors.request.use(
   (error: AxiosError) => {
     console.error("Request interceptor error:", error);
     return Promise.reject(error);
-  },
+  }
 );
 
 // Response interceptor with comprehensive error handling
@@ -75,7 +75,7 @@ api.interceptors.response.use(
     };
 
     return Promise.reject(apiError);
-  },
+  }
 );
 
 // Utility function for sleep (useful for demos/testing)
@@ -129,8 +129,10 @@ export const queryKeys = {
   files: {
     all: ["files"] as const,
     lists: (serverId: string) => [...queryKeys.files.all, serverId] as const,
-    list: (serverId: string, path: string) => [...queryKeys.files.all, serverId, path] as const,
-    content: (serverId: string, path: string) => [...queryKeys.files.all, serverId, 'content', path] as const,
+    list: (serverId: string, path: string) =>
+      [...queryKeys.files.all, serverId, path] as const,
+    content: (serverId: string, path: string) =>
+      [...queryKeys.files.all, serverId, "content", path] as const,
   },
 
   // 用户管理

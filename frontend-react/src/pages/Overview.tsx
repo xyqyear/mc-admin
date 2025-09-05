@@ -1,10 +1,10 @@
 import React from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Progress, 
-  Modal, 
+import {
+  Card,
+  Table,
+  Button,
+  Progress,
+  Modal,
   Alert,
   Space,
   Tooltip,
@@ -30,14 +30,14 @@ import { serverStatusUtils } from '@/utils/serverUtils'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
-  
+
   // 使用新的数据架构 - 通过分离查询获取完整数据
-  const { 
+  const {
     enrichedServers, // 包含所有运行时数据的完整服务器列表
-    systemInfo, 
+    systemInfo,
     systemCpuPercent, // 新的分离的系统CPU百分比数据
-    serverNum, 
-    runningServers, 
+    serverNum,
+    runningServers,
     onlinePlayerNum,
     isLoading,
     isStatusLoading,
@@ -45,7 +45,7 @@ const Overview: React.FC = () => {
     error,
     refetch
   } = useOverviewData()
-  
+
   const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
 
@@ -62,7 +62,7 @@ const Overview: React.FC = () => {
     // 根据状态决定操作类型
     const operation = status === 'CREATED' ? 'start' : 'up'
     const operationText = status === 'CREATED' ? '启动' : '启动(up)'
-    
+
     Modal.confirm({
       title: '确认启动',
       content: `确定要${operationText}服务器 "${server.name}" 吗？`,
@@ -183,27 +183,27 @@ const Overview: React.FC = () => {
       render: (_: any, record: typeof tableData[0]) => {
         const hasRuntimeData = record.cpuPercentage != null || record.memoryUsageBytes != null
         const hasDiskData = record.diskUsageBytes != null
-        
+
         if (!hasRuntimeData && !hasDiskData) {
           return <span className="text-gray-400">暂无数据</span>
         }
-        
+
         const cpuPercentage = record.cpuPercentage || 0
         const memoryUsageBytes = record.memoryUsageBytes || 0
         const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
         const memoryLimitMB = record.maxMemoryBytes / (1024 * 1024)
         const memoryPercent = memoryLimitMB > 0 ? (memoryUsageMB / memoryLimitMB) * 100 : 0
-        
+
         return (
           <div className="space-y-1">
             {hasRuntimeData && (
               <>
                 <div className="flex items-center gap-2 text-xs">
                   <span>CPU:</span>
-                  <Progress 
-                    percent={cpuPercentage} 
-                    size="small" 
-                    style={{ width: 60 }} 
+                  <Progress
+                    percent={cpuPercentage}
+                    size="small"
+                    style={{ width: 60 }}
                     showInfo={false}
                     strokeColor={cpuPercentage > 80 ? '#ff4d4f' : cpuPercentage > 60 ? '#faad14' : '#52c41a'}
                   />
@@ -211,10 +211,10 @@ const Overview: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span>内存:</span>
-                  <Progress 
-                    percent={memoryPercent} 
-                    size="small" 
-                    style={{ width: 60 }} 
+                  <Progress
+                    percent={memoryPercent}
+                    size="small"
+                    style={{ width: 60 }}
                     showInfo={false}
                     strokeColor={memoryPercent > 80 ? '#ff4d4f' : memoryPercent > 60 ? '#faad14' : '#52c41a'}
                   />
@@ -225,14 +225,14 @@ const Overview: React.FC = () => {
             {hasDiskData && record.diskTotalBytes && (
               <div className="flex items-center gap-2 text-xs">
                 <span>磁盘:</span>
-                <Progress 
-                  percent={((record.diskTotalBytes - record.diskAvailableBytes!) / record.diskTotalBytes) * 100} 
+                <Progress
+                  percent={((record.diskTotalBytes - record.diskAvailableBytes!) / record.diskTotalBytes) * 100}
                   success={{
                     percent: (record.diskUsageBytes! / record.diskTotalBytes) * 100,
                     strokeColor: '#52c41a'
                   }}
-                  size="small" 
-                  style={{ width: 60 }} 
+                  size="small"
+                  style={{ width: 60 }}
                   showInfo={false}
                   strokeColor="#faad14"
                 />
@@ -400,11 +400,11 @@ const Overview: React.FC = () => {
       )}
 
       {/* 服务器表格 */}
-      <Card 
-        title="Minecraft 服务器" 
+      <Card
+        title="Minecraft 服务器"
         extra={
-          <Button 
-            type="primary" 
+          <Button
+            type="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate('/server/new')}
           >

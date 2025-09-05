@@ -3,12 +3,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.jwt_utils import create_access_token, get_password_hash, get_token_expiry, verify_password
+from ..auth.jwt_utils import (
+    create_access_token,
+    get_token_expiry,
+    verify_password,
+)
 from ..auth.login_code import loginCodeManager
-from ..db.crud.user import create_user, get_user_by_username
+from ..db.crud.user import get_user_by_username
 from ..db.database import get_db
-from ..dependencies import JwtClaims, RequireRole, UserRole, verify_master_token
-from ..models import User, UserCreate
+from ..dependencies import JwtClaims, verify_master_token
 
 router = APIRouter(
     prefix="/auth",
@@ -46,9 +49,9 @@ async def login_for_access_token(
     if user.id is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="User ID is missing"
+            detail="User ID is missing",
         )
-    
+
     # 使用 JwtClaims 创建 JWT 数据
     jwt_claims = JwtClaims(
         sub=user.username,

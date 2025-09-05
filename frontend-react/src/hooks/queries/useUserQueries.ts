@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import * as userApi from "@/hooks/api/userApi";
 import { queryKeys } from "@/utils/api";
+import { useQuery } from "@tanstack/react-query";
 
 export const useCurrentUser = () => {
   return useQuery({

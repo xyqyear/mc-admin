@@ -33,7 +33,7 @@ export const useOverviewData = () => {
 
   // 计算运行中的服务器数量
   const runningServers = Object.values(serverStatuses).filter((status) =>
-    ["RUNNING", "STARTING", "HEALTHY"].includes(status),
+    ["RUNNING", "STARTING", "HEALTHY"].includes(status)
   ).length;
 
   // 获取健康服务器的玩家数据 - 只为健康的服务器获取
@@ -42,7 +42,7 @@ export const useOverviewData = () => {
       Object.entries(serverStatuses)
         .filter(([_, status]) => status === "HEALTHY")
         .map(([id]) => id),
-    [serverStatuses],
+    [serverStatuses]
   );
 
   const playersQueries = useQueries({
@@ -63,10 +63,10 @@ export const useOverviewData = () => {
     () =>
       Object.entries(serverStatuses)
         .filter(([_, status]) =>
-          ["RUNNING", "STARTING", "HEALTHY"].includes(status),
+          ["RUNNING", "STARTING", "HEALTHY"].includes(status)
         )
         .map(([id]) => id),
-    [serverStatuses],
+    [serverStatuses]
   );
 
   // 获取运行中服务器的CPU数据
@@ -163,9 +163,9 @@ export const useOverviewData = () => {
     () =>
       Object.values(serverRuntimeData).reduce(
         (total, data) => total + (data.players?.length || 0),
-        0,
+        0
       ),
-    [serverRuntimeData],
+    [serverRuntimeData]
   );
 
   // 构建完整的服务器数据（用于表格显示）
@@ -183,7 +183,7 @@ export const useOverviewData = () => {
         diskAvailableBytes:
           serverRuntimeData[server.id]?.diskUsage?.diskAvailableBytes,
       })),
-    [serversData, serverStatuses, serverRuntimeData],
+    [serversData, serverStatuses, serverRuntimeData]
   );
 
   // 查询状态

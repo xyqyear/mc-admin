@@ -73,7 +73,7 @@ export const useServerMutations = () => {
       },
       onError: (error: Error, { action, serverId }) => {
         message.error(
-          `服务器 ${serverId} ${action} 操作失败: ${error.message}`,
+          `服务器 ${serverId} ${action} 操作失败: ${error.message}`
         );
       },
     });
@@ -92,7 +92,7 @@ export const useServerMutations = () => {
         // 如果是可能影响玩家状态的命令，刷新玩家列表
         if (
           ["list", "kick", "ban", "op", "deop"].some((cmd) =>
-            command.startsWith(cmd),
+            command.startsWith(cmd)
           )
         ) {
           queryClient.invalidateQueries({

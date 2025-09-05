@@ -95,7 +95,12 @@ export const useServerDetailQueries = (serverId: string) => {
             // 格式化的显示值
             displayMemoryUsage:
               memoryQuery.data && configQuery.data
-                ? `${(memoryQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(1)}GB / ${(configQuery.data.maxMemoryBytes / 1024 ** 3).toFixed(1)}GB`
+                ? `${(memoryQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(
+                    1
+                  )}GB / ${(
+                    configQuery.data.maxMemoryBytes /
+                    1024 ** 3
+                  ).toFixed(1)}GB`
                 : "未知",
 
             displayCpuUsage: cpuQuery.data

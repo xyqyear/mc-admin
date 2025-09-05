@@ -87,8 +87,8 @@ const Home: React.FC = () => {
               >
                 <div className="text-center space-y-4">
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100">
-                    {React.cloneElement(card.icon, { 
-                      style: { fontSize: 28, color: card.color } 
+                    {React.cloneElement(card.icon, {
+                      style: { fontSize: 28, color: card.color }
                     })}
                   </div>
                   <Title level={4} className="!mb-2">{card.title}</Title>

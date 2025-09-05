@@ -18,7 +18,7 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
   if (file.type === 'directory') {
     return <FolderOutlined style={{ color: '#1890ff' }} />
   }
-  
+
   const ext = file.name.split('.').pop()?.toLowerCase()
   switch (ext) {
     case 'txt':

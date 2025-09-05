@@ -9,7 +9,7 @@ class DevLogger {
    */
   log(...args: any[]): void {
     if (import.meta.env.DEV) {
-      console.log(...args)
+      console.log(...args);
     }
   }
 
@@ -18,7 +18,7 @@ class DevLogger {
    */
   error(...args: any[]): void {
     if (import.meta.env.DEV) {
-      console.error(...args)
+      console.error(...args);
     }
   }
 
@@ -27,7 +27,7 @@ class DevLogger {
    */
   warn(...args: any[]): void {
     if (import.meta.env.DEV) {
-      console.warn(...args)
+      console.warn(...args);
     }
   }
 
@@ -36,7 +36,7 @@ class DevLogger {
    */
   debug(...args: any[]): void {
     if (import.meta.env.DEV) {
-      console.debug(...args)
+      console.debug(...args);
     }
   }
 
@@ -45,7 +45,7 @@ class DevLogger {
    */
   info(...args: any[]): void {
     if (import.meta.env.DEV) {
-      console.info(...args)
+      console.info(...args);
     }
   }
 
@@ -54,7 +54,7 @@ class DevLogger {
    */
   table(data: any): void {
     if (import.meta.env.DEV) {
-      console.table(data)
+      console.table(data);
     }
   }
 
@@ -63,7 +63,7 @@ class DevLogger {
    */
   group(label?: string): void {
     if (import.meta.env.DEV) {
-      console.group(label)
+      console.group(label);
     }
   }
 
@@ -72,7 +72,7 @@ class DevLogger {
    */
   groupCollapsed(label?: string): void {
     if (import.meta.env.DEV) {
-      console.groupCollapsed(label)
+      console.groupCollapsed(label);
     }
   }
 
@@ -81,7 +81,7 @@ class DevLogger {
    */
   groupEnd(): void {
     if (import.meta.env.DEV) {
-      console.groupEnd()
+      console.groupEnd();
     }
   }
 
@@ -90,7 +90,7 @@ class DevLogger {
    */
   time(label?: string): void {
     if (import.meta.env.DEV) {
-      console.time(label)
+      console.time(label);
     }
   }
 
@@ -99,7 +99,7 @@ class DevLogger {
    */
   timeEnd(label?: string): void {
     if (import.meta.env.DEV) {
-      console.timeEnd(label)
+      console.timeEnd(label);
     }
   }
 
@@ -108,11 +108,11 @@ class DevLogger {
    */
   timeLog(label?: string, ...data: any[]): void {
     if (import.meta.env.DEV) {
-      console.timeLog(label, ...data)
+      console.timeLog(label, ...data);
     }
   }
 }
 
 // 导出单例实例
-export const log = new DevLogger()
-export default log
+export const log = new DevLogger();
+export default log;

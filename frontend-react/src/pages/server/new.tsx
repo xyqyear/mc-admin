@@ -103,7 +103,7 @@ const ServerNew: React.FC = () => {
     if (editor) {
       const model = editor.getModel()
       const selection = editor.getSelection()
-      
+
       if (model && selection) {
         const range = {
           startLineNumber: selection.startLineNumber,
@@ -111,14 +111,14 @@ const ServerNew: React.FC = () => {
           endLineNumber: selection.endLineNumber,
           endColumn: selection.endColumn
         }
-        
+
         editor.executeEdits('insert-variable', [
           {
             range: range,
             text: variable
           }
         ])
-        
+
         // Set cursor position after the inserted text
         const newPosition = {
           lineNumber: selection.startLineNumber,
@@ -161,8 +161,8 @@ const ServerNew: React.FC = () => {
               { pattern: /^[a-zA-Z0-9-_]+$/, message: '服务器名称只能包含字母、数字、连字符和下划线' }
             ]}
           >
-            <Input 
-              placeholder="例如: vanilla-survival" 
+            <Input
+              placeholder="例如: vanilla-survival"
               onChange={(e) => {
                 const newContent = composeContent.replace(/\${SERVER_NAME}/g, e.target.value || '${SERVER_NAME}')
                 setComposeContent(newContent)
@@ -179,8 +179,8 @@ const ServerNew: React.FC = () => {
             ]}
             initialValue="25565"
           >
-            <Input 
-              placeholder="25565" 
+            <Input
+              placeholder="25565"
               onChange={(e) => {
                 const newContent = composeContent.replace(/\${SERVER_PORT}/g, e.target.value || '${SERVER_PORT}')
                 setComposeContent(newContent)
@@ -192,8 +192,8 @@ const ServerNew: React.FC = () => {
             name="description"
             label="服务器描述"
           >
-            <Input.TextArea 
-              rows={3} 
+            <Input.TextArea
+              rows={3}
               placeholder="输入服务器描述 (可选)"
               maxLength={200}
               showCount
@@ -225,23 +225,23 @@ const ServerNew: React.FC = () => {
           <div className="mb-4">
             <Text strong>快速插入变量：</Text>
             <Space className="ml-2">
-              <Button 
-                size="small" 
-                type="link" 
+              <Button
+                size="small"
+                type="link"
                 onClick={() => insertVariable('${SERVER_NAME}')}
               >
                 ${'{'}SERVER_NAME{'}'}
               </Button>
-              <Button 
-                size="small" 
-                type="link" 
+              <Button
+                size="small"
+                type="link"
                 onClick={() => insertVariable('${SERVER_PORT}')}
               >
                 ${'{'}SERVER_PORT{'}'}
               </Button>
             </Space>
           </div>
-          
+
           <Form.Item
             name="composeContent"
             label="docker-compose.yml 内容"
@@ -278,13 +278,13 @@ const ServerNew: React.FC = () => {
               </Text>
             </div>
             <Space>
-              <Button 
+              <Button
                 onClick={() => navigate('/overview')}
               >
                 取消
               </Button>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 icon={<PlayCircleOutlined />}
                 loading={isCreating}
                 onClick={handleCreate}

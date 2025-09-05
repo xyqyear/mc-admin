@@ -4,8 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import DateTime, Enum as SQLAlchemyEnum
-from sqlalchemy import String
+from sqlalchemy import DateTime, String
+from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 

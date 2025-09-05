@@ -1,8 +1,8 @@
+import * as userApi from "@/hooks/api/userApi";
+import type { UserCreate } from "@/types/User";
+import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { message } from "antd";
-import * as userApi from "@/hooks/api/userApi";
-import { queryKeys } from "@/utils/api";
-import type { UserCreate } from "@/types/User";
 
 export const useCreateUser = () => {
   const queryClient = useQueryClient();

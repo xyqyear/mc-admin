@@ -31,7 +31,7 @@ const MonacoDiffEditor: React.FC<MonacoDiffEditorProps> = ({
       modified: modified.substring(0, 50) + '...',
       areDifferent: original !== modified
     })
-    
+
     if (onMount) {
       onMount(editor)
     }

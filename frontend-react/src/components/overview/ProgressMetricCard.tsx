@@ -7,10 +7,10 @@ interface ProgressMetricCardProps {
   extraInfo?: string
 }
 
-const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({ 
-  value, 
-  title, 
-  extraInfo 
+const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({
+  value,
+  title,
+  extraInfo
 }) => {
   const getProgressColor = (percentage: number) => {
     if (percentage >= 90) return '#f5222d'
@@ -21,7 +21,7 @@ const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({
   }
 
   return (
-    <Card 
+    <Card
       className="h-full w-full"
       styles={{
         body: {
@@ -49,8 +49,8 @@ const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({
           {title}
         </div>
         {extraInfo && (
-          <div 
-            className="text-xs text-gray-500 leading-tight px-1" 
+          <div
+            className="text-xs text-gray-500 leading-tight px-1"
             title={extraInfo}
             style={{
               wordBreak: 'break-all',

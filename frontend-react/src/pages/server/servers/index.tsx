@@ -232,14 +232,14 @@ const ServerDetail: React.FC = () => {
             <div className="flex justify-between mb-2">
               <span className="text-base font-medium">存储空间分配</span>
               <span className="text-sm text-gray-600">
-                服务器: {(diskUsage.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB / 
-                剩余: {(diskUsage.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB / 
+                服务器: {(diskUsage.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB /
+                剩余: {(diskUsage.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB /
                 总计: {(diskUsage.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
               </span>
             </div>
             <Progress
               percent={((diskUsage.diskTotalBytes - diskUsage.diskAvailableBytes) / diskUsage.diskTotalBytes) * 100}
-              success={{ 
+              success={{
                 percent: (diskUsage.diskUsageBytes / diskUsage.diskTotalBytes) * 100,
                 strokeColor: '#52c41a'
               }}
