@@ -110,12 +110,11 @@ async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
         return ServerInfo(
             id=server_id,
             name=server_info.name,
-            serverType=server_info.server_type or "vanilla",
-            gameVersion=server_info.game_version or "latest",
-            gamePort=server_info.game_port or 25565,
-            maxMemoryBytes=server_info.max_memory_bytes or 2147483648,  # 2GB default
-            rconPort=server_info.rcon_port
-            or 25575,  # Use real RCON port from compose file
+            serverType=server_info.server_type,
+            gameVersion=server_info.game_version,
+            gamePort=server_info.game_port,
+            maxMemoryBytes=server_info.max_memory_bytes or 0,
+            rconPort=server_info.rcon_port,
         )
 
     except HTTPException:
@@ -142,7 +141,9 @@ async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_
 
 
 @router.get("/{server_id}/resources", response_model=ServerResources)
-async def get_server_resources(server_id: str, _: UserPublic = Depends(get_current_user)):
+async def get_server_resources(
+    server_id: str, _: UserPublic = Depends(get_current_user)
+):
     """Get system resource information for a specific server (available when running/starting/healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -250,7 +251,9 @@ async def get_server_iostats(server_id: str, _: UserPublic = Depends(get_current
 
 
 @router.get("/{server_id}/disk-usage", response_model=ServerDiskUsage)
-async def get_server_disk_usage(server_id: str, _: UserPublic = Depends(get_current_user)):
+async def get_server_disk_usage(
+    server_id: str, _: UserPublic = Depends(get_current_user)
+):
     """Get disk usage information for a specific server (always available regardless of server status)"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -309,7 +312,9 @@ async def get_server_compose(server_id: str, _: UserPublic = Depends(get_current
 
 @router.post("/{server_id}/compose")
 async def update_server_compose(
-    server_id: str, compose_config: ComposeConfig, _: UserPublic = Depends(get_current_user)
+    server_id: str,
+    compose_config: ComposeConfig,
+    _: UserPublic = Depends(get_current_user),
 ):
     """Update the Docker Compose configuration for a specific server"""
     try:
@@ -368,7 +373,9 @@ async def update_server_compose(
 
 @router.post("/{server_id}/operations")
 async def server_operation(
-    server_id: str, operation: ServerOperation, _: UserPublic = Depends(get_current_user)
+    server_id: str,
+    operation: ServerOperation,
+    _: UserPublic = Depends(get_current_user),
 ):
     """Perform operations on a server (start, stop, restart, up, down)"""
     try:
