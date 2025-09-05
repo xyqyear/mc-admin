@@ -52,7 +52,7 @@ export const serverStatusUtils = {
       case "stop":
         return ["RUNNING", "HEALTHY", "STARTING"].includes(status);
       case "restart":
-        return ["RUNNING", "HEALTHY"].includes(status);
+        return ["RUNNING", "HEALTHY", "STARTING"].includes(status);
       case "down":
         return ["CREATED", "RUNNING", "STARTING", "HEALTHY"].includes(status);
       case "remove":

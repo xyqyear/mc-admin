@@ -27,6 +27,7 @@ import type { ServerStatus } from '@/types/Server'
 import { useOverviewData } from '@/hooks/queries/useOverviewData'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
+import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
@@ -48,6 +49,7 @@ const Overview: React.FC = () => {
 
   const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
+  const { showConfirm } = useServerOperationConfirm()
 
 
   const isOperationAvailable = (operation: string, status: ServerStatus) => {
@@ -76,45 +78,24 @@ const Overview: React.FC = () => {
   }
 
   const handleServerOperation = (operation: string, serverId: string) => {
-    const confirmConfigs = {
-      stop: {
-        title: '确认停止',
-        content: `确定要停止服务器 "${serverId}" 吗？这将断开所有玩家连接。`,
-        okText: '确认停止',
-        okType: 'primary' as const
-      },
-      restart: {
-        title: '确认重启',
-        content: `确定要重启服务器 "${serverId}" 吗？这将暂时断开所有玩家连接。`,
-        okText: '确认重启',
-        okType: 'primary' as const
-      },
-      down: {
-        title: '确认下线',
-        content: `确定要下线服务器 "${serverId}" 吗？这将停止服务器并清理资源。`,
-        okText: '确认下线',
-        okType: 'primary' as const
-      },
-      remove: {
-        title: '确认删除',
-        content: `确定要删除服务器 "${serverId}" 吗？此操作无法撤销。`,
-        okText: '确认删除',
-        okType: 'danger' as const
-      }
-    }
-
-    const config = confirmConfigs[operation as keyof typeof confirmConfigs]
-    if (config) {
-      Modal.confirm({
-        ...config,
-        cancelText: '取消',
-        onOk: () => {
-          serverOperationMutation.mutate({ action: operation, serverId })
+    // 使用新的确认组件处理所有需要确认的操作
+    if (operation === 'stop' || operation === 'restart' || operation === 'down' || operation === 'remove') {
+      const server = enrichedServers.find(s => s.id === serverId)
+      if (!server) return
+      
+      showConfirm({
+        operation: operation as 'stop' | 'restart' | 'down' | 'remove',
+        serverName: server.name,
+        serverId,
+        onConfirm: (action, serverIdParam) => {
+          serverOperationMutation.mutate({ action, serverId: serverIdParam })
         }
       })
-    } else {
-      serverOperationMutation.mutate({ action: operation, serverId })
+      return
     }
+
+    // 其他操作直接执行
+    serverOperationMutation.mutate({ action: operation, serverId })
   }
 
   // 构建表格数据 - 直接使用包含完整运行时数据的enrichedServers
@@ -279,6 +260,7 @@ const Overview: React.FC = () => {
             <Button
               icon={<StopOutlined />}
               size="small"
+              danger
               disabled={!isOperationAvailable('stop', record.status)}
               loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('stop', record.id)}
@@ -288,6 +270,7 @@ const Overview: React.FC = () => {
             <Button
               icon={<ReloadOutlined />}
               size="small"
+              danger
               disabled={!isOperationAvailable('restart', record.status)}
               loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('restart', record.id)}
@@ -297,6 +280,7 @@ const Overview: React.FC = () => {
             <Button
               icon={<DownOutlined />}
               size="small"
+              danger
               disabled={!isOperationAvailable('down', record.status)}
               loading={serverOperationMutation.isPending}
               onClick={() => handleServerOperation('down', record.id)}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip, Modal } from 'antd'
+import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   PlayCircleOutlined,
@@ -18,6 +18,7 @@ import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -54,6 +55,7 @@ const ServerDetail: React.FC = () => {
 
   // 服务器操作
   const serverOperationMutation = useServerOperation()
+  const { showConfirm } = useServerOperationConfirm()
 
   // 如果没有服务器ID，返回错误
   if (!id) {
@@ -134,11 +136,6 @@ const ServerDetail: React.FC = () => {
     return <LoadingSpinner height="16rem" />
   }
 
-  // 服务器操作处理
-  const handleServerOperation = (action: string) => {
-    serverOperationMutation.mutate({ action, serverId: id })
-  }
-
   // 检查操作是否可用
   const isOperationAvailable = (operation: string) => {
     if (!status) return false
@@ -155,18 +152,16 @@ const ServerDetail: React.FC = () => {
     serverOperationMutation.mutate({ action: operation, serverId: id })
   }
 
-  // 下线操作：需要确认对话框
-  const handleDownServer = () => {
+  // 需要确认的服务器操作处理（停止、重启、下线）
+  const handleConfirmableServerOperation = (operation: 'stop' | 'restart' | 'down') => {
     if (!serverInfo) return
-
-    Modal.confirm({
-      title: '确认下线',
-      content: `确定要下线服务器 "${serverInfo.name}" 吗？这将停止服务器并清理资源。`,
-      okText: '确认下线',
-      okType: 'primary',
-      cancelText: '取消',
-      onOk: () => {
-        serverOperationMutation.mutate({ action: 'down', serverId: id })
+    
+    showConfirm({
+      operation,
+      serverName: serverInfo.name,
+      serverId: id,
+      onConfirm: (action, serverId) => {
+        serverOperationMutation.mutate({ action, serverId })
       }
     })
   }
@@ -196,7 +191,7 @@ const ServerDetail: React.FC = () => {
                 icon={<StopOutlined />}
                 disabled={!isOperationAvailable('stop')}
                 loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('stop')}
+                onClick={() => handleConfirmableServerOperation('stop')}
               >
                 停止
               </Button>
@@ -207,7 +202,7 @@ const ServerDetail: React.FC = () => {
                 icon={<ReloadOutlined />}
                 disabled={!isOperationAvailable('restart')}
                 loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('restart')}
+                onClick={() => handleConfirmableServerOperation('restart')}
               >
                 重启
               </Button>
@@ -218,7 +213,7 @@ const ServerDetail: React.FC = () => {
                 icon={<DownOutlined />}
                 disabled={!isOperationAvailable('down')}
                 loading={serverOperationMutation.isPending}
-                onClick={handleDownServer}
+                onClick={() => handleConfirmableServerOperation('down')}
               >
                 下线
               </Button>
