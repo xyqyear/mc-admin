@@ -1,4 +1,5 @@
 import asyncio
+import os
 import shutil
 from pathlib import Path
 
@@ -34,10 +35,23 @@ async def run_shell_command(command: str, catch_output: bool = True) -> str:
     return stdout.decode()
 
 
-async def exec_command(command: str, *args: str) -> str:
+async def exec_command(
+    command: str,
+    *args: str,
+    uid: int | None = None,
+    gid: int | None = None,
+    env: dict[str, str] = dict(),
+) -> str:
+    def demote():
+        if uid is not None and gid is not None:
+            os.setuid(uid)
+            os.setgid(gid)
+
     process = await asyncio.create_subprocess_exec(
         command,
         *args,
+        preexec_fn=demote,
+        env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
