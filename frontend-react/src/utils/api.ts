@@ -67,6 +67,7 @@ api.interceptors.response.use(
     // Create standardized error object
     const apiError: ApiError = {
       message:
+        (error.response?.data as any)?.detail ||
         (error.response?.data as any)?.message ||
         error.message ||
         "Network error",
@@ -155,6 +156,12 @@ export const queryKeys = {
   serverFiles: (id: string) => [...queryKeys.server(id), "files"] as const,
   overview: () => [...queryKeys.all, "overview"] as const,
   backups: () => [...queryKeys.all, "backups"] as const,
+
+  // 快照管理
+  snapshots: {
+    all: ["snapshots"] as const,
+    global: () => [...queryKeys.snapshots.all, "global"] as const,
+  },
 } as const;
 
 export default api;
