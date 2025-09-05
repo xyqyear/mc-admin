@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -248,9 +249,6 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # 如果处理过程中发生异常，也要记录日志
             processing_time = time.perf_counter() - start_time
-
-            # 创建一个错误响应来记录日志
-            from fastapi.responses import JSONResponse
 
             error_response = JSONResponse(
                 status_code=500, content={"detail": "Internal Server Error"}
