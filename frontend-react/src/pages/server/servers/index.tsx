@@ -144,6 +144,16 @@ const ServerDetail: React.FC = () => {
     return serverStatusUtils.isOperationAvailable(operation, status)
   }
 
+  // 智能启动：根据服务器状态决定使用 start 还是 up
+  const handleStartServer = () => {
+    if (!serverInfo || !status) return
+
+    // 根据状态决定操作类型
+    const operation = status === 'CREATED' ? 'start' : 'up'
+
+    serverOperationMutation.mutate({ action: operation, serverId: id })
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -154,11 +164,11 @@ const ServerDetail: React.FC = () => {
           <>
             <Tooltip title="启动服务器">
               <Button
-                type="primary"
+                type={status === 'CREATED' || status === 'EXISTS' ? 'primary' : 'default'}
                 icon={<PlayCircleOutlined />}
-                disabled={!isOperationAvailable('start')}
+                disabled={!isOperationAvailable('start') && !isOperationAvailable('up')}
                 loading={serverOperationMutation.isPending}
-                onClick={() => handleServerOperation('start')}
+                onClick={handleStartServer}
               >
                 启动
               </Button>
