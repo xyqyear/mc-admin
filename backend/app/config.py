@@ -19,6 +19,14 @@ class JWTSettings(BaseModel):
     access_token_expire_minutes: int = 60 * 24 * 30
 
 
+class AuditSettings(BaseModel):
+    enabled: bool = True
+    log_file: str = "operations.log"
+    log_request_body: bool = True
+    max_body_size: int = 10240  # 10KB
+    sensitive_fields: list[str] = ["password", "token", "secret", "key"]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -29,6 +37,7 @@ class Settings(BaseSettings):
     database_url: str
     master_token: str
     jwt: JWTSettings
+    audit: AuditSettings = Field(default_factory=AuditSettings)
 
     server_path: Path
     backup_path: Path

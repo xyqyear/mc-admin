@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from .audit import OperationAuditMiddleware
 from .db.database import init_db
 from .routers import admin, auth, system, user
 from .routers.servers import console, files, misc, rcon
@@ -15,6 +16,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")
+
+# 添加操作审计中间件（注意顺序：后添加的中间件先执行）
+app.add_middleware(OperationAuditMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
