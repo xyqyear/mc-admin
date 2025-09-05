@@ -452,4 +452,21 @@ When adding new features, libraries, or changing architecture:
 11. **API integrations**: Document new endpoint purposes and data flow patterns
 12. **Query optimizations**: Update caching strategies and refetch intervals appropriately
 
+**IMPORTANT EDITING GUIDELINES:**
+
+**Before updating any CLAUDE.md file:**
+1. **Check git history** to identify the last CLAUDE.md update commit: `git log --oneline --follow -- CLAUDE.md | head -5`
+2. **Compare current state** with the last CLAUDE.md update: `git diff <last_commit>..HEAD --name-status`
+3. **Analyze all changes** made since the last documentation update to ensure complete coverage
+4. **Review new files, modified functionality, and architectural changes** to capture all relevant updates
+
+**When writing CLAUDE.md updates:**
+1. **Write complete, self-contained documentation** - each version should be fully accurate and comprehensive
+2. **Avoid incremental/patch-like language** such as "Recent changes," "Latest updates," or "New additions"
+3. **Integrate all information naturally** into the existing structure rather than appending changelog-style entries
+4. **Ensure consistency** between all three CLAUDE.md files (main, backend, frontend) regarding shared concepts
+5. **Reflect actual codebase state** - documentation should describe what IS, not what WAS or what changed
+
+This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
+
 **Critical**: Update this CLAUDE.md when introducing new architectural patterns, state management approaches, data fetching strategies, or external integrations that future development sessions should understand and follow.

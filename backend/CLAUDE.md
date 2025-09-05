@@ -16,6 +16,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Async Support**: Full async/await with comprehensive asyncio patterns throughout
 - **System Monitoring**: psutil v7.0.0 for CPU, memory, disk metrics
 - **Development**: pytest v8.3.3 + pytest-asyncio + black formatter
+- **Audit System**: FastAPI middleware with structured JSON logging and automatic log rotation
 - **Additional**: python-multipart, asyncer v0.0.8, watchdog for file monitoring
 
 ### Integrated Minecraft Management Stack
@@ -55,6 +56,13 @@ logs_dir = "./logs"  # Optional, defaults to ./logs
 secret_key = "your-jwt-secret-key"
 algorithm = "HS256"
 access_token_expire_minutes = 43200  # 30 days
+
+[audit]
+enabled = true                    # Enable operation audit logging
+log_file = "operations.log"       # Audit log filename in logs_dir
+log_request_body = true           # Include request body in logs
+max_body_size = 10240            # Max request body size to log (bytes)
+sensitive_fields = ["password", "token", "secret", "key"]  # Fields to mask in logs
 ```
 
 ### Database Migrations (Alembic)
@@ -163,11 +171,12 @@ poetry run pytest tests/ -v --timeout=600
 ### Project Structure (Actual File Layout)
 ```
 app/                        # Main application package
-├── main.py                 # FastAPI app entrypoint, CORS, router mounting, lifespan management
+├── main.py                 # FastAPI app entrypoint, CORS, audit middleware, router mounting, lifespan management
 ├── config.py               # Settings model with TOML + env loading (pydantic-settings)
 ├── models.py               # SQLAlchemy + Pydantic models with async support
 ├── dependencies.py         # DI: database sessions, auth, role guards, master token handling
 ├── logger.py               # Rotating file + stdout logging configuration
+├── audit.py                # Operation audit middleware with smart filtering and sensitive data masking
 ├── __main__.py             # Module execution entry point
 ├── db/
 │   ├── __init__.py
@@ -183,10 +192,14 @@ app/                        # Main application package
 │   ├── __init__.py
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
 │   ├── user.py             # User profile endpoints
+│   ├── admin.py            # User administration endpoints (OWNER role required)
 │   ├── system.py           # System metrics endpoints (psutil integration)
 │   └── servers/
 │       ├── __init__.py
-│       └── misc.py         # Minecraft server management endpoints (FULL CRUD + operations)
+│       ├── misc.py         # Minecraft server management endpoints (FULL CRUD + operations)
+│       ├── console.py      # Real-time console WebSocket endpoints
+│       ├── rcon.py         # RCON command execution endpoints
+│       └── files.py        # File management endpoints
 ├── websocket/
 │   ├── __init__.py         # WebSocket module exports
 │   └── console.py          # Real-time console streaming with Watchdog file monitoring
@@ -229,6 +242,12 @@ tests/                      # Test suite (separate from app package)
 - `POST /auth/token` - OAuth2 token endpoint (username/password)
 - `POST /auth/verifyCode` - Verify WebSocket login code with master token
 - `WebSocket /auth/code` - Rotating 8-digit login codes (60-second TTL)
+
+**Admin Routes (`/api/admin/`)**:
+- `GET /admin/users/` - List all users (OWNER role required)
+- `POST /admin/users/` - Create new user (OWNER role required)
+- `PUT /admin/users/{id}` - Update user details (OWNER role required)
+- `DELETE /admin/users/{id}` - Delete user (OWNER role required)
 
 **User Routes (`/api/user/`)**:
 - `GET /user/me` - Current user profile (requires JWT)
@@ -390,6 +409,56 @@ REMOVED → EXISTS → CREATED → RUNNING → STARTING → HEALTHY
 {"type": "command", "command": "minecraft command to execute"}
 ```
 
+### Operation Audit System
+
+**Middleware Architecture:**
+The `OperationAuditMiddleware` extends `BaseHTTPMiddleware` and automatically intercepts HTTP requests to log operations that modify server state or data.
+
+**Implementation:**
+```python
+# app/main.py - Middleware registration
+from .audit import OperationAuditMiddleware
+app.add_middleware(OperationAuditMiddleware)
+
+# app/audit.py - Core middleware class
+class OperationAuditMiddleware(BaseHTTPMiddleware):
+    AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    AUDIT_PATH_PATTERNS = {"/api/admin/", "/api/auth/register"}
+    SERVER_OPERATION_PATTERNS = {"/operations", "/compose", "/rcon"}
+```
+
+**Configuration:**
+```python
+# app/config.py - Audit settings
+class AuditSettings(BaseModel):
+    enabled: bool = True
+    log_file: str = "operations.log"
+    log_request_body: bool = True
+    max_body_size: int = 10240
+    sensitive_fields: list[str] = ["password", "token", "secret", "key"]
+```
+
+**Logged Operations:**
+- Server management: `/api/servers/{id}/operations`, `/api/servers/{id}/compose`, `/api/servers/{id}/rcon`
+- User administration: All `/api/admin/*` endpoints, `/api/auth/register`
+- All POST/PUT/PATCH/DELETE operations that change system state
+- Automatic exclusion of query operations (GET requests)
+
+**Security Features:**
+- Sensitive field masking with configurable field list
+- Request body size limits to prevent log bloat
+- User authentication integration through existing `get_current_user` function
+- Client IP detection with proxy header support
+
+**Testing:**
+```bash
+# Test audit configuration and functionality
+python test_audit.py
+
+# Verify audit patterns and data masking
+poetry run pytest -xvs -k test_audit
+```
+
 ### Integration Patterns
 
 ```python
@@ -436,6 +505,7 @@ result = await instance.send_rcon_command("list")  # Returns command output
 - `test_websocket_console.py` - WebSocket protocol with mocks
 - `test_instance.py::test_disk_space_info_dataclass` - Data model testing
 - `test_instance.py::test_minecraft_instance` - Configuration testing (no container startup)
+- `test_audit.py` - Operation audit middleware testing (configuration, masking, pattern matching)
 
 **Container Tests (Avoid During Development):**
 - `test_monitoring.py` - All functions ending with `_with_docker`
@@ -534,5 +604,23 @@ When adding new features, dependencies, or changing the API:
 8. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
 9. **Test changes**: Mark Docker container tests with `_with_docker` suffix
 10. **API separations**: Document endpoint purpose and data separation rationale
+11. **Audit configuration**: Update audit patterns in `OperationAuditMiddleware` for new sensitive operations
 
-Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, testing guidelines, and development patterns.
+**IMPORTANT EDITING GUIDELINES:**
+
+**Before updating any CLAUDE.md file:**
+1. **Check git history** to identify the last CLAUDE.md update commit: `git log --oneline --follow -- CLAUDE.md | head -5`
+2. **Compare current state** with the last CLAUDE.md update: `git diff <last_commit>..HEAD --name-status`
+3. **Analyze all changes** made since the last documentation update to ensure complete coverage
+4. **Review new files, modified functionality, and architectural changes** to capture all relevant updates
+
+**When writing CLAUDE.md updates:**
+1. **Write complete, self-contained documentation** - each version should be fully accurate and comprehensive
+2. **Avoid incremental/patch-like language** such as "Recent changes," "Latest updates," or "New additions"
+3. **Integrate all information naturally** into the existing structure rather than appending changelog-style entries
+4. **Ensure consistency** between all three CLAUDE.md files (main, backend, frontend) regarding shared concepts
+5. **Reflect actual codebase state** - documentation should describe what IS, not what WAS or what changed
+
+This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
+
+Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, operation audit system, testing guidelines, and development patterns.

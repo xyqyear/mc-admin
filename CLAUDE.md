@@ -18,6 +18,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Comprehensive resource monitoring with cgroup v2 integration
 - Sophisticated data fetching with React Query and intelligent caching strategies
 - **Separated disk usage API**: Disk space information available regardless of server status
+- **Operation audit system**: Non-invasive middleware-based audit logging for all state-changing operations
 
 ## Architecture
 
@@ -29,6 +30,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
 - **API Architecture**: Separated I/O statistics and disk usage endpoints for better reliability
+- **Audit System**: FastAPI middleware with automatic operation logging to structured JSON files
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
@@ -90,6 +92,7 @@ Each component has dedicated development instructions:
 - **TOML Configuration**: Nested settings with environment variable override support
 - **Comprehensive Testing**: pytest with asyncio support and real Docker integration
 - **Separated API Design**: Disk usage info separated from I/O statistics for better reliability
+- **Operation Audit**: Non-invasive middleware that automatically logs state-changing operations with user context, request details, and sensitive data masking
 
 ### Frontend Patterns (Actual Implementation)
 - **Three-Layer Data Architecture**: 
@@ -189,11 +192,47 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 
 ## Recent Updates
 
-### API Improvements (Latest)
+### Operation Audit System
+
+**Comprehensive Non-Invasive Logging:**
+- **Middleware Architecture**: FastAPI `BaseHTTPMiddleware` automatically intercepts all state-changing operations
+- **Smart Filtering**: Only logs operations that modify server state or data (POST/PUT/PATCH/DELETE methods plus specific paths)
+- **User Context Integration**: Automatically captures authenticated user information through existing JWT system
+- **Security Features**: Sensitive field masking (passwords, tokens, secrets) with configurable sensitive field lists
+- **Structured Logging**: JSON format with automatic log rotation for easy parsing and future database migration
+
+**Audit Coverage:**
+- Server management operations (`/api/servers/{id}/operations`, `/api/servers/{id}/compose`, `/api/servers/{id}/rcon`)
+- User administration (`/api/admin/*`, `/api/auth/register`)
+- All POST/PUT/PATCH/DELETE operations that modify system state
+- Automatic exclusion of query operations (GET requests) to reduce log noise
+
+**Log Structure:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:45.123456",
+  "method": "POST", "path": "/api/servers/myserver/operations",
+  "status_code": 200, "processing_time_ms": 1250.75,
+  "client_ip": "192.168.1.100", "user_agent": "Mozilla/5.0...",
+  "user_id": 1, "username": "admin", "role": "OWNER",
+  "path_params": {"server_id": "myserver"}, "query_params": {},
+  "request_body": {"action": "start"}, "success": true
+}
+```
+
+**Database Migration Strategy:**
+The audit system is designed with future database migration in mind:
+- JSON log format maps directly to relational database tables
+- Structured fields suitable for indexing and querying
+- Batch import capability for existing log files
+- Configurable storage backend (currently file-based, easily extensible to database)
+
+### API Improvements
 - **Separated Disk Usage API**: Created dedicated `/servers/{id}/disk-usage` endpoint
 - **Improved I/O Statistics**: `/servers/{id}/iostats` now focuses on I/O performance metrics only
 - **Enhanced Reliability**: Disk space information now available regardless of server status
 - **Frontend Integration**: Updated React Query hooks to use new disk usage endpoint
+- **Operation Audit Middleware**: Added comprehensive audit logging system integrated into FastAPI middleware pipeline
 
 ## Maintenance Instructions
 
@@ -209,6 +248,23 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 6. **Include dependency version updates** in pyproject.toml or package.json changes
 7. **Update test categorization** when adding new tests (safe vs Docker-requiring)
 8. **Rename test functions** with `_with_docker` suffix if they bring up containers
+
+**IMPORTANT EDITING GUIDELINES:**
+
+**Before updating any CLAUDE.md file:**
+1. **Check git history** to identify the last CLAUDE.md update commit: `git log --oneline --follow -- CLAUDE.md | head -5`
+2. **Compare current state** with the last CLAUDE.md update: `git diff <last_commit>..HEAD --name-status`
+3. **Analyze all changes** made since the last documentation update to ensure complete coverage
+4. **Review new files, modified functionality, and architectural changes** to capture all relevant updates
+
+**When writing CLAUDE.md updates:**
+1. **Write complete, self-contained documentation** - each version should be fully accurate and comprehensive
+2. **Avoid incremental/patch-like language** such as "Recent changes," "Latest updates," or "New additions"
+3. **Integrate all information naturally** into the existing structure rather than appending changelog-style entries
+4. **Ensure consistency** between all three CLAUDE.md files (main, backend, frontend) regarding shared concepts
+5. **Reflect actual codebase state** - documentation should describe what IS, not what WAS or what changed
+
+This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
 
 **Examples of changes requiring updates:**
 - New FastAPI routers or endpoints
