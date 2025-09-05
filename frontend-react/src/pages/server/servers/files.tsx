@@ -49,9 +49,9 @@ const ServerFiles: React.FC = () => {
   const [renameForm] = Form.useForm()
   const { message } = App.useApp()
 
-  // Get server data for page info
-  const { useServerDetailData } = useServerDetailQueries(id || "")
-  const { serverInfo, hasServerInfo } = useServerDetailData()
+  // Get server data for page info - 只获取基础信息，不获取状态、资源等数据
+  const { useServerFilesData } = useServerDetailQueries(id || "")
+  const { serverInfo, hasServerInfo } = useServerFilesData()
 
   // Get current path from URL search params
   const searchParams = new URLSearchParams(location.search)
