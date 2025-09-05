@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -27,6 +28,11 @@ class AuditSettings(BaseModel):
     sensitive_fields: list[str] = ["password", "token", "secret", "key"]
 
 
+class ResticSettings(BaseModel):
+    repository_path: str
+    password: str
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -38,6 +44,7 @@ class Settings(BaseSettings):
     master_token: str
     jwt: JWTSettings
     audit: AuditSettings = Field(default_factory=AuditSettings)
+    restic: Optional[ResticSettings] = None
 
     server_path: Path
     backup_path: Path

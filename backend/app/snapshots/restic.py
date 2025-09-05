@@ -1,0 +1,371 @@
+"""
+Restic operations module for snapshot management.
+
+This module provides core restic functionality without knowledge of Minecraft servers.
+The actual server path resolution happens in the endpoint functions.
+"""
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+from ..minecraft.utils import exec_command
+
+
+class ResticSnapshot(BaseModel):
+    """Pydantic model for restic snapshot data"""
+
+    time: datetime
+    paths: List[str]
+    hostname: str
+    username: str
+    program_version: Optional[str] = None
+    id: str
+    short_id: str
+
+
+class ResticSnapshotSummary(BaseModel):
+    """Pydantic model for snapshot summary data"""
+
+    backup_start: Optional[datetime] = None
+    backup_end: Optional[datetime] = None
+    files_new: Optional[int] = None
+    files_changed: Optional[int] = None
+    files_unmodified: Optional[int] = None
+    dirs_new: Optional[int] = None
+    dirs_changed: Optional[int] = None
+    dirs_unmodified: Optional[int] = None
+    data_blobs: Optional[int] = None
+    tree_blobs: Optional[int] = None
+    data_added: Optional[int] = None
+    data_added_packed: Optional[int] = None
+    total_files_processed: Optional[int] = None
+    total_bytes_processed: Optional[int] = None
+
+
+class ResticSnapshotWithSummary(ResticSnapshot):
+    """Extended snapshot model with optional summary"""
+
+    summary: Optional[ResticSnapshotSummary] = None
+
+
+class ResticRestorePreviewAction(BaseModel):
+    """Pydantic model for restore preview action"""
+
+    message_type: str
+    action: Optional[str] = None
+    item: Optional[str] = None
+    size: Optional[int] = None
+
+
+class ResticManager:
+    """Core restic operations manager"""
+
+    def __init__(self, repository_path: str, password: str):
+        """
+        Initialize restic manager with repository and password
+
+        Args:
+            repository_path: Path to restic repository
+            password: Repository password
+        """
+        self.repository_path = repository_path
+        self.password = password
+        self.env = {"RESTIC_REPOSITORY": repository_path, "RESTIC_PASSWORD": password}
+
+    async def backup(
+        self, path: Path, uid: int | None = None, gid: int | None = None
+    ) -> ResticSnapshotWithSummary:
+        """
+        Create a backup snapshot of the specified path
+
+        Args:
+            path: Absolute path to backup
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            Created snapshot information with summary
+        """
+        if not path.is_absolute():
+            raise ValueError("Path must be absolute for restic backup")
+
+        result = await exec_command(
+            "restic", "backup", str(path), "--json", uid=uid, gid=gid, env=self.env
+        )
+
+        # Parse the backup result to get summary and snapshot_id
+        lines = result.strip().split("\n")
+        summary_data = None
+        snapshot_id = None
+
+        # Look for the summary line which contains backup stats and snapshot_id
+        for line in reversed(lines):
+            try:
+                data = json.loads(line)
+                if data.get("message_type") == "summary":
+                    summary_data = data
+                    snapshot_id = data.get("snapshot_id")
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        if not summary_data or not snapshot_id:
+            raise RuntimeError(
+                "Could not parse snapshot data from restic backup output"
+            )
+
+        # Now get the full snapshot information using the snapshot_id
+        snapshots_result = await exec_command(
+            "restic", "snapshots", snapshot_id, "--json", uid=uid, gid=gid, env=self.env
+        )
+
+        try:
+            snapshots_list = json.loads(snapshots_result)
+            if not snapshots_list or not isinstance(snapshots_list, list):
+                raise RuntimeError("Expected snapshots list from restic")
+
+            snapshot_info = snapshots_list[0]  # Should have exactly one snapshot
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Could not parse snapshot info JSON: {e}")
+
+        # Create summary object from backup summary data
+        summary = ResticSnapshotSummary(
+            backup_start=datetime.fromisoformat(
+                summary_data["backup_start"].replace("Z", "+00:00")
+            ),
+            backup_end=datetime.fromisoformat(
+                summary_data["backup_end"].replace("Z", "+00:00")
+            ),
+            files_new=summary_data.get("files_new"),
+            files_changed=summary_data.get("files_changed"),
+            files_unmodified=summary_data.get("files_unmodified"),
+            dirs_new=summary_data.get("dirs_new"),
+            dirs_changed=summary_data.get("dirs_changed"),
+            dirs_unmodified=summary_data.get("dirs_unmodified"),
+            data_blobs=summary_data.get("data_blobs"),
+            tree_blobs=summary_data.get("tree_blobs"),
+            data_added=summary_data.get("data_added"),
+            data_added_packed=summary_data.get("data_added_packed"),
+            total_files_processed=summary_data.get("total_files_processed"),
+            total_bytes_processed=summary_data.get("total_bytes_processed"),
+        )
+
+        # Convert to our model using snapshot info + summary
+        return ResticSnapshotWithSummary(
+            time=datetime.fromisoformat(snapshot_info["time"].replace("Z", "+00:00")),
+            paths=snapshot_info["paths"],
+            hostname=snapshot_info["hostname"],
+            username=snapshot_info["username"],
+            program_version=snapshot_info.get("program_version"),
+            id=snapshot_info["id"],
+            short_id=snapshot_info["short_id"],
+            summary=summary,
+        )
+
+    async def list_snapshots(
+        self,
+        path_filter: Optional[Path] = None,
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> List[ResticSnapshot]:
+        """
+        List all snapshots, optionally filtered by path
+
+        Args:
+            path_filter: Optional path to filter snapshots by
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            List of snapshots
+        """
+        args = ["restic", "snapshots", "--json"]
+
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+
+        try:
+            snapshots_data = json.loads(result)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Could not parse snapshots JSON: {e}")
+
+        if not isinstance(snapshots_data, list):
+            raise RuntimeError("Expected snapshots to be a list")
+
+        # Convert to our models
+        snapshots = []
+        for snapshot_data in snapshots_data:
+            snapshot = ResticSnapshot(
+                time=datetime.fromisoformat(
+                    snapshot_data["time"].replace("Z", "+00:00")
+                ),
+                paths=snapshot_data["paths"],
+                hostname=snapshot_data["hostname"],
+                username=snapshot_data["username"],
+                program_version=snapshot_data.get("program_version"),
+                id=snapshot_data["id"],
+                short_id=snapshot_data["short_id"],
+            )
+            snapshots.append(snapshot)
+
+        # Filter snapshots if path_filter is provided
+        if path_filter is not None:
+            filtered_snapshots = []
+
+            for snapshot in snapshots:
+                # Check if any of the snapshot paths is a parent or equal to filter_path
+                for snapshot_path in snapshot.paths:
+                    snapshot_path_obj = Path(snapshot_path)
+                    try:
+                        # Check if filter_path is equal to or child of snapshot_path
+                        path_filter.resolve().relative_to(snapshot_path_obj.resolve())
+                        filtered_snapshots.append(snapshot)
+                        break
+                    except ValueError:
+                        # filter_path is not relative to snapshot_path, continue
+                        continue
+
+            return filtered_snapshots
+
+        return snapshots
+
+    async def restore_preview(
+        self,
+        snapshot_id: str,
+        target_path: Path,
+        include_path: Optional[Path] = None,
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> List[ResticRestorePreviewAction]:
+        """
+        Preview restore operation (dry run)
+
+        Args:
+            snapshot_id: Snapshot ID to restore
+            target_path: Target path for restore (usually "/" for in-place restore)
+            include_path: Optional path to include (filter what gets restored)
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            List of restore actions that would be performed
+        """
+        args = [
+            "restic",
+            "restore",
+            snapshot_id,
+            "--target",
+            str(target_path),
+            "--dry-run",
+            "-vv",
+            "--delete",
+            "--json",
+        ]
+
+        if include_path:
+            args.extend(["--include", str(include_path)])
+
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+
+        actions = []
+        for line in result.strip().split("\n"):
+            if not line.strip():
+                continue
+
+            try:
+                action_data = json.loads(line)
+                action = ResticRestorePreviewAction(
+                    message_type=action_data["message_type"],
+                    action=action_data.get("action"),
+                    item=action_data.get("item"),
+                    size=action_data.get("size"),
+                )
+                actions.append(action)
+            except json.JSONDecodeError:
+                # Skip lines that aren't valid JSON
+                continue
+
+        # Filter actions: only include updated, deleted, or restored with non-zero size
+        filtered_actions = []
+        for action in actions:
+            if (
+                action.action in ["updated", "deleted", "restored"]
+                and action.size is not None
+                and action.size > 0
+            ):
+                filtered_actions.append(action)
+
+        return filtered_actions
+
+    async def restore(
+        self,
+        snapshot_id: str,
+        target_path: Path,
+        include_path: Optional[Path] = None,
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> None:
+        """
+        Restore snapshot
+
+        Args:
+            snapshot_id: Snapshot ID to restore
+            target_path: Target path for restore (usually "/" for in-place restore)
+            include_path: Optional path to include (filter what gets restored)
+            uid: User ID for command execution
+            gid: Group ID for command execution
+        """
+        args = [
+            "restic",
+            "restore",
+            snapshot_id,
+            "--target",
+            str(target_path),
+            "--delete",
+        ]
+
+        if include_path:
+            args.extend(["--include", str(include_path)])
+
+        await exec_command(*args, uid=uid, gid=gid, env=self.env)
+
+    async def has_recent_snapshot(
+        self,
+        target_path: Path,
+        max_age_seconds: int = 60,
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> bool:
+        """
+        Check if there is a recent snapshot of the target path within the specified time
+
+        Args:
+            target_path: Path to check for recent snapshots
+            max_age_seconds: Maximum age in seconds to consider "recent"
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            True if there is a recent snapshot, False otherwise
+        """
+        snapshots = await self.list_snapshots(path_filter=target_path, uid=uid, gid=gid)
+
+        if not snapshots:
+            return False
+
+        now = datetime.now(timezone.utc)
+
+        for snapshot in snapshots:
+            # Convert snapshot time to UTC if it isn't already
+            snapshot_time = snapshot.time
+            if snapshot_time.tzinfo is None:
+                snapshot_time = snapshot_time.replace(tzinfo=timezone.utc)
+
+            age_seconds = (now - snapshot_time).total_seconds()
+            if age_seconds <= max_age_seconds:
+                return True
+
+        return False

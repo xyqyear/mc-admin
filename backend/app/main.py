@@ -6,7 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 from .audit import OperationAuditMiddleware
 from .db.database import init_db
 from .routers import admin, auth, system, user
-from .routers.servers import console, files, misc, rcon
+from .routers.servers import console, files, misc, rcon, snapshots
 
 
 @asynccontextmanager
@@ -36,3 +36,4 @@ app.include_router(misc.router)
 app.include_router(console.router)
 app.include_router(rcon.router)
 app.include_router(files.router)
+app.include_router(snapshots.router)

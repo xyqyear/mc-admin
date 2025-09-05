@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 from typing import List, Literal
@@ -61,6 +62,25 @@ def _get_server_data_path(instance) -> Path:
 @asyncify
 def _rmtree_async(path: Path):
     shutil.rmtree(path)
+
+
+@asyncify
+def _touch_async(path: Path):
+    Path.touch(path)
+
+
+@asyncify
+def _chown_async(path: Path, uid: int, gid: int):
+    os.chown(path, uid, gid)
+
+
+async def get_uid_gid(path: Path) -> tuple[int | None, int | None]:
+    """Get the UID and GID of the specified path."""
+    try:
+        stat_info = await aioos.stat(path)
+        return stat_info.st_uid, stat_info.st_gid
+    except FileNotFoundError:
+        return None, None
 
 
 async def _get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
@@ -218,7 +238,9 @@ async def update_file_content(
 
 
 @router.get("/{server_id}/files/download")
-async def download_file(server_id: str, path: str, _: UserPublic = Depends(get_current_user)):
+async def download_file(
+    server_id: str, path: str, _: UserPublic = Depends(get_current_user)
+):
     """Download a specific file"""
     try:
         instance = mc_manager.get_instance(server_id)
@@ -291,6 +313,10 @@ async def upload_file(
             content = await file.read()
             await f.write(content)
 
+        uid, gid = await get_uid_gid(file_path)
+        if uid is not None and gid is not None:
+            os.chown(file_path, uid, gid)
+
         return {"message": f"File '{file.filename}' uploaded successfully"}
 
     except HTTPException:
@@ -332,13 +358,16 @@ async def create_file_or_directory(
             await aioos.mkdir(target_path)
             message = f"Directory '{create_request.name}' created successfully"
         elif create_request.type == "file":
-            async with aiofiles.open(target_path, "w"):
-                pass  # Create empty file
+            await _touch_async(target_path)
             message = f"File '{create_request.name}' created successfully"
         else:
             raise HTTPException(
                 status_code=400, detail="Invalid type. Must be 'file' or 'directory'"
             )
+
+        uid, gid = await get_uid_gid(base_path)
+        if uid is not None and gid is not None:
+            await _chown_async(target_path, uid, gid)
 
         return {"message": message}
 
