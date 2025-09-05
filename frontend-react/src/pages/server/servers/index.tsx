@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip } from 'antd'
+import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip, Modal } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   PlayCircleOutlined,
@@ -10,6 +10,7 @@ import {
   WifiOutlined,
   GlobalOutlined,
   DashboardOutlined,
+  DownOutlined,
 } from '@ant-design/icons'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
@@ -154,6 +155,22 @@ const ServerDetail: React.FC = () => {
     serverOperationMutation.mutate({ action: operation, serverId: id })
   }
 
+  // 下线操作：需要确认对话框
+  const handleDownServer = () => {
+    if (!serverInfo) return
+
+    Modal.confirm({
+      title: '确认下线',
+      content: `确定要下线服务器 "${serverInfo.name}" 吗？这将停止服务器并清理资源。`,
+      okText: '确认下线',
+      okType: 'primary',
+      cancelText: '取消',
+      onOk: () => {
+        serverOperationMutation.mutate({ action: 'down', serverId: id })
+      }
+    })
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -193,6 +210,17 @@ const ServerDetail: React.FC = () => {
                 onClick={() => handleServerOperation('restart')}
               >
                 重启
+              </Button>
+            </Tooltip>
+            <Tooltip title="下线服务器">
+              <Button
+                danger
+                icon={<DownOutlined />}
+                disabled={!isOperationAvailable('down')}
+                loading={serverOperationMutation.isPending}
+                onClick={handleDownServer}
+              >
+                下线
               </Button>
             </Tooltip>
             <Button onClick={() => navigate('/overview')}>返回总览</Button>
