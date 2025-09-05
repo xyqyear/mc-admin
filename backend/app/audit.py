@@ -25,17 +25,8 @@ from .dependencies import get_current_user
 class OperationAuditMiddleware(BaseHTTPMiddleware):
     """操作审计中间件"""
 
-    # 需要记录日志的HTTP方法
+    # 需要记录日志的HTTP方法（所有非GET方法）
     AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-
-    # 需要记录日志的路径模式（不区分HTTP方法）
-    AUDIT_PATH_PATTERNS = {
-        "/api/admin/",  # 管理员操作
-        "/api/auth/register",  # 用户注册
-    }
-
-    # 服务器相关操作的特定路径（需要与HTTP方法结合判断）
-    SERVER_OPERATION_PATTERNS = {"/operations", "/compose", "/rcon"}
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
@@ -76,21 +67,9 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             return False
 
         method = request.method.upper()
-        path = request.url.path
-
-        # 检查特定路径模式（不区分方法）
-        for pattern in self.AUDIT_PATH_PATTERNS:
-            if pattern in path:
-                return True
-
-        # 检查服务器相关的操作（需要结合HTTP方法）
-        if "/api/servers/" in path and method in self.AUDIT_METHODS:
-            # 检查是否是服务器操作路径
-            for operation_pattern in self.SERVER_OPERATION_PATTERNS:
-                if operation_pattern in path:
-                    return True
-
-        return False
+        
+        # 审计所有非GET请求
+        return method in self.AUDIT_METHODS
 
     def _mask_sensitive_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """掩码敏感数据"""

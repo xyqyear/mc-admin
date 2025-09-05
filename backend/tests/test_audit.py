@@ -89,17 +89,19 @@ def test_audit_patterns():
     middleware = OperationAuditMiddleware(app)
 
     test_cases = [
-        # (method, path, should_audit)
+        # (method, path, should_audit) - 现在所有非GET请求都被审计
         ("POST", "/api/servers/test/operations", True),
         ("PUT", "/api/servers/test/compose", True),
         ("POST", "/api/servers/test/rcon", True),
         ("DELETE", "/api/admin/users/123", True),
         ("POST", "/api/auth/register", True),
-        ("GET", "/api/servers/", False),
+        ("POST", "/api/auth/token", True),  # 现在所有POST都被审计
+        ("PUT", "/api/servers/test/notoperation", True),  # 所有PUT都被审计
+        ("PATCH", "/api/any/path", True),  # 所有PATCH都被审计
+        ("DELETE", "/api/any/path", True),  # 所有DELETE都被审计
+        ("GET", "/api/servers/", False),  # GET方法不审计
         ("GET", "/api/servers/test/status", False),  # GET方法不审计
-        ("GET", "/api/system/info", False),
-        ("POST", "/api/auth/token", False),  # 登录不需要审计
-        ("PUT", "/api/servers/test/notoperation", False),  # 不匹配操作模式
+        ("GET", "/api/system/info", False),  # GET方法不审计
     ]
 
     for method, path, expected in test_cases:
