@@ -8,7 +8,6 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   PlusOutlined,
-  SaveOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SettingOutlined,
@@ -121,11 +120,6 @@ const AppSidebar: React.FC = () => {
         },
       ],
     }] : []),
-    {
-      title: '备份管理',
-      icon: <SaveOutlined />,
-      path: '/backups',
-    },
     {
       title: '快照管理',
       icon: <HistoryOutlined />,
