@@ -165,6 +165,7 @@ const ServerDetail: React.FC = () => {
             </Tooltip>
             <Tooltip title="停止服务器">
               <Button
+                danger
                 icon={<StopOutlined />}
                 disabled={!isOperationAvailable('stop')}
                 loading={serverOperationMutation.isPending}
@@ -175,6 +176,7 @@ const ServerDetail: React.FC = () => {
             </Tooltip>
             <Tooltip title="重启服务器">
               <Button
+                danger
                 icon={<ReloadOutlined />}
                 disabled={!isOperationAvailable('restart')}
                 loading={serverOperationMutation.isPending}
