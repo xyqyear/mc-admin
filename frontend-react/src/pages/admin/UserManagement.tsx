@@ -11,6 +11,7 @@ import {
   Space,
   Alert,
   Tag,
+  Typography,
   type TableProps
 } from 'antd'
 import {
@@ -18,11 +19,14 @@ import {
   DeleteOutlined,
   UserOutlined,
   CrownOutlined,
+  TeamOutlined
 } from '@ant-design/icons'
 import PageHeader from '@/components/layout/PageHeader'
 import { useAllUsers } from '@/hooks/queries/useUserQueries'
 import { useCreateUser, useDeleteUser } from '@/hooks/mutations/useUserMutations'
 import { UserRole, type User, type UserCreate } from '@/types/User'
+
+const { Text } = Typography
 
 const UserManagement: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -153,7 +157,22 @@ const UserManagement: React.FC = () => {
         }
       />
 
-      <Card>
+      <Card
+        title={
+          <div className="flex items-center space-x-2">
+            <TeamOutlined />
+            <span>用户列表</span>
+            <Text type="secondary" className="text-sm font-normal">
+              ({users.length} 个用户)
+            </Text>
+          </div>
+        }
+        extra={
+          <Text type="secondary" className="text-sm">
+            管理系统用户账户和权限
+          </Text>
+        }
+      >
         <Table<User>
           columns={columns}
           dataSource={users}
