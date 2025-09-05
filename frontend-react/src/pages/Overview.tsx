@@ -31,14 +31,15 @@ import { serverStatusUtils } from '@/utils/serverUtils'
 const Overview: React.FC = () => {
   const navigate = useNavigate()
   
-  // 使用新的简化数据架构
+  // 使用新的数据架构 - 通过分离查询获取完整数据
   const { 
-    servers, 
+    enrichedServers, // 包含所有运行时数据的完整服务器列表
     systemInfo, 
     serverNum, 
     runningServers, 
     onlinePlayerNum,
     isLoading,
+    isStatusLoading,
     isError,
     error,
     refetch
@@ -54,7 +55,7 @@ const Overview: React.FC = () => {
 
   // 智能启动：根据服务器状态决定使用 start 还是 up
   const handleStartServer = (serverId: string, status: ServerStatus) => {
-    const server = servers.find(s => s.id === serverId)
+    const server = enrichedServers.find(s => s.id === serverId)
     if (!server) return
 
     // 根据状态决定操作类型
@@ -115,8 +116,8 @@ const Overview: React.FC = () => {
     }
   }
 
-  // 构建表格数据 - 现在直接使用服务器数据
-  const tableData = servers.map(server => ({
+  // 构建表格数据 - 直接使用包含完整运行时数据的enrichedServers
+  const tableData = enrichedServers.map(server => ({
     id: server.id,
     name: server.name,
     serverType: server.serverType,
@@ -179,8 +180,8 @@ const Overview: React.FC = () => {
       key: 'resources',
       width: 150,
       render: (_: any, record: typeof tableData[0]) => {
-        const hasRuntimeData = record.cpuPercentage || record.memoryUsageBytes
-        const hasDiskData = record.diskUsageBytes
+        const hasRuntimeData = record.cpuPercentage != null || record.memoryUsageBytes != null
+        const hasDiskData = record.diskUsageBytes != null
         
         if (!hasRuntimeData && !hasDiskData) {
           return <span className="text-gray-400">暂无数据</span>
@@ -190,7 +191,7 @@ const Overview: React.FC = () => {
         const memoryUsageBytes = record.memoryUsageBytes || 0
         const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
         const memoryLimitMB = record.maxMemoryBytes / (1024 * 1024)
-        const memoryPercent = (memoryUsageMB / memoryLimitMB) * 100
+        const memoryPercent = memoryLimitMB > 0 ? (memoryUsageMB / memoryLimitMB) * 100 : 0
         
         return (
           <div className="space-y-1">
@@ -220,31 +221,31 @@ const Overview: React.FC = () => {
                 </div>
               </>
             )}
-            {hasDiskData && (
+            {hasDiskData && record.diskTotalBytes && (
               <div className="flex items-center gap-2 text-xs">
                 <span>磁盘:</span>
-                {record.diskTotalBytes ? (
-                  <>
-                    <Progress 
-                      percent={((record.diskTotalBytes! - record.diskAvailableBytes!) / record.diskTotalBytes!) * 100} 
-                      success={{
-                        percent: (record.diskUsageBytes! / record.diskTotalBytes!) * 100,
-                        strokeColor: '#52c41a'
-                      }}
-                      size="small" 
-                      style={{ width: 60 }} 
-                      showInfo={false}
-                      strokeColor="#faad14"
-                    />
-                    <span className="text-gray-500">
-                      {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskAvailableBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes! / (1024 ** 3)).toFixed(1)}GB
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-gray-500 ml-auto">
-                    {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}GB
-                  </span>
-                )}
+                <Progress 
+                  percent={((record.diskTotalBytes - record.diskAvailableBytes!) / record.diskTotalBytes) * 100} 
+                  success={{
+                    percent: (record.diskUsageBytes! / record.diskTotalBytes) * 100,
+                    strokeColor: '#52c41a'
+                  }}
+                  size="small" 
+                  style={{ width: 60 }} 
+                  showInfo={false}
+                  strokeColor="#faad14"
+                />
+                <span className="text-gray-500">
+                  {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskAvailableBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
+                </span>
+              </div>
+            )}
+            {hasDiskData && !record.diskTotalBytes && (
+              <div className="flex items-center gap-2 text-xs">
+                <span>磁盘:</span>
+                <span className="text-gray-500 ml-auto">
+                  {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}GB
+                </span>
               </div>
             )}
           </div>
@@ -415,7 +416,7 @@ const Overview: React.FC = () => {
           columns={columns}
           rowKey="id"
           scroll={{ x: 'max-content' }}
-          loading={isLoading}
+          loading={isLoading || isStatusLoading}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

@@ -68,7 +68,7 @@ class ComposeConfig(BaseModel):
 
 @router.get("/", response_model=list[ServerListItem])
 async def get_servers(_: UserPublic = Depends(get_current_user)):
-    """Get list of all servers with their basic info and current status"""
+    """Get list of all servers with basic info only (no status or runtime data)"""
     try:
         # Get all server instances
         instances = await mc_manager.get_all_instances()

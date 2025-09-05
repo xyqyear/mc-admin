@@ -9,15 +9,8 @@ interface ServerListItem {
   serverType: string;
   gameVersion: string;
   gamePort: number;
-  status: ServerStatus;
-  onlinePlayers: string[];
   maxMemoryBytes: number;
   rconPort: number;
-  cpuPercentage?: number;
-  memoryUsageBytes?: number;
-  diskUsageBytes?: number;
-  diskTotalBytes?: number;
-  diskAvailableBytes?: number;
 }
 
 interface ServerStatusResponse {
@@ -59,7 +52,7 @@ interface ComposeConfigRequest {
 }
 
 export const serverApi = {
-  // 获取所有服务器信息 (新的综合API，替代之前分离的配置和状态API)
+  // 获取所有服务器基础信息 (仅包含配置信息，不包含状态或运行时数据)
   getServers: async (): Promise<ServerListItem[]> => {
     const res = await api.get<ServerListItem[]>("/servers/");
     return res.data;
@@ -179,16 +172,28 @@ export const serverApi = {
     return res.data.result
   },
 
-  // 批量获取服务器状态 (优化的API，减少网络请求)
+  // 批量获取服务器状态
   getAllServerStatuses: async (
-    _serverIds: string[],
+    serverIds: string[],
   ): Promise<Record<string, ServerStatus>> => {
-    // Use the comprehensive servers endpoint which includes status
-    const servers = await serverApi.getServers();
+    // Since servers endpoint no longer includes status, fetch each server status individually
+    const statusPromises = serverIds.map(async (id) => {
+      try {
+        const status = await serverApi.getServerStatus(id);
+        return { id, status };
+      } catch (error) {
+        // If a server status fails, return null status to avoid breaking the whole request
+        return { id, status: null };
+      }
+    });
 
+    const statuses = await Promise.all(statusPromises);
+    
     const statusMap: Record<string, ServerStatus> = {};
-    servers.forEach((server) => {
-      statusMap[server.id] = server.status;
+    statuses.forEach(({ id, status }) => {
+      if (status !== null) {
+        statusMap[id] = status;
+      }
     });
 
     return statusMap;
