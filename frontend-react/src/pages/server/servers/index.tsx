@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Typography, Tooltip } from 'antd'
+import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   PlayCircleOutlined,
@@ -9,14 +9,14 @@ import {
   HddOutlined,
   WifiOutlined,
   GlobalOutlined,
+  DashboardOutlined,
 } from '@ant-design/icons'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import PageHeader from '@/components/layout/PageHeader'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerQueries } from '@/hooks/queries/useServerQueries'
-
-const { Title } = Typography
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -146,46 +146,47 @@ const ServerDetail: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* 页面头部 */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Title level={2} className="!mb-0 !mt-0">{serverInfo.name}</Title>
-        </div>
-        <Space>
-          <Tooltip title="启动服务器">
-            <Button
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              disabled={!isOperationAvailable('start')}
-              loading={serverOperationMutation.isPending}
-              onClick={() => handleServerOperation('start')}
-            >
-              启动
-            </Button>
-          </Tooltip>
-          <Tooltip title="停止服务器">
-            <Button
-              icon={<StopOutlined />}
-              disabled={!isOperationAvailable('stop')}
-              loading={serverOperationMutation.isPending}
-              onClick={() => handleServerOperation('stop')}
-            >
-              停止
-            </Button>
-          </Tooltip>
-          <Tooltip title="重启服务器">
-            <Button
-              icon={<ReloadOutlined />}
-              disabled={!isOperationAvailable('restart')}
-              loading={serverOperationMutation.isPending}
-              onClick={() => handleServerOperation('restart')}
-            >
-              重启
-            </Button>
-          </Tooltip>
-          <Button onClick={() => navigate('/overview')}>返回总览</Button>
-        </Space>
-      </div>
+      <PageHeader
+        title="概览"
+        icon={<DashboardOutlined />}
+        serverTag={serverInfo.name}
+        actions={
+          <>
+            <Tooltip title="启动服务器">
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                disabled={!isOperationAvailable('start')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('start')}
+              >
+                启动
+              </Button>
+            </Tooltip>
+            <Tooltip title="停止服务器">
+              <Button
+                icon={<StopOutlined />}
+                disabled={!isOperationAvailable('stop')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('stop')}
+              >
+                停止
+              </Button>
+            </Tooltip>
+            <Tooltip title="重启服务器">
+              <Button
+                icon={<ReloadOutlined />}
+                disabled={!isOperationAvailable('restart')}
+                loading={serverOperationMutation.isPending}
+                onClick={() => handleServerOperation('restart')}
+              >
+                重启
+              </Button>
+            </Tooltip>
+            <Button onClick={() => navigate('/overview')}>返回总览</Button>
+          </>
+        }
+      />
 
 
       {/* 服务器状态统计 */}

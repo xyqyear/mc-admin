@@ -3,7 +3,6 @@ import {
   Card,
   Table,
   Button,
-  Space,
   Tooltip,
   Alert,
   Tag,
@@ -16,6 +15,7 @@ import {
   HistoryOutlined,
   CloudServerOutlined,
 } from '@ant-design/icons';
+import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/serverApi';
 import { useSnapshotQueries, useSnapshotMutations } from '@/hooks/queries/useSnapshotQueries';
 
@@ -167,30 +167,29 @@ const Snapshots: React.FC = () => {
 
   return (
     <div className="h-full w-full flex flex-col space-y-4">
-      {/* 页面标题和操作区域 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <HistoryOutlined className="text-xl text-blue-600" />
-          <h1 className="text-2xl font-bold">快照管理</h1>
-        </div>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => refetch()}
-            loading={isLoading}
-          >
-            刷新
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleCreateSnapshot}
-            loading={createSnapshotMutation.isPending}
-          >
-            创建全局快照
-          </Button>
-        </Space>
-      </div>
+      <PageHeader
+        title="快照管理"
+        icon={<HistoryOutlined />}
+        actions={
+          <>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => refetch()}
+              loading={isLoading}
+            >
+              刷新
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreateSnapshot}
+              loading={createSnapshotMutation.isPending}
+            >
+              创建全局快照
+            </Button>
+          </>
+        }
+      />
 
       {/* 错误提示 */}
       {isError && (

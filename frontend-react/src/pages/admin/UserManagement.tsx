@@ -19,6 +19,7 @@ import {
   UserOutlined,
   CrownOutlined,
 } from '@ant-design/icons'
+import PageHeader from '@/components/layout/PageHeader'
 import { useAllUsers } from '@/hooks/queries/useUserQueries'
 import { useCreateUser, useDeleteUser } from '@/hooks/mutations/useUserMutations'
 import { UserRole, type User, type UserCreate } from '@/types/User'
@@ -138,9 +139,10 @@ const UserManagement: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <Card
+      <PageHeader
         title="用户管理"
-        extra={
+        icon={<UserOutlined />}
+        actions={
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -149,7 +151,9 @@ const UserManagement: React.FC = () => {
             新建用户
           </Button>
         }
-      >
+      />
+
+      <Card>
         <Table<User>
           columns={columns}
           dataSource={users}

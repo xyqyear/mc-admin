@@ -13,12 +13,14 @@ import {
 } from 'antd'
 import {
   UploadOutlined,
-  PlayCircleOutlined
+  PlayCircleOutlined,
+  PlusOutlined
 } from '@ant-design/icons'
 import { ComposeYamlEditor } from '@/components/editors'
+import PageHeader from '@/components/layout/PageHeader'
 import type { UploadFile } from 'antd/es/upload/interface'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
 const defaultComposeContent = `version: '3.8'
 
@@ -132,12 +134,13 @@ const ServerNew: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <Title level={2}>创建新服务器</Title>
-        <Text type="secondary">
-          上传服务器文件包或使用默认配置创建新的 Minecraft 服务器
-        </Text>
-      </div>
+      <PageHeader
+        title="新建"
+        icon={<PlusOutlined />}
+      />
+      <Text type="secondary">
+        上传服务器文件包或使用默认配置创建新的 Minecraft 服务器
+      </Text>
 
       <Alert
         message="创建服务器提示"

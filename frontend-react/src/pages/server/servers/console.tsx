@@ -3,23 +3,23 @@ import {
   Card,
   Input,
   Button,
-  Typography,
   Alert,
   Space,
   Spin,
   Switch
 } from 'antd'
 import {
-  SendOutlined
+  SendOutlined,
+  CodeOutlined
 } from '@ant-design/icons'
 import { useParams } from 'react-router-dom'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import PageHeader from '@/components/layout/PageHeader'
 import { useToken } from '@/stores/useTokenStore'
 import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket'
 import { log } from '@/utils/devLogger'
 
-const { Title } = Typography
 const { TextArea } = Input
 
 const ServerConsole: React.FC = () => {
@@ -195,9 +195,11 @@ const ServerConsole: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 控制台</Title>
-      </div>
+      <PageHeader
+        title="控制台"
+        icon={<CodeOutlined />}
+        serverTag={serverInfo.name}
+      />
 
       {/* 连接状态 */}
       <Alert

@@ -10,7 +10,6 @@ import {
   Select,
   App,
   Breadcrumb,
-  Typography,
   Dropdown,
   Tooltip,
   Alert,
@@ -26,11 +25,13 @@ import {
   MoreOutlined,
   ArrowUpOutlined,
   UploadOutlined,
-  DiffOutlined
+  DiffOutlined,
+  FolderOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import FileIcon from '@/components/files/FileIcon'
+import PageHeader from '@/components/layout/PageHeader'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
@@ -38,7 +39,6 @@ import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import type { FileItem } from '@/types/Server'
 import type { SortOrder, ColumnType } from 'antd/es/table/interface'
 
-const { Title } = Typography
 const { Option } = Select
 
 const ServerFiles: React.FC = () => {
@@ -386,55 +386,55 @@ const ServerFiles: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Title level={2} className="!mb-0 !mt-0">
-            {hasServerInfo ? `${serverInfo?.name} - 文件管理` : "文件管理"}
-          </Title>
-        </div>
-        <Space>
-          {currentPath !== '/' && (
+      <PageHeader
+        title="文件"
+        icon={<FolderOutlined />}
+        serverTag={hasServerInfo ? serverInfo?.name : undefined}
+        actions={
+          <>
+            {currentPath !== '/' && (
+              <Button
+                icon={<ArrowUpOutlined />}
+                onClick={() => {
+                  const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+                  handleNavigateToPath(parentPath)
+                }}
+              >
+                返回上级
+              </Button>
+            )}
             <Button
-              icon={<ArrowUpOutlined />}
-              onClick={() => {
-                const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
-                handleNavigateToPath(parentPath)
-              }}
+              icon={<UploadOutlined />}
+              onClick={() => setIsUploadModalVisible(true)}
             >
-              返回上级
+              上传文件
             </Button>
-          )}
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => setIsUploadModalVisible(true)}
-          >
-            上传文件
-          </Button>
-          <Button
-            icon={<PlusOutlined />}
-            onClick={() => setIsCreateModalVisible(true)}
-          >
-            新建文件/文件夹
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={isLoadingFiles}
-          >
-            刷新
-          </Button>
-          {selectedFiles.length > 0 && (
             <Button
-              icon={<DeleteOutlined />}
-              danger
-              onClick={handleBulkDelete}
-              loading={isDeleting}
+              icon={<PlusOutlined />}
+              onClick={() => setIsCreateModalVisible(true)}
             >
-              批量删除 ({selectedFiles.length})
+              新建文件/文件夹
             </Button>
-          )}
-        </Space>
-      </div>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              loading={isLoadingFiles}
+            >
+              刷新
+            </Button>
+            {selectedFiles.length > 0 && (
+              <Button
+                icon={<DeleteOutlined />}
+                danger
+                onClick={handleBulkDelete}
+                loading={isDeleting}
+              >
+                批量删除 ({selectedFiles.length})
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <Card>
         <div className="space-y-4">

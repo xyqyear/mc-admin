@@ -3,8 +3,6 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   Card,
   Button,
-  Space,
-  Typography,
   Alert,
   message,
   Modal
@@ -13,15 +11,15 @@ import {
   ReloadOutlined,
   ExclamationCircleOutlined,
   CloudServerOutlined,
-  DiffOutlined
+  DiffOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import PageHeader from '@/components/layout/PageHeader'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
-
-const { Title } = Typography
 
 const ServerCompose: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -235,33 +233,35 @@ const ServerCompose: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Title level={2} className="!mb-0 !mt-0">{serverInfo.name} - 设置</Title>
-        </div>
-        <Space>
-          <Button
-            icon={<DiffOutlined />}
-            onClick={handleCompare}
-          >
-            差异对比
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleReset}
-          >
-            重新载入
-          </Button>
-          <Button
-            type="primary"
-            danger
-            icon={<CloudServerOutlined />}
-            onClick={handleSubmitAndRebuild}
-          >
-            提交并重建
-          </Button>
-        </Space>
-      </div>
+      <PageHeader
+        title="设置"
+        icon={<SettingOutlined />}
+        serverTag={serverInfo.name}
+        actions={
+          <>
+            <Button
+              icon={<DiffOutlined />}
+              onClick={handleCompare}
+            >
+              差异对比
+            </Button>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleReset}
+            >
+              重新载入
+            </Button>
+            <Button
+              type="primary"
+              danger
+              icon={<CloudServerOutlined />}
+              onClick={handleSubmitAndRebuild}
+            >
+              提交并重建
+            </Button>
+          </>
+        }
+      />
 
       <Card title="Docker Compose 配置">
         <ComposeYamlEditor
