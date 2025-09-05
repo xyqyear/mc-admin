@@ -165,9 +165,43 @@ export const useServerDetailQueries = (serverId: string) => {
     };
   };
 
+  // Console页面专用的数据查询 - 只获取基础信息和状态
+  const useServerConsoleData = () => {
+    // 获取服务器基本信息和状态
+    const serverInfoQuery = useServerInfo(serverId);
+    const statusQuery = useServerStatus(serverId);
+
+    return {
+      // 查询对象
+      serverInfoQuery,
+      statusQuery,
+
+      // 数据
+      serverInfo: serverInfoQuery.data,
+      status: statusQuery.data,
+
+      // 加载状态
+      isLoading: serverInfoQuery.isLoading,
+
+      // 错误状态
+      isError: serverInfoQuery.isError,
+      error: serverInfoQuery.error,
+
+      // 数据可用性
+      hasServerInfo: !!serverInfoQuery.data,
+
+      // 刷新方法
+      refetch: () => {
+        serverInfoQuery.refetch();
+        statusQuery.refetch();
+      },
+    };
+  };
+
   return {
     useServerDetailData, // 使用新分离API的详情数据hook
     useServerComposeData, // Compose页面专用数据hook
     useServerFilesData, // Files页面专用简化数据hook
+    useServerConsoleData, // Console页面专用简化数据hook
   };
 };

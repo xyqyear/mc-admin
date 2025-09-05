@@ -27,7 +27,7 @@ const ServerConsole: React.FC = () => {
   const token = useToken()
   
   // 使用数据管理系统
-  const { useServerDetailData } = useServerDetailQueries(id || '')
+  const { useServerConsoleData } = useServerDetailQueries(id || '')
   
   const {
     serverInfo,
@@ -36,7 +36,7 @@ const ServerConsole: React.FC = () => {
     isError,
     error,
     hasServerInfo,
-  } = useServerDetailData()
+  } = useServerConsoleData()
   
   // 本地状态
   const [logs, setLogs] = useState<string>('')
