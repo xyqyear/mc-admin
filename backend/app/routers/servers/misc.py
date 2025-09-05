@@ -33,8 +33,11 @@ class ServerStatus(BaseModel):
     status: MCServerStatus
 
 
-class ServerResources(BaseModel):
+class ServerCpuPercent(BaseModel):
     cpuPercentage: float
+
+
+class ServerMemory(BaseModel):
     memoryUsageBytes: int
 
 
@@ -140,15 +143,15 @@ async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_
         )
 
 
-@router.get("/{server_id}/resources", response_model=ServerResources)
-async def get_server_resources(
+@router.get("/{server_id}/cpu_percent", response_model=ServerCpuPercent)
+async def get_server_cpu_percent(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ):
-    """Get system resource information for a specific server (available when running/starting/healthy)"""
+    """Get CPU percentage for a specific server (available when running/starting/healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)
 
-        # Check if server is in a state where resource monitoring is available
+        # Check if server is in a state where CPU monitoring is available
         status = await instance.get_status()
         if status not in [
             MCServerStatus.RUNNING,
@@ -157,20 +160,51 @@ async def get_server_resources(
         ]:
             raise HTTPException(
                 status_code=409,
-                detail=f"Server '{server_id}' resources not available (status: {status})",
+                detail=f"Server '{server_id}' CPU monitoring not available (status: {status})",
             )
 
-        # Get resource data concurrently
-        cpu_task = instance.get_cpu_percentage()
-        memory_task = instance.get_memory_usage()
+        # Get CPU percentage
+        cpu_percentage = await instance.get_cpu_percentage()
 
-        cpu_percentage, memory_stats = await asyncio.gather(cpu_task, memory_task)
+        return ServerCpuPercent(
+            cpuPercentage=cpu_percentage,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get server CPU percentage: {str(e)}"
+        )
+
+
+@router.get("/{server_id}/memory", response_model=ServerMemory)
+async def get_server_memory(
+    server_id: str, _: UserPublic = Depends(get_current_user)
+):
+    """Get memory usage for a specific server (available when running/starting/healthy)"""
+    try:
+        instance = mc_manager.get_instance(server_id)
+
+        # Check if server is in a state where memory monitoring is available
+        status = await instance.get_status()
+        if status not in [
+            MCServerStatus.RUNNING,
+            MCServerStatus.STARTING,
+            MCServerStatus.HEALTHY,
+        ]:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Server '{server_id}' memory monitoring not available (status: {status})",
+            )
+
+        # Get memory usage
+        memory_stats = await instance.get_memory_usage()
 
         # Calculate actual memory usage from memory stats (anon + file is commonly used memory)
         memory_usage_bytes = memory_stats.anon + memory_stats.file
 
-        return ServerResources(
-            cpuPercentage=cpu_percentage,
+        return ServerMemory(
             memoryUsageBytes=memory_usage_bytes,
         )
 
@@ -178,7 +212,7 @@ async def get_server_resources(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get server resources: {str(e)}"
+            status_code=500, detail=f"Failed to get server memory usage: {str(e)}"
         )
 
 

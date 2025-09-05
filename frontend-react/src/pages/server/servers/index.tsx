@@ -34,7 +34,8 @@ const ServerDetail: React.FC = () => {
   const {
     serverInfo,
     status,
-    resources,
+    cpu,
+    memory,
     players,
     iostats,
     diskUsage,
@@ -42,7 +43,8 @@ const ServerDetail: React.FC = () => {
     isError,
     error,
     hasServerInfo,
-    hasResourcesData,
+    hasCpuData,
+    hasMemoryData,
     hasIOStatsData,
     hasDiskUsageData,
     isRunning,
@@ -260,39 +262,43 @@ const ServerDetail: React.FC = () => {
       </Card>
 
       {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
-      {isRunning && hasResourcesData && resources && (
+      {isRunning && (hasCpuData || hasMemoryData) && (cpu || memory) && (
         <Card title="系统资源使用情况">
           <Row gutter={[16, 16]}>
-            <Col span={12}>
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span>CPU 使用率</span>
-                  <span>{resources.cpuPercentage.toFixed(1)}%</span>
+            {hasCpuData && cpu && (
+              <Col span={12}>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>CPU 使用率</span>
+                    <span>{cpu.cpuPercentage.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    percent={cpu.cpuPercentage}
+                    strokeColor={cpu.cpuPercentage > 80 ? '#ff4d4f' : cpu.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
+                    showInfo={false}
+                  />
                 </div>
-                <Progress
-                  percent={resources.cpuPercentage}
-                  strokeColor={resources.cpuPercentage > 80 ? '#ff4d4f' : resources.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
-                  showInfo={false}
-                />
-              </div>
-            </Col>
-            <Col span={12}>
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span>内存使用</span>
-                  <span>
-                    {(resources.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
-                    {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
-                  </span>
+              </Col>
+            )}
+            {hasMemoryData && memory && (
+              <Col span={12}>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span>内存使用</span>
+                    <span>
+                      {(memory.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
+                      {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
+                    </span>
+                  </div>
+                  <Progress
+                    percent={(memory.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
+                    strokeColor={(memory.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
+                      (memory.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
+                    showInfo={false}
+                  />
                 </div>
-                <Progress
-                  percent={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                  strokeColor={(resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
-                    (resources.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
-                  showInfo={false}
-                />
-              </div>
-            </Col>
+              </Col>
+            )}
           </Row>
         </Card>
       )}

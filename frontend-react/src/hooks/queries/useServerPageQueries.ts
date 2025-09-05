@@ -5,19 +5,21 @@ import { useQueries } from '@tanstack/react-query'
 import { useServerQueries } from './useServerQueries'
 
 export const useServerPageQueries = (serverId: string) => {
-  const { useServerInfo, useServerStatus, useServerResources, useServerPlayers } = useServerQueries()
+  const { useServerInfo, useServerStatus, useServerCpuPercent, useServerMemory, useServerPlayers } = useServerQueries()
   
   // 服务器概览页面数据 (使用分离API)
   const useServerOverviewData = () => {
     const configQuery = useServerInfo(serverId)
     const statusQuery = useServerStatus(serverId)
-    const resourcesQuery = useServerResources(serverId, statusQuery.data)
+    const cpuQuery = useServerCpuPercent(serverId, statusQuery.data)
+    const memoryQuery = useServerMemory(serverId, statusQuery.data)
     const playersQuery = useServerPlayers(serverId, statusQuery.data)
     
     return {
       config: configQuery,
       status: statusQuery,
-      resources: resourcesQuery,
+      cpu: cpuQuery,
+      memory: memoryQuery,
       players: playersQuery,
       
       // 组合状态
@@ -27,7 +29,8 @@ export const useServerPageQueries = (serverId: string) => {
       // 组合数据 (前端展示用)
       fullInfo: configQuery.data ? {
         ...configQuery.data,
-        resources: resourcesQuery.data,
+        cpu: cpuQuery.data,
+        memory: memoryQuery.data,
         onlinePlayers: playersQuery.data || []
       } : undefined
     }
@@ -58,7 +61,7 @@ export const useOverviewPageQueries = () => {
     })
   }
   
-  const useAllServerResources = (statuses: Array<{ data?: ServerStatus }>) => {
+  const useAllServerCpuPercent = (statuses: Array<{ data?: ServerStatus }>) => {
     const serverIds = serverInfosQuery.data?.map((s: ServerListItem) => s.id) || []
     
     return useQueries({
@@ -67,10 +70,30 @@ export const useOverviewPageQueries = () => {
         const isRunning = Boolean(status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status))
         
         return {
-          queryKey: [...queryKeys.serverRuntimes.detail(id), 'resources'],
-          queryFn: () => serverApi.getServerResources(id),
+          queryKey: [...queryKeys.serverRuntimes.detail(id), 'cpu'],
+          queryFn: () => serverApi.getServerCpuPercent(id),
           enabled: isRunning,
-          refetchInterval: isRunning ? 3000 : false,
+          refetchInterval: isRunning ? 5000 : false, // 5秒刷新CPU（较慢）
+          staleTime: 2000,
+          retry: 1,
+        } as const
+      })
+    })
+  }
+
+  const useAllServerMemory = (statuses: Array<{ data?: ServerStatus }>) => {
+    const serverIds = serverInfosQuery.data?.map((s: ServerListItem) => s.id) || []
+    
+    return useQueries({
+      queries: serverIds.map((id: string, index: number) => {
+        const status = statuses[index]?.data
+        const isRunning = Boolean(status && ['RUNNING', 'STARTING', 'HEALTHY'].includes(status))
+        
+        return {
+          queryKey: [...queryKeys.serverRuntimes.detail(id), 'memory'],
+          queryFn: () => serverApi.getServerMemory(id),
+          enabled: isRunning,
+          refetchInterval: isRunning ? 3000 : false, // 3秒刷新内存（较快）
           staleTime: 1000,
           retry: 1,
         } as const
@@ -102,7 +125,8 @@ export const useOverviewPageQueries = () => {
     serverInfosQuery,
     systemInfoQuery,
     useAllServerStatuses,
-    useAllServerResources,
+    useAllServerCpuPercent,
+    useAllServerMemory,
     useAllServerPlayers
   }
 }

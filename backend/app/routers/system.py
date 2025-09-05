@@ -19,7 +19,6 @@ router = APIRouter(
 
 
 class ServerInfo(BaseModel):
-    cpuPercentage: float
     cpuLoad1Min: float
     cpuLoad5Min: float
     cpuLoad15Min: float
@@ -31,18 +30,20 @@ class ServerInfo(BaseModel):
     backupTotalGB: float
 
 
+class CpuPercent(BaseModel):
+    cpuPercentage: float
+
+
 @router.get(
     "/info", dependencies=[Depends(get_current_user)], response_model=ServerInfo
 )
 async def get_server_info():
     (
-        cpu_percent,
         cpu_load,
         memory_info,
         server_disk_info,
         backup_disk_info,
     ) = await asyncio.gather(
-        get_cpu_percent(),
         get_cpu_load(),
         get_memory_info(),
         get_disk_info(settings.server_path),
@@ -50,7 +51,6 @@ async def get_server_info():
     )
 
     return ServerInfo(
-        cpuPercentage=cpu_percent,
         cpuLoad1Min=cpu_load.one_minute,
         cpuLoad5Min=cpu_load.five_minutes,
         cpuLoad15Min=cpu_load.fifteen_minutes,
@@ -60,4 +60,16 @@ async def get_server_info():
         diskTotalGB=server_disk_info.total / 1024**3,
         backupUsedGB=backup_disk_info.used / 1024**3,
         backupTotalGB=backup_disk_info.total / 1024**3,
+    )
+
+
+@router.get(
+    "/cpu_percent", dependencies=[Depends(get_current_user)], response_model=CpuPercent
+)
+async def get_cpu_percent_endpoint():
+    """Get system CPU percentage (takes 1-2 seconds to calculate)"""
+    cpu_percent = await get_cpu_percent()
+    
+    return CpuPercent(
+        cpuPercentage=cpu_percent,
     )

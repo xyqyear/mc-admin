@@ -76,6 +76,6 @@ def get_process_cpu_usage(pid: int) -> float:
     try:
         process = process_obj_cache.get(pid, psutil.Process(pid))
         process_obj_cache[pid] = process
-        return process.cpu_percent()
+        return process.cpu_percent(1)
     except NoSuchProcess:
         return 0.0

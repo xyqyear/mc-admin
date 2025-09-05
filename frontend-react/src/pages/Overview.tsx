@@ -35,6 +35,7 @@ const Overview: React.FC = () => {
   const { 
     enrichedServers, // 包含所有运行时数据的完整服务器列表
     systemInfo, 
+    systemCpuPercent, // 新的分离的系统CPU百分比数据
     serverNum, 
     runningServers, 
     onlinePlayerNum,
@@ -341,7 +342,7 @@ const Overview: React.FC = () => {
         </div>
         <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
           <ProgressMetricCard
-            value={systemInfo?.cpuPercentage ?? 0}
+            value={systemCpuPercent ?? 0}
             title="CPU使用率"
             extraInfo={
               systemInfo

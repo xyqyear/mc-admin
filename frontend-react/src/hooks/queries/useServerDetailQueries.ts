@@ -7,7 +7,8 @@ export const useServerDetailQueries = (serverId: string) => {
   const {
     useServerInfo,
     useServerStatus,
-    useServerResources,
+    useServerCpuPercent,
+    useServerMemory,
     useServerPlayers,
     useServerIOStats,
     useServerDiskUsage,
@@ -22,8 +23,11 @@ export const useServerDetailQueries = (serverId: string) => {
     // 服务器状态 (10秒刷新)
     const statusQuery = useServerStatus(serverId);
 
-    // 系统资源信息 (3秒刷新，RUNNING/STARTING/HEALTHY时可用)
-    const resourcesQuery = useServerResources(serverId, statusQuery.data);
+    // CPU百分比 (3秒刷新，RUNNING/STARTING/HEALTHY时可用)
+    const cpuQuery = useServerCpuPercent(serverId, statusQuery.data);
+
+    // 内存使用量 (3秒刷新，RUNNING/STARTING/HEALTHY时可用)
+    const memoryQuery = useServerMemory(serverId, statusQuery.data);
 
     // 玩家列表 (5秒刷新，仅HEALTHY时可用)
     const playersQuery = useServerPlayers(serverId, statusQuery.data);
@@ -38,7 +42,8 @@ export const useServerDetailQueries = (serverId: string) => {
       // 原始查询对象
       configQuery,
       statusQuery,
-      resourcesQuery,
+      cpuQuery,
+      memoryQuery,
       playersQuery,
       iostatsQuery,
       diskUsageQuery,
@@ -46,7 +51,8 @@ export const useServerDetailQueries = (serverId: string) => {
       // 便捷的数据访问
       serverInfo: configQuery.data,
       status: statusQuery.data,
-      resources: resourcesQuery.data,
+      cpu: cpuQuery.data,
+      memory: memoryQuery.data,
       players: playersQuery.data || [],
       iostats: iostatsQuery.data,
       diskUsage: diskUsageQuery.data,
@@ -58,7 +64,8 @@ export const useServerDetailQueries = (serverId: string) => {
 
       // 检查数据可用性
       hasServerInfo: !!configQuery.data,
-      hasResourcesData: !!resourcesQuery.data,
+      hasCpuData: !!cpuQuery.data,
+      hasMemoryData: !!memoryQuery.data,
       hasPlayersData: !!playersQuery.data?.length,
       hasIOStatsData: !!iostatsQuery.data,
       hasDiskUsageData: !!diskUsageQuery.data,
@@ -74,24 +81,25 @@ export const useServerDetailQueries = (serverId: string) => {
         ? {
             ...configQuery.data,
             status: statusQuery.data,
-            resources: resourcesQuery.data,
+            cpu: cpuQuery.data,
+            memory: memoryQuery.data,
             onlinePlayers: playersQuery.data || [],
             // 添加计算属性
             memoryUsagePercent:
-              resourcesQuery.data && configQuery.data
-                ? (resourcesQuery.data.memoryUsageBytes /
+              memoryQuery.data && configQuery.data
+                ? (memoryQuery.data.memoryUsageBytes /
                     configQuery.data.maxMemoryBytes) *
                   100
                 : 0,
 
             // 格式化的显示值
             displayMemoryUsage:
-              resourcesQuery.data && configQuery.data
-                ? `${(resourcesQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(1)}GB / ${(configQuery.data.maxMemoryBytes / 1024 ** 3).toFixed(1)}GB`
+              memoryQuery.data && configQuery.data
+                ? `${(memoryQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(1)}GB / ${(configQuery.data.maxMemoryBytes / 1024 ** 3).toFixed(1)}GB`
                 : "未知",
 
-            displayCpuUsage: resourcesQuery.data
-              ? `${resourcesQuery.data.cpuPercentage.toFixed(1)}%`
+            displayCpuUsage: cpuQuery.data
+              ? `${cpuQuery.data.cpuPercentage.toFixed(1)}%`
               : "未知",
           }
         : undefined,

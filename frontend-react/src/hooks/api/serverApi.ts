@@ -17,8 +17,11 @@ interface ServerStatusResponse {
   status: ServerStatus;
 }
 
-interface ServerResourcesResponse {
+interface ServerCpuPercentResponse {
   cpuPercentage: number;
+}
+
+interface ServerMemoryResponse {
   memoryUsageBytes: number;
 }
 
@@ -90,15 +93,26 @@ export const serverApi = {
     return res.data.status;
   },
 
-  // 获取单个服务器系统资源 (在RUNNING/STARTING/HEALTHY状态下可用)
-  getServerResources: async (
+  // 获取单个服务器CPU百分比 (在RUNNING/STARTING/HEALTHY状态下可用)
+  getServerCpuPercent: async (
     id: string,
-  ): Promise<{ cpuPercentage: number; memoryUsageBytes: number }> => {
-    const res = await api.get<ServerResourcesResponse>(
-      `/servers/${id}/resources`,
+  ): Promise<{ cpuPercentage: number }> => {
+    const res = await api.get<ServerCpuPercentResponse>(
+      `/servers/${id}/cpu_percent`,
     );
     return {
       cpuPercentage: res.data.cpuPercentage,
+    };
+  },
+
+  // 获取单个服务器内存使用量 (在RUNNING/STARTING/HEALTHY状态下可用)
+  getServerMemory: async (
+    id: string,
+  ): Promise<{ memoryUsageBytes: number }> => {
+    const res = await api.get<ServerMemoryResponse>(
+      `/servers/${id}/memory`,
+    );
+    return {
       memoryUsageBytes: res.data.memoryUsageBytes,
     };
   },
@@ -203,6 +217,11 @@ export const serverApi = {
 export const systemApi = {
   getSystemInfo: async (): Promise<SystemInfo> => {
     const res = await api.get<SystemInfo>("/system/info");
+    return res.data;
+  },
+
+  getSystemCpuPercent: async (): Promise<{ cpuPercentage: number }> => {
+    const res = await api.get<{ cpuPercentage: number }>("/system/cpu_percent");
     return res.data;
   },
 };

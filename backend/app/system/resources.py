@@ -21,7 +21,7 @@ class CPULoad:
 @asyncify
 def get_cpu_percent() -> float:
     """Get CPU usage percentage"""
-    return psutil.cpu_percent()
+    return psutil.cpu_percent(1)
 
 
 @asyncify

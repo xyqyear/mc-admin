@@ -1,8 +1,8 @@
 import {
   serverApi,
   systemApi,
-  type ServerIOStatsResponse,
   type ServerDiskUsageResponse,
+  type ServerIOStatsResponse,
   type ServerListItem,
 } from "@/hooks/api/serverApi";
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
@@ -50,12 +50,37 @@ export const useServerQueries = () => {
     });
   };
 
-  // 单个服务器系统资源 (CPU/内存，在RUNNING/STARTING/HEALTHY状态下可用)
-  const useServerResources = (
+  // 单个服务器CPU百分比 (在RUNNING/STARTING/HEALTHY状态下可用)
+  const useServerCpuPercent = (
     id: string,
     status?: ServerStatus,
     options?: UseQueryOptions<{
       cpuPercentage: number;
+    }>,
+  ) => {
+    const resourcesAvailable =
+      status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
+
+    return useQuery({
+      queryKey: [...queryKeys.serverRuntimes.detail(id), "cpu"],
+      queryFn: () => serverApi.getServerCpuPercent(id),
+      enabled: !!id && resourcesAvailable,
+      refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新CPU数据
+      staleTime: 3000, // 3秒
+      retry: (failureCount, error: any) => {
+        // 如果服务器状态不支持CPU监控，不要重试
+        if (error?.response?.status === 409) return false;
+        return failureCount < 2;
+      },
+      ...options,
+    });
+  };
+
+  // 单个服务器内存使用量 (在RUNNING/STARTING/HEALTHY状态下可用)
+  const useServerMemory = (
+    id: string,
+    status?: ServerStatus,
+    options?: UseQueryOptions<{
       memoryUsageBytes: number;
     }>,
   ) => {
@@ -63,13 +88,13 @@ export const useServerQueries = () => {
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
 
     return useQuery({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "resources"],
-      queryFn: () => serverApi.getServerResources(id),
+      queryKey: [...queryKeys.serverRuntimes.detail(id), "memory"],
+      queryFn: () => serverApi.getServerMemory(id),
       enabled: !!id && resourcesAvailable,
-      refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新资源数据
-      staleTime: 1000, // 1秒 - 资源数据需要实时性
+      refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新内存数据（较快）
+      staleTime: 1000, // 1秒 - 内存数据需要实时性
       retry: (failureCount, error: any) => {
-        // 如果服务器状态不支持资源监控，不要重试
+        // 如果服务器状态不支持内存监控，不要重试
         if (error?.response?.status === 409) return false;
         return failureCount < 2;
       },
@@ -163,7 +188,7 @@ export const useServerQueries = () => {
     });
   };
 
-  // 系统信息 (中等频率更新)
+  // 系统信息 (中等频率更新，不包含CPU百分比)
   const useSystemInfo = (options?: UseQueryOptions<SystemInfo>) => {
     return useQuery({
       queryKey: queryKeys.system.info(),
@@ -174,16 +199,29 @@ export const useServerQueries = () => {
     });
   };
 
+  // 系统CPU百分比 (较慢更新，因为需要1-2秒计算时间)
+  const useSystemCpuPercent = (options?: UseQueryOptions<{ cpuPercentage: number }>) => {
+    return useQuery({
+      queryKey: [...queryKeys.system.info(), "cpu"],
+      queryFn: systemApi.getSystemCpuPercent,
+      refetchInterval: 3000, // 3秒刷新CPU百分比（比其他系统信息慢）
+      staleTime: 3000, // 3秒
+      ...options,
+    });
+  };
+
   return {
     useServers, // 🌟 基础配置API - 用于获取服务器列表基本信息
     useServerInfo, // 详细配置信息
     useServerStatus, // 单个状态监控
-    useServerResources, // 单个服务器系统资源 (CPU/内存)
+    useServerCpuPercent, // 单个服务器CPU百分比 (分离后的接口)
+    useServerMemory, // 单个服务器内存使用量 (分离后的接口)
     useServerPlayers, // 单个服务器玩家列表
     useServerIOStats, // 单个服务器I/O统计信息 (磁盘I/O和网络I/O，不包含磁盘空间)
     useServerDiskUsage, // 单个服务器磁盘使用信息 (磁盘空间，始终可用)
     useComposeFile, // Compose文件内容
-    useSystemInfo, // 系统信息
+    useSystemInfo, // 系统信息 (不包含CPU百分比)
+    useSystemCpuPercent, // 系统CPU百分比 (分离后的接口)
   };
 };
 
