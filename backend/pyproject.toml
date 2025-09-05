@@ -43,4 +43,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-vv --cov=app.minecraft --cov-report=xml:cov.xml --cov-report=html:cov_html --cov-report=term-missing"
+addopts = "-vv --cov=app --cov-report=xml:cov.xml --cov-report=html:cov_html --cov-report=term-missing"
