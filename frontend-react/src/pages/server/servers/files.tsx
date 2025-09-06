@@ -33,7 +33,8 @@ import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import FileIcon from '@/components/files/FileIcon'
 import PageHeader from '@/components/layout/PageHeader'
 import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
-import { useFileList, useFileContent, useFileOperations } from '@/hooks/queries/useFileQueries'
+import { useFileList, useFileContent } from '@/hooks/queries/useFileQueries'
+import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import type { FileItem } from '@/types/Server'
@@ -60,18 +61,20 @@ const ServerFiles: React.FC = () => {
   // File management hooks
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
   const {
-    updateFile,
-    uploadFile,
-    createFile,
-    deleteFile,
-    renameFile,
-    downloadFile,
-    isUpdating,
-    isUploading,
-    isCreating,
-    isDeleting,
-    isRenaming
-  } = useFileOperations(id)
+    useUpdateFile,
+    useUploadFile,
+    useCreateFile,
+    useDeleteFile,
+    useRenameFile,
+    downloadFile
+  } = useFileMutations(id)
+  
+  // Initialize mutation hooks
+  const updateFileMutation = useUpdateFile()
+  const uploadFileMutation = useUploadFile()
+  const createFileMutation = useCreateFile()
+  const deleteFileMutation = useDeleteFile()
+  const renameFileMutation = useRenameFile()
 
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
@@ -150,7 +153,7 @@ const ServerFiles: React.FC = () => {
 
   const handleFileSave = () => {
     if (editingFile && id) {
-      updateFile({ path: editingFile.path, content: fileContent })
+      updateFileMutation.mutate({ path: editingFile.path, content: fileContent })
       setIsEditModalVisible(false)
       setEditingFile(null)
       setFileContent('')
@@ -164,7 +167,7 @@ const ServerFiles: React.FC = () => {
 
   const handleFileDelete = (file: FileItem) => {
     if (id) {
-      deleteFile(file.path)
+      deleteFileMutation.mutate(file.path)
     }
   }
 
@@ -189,7 +192,7 @@ const ServerFiles: React.FC = () => {
     if (!renamingFile || !id) return
 
     renameForm.validateFields().then(values => {
-      renameFile({
+      renameFileMutation.mutate({
         old_path: renamingFile.path,
         new_name: values.newName
       })
@@ -213,7 +216,7 @@ const ServerFiles: React.FC = () => {
     if (!id) return
 
     createForm.validateFields().then(values => {
-      createFile({
+      createFileMutation.mutate({
         name: values.fileName,
         type: values.fileType,
         path: currentPath
@@ -235,7 +238,7 @@ const ServerFiles: React.FC = () => {
       onOk: () => {
         if (id) {
           selectedFiles.forEach(filePath => {
-            deleteFile(filePath)
+            deleteFileMutation.mutate(filePath)
           })
           setSelectedFiles([])
         }
@@ -247,7 +250,7 @@ const ServerFiles: React.FC = () => {
     if (!id || uploadFileList.length === 0) return
 
     uploadFileList.forEach(fileItem => {
-      uploadFile({ path: currentPath, file: fileItem.originFileObj })
+      uploadFileMutation.mutate({ path: currentPath, file: fileItem.originFileObj })
     })
     setUploadFileList([])
     setIsUploadModalVisible(false)
@@ -427,7 +430,7 @@ const ServerFiles: React.FC = () => {
                 icon={<DeleteOutlined />}
                 danger
                 onClick={handleBulkDelete}
-                loading={isDeleting}
+                loading={deleteFileMutation.isPending}
               >
                 批量删除 ({selectedFiles.length})
               </Button>
@@ -524,7 +527,7 @@ const ServerFiles: React.FC = () => {
         }}
         okText="上传"
         cancelText="取消"
-        confirmLoading={isUploading}
+        confirmLoading={uploadFileMutation.isPending}
       >
         <Upload
           fileList={uploadFileList}
@@ -547,7 +550,7 @@ const ServerFiles: React.FC = () => {
         onCancel={() => setIsCreateModalVisible(false)}
         okText="创建"
         cancelText="取消"
-        confirmLoading={isCreating}
+        confirmLoading={createFileMutation.isPending}
       >
         <Form form={createForm} layout="vertical">
           <Form.Item
@@ -586,7 +589,7 @@ const ServerFiles: React.FC = () => {
         }}
         okText="确定"
         cancelText="取消"
-        confirmLoading={isRenaming}
+        confirmLoading={renameFileMutation.isPending}
       >
         <Form form={renameForm} layout="vertical">
           <Form.Item
@@ -616,7 +619,7 @@ const ServerFiles: React.FC = () => {
         width={800}
         okText="保存"
         cancelText="取消"
-        confirmLoading={isUpdating}
+        confirmLoading={updateFileMutation.isPending}
         footer={[
           <Button
             key="diff"
@@ -638,7 +641,7 @@ const ServerFiles: React.FC = () => {
             key="save"
             type="primary"
             onClick={handleFileSave}
-            loading={isUpdating}
+            loading={updateFileMutation.isPending}
           >
             保存
           </Button>,
