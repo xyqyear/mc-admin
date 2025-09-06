@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Button, Modal, List, Tooltip, message, Space, Tag, Typography, Drawer, Divider } from 'antd'
+import { Button, Modal, Table, Tooltip, message, Space, Tag, Typography, Drawer, Divider, type TableProps } from 'antd'
 import { DatabaseOutlined, HistoryOutlined, EyeOutlined } from '@ant-design/icons'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -99,77 +99,100 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
   filePath,
   onPreview,
   previewLoading
-}) => (
-  <Modal
-    title={`选择要回滚的快照 - ${filePath}`}
-    open={open}
-    onCancel={onCancel}
-    width={700}
-    footer={[
-      <Button key="cancel" onClick={onCancel}>
-        取消
-      </Button>
-    ]}
-  >
-    <div className="space-y-4">
-      <Text type="secondary">
-        以下是包含该路径的所有快照，请选择要回滚的版本：
-      </Text>
-      
-      <List
-        loading={loading}
-        dataSource={snapshots}
-        renderItem={(snapshot) => (
-          <List.Item
-            actions={[
-              <Button
-                key="preview"
-                icon={<EyeOutlined />}
-                size="small"
-                onClick={() => onPreview(snapshot.id)}
-                loading={previewLoading}
-              >
-                预览
-              </Button>,
-              <Button
-                key="restore"
-                type="primary"
-                size="small"
-                onClick={() => onRestore(snapshot.id)}
-                loading={restoreLoading}
-              >
-                回滚到此版本
-              </Button>
-            ]}
+}) => {
+  const columns: TableProps<Snapshot>['columns'] = [
+    {
+      title: '快照ID',
+      dataIndex: 'short_id',
+      key: 'short_id',
+      width: 100,
+      render: (shortId: string, record: Snapshot) => (
+        <Tooltip title={`完整ID: ${record.id}`}>
+          <Tag color="blue" className="font-mono">
+            {shortId}
+          </Tag>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'time',
+      key: 'time',
+      width: 180,
+      render: (time: string) => (
+        <Text className="font-mono text-sm">
+          {formatDateTime(time)}
+        </Text>
+      ),
+      sorter: (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
+      defaultSortOrder: 'descend',
+    },
+    {
+      title: '用户',
+      dataIndex: 'username',
+      key: 'username',
+      width: 120,
+      render: (username: string) => (
+        <Text className="text-sm">{username}</Text>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 180,
+      render: (_: any, record: Snapshot) => (
+        <Space size="small">
+          <Button
+            icon={<EyeOutlined />}
+            size="small"
+            onClick={() => onPreview(record.id)}
+            loading={previewLoading}
           >
-            <List.Item.Meta
-              title={
-                <Space>
-                  <Text strong>{snapshot.short_id}</Text>
-                  <Tag color="blue">{formatDateTime(snapshot.time)}</Tag>
-                </Space>
-              }
-              description={
-                <div className="space-y-1">
-                  <Text type="secondary">
-                    主机: {snapshot.hostname} | 用户: {snapshot.username}
-                  </Text>
-                  {snapshot.summary && (
-                    <div className="text-xs text-gray-500">
-                      文件: +{snapshot.summary.files_new} ~{snapshot.summary.files_changed} 
-                      | 大小: {Math.round(snapshot.summary.data_added / 1024 / 1024)}MB
-                    </div>
-                  )}
-                </div>
-              }
-            />
-          </List.Item>
-        )}
-        locale={{ emptyText: '没有找到包含该路径的快照' }}
-      />
-    </div>
-  </Modal>
-)
+            预览
+          </Button>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => onRestore(record.id)}
+            loading={restoreLoading}
+          >
+            回滚
+          </Button>
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <Modal
+      title={`选择要回滚的快照 - ${filePath}`}
+      open={open}
+      onCancel={onCancel}
+      width={800}
+      footer={[
+        <Button key="cancel" onClick={onCancel}>
+          取消
+        </Button>
+      ]}
+    >
+      <div className="space-y-4">
+        <Text type="secondary">
+          以下是包含该路径的所有快照，请选择要回滚的版本：
+        </Text>
+        
+        <Table<Snapshot>
+          columns={columns}
+          dataSource={snapshots}
+          rowKey="id"
+          loading={loading}
+          pagination={false}
+          size="small"
+          locale={{ emptyText: '没有找到包含该路径的快照' }}
+        />
+      </div>
+    </Modal>
+  )
+}
 
 interface PreviewModalProps {
   open: boolean
@@ -209,34 +232,35 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
         
         <Divider>详细变更列表</Divider>
         
-        <List
-          dataSource={previewData}
-          renderItem={(action, index) => (
-            <List.Item key={index}>
-              <div className="w-full">
-                <div className="flex items-center space-x-2">
-                  <Tag color={
-                    action.action === 'updated' ? 'orange' :
-                    action.action === 'deleted' ? 'red' :
-                    action.action === 'restored' ? 'green' : 'blue'
-                  }>
-                    {action.action === 'updated' ? '更新' :
-                     action.action === 'deleted' ? '删除' :
-                     action.action === 'restored' ? '恢复' :
-                     action.action || action.message_type}
-                  </Tag>
-                  <Text className="font-mono text-xs">{action.item}</Text>
-                  {action.action !== 'deleted' && action.size && (
-                    <Text type="secondary" className="text-xs">
-                      ({formatUtils.formatBytes(action.size)})
-                    </Text>
-                  )}
-                </div>
+        <div className="space-y-2">
+          {previewData.map((action, index) => (
+            <div key={index} className="p-3 border border-gray-200 rounded bg-gray-50">
+              <div className="flex items-center space-x-2">
+                <Tag color={
+                  action.action === 'updated' ? 'orange' :
+                  action.action === 'deleted' ? 'red' :
+                  action.action === 'restored' ? 'green' : 'blue'
+                }>
+                  {action.action === 'updated' ? '更新' :
+                   action.action === 'deleted' ? '删除' :
+                   action.action === 'restored' ? '恢复' :
+                   action.action || action.message_type}
+                </Tag>
+                <Text className="font-mono text-xs">{action.item}</Text>
+                {action.action !== 'deleted' && action.size && (
+                  <Text type="secondary" className="text-xs">
+                    ({formatUtils.formatBytes(action.size)})
+                  </Text>
+                )}
               </div>
-            </List.Item>
+            </div>
+          ))}
+          {previewData.length === 0 && (
+            <div className="text-center py-8">
+              <Text type="secondary">没有变更</Text>
+            </div>
           )}
-          locale={{ emptyText: '没有变更' }}
-        />
+        </div>
       </div>
     ) : (
       <div className="text-center py-8">
