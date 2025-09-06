@@ -95,20 +95,20 @@ src/
 │   │   └── useUserMutations.ts      # User administration mutations
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code-based authentication
 │   └── useServerConsoleWebSocket.ts # Real-time server console integration
-├── pages/                   # Route components with new snapshot management
+├── pages/                   # Route components with descriptive file names
 │   ├── Overview.tsx         # Server dashboard with metrics cards
 │   ├── Login.tsx            # Dual authentication interface
 │   ├── Home.tsx             # Landing/redirect page
-│   ├── Snapshots.tsx        # **NEW** - Global snapshot management page
+│   ├── Snapshots.tsx        # Global snapshot management page
 │   ├── admin/
 │   │   └── UserManagement.tsx
 │   └── server/
-│       ├── new.tsx          # Server creation
-│       └── servers/         # **UPDATED** - Reorganized server pages
-│           ├── index.tsx    # Server detail hub (formerly server/[id]/index.tsx)
-│           ├── files.tsx    # File management (formerly server/[id]/files.tsx)
-│           ├── compose.tsx  # Docker Compose configuration (formerly server/[id]/compose.tsx)
-│           └── console.tsx  # Real-time console (formerly server/[id]/console.tsx)
+│       ├── ServerNew.tsx    # Server creation
+│       └── servers/         # Server management pages
+│           ├── ServerDetail.tsx    # Server detail hub
+│           ├── ServerFiles.tsx     # File management with Monaco editor
+│           ├── ServerCompose.tsx   # Docker Compose configuration
+│           └── ServerConsole.tsx   # Real-time console with WebSocket
 ├── stores/                  # Zustand stores with persistence
 │   ├── useTokenStore.ts           # JWT token management
 │   ├── useSidebarStore.ts         # Navigation state
@@ -219,10 +219,9 @@ Each mutation hook provides:
 
 **Route Organization with Lazy Loading:**
 ```typescript
-// All pages are lazy-loaded for performance
-const Overview = lazy(() => import('@/pages/Overview'))
-const Login = lazy(() => import('@/pages/Login'))
-const Snapshots = lazy(() => import('@/pages/Snapshots'))
+// All pages are lazy-loaded for performance with descriptive constant names
+const Login = React.lazy(() => import('@/pages/Login'))
+const Home = React.lazy(() => import('@/pages/Home'))
 // ... etc for all route components
 ```
 
@@ -240,9 +239,9 @@ const Snapshots = lazy(() => import('@/pages/Snapshots'))
 /admin/users (User management - OWNER role only)
 ```
 
-**Route Changes:**
-- **New `/snapshots` route**: Global backup management page
-- **Reorganized server pages**: Moved from `/server/[id]/` to `/server/servers/` structure
+**Route Features:**
+- **Global snapshot management**: Dedicated `/snapshots` route for backup management
+- **Descriptive file names**: Page file names match their lazy-loaded constant names
 - **Enhanced navigation**: Automatic snapshot menu integration
 - **Role-based access**: Admin routes with proper role guards
 
