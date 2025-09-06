@@ -1,6 +1,6 @@
 # MC-ADMIN
 
-Project for learning Vue3, Nuxt and Tailwind
+Admin system for interacting with minecraft servers managed with docker compose.
 
 WIP
 
@@ -24,7 +24,7 @@ WIP
     - [ ] restore file: for player files, restore when player isn't online; for other files, ask for server stop.
   - [ ] pack and download archive (warn about server stop)
 - [ ] create new server page
-- [ ] snapshot management page
+- [x] snapshot management page
 - [x] super admmin page
   - [x] user management page
 
