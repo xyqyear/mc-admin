@@ -19,6 +19,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/snapshotApi';
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
+import { formatDateTime } from '@/utils/formatUtils';
 
 const { Text } = Typography;
 
@@ -42,17 +43,6 @@ const Snapshots: React.FC = () => {
 
   const handleCreateSnapshot = () => {
     createSnapshotMutation.mutate();
-  };
-
-  const formatDateTime = (timeString: string) => {
-    return new Date(timeString).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
   };
 
   const formatBytes = (bytes: number) => {

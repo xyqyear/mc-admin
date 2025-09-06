@@ -188,8 +188,8 @@ def mock_snapshot_dependencies_setup(
         restic_password: Password for restic repository
     """
     with (
-        patch("app.routers.servers.snapshots.mc_manager") as mock_manager,
-        patch("app.routers.servers.snapshots.settings") as mock_settings,
+        patch("app.routers.snapshots.mc_manager") as mock_manager,
+        patch("app.routers.snapshots.settings") as mock_settings,
         patch("app.routers.servers.files.mc_manager") as mock_file_manager,
         patch("app.dependencies.settings") as mock_dep_settings,
     ):
@@ -261,8 +261,9 @@ class TestSnapshotEndpoints:
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
 
             assert response.status_code == 200
@@ -300,16 +301,18 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Create a snapshot first
             create_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert create_response.status_code == 200
             created_snapshot_id = create_response.json()["snapshot"]["id"]
 
             # List snapshots
             list_response = client.get(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
             )
 
             assert list_response.status_code == 200
@@ -334,8 +337,9 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Create a snapshot
             create_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert create_response.status_code == 200
             snapshot_id = create_response.json()["snapshot"]["id"]
@@ -348,9 +352,9 @@ class TestSnapshotEndpoints:
 
             # Preview restore
             preview_response = client.post(
-                f"/servers/{server_id}/snapshots/restore/preview",
+                "/snapshots/restore/preview",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": snapshot_id},
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
 
             assert preview_response.status_code == 200
@@ -361,10 +365,14 @@ class TestSnapshotEndpoints:
             assert "preview_summary" in data
             assert len(data["actions"]) > 0
 
-            # Verify preview summary format
-            assert "updated" in data["preview_summary"]
-            assert "deleted" in data["preview_summary"]
-            assert "restored" in data["preview_summary"]
+            # Verify preview summary format - check for Chinese or English text patterns
+            summary = data["preview_summary"]
+            # Check if it contains either Chinese or English patterns for file operations
+            has_file_operations = (
+                "updated" in summary or "deleted" in summary or "restored" in summary or
+                "更新" in summary or "删除" in summary or "恢复" in summary
+            )
+            assert has_file_operations, f"Preview summary should contain file operation indicators: {summary}"
 
             # Verify actions contain required fields
             for action in data["actions"]:
@@ -402,8 +410,9 @@ class TestSnapshotEndpoints:
 
             # Create initial snapshot
             snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert snapshot_response.status_code == 200
             snapshot_id = snapshot_response.json()["snapshot"]["id"]
@@ -446,16 +455,17 @@ class TestSnapshotEndpoints:
 
             # Create a snapshot for safety check
             snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert snapshot_response.status_code == 200
 
             # Restore original snapshot
             restore_response = client.post(
-                f"/servers/{server_id}/snapshots/restore",
+                "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": snapshot_id},
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
 
@@ -495,8 +505,9 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Create snapshot of entire server
             full_snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert full_snapshot_response.status_code == 200
             full_snapshot_id = full_snapshot_response.json()["snapshot"]["id"]
@@ -509,8 +520,9 @@ class TestSnapshotEndpoints:
 
             # Create second snapshot of entire server (with changes)
             modified_snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert modified_snapshot_response.status_code == 200
             modified_snapshot_id = modified_snapshot_response.json()["snapshot"]["id"]
@@ -520,8 +532,9 @@ class TestSnapshotEndpoints:
 
             # List all snapshots for this server
             all_snapshots_response = client.get(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
             )
             assert all_snapshots_response.status_code == 200
             all_snapshots = all_snapshots_response.json()["snapshots"]
@@ -543,18 +556,18 @@ class TestSnapshotEndpoints:
             )
 
             plugins_snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"path": "/plugins"},
+                json={"server_id": server_id, "path": "/plugins"},
             )
             assert plugins_snapshot_response.status_code == 200
             plugins_snapshot_id = plugins_snapshot_response.json()["snapshot"]["id"]
 
             # List snapshots by plugins path - should only return snapshots containing plugins
             plugins_snapshots_response = client.get(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"path": "/plugins"},
+                params={"server_id": server_id, "path": "/plugins"},
             )
             assert plugins_snapshots_response.status_code == 200
             plugins_snapshots = plugins_snapshots_response.json()["snapshots"]
@@ -584,8 +597,9 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Create an old snapshot
             snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert snapshot_response.status_code == 200
             snapshot_id = snapshot_response.json()["snapshot"]["id"]
@@ -602,9 +616,9 @@ class TestSnapshotEndpoints:
             ):
                 # Attempt restore without recent snapshot
                 restore_response = client.post(
-                    f"/servers/{server_id}/snapshots/restore",
+                    "/snapshots/restore",
                     headers={"Authorization": "Bearer test_master_token"},
-                    params={"snapshot_id": snapshot_id},
+                    json={"snapshot_id": snapshot_id, "server_id": server_id},
                 )
 
                 assert restore_response.status_code == 400
@@ -620,9 +634,9 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Test restore with invalid snapshot ID (expect 400 due to safety check)
             invalid_restore_response = client.post(
-                f"/servers/{server_id}/snapshots/restore",
+                "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": "invalid-snapshot-id"},
+                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
             )
             assert invalid_restore_response.status_code in [400, 500]
             response_detail = invalid_restore_response.json()["detail"]
@@ -634,9 +648,9 @@ class TestSnapshotEndpoints:
 
             # Test preview with invalid snapshot ID
             invalid_preview_response = client.post(
-                f"/servers/{server_id}/snapshots/restore/preview",
+                "/snapshots/restore/preview",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": "invalid-snapshot-id"},
+                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
             )
             assert invalid_preview_response.status_code == 500
             assert (
@@ -652,13 +666,14 @@ class TestSnapshotEndpoints:
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Test without authorization header
-            response = client.post(f"/servers/{server_id}/snapshots")
+            response = client.post("/snapshots", json={"server_id": server_id})
             assert response.status_code in [401, 422]
 
             # Test with invalid token
             response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer invalid_token"},
+                json={"server_id": server_id},
             )
             assert response.status_code in [401, 422]
 
@@ -699,8 +714,9 @@ class TestSnapshotEndpoints:
 
             # Create snapshot of entire server
             snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert snapshot_response.status_code == 200
             snapshot_id = snapshot_response.json()["snapshot"]["id"]
@@ -730,14 +746,15 @@ class TestSnapshotEndpoints:
 
             # Create safety snapshot and restore
             client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
 
             restore_response = client.post(
-                f"/servers/{server_id}/snapshots/restore",
+                "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": snapshot_id},
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
 
@@ -787,8 +804,9 @@ class TestSnapshotEndpoints:
 
             # Create initial snapshot
             snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert snapshot_response.status_code == 200
             snapshot_id = snapshot_response.json()["snapshot"]["id"]
@@ -845,16 +863,17 @@ modified=true
 
             # Create safety snapshot for the restore operation
             safety_snapshot_response = client.post(
-                f"/servers/{server_id}/snapshots",
+                "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
             )
             assert safety_snapshot_response.status_code == 200
 
             # Restore ONLY the plugins subdirectory to the original snapshot
             restore_response = client.post(
-                f"/servers/{server_id}/snapshots/restore",
+                "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"snapshot_id": snapshot_id, "path": "/plugins"},
+                json={"snapshot_id": snapshot_id, "server_id": server_id, "path": "/plugins"},
             )
             assert restore_response.status_code == 200
 

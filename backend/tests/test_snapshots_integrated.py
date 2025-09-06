@@ -205,7 +205,11 @@ class TestResticManagerIntegrated:
             assert action.message_type == "verbose_status"
             assert action.action in ["updated", "restored", "deleted"]
             assert action.item is not None
-            assert action.size is not None and action.size > 0
+            # Size validation: deleted operations can have size 0, but others should be > 0
+            if action.action == "deleted":
+                assert action.size is not None and action.size >= 0
+            else:
+                assert action.size is not None and action.size > 0
             assert (
                 str(temp_backup_dir) in action.item
             )  # Should be related to our test data

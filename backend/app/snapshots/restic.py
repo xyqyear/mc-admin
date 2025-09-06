@@ -288,14 +288,14 @@ class ResticManager:
                 # Skip lines that aren't valid JSON
                 continue
 
-        # Filter actions: only include updated, deleted, or restored with non-zero size
+        # Filter actions: include updated, deleted, and restored operations
+        # Only exclude restored operations with zero size
         filtered_actions = []
         for action in actions:
-            if (
-                action.action in ["updated", "deleted", "restored"]
-                and action.size is not None
-                and action.size > 0
-            ):
+            if action.action in ["updated", "deleted", "restored"]:
+                # Exclude restored operations with zero or None size
+                if action.action == "restored" and (action.size is None or action.size == 0):
+                    continue
                 filtered_actions.append(action)
 
         return filtered_actions

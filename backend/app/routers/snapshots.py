@@ -90,6 +90,7 @@ class RestoreRequest(BaseModel):
     snapshot_id: str
     server_id: Optional[str] = None
     path: Optional[str] = None
+    skip_safety_check: bool = False  # Optional parameter to skip safety check
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -191,7 +192,7 @@ async def preview_global_restore(
         deleted_count = sum(1 for a in actions if a.action == "deleted")
         restored_count = sum(1 for a in actions if a.action == "restored")
 
-        summary = f"Preview: {updated_count} updated, {deleted_count} deleted, {restored_count} restored"
+        summary = f"预览结果：{updated_count} 个文件更新，{deleted_count} 个文件删除，{restored_count} 个文件恢复"
 
         logger.info(f"Restore preview completed for snapshot {request.snapshot_id}: {summary} (server_id={request.server_id}, path={request.path})")
         return RestorePreviewResponse(actions=actions, preview_summary=summary)
@@ -210,24 +211,26 @@ async def preview_global_restore(
 async def restore_global_snapshot(
     request: RestoreRequest, _: UserPublic = Depends(get_current_user)
 ):
-    """Restore snapshot with safety checks"""
+    """Restore snapshot with optional safety checks"""
     try:
         target_path = _resolve_backup_path(request.server_id, request.path)
 
         restic_manager = _get_restic_manager()
 
-        # Safety check: Ensure there's a recent snapshot (within 1 minute)
-        has_recent = await restic_manager.has_recent_snapshot(
-            target_path=target_path, max_age_seconds=60
-        )
-
-        if not has_recent:
-            error_msg = "No recent snapshot found. Create a snapshot within 1 minute before restoring to prevent data loss."
-            logger.warning(f"Restore blocked due to safety check: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})")
-            raise HTTPException(
-                status_code=400,
-                detail=error_msg,
+        # Conditional safety check: Only perform if skip_safety_check is False
+        if not request.skip_safety_check:
+            # Safety check: Ensure there's a recent snapshot (within 1 minute)
+            has_recent = await restic_manager.has_recent_snapshot(
+                target_path=target_path, max_age_seconds=60
             )
+
+            if not has_recent:
+                error_msg = "No recent snapshot found. Create a snapshot within 1 minute before restoring to prevent data loss."
+                logger.warning(f"Restore blocked due to safety check: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})")
+                raise HTTPException(
+                    status_code=400,
+                    detail=error_msg,
+                )
 
         # Perform restore
         await restic_manager.restore(
@@ -237,7 +240,8 @@ async def restore_global_snapshot(
         )
 
         success_msg = f"Snapshot {request.snapshot_id} restored successfully to {target_path}"
-        logger.info(f"Restore completed: {success_msg} (server_id={request.server_id}, path={request.path})")
+        safety_note = " (safety check skipped)" if request.skip_safety_check else ""
+        logger.info(f"Restore completed: {success_msg}{safety_note} (server_id={request.server_id}, path={request.path})")
         return {
             "message": success_msg
         }

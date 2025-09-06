@@ -1,5 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { snapshotApi, type CreateSnapshotResponse } from "@/hooks/api/snapshotApi";
+import { 
+  snapshotApi, 
+  type CreateSnapshotResponse,
+  type RestoreSnapshotResponse
+} from "@/hooks/api/snapshotApi";
 import { queryKeys } from "@/utils/api";
 import { message } from "antd";
 
@@ -25,7 +29,62 @@ export const useSnapshotMutations = () => {
     });
   };
 
+  // 创建文件/文件夹快照
+  const useCreateSnapshot = () => {
+    return useMutation({
+      mutationFn: snapshotApi.createSnapshot,
+      onSuccess: (data: CreateSnapshotResponse) => {
+        message.success(`快照创建成功: ${data.snapshot.short_id}`);
+        
+        // 刷新所有快照相关查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.snapshots.all,
+        });
+      },
+      onError: (error: any) => {
+        const errorDetail = error?.message || "未知错误";
+        message.error(`快照创建失败: ${errorDetail}`);
+      },
+    });
+  };
+
+  // 恢复快照
+  const useRestoreSnapshot = () => {
+    return useMutation({
+      mutationFn: snapshotApi.restoreSnapshot,
+      onSuccess: (data: RestoreSnapshotResponse) => {
+        message.success(data.message);
+        
+        // 刷新文件列表和快照列表
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.files.all,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.snapshots.all,
+        });
+      },
+      onError: (error: any) => {
+        const errorDetail = error?.message || "未知错误";
+        message.error(`快照恢复失败: ${errorDetail}`);
+      },
+    });
+  };
+
+  // 预览快照恢复
+  const usePreviewRestore = () => {
+    return useMutation({
+      mutationFn: snapshotApi.previewRestore,
+      onError: (error: any) => {
+        const errorDetail = error?.message || "未知错误";
+        message.error(`预览失败: ${errorDetail}`);
+      },
+    });
+  };
+
   return {
     useCreateGlobalSnapshot,
+    useCreateSnapshot,
+    useRestoreSnapshot,
+    usePreviewRestore,
   };
 };

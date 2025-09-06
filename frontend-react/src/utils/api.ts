@@ -163,6 +163,8 @@ export const queryKeys = {
     all: ["snapshots"] as const,
     global: () => [...queryKeys.snapshots.all, "global"] as const,
     repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
+    forPath: (serverId: string, path: string) => 
+      [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
 } as const;
 

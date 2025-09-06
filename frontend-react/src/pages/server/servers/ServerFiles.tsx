@@ -37,6 +37,7 @@ import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
+import FileSnapshotActions from '@/components/files/FileSnapshotActions'
 import type { FileItem } from '@/types/Server'
 import type { SortOrder, ColumnType } from 'antd/es/table/interface'
 
@@ -343,9 +344,12 @@ const ServerFiles: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 200,
       render: (_: any, file: FileItem) => (
-        <Space>
+        <Space size="small">
+          {/* 快照操作按钮 */}
+          <FileSnapshotActions file={file} serverId={id || ''} />
+          
           <Tooltip title="下载">
             <Button
               icon={<DownloadOutlined />}

@@ -40,17 +40,74 @@ interface ListSnapshotsResponse {
   snapshots: Snapshot[];
 }
 
+interface RestoreSnapshotRequest {
+  snapshot_id: string;
+  server_id?: string;
+  path?: string;
+  skip_safety_check?: boolean;  // 新增：控制是否跳过安全检查
+}
+
+interface RestoreSnapshotResponse {
+  message: string;
+}
+
+interface RestorePreviewRequest {
+  snapshot_id: string;
+  server_id?: string;
+  path?: string;
+}
+
+interface RestorePreviewAction {
+  message_type: string;
+  action?: string;
+  item?: string;
+  size?: number;
+}
+
+interface RestorePreviewResponse {
+  actions: RestorePreviewAction[];
+  preview_summary: string;
+}
+
 export const snapshotApi = {
-  // 列出所有快照 (不传入server_id和path)
-  getAllSnapshots: async (): Promise<Snapshot[]> => {
-    const res = await api.get<ListSnapshotsResponse>("/snapshots");
+  // 列出所有快照（可按路径过滤）
+  getAllSnapshots: async (params?: { 
+    server_id?: string;
+    path?: string;
+  }): Promise<Snapshot[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.server_id) queryParams.set('server_id', params.server_id);
+    if (params?.path) queryParams.set('path', params.path);
+    
+    const url = `/snapshots${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const res = await api.get<ListSnapshotsResponse>(url);
     return res.data.snapshots;
   },
 
-  // 创建全局快照 (不传入server_id和path)
-  createGlobalSnapshot: async (): Promise<CreateSnapshotResponse> => {
-    const res = await api.post<CreateSnapshotResponse>("/snapshots", {});
+  // 创建快照（全局或特定路径）
+  createSnapshot: async (params?: {
+    server_id?: string;
+    path?: string;
+  }): Promise<CreateSnapshotResponse> => {
+    const res = await api.post<CreateSnapshotResponse>("/snapshots", params || {});
     return res.data;
+  },
+
+  // 恢复快照（包含安全检查）
+  restoreSnapshot: async (data: RestoreSnapshotRequest): Promise<RestoreSnapshotResponse> => {
+    const res = await api.post<RestoreSnapshotResponse>("/snapshots/restore", data);
+    return res.data;
+  },
+
+  // 预览快照恢复操作
+  previewRestore: async (data: RestorePreviewRequest): Promise<RestorePreviewResponse> => {
+    const res = await api.post<RestorePreviewResponse>("/snapshots/restore/preview", data);
+    return res.data;
+  },
+
+  // 创建全局快照（向后兼容）
+  createGlobalSnapshot: async (): Promise<CreateSnapshotResponse> => {
+    return snapshotApi.createSnapshot();
   },
 
   // 获取备份仓库使用情况
@@ -61,4 +118,14 @@ export const snapshotApi = {
 };
 
 // Export types for use in other modules
-export type { Snapshot, CreateSnapshotResponse, ListSnapshotsResponse, BackupRepositoryUsage };
+export type { 
+  Snapshot, 
+  CreateSnapshotResponse, 
+  ListSnapshotsResponse, 
+  RestoreSnapshotRequest,
+  RestoreSnapshotResponse,
+  RestorePreviewRequest,
+  RestorePreviewAction,
+  RestorePreviewResponse,
+  BackupRepositoryUsage 
+};
