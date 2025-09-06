@@ -24,10 +24,12 @@ class ServerInfo(BaseModel):
     cpuLoad15Min: float
     ramUsedGB: float
     ramTotalGB: float
+
+
+class DiskUsageInfo(BaseModel):
     diskUsedGB: float
     diskTotalGB: float
-    backupUsedGB: float
-    backupTotalGB: float
+    diskAvailableGB: float
 
 
 class CpuPercent(BaseModel):
@@ -41,13 +43,9 @@ async def get_server_info():
     (
         cpu_load,
         memory_info,
-        server_disk_info,
-        backup_disk_info,
     ) = await asyncio.gather(
         get_cpu_load(),
         get_memory_info(),
-        get_disk_info(settings.server_path),
-        get_disk_info(settings.backup_path),
     )
 
     return ServerInfo(
@@ -56,10 +54,20 @@ async def get_server_info():
         cpuLoad15Min=cpu_load.fifteen_minutes,
         ramUsedGB=memory_info.used / 1024**3,
         ramTotalGB=memory_info.total / 1024**3,
-        diskUsedGB=server_disk_info.used / 1024**3,
-        diskTotalGB=server_disk_info.total / 1024**3,
-        backupUsedGB=backup_disk_info.used / 1024**3,
-        backupTotalGB=backup_disk_info.total / 1024**3,
+    )
+
+
+@router.get(
+    "/disk-usage", dependencies=[Depends(get_current_user)], response_model=DiskUsageInfo
+)
+async def get_system_disk_usage():
+    """Get system disk usage information for server path"""
+    disk_info = await get_disk_info(settings.server_path)
+    
+    return DiskUsageInfo(
+        diskUsedGB=disk_info.used / 1024**3,
+        diskTotalGB=disk_info.total / 1024**3,
+        diskAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
     )
 
 

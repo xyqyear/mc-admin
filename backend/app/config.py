@@ -47,8 +47,6 @@ class Settings(BaseSettings):
     restic: Optional[ResticSettings] = None
 
     server_path: Path
-    backup_path: Path
-
     logs_dir: Path = Field(default=Path("logs"))
 
     @classmethod

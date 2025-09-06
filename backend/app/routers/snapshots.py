@@ -11,6 +11,7 @@ from ..dependencies import get_current_user
 from ..logger import logger
 from ..minecraft import DockerMCManager
 from ..models import UserPublic
+from ..system.resources import get_disk_info
 from ..snapshots import (
     ResticManager,
     ResticRestorePreviewAction,
@@ -246,6 +247,41 @@ async def restore_global_snapshot(
     except Exception as e:
         error_msg = f"Failed to restore snapshot: {str(e)}"
         logger.error(f"Restore error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=error_msg
+        )
+
+
+# Backup repository disk usage models
+class BackupRepositoryUsage(BaseModel):
+    backupUsedGB: float
+    backupTotalGB: float
+    backupAvailableGB: float
+
+
+@router.get("/repository-usage", response_model=BackupRepositoryUsage)
+async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user)):
+    """Get backup repository disk usage information"""
+    if not settings.restic or not settings.restic.repository_path:
+        error_msg = "Restic is not configured. Please add restic settings to config.toml"
+        logger.error(f"Repository usage query failed: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg,
+        )
+    
+    try:
+        repository_path = Path(settings.restic.repository_path)
+        disk_info = await get_disk_info(repository_path)
+        
+        return BackupRepositoryUsage(
+            backupUsedGB=disk_info.used / 1024**3,
+            backupTotalGB=disk_info.total / 1024**3,
+            backupAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
+        )
+    except Exception as e:
+        error_msg = f"Failed to get repository usage: {str(e)}"
+        logger.error(f"Repository usage error: {error_msg}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=error_msg
         )
