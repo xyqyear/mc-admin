@@ -16,6 +16,7 @@ import { useParams } from 'react-router-dom'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
+import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useToken } from '@/stores/useTokenStore'
 import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket'
 import { log } from '@/utils/devLogger'
@@ -224,7 +225,12 @@ const ServerConsole: React.FC = () => {
       {/* 服务器状态警告 */}
       {status && status !== 'HEALTHY' && (
         <Alert
-          message={`服务器状态: ${status}`}
+          message={
+            <div className="flex items-center space-x-2">
+              <span>服务器状态:</span>
+              <ServerStateTag state={status} />
+            </div>
+          }
           description="只有服务器处于健康状态时才能发送命令"
           type="warning"
           showIcon
