@@ -2,21 +2,22 @@
 
 ## Project Overview
 
-MC Admin is a comprehensive web-based platform for managing Minecraft servers using Docker containers. The project consists of two main components working together to provide a complete server management solution.
+MC Admin is a comprehensive web-based platform for managing Minecraft servers using Docker containers. The project consists of two main components working together to provide a complete server management solution with enterprise-grade backup and recovery capabilities.
 
 **Components:**
-1. **Backend API** (FastAPI + Python 3.12+) - RESTful API with integrated Minecraft management, JWT authentication, and WebSocket support
-2. **Frontend Web UI** (React 18 + TypeScript + Ant Design 5) - Modern SPA with real-time updates and Monaco editor integration
+1. **Backend API** (FastAPI + Python 3.12+) - RESTful API with integrated Minecraft management, JWT authentication, WebSocket support, and Restic-based snapshot system
+2. **Frontend Web UI** (React 18 + TypeScript + Ant Design 5) - Modern SPA with real-time updates, Monaco editor integration, and comprehensive backup management
 
 **Key Features:**
 - Complete Minecraft server lifecycle management (create, start, stop, monitor, delete)
+- **Enterprise Snapshot System** - Full backup and restoration using Restic with global and server-specific snapshots
 - Real-time system and server resource monitoring (CPU, memory, disk, network via cgroup v2)
 - Docker Compose configuration management with Monaco editor and schema validation
 - JWT-based authentication with role-based access control (ADMIN/OWNER) + Master token system
 - Dual authentication: WebSocket login code flow + traditional password authentication
 - Real-time console streaming and RCON command execution via WebSocket
 - Comprehensive resource monitoring with cgroup v2 integration
-- Sophisticated data fetching with React Query and intelligent caching strategies
+- Sophisticated data fetching with React Query three-layer architecture and intelligent caching strategies
 - **Separated disk usage API**: Disk space information available regardless of server status
 - **Operation audit system**: Non-invasive middleware-based audit logging for all state-changing operations
 
@@ -26,6 +27,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Database**: SQLite with async support (SQLAlchemy 2.0 + aiosqlite)
 - **Authentication**: JWT tokens with OAuth2 password flow + WebSocket rotating login codes + Master token fallback
 - **Container Management**: Integrated Docker Compose management (not external dependency)
+- **Backup System**: Restic-based snapshot management with configurable repositories
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
@@ -34,6 +36,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
+                                                ↔ Restic Backup System ↔ Backup Repository
 
 ## Technology Stack Summary
 
@@ -44,6 +47,7 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Validation**: Pydantic v2 + pydantic-settings with TOML support
 - **System Monitoring**: psutil + direct cgroup v2 filesystem monitoring
 - **Container Integration**: **Integrated** Minecraft Docker management module (app.minecraft)
+- **Backup System**: **Integrated** Restic snapshot management (app.snapshots)
 - **WebSocket Support**: FastAPI WebSocket + Watchdog file monitoring for console streaming
 - **Package Management**: Poetry
 - **Development**: pytest + black + pytest-asyncio for comprehensive async testing
@@ -66,6 +70,7 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Python**: 3.12+ (backend)
 - **Node.js**: 18+ (frontend)
 - **Docker**: Engine + Compose (for Minecraft server management)
+- **Restic**: Backup tool (automatically managed by backend)
 - **Poetry**: Python package management
 - **pnpm**: Node.js package management (preferred over npm)
 
@@ -73,7 +78,22 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 ```
 mc-admin/
 ├── backend/          # FastAPI backend with integrated Minecraft management
+│   ├── app/
+│   │   ├── snapshots/    # Restic backup integration
+│   │   ├── minecraft/    # Docker container lifecycle
+│   │   └── routers/
+│   │       └── snapshots.py # Global snapshot management
+│   │       └── servers/
+│   │           └── snapshots.py # Server-specific snapshots
 ├── frontend-react/   # React frontend application
+│   ├── src/
+│   │   ├── hooks/
+│   │   │   ├── queries/
+│   │   │   │   ├── base/    # Resource-focused query hooks
+│   │   │   │   └── page/    # Composed page-level queries
+│   │   │   └── mutations/   # Organized mutation hooks
+│   │   └── pages/
+│   │       └── Snapshots.tsx # Global snapshot management
 └── CLAUDE.md        # This project overview file
 ```
 
@@ -85,26 +105,45 @@ Each component has dedicated development instructions:
 
 ### Backend Patterns (Actual Implementation)
 - **Integrated Minecraft Management**: Full Docker container lifecycle in `app.minecraft` module
+- **Restic Snapshot Integration**: Complete backup system in `app.snapshots` with ResticManager class
 - **SQLAlchemy 2.0 Async**: All database operations with async/await patterns
 - **Dual Authentication**: JWT tokens + WebSocket rotating codes + Master token fallback
 - **Real-time Console**: WebSocket streaming with file system watchers (Watchdog)
 - **cgroup v2 Monitoring**: Direct filesystem monitoring for accurate container metrics
-- **TOML Configuration**: Nested settings with environment variable override support
-- **Comprehensive Testing**: pytest with asyncio support and real Docker integration
+- **TOML Configuration**: Nested settings with environment variable override support including ResticSettings
+- **Comprehensive Testing**: pytest with asyncio support and real Docker integration, separated unit and integration tests
 - **Separated API Design**: Disk usage info separated from I/O statistics for better reliability
 - **Operation Audit**: Non-invasive middleware that automatically logs state-changing operations with user context, request details, and sensitive data masking
 
 ### Frontend Patterns (Actual Implementation)
 - **Three-Layer Data Architecture**: 
-  1. Raw API layer (`hooks/api/serverApi.ts`)
-  2. React Query hooks (`hooks/queries/`)
-  3. Composed page queries (`useServerDetailQueries`, `useServerPageQueries`)
+  1. Raw API layer (`hooks/api/` - authApi.ts, snapshotApi.ts, etc.)
+  2. Base Query layer (`hooks/queries/base/` - resource-focused hooks)
+  3. Page Query layer (`hooks/queries/page/` - composed page-specific queries)
+- **Organized Mutations**: Dedicated mutations directory with focused hook files (useAuthMutations, useSnapshotMutations, useFileMutations)
 - **Zustand State Management**: Token, sidebar, and login preference stores with persistence
 - **Monaco Editor Integration**: Multi-worker setup with YAML schema validation
-- **Intelligent Caching**: Different refetch intervals based on data volatility
+- **Intelligent Caching**: Different refetch intervals based on data volatility (snapshots: 2min, servers: varied)
 - **Dual Authentication UI**: WebSocket code login + traditional password login
 - **Real-time Updates**: WebSocket integration for console and live data
 - **Error Boundaries**: Graceful error handling with fallback components
+- **Absolute Import System**: Consistent use of @/ alias for all imports
+
+## Snapshot Management System
+
+### Backend Snapshot Architecture
+- **ResticManager Class**: Core backup operations using subprocess integration
+- **Dual API Structure**: 
+  - Global snapshots (`/api/snapshots/`) - System-wide backup management
+  - Server snapshots (`/api/servers/{id}/snapshots/`) - Individual server backups
+- **Pydantic Models**: `ResticSnapshot`, `ResticSnapshotSummary`, `ResticSnapshotWithSummary`
+- **Configuration**: ResticSettings with repository path and password management
+
+### Frontend Snapshot Features
+- **Snapshot Management Page**: Dedicated UI for viewing, creating, and managing backups
+- **Integration**: Seamless navigation from server overview to snapshot management
+- **Real-time Updates**: Automatic refresh of snapshot lists and status
+- **Error Handling**: Comprehensive error feedback for backup operations
 
 ## Testing Strategy & Guidelines
 
@@ -116,11 +155,14 @@ Each component has dedicated development instructions:
 - `test_rcon_filtering.py` - Utility function testing
 - `test_file_operations.py` - Mocked API endpoint testing
 - `test_websocket_console.py` - WebSocket protocol testing with mocks
+- `test_snapshots_basic.py` - Snapshot model and basic functionality testing
+- `test_snapshots_endpoints.py` - Snapshot API endpoint testing with mocks
 
-**Container Tests (Slow, Docker Required):**
+**Container/Integration Tests (Slow, Docker Required):**
 - `test_monitoring.py` - Real container monitoring (functions end with `_with_docker`)
 - `test_integration.py` - Full workflow testing (`test_integration_with_docker`)
 - `test_instance.py` - Container lifecycle testing (`*_with_docker` functions)
+- `test_snapshots_integrated.py` - Real Restic integration tests with containers
 
 ### Development Testing Guidelines
 
@@ -128,40 +170,29 @@ Each component has dedicated development instructions:
 
 ```bash
 # ✅ Safe for development - Run these frequently
-poetry run pytest tests/test_compose.py -v
-poetry run pytest tests/test_compose_file.py -v
-poetry run pytest tests/test_rcon_filtering.py -v
-poetry run pytest tests/test_file_operations.py -v
-poetry run pytest tests/test_websocket_console.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
 
 # ✅ Safe unit tests from test_instance.py (don't bring up containers)
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
-poetry run pytest tests/test_instance.py::test_minecraft_instance -v
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
 
 # ❌ AVOID during development - These bring up Docker containers
 # poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
-# poetry run pytest tests/test_instance.py::test_get_disk_space_info_with_docker
+# poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
 
 # ✅ Skip container tests during development
 poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
 
-# ✅ Test only specific changes (example for disk usage changes)
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+# ✅ Test only specific changes (example for snapshot changes)
+poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
 ```
 
-**Docker Test Functions (Renamed with `_with_docker` suffix):**
-- All functions in `test_monitoring.py` now end with `_with_docker`
+**Docker Test Functions:**
+- All functions in `test_monitoring.py` end with `_with_docker`
 - `test_server_status_lifecycle_with_docker` in `test_instance.py`
 - `test_get_disk_space_info_with_docker` in `test_instance.py`
 - `test_integration_with_docker` in `test_integration.py`
-
-**Testing Recommendations:**
-1. **During Active Development**: Only run safe tests and specific unit tests related to your changes
-2. **Pre-commit**: Run container tests with longer timeout (`--timeout=600`)
-3. **CI/CD**: Run full test suite with proper Docker cleanup
-4. **Never run `pytest tests/` without filters** - will timeout due to container tests
 
 ## External Documentation
 
@@ -178,21 +209,22 @@ poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
 - Zustand: `/pmndrs/zustand`
 - Monaco Editor: `/microsoft/monaco-editor`
 - Vite: `/vitejs/vite`
+- Restic: `/restic/restic` (backup tool documentation)
 
 Use the resolve-library-id tool first, then get-library-docs with specific topics.
 
 ## Current Architecture Integration
 
 - **No External Docker Library**: Minecraft management is fully integrated in `backend/app/minecraft/`
+- **Integrated Backup System**: Restic snapshot management built into `backend/app/snapshots/`
 - **Frontend API Configuration**: Configurable base URL via `VITE_API_BASE_URL` (default: http://localhost:5678/api)
 - **WebSocket Auto-Derivation**: WS endpoints automatically derived from HTTP base URL
 - **CORS Configuration**: Backend configured for localhost:3000 development
 - **Consistent Async Patterns**: Full async/await throughout both components
 - **Separated API Endpoints**: Disk usage information separated from I/O statistics for better reliability
+- **Three-Layer Frontend Architecture**: Complete separation between API, base queries, and page compositions
 
-## Recent Updates
-
-### Operation Audit System
+## Operation Audit System
 
 **Comprehensive Non-Invasive Logging:**
 - **Middleware Architecture**: FastAPI `BaseHTTPMiddleware` automatically intercepts all state-changing operations
@@ -203,6 +235,7 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 
 **Audit Coverage:**
 - Server management operations (`/api/servers/{id}/operations`, `/api/servers/{id}/compose`, `/api/servers/{id}/rcon`)
+- Snapshot operations (`/api/snapshots/*`, `/api/servers/{id}/snapshots/*`)
 - User administration (`/api/admin/*`, `/api/auth/register`)
 - All POST/PUT/PATCH/DELETE operations that modify system state
 - Automatic exclusion of query operations (GET requests) to reduce log noise
@@ -220,20 +253,6 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 }
 ```
 
-**Database Migration Strategy:**
-The audit system is designed with future database migration in mind:
-- JSON log format maps directly to relational database tables
-- Structured fields suitable for indexing and querying
-- Batch import capability for existing log files
-- Configurable storage backend (currently file-based, easily extensible to database)
-
-### API Improvements
-- **Separated Disk Usage API**: Created dedicated `/servers/{id}/disk-usage` endpoint
-- **Improved I/O Statistics**: `/servers/{id}/iostats` now focuses on I/O performance metrics only
-- **Enhanced Reliability**: Disk space information now available regardless of server status
-- **Frontend Integration**: Updated React Query hooks to use new disk usage endpoint
-- **Operation Audit Middleware**: Added comprehensive audit logging system integrated into FastAPI middleware pipeline
-
 ## Maintenance Instructions
 
 **CRITICAL FOR FUTURE CLAUDE SESSIONS:**
@@ -246,8 +265,8 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 4. **Document new development commands**, environment variables, or build processes
 5. **Update architecture descriptions** for new services, APIs, or integration patterns
 6. **Include dependency version updates** in pyproject.toml or package.json changes
-7. **Update test categorization** when adding new tests (safe vs Docker-requiring)
-8. **Rename test functions** with `_with_docker` suffix if they bring up containers
+7. **Update test categorization** when adding new tests (safe vs Docker-requiring vs integration)
+8. **Document new features** like snapshot management, authentication changes, or UI restructuring
 
 **IMPORTANT EDITING GUIDELINES:**
 
@@ -264,16 +283,16 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 4. **Ensure consistency** between all three CLAUDE.md files (main, backend, frontend) regarding shared concepts
 5. **Reflect actual codebase state** - documentation should describe what IS, not what WAS or what changed
 
-This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
-
 **Examples of changes requiring updates:**
-- New FastAPI routers or endpoints
-- New React hooks or state management patterns
+- New FastAPI routers or endpoints (like snapshot management)
+- New React hooks or state management patterns (like query restructuring)
 - Database schema changes or migrations
 - Authentication/authorization changes
 - New WebSocket endpoints or features
 - Build process or deployment changes
 - Container management improvements
-- Test structure changes
+- Test structure changes (like new snapshot testing)
+- Frontend architecture restructuring (like base/page query organization)
+- New major features (like backup/snapshot system)
 
 These CLAUDE.md files are automatically loaded into Claude's context - keep them accurate, concise, and focused on development-relevant information that reflects the actual codebase implementation.

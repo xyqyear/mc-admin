@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, and **fully integrated** Minecraft Docker management capabilities (not an external library).
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, **fully integrated** Minecraft Docker management capabilities (not an external library), and enterprise-grade **Restic backup system** with snapshot management.
 
 ## Tech Stack
 
@@ -29,6 +29,13 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Console Streaming**: WebSocket-based real-time log streaming with Watchdog file monitoring
 - **Testing**: pytest-asyncio v0.24.0 + pytest-cov v5.0.0 for comprehensive async testing with real Docker containers
 
+### Integrated Backup System Stack
+- **Backup Tool**: Restic integration via subprocess calls for snapshot management
+- **Repository Management**: Configurable backup repositories with password protection
+- **Snapshot Models**: Pydantic models for ResticSnapshot, ResticSnapshotSummary, ResticSnapshotWithSummary
+- **Async Operations**: Full async/await support for backup operations
+- **Dual API Structure**: Global and server-specific snapshot management endpoints
+
 ## Development Commands
 
 ### Environment Setup
@@ -49,7 +56,6 @@ App reads settings from TOML file with environment variable overrides.
 database_url = "sqlite+aiosqlite:///./db.sqlite3"
 master_token = "your-master-token-here"
 server_path = "/path/to/minecraft/servers"
-backup_path = "/path/to/backups"
 logs_dir = "./logs"  # Optional, defaults to ./logs
 
 [jwt]
@@ -63,6 +69,10 @@ log_file = "operations.log"       # Audit log filename in logs_dir
 log_request_body = true           # Include request body in logs
 max_body_size = 10240            # Max request body size to log (bytes)
 sensitive_fields = ["password", "token", "secret", "key"]  # Fields to mask in logs
+
+[restic]
+repository_path = "/path/to/backup/repository"
+password = "your-restic-password"
 ```
 
 ### Database Migrations (Alembic)
@@ -124,36 +134,32 @@ During development iteration, **NEVER run Docker container tests** to avoid time
 
 ```bash
 # ✅ Safe for frequent development iteration
-poetry run pytest tests/test_compose.py -v
-poetry run pytest tests/test_compose_file.py -v
-poetry run pytest tests/test_rcon_filtering.py -v
-poetry run pytest tests/test_file_operations.py -v
-poetry run pytest tests/test_websocket_console.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
 
 # ✅ Safe unit tests (don't bring up containers)
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
-poetry run pytest tests/test_instance.py::test_minecraft_instance -v
+poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
 
 # ✅ Skip all Docker container tests during development
-poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
+poetry run pytest tests/ -v -k "not _with_docker and not test_integration and not integrated"
 
 # ✅ Test only changes related to specific functionality (example)
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
 
 # ❌ AVOID - These bring up Docker containers and will timeout/slow development
 # poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
-# poetry run pytest tests/test_instance.py::test_get_disk_space_info_with_docker
+# poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
 
 # ❌ NEVER run all tests during development
 # poetry run pytest tests/ -v  # Will timeout due to container tests
 ```
 
-**Docker Container Tests (Renamed with `_with_docker` suffix):**
+**Docker Container Tests:**
 - `test_monitoring.py`: All 8 functions now end with `_with_docker`
 - `test_integration.py`: `test_integration_with_docker` 
 - `test_instance.py`: `test_server_status_lifecycle_with_docker`, `test_get_disk_space_info_with_docker`
+- `test_snapshots_integrated.py`: All tests require real Restic operations with containers
 
 **Code Quality:**
 ```bash
@@ -194,18 +200,23 @@ app/                        # Main application package
 │   ├── user.py             # User profile endpoints
 │   ├── admin.py            # User administration endpoints (OWNER role required)
 │   ├── system.py           # System metrics endpoints (psutil integration)
+│   ├── snapshots.py        # **NEW** - Global snapshot management endpoints
 │   └── servers/
 │       ├── __init__.py
 │       ├── misc.py         # Minecraft server management endpoints (FULL CRUD + operations)
 │       ├── console.py      # Real-time console WebSocket endpoints
 │       ├── rcon.py         # RCON command execution endpoints
-│       └── files.py        # File management endpoints
+│       ├── files.py        # File management endpoints
+│       └── snapshots.py    # **NEW** - Server-specific snapshot endpoints
 ├── websocket/
 │   ├── __init__.py         # WebSocket module exports
 │   └── console.py          # Real-time console streaming with Watchdog file monitoring
 ├── system/
 │   ├── __init__.py
 │   └── resources.py        # psutil wrappers for system resource information
+├── snapshots/              # **NEW** - Integrated Restic backup system module
+│   ├── __init__.py         # Public API exports (ResticManager, models)
+│   └── restic.py           # ResticManager class, Pydantic models, subprocess integration
 └── minecraft/              # **FULLY INTEGRATED** Minecraft Docker Management Module
     ├── __init__.py         # Public API exports (DockerMCManager, MCInstance, etc.)
     ├── manager.py          # DockerMCManager main class for multi-server management
@@ -226,9 +237,12 @@ tests/                      # Test suite (separate from app package)
 ├── test_rcon_filtering.py  # ✅ SAFE - RCON utility function tests
 ├── test_file_operations.py # ✅ SAFE - Mocked API endpoint tests
 ├── test_websocket_console.py # ✅ SAFE - WebSocket protocol tests with mocks
+├── test_snapshots_basic.py # ✅ SAFE - Snapshot model and basic functionality tests
+├── test_snapshots_endpoints.py # ✅ SAFE - Snapshot API endpoint tests with mocks
 ├── test_instance.py        # ⚠️ MIXED - Some safe unit tests, some _with_docker container tests
 ├── test_monitoring.py      # ❌ DOCKER - All functions end with _with_docker  
 ├── test_integration.py     # ❌ DOCKER - test_integration_with_docker
+├── test_snapshots_integrated.py # ❌ DOCKER - Real Restic integration tests with containers
 └── fixtures/               # Test utilities and fixtures
     ├── __init__.py
     ├── test_utils.py       # Test helper functions and cleanup utilities
@@ -261,40 +275,67 @@ tests/                      # Test suite (separate from app package)
 - `GET /servers/{id}/status` - Get current server status (REMOVED/EXISTS/CREATED/RUNNING/STARTING/HEALTHY)
 - `GET /servers/{id}/resources` - Get system resources (CPU, memory via cgroup v2) for running servers
 - `GET /servers/{id}/players` - Get online players for healthy servers
-- `GET /servers/{id}/iostats` - **NEW: I/O statistics only** (disk I/O, network I/O - no disk space)
-- `GET /servers/{id}/disk-usage` - **NEW: Disk usage only** (disk space info, always available)
+- `GET /servers/{id}/iostats` - I/O statistics only (disk I/O, network I/O - no disk space)
+- `GET /servers/{id}/disk-usage` - Disk usage only (disk space info, always available)
 - `GET /servers/{id}/compose` - Get current Docker Compose configuration as YAML
 - `POST /servers/{id}/compose` - Update Docker Compose configuration from YAML
 - `POST /servers/{id}/operations` - Perform server operations (start, stop, restart, up, down, remove)
 - `POST /servers/{id}/rcon` - Send RCON commands to running servers
 - `WebSocket /servers/{id}/console` - **Real-time console log streaming + command execution**
+- `GET /servers/{id}/snapshots/` - **NEW** - List server-specific snapshots
+- `POST /servers/{id}/snapshots/` - **NEW** - Create server-specific snapshot
 
-### Recent API Improvements
+**Global Snapshot Routes (`/api/snapshots/`)**:
+- `GET /snapshots/` - **NEW** - List all global snapshots
+- `POST /snapshots/` - **NEW** - Create global snapshot
+- `GET /snapshots/{snapshot_id}` - **NEW** - Get specific snapshot details
 
-**Separated Disk Usage API (Latest Update):**
-- **Problem**: Disk space information was bundled with I/O statistics, causing it to be unavailable when servers weren't running
-- **Solution**: Split into two focused endpoints:
-  - `/servers/{id}/iostats` - I/O performance metrics (disk I/O, network I/O) - requires running server
-  - `/servers/{id}/disk-usage` - Disk space information (used, total, available) - always available
-- **Benefits**: 
-  - Disk space info now available regardless of server status
-  - Cleaner API separation of concerns
-  - Better frontend reliability for disk usage displays
+### Snapshot Management System
 
-**Pydantic Models:**
+**ResticManager Class** (`app.snapshots.ResticManager`):
+- Core backup operations using subprocess integration with Restic
+- Handles repository initialization and password management
+- Provides async methods for snapshot creation and listing
+- Manages snapshot metadata and filtering operations
+
+**Pydantic Models** (`app.snapshots`):
 ```python
-# Separated models for better API design
-class ServerIOStats(BaseModel):
-    diskReadBytes: int
-    diskWriteBytes: int
-    networkReceiveBytes: int
-    networkSendBytes: int
-
-class ServerDiskUsage(BaseModel):
-    diskUsageBytes: int
-    diskTotalBytes: int
-    diskAvailableBytes: int
+class ResticSnapshot(BaseModel):
+    """Basic snapshot information from Restic"""
+    short_id: str
+    id: str
+    time: datetime
+    tree: str
+    paths: List[str]
+    hostname: str
+    username: str
+    
+class ResticSnapshotSummary(BaseModel):
+    """Summary statistics for a snapshot"""
+    files_new: int
+    files_changed: int
+    files_unmodified: int
+    dirs_new: int
+    dirs_changed: int
+    dirs_unmodified: int
+    data_blobs: int
+    tree_blobs: int
+    data_added: int
+    total_files_processed: int
+    total_bytes_processed: int
+    total_duration: float
+    snapshot_id: str
+    
+class ResticSnapshotWithSummary(BaseModel):
+    """Complete snapshot with summary information"""
+    snapshot: ResticSnapshot
+    summary: ResticSnapshotSummary
 ```
+
+**Dual API Structure:**
+- **Global Snapshots**: System-wide snapshots covering all servers and configuration
+- **Server Snapshots**: Individual server backups for specific Minecraft instances
+- **Configuration**: ResticSettings with repository path and password management
 
 ### Authentication Patterns
 
@@ -378,7 +419,7 @@ REMOVED → EXISTS → CREATED → RUNNING → STARTING → HEALTHY
 - `get_cpu_percentage()`: CPU usage percentage (requires two calls over time interval)
 - `get_disk_io()`: Disk I/O read/write statistics from block devices
 - `get_network_io()`: Network I/O receive/transmit statistics from container interfaces (via /proc/{pid}/net/dev)
-- `get_disk_space_info()`: **Enhanced**: Complete disk space information (used, total, available) - **always available**
+- `get_disk_space_info()`: Complete disk space information (used, total, available) - **always available**
 
 **Monitoring Implementation:**
 - Uses **direct cgroup v2 filesystem access** for accurate container-level metrics
@@ -440,6 +481,7 @@ class AuditSettings(BaseModel):
 
 **Logged Operations:**
 - Server management: `/api/servers/{id}/operations`, `/api/servers/{id}/compose`, `/api/servers/{id}/rcon`
+- Snapshot operations: `/api/snapshots/*`, `/api/servers/{id}/snapshots/*`
 - User administration: All `/api/admin/*` endpoints, `/api/auth/register`
 - All POST/PUT/PATCH/DELETE operations that change system state
 - Automatic exclusion of query operations (GET requests)
@@ -450,20 +492,12 @@ class AuditSettings(BaseModel):
 - User authentication integration through existing `get_current_user` function
 - Client IP detection with proxy header support
 
-**Testing:**
-```bash
-# Test audit configuration and functionality
-python test_audit.py
-
-# Verify audit patterns and data masking
-poetry run pytest -xvs -k test_audit
-```
-
 ### Integration Patterns
 
 ```python
-# Import the integrated minecraft module
+# Import the integrated modules
 from app.minecraft import DockerMCManager, MCInstance, MCServerStatus
+from app.snapshots import ResticManager
 
 # Initialize manager with servers directory
 manager = DockerMCManager(settings.server_path)
@@ -475,7 +509,7 @@ servers = await manager.get_all_server_names()
 instance = manager.get_instance("my_server")
 status = await instance.get_status()
 
-# Enhanced disk space info (always available)
+# Disk space info (always available)
 disk_info = await instance.get_disk_space_info()  # Returns DiskSpaceInfo with used/total/available
 
 # Resource monitoring
@@ -488,6 +522,11 @@ network_io = await instance.get_network_io()  # Network I/O statistics
 
 # RCON command execution
 result = await instance.send_rcon_command("list")  # Returns command output
+
+# Snapshot management
+restic_manager = ResticManager(settings.restic)
+snapshots = await restic_manager.list_snapshots()
+snapshot_response = await restic_manager.create_snapshot(["/path/to/backup"])
 ```
 
 ### Testing Architecture
@@ -495,7 +534,8 @@ result = await instance.send_rcon_command("list")  # Returns command output
 **Test Categories:**
 1. **✅ Safe Unit Tests**: Fast tests for individual components (majority during development)
 2. **❌ Container Tests**: Full Docker workflow tests (avoid during development iteration)
-3. **⚠️ Mixed Tests**: Some safe, some container tests (test selectively)
+3. **❌ Integration Tests**: Real Restic integration tests (avoid during development iteration)
+4. **⚠️ Mixed Tests**: Some safe, some container tests (test selectively)
 
 **Safe Tests for Development:**
 - `test_compose.py` - Pure Pydantic model validation
@@ -503,26 +543,30 @@ result = await instance.send_rcon_command("list")  # Returns command output
 - `test_rcon_filtering.py` - Utility function testing
 - `test_file_operations.py` - Mocked API endpoint testing
 - `test_websocket_console.py` - WebSocket protocol with mocks
+- `test_snapshots_basic.py` - Snapshot model and basic functionality testing
+- `test_snapshots_endpoints.py` - Snapshot API endpoint testing with mocks
 - `test_instance.py::test_disk_space_info_dataclass` - Data model testing
 - `test_instance.py::test_minecraft_instance` - Configuration testing (no container startup)
 - `test_audit.py` - Operation audit middleware testing (configuration, masking, pattern matching)
 
-**Container Tests (Avoid During Development):**
+**Container/Integration Tests (Avoid During Development):**
 - `test_monitoring.py` - All functions ending with `_with_docker`
 - `test_integration.py::test_integration_with_docker` - Full workflow
 - `test_instance.py::test_server_status_lifecycle_with_docker` - Container lifecycle
 - `test_instance.py::test_get_disk_space_info_with_docker` - Disk space with container
+- `test_snapshots_integrated.py` - Real Restic operations with containers and filesystem
 
 **Running Tests:**
 ```bash
 # ✅ Development iteration - safe tests only
-poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
+poetry run pytest tests/ -v -k "not _with_docker and not test_integration and not integrated"
 
 # ✅ Test specific functionality related to changes
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass -v
+poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
 
 # ❌ Avoid during development (will timeout)
 # poetry run pytest tests/test_monitoring.py -v
+# poetry run pytest tests/test_snapshots_integrated.py -v
 
 # ✅ Pre-commit (with timeout)
 poetry run pytest tests/ -v --timeout=600
@@ -533,7 +577,8 @@ poetry run pytest tests/ -v --timeout=600
 ### Import Patterns
 - Use package-relative imports within `app/` (e.g., `from .db.database import get_db`)
 - Avoid relying on current working directory for paths
-- Import integrated minecraft module: `from app.minecraft import DockerMCManager, MCInstance`
+- Import integrated modules: `from app.minecraft import DockerMCManager, MCInstance`
+- Import snapshot system: `from app.snapshots import ResticManager`
 
 ### Configuration Management
 - Settings loaded via pydantic-settings with source priority:
@@ -541,6 +586,7 @@ poetry run pytest tests/ -v --timeout=600
 - Access via `from .config import settings`
 - Nest TOML keys exactly as modeled in `Settings` class
 - Support for Path objects and automatic type conversion
+- ResticSettings nested under `[restic]` section
 
 ### Logging
 - Pre-configured with rotation: `from .logger import logger`
@@ -554,6 +600,7 @@ poetry run pytest tests/ -v --timeout=600
 - Database constraint violations should raise HTTPException
 - WebSocket exceptions for WebSocket-specific error handling
 - Graceful degradation for optional monitoring features
+- Backup operations should handle Restic errors gracefully
 
 ### Async/Await Patterns
 - **Consistent Async**: All I/O operations use async/await
@@ -561,6 +608,7 @@ poetry run pytest tests/ -v --timeout=600
 - **Resource Cleanup**: Async context managers and proper cleanup
 - **File Operations**: aiofiles for all file I/O operations
 - **Database**: Async sessions throughout with proper session management
+- **Subprocess**: Async subprocess calls for Restic operations
 
 ## External Documentation
 
@@ -573,12 +621,14 @@ poetry run pytest tests/ -v --timeout=600
 - psutil: `/giampaolo/psutil`
 - joserfc: `/jose/joserfc`
 - pytest-asyncio: `/pytest-dev/pytest-asyncio`
+- Restic: `/restic/restic` (backup tool documentation)
 
 Always resolve library ID first, then fetch focused docs for the specific feature you're implementing.
 
 ## Integration Notes
 
 - **Fully Integrated**: Minecraft management is integrated in `app.minecraft`, NOT an external library
+- **Integrated Backup System**: Restic snapshot management built into `app.snapshots`, NOT an external library
 - **CORS**: Configured for `localhost` and `localhost:3000` origins with credentials support
 - **Root Path**: All routes mounted under `/api` prefix
 - **Database**: SQLite file location configurable via `database_url` setting
@@ -586,6 +636,7 @@ Always resolve library ID first, then fetch focused docs for the specific featur
 - **File Monitoring**: Watchdog for real-time log file monitoring
 - **Container Management**: Direct Docker CLI integration without Python SDK dependency
 - **Separated APIs**: Disk usage and I/O statistics split for better reliability and performance
+- **Backup Integration**: Restic subprocess integration with async/await patterns
 
 ## Update Instructions
 
@@ -601,10 +652,11 @@ When adding new features, dependencies, or changing the API:
 5. **New endpoints**: Update API documentation and authentication patterns
 6. **External libraries**: Add Context7 library IDs to this file
 7. **Minecraft module changes**: Update integration patterns and test coverage
-8. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
-9. **Test changes**: Mark Docker container tests with `_with_docker` suffix
-10. **API separations**: Document endpoint purpose and data separation rationale
-11. **Audit configuration**: Update audit patterns in `OperationAuditMiddleware` for new sensitive operations
+8. **Snapshot system changes**: Update ResticManager integration patterns and test coverage
+9. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
+10. **Test changes**: Mark Docker container tests with `_with_docker` suffix and integration tests with `integrated`
+11. **API separations**: Document endpoint purpose and data separation rationale
+12. **Audit configuration**: Update audit patterns in `OperationAuditMiddleware` for new sensitive operations
 
 **IMPORTANT EDITING GUIDELINES:**
 
@@ -623,4 +675,4 @@ When adding new features, dependencies, or changing the API:
 
 This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
 
-Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, operation audit system, testing guidelines, and development patterns.
+Keep this CLAUDE.md file updated to help future development sessions understand the current backend architecture, the **integrated** Minecraft management capabilities, **integrated** Restic backup system, operation audit system, testing guidelines, and development patterns.

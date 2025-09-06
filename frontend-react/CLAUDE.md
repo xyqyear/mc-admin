@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, and fully integrated Monaco editor with Docker Compose schema validation.
+Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, fully integrated Monaco editor with Docker Compose schema validation, and comprehensive backup management with snapshot integration.
 
 ## Tech Stack
 
@@ -64,80 +64,129 @@ src/
 ├── App.tsx                  # Routes (lazy-loaded), error boundaries, auth wrappers
 ├── yaml.worker.js           # Monaco Editor YAML language worker for Docker Compose
 ├── components/
-│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, LoadingSpinner
-│   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard  
-│   └── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
+│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, LoadingSpinner, PageHeader, ServerOperationConfirmModal
+│   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard, ServerStateIcon
+│   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
+│   ├── files/               # FileIcon
+│   └── modals/              # ServerOperationConfirmModal
 ├── hooks/
-│   ├── api/serverApi.ts     # Raw Axios-based API functions with type safety
-│   ├── queries/             # React Query hooks: useServerQueries, useServerDetailQueries, useServerPageQueries
-│   ├── mutations/           # React Query mutations: useServerMutations
-│   ├── useLoginApi.ts       # Traditional password-based authentication
-│   └── useCodeLoginApi.ts   # WebSocket code-based authentication
-├── pages/                   # Route components: Overview, Login, Home, Backups, server/[id]/* pages
-├── stores/                  # Zustand stores: useTokenStore, useSidebarStore, useLoginPreferenceStore
-├── types/                   # TypeScript definitions: Server, ServerInfo, ServerRuntime, MenuItem
-├── utils/                   # api.ts (axios config + query keys), serverUtils.ts, devLogger.ts
+│   ├── api/                 # Raw Axios-based API functions with type safety
+│   │   ├── authApi.ts       # Authentication API functions
+│   │   ├── snapshotApi.ts   # Snapshot management API functions  
+│   │   ├── systemApi.ts     # System information API functions
+│   │   ├── fileApi.ts       # File operations API functions
+│   │   ├── serverApi.ts     # Server management API functions
+│   │   └── userApi.ts       # User management API functions
+│   ├── queries/
+│   │   ├── base/            # Resource-focused query hooks
+│   │   │   ├── useServerQueries.ts    # Core server data fetching
+│   │   │   ├── useFileQueries.ts      # File operations queries
+│   │   │   ├── useSnapshotQueries.ts  # Snapshot data queries
+│   │   │   ├── useSystemQueries.ts    # System-wide queries
+│   │   │   └── useUserQueries.ts      # User management queries
+│   │   └── page/            # Composed page-level queries
+│   │       ├── useServerDetailQueries.ts # Server detail page compositions
+│   │       └── useOverviewData.ts        # Dashboard/overview compositions
+│   ├── mutations/           # Organized mutation hooks
+│   │   ├── useAuthMutations.ts      # Authentication operations
+│   │   ├── useFileMutations.ts      # File operation mutations
+│   │   ├── useServerMutations.ts    # Server management mutations
+│   │   ├── useSnapshotMutations.ts  # Snapshot management mutations
+│   │   └── useUserMutations.ts      # User administration mutations
+│   ├── useCodeLoginWebsocket.ts     # WebSocket code-based authentication
+│   └── useServerConsoleWebSocket.ts # Real-time server console integration
+├── pages/                   # Route components with new snapshot management
+│   ├── Overview.tsx         # Server dashboard with metrics cards
+│   ├── Login.tsx            # Dual authentication interface
+│   ├── Home.tsx             # Landing/redirect page
+│   ├── Snapshots.tsx        # **NEW** - Global snapshot management page
+│   ├── admin/
+│   │   └── UserManagement.tsx
+│   └── server/
+│       ├── new.tsx          # Server creation
+│       └── servers/         # **UPDATED** - Reorganized server pages
+│           ├── index.tsx    # Server detail hub (formerly server/[id]/index.tsx)
+│           ├── files.tsx    # File management (formerly server/[id]/files.tsx)
+│           ├── compose.tsx  # Docker Compose configuration (formerly server/[id]/compose.tsx)
+│           └── console.tsx  # Real-time console (formerly server/[id]/console.tsx)
+├── stores/                  # Zustand stores with persistence
+│   ├── useTokenStore.ts           # JWT token management
+│   ├── useSidebarStore.ts         # Navigation state
+│   └── useLoginPreferenceStore.ts # Authentication method preference
+├── types/                   # TypeScript definitions
+│   ├── Server.ts            # Core server types and status definitions
+│   ├── ServerInfo.ts        # Server configuration and metadata
+│   ├── ServerRuntime.ts     # Runtime metrics and resource data
+│   ├── MenuItem.ts          # Navigation menu item definitions
+│   └── User.ts              # User management and authentication types
+├── utils/                   # Core utilities
+│   ├── api.ts               # Axios configuration, query keys, request/response interceptors
+│   ├── serverUtils.ts       # Server state and utility functions
+│   ├── devLogger.ts         # Development logging utilities
+│   └── fileLanguageDetector.ts # File type detection for editors
+├── config/
+│   └── fileEditingConfig.ts # File editing configuration and validation
 ├── data/mockData.ts         # Comprehensive development/testing data
 └── index.css                # Tailwind directives and base styles
 ```
 
-### Three-Layer Data Architecture (Actual Implementation)
+### Three-Layer Data Architecture (Enhanced Implementation)
 
-**Layer 1: API Layer** (`hooks/api/serverApi.ts`):
-- Raw Axios functions with full type safety (e.g., `serverApi.getServerInfo`, `systemApi.getSystemInfo`)
+**Layer 1: API Layer** (`hooks/api/`):
+Raw Axios functions with full type safety, organized by domain:
+- **`authApi.ts`**: Authentication operations (login, registration, token verification)
+- **`snapshotApi.ts`**: Backup and snapshot management (create, list, restore snapshots)
+- **`systemApi.ts`**: System information and resource monitoring
+- **`serverApi.ts`**: Server management, configuration, and runtime data
+- **`fileApi.ts`**: File operations (read, write, upload, delete)
+- **`userApi.ts`**: User administration and profile management
+
+Each API file provides:
 - HTTP client configuration with request/response interceptors
 - Automatic JWT token injection and 401 handling
 - Type-safe request/response interfaces for all endpoints
-- **Recent Update**: Separated disk usage and I/O statistics APIs
 
-**Layer 2: Query Hooks** (`hooks/queries/`):
-- **`useServerQueries.ts`**: Base React Query hooks with intelligent caching strategies  
-- Different stale times and refetch intervals based on data volatility:
-  - Server configs: 5min stale time (rarely change)
-  - Server status: 10s refetch interval (frequent updates needed)
-  - Server runtime: 3-5s refetch interval (real-time monitoring)
-  - **Disk usage**: 30s refetch interval (always available, independent of server status)
-  - Players/resources: Conditional queries (only when server is healthy/running)
-- Smart error retry logic with 4xx differentiation (don't retry auth errors)
+**Layer 2: Base Query Layer** (`hooks/queries/base/`):
+Resource-focused React Query hooks with intelligent caching strategies:
+- **`useServerQueries.ts`**: Server data fetching with different stale times and refetch intervals
+- **`useFileQueries.ts`**: File operations queries with conditional loading
+- **`useSnapshotQueries.ts`**: Snapshot data with 2-minute stale time for backup operations
+- **`useSystemQueries.ts`**: System resource monitoring queries
+- **`useUserQueries.ts`**: User management and authentication queries
 
-**Layer 3: Composed Query Hooks** (`useServerDetailQueries.ts`, `useServerPageQueries.ts`):
-- **`useServerDetailData()`**: Combines server info, status, runtime, and resources for detail pages
-- **`useOverviewData()`**: Combines server list with system info for overview dashboard
-- **`useServerPageQueries()`**: Page-specific query compositions with dependency management
-- Intelligent dependency chains (e.g., runtime queries only enabled when status is available)
+Caching strategy by data type:
+- Server configs: 5min stale time (rarely change)
+- Server status: 10s refetch interval (frequent updates needed)
+- Server runtime: 3-5s refetch interval (real-time monitoring)
+- Snapshot data: 2min stale time (manual refresh pattern)
+- Disk usage: 30s refetch interval (always available)
+- Players/resources: Conditional queries (only when server is healthy/running)
+
+**Layer 3: Page Query Layer** (`hooks/queries/page/`):
+Composed page-level queries combining multiple base queries:
+- **`useServerDetailQueries.ts`**: Server detail page data composition
+- **`useOverviewData.ts`**: Dashboard overview with server list and system metrics
+
+Features:
+- Intelligent dependency chains (runtime queries only enabled when status is available)
 - Centralized loading states and error handling for complex pages
+- Optimized data fetching patterns for specific page requirements
 
-### API Integration Updates
+### Mutation Architecture (`hooks/mutations/`)
 
-**Separated Disk Usage API (Latest Changes):**
-- **Problem**: Disk space was bundled with I/O stats, unavailable when servers weren't running
-- **Solution**: Two focused API functions and query hooks:
-  ```typescript
-  // API Layer
-  getServerIOStats(id: string): Promise<ServerIOStatsResponse>     // I/O performance only
-  getServerDiskUsage(id: string): Promise<ServerDiskUsageResponse> // Disk space only
-  
-  // Query Layer
-  useServerIOStats(id, status)    // Conditional on server running
-  useServerDiskUsage(id)          // Always available, 30s refetch
-  ```
-- **Benefits**: Disk usage now displays reliably regardless of server status
+Organized mutation hooks separated by domain for better maintainability:
 
-**Type Definitions:**
-```typescript
-interface ServerIOStatsResponse {
-  diskReadBytes: number;
-  diskWriteBytes: number;
-  networkReceiveBytes: number;
-  networkSendBytes: number;
-}
+- **`useAuthMutations.ts`**: User authentication, registration, and login operations
+- **`useFileMutations.ts`**: File operations (create, update, delete, upload, rename)
+- **`useServerMutations.ts`**: Server lifecycle management (start, stop, restart, configuration updates)
+- **`useSnapshotMutations.ts`**: Backup creation and management operations
+- **`useUserMutations.ts`**: User administration and profile updates
 
-interface ServerDiskUsageResponse {
-  diskUsageBytes: number;
-  diskTotalBytes: number;
-  diskAvailableBytes: number;
-}
-```
+Each mutation hook provides:
+- Optimistic updates where appropriate
+- Automatic query invalidation on success
+- Error handling with user-friendly feedback
+- Loading states and progress indicators
 
 ### State Management (Zustand Stores)
 
@@ -171,24 +220,31 @@ interface ServerDiskUsageResponse {
 **Route Organization with Lazy Loading:**
 ```typescript
 // All pages are lazy-loaded for performance
-const Overview = lazy(() => import('./pages/Overview'))
-const Login = lazy(() => import('./pages/Login'))
+const Overview = lazy(() => import('@/pages/Overview'))
+const Login = lazy(() => import('@/pages/Login'))
+const Snapshots = lazy(() => import('@/pages/Snapshots'))
 // ... etc for all route components
 ```
 
-**Route Hierarchy:**
+**Updated Route Hierarchy:**
 ```
 / (Home) → redirects to /overview if authenticated
 /login (Public route)
 /overview (Server dashboard with metrics cards)
-/backups (Backup management - placeholder)
-/server/new (Server creation - placeholder)
+/snapshots (Global snapshot management - **NEW**)
+/server/new (Server creation)
 /server/:id (Server detail hub)
-/server/:id/players (Player management)
-/server/:id/files (File management - placeholder)  
+/server/:id/files (File management with Monaco editor)
 /server/:id/compose (Docker Compose configuration editing)
 /server/:id/console (Real-time console with WebSocket)
+/admin/users (User management - OWNER role only)
 ```
+
+**Route Changes:**
+- **New `/snapshots` route**: Global backup management page
+- **Reorganized server pages**: Moved from `/server/[id]/` to `/server/servers/` structure
+- **Enhanced navigation**: Automatic snapshot menu integration
+- **Role-based access**: Admin routes with proper role guards
 
 **Features:**
 - **Protected Routes**: Authentication wrapper with automatic redirects
@@ -196,15 +252,31 @@ const Login = lazy(() => import('./pages/Login'))
 - **Error Boundaries**: Each route wrapped with error boundary for graceful failure
 - **Dynamic Navigation**: Sidebar auto-generates server routes based on available servers
 
+### Snapshot Management Integration
+
+**New Snapshot Management System:**
+- **Global Snapshots Page** (`pages/Snapshots.tsx`): Complete snapshot management interface
+- **Snapshot API Integration** (`hooks/api/snapshotApi.ts`): Restic backup operations
+- **Snapshot Queries** (`hooks/queries/base/useSnapshotQueries.ts`): Data fetching for snapshots
+- **Snapshot Mutations** (`hooks/mutations/useSnapshotMutations.ts`): Backup creation and management
+- **Navigation Integration**: Snapshots menu item in sidebar with automatic navigation
+
+**Snapshot Features:**
+- Create global system snapshots with progress tracking
+- View snapshot history with metadata (size, date, duration)
+- Real-time snapshot creation feedback with success/error handling
+- Intelligent caching with 2-minute stale time and manual refresh pattern
+- Integration with existing server management workflow
+
 ### Dual Authentication System
 
-**1. Traditional Password Authentication** (`hooks/useLoginApi.ts`):
+**1. Traditional Password Authentication** (`hooks/mutations/useAuthMutations.ts`):
 - Username/password form submission with FormData
 - OAuth2 password flow to `/auth/token` endpoint
 - JWT token storage and automatic redirection on success
 - Standard form validation and error handling
 
-**2. WebSocket Code Authentication** (`hooks/useCodeLoginApi.ts`):
+**2. WebSocket Code Authentication** (`hooks/useCodeLoginWebsocket.ts`):
 - Real-time 8-digit code generation via WebSocket connection to `/auth/code`
 - Auto-refreshing codes with countdown timers (60-second TTL)
 - Connection state management (IDLE, CONNECTING, CONNECTED, ERROR)
@@ -255,18 +327,23 @@ const Login = lazy(() => import('./pages/Login'))
 - **Component Usage**: Cards, Forms, Tables, Modals, Notifications
 - **Pro Components**: Advanced components for data display and input
 
-**Custom Component Library:**
+**Enhanced Custom Component Library:**
 
 1. **Metric Components**:
    - **`SimpleMetricCard`**: Clean metric display with labels and values
    - **`ProgressMetricCard`**: Progress bars with color coding and status indicators
    - **`ServerStateTag`**: Server status visualization with icons and tooltips
+   - **`ServerStateIcon`**: Reusable server status icons
 
 2. **Layout Components**:
    - **`MainLayout`**: Standard sidebar + content layout with responsive design
-   - **`AppSidebar`**: Dynamic navigation with server-aware menu items
+   - **`AppSidebar`**: Dynamic navigation with server-aware menu items and snapshot integration
+   - **`PageHeader`**: **NEW** - Standardized page header component for consistency
    - **`LoadingSpinner`**: Flexible loading component with multiple display modes
    - **`ErrorFallback`**: Error boundary fallback with user-friendly error display
+
+3. **Modal Components**:
+   - **`ServerOperationConfirmModal`**: **NEW** - Reusable confirmation modals for server operations
 
 **Styling Strategy:**
 - **Ant Design First**: Use AntD components as primary building blocks
@@ -310,17 +387,22 @@ export const queryKeys = {
   },
   serverRuntimes: {
     detail: (id: string) => ['serverRuntimes', id]
+  },
+  snapshots: {
+    global: () => ['snapshots', 'global'],
+    server: (id: string) => ['snapshots', 'server', id]
   }
   // ... hierarchical, stable structure for precise cache control
 }
 ```
 
-**Caching Strategy by Data Type:**
+**Enhanced Caching Strategy by Data Type:**
 - **Server Configurations**: Long cache (5 minutes) - rarely changes, expensive to fetch
 - **Runtime Metrics**: Very short cache (1-3 seconds) - needs real-time updates
 - **Status Information**: Medium cache (5-10 seconds) - moderate update frequency
+- **Snapshot Data**: Medium cache (2 minutes) - manual refresh pattern for backup operations
 - **Player Data**: Conditional queries - only enabled when server is healthy
-- **Disk Usage**: Medium cache (30 seconds) - now always available regardless of server status
+- **Disk Usage**: Medium cache (30 seconds) - always available regardless of server status
 
 ### WebSocket Integration
 
@@ -335,6 +417,31 @@ export const queryKeys = {
 - **Error Recovery**: Automatic reconnection with exponential backoff
 - **Message Protocol**: JSON-based message handling with type safety
 
+### Import System Transformation
+
+**Absolute Import System:**
+All relative imports have been converted to use the `@/` alias for better maintainability:
+
+**Before:**
+```typescript
+import { serverApi } from '../api/serverApi'
+import { LoadingSpinner } from './layout/LoadingSpinner'
+import ServerStateTag from '../overview/ServerStateTag'
+```
+
+**After:**
+```typescript
+import { serverApi } from '@/hooks/api/serverApi'
+import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
+import ServerStateTag from '@/components/overview/ServerStateTag'
+```
+
+**Benefits:**
+- **Consistency**: All imports use the same absolute path structure
+- **Maintainability**: Moving files doesn't break imports
+- **Readability**: Clear distinction between project files and external dependencies
+- **IDE Support**: Better autocomplete and refactoring support
+
 ### Development Patterns
 
 **Component Development:**
@@ -342,6 +449,7 @@ export const queryKeys = {
 - **Error Boundaries**: Strategic placement for graceful error handling
 - **Hook Composition**: Custom hooks for reusable logic (auth, queries, WebSocket)
 - **Type Safety**: Full TypeScript integration with backend model alignment
+- **Absolute Imports**: Consistent use of `@/` alias for all internal imports
 
 **Performance Optimization:**
 - **Query Optimization**: Intelligent caching, selective refetching, and dependency management
@@ -354,32 +462,6 @@ export const queryKeys = {
 - **Query Error Handling**: Differentiated retry logic and error state management
 - **User Feedback**: Toast notifications, error alerts, and loading states
 - **Graceful Degradation**: Fallback behavior when features are unavailable
-
-### Recent Updates & Features
-
-**Separated Disk Usage Integration:**
-- Updated `useServerDiskUsage` hook to use dedicated `/disk-usage` endpoint
-- Removed disk space information from I/O statistics queries
-- Enhanced reliability for disk usage displays when servers are offline
-- Improved caching strategy with appropriate refetch intervals
-
-**Query Hook Improvements:**
-```typescript
-// Updated hook using separated API
-const useServerDiskUsage = (id: string) => {
-  return useQuery({
-    queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
-    queryFn: () => serverApi.getServerDiskUsage(id), // New dedicated endpoint
-    enabled: !!id,
-    refetchInterval: 30000, // 30s refetch - always available
-    staleTime: 15000,       // 15s stale time
-    retry: (failureCount, error: any) => {
-      if (error?.response?.status === 404) return false; // Don't retry if server doesn't exist
-      return failureCount < 3;
-    },
-  });
-};
-```
 
 ## External Documentation
 
@@ -408,6 +490,7 @@ const useServerDiskUsage = (id: string) => {
 - **CORS**: Backend configured for localhost:3000 development with credentials support
 - **Authentication**: JWT token system with master token fallback support
 - **API Reliability**: Separated disk usage and I/O statistics APIs for better data availability
+- **Snapshot Integration**: Complete integration with backend Restic snapshot system
 
 **Build & Deployment:**
 - **Static Build**: Vite produces optimized static files for deployment
@@ -418,16 +501,18 @@ const useServerDiskUsage = (id: string) => {
 ## Development Guidelines
 
 **Data Fetching Best Practices:**
-- Use the three-layer architecture: API → Query Hooks → Composed Queries
+- Use the three-layer architecture: API → Base Query Hooks → Page Query Compositions
 - Choose appropriate caching strategies based on data volatility
 - Implement conditional queries for features requiring specific server states
 - Handle errors gracefully with appropriate retry strategies
+- Separate mutations by domain for better organization
 
 **Performance Considerations:**
 - Leverage lazy loading for route components
 - Use Zustand selectors to minimize re-renders
 - Implement proper query dependencies and invalidation
 - Monitor bundle size and implement code splitting where needed
+- Use absolute imports for better maintainability
 
 **Testing and Development:**
 - Focus on component unit tests and integration tests
@@ -441,16 +526,18 @@ When adding new features, libraries, or changing architecture:
 
 1. **New dependencies**: Update `package.json` and document major additions in this file
 2. **New routes**: Add to `App.tsx` with lazy loading and update navigation patterns
-3. **New API endpoints**: Add to `hooks/api/serverApi.ts` first, then create query hooks
-4. **New queries**: Extend query hooks in `hooks/queries/` following the three-layer pattern
-5. **New global state**: Consider Zustand stores for global state, localStorage for drafts
-6. **UI components**: Follow Ant Design patterns first, document custom component patterns
-7. **Monaco editors**: Extend existing editor components or create new ones following established patterns
-8. **Build configuration**: Update Vite configuration and document changes in build scripts
-9. **Environment variables**: Document new `VITE_` prefixed variables and their usage
-10. **WebSocket features**: Follow existing WebSocket patterns and connection management
-11. **API integrations**: Document new endpoint purposes and data flow patterns
-12. **Query optimizations**: Update caching strategies and refetch intervals appropriately
+3. **New API endpoints**: Add to appropriate API file in `hooks/api/` first, then create query/mutation hooks
+4. **New queries**: Extend base query hooks in `hooks/queries/base/` and compose in page queries
+5. **New mutations**: Create domain-specific mutation hooks in `hooks/mutations/`
+6. **New global state**: Consider Zustand stores for global state, localStorage for drafts
+7. **UI components**: Follow Ant Design patterns first, document custom component patterns
+8. **Monaco editors**: Extend existing editor components or create new ones following established patterns
+9. **Build configuration**: Update Vite configuration and document changes in build scripts
+10. **Environment variables**: Document new `VITE_` prefixed variables and their usage
+11. **WebSocket features**: Follow existing WebSocket patterns and connection management
+12. **API integrations**: Document new endpoint purposes and data flow patterns
+13. **Query optimizations**: Update caching strategies and refetch intervals appropriately
+14. **Import consistency**: Use absolute imports (`@/`) for all new files and components
 
 **IMPORTANT EDITING GUIDELINES:**
 
@@ -469,4 +556,4 @@ When adding new features, libraries, or changing architecture:
 
 This approach ensures each CLAUDE.md version stands alone as complete project documentation rather than appearing as a series of patches or incremental updates.
 
-**Critical**: Update this CLAUDE.md when introducing new architectural patterns, state management approaches, data fetching strategies, or external integrations that future development sessions should understand and follow.
+**Critical**: Update this CLAUDE.md when introducing new architectural patterns, state management approaches, data fetching strategies, snapshot management features, or external integrations that future development sessions should understand and follow.
