@@ -2,7 +2,7 @@ import type { CreateFileRequest, RenameFileRequest } from "@/types/Server";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
-import { fileApi } from "../api/fileApi";
+import { fileApi } from "@/hooks/api/fileApi";
 
 export const useFileMutations = (serverId: string | undefined) => {
   const queryClient = useQueryClient();

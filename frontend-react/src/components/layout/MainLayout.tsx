@@ -1,6 +1,6 @@
 import React from 'react'
 import { Layout } from 'antd'
-import AppSidebar from './AppSidebar'
+import AppSidebar from '@/components/layout/AppSidebar'
 
 const { Content } = Layout
 

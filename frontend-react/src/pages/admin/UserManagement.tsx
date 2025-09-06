@@ -22,7 +22,7 @@ import {
   TeamOutlined
 } from '@ant-design/icons'
 import PageHeader from '@/components/layout/PageHeader'
-import { useAllUsers } from '@/hooks/queries/useUserQueries'
+import { useAllUsers } from '@/hooks/queries/base/useUserQueries'
 import { useCreateUser, useDeleteUser } from '@/hooks/mutations/useUserMutations'
 import { UserRole, type User, type UserCreate } from '@/types/User'
 

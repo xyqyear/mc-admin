@@ -1,5 +1,5 @@
-export { default as ProgressMetricCard } from "./ProgressMetricCard";
-export { default as ServerStateIcon } from "./ServerStateIcon";
-export { default as ServerStateTag } from "./ServerStateTag";
-export { default as SimpleMetricCard } from "./SimpleMetricCard";
+export { default as ProgressMetricCard } from "@/components/overview/ProgressMetricCard";
+export { default as ServerStateIcon } from "@/components/overview/ServerStateIcon";
+export { default as ServerStateTag } from "@/components/overview/ServerStateTag";
+export { default as SimpleMetricCard } from "@/components/overview/SimpleMetricCard";
 

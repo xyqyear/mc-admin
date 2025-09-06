@@ -1,4 +1,4 @@
-import { useServerQueries } from "./useServerQueries";
+import { useServerQueries } from "@/hooks/queries/base/useServerQueries";
 
 /**
  * 服务器详情页面专用的组合查询hooks

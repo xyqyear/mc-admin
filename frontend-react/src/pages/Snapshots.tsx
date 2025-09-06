@@ -17,7 +17,7 @@ import {
 } from '@ant-design/icons';
 import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/snapshotApi';
-import { useSnapshotQueries } from '@/hooks/queries/useSnapshotQueries';
+import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
 
 const { Text } = Typography;

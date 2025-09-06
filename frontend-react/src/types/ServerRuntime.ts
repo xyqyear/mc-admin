@@ -1,4 +1,4 @@
-import type { ServerStatus } from "./ServerInfo";
+import type { ServerStatus } from "@/types/ServerInfo";
 
 // 服务器运行时信息 - 基于 minecraft-docker-manager-lib 的 MCServerRunningInfo
 export interface ServerRuntime {
@@ -43,7 +43,7 @@ export interface BackupRepositoryUsage {
 }
 
 // 组合视图类型 (仅用于前端展示)
-import type { ServerInfo } from "./ServerInfo";
+import type { ServerInfo } from "@/types/ServerInfo";
 
 export interface ServerFullInfo extends ServerInfo {
   runtime?: ServerRuntime; // 可选的运行时信息

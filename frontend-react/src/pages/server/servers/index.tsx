@@ -14,10 +14,10 @@ import {
 } from '@ant-design/icons'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
-import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
+import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
-import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
 
 const ServerDetail: React.FC = () => {

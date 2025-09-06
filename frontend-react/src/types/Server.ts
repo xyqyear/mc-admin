@@ -1,10 +1,10 @@
 // 重新导出新的类型定义，保持向后兼容
-export type { ServerInfo, ServerStatus, ServerType } from "./ServerInfo";
+export type { ServerInfo, ServerStatus, ServerType } from "@/types/ServerInfo";
 export type {
   ServerFullInfo,
   ServerRuntime,
   SystemInfo
-} from "./ServerRuntime";
+} from "@/types/ServerRuntime";
 
 // 保持现有的类型定义以兼容老代码
 

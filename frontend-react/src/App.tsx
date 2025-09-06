@@ -3,22 +3,22 @@ import { App as AntdApp } from 'antd'
 import React, { ErrorInfo, Suspense } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
-import { ErrorFallback } from './components/layout/ErrorFallback'
-import { LoadingSpinner } from './components/layout/LoadingSpinner'
-import { MainLayout } from './components/layout/MainLayout'
-import { useTokenStore } from './stores/useTokenStore'
+import { ErrorFallback } from '@/components/layout/ErrorFallback'
+import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
+import { MainLayout } from '@/components/layout/MainLayout'
+import { useTokenStore } from '@/stores/useTokenStore'
 
 // Lazy load pages for better performance
-const Login = React.lazy(() => import('./pages/Login'))
-const Home = React.lazy(() => import('./pages/Home'))
-const Overview = React.lazy(() => import('./pages/Overview'))
-const Snapshots = React.lazy(() => import('./pages/Snapshots'))
-const ServerNew = React.lazy(() => import('./pages/server/new'))
-const ServerDetail = React.lazy(() => import('./pages/server/servers/index'))
-const ServerFiles = React.lazy(() => import('./pages/server/servers/files'))
-const ServerCompose = React.lazy(() => import('./pages/server/servers/compose'))
-const ServerConsole = React.lazy(() => import('./pages/server/servers/console'))
-const UserManagement = React.lazy(() => import('./pages/admin/UserManagement'))
+const Login = React.lazy(() => import('@/pages/Login'))
+const Home = React.lazy(() => import('@/pages/Home'))
+const Overview = React.lazy(() => import('@/pages/Overview'))
+const Snapshots = React.lazy(() => import('@/pages/Snapshots'))
+const ServerNew = React.lazy(() => import('@/pages/server/new'))
+const ServerDetail = React.lazy(() => import('@/pages/server/servers/index'))
+const ServerFiles = React.lazy(() => import('@/pages/server/servers/files'))
+const ServerCompose = React.lazy(() => import('@/pages/server/servers/compose'))
+const ServerConsole = React.lazy(() => import('@/pages/server/servers/console'))
+const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
 
 
 

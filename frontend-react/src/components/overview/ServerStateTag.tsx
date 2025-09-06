@@ -1,7 +1,7 @@
 import React from 'react'
 import { Tag, Tooltip } from 'antd'
 import type { ServerStatus } from '@/types/Server'
-import ServerStateIcon from './ServerStateIcon'
+import ServerStateIcon from '@/components/overview/ServerStateIcon'
 
 interface ServerStateTagProps {
   state: ServerStatus

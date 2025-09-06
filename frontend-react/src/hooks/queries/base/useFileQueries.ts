@@ -1,6 +1,6 @@
 import { queryKeys } from "@/utils/api";
 import { useQuery } from "@tanstack/react-query";
-import { fileApi } from "../api/fileApi";
+import { fileApi } from "@/hooks/api/fileApi";
 
 export const useFileList = (
   serverId: string | undefined,

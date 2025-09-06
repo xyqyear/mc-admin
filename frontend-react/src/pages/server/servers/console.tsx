@@ -13,7 +13,7 @@ import {
   CodeOutlined
 } from '@ant-design/icons'
 import { useParams } from 'react-router-dom'
-import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
+import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import { useToken } from '@/stores/useTokenStore'

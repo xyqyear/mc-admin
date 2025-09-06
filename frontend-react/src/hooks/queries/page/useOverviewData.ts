@@ -3,9 +3,9 @@ import type { ServerStatus } from "@/types/ServerInfo";
 import { queryKeys } from "@/utils/api";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useServerQueries } from "./useServerQueries";
-import { useSystemQueries } from "./useSystemQueries";
-import { useSnapshotQueries } from "./useSnapshotQueries";
+import { useServerQueries } from "@/hooks/queries/base/useServerQueries";
+import { useSystemQueries } from "@/hooks/queries/base/useSystemQueries";
+import { useSnapshotQueries } from "@/hooks/queries/base/useSnapshotQueries";
 
 // 🎯 总览页面专用的组合hooks - 使用批量查询避免动态hooks问题
 export const useOverviewData = () => {

@@ -18,7 +18,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
-import { useServerDetailQueries } from '@/hooks/queries/useServerDetailQueries'
+import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
 const ServerCompose: React.FC = () => {

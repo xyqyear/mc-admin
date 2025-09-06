@@ -4,7 +4,7 @@ import { ConfigProvider, App as AntdApp } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { BrowserRouter } from 'react-router-dom'
-import App from './App'
+import App from '@/App'
 import './index.css'
 
 import zhCN from 'antd/locale/zh_CN'
@@ -14,7 +14,7 @@ import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import YamlWorker from './yaml.worker.js?worker'
+import YamlWorker from '@/yaml.worker.js?worker'
 import { loader } from '@monaco-editor/react'
 
 self.MonacoEnvironment = {

@@ -1,5 +1,5 @@
 import React from 'react'
-import { useServerQueries } from '@/hooks/queries/useServerQueries'
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import ServerStateIcon from '@/components/overview/ServerStateIcon'
 import { DesktopOutlined } from '@ant-design/icons'
 

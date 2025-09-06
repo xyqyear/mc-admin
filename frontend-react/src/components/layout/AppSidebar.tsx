@@ -20,11 +20,11 @@ import {
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
-import { useServerQueries } from '@/hooks/queries/useServerQueries'
-import { useCurrentUser } from '@/hooks/queries/useUserQueries'
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
+import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
 import { useTokenStore } from '@/stores/useTokenStore'
 import { UserRole } from '@/types/User'
-import ServerMenuIcon from './ServerMenuIcon'
+import ServerMenuIcon from '@/components/layout/ServerMenuIcon'
 
 const { Sider } = Layout
 
