@@ -162,8 +162,7 @@ poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.p
 - `test_snapshots_integrated.py`: All tests require real Restic operations with containers
 
 **Code Quality:**
-```bash
-poetry run black .          # Format code
+DO NOT use black to format code
 ```
 
 **Pre-commit Testing (with container tests):**
