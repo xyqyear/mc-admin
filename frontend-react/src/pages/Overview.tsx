@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons'
 import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
 import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
+import ServerCountCard from '@/components/overview/ServerCountCard'
 import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerStatus } from '@/types/Server'
 import { useOverviewData } from '@/hooks/queries/page/useOverviewData'
@@ -318,10 +319,7 @@ const Overview: React.FC = () => {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       }}>
         <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
-          <SimpleMetricCard value={serverNum} title="服务器总数" />
-        </div>
-        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
-          <SimpleMetricCard value={runningServers} title="运行中" />
+          <ServerCountCard totalServers={serverNum} runningServers={runningServers} />
         </div>
         <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
           <SimpleMetricCard value={onlinePlayerNum} title="在线玩家" />
