@@ -23,7 +23,7 @@ export enum ConnectionStatus {
   ERROR = "error",
 }
 
-export const useCodeLoginApi = () => {
+export const useCodeLoginWebsocket = () => {
   const [code, setCode] = useState("加载中");
   const [countdown, setCountdown] = useState(0);
   const [codeTimeout, setCodeTimeout] = useState(0);

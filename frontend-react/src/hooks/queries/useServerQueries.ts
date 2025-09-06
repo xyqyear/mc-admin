@@ -1,12 +1,10 @@
 import {
   serverApi,
-  systemApi,
   type ServerDiskUsageResponse,
   type ServerIOStatsResponse,
   type ServerListItem,
 } from "@/hooks/api/serverApi";
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
-import type { SystemInfo } from "@/types/ServerRuntime";
 import { queryKeys } from "@/utils/api";
 import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
@@ -188,29 +186,6 @@ export const useServerQueries = () => {
     });
   };
 
-  // 系统信息 (中等频率更新，不包含CPU百分比)
-  const useSystemInfo = (options?: UseQueryOptions<SystemInfo>) => {
-    return useQuery({
-      queryKey: queryKeys.system.info(),
-      queryFn: systemApi.getSystemInfo,
-      refetchInterval: 10000, // 10秒刷新系统信息
-      staleTime: 5000, // 5秒
-      ...options,
-    });
-  };
-
-  // 系统CPU百分比 (较慢更新，因为需要1-2秒计算时间)
-  const useSystemCpuPercent = (
-    options?: UseQueryOptions<{ cpuPercentage: number }>
-  ) => {
-    return useQuery({
-      queryKey: [...queryKeys.system.info(), "cpu"],
-      queryFn: systemApi.getSystemCpuPercent,
-      refetchInterval: 3000, // 3秒刷新CPU百分比（比其他系统信息慢）
-      staleTime: 3000, // 3秒
-      ...options,
-    });
-  };
 
   return {
     useServers, // 🌟 基础配置API - 用于获取服务器列表基本信息
@@ -222,7 +197,5 @@ export const useServerQueries = () => {
     useServerIOStats, // 单个服务器I/O统计信息 (磁盘I/O和网络I/O，不包含磁盘空间)
     useServerDiskUsage, // 单个服务器磁盘使用信息 (磁盘空间，始终可用)
     useComposeFile, // Compose文件内容
-    useSystemInfo, // 系统信息 (不包含CPU百分比)
-    useSystemCpuPercent, // 系统CPU百分比 (分离后的接口)
   };
 };

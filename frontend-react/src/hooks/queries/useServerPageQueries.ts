@@ -3,6 +3,7 @@ import type { ServerStatus } from "@/types/ServerInfo";
 import { queryKeys } from "@/utils/api";
 import { useQueries } from "@tanstack/react-query";
 import { useServerQueries } from "./useServerQueries";
+import { useSystemQueries } from "./useSystemQueries";
 
 export const useServerPageQueries = (serverId: string) => {
   const {
@@ -49,7 +50,8 @@ export const useServerPageQueries = (serverId: string) => {
 
 // Overview页面专用的组合查询
 export const useOverviewPageQueries = () => {
-  const { useServers, useSystemInfo } = useServerQueries();
+  const { useServers } = useServerQueries();
+  const { useSystemInfo } = useSystemQueries();
 
   // 获取所有服务器配置
   const serverInfosQuery = useServers();

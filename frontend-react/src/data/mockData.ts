@@ -1,5 +1,5 @@
 import type { ServerInfo, ServerType } from "@/types/ServerInfo";
-import type { ServerRuntime, SystemInfo } from "@/types/ServerRuntime";
+import type { ServerRuntime, SystemInfo, SystemDiskUsage, BackupRepositoryUsage } from "@/types/ServerRuntime";
 
 // Mock 服务器配置信息 - 基于实际的开发服务器数据
 export const mockServerInfos: ServerInfo[] = [
@@ -140,7 +140,7 @@ export const mockServerStatuses: Record<
   vanilla: "HEALTHY",
 };
 
-// Mock 系统信息
+// Mock 系统信息 (更新后的版本，不包含磁盘信息)
 export const mockSystemInfo: SystemInfo = {
   cpuPercentage: 25.6,
   cpuLoad1Min: 1.2,
@@ -148,10 +148,20 @@ export const mockSystemInfo: SystemInfo = {
   cpuLoad15Min: 1.8,
   ramUsedGB: 8.4,
   ramTotalGB: 16.0,
+};
+
+// Mock 系统磁盘使用信息
+export const mockSystemDiskUsage: SystemDiskUsage = {
   diskUsedGB: 120.5,
   diskTotalGB: 500.0,
+  diskAvailableGB: 379.5,
+};
+
+// Mock 备份仓库使用信息
+export const mockBackupRepositoryUsage: BackupRepositoryUsage = {
   backupUsedGB: 25.3,
   backupTotalGB: 100.0,
+  backupAvailableGB: 74.7,
 };
 
 // Mock 在线玩家数据

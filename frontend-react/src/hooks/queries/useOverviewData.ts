@@ -4,14 +4,24 @@ import { queryKeys } from "@/utils/api";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useServerQueries } from "./useServerQueries";
+import { useSystemQueries } from "./useSystemQueries";
+import { useSnapshotQueries } from "./useSnapshotQueries";
 
 // 🎯 总览页面专用的组合hooks - 使用批量查询避免动态hooks问题
 export const useOverviewData = () => {
-  const { useServers, useSystemInfo, useSystemCpuPercent } = useServerQueries();
+  const { useServers } = useServerQueries();
+  const { 
+    useSystemInfo, 
+    useSystemCpuPercent, 
+    useSystemDiskUsage 
+  } = useSystemQueries();
+  const { useBackupRepositoryUsage } = useSnapshotQueries();
 
   const serversQuery = useServers();
   const systemQuery = useSystemInfo();
   const systemCpuQuery = useSystemCpuPercent();
+  const systemDiskQuery = useSystemDiskUsage();
+  const backupRepositoryQuery = useBackupRepositoryUsage();
 
   // 基础数据
   const serversData = serversQuery.data || [];
@@ -206,6 +216,8 @@ export const useOverviewData = () => {
     serverStatuses,
     systemInfo: systemQuery.data,
     systemCpuPercent: systemCpuQuery.data?.cpuPercentage,
+    systemDiskUsage: systemDiskQuery.data, // 新的系统磁盘使用信息
+    backupRepositoryUsage: backupRepositoryQuery.data, // 新的备份仓库使用信息
 
     // 统计数据
     serverNum,
@@ -220,6 +232,8 @@ export const useOverviewData = () => {
     isPlayersLoading,
     isDiskLoading,
     isSystemCpuLoading: systemCpuQuery.isLoading,
+    isSystemDiskLoading: systemDiskQuery.isLoading, // 新的系统磁盘使用加载状态
+    isBackupRepositoryLoading: backupRepositoryQuery.isLoading, // 新的备份仓库加载状态
     isError: serversQuery.isError || systemQuery.isError,
     isStatusError,
     isCpuError,
@@ -227,6 +241,8 @@ export const useOverviewData = () => {
     isPlayersError,
     isDiskError,
     isSystemCpuError: systemCpuQuery.isError,
+    isSystemDiskError: systemDiskQuery.isError, // 新的系统磁盘使用错误状态
+    isBackupRepositoryError: backupRepositoryQuery.isError, // 新的备份仓库错误状态
     error: serversQuery.error || systemQuery.error,
 
     // 刷新方法
@@ -234,6 +250,8 @@ export const useOverviewData = () => {
       serversQuery.refetch();
       systemQuery.refetch();
       systemCpuQuery.refetch();
+      systemDiskQuery.refetch(); // 新的系统磁盘使用刷新
+      backupRepositoryQuery.refetch(); // 新的备份仓库刷新
       statusesQuery.refetch();
       cpuQueries.forEach((q) => q.refetch());
       memoryQueries.forEach((q) => q.refetch());

@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react'
 import { Card, Form, Input, Button, App, Alert, Progress } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { useLoginMutation } from '@/hooks/useLoginApi'
-import { useCodeLoginApi } from '@/hooks/useCodeLoginApi'
+import { useAuthMutations } from '@/hooks/mutations/useAuthMutations'
+import { useCodeLoginWebsocket } from '@/hooks/useCodeLoginWebsocket'
 import { useLoginPreferenceStore } from '@/stores/useLoginPreferenceStore'
 import { useIsAuthenticated } from '@/stores/useTokenStore'
 
@@ -11,7 +11,8 @@ const Login: React.FC = () => {
   const isAuthenticated = useIsAuthenticated()
   const { message } = App.useApp()
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
-  const loginMutation = useLoginMutation()
+  const { useLogin } = useAuthMutations()
+  const loginMutation = useLogin()
 
   const {
     code,
@@ -22,7 +23,7 @@ const Login: React.FC = () => {
     error: codeError,
     connect,
     disconnect,
-  } = useCodeLoginApi()
+  } = useCodeLoginWebsocket()
 
   const [form] = Form.useForm()
 

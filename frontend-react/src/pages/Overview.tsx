@@ -37,6 +37,8 @@ const Overview: React.FC = () => {
     enrichedServers, // 包含所有运行时数据的完整服务器列表
     systemInfo,
     systemCpuPercent, // 新的分离的系统CPU百分比数据
+    systemDiskUsage, // 新的系统磁盘使用数据
+    backupRepositoryUsage, // 新的备份仓库使用数据
     serverNum,
     runningServers,
     onlinePlayerNum,
@@ -353,15 +355,30 @@ const Overview: React.FC = () => {
         <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
           <ProgressMetricCard
             value={
-              systemInfo
-                ? (systemInfo.diskUsedGB / systemInfo.diskTotalGB) * 100
+              systemDiskUsage
+                ? (systemDiskUsage.diskUsedGB / systemDiskUsage.diskTotalGB) * 100
                 : 0
             }
             title="存储使用率"
             extraInfo={
-              systemInfo
-                ? `${systemInfo.diskUsedGB.toFixed(1)}/${systemInfo.diskTotalGB.toFixed(1)}GB`
+              systemDiskUsage
+                ? `${systemDiskUsage.diskUsedGB.toFixed(1)}/${systemDiskUsage.diskTotalGB.toFixed(1)}GB`
                 : '-'
+            }
+          />
+        </div>
+        <div className="h-[240px] flex" style={{ minWidth: '200px' }}>
+          <ProgressMetricCard
+            value={
+              backupRepositoryUsage
+                ? (backupRepositoryUsage.backupUsedGB / backupRepositoryUsage.backupTotalGB) * 100
+                : 0
+            }
+            title="备份使用率"
+            extraInfo={
+              backupRepositoryUsage
+                ? `${backupRepositoryUsage.backupUsedGB.toFixed(1)}/${backupRepositoryUsage.backupTotalGB.toFixed(1)}GB`
+                : backupRepositoryUsage === null ? '备份未配置' : '-'
             }
           />
         </div>

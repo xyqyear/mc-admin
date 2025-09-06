@@ -89,6 +89,7 @@ export const queryKeys = {
   system: {
     all: ["system"] as const,
     info: () => [...queryKeys.system.all, "info"] as const,
+    diskUsage: () => [...queryKeys.system.all, "disk-usage"] as const,
   },
 
   // 服务器配置 (相对静态，长缓存)
@@ -161,6 +162,7 @@ export const queryKeys = {
   snapshots: {
     all: ["snapshots"] as const,
     global: () => [...queryKeys.snapshots.all, "global"] as const,
+    repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
   },
 } as const;
 

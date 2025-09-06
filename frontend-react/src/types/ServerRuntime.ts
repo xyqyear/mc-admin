@@ -18,7 +18,7 @@ export interface ServerRuntime {
   pid?: number; // 进程PID
 }
 
-// 系统信息 - 保持现有结构
+// 系统信息 - 更新后的结构
 export interface SystemInfo {
   cpuPercentage: number;
   cpuLoad1Min: number;
@@ -26,10 +26,20 @@ export interface SystemInfo {
   cpuLoad15Min: number;
   ramUsedGB: number;
   ramTotalGB: number;
+}
+
+// 系统磁盘使用信息
+export interface SystemDiskUsage {
   diskUsedGB: number;
   diskTotalGB: number;
+  diskAvailableGB: number;
+}
+
+// 备份仓库使用信息
+export interface BackupRepositoryUsage {
   backupUsedGB: number;
   backupTotalGB: number;
+  backupAvailableGB: number;
 }
 
 // 组合视图类型 (仅用于前端展示)
