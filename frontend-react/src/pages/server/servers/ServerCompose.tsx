@@ -117,7 +117,7 @@ const ServerCompose: React.FC = () => {
       title: '提交并重建服务器',
       content: (
         <div className="space-y-4">
-          <p>确定要提交配置并重建服务器吗？这将停止当前服务器并使用新配置重新创建。</p>
+          <p>确定要提交配置并重建服务器吗？这将下线当前服务器并使用新配置重新创建。</p>
           {hasChanges && (
             <div>
               <div className="mb-2">
