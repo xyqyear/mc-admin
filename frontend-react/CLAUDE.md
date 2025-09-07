@@ -13,7 +13,8 @@ Modern React 18 + TypeScript single-page application providing the web UI for MC
 
 **UI & Styling:**
 - **UI Framework**: Ant Design 5 (`antd` v5.13.3, `@ant-design/icons`, `@ant-design/pro-components`)
-- **Styling**: Tailwind CSS 3 + PostCSS + autoprefixer (preflight disabled for AntD compatibility)
+- **Styling**: Tailwind CSS 3 + PostCSS + autoprefixer (preflight disabled for AntD compatibility)  
+- **Linting**: ESLint v9 with TypeScript and React plugins (modern flat config)
 - **Theme**: Custom AntD theme with primary blue (#1677ff) color scheme
 
 **State & Data Management:**
@@ -67,8 +68,19 @@ src/
 │   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, LoadingSpinner, PageHeader, ServerOperationConfirmModal
 │   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard, ServerStateIcon
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
-│   ├── files/               # FileIcon
-│   └── modals/              # ServerOperationConfirmModal
+│   ├── files/               # FileIcon, FileSnapshotActions
+│   └── modals/              # Organized modal components with barrel exports
+│       ├── ServerFiles/     # Modular server file management modals
+│       │   ├── index.ts            # Barrel export for all server file modals
+│       │   ├── UploadModal.tsx     # File upload modal
+│       │   ├── CreateModal.tsx     # File/folder creation modal
+│       │   ├── RenameModal.tsx     # File rename modal
+│       │   ├── FileEditModal.tsx   # File editing with Monaco editor
+│       │   └── FileDiffModal.tsx   # File diff comparison modal
+│       ├── ArchiveSelectionModal.tsx    # Archive selection for server creation
+│       ├── PopulateProgressModal.tsx    # Progress tracking for server population
+│       ├── DockerComposeHelpModal.tsx   # Help modal for Docker Compose editing
+│       └── ServerTemplateModal.tsx      # Server template selection modal
 ├── hooks/
 │   ├── api/                 # Raw Axios-based API functions with type safety
 │   │   ├── authApi.ts       # Authentication API functions
@@ -76,12 +88,14 @@ src/
 │   │   ├── systemApi.ts     # System information API functions
 │   │   ├── fileApi.ts       # File operations API functions
 │   │   ├── serverApi.ts     # Server management API functions
+│   │   ├── archiveApi.ts    # Archive management API functions
 │   │   └── userApi.ts       # User management API functions
 │   ├── queries/
 │   │   ├── base/            # Resource-focused query hooks
 │   │   │   ├── useServerQueries.ts    # Core server data fetching
 │   │   │   ├── useFileQueries.ts      # File operations queries
 │   │   │   ├── useSnapshotQueries.ts  # Snapshot data queries
+│   │   │   ├── useArchiveQueries.ts   # Archive management queries
 │   │   │   ├── useSystemQueries.ts    # System-wide queries
 │   │   │   └── useUserQueries.ts      # User management queries
 │   │   └── page/            # Composed page-level queries
@@ -92,6 +106,7 @@ src/
 │   │   ├── useFileMutations.ts      # File operation mutations
 │   │   ├── useServerMutations.ts    # Server management mutations
 │   │   ├── useSnapshotMutations.ts  # Snapshot management mutations
+│   │   ├── useArchiveMutations.ts   # Archive management mutations
 │   │   └── useUserMutations.ts      # User administration mutations
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code-based authentication
 │   └── useServerConsoleWebSocket.ts # Real-time server console integration
@@ -100,10 +115,11 @@ src/
 │   ├── Login.tsx            # Dual authentication interface
 │   ├── Home.tsx             # Landing/redirect page
 │   ├── Snapshots.tsx        # Global snapshot management page
+│   ├── ArchiveManagement.tsx # Archive management and upload page
 │   ├── admin/
 │   │   └── UserManagement.tsx
 │   └── server/
-│       ├── ServerNew.tsx    # Server creation
+│       ├── ServerNew.tsx    # Server creation with templates and archives
 │       └── servers/         # Server management pages
 │           ├── ServerDetail.tsx    # Server detail hub
 │           ├── ServerFiles.tsx     # File management with Monaco editor
@@ -126,7 +142,6 @@ src/
 │   └── fileLanguageDetector.ts # File type detection for editors
 ├── config/
 │   └── fileEditingConfig.ts # File editing configuration and validation
-├── data/mockData.ts         # Comprehensive development/testing data
 └── index.css                # Tailwind directives and base styles
 ```
 
@@ -136,8 +151,9 @@ src/
 Raw Axios functions with full type safety, organized by domain:
 - **`authApi.ts`**: Authentication operations (login, registration, token verification)
 - **`snapshotApi.ts`**: Backup and snapshot management (create, list, restore snapshots)
+- **`archiveApi.ts`**: Archive management (upload, list, delete, SHA256 calculation)
 - **`systemApi.ts`**: System information and resource monitoring
-- **`serverApi.ts`**: Server management, configuration, and runtime data
+- **`serverApi.ts`**: Server management, configuration, runtime data, and population from archives
 - **`fileApi.ts`**: File operations (read, write, upload, delete)
 - **`userApi.ts`**: User administration and profile management
 
@@ -151,6 +167,7 @@ Resource-focused React Query hooks with intelligent caching strategies:
 - **`useServerQueries.ts`**: Server data fetching with different stale times and refetch intervals
 - **`useFileQueries.ts`**: File operations queries with conditional loading
 - **`useSnapshotQueries.ts`**: Snapshot data with 2-minute stale time for backup operations
+- **`useArchiveQueries.ts`**: Archive data fetching with manual refresh patterns
 - **`useSystemQueries.ts`**: System resource monitoring queries
 - **`useUserQueries.ts`**: User management and authentication queries
 
@@ -159,6 +176,7 @@ Caching strategy by data type:
 - Server status: 10s refetch interval (frequent updates needed)
 - Server runtime: 3-5s refetch interval (real-time monitoring)
 - Snapshot data: 2min stale time (manual refresh pattern)
+- Archive data: Manual refresh patterns with user-triggered updates
 - Disk usage: 30s refetch interval (always available)
 - Players/resources: Conditional queries (only when server is healthy/running)
 
@@ -178,8 +196,9 @@ Organized mutation hooks separated by domain for better maintainability:
 
 - **`useAuthMutations.ts`**: User authentication, registration, and login operations
 - **`useFileMutations.ts`**: File operations (create, update, delete, upload, rename)
-- **`useServerMutations.ts`**: Server lifecycle management (start, stop, restart, configuration updates)
+- **`useServerMutations.ts`**: Server lifecycle management (start, stop, restart, configuration updates, population from archives)
 - **`useSnapshotMutations.ts`**: Backup creation and management operations
+- **`useArchiveMutations.ts`**: Archive upload, deletion, and SHA256 calculation operations
 - **`useUserMutations.ts`**: User administration and profile updates
 
 Each mutation hook provides:
@@ -187,6 +206,32 @@ Each mutation hook provides:
 - Automatic query invalidation on success
 - Error handling with user-friendly feedback
 - Loading states and progress indicators
+
+### Modular Component Architecture
+
+**Organized Modal Components** (`components/modals/`):
+- **Barrel Exports**: Clean imports using index.ts files for grouped components
+- **ServerFiles Modals**: Complete extraction of file management modals into dedicated components
+- **Specialized Modals**: Archive selection, server templates, progress tracking, and help modals
+
+**Server File Management Modals** (`components/modals/ServerFiles/`):
+- **UploadModal**: File upload with validation and progress tracking
+- **CreateModal**: File and folder creation with form validation
+- **RenameModal**: File renaming with path validation
+- **FileEditModal**: Monaco editor integration with syntax highlighting and compose warnings
+- **FileDiffModal**: Side-by-side diff comparison with language detection
+
+**Archive & Template System**:
+- **ArchiveSelectionModal**: Archive selection interface for server creation
+- **ServerTemplateModal**: Template-based server creation with preconfigured settings
+- **PopulateProgressModal**: Real-time progress tracking for archive deployment
+- **DockerComposeHelpModal**: Comprehensive help system for Compose editing
+
+**Component Features**:
+- Type-safe props interfaces with comprehensive error handling
+- Integration with existing query/mutation hooks for data consistency
+- Responsive design patterns following Ant Design principles
+- Reusable patterns for similar modal components across the application
 
 ### State Management (Zustand Stores)
 
@@ -230,8 +275,9 @@ const Home = React.lazy(() => import('@/pages/Home'))
 / (Home) → redirects to /overview if authenticated
 /login (Public route)
 /overview (Server dashboard with metrics cards)
-/snapshots (Global snapshot management - **NEW**)
-/server/new (Server creation)
+/snapshots (Global snapshot management)
+/archives (Archive management and upload)
+/server/new (Server creation with templates and archives)
 /server/:id (Server detail hub)
 /server/:id/files (File management with Monaco editor)
 /server/:id/compose (Docker Compose configuration editing)
@@ -241,8 +287,10 @@ const Home = React.lazy(() => import('@/pages/Home'))
 
 **Route Features:**
 - **Global snapshot management**: Dedicated `/snapshots` route for backup management
+- **Archive management**: Dedicated `/archives` route for file upload and management
+- **Enhanced server creation**: Template and archive-based server deployment
 - **Descriptive file names**: Page file names match their lazy-loaded constant names
-- **Enhanced navigation**: Automatic snapshot menu integration
+- **Enhanced navigation**: Automatic snapshot and archive menu integration
 - **Role-based access**: Admin routes with proper role guards
 
 **Features:**
@@ -266,6 +314,24 @@ const Home = React.lazy(() => import('@/pages/Home'))
 - Real-time snapshot creation feedback with success/error handling
 - Intelligent caching with 2-minute stale time and manual refresh pattern
 - Integration with existing server management workflow
+
+### Archive Management Integration
+
+**Archive Management System:**
+- **Archive Management Page** (`pages/ArchiveManagement.tsx`): Complete archive file management interface
+- **Archive API Integration** (`hooks/api/archiveApi.ts`): File upload, deletion, and SHA256 operations
+- **Archive Queries** (`hooks/queries/base/useArchiveQueries.ts`): Data fetching for archive files
+- **Archive Mutations** (`hooks/mutations/useArchiveMutations.ts`): Upload, delete, and hash operations
+- **Archive Selection Modal** (`components/modals/ArchiveSelectionModal.tsx`): Streamlined selection for server creation
+
+**Archive Features:**
+- Upload ZIP, TAR, TAR.GZ archive files with validation and progress tracking
+- Calculate and verify SHA256 hashes for file integrity
+- Delete archive files with confirmation dialogs
+- Archive selection interface for server population from existing archives
+- Integration with server creation workflow for template and archive-based deployment
+- Real-time upload progress and error handling with user feedback
+- Manual refresh patterns optimized for file operations
 
 ### Dual Authentication System
 

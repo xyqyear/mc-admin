@@ -11,15 +11,18 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 **Key Features:**
 - Complete Minecraft server lifecycle management (create, start, stop, monitor, delete)
 - **Enterprise Snapshot System** - Full backup and restoration using Restic with global and server-specific snapshots
+- **Archive Management System** - Comprehensive archive file management with SHA256 verification, decompression support, and server population from archives
 - Real-time system and server resource monitoring (CPU, memory, disk, network via cgroup v2)
 - Docker Compose configuration management with Monaco editor and schema validation
 - JWT-based authentication with role-based access control (ADMIN/OWNER) + Master token system
 - Dual authentication: WebSocket login code flow + traditional password authentication
 - Real-time console streaming and RCON command execution via WebSocket
+- **Server Template System** - Pre-configured server templates for quick deployment
 - Comprehensive resource monitoring with cgroup v2 integration
 - Sophisticated data fetching with React Query three-layer architecture and intelligent caching strategies
 - **Separated disk usage API**: Disk space information available regardless of server status
 - **Operation audit system**: Non-invasive middleware-based audit logging for all state-changing operations
+- **Modular Component Architecture** - Organized modal components and reusable UI elements
 
 ## Architecture
 
@@ -28,15 +31,17 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Authentication**: JWT tokens with OAuth2 password flow + WebSocket rotating login codes + Master token fallback
 - **Container Management**: Integrated Docker Compose management (not external dependency)
 - **Backup System**: Restic-based snapshot management with configurable repositories
+- **Archive System**: Complete archive lifecycle with decompression, validation, and server population
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
-- **API Architecture**: Separated I/O statistics and disk usage endpoints for better reliability
+- **API Architecture**: Modular router-based design with separated concerns (operations, compose, files, resources, players)
 - **Audit System**: FastAPI middleware with automatic operation logging to structured JSON files
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
                                                 ↔ Restic Backup System ↔ Backup Repository
+                                                ↔ Archive Management ↔ File System
 
 ## Technology Stack Summary
 
@@ -48,9 +53,11 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **System Monitoring**: psutil + direct cgroup v2 filesystem monitoring
 - **Container Integration**: **Integrated** Minecraft Docker management module (app.minecraft)
 - **Backup System**: **Integrated** Restic snapshot management (app.snapshots)
+- **Archive System**: **Integrated** archive management with decompression utilities (app.utils.decompression)
+- **Common Operations**: Shared file operations module (app.common.file_operations)
 - **WebSocket Support**: FastAPI WebSocket + Watchdog file monitoring for console streaming
 - **Package Management**: Poetry
-- **Development**: pytest + black + pytest-asyncio for comprehensive async testing
+- **Development**: pytest + black + pytest-asyncio for comprehensive async testing with separated unit/integration tests
 
 ### Frontend (Node.js 18+)
 - **Framework**: React 18 + TypeScript 5 with strict compiler options
@@ -62,6 +69,7 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Code Editor**: Monaco Editor v0.52.2 + monaco-yaml v5.4.0 with Docker Compose schema
 - **Routing**: React Router v6 with nested routes and future flags enabled
 - **Error Handling**: react-error-boundary for graceful error boundaries
+- **Linting**: ESLint v9 with TypeScript and React plugins (modern flat config)
 - **Package Management**: pnpm (preferred - pnpm-lock.yaml present)
 
 ## Development Environment
@@ -79,21 +87,40 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 mc-admin/
 ├── backend/          # FastAPI backend with integrated Minecraft management
 │   ├── app/
-│   │   ├── snapshots/    # Restic backup integration
-│   │   ├── minecraft/    # Docker container lifecycle
+│   │   ├── common/          # Shared file operations
+│   │   ├── utils/           # Decompression and utility functions
+│   │   ├── snapshots/       # Restic backup integration
+│   │   ├── minecraft/       # Docker container lifecycle
 │   │   └── routers/
-│   │       └── snapshots.py # Global snapshot management
-│   │       └── servers/
-│   │           └── snapshots.py # Server-specific snapshots
+│   │       ├── archive.py        # Archive management API
+│   │       ├── snapshots.py      # Global snapshot management
+│   │       └── servers/          # Server-specific endpoints
+│   │           ├── compose.py    # Docker Compose management
+│   │           ├── create.py     # Server creation
+│   │           ├── operations.py # Server operations (start/stop)
+│   │           ├── resources.py  # Resource monitoring
+│   │           ├── players.py    # Player management
+│   │           └── populate.py   # Server population from archives
 ├── frontend-react/   # React frontend application
 │   ├── src/
+│   │   ├── components/
+│   │   │   └── modals/           # Organized modal components
+│   │   │       ├── ServerFiles/  # Server file management modals
+│   │   │       ├── ArchiveSelectionModal.tsx
+│   │   │       └── ServerTemplateModal.tsx
 │   │   ├── hooks/
+│   │   │   ├── api/             # Raw API layer
+│   │   │   │   ├── archiveApi.ts
+│   │   │   │   └── serverApi.ts
 │   │   │   ├── queries/
-│   │   │   │   ├── base/    # Resource-focused query hooks
-│   │   │   │   └── page/    # Composed page-level queries
-│   │   │   └── mutations/   # Organized mutation hooks
+│   │   │   │   ├── base/        # Resource-focused query hooks
+│   │   │   │   │   └── useArchiveQueries.ts
+│   │   │   │   └── page/        # Composed page-level queries
+│   │   │   └── mutations/       # Organized mutation hooks
+│   │   │       └── useArchiveMutations.ts
 │   │   └── pages/
-│   │       └── Snapshots.tsx # Global snapshot management
+│   │       ├── ArchiveManagement.tsx  # Archive management
+│   │       └── Snapshots.tsx          # Global snapshot management
 └── CLAUDE.md        # This project overview file
 ```
 
@@ -104,8 +131,11 @@ Each component has dedicated development instructions:
 ## Key Development Patterns
 
 ### Backend Patterns (Actual Implementation)
+- **Modular Router Architecture**: Separated server operations into focused routers (operations.py, compose.py, create.py, resources.py, players.py, populate.py)
 - **Integrated Minecraft Management**: Full Docker container lifecycle in `app.minecraft` module
 - **Restic Snapshot Integration**: Complete backup system in `app.snapshots` with ResticManager class
+- **Archive Management System**: Complete archive lifecycle with decompression support and SHA256 validation
+- **Common Utilities**: Shared file operations in `app.common` and decompression utilities in `app.utils`
 - **SQLAlchemy 2.0 Async**: All database operations with async/await patterns
 - **Dual Authentication**: JWT tokens + WebSocket rotating codes + Master token fallback
 - **Real-time Console**: WebSocket streaming with file system watchers (Watchdog)
@@ -117,16 +147,18 @@ Each component has dedicated development instructions:
 
 ### Frontend Patterns (Actual Implementation)
 - **Three-Layer Data Architecture**: 
-  1. Raw API layer (`hooks/api/` - authApi.ts, snapshotApi.ts, etc.)
+  1. Raw API layer (`hooks/api/` - authApi.ts, snapshotApi.ts, archiveApi.ts, etc.)
   2. Base Query layer (`hooks/queries/base/` - resource-focused hooks)
   3. Page Query layer (`hooks/queries/page/` - composed page-specific queries)
-- **Organized Mutations**: Dedicated mutations directory with focused hook files (useAuthMutations, useSnapshotMutations, useFileMutations)
+- **Organized Mutations**: Dedicated mutations directory with focused hook files (useAuthMutations, useSnapshotMutations, useFileMutations, useArchiveMutations)
+- **Modular Component Architecture**: Organized modal components with barrel exports (`components/modals/ServerFiles/`)
 - **Zustand State Management**: Token, sidebar, and login preference stores with persistence
 - **Monaco Editor Integration**: Multi-worker setup with YAML schema validation
 - **Intelligent Caching**: Different refetch intervals based on data volatility (snapshots: 2min, servers: varied)
 - **Dual Authentication UI**: WebSocket code login + traditional password login
 - **Real-time Updates**: WebSocket integration for console and live data
 - **Error Boundaries**: Graceful error handling with fallback components
+- **Modern ESLint Configuration**: Flat config with TypeScript and React plugins
 - **Absolute Import System**: Consistent use of @/ alias for all imports
 
 ## Snapshot Management System
@@ -145,6 +177,22 @@ Each component has dedicated development instructions:
 - **Real-time Updates**: Automatic refresh of snapshot lists and status
 - **Error Handling**: Comprehensive error feedback for backup operations
 
+## Archive Management System
+
+### Backend Archive Architecture
+- **Archive Router**: Comprehensive archive operations (`/api/archives/`) - upload, list, delete, SHA256 calculation
+- **Decompression Utilities**: Support for ZIP, TAR, TAR.GZ formats with validation (`app.utils.decompression`)
+- **Server Population**: Integrated archive-to-server deployment via populate endpoint
+- **SHA256 Verification**: Built-in file integrity checking for uploaded archives
+- **Common File Operations**: Shared utilities for file management across archive and server operations
+
+### Frontend Archive Features
+- **Archive Management Page**: Dedicated UI for viewing, uploading, and managing archive files
+- **Archive Selection Modal**: Streamlined archive selection interface for server creation
+- **SHA256 Verification UI**: Visual feedback for file integrity checking
+- **Server Population Integration**: Seamless archive deployment to new servers
+- **Progress Tracking**: Real-time feedback for upload and deployment operations
+
 ## Testing Strategy & Guidelines
 
 ### Test Categories
@@ -157,12 +205,18 @@ Each component has dedicated development instructions:
 - `test_websocket_console.py` - WebSocket protocol testing with mocks
 - `test_snapshots_basic.py` - Snapshot model and basic functionality testing
 - `test_snapshots_endpoints.py` - Snapshot API endpoint testing with mocks
+- `test_decompression.py` - Archive decompression utility testing
+- `test_archive_operations.py` - Archive management API testing
+- `test_archive_sha256.py` - SHA256 calculation and validation testing
+- `test_common_file_operations.py` - Common file operations utility testing
+- `test_create_server.py` - Server creation logic testing
 
 **Container/Integration Tests (Slow, Docker Required):**
 - `test_monitoring.py` - Real container monitoring (functions end with `_with_docker`)
 - `test_integration.py` - Full workflow testing (`test_integration_with_docker`)
 - `test_instance.py` - Container lifecycle testing (`*_with_docker` functions)
 - `test_snapshots_integrated.py` - Real Restic integration tests with containers
+- `test_populate_integration.py` - Real archive population testing with containers
 
 ### Development Testing Guidelines
 
@@ -170,7 +224,7 @@ Each component has dedicated development instructions:
 
 ```bash
 # ✅ Safe for development - Run these frequently
-poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py -v
 
 # ✅ Safe unit tests from test_instance.py (don't bring up containers)
 poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
@@ -180,12 +234,13 @@ poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/t
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
 # poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
+# poetry run pytest tests/test_populate_integration.py  # Real archive population
 
 # ✅ Skip container tests during development
 poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
 
-# ✅ Test only specific changes (example for snapshot changes)
-poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
+# ✅ Test only specific changes (example for archive changes)
+poetry run pytest tests/test_archive_operations.py tests/test_decompression.py tests/test_create_server.py -v
 ```
 
 **Docker Test Functions:**
@@ -193,6 +248,7 @@ poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.p
 - `test_server_status_lifecycle_with_docker` in `test_instance.py`
 - `test_get_disk_space_info_with_docker` in `test_instance.py`
 - `test_integration_with_docker` in `test_integration.py`
+- All functions in `test_populate_integration.py` require Docker containers
 
 ## External Documentation
 

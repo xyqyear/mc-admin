@@ -36,6 +36,13 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Async Operations**: Full async/await support for backup operations
 - **Dual API Structure**: Global and server-specific snapshot management endpoints
 
+### Integrated Archive Management Stack
+- **Decompression Support**: ZIP, TAR, TAR.GZ format support via app.utils.decompression
+- **SHA256 Verification**: Built-in file integrity checking for uploaded archives
+- **Server Population**: Archive-to-server deployment via populate endpoint
+- **Common File Operations**: Shared utilities in app.common.file_operations
+- **Archive Router**: Complete CRUD operations for archive lifecycle management
+
 ## Development Commands
 
 ### Environment Setup
@@ -134,7 +141,7 @@ During development iteration, **NEVER run Docker container tests** to avoid time
 
 ```bash
 # ✅ Safe for frequent development iteration
-poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py -v
 
 # ✅ Safe unit tests (don't bring up containers)
 poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
@@ -150,6 +157,7 @@ poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.p
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
 # poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
+# poetry run pytest tests/test_populate_integration.py  # Real archive population
 
 # ❌ NEVER run all tests during development
 # poetry run pytest tests/ -v  # Will timeout due to container tests
@@ -160,6 +168,7 @@ poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.p
 - `test_integration.py`: `test_integration_with_docker` 
 - `test_instance.py`: `test_server_status_lifecycle_with_docker`, `test_get_disk_space_info_with_docker`
 - `test_snapshots_integrated.py`: All tests require real Restic operations with containers
+- `test_populate_integration.py`: All tests require Docker containers for archive population
 
 **Code Quality:**
 DO NOT use black to format code
@@ -193,20 +202,32 @@ app/                        # Main application package
 │   ├── __init__.py
 │   ├── jwt_utils.py        # Password hashing (bcrypt), JWT create/verify
 │   └── login_code.py       # WebSocket rotating 8-digit codes + master token verification
+├── common/
+│   ├── __init__.py
+│   └── file_operations.py  # Shared file operations utilities
+├── utils/
+│   ├── __init__.py
+│   └── decompression.py    # Archive decompression utilities (ZIP, TAR, TAR.GZ)
 ├── routers/
 │   ├── __init__.py
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
 │   ├── user.py             # User profile endpoints
 │   ├── admin.py            # User administration endpoints (OWNER role required)
 │   ├── system.py           # System metrics endpoints (psutil integration)
-│   ├── snapshots.py        # **NEW** - Global snapshot management endpoints
+│   ├── archive.py          # Archive management endpoints (upload, list, delete, SHA256)
+│   ├── snapshots.py        # Global snapshot management endpoints
 │   └── servers/
 │       ├── __init__.py
-│       ├── misc.py         # Minecraft server management endpoints (FULL CRUD + operations)
+│       ├── compose.py      # Docker Compose configuration management
+│       ├── create.py       # Server creation endpoints
+│       ├── operations.py   # Server operations (start, stop, restart)
+│       ├── resources.py    # Resource monitoring endpoints
+│       ├── players.py      # Player management endpoints
+│       ├── populate.py     # Server population from archives
+│       ├── misc.py         # Miscellaneous server endpoints
 │       ├── console.py      # Real-time console WebSocket endpoints
 │       ├── rcon.py         # RCON command execution endpoints
-│       ├── files.py        # File management endpoints
-│       └── snapshots.py    # **NEW** - Server-specific snapshot endpoints
+│       └── files.py        # File management endpoints
 ├── websocket/
 │   ├── __init__.py         # WebSocket module exports
 │   └── console.py          # Real-time console streaming with Watchdog file monitoring
@@ -238,10 +259,16 @@ tests/                      # Test suite (separate from app package)
 ├── test_websocket_console.py # ✅ SAFE - WebSocket protocol tests with mocks
 ├── test_snapshots_basic.py # ✅ SAFE - Snapshot model and basic functionality tests
 ├── test_snapshots_endpoints.py # ✅ SAFE - Snapshot API endpoint tests with mocks
+├── test_decompression.py   # ✅ SAFE - Archive decompression utility tests
+├── test_archive_operations.py # ✅ SAFE - Archive management API tests
+├── test_archive_sha256.py  # ✅ SAFE - SHA256 calculation and validation tests
+├── test_common_file_operations.py # ✅ SAFE - Common file operations utility tests
+├── test_create_server.py   # ✅ SAFE - Server creation logic tests
 ├── test_instance.py        # ⚠️ MIXED - Some safe unit tests, some _with_docker container tests
 ├── test_monitoring.py      # ❌ DOCKER - All functions end with _with_docker  
 ├── test_integration.py     # ❌ DOCKER - test_integration_with_docker
 ├── test_snapshots_integrated.py # ❌ DOCKER - Real Restic integration tests with containers
+├── test_populate_integration.py # ❌ DOCKER - Real archive population tests with containers
 └── fixtures/               # Test utilities and fixtures
     ├── __init__.py
     ├── test_utils.py       # Test helper functions and cleanup utilities
@@ -270,24 +297,32 @@ tests/                      # Test suite (separate from app package)
 
 **Server Routes (`/api/servers/`)**:
 - `GET /servers/` - List all servers with basic info, status, and runtime data
+- `POST /servers/` - Create new server from template or archive (via create.py)
 - `GET /servers/{id}/` - Get detailed configuration for a specific server
 - `GET /servers/{id}/status` - Get current server status (REMOVED/EXISTS/CREATED/RUNNING/STARTING/HEALTHY)
-- `GET /servers/{id}/resources` - Get system resources (CPU, memory via cgroup v2) for running servers
-- `GET /servers/{id}/players` - Get online players for healthy servers
+- `GET /servers/{id}/resources` - Get system resources (CPU, memory via cgroup v2) for running servers (via resources.py)
+- `GET /servers/{id}/players` - Get online players for healthy servers (via players.py)
 - `GET /servers/{id}/iostats` - I/O statistics only (disk I/O, network I/O - no disk space)
 - `GET /servers/{id}/disk-usage` - Disk usage only (disk space info, always available)
-- `GET /servers/{id}/compose` - Get current Docker Compose configuration as YAML
-- `POST /servers/{id}/compose` - Update Docker Compose configuration from YAML
-- `POST /servers/{id}/operations` - Perform server operations (start, stop, restart, up, down, remove)
+- `GET /servers/{id}/compose` - Get current Docker Compose configuration as YAML (via compose.py)
+- `POST /servers/{id}/compose` - Update Docker Compose configuration from YAML (via compose.py)
+- `POST /servers/{id}/operations` - Perform server operations (start, stop, restart, up, down, remove) (via operations.py)
+- `POST /servers/{id}/populate` - Populate server from archive file (via populate.py)
 - `POST /servers/{id}/rcon` - Send RCON commands to running servers
 - `WebSocket /servers/{id}/console` - **Real-time console log streaming + command execution**
-- `GET /servers/{id}/snapshots/` - **NEW** - List server-specific snapshots
-- `POST /servers/{id}/snapshots/` - **NEW** - Create server-specific snapshot
+- `GET /servers/{id}/snapshots/` - List server-specific snapshots
+- `POST /servers/{id}/snapshots/` - Create server-specific snapshot
+
+**Archive Routes (`/api/archives/`)**:
+- `GET /archives/` - List all available archive files
+- `POST /archives/upload` - Upload new archive file with validation
+- `DELETE /archives/{filename}` - Delete archive file
+- `POST /archives/{filename}/sha256` - Calculate SHA256 hash for archive
 
 **Global Snapshot Routes (`/api/snapshots/`)**:
-- `GET /snapshots/` - **NEW** - List all global snapshots
-- `POST /snapshots/` - **NEW** - Create global snapshot
-- `GET /snapshots/{snapshot_id}` - **NEW** - Get specific snapshot details
+- `GET /snapshots/` - List all global snapshots
+- `POST /snapshots/` - Create global snapshot
+- `GET /snapshots/{snapshot_id}` - Get specific snapshot details
 
 ### Snapshot Management System
 
@@ -335,6 +370,32 @@ class ResticSnapshotWithSummary(BaseModel):
 - **Global Snapshots**: System-wide snapshots covering all servers and configuration
 - **Server Snapshots**: Individual server backups for specific Minecraft instances
 - **Configuration**: ResticSettings with repository path and password management
+
+## Archive Management System
+
+**Archive Router** (`app.routers.archive`):
+- Complete CRUD operations for archive lifecycle management
+- File upload handling with multipart form data support
+- SHA256 hash calculation for file integrity verification
+- Archive deletion with proper file system cleanup
+
+**Decompression Utilities** (`app.utils.decompression`):
+- Support for ZIP, TAR, and TAR.GZ format extraction
+- Async decompression operations with proper error handling
+- Validation of archive contents before extraction
+- Configurable extraction paths with security checks
+
+**Server Population** (`app.routers.servers.populate`):
+- Archive-to-server deployment functionality
+- Integration with decompression utilities for archive extraction
+- Server directory preparation and file copying
+- Rollback capabilities for failed population operations
+
+**Common File Operations** (`app.common.file_operations`):
+- Shared utilities for file system operations
+- Cross-platform path handling and validation
+- Async file operations with proper resource management
+- Error handling and cleanup for partial operations
 
 ### Authentication Patterns
 
@@ -544,6 +605,11 @@ snapshot_response = await restic_manager.create_snapshot(["/path/to/backup"])
 - `test_websocket_console.py` - WebSocket protocol with mocks
 - `test_snapshots_basic.py` - Snapshot model and basic functionality testing
 - `test_snapshots_endpoints.py` - Snapshot API endpoint testing with mocks
+- `test_decompression.py` - Archive decompression utility testing
+- `test_archive_operations.py` - Archive management API testing
+- `test_archive_sha256.py` - SHA256 calculation and validation testing
+- `test_common_file_operations.py` - Common file operations utility testing
+- `test_create_server.py` - Server creation logic testing
 - `test_instance.py::test_disk_space_info_dataclass` - Data model testing
 - `test_instance.py::test_minecraft_instance` - Configuration testing (no container startup)
 - `test_audit.py` - Operation audit middleware testing (configuration, masking, pattern matching)
@@ -554,6 +620,7 @@ snapshot_response = await restic_manager.create_snapshot(["/path/to/backup"])
 - `test_instance.py::test_server_status_lifecycle_with_docker` - Container lifecycle
 - `test_instance.py::test_get_disk_space_info_with_docker` - Disk space with container
 - `test_snapshots_integrated.py` - Real Restic operations with containers and filesystem
+- `test_populate_integration.py` - Real archive population testing with containers
 
 **Running Tests:**
 ```bash
