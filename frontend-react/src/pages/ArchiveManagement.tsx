@@ -24,7 +24,8 @@ import {
   FileOutlined,
   FolderOutlined,
   FileZipOutlined,
-  MoreOutlined
+  MoreOutlined,
+  SafetyCertificateOutlined
 } from '@ant-design/icons'
 import { SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
@@ -41,7 +42,7 @@ const ArchiveManagement: React.FC = () => {
   const [renameForm] = Form.useForm()
 
   // Archive management hooks
-  const { useArchiveFileList, useArchiveFileContent } = useArchiveQueries()
+  const { useArchiveFileList, useArchiveFileContent, useArchiveSHA256 } = useArchiveQueries()
   const {
     useUploadFile,
     useDeleteItem,
@@ -52,7 +53,7 @@ const ArchiveManagement: React.FC = () => {
 
   // Query data
   const { data: fileData, isLoading, refetch } = useArchiveFileList()
-  const archiveFiles = fileData?.items || []
+  const archiveFiles = React.useMemo(() => fileData?.items || [], [fileData?.items])
 
   // Initialize mutation hooks
   const uploadFileMutation = useUploadFile()
@@ -72,14 +73,20 @@ const ArchiveManagement: React.FC = () => {
   const [allowOverwrite, setAllowOverwrite] = useState(false)
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
-  
+  const [sha256Path, setSha256Path] = useState<string | null>(null)
+  const [sha256ModalVisible, setSha256ModalVisible] = useState(false)
+  const [sha256Result, setSha256Result] = useState<{ fileName: string; hash: string } | null>(null)
+
   // Upload progress tracking
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [uploadSpeed, setUploadSpeed] = useState<string>('0 B/s')
   const [isUploading, setIsUploading] = useState<boolean>(false)
-  const uploadBytesHistory = useRef<Array<{time: number, bytes: number}>>([])
+  const uploadBytesHistory = useRef<Array<{ time: number, bytes: number }>>([])
   const speedUpdateTimer = useRef<NodeJS.Timeout | null>(null)
   const uploadAbortController = useRef<AbortController | null>(null)
+
+  // SHA256 query
+  const sha256Query = useArchiveSHA256(sha256Path, !!sha256Path)
 
   // Get file content for editing
   const { data: fileContentData } = useArchiveFileContent(
@@ -130,6 +137,31 @@ const ArchiveManagement: React.FC = () => {
     }
   }
 
+  const handleCalculateSHA256 = async (file: ArchiveFileItem) => {
+    setSha256Path(file.path)
+  }
+
+  // Handle SHA256 result
+  React.useEffect(() => {
+    if (sha256Query.data && sha256Path) {
+      const file = archiveFiles.find(f => f.path === sha256Path)
+      setSha256Result({
+        fileName: file?.name || sha256Path,
+        hash: sha256Query.data.sha256
+      })
+      setSha256ModalVisible(true)
+      setSha256Path(null) // Reset after showing result
+    }
+  }, [sha256Query.data, sha256Path, archiveFiles])
+
+  // Handle SHA256 error
+  React.useEffect(() => {
+    if (sha256Query.error && sha256Path) {
+      message.error(`计算SHA256失败: ${(sha256Query.error as any).message}`)
+      setSha256Path(null) // Reset after showing error
+    }
+  }, [sha256Query.error, sha256Path, message])
+
   const handleRenameItem = async (values: any) => {
     if (!renamingFile) return
 
@@ -150,24 +182,24 @@ const ArchiveManagement: React.FC = () => {
   const calculateSpeed = (loadedBytes: number): string => {
     const now = Date.now()
     const history = uploadBytesHistory.current
-    
+
     // Add current data point
     history.push({ time: now, bytes: loadedBytes })
-    
+
     // Keep only data points from last 5 seconds
     const fiveSecondsAgo = now - 5000
     uploadBytesHistory.current = history.filter(point => point.time >= fiveSecondsAgo)
-    
+
     if (uploadBytesHistory.current.length < 2) return '0 B/s'
-    
+
     // Calculate speed using oldest and newest data points in the window
     const oldest = uploadBytesHistory.current[0]
     const newest = uploadBytesHistory.current[uploadBytesHistory.current.length - 1]
     const timeDiff = (newest.time - oldest.time) / 1000 // seconds
     const bytesDiff = newest.bytes - oldest.bytes
-    
+
     if (timeDiff <= 0) return '0 B/s'
-    
+
     const speed = bytesDiff / timeDiff
     return `${formatUtils.formatBytes(speed)}/s`
   }
@@ -176,13 +208,13 @@ const ArchiveManagement: React.FC = () => {
     // Create AbortController for this upload
     const controller = new AbortController()
     uploadAbortController.current = controller
-    
+
     // Initialize tracking
     setIsUploading(true)
     uploadBytesHistory.current = []
     setUploadProgress(0)
     setUploadSpeed('0 B/s')
-    
+
     try {
       await uploadFileMutation.mutateAsync({
         path: '/',
@@ -193,13 +225,13 @@ const ArchiveManagement: React.FC = () => {
           onUploadProgress: (progressEvent) => {
             const percent = Math.round(progressEvent.progress)
             setUploadProgress(percent)
-            
+
             const speed = calculateSpeed(progressEvent.loaded)
             setUploadSpeed(speed)
           }
         }
       })
-      
+
       // Clean up on success
       uploadAbortController.current = null
       setIsUploading(false)
@@ -213,13 +245,13 @@ const ArchiveManagement: React.FC = () => {
       uploadBytesHistory.current = []
       setUploadProgress(0)
       setUploadSpeed('0 B/s')
-      
+
       // Check if error is due to cancellation
       if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
         // Request was cancelled, don't show error message
         return
       }
-      
+
       // Re-throw other errors to be handled by mutation's onError
       throw error
     }
@@ -229,7 +261,7 @@ const ArchiveManagement: React.FC = () => {
     const fileName = file.name.toLowerCase()
     return fileName.endsWith('.zip') || fileName.endsWith('.7z')
   })
-  
+
   // Unified cleanup function for upload modal
   const cleanupUploadModal = () => {
     // Cancel ongoing upload request if exists
@@ -237,7 +269,7 @@ const ArchiveManagement: React.FC = () => {
       uploadAbortController.current.abort()
       uploadAbortController.current = null
     }
-    
+
     setIsUploadModalVisible(false)
     setUploadFileList([])
     setAllowOverwrite(false)
@@ -375,13 +407,23 @@ const ArchiveManagement: React.FC = () => {
       render: (_, file: ArchiveFileItem) => (
         <Space size="small">
           {file.type === 'file' && (
-            <Tooltip title="下载">
-              <Button
-                icon={<DownloadOutlined />}
-                size="small"
-                onClick={() => handleDownload(file)}
-              />
-            </Tooltip>
+            <>
+              <Tooltip title="下载">
+                <Button
+                  icon={<DownloadOutlined />}
+                  size="small"
+                  onClick={() => handleDownload(file)}
+                />
+              </Tooltip>
+              <Tooltip title="计算SHA256">
+                <Button
+                  icon={<SafetyCertificateOutlined />}
+                  size="small"
+                  onClick={() => handleCalculateSHA256(file)}
+                  loading={sha256Query.isLoading && sha256Path === file.path}
+                />
+              </Tooltip>
+            </>
           )}
           <Dropdown
             menu={{
@@ -559,7 +601,7 @@ const ArchiveManagement: React.FC = () => {
         title="上传文件"
         open={isUploadModalVisible}
         footer={[
-          <Button 
+          <Button
             key="upload"
             type="primary"
             onClick={async () => {
@@ -567,19 +609,19 @@ const ArchiveManagement: React.FC = () => {
                 const fileName = file.name.toLowerCase()
                 return fileName.endsWith('.zip') || fileName.endsWith('.7z')
               })
-              
+
               if (validFiles.length === 0) {
                 message.warning('请选择要上传的压缩包文件')
                 return
               }
-              
+
               // Upload files sequentially to show progress for each
               for (const fileItem of validFiles) {
                 if (fileItem.originFileObj) {
                   await handleUploadWithProgress(fileItem.originFileObj)
                 }
               }
-              
+
               // Close modal and cleanup after successful upload
               cleanupUploadModal()
             }}
@@ -588,8 +630,8 @@ const ArchiveManagement: React.FC = () => {
           >
             开始上传
           </Button>,
-          <Button 
-            key="cancel" 
+          <Button
+            key="cancel"
             onClick={cleanupUploadModal}
           >
             关闭
@@ -622,17 +664,17 @@ const ArchiveManagement: React.FC = () => {
           <div className="mt-2 text-gray-500">
             仅支持 .zip 和 .7z 格式的压缩包文件
           </div>
-          
+
           {isUploading && (
             <div className="mt-4">
-              <Progress 
-                percent={uploadProgress} 
-                size="default" 
+              <Progress
+                percent={uploadProgress}
+                size="default"
                 format={() => `${uploadProgress}% - ${uploadSpeed}`}
               />
             </div>
           )}
-          
+
           <div className="flex items-center space-x-2">
             <Switch
               checked={allowOverwrite}
@@ -643,10 +685,32 @@ const ArchiveManagement: React.FC = () => {
         </div>
       </Modal>
 
+      {/* SHA256 显示模态框 */}
+      <Modal
+        title="文件 SHA256 校验值"
+        open={sha256ModalVisible}
+        onCancel={() => {
+          setSha256ModalVisible(false)
+          setSha256Result(null)
+        }}
+        footer={[]}
+      >
+        {sha256Result && (
+          <div className="space-y-4">
+            <div>
+              <div className="font-medium text-gray-700 mb-2">SHA256 校验值：</div>
+              <div className="bg-gray-50 p-3 rounded border font-mono text-sm break-all select-all">
+                {sha256Result.hash}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* 压缩包管理说明 */}
       <Alert
         message="压缩包管理说明"
-        description="您可以浏览、编辑和管理压缩包内的文件。可编辑的文件支持直接在线编辑，其他文件可以下载查看。上传的文件将保存到压缩包根目录中。"
+        description="您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。"
         type="info"
         showIcon
         closable

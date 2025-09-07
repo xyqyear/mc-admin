@@ -110,4 +110,8 @@ export const archiveApi = {
   // Rename file or directory
   renameArchiveItem: (request: RenameArchiveFileRequest) =>
     api.post('/archive/rename', request).then((res: any) => res.data),
+
+  // Calculate SHA256 hash
+  calculateSHA256: (path: string): Promise<{ sha256: string }> =>
+    api.get('/archive/sha256', { params: { path } }).then((res: any) => res.data),
 }

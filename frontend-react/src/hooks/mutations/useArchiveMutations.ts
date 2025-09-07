@@ -22,8 +22,11 @@ export const useArchiveMutations = () => {
         options?: UploadOptions;
       }) =>
         archiveApi.uploadArchiveFile(path, file, allowOverwrite, options),
-      onSuccess: (_, { path }) => {
+      onSuccess: (_, { path, file }) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(path) })
+        // Invalidate SHA256 cache for the uploaded file
+        const filePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(filePath) })
         message.success('文件上传成功')
       },
       onError: (error: any) => {
@@ -51,9 +54,11 @@ export const useArchiveMutations = () => {
   const useDeleteItem = () => {
     return useMutation({
       mutationFn: (path: string) => archiveApi.deleteArchiveItem(path),
-      onSuccess: () => {
+      onSuccess: (_, path) => {
         // Invalidate the root path files list
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+        // Invalidate SHA256 cache for the deleted file
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
         message.success('删除成功')
       },
       onError: (error: any) => {
@@ -67,9 +72,11 @@ export const useArchiveMutations = () => {
     return useMutation({
       mutationFn: (request: RenameArchiveFileRequest) =>
         archiveApi.renameArchiveItem(request),
-      onSuccess: () => {
+      onSuccess: (_, request) => {
         // Invalidate the root path files list
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+        // Invalidate SHA256 cache for the old path
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(request.old_path) })
         message.success('重命名成功')
       },
       onError: (error: any) => {
@@ -85,6 +92,8 @@ export const useArchiveMutations = () => {
         archiveApi.updateArchiveFileContent(path, content),
       onSuccess: (_, { path }) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.content(path) })
+        // Invalidate SHA256 cache for the updated file
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
         message.success('文件更新成功')
       },
       onError: (error: any) => {
@@ -110,6 +119,7 @@ export const useArchiveMutations = () => {
       message.error(`下载失败: ${error.message}`)
     }
   }
+
 
   return {
     useUploadFile,

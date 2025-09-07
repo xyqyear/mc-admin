@@ -34,8 +34,25 @@ export const useArchiveQueries = () => {
     })
   }
 
+  // Calculate SHA256 hash
+  const useArchiveSHA256 = (
+    path: string | null,
+    enabled: boolean = false,
+    options?: Omit<UseQueryOptions<{ sha256: string }>, 'queryKey' | 'queryFn' | 'enabled'>
+  ) => {
+    return useQuery({
+      queryKey: queryKeys.archive.sha256(path || ''),
+      queryFn: () => archiveApi.calculateSHA256(path!),
+      enabled: !!path && enabled, // 默认不启用，需要手动触发
+      staleTime: Infinity, // SHA256 hash shouldn't change for the same file
+      refetchInterval: false,
+      ...options,
+    })
+  }
+
   return {
     useArchiveFileList,
     useArchiveFileContent,
+    useArchiveSHA256,
   }
 }
