@@ -78,6 +78,12 @@ importers:
       eslint-plugin-react:
         specifier: ^7.37.5
         version: 7.37.5(eslint@9.35.0(jiti@2.5.1))
+      eslint-plugin-react-hooks:
+        specifier: ^5.2.0
+        version: 5.2.0(eslint@9.35.0(jiti@2.5.1))
+      eslint-plugin-react-refresh:
+        specifier: ^0.4.20
+        version: 0.4.20(eslint@9.35.0(jiti@2.5.1))
       globals:
         specifier: ^16.3.0
         version: 16.3.0
@@ -1196,6 +1202,17 @@ packages:
   escape-string-regexp@4.0.0:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
+
+  eslint-plugin-react-hooks@5.2.0:
+    resolution: {integrity: sha512-+f15FfK64YQwZdJNELETdn5ibXEUQmW1DZL6KXhNnc2heoy/sg9VJJeT7n8TlMWouzWqSWavFkIhHyIbIAEapg==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0
+
+  eslint-plugin-react-refresh@0.4.20:
+    resolution: {integrity: sha512-XpbHQ2q5gUF8BGOX4dHe+71qoirYMhApEPZ7sfhF/dNnOF1UXnCMGZf79SFTBO7Bz5YEIT4TMieSlJBWhP9WBA==}
+    peerDependencies:
+      eslint: '>=8.40'
 
   eslint-plugin-react@7.37.5:
     resolution: {integrity: sha512-Qteup0SqU15kdocexFNAJMvCJEfa2xUKNV4CC1xsVMrIIqEy3SQ/rqyxCWNzfrd3/ldy6HMlD2e0JDVpDg2qIA==}
@@ -3894,6 +3911,14 @@ snapshots:
   escalade@3.2.0: {}
 
   escape-string-regexp@4.0.0: {}
+
+  eslint-plugin-react-hooks@5.2.0(eslint@9.35.0(jiti@2.5.1)):
+    dependencies:
+      eslint: 9.35.0(jiti@2.5.1)
+
+  eslint-plugin-react-refresh@0.4.20(eslint@9.35.0(jiti@2.5.1)):
+    dependencies:
+      eslint: 9.35.0(jiti@2.5.1)
 
   eslint-plugin-react@7.37.5(eslint@9.35.0(jiti@2.5.1)):
     dependencies:
