@@ -1,11 +1,9 @@
-import aiofiles.os as aioos
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import DockerMCManager, MCServerStatus
-from ...minecraft.utils import async_rmtree
 from ...models import UserPublic
 from ...utils.decompression import extract_minecraft_server
 
@@ -49,7 +47,9 @@ async def populate_server(
         server_data_dir = settings.server_path / server_id / "data"
 
         # Extract server files
-        archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
+        archive_path = settings.archive_path / populate_request.archive_filename.lstrip(
+            "/"
+        )
         await extract_minecraft_server(str(archive_path), str(server_data_dir))
 
         return {"success": True, "message": "服务器填充完成"}
