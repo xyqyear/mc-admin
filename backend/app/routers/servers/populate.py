@@ -48,16 +48,6 @@ async def populate_server(
         # Get server data directory path
         server_data_dir = settings.server_path / server_id / "data"
 
-        # Clean up existing data directory
-        if await aioos.path.exists(server_data_dir):
-            for item in server_data_dir.iterdir():
-                if await aioos.path.isdir(item):
-                    await async_rmtree(item)
-                else:
-                    await aioos.remove(item)
-        else:
-            server_data_dir.mkdir(parents=True, exist_ok=True)
-
         # Extract server files
         archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
         await extract_minecraft_server(str(archive_path), str(server_data_dir))

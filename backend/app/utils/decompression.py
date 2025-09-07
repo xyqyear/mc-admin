@@ -192,6 +192,14 @@ async def extract_minecraft_server(
                 detail="搜索server.properties时发生错误",
             )
 
+    # Clean up existing data directory
+    if await aioos.path.exists(target_path):
+        for item in await aioos.listdir(target_path):
+            if await aioos.path.isdir(item):
+                await async_rmtree(Path(item))
+            else:
+                await aioos.remove(item)
+
     # Step 6: Move server files to target directory
     try:
         # Ensure target directory exists
