@@ -89,21 +89,6 @@ const Snapshots: React.FC = () => {
       ),
     },
     {
-      title: '主机信息',
-      key: 'host_info',
-      width: 150,
-      render: (_: any, record: Snapshot) => (
-        <div className="space-y-1">
-          <div className="text-sm">
-            <Text strong>主机:</Text> {record.hostname}
-          </div>
-          <div className="text-sm">
-            <Text strong>用户:</Text> {record.username}
-          </div>
-        </div>
-      ),
-    },
-    {
       title: '版本信息',
       dataIndex: 'program_version',
       key: 'program_version',
@@ -213,6 +198,7 @@ const Snapshots: React.FC = () => {
           dataSource={snapshots}
           columns={columns}
           rowKey="id"
+          size="small"
           scroll={{ x: 'max-content' }}
           loading={isLoading}
           pagination={{
