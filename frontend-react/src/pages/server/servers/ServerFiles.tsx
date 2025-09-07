@@ -26,15 +26,18 @@ import {
   ArrowUpOutlined,
   UploadOutlined,
   DiffOutlined,
-  FolderOutlined
+  FolderOutlined,
+  FileZipOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SimpleEditor, MonacoDiffEditor } from '@/components/editors'
 import FileIcon from '@/components/files/FileIcon'
 import PageHeader from '@/components/layout/PageHeader'
+import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries'
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
+import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
@@ -77,6 +80,10 @@ const ServerFiles: React.FC = () => {
   const deleteFileMutation = useDeleteFile()
   const renameFileMutation = useRenameFile()
 
+  // Server mutation for populate
+  const { usePopulateServer } = useServerMutations()
+  const populateServerMutation = usePopulateServer()
+
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
@@ -91,6 +98,9 @@ const ServerFiles: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
   const [originalFileContent, setOriginalFileContent] = useState('')
+  
+  // Replace server files state
+  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
 
   // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
@@ -266,6 +276,27 @@ const ServerFiles: React.FC = () => {
     }
   }
 
+  // Replace server files handlers
+  const handleArchiveSelect = async (filename: string) => {
+    setIsArchiveModalVisible(false)
+    message.success(`已选择压缩包: ${filename}`)
+    
+    if (!id) return
+
+    try {
+      // 直接使用mutation进行服务器文件替换
+      await populateServerMutation.mutateAsync({
+        serverId: id,
+        archiveFilename: filename,
+      })
+      message.success('服务器文件替换完成!')
+      // Refresh file list to show new files
+      refetch()
+    } catch (error: any) {
+      message.error(`文件替换失败: ${error.message || '未知错误'}`)
+    }
+  }
+
   const moreActions = (file: FileItem) => [
     {
       key: 'rename',
@@ -410,6 +441,14 @@ const ServerFiles: React.FC = () => {
                 返回上级
               </Button>
             )}
+            <Button
+              icon={<FileZipOutlined />}
+              danger
+              onClick={() => setIsArchiveModalVisible(true)}
+              loading={populateServerMutation.isPending}
+            >
+              替换服务器文件
+            </Button>
             <Button
               icon={<UploadOutlined />}
               onClick={() => setIsUploadModalVisible(true)}
@@ -795,6 +834,18 @@ const ServerFiles: React.FC = () => {
         showIcon
         closable
       />
+
+      {/* 压缩包选择弹窗 */}
+      <ArchiveSelectionModal
+        open={isArchiveModalVisible}
+        onCancel={() => setIsArchiveModalVisible(false)}
+        onSelect={handleArchiveSelect}
+        title="选择压缩包文件"
+        description="选择要用于替换服务器文件的压缩包文件"
+        selectButtonText="替换服务器文件"
+        selectButtonType="danger"
+      />
+
     </div>
   )
 }

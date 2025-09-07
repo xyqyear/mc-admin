@@ -114,6 +114,13 @@ export const queryKeys = {
       [...queryKeys.serverStatuses.all, "detail", id] as const,
   },
 
+  // 服务器磁盘使用情况 (始终可用)
+  serverDiskUsage: {
+    all: ["serverDiskUsage"] as const,
+    detail: (id: string) =>
+      [...queryKeys.serverDiskUsage.all, "detail", id] as const,
+  },
+
   // 玩家相关 (仅健康状态时有效)
   players: {
     all: ["players"] as const,

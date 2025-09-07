@@ -1,10 +1,5 @@
-import asyncio
-import json
-from dataclasses import dataclass
-from typing import AsyncGenerator
-
+import aiofiles.os as aioos
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...config import settings
@@ -27,139 +22,49 @@ class PopulateServerRequest(BaseModel):
     archive_filename: str
 
 
-@dataclass
-class EventData:
-    event: str
-    data: dict
-    error: str | None = None
-
-    def __str__(self) -> str:
-        final_data = dict(**self.data, error=self.error) if self.error else self.data
-        return f"event: {self.event}\ndata: {json.dumps(final_data).replace('\n', '').replace('\r', '')}\n\n"
-
-
 @router.post("/{server_id}/populate")
 async def populate_server(
     server_id: str,
     populate_request: PopulateServerRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    """Populate server data directory from an archive file with SSE progress streaming"""
+    """Populate server data directory from an archive file"""
     try:
         instance = mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
-
         # Get server status and validate it's in correct state
         status = await instance.get_status()
+        if status == MCServerStatus.REMOVED:
+            raise HTTPException(
+                status_code=404,
+                detail=f"服务器 '{server_id}' 不存在",
+            )
         if status not in [MCServerStatus.EXISTS, MCServerStatus.CREATED]:
             raise HTTPException(
                 status_code=409,
-                detail=f"Server '{server_id}' must be in 'exists' or 'created' status to populate (current status: {status})",
-            )
-
-        # Construct archive file path
-        archive_path = settings.archive_path / populate_request.archive_filename
-        if not archive_path.exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Archive file '{populate_request.archive_filename}' not found",
+                detail=f"服务器 '{server_id}' 必须处于 'exists' 或 'created' 状态才能覆盖文件 (当前状态: {status})",
             )
 
         # Get server data directory path
         server_data_dir = settings.server_path / server_id / "data"
 
-        async def generate_progress() -> AsyncGenerator[str, None]:
-            last_step = "cleanup"
-            try:
-                if server_data_dir.exists():
-                    for item in server_data_dir.iterdir():
-                        if item.is_dir():
-                            await async_rmtree(item)
-                        else:
-                            await asyncio.to_thread(item.unlink)
-
-                    yield str(
-                        EventData(
-                            event="data",
-                            data={
-                                "step": "cleanup",
-                                "success": True,
-                                "message": "已清空数据目录",
-                            },
-                        )
-                    )
+        # Clean up existing data directory
+        if await aioos.path.exists(server_data_dir):
+            for item in server_data_dir.iterdir():
+                if await aioos.path.isdir(item):
+                    await async_rmtree(item)
                 else:
-                    server_data_dir.mkdir(parents=True, exist_ok=True)
-                    yield str(
-                        EventData(
-                            event="data",
-                            data={
-                                "step": "cleanup",
-                                "success": True,
-                                "message": "已创建数据目录",
-                            },
-                        )
-                    )
+                    await aioos.remove(item)
+        else:
+            server_data_dir.mkdir(parents=True, exist_ok=True)
 
-                async for step_result in extract_minecraft_server(
-                    str(archive_path), str(server_data_dir)
-                ):
-                    if step_result.success:
-                        yield str(
-                            EventData(event="data", data=step_result.model_dump())
-                        )
-                        last_step = step_result.step
-                    else:
-                        yield str(
-                            EventData(
-                                event="data", data=step_result.model_dump(), error=step_result.message
-                            )
-                        )
+        # Extract server files
+        archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
+        await extract_minecraft_server(str(archive_path), str(server_data_dir))
 
-                # Final completion message
-                yield str(
-                    EventData(
-                        event="data",
-                        data={
-                            "step": "complete",
-                            "success": True,
-                            "message": "服务器填充完成",
-                        },
-                    )
-                )
-
-            except Exception as e:
-                # Send error as SSE event
-                error_message = str(e)
-                yield str(
-                    EventData(
-                        event="data",
-                        data={
-                            "step": last_step,
-                            "success": False,
-                            "message": error_message,
-                        },
-                        error=error_message
-                    )
-                )
-
-        return StreamingResponse(
-            generate_progress(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-        )
+        return {"success": True, "message": "服务器填充完成"}
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to populate server: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"服务器文件覆盖失败: {str(e)}")

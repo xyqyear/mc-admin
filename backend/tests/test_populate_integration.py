@@ -3,13 +3,12 @@ Integration tests for the populate server endpoint.
 Tests the full flow: create server -> upload archive -> populate server -> verify files.
 """
 
-import json
 import random
 import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -197,33 +196,10 @@ services:
         
         assert populate_response.status_code == 200, f"Populate failed: {populate_response.text}"
         
-        # Parse SSE response
-        sse_lines = populate_response.text.strip().split('\n')
-        sse_events = []
-        
-        for line in sse_lines:
-            if line.startswith('data: '):
-                event_data = line[6:]  # Remove 'data: ' prefix
-                try:
-                    event = json.loads(event_data)
-                    sse_events.append(event)
-                except json.JSONDecodeError:
-                    # Skip malformed JSON lines
-                    continue
-        
-        # Verify SSE events
-        assert len(sse_events) > 0, "No SSE events received"
-        
-        # Check that we have expected steps
-        steps = [event['step'] for event in sse_events]
-        
-        # Not all steps may be present due to the way SSE streaming works, but check key ones
-        assert 'cleanup' in steps, f"Missing cleanup step. Got steps: {steps}"
-        assert 'complete' in steps, f"Missing complete step. Got steps: {steps}"
-        
-        # Verify all events are successful
-        failed_events = [event for event in sse_events if not event.get('success', True)]
-        assert len(failed_events) == 0, f"Failed events: {failed_events}"
+        # Parse JSON response (no longer SSE)
+        populate_data = populate_response.json()
+        assert populate_data["success"] is True
+        assert "服务器填充完成" in populate_data["message"]
         
         # Step 5: Verify files using files API
         files_response = client.get(
@@ -293,7 +269,7 @@ services:
         )
         
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "不存在" in response.json()["detail"]
     
     def test_populate_nonexistent_archive(self, client, mock_settings_and_auth):
         """Test populate endpoint with nonexistent archive file."""
@@ -332,8 +308,7 @@ services:
         )
         
         assert response.status_code == 404
-        assert "Archive file" in response.json()["detail"]
-        assert "not found" in response.json()["detail"]
+        assert "压缩包不存在" in response.json()["detail"]
     
     def test_populate_server_wrong_status(self, client, mock_settings_and_auth):
         """Test populate endpoint with server in wrong status."""
@@ -385,7 +360,7 @@ services:
             )
             
             assert response.status_code == 409
-            assert "must be in 'exists' or 'created' status" in response.json()["detail"]
+            assert "必须处于 'exists' 或 'created' 状态" in response.json()["detail"]
     
     def test_populate_with_invalid_archive(self, client, mock_settings_and_auth):
         """Test populate endpoint with invalid archive (missing server.properties)."""
@@ -430,43 +405,10 @@ services:
             json={"archive_filename": archive_filename}
         )
         
-        assert response.status_code == 200  # SSE always returns 200
-        
-        # Parse SSE response to check for errors
-        sse_lines = response.text.strip().split('\n')
-        sse_events = []
-        
-        for line in sse_lines:
-            if line.startswith('data: '):
-                event_data = line[6:]
-                try:
-                    event = json.loads(event_data)
-                    sse_events.append(event)
-                except json.JSONDecodeError:
-                    continue
-        
-        # Should have error event about server.properties not found
-        error_events = [event for event in sse_events if not event.get('success', True)]
-        
-        # The error should be about server.properties check failing
-        properties_errors = [
-            event for event in error_events 
-            if event.get('step') == 'serverPropertiesCheck' and 
-               '压缩包中未找到server.properties文件' in event.get('message', '')
-        ]
-        
-        # If no server.properties error was found, let's check what errors we did get
-        if len(properties_errors) == 0:
-            # Print out all events for debugging
-            print(f"All SSE events: {sse_events}")
-            print(f"Error events: {error_events}")
-            
-            # The test may fail for a different reason (e.g., 7z not finding the file at all)
-            # In that case, we just check that there is some error
-            assert len(error_events) > 0, f"Expected at least one error event, got: {sse_events}"
-        else:
-            # We found the specific server.properties error we expected
-            assert len(properties_errors) > 0, f"Expected server.properties error, got: {sse_events}"
+        # Should return 400 for invalid archive (no server.properties)
+        assert response.status_code == 400
+        response_data = response.json()
+        assert "压缩包中未找到server.properties文件" in response_data["detail"]
     
     def test_unauthorized_access(self, client, mock_settings_and_auth):
         """Test populate endpoint without authentication."""

@@ -142,6 +142,10 @@ class MCInstance:
             compose_obj = ComposeFile.from_dict(compose_dict)
             # MCComposeFile初始化成功 = 格式验证通过
             mc_compose = MCComposeFile(compose_obj)
+            if mc_compose.get_server_name() != self._name:
+                raise ValueError(
+                    "服务器名称与container_name不匹配, container_name应该为mc-服务器名"
+                )
             return mc_compose.get_server_name() == self._name
         except (yaml.YAMLError, ValueError, Exception):
             return False

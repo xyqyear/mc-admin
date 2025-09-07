@@ -145,9 +145,69 @@ export const useServerMutations = () => {
     });
   };
 
+  // 服务器数据填充
+  const usePopulateServer = () => {
+    return useMutation({
+      mutationFn: async ({ serverId, archiveFilename }: { serverId: string; archiveFilename: string }) => {
+        return serverApi.populateServer(serverId, archiveFilename);
+      },
+      onSuccess: (data, { serverId }) => {
+        message.success(data.message || `服务器 ${serverId} 数据填充完成`);
+
+        // 延迟1秒后失效相关缓存
+        setTimeout(() => {
+          // 失效服务器信息缓存
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.serverInfos.detail(serverId),
+          });
+
+          // 失效磁盘使用情况缓存（数据填充会改变磁盘使用）
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.serverDiskUsage.detail(serverId),
+          });
+
+          // 失效服务器列表
+          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+        }, 1000);
+      },
+      onError: (error: Error, { serverId }) => {
+        message.error(`服务器 ${serverId} 数据填充失败: ${error.message}`);
+      },
+    });
+  };
+
+  // 创建新服务器
+  const useCreateServer = () => {
+    return useMutation({
+      mutationFn: async ({ serverId, yamlContent }: { serverId: string; yamlContent: string }) => {
+        return serverApi.createServer(serverId, { yaml_content: yamlContent });
+      },
+      onSuccess: (_, { serverId }) => {
+        message.success(`服务器 "${serverId}" 创建成功!`);
+
+        // 延迟1秒后失效相关缓存
+        setTimeout(() => {
+          // 失效服务器列表
+          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.serverInfos.lists(),
+          });
+
+          // 失效概览数据
+          queryClient.invalidateQueries({ queryKey: queryKeys.overview() });
+        }, 1000);
+      },
+      onError: (error: Error, { serverId }) => {
+        message.error(`创建服务器 "${serverId}" 失败: ${error.message}`);
+      },
+    });
+  };
+
   return {
     useServerOperation,
     useRconCommand,
     useUpdateCompose,
+    usePopulateServer,
+    useCreateServer,
   };
 };

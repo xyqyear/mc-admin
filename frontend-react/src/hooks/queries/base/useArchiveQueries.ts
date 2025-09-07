@@ -1,16 +1,18 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query"
-import { archiveApi, type ArchiveFileListResponse, type ArchiveFileContent } from "@/hooks/api/archiveApi"
+import { archiveApi, type ArchiveFileContent, type ArchiveFileListResponse } from "@/hooks/api/archiveApi"
 import { queryKeys } from "@/utils/api"
+import { useQuery, type UseQueryOptions } from "@tanstack/react-query"
 
 export const useArchiveQueries = () => {
   // Get archive files list
   const useArchiveFileList = (
     path: string = '/',
-    options?: UseQueryOptions<ArchiveFileListResponse>
+    enabled: boolean = true,
+    options?: Omit<UseQueryOptions<ArchiveFileListResponse>, 'queryKey' | 'queryFn'>
   ) => {
     return useQuery({
       queryKey: queryKeys.archive.files(path),
       queryFn: () => archiveApi.getArchiveFiles(path),
+      enabled: enabled, // 默认启用，但允许外部传入enabled=false
       staleTime: 30 * 1000, // 30 seconds - archive files change less frequently than server files
       refetchInterval: false, // Manual refresh pattern
       ...options,
@@ -20,12 +22,12 @@ export const useArchiveQueries = () => {
   // Get archive file content
   const useArchiveFileContent = (
     path: string | null,
-    options?: UseQueryOptions<ArchiveFileContent>
+    options?: Omit<UseQueryOptions<ArchiveFileContent>, 'queryKey' | 'queryFn'>
   ) => {
     return useQuery({
       queryKey: queryKeys.archive.content(path || ''),
       queryFn: () => archiveApi.getArchiveFileContent(path!),
-      enabled: !!path,
+      enabled: !!path, // 默认启用，但允许外部传入enabled=false
       staleTime: 10 * 1000, // 10 seconds - content may change during editing
       refetchInterval: false,
       ...options,

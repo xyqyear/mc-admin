@@ -53,6 +53,19 @@ interface ComposeConfigRequest {
   yaml_content: string;
 }
 
+interface CreateServerRequest {
+  yaml_content: string;
+}
+
+interface PopulateServerRequest {
+  archive_filename: string;
+}
+
+interface PopulateServerResponse {
+  success: boolean;
+  message: string;
+}
+
 export const serverApi = {
   // 获取所有服务器基础信息 (仅包含配置信息，不包含状态或运行时数据)
   getServers: async (): Promise<ServerListItem[]> => {
@@ -187,6 +200,28 @@ export const serverApi = {
     return res.data.result;
   },
 
+  // 创建新服务器
+  createServer: async (
+    serverId: string,
+    request: CreateServerRequest,
+  ): Promise<void> => {
+    await api.post(`/servers/${serverId}`, request);
+  },
+
+  // 填充服务器数据
+  populateServer: async (
+    serverId: string,
+    archiveFilename: string,
+  ): Promise<PopulateServerResponse> => {
+    const res = await api.post<PopulateServerResponse>(
+      `/servers/${serverId}/populate`,
+      {
+        archive_filename: archiveFilename,
+      } as PopulateServerRequest,
+    );
+    return res.data;
+  },
+
   // 批量获取服务器状态
   getAllServerStatuses: async (
     serverIds: string[],
@@ -217,6 +252,9 @@ export const serverApi = {
 
 // Export types for use in other modules
 export type {
+  CreateServerRequest,
+  PopulateServerRequest,
+  PopulateServerResponse,
   ServerDiskUsageResponse,
   ServerIOStatsResponse,
   ServerListItem,

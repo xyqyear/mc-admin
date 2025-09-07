@@ -5,146 +5,123 @@ import {
   Form,
   Input,
   Button,
-  Upload,
   Typography,
   Alert,
   Space,
-  message
+  message,
+  Divider
 } from 'antd'
 import {
-  UploadOutlined,
+  FileZipOutlined,
   PlayCircleOutlined,
-  PlusOutlined
+  PlusOutlined,
+  CopyOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons'
 import { ComposeYamlEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
-import type { UploadFile } from 'antd/es/upload/interface'
+import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
+import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
+import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
+import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
 const { Text } = Typography
 
-const defaultComposeContent = `version: '3.8'
-
-services:
-  minecraft:
-    image: itzg/minecraft-server:latest
-    container_name: mc-\${SERVER_NAME}
-    ports:
-      - "\${SERVER_PORT}:25565"
-    environment:
-      EULA: "TRUE"
-      TYPE: "VANILLA"
-      VERSION: "LATEST"
-      MEMORY: "2G"
-      DIFFICULTY: "normal"
-      OPS_FILE: "/ops.json"
-      MOTD: "Welcome to \${SERVER_NAME}!"
-      ENABLE_RCON: "true"
-      RCON_PASSWORD: "minecraft"
-      RCON_PORT: 25575
-    volumes:
-      - ./data:/data
-      - ./ops.json:/ops.json:ro
-    restart: unless-stopped
-    stdin_open: true
-    tty: true
-
-volumes:
-  data:`
 
 const ServerNew: React.FC = () => {
   const navigate = useNavigate()
   const [form] = Form.useForm()
-  const [fileList, setFileList] = useState<UploadFile[]>([])
-  const [composeContent, setComposeContent] = useState(defaultComposeContent)
-  const [isCreating, setIsCreating] = useState(false)
+  const [composeContent, setComposeContent] = useState('')
 
-  const handleUploadChange = (info: any) => {
-    setFileList(info.fileList.slice(-1)) // Only keep the latest file
+  // Archive selection state
+  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
+  const [selectedArchiveFile, setSelectedArchiveFile] = useState<string | null>(null)
+  
+  // Template selection state
+  const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
+  
+  // Help modal state
+  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
+
+  // Use mutations
+  const { useCreateServer, usePopulateServer } = useServerMutations()
+  const createServerMutation = useCreateServer()
+  const populateServerMutation = usePopulateServer()
+
+  const handleArchiveSelect = (filename: string) => {
+    setSelectedArchiveFile(filename)
+    setIsArchiveModalVisible(false)
+    message.success(`已选择压缩包: ${filename}`)
   }
 
-  const beforeUpload = (file: File) => {
-    const isZip = file.type === 'application/zip' || file.name.endsWith('.zip')
-    if (!isZip) {
-      message.error('只能上传 ZIP 文件!')
-      return false
-    }
-    const isLt100M = file.size / 1024 / 1024 < 100
-    if (!isLt100M) {
-      message.error('文件大小不能超过 100MB!')
-      return false
-    }
-    return false // Prevent automatic upload, we'll handle it manually
+  const handleRemoveArchive = () => {
+    setSelectedArchiveFile(null)
+    message.info('已移除压缩包选择')
+  }
+
+  const handleTemplateSelect = (templateContent: string) => {
+    setComposeContent(templateContent)
+    setIsTemplateModalVisible(false)
+    form.setFieldsValue({ composeContent: templateContent })
+    message.success('已应用服务器模板配置')
   }
 
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
-      setIsCreating(true)
 
-      // Simulate server creation
-      setTimeout(() => {
-        setIsCreating(false)
-        message.success(`服务器 "${values.serverName}" 创建成功!`)
-        navigate('/overview')
-      }, 2000)
-    } catch (error) {
-      console.error('Validation failed:', error)
+      // 创建服务器
+      await createServerMutation.mutateAsync({
+        serverId: values.serverName,
+        yamlContent: composeContent,
+      })
+
+      if (selectedArchiveFile) {
+        // 如果选择了压缩包，填充服务器数据
+        try {
+          await populateServerMutation.mutateAsync({
+            serverId: values.serverName,
+            archiveFilename: selectedArchiveFile,
+          })
+          message.success(`服务器 "${values.serverName}" 创建并填充完成!`)
+        } catch (populateError: any) {
+          // 创建成功但填充失败，提示用户  
+          message.warning(`服务器 "${values.serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
+        }
+      }
+
+      navigate('/overview')
+    } catch (error: any) {
+      // Errors are already handled by mutations
+      console.error('创建服务器过程中出错:', error)
     }
   }
 
   const handleComposeContentChange = (value: string | undefined) => {
     if (value !== undefined) {
       setComposeContent(value)
+      form.setFieldsValue({ composeContent: value })
     }
   }
+
+  // 同步默认compose内容到表单
+  React.useEffect(() => {
+    form.setFieldsValue({ composeContent: composeContent })
+  }, [form, composeContent])
 
   const editorRef = useRef<any>(null)
 
-  const insertVariable = (variable: string) => {
-    const editor = editorRef.current
-    if (editor) {
-      const model = editor.getModel()
-      const selection = editor.getSelection()
-
-      if (model && selection) {
-        const range = {
-          startLineNumber: selection.startLineNumber,
-          startColumn: selection.startColumn,
-          endLineNumber: selection.endLineNumber,
-          endColumn: selection.endColumn
-        }
-
-        editor.executeEdits('insert-variable', [
-          {
-            range: range,
-            text: variable
-          }
-        ])
-
-        // Set cursor position after the inserted text
-        const newPosition = {
-          lineNumber: selection.startLineNumber,
-          column: selection.startColumn + variable.length
-        }
-        editor.setPosition(newPosition)
-        editor.focus()
-      }
-    }
-  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <PageHeader
-        title="新建"
+        title="新建服务器"
         icon={<PlusOutlined />}
       />
-      <Text type="secondary">
-        上传服务器文件包或使用默认配置创建新的 Minecraft 服务器
-      </Text>
 
       <Alert
-        message="创建服务器提示"
-        description="您可以上传包含服务器文件的 ZIP 包，或者使用默认的 Docker Compose 配置创建新服务器。ZIP 包会被解压到服务器目录中。"
+        message="创建服务器说明"
+        description="创建新的 Minecraft 服务器。可以选择压缩包文件来填充服务器数据，或只使用 Docker Compose 配置创建空服务器。"
         type="info"
         showIcon
         closable
@@ -154,150 +131,181 @@ const ServerNew: React.FC = () => {
         form={form}
         layout="vertical"
         onFinish={handleCreate}
+        initialValues={{
+          composeContent: ''
+        }}
       >
-        <Card title="基本信息" className="mb-6">
+
+
+        {/* 第一部分：服务器名字 */}
+        <Card title="服务器基本信息" className="mb-6">
           <Form.Item
             name="serverName"
             label="服务器名称"
             rules={[
               { required: true, message: '请输入服务器名称' },
-              { pattern: /^[a-zA-Z0-9-_]+$/, message: '服务器名称只能包含字母、数字、连字符和下划线' }
+              { pattern: /^[a-zA-Z0-9-_]+$/, message: '服务器名称只能包含字母、数字、连字符和下划线' },
+              { min: 1, max: 50, message: '服务器名称长度应在1-50个字符之间' }
             ]}
           >
             <Input
               placeholder="例如: vanilla-survival"
-              onChange={(e) => {
-                const newContent = composeContent.replace(/\${SERVER_NAME}/g, e.target.value || '${SERVER_NAME}')
-                setComposeContent(newContent)
-              }}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="serverPort"
-            label="服务器端口"
-            rules={[
-              { required: true, message: '请输入服务器端口' },
-              { pattern: /^\d+$/, message: '端口必须是数字' }
-            ]}
-            initialValue="25565"
-          >
-            <Input
-              placeholder="25565"
-              onChange={(e) => {
-                const newContent = composeContent.replace(/\${SERVER_PORT}/g, e.target.value || '${SERVER_PORT}')
-                setComposeContent(newContent)
-              }}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label="服务器描述"
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder="输入服务器描述 (可选)"
-              maxLength={200}
-              showCount
+              size="large"
             />
           </Form.Item>
         </Card>
 
-        <Card title="服务器文件" className="mb-6">
-          <Form.Item
-            name="serverFiles"
-            label="服务器文件包 (可选)"
-            extra="上传包含服务器配置、世界文件、插件等的 ZIP 包。如果不上传，将使用默认配置创建新服务器。"
-          >
-            <Upload
-              accept=".zip"
-              beforeUpload={beforeUpload}
-              onChange={handleUploadChange}
-              fileList={fileList}
-              maxCount={1}
-            >
-              <Button icon={<UploadOutlined />}>
-                选择 ZIP 文件 (最大 100MB)
-              </Button>
-            </Upload>
-          </Form.Item>
-        </Card>
-
-        <Card title="Docker Compose 配置" className="mb-6">
-          <div className="mb-4">
-            <Text strong>快速插入变量：</Text>
-            <Space className="ml-2">
+        {/* 第三部分：Compose文件编辑 */}
+        <Card 
+          title="Docker Compose 配置" 
+          className="mb-6"
+          extra={
+            <Space>
               <Button
-                size="small"
-                type="link"
-                onClick={() => insertVariable('${SERVER_NAME}')}
+                icon={<QuestionCircleOutlined />}
+                onClick={() => setIsHelpModalVisible(true)}
+                type="default"
               >
-                ${'{'}SERVER_NAME{'}'}
+                配置帮助
               </Button>
               <Button
-                size="small"
-                type="link"
-                onClick={() => insertVariable('${SERVER_PORT}')}
+                icon={<CopyOutlined />}
+                onClick={() => setIsTemplateModalVisible(true)}
+                type="dashed"
               >
-                ${'{'}SERVER_PORT{'}'}
+                选择模板
               </Button>
             </Space>
-          </div>
-
-          <Form.Item
-            name="composeContent"
-            label="docker-compose.yml 内容"
-            rules={[{ required: true, message: '请输入 Docker Compose 配置' }]}
-          >
-            <ComposeYamlEditor
-              height="500px"
-              value={composeContent}
-              onChange={handleComposeContentChange}
-              onMount={(editor: any) => {
-                editorRef.current = editor
-              }}
-              theme="vs-light"
-              path="docker-compose.yml"
+          }
+        >
+          <div className="space-y-4">
+            <Alert
+              message="配置说明"
+              description="注意编辑container_name为mc-{服务器名}; 注意编辑服务器端口，不与现有冲突"
+              type="info"
+              showIcon
             />
-          </Form.Item>
 
-          <Alert
-            message="配置说明"
-            description="这是服务器的 Docker Compose 配置文件。您可以修改环境变量、端口映射、卷挂载等设置。${SERVER_NAME} 和 ${SERVER_PORT} 变量会自动替换为上面输入的值。"
-            type="info"
-            showIcon
-            className="mt-4"
-          />
+            <Form.Item
+              name="composeContent"
+              rules={[{ required: true, message: '请输入 Docker Compose 配置' }]}
+            >
+              <ComposeYamlEditor
+                height="500px"
+                value={composeContent}
+                onChange={handleComposeContentChange}
+                onMount={(editor: any) => {
+                  editorRef.current = editor
+                }}
+                theme="vs-light"
+                path="docker-compose.yml"
+              />
+            </Form.Item>
+          </div>
         </Card>
 
+        {/* 第二部分：可选的压缩包选择 */}
+        <Card title="服务器数据 (可选)" className="mb-6">
+          <div className="space-y-4">
+            <Text type="secondary">
+              可以选择压缩包文件来填充服务器数据。如果不选择，将创建空的服务器。压缩包中需要包含server.properties文件
+              <br />
+              server.properties将会被上方的 Docker Compose 配置中的配置项覆盖
+            </Text>
+
+            <div className="flex items-center space-x-4">
+              <Button
+                icon={<FileZipOutlined />}
+                onClick={() => setIsArchiveModalVisible(true)}
+                size="large"
+              >
+                选择压缩包文件
+              </Button>
+
+              {selectedArchiveFile && (
+                <div className="flex items-center space-x-2">
+                  <Text strong>已选择: {selectedArchiveFile}</Text>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={handleRemoveArchive}
+                  >
+                    移除
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {selectedArchiveFile && (
+              <Alert
+                message="已选择压缩包文件"
+                description={`压缩包 "${selectedArchiveFile}" 将在服务器创建后自动解压到服务器数据目录中。`}
+                type="success"
+                showIcon
+              />
+            )}
+          </div>
+        </Card>
+
+
+        <Divider />
+
+        {/* 创建按钮区域 */}
         <Card>
           <div className="flex justify-between items-center">
             <div>
               <Text strong>准备创建服务器</Text>
               <br />
               <Text type="secondary">
-                请确认上述配置信息，点击创建按钮开始部署服务器
+                {selectedArchiveFile
+                  ? `将使用压缩包 "${selectedArchiveFile}" 填充服务器数据`
+                  : composeContent 
+                    ? '将使用自定义 Docker Compose 配置创建服务器'
+                    : '请先选择模板或输入 Docker Compose 配置'
+                }
               </Text>
             </div>
             <Space>
               <Button
-                onClick={() => navigate('/overview')}
-              >
-                取消
-              </Button>
-              <Button
                 type="primary"
+                size="large"
                 icon={<PlayCircleOutlined />}
-                loading={isCreating}
+                loading={createServerMutation.isPending || populateServerMutation.isPending}
                 onClick={handleCreate}
               >
-                {isCreating ? '创建中...' : '创建服务器'}
+                {createServerMutation.isPending || populateServerMutation.isPending
+                  ? (createServerMutation.isPending ? '创建中...' : '填充数据中...')
+                  : '创建服务器'}
               </Button>
             </Space>
           </div>
         </Card>
       </Form>
+
+      {/* 压缩包选择弹窗 */}
+      <ArchiveSelectionModal
+        open={isArchiveModalVisible}
+        onCancel={() => setIsArchiveModalVisible(false)}
+        onSelect={handleArchiveSelect}
+        title="选择压缩包文件"
+        description="选择要用于填充服务器数据的压缩包文件"
+      />
+
+      {/* 服务器模板选择弹窗 */}
+      <ServerTemplateModal
+        open={isTemplateModalVisible}
+        onCancel={() => setIsTemplateModalVisible(false)}
+        onSelect={handleTemplateSelect}
+        title="选择服务器模板"
+        description="选择现有服务器作为模板，使用其 Docker Compose 配置创建新服务器"
+        selectButtonText="使用模板"
+      />
+
+      {/* Docker Compose 配置帮助弹窗 */}
+      <DockerComposeHelpModal
+        open={isHelpModalVisible}
+        onCancel={() => setIsHelpModalVisible(false)}
+      />
     </div>
   )
 }

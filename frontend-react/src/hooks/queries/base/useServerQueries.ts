@@ -10,7 +10,7 @@ import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
 export const useServerQueries = () => {
   // 📈 服务器基础信息列表 - 获取所有服务器的基本配置信息（不包含状态或运行时数据）
-  const useServers = (options?: UseQueryOptions<ServerListItem[]>) => {
+  const useServers = (options?: Omit<UseQueryOptions<ServerListItem[]>, 'queryKey' | 'queryFn'>) => {
     return useQuery({
       queryKey: queryKeys.servers(),
       queryFn: serverApi.getServers,
@@ -22,7 +22,7 @@ export const useServerQueries = () => {
   };
 
   // 单个服务器详细配置信息 (长缓存，用于详情页面)
-  const useServerInfo = (id: string, options?: UseQueryOptions<ServerInfo>) => {
+  const useServerInfo = (id: string, options?: Omit<UseQueryOptions<ServerInfo>, 'queryKey' | 'queryFn'>) => {
     return useQuery({
       queryKey: queryKeys.serverInfos.detail(id),
       queryFn: () => serverApi.getServerInfo(id),
@@ -36,7 +36,7 @@ export const useServerQueries = () => {
   // 单个服务器状态 (快速更新，用于实时状态监控)
   const useServerStatus = (
     id: string,
-    options?: UseQueryOptions<ServerStatus>
+    options?: Omit<UseQueryOptions<ServerStatus>, 'queryKey' | 'queryFn'>
   ) => {
     return useQuery({
       queryKey: queryKeys.serverStatuses.detail(id),
@@ -52,9 +52,9 @@ export const useServerQueries = () => {
   const useServerCpuPercent = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<{
+    options?: Omit<UseQueryOptions<{
       cpuPercentage: number;
-    }>
+    }>, 'queryKey' | 'queryFn'>
   ) => {
     const resourcesAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -78,9 +78,9 @@ export const useServerQueries = () => {
   const useServerMemory = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<{
+    options?: Omit<UseQueryOptions<{
       memoryUsageBytes: number;
-    }>
+    }>, 'queryKey' | 'queryFn'>
   ) => {
     const resourcesAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -104,7 +104,7 @@ export const useServerQueries = () => {
   const useServerPlayers = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<string[]>
+    options?: Omit<UseQueryOptions<string[]>, 'queryKey' | 'queryFn'>
   ) => {
     const playersAvailable = status === "HEALTHY";
 
@@ -127,7 +127,7 @@ export const useServerQueries = () => {
   const useServerIOStats = (
     id: string,
     status?: ServerStatus,
-    options?: UseQueryOptions<ServerIOStatsResponse>
+    options?: Omit<UseQueryOptions<ServerIOStatsResponse>, 'queryKey' | 'queryFn'>
   ) => {
     const iostatsAvailable =
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
@@ -150,7 +150,7 @@ export const useServerQueries = () => {
   // 单个服务器磁盘使用信息 (始终可用，不依赖运行状态)
   const useServerDiskUsage = (
     id: string,
-    options?: UseQueryOptions<ServerDiskUsageResponse>
+    options?: Omit<UseQueryOptions<ServerDiskUsageResponse>, 'queryKey' | 'queryFn'>
   ) => {
     return useQuery({
       queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
@@ -170,7 +170,7 @@ export const useServerQueries = () => {
   };
 
   // Compose文件内容 (长缓存，手动刷新)
-  const useComposeFile = (id: string, options?: UseQueryOptions<string>) => {
+  const useComposeFile = (id: string, options?: Omit<UseQueryOptions<string>, 'queryKey' | 'queryFn'>) => {
     return useQuery({
       queryKey: queryKeys.compose.detail(id),
       queryFn: () => serverApi.getComposeFile(id),
