@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 
 
 def check_7z_available():
@@ -68,7 +68,7 @@ teleport-safety: true
 @pytest.fixture
 def client():
     """Create test client."""
-    return TestClient(app)
+    return TestClient(api_app)
 
 
 @pytest.fixture
@@ -346,8 +346,9 @@ services:
         
         # Mock the server status to be RUNNING (not allowed)
         with patch("app.routers.servers.populate.mc_manager") as mock_manager:
-            from app.minecraft import MCServerStatus
             from unittest.mock import AsyncMock
+
+            from app.minecraft import MCServerStatus
             
             mock_instance = mock_manager.get_instance.return_value
             mock_instance.exists = AsyncMock(return_value=True)

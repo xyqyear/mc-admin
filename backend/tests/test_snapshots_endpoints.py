@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 from app.minecraft.utils import exec_command
 
 
@@ -214,7 +214,7 @@ class TestSnapshotEndpoints:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(api_app)
 
     @pytest.fixture
     def temp_server_dir(self):

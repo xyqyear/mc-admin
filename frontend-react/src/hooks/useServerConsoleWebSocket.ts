@@ -1,4 +1,5 @@
 import { log } from "@/utils/devLogger";
+import { getApiBaseUrl } from "@/utils/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // WebSocket消息类型
@@ -60,13 +61,8 @@ export function useServerConsoleWebSocket({
   const buildWebSocketUrl = useCallback(() => {
     if (!serverId || !token) return null;
 
-    const apiBaseUrl =
-      import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api";
-    const protocol = apiBaseUrl.startsWith("https:") ? "wss:" : "ws:";
-    const host = apiBaseUrl.replace(/^https?:\/\//, "").replace("/api", "");
-    return `${protocol}//${host}/api/servers/${serverId}/console?token=${encodeURIComponent(
-      token
-    )}`;
+    const baseUrl = getApiBaseUrl(true);
+    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}`;
   }, [serverId, token]);
 
   // 发送过滤设置到后端

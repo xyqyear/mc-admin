@@ -9,13 +9,13 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 
 
 @pytest.fixture
 def client():
     """Create test client."""
-    return TestClient(app)
+    return TestClient(api_app)
 
 
 @pytest.fixture

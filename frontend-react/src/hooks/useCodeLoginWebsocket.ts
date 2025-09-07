@@ -1,4 +1,5 @@
 import { useTokenStore } from "@/stores/useTokenStore";
+import { getApiBaseUrl } from "@/utils/api";
 import { App } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -36,12 +37,7 @@ export const useCodeLoginWebsocket = () => {
   const { message } = App.useApp();
   const navigate = useNavigate();
 
-  const apiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api";
-  const wsBaseUrl = apiBaseUrl
-    .replace("https", "wss")
-    .replace("http", "ws")
-    .replace(/\/$/, "");
+  const wsBaseUrl = getApiBaseUrl(true).replace(/\/$/, "");
 
   const cleanup = useCallback(() => {
     if (wsRef.current) {

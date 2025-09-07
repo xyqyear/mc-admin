@@ -14,9 +14,34 @@ export interface ApiResponse<T = any> {
   success: boolean;
 }
 
+/**
+ * 获取API基础URL，支持相对路径和协议转换
+ * @param ws 是否为WebSocket URL，如果为true则将http替换为ws，https替换为wss
+ * @returns 处理后的完整URL
+ */
+export const getApiBaseUrl = (ws: boolean = false): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api";
+  
+  let baseUrl = envUrl;
+  
+  // 如果URL以"/"开头，表示相对路径，需要拼接当前页面的protocol和host
+  if (envUrl.startsWith('/')) {
+    baseUrl = `${window.location.protocol}//${window.location.host}${envUrl}`;
+  }
+  
+  // 如果需要WebSocket URL，替换协议
+  if (ws) {
+    baseUrl = baseUrl
+      .replace(/^https:/, 'wss:')
+      .replace(/^http:/, 'ws:');
+  }
+  
+  return baseUrl;
+};
+
 // Create axios instance with better defaults
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api",
+  baseURL: getApiBaseUrl(),
   timeout: 30000, // Increased timeout for larger operations
   headers: {
     "Content-Type": "application/json",

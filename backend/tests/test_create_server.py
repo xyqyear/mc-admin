@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -157,7 +157,7 @@ def test_client_with_temp_path(temp_server_path):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
             with patch("app.routers.servers.create.mc_manager", real_mc_manager):
-                client = TestClient(app)
+                client = TestClient(api_app)
                 yield client
 
 

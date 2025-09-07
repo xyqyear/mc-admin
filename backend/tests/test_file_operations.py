@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 
 
 class MockMCInstance:
@@ -87,7 +87,7 @@ class TestFileOperations:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(api_app)
 
     @pytest.fixture
     def temp_dir(self):

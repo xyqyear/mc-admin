@@ -40,6 +40,8 @@ class Settings(BaseSettings):
         env_file=_ENV_PATH,
     )
 
+    static_path: Path = Field(default=Path("static"))
+
     database_url: str
     master_token: str
     jwt: JWTSettings

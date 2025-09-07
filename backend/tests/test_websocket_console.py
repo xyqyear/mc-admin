@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import api_app
 from app.minecraft import MCInstance
 
 
@@ -94,7 +94,7 @@ def test_websocket_console_file_reading_and_streaming():
     3. Connects to WebSocket and verifies initial content is sent
     4. Writes new content to log file and verifies it's streamed via WebSocket
     """
-    client = TestClient(app)
+    client = TestClient(api_app)
     
     # Create temporary directory structure in /tmp
     with tempfile.TemporaryDirectory(prefix="mc_server_test_", dir="/tmp") as temp_dir:
@@ -170,7 +170,7 @@ def test_websocket_console_large_file_initial_limit():
     """
     Test that the WebSocket console respects the 1M character initial file limit.
     """
-    client = TestClient(app)
+    client = TestClient(api_app)
     
     with tempfile.TemporaryDirectory(prefix="mc_server_large_test_", dir="/tmp") as temp_dir:
         temp_path = Path(temp_dir)
