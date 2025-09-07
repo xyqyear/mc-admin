@@ -70,7 +70,7 @@ export const serverApi = {
       gamePort: number;
       maxMemoryBytes: number;
       rconPort: number;
-    }>(`/servers/${id}/`);
+    }>(`/servers/${id}`);
 
     // Transform backend response to match frontend ServerInfo type
     return {
@@ -94,10 +94,10 @@ export const serverApi = {
 
   // 获取单个服务器CPU百分比 (在RUNNING/STARTING/HEALTHY状态下可用)
   getServerCpuPercent: async (
-    id: string
+    id: string,
   ): Promise<{ cpuPercentage: number }> => {
     const res = await api.get<ServerCpuPercentResponse>(
-      `/servers/${id}/cpu_percent`
+      `/servers/${id}/cpu_percent`,
     );
     return {
       cpuPercentage: res.data.cpuPercentage,
@@ -106,7 +106,7 @@ export const serverApi = {
 
   // 获取单个服务器内存使用量 (在RUNNING/STARTING/HEALTHY状态下可用)
   getServerMemory: async (
-    id: string
+    id: string,
   ): Promise<{ memoryUsageBytes: number }> => {
     const res = await api.get<ServerMemoryResponse>(`/servers/${id}/memory`);
     return {
@@ -129,7 +129,7 @@ export const serverApi = {
   // 获取单个服务器磁盘使用信息 (始终可用，不依赖服务器状态)
   getServerDiskUsage: async (id: string): Promise<ServerDiskUsageResponse> => {
     const res = await api.get<ServerDiskUsageResponse>(
-      `/servers/${id}/disk-usage`
+      `/servers/${id}/disk-usage`,
     );
     return res.data;
   },
@@ -189,7 +189,7 @@ export const serverApi = {
 
   // 批量获取服务器状态
   getAllServerStatuses: async (
-    serverIds: string[]
+    serverIds: string[],
   ): Promise<Record<string, ServerStatus>> => {
     // Since servers endpoint no longer includes status, fetch each server status individually
     const statusPromises = serverIds.map(async (id) => {
