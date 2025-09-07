@@ -287,12 +287,12 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
   const restoreSnapshotMutation = useRestoreSnapshot()
   const previewRestoreMutation = usePreviewRestore()
 
-  // Queries
+  // Queries - 默认禁用自动查询，只有用户点击回滚按钮时才请求数据
   const { 
     data: snapshots = [], 
     isLoading: isLoadingSnapshots,
     refetch: refetchSnapshots
-  } = useSnapshotsForPath(serverId, file.path)
+  } = useSnapshotsForPath(serverId, file.path, false)
 
   const handleBackup = async () => {
     try {

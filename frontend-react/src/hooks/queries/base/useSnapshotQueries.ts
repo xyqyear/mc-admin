@@ -22,6 +22,7 @@ export const useSnapshotQueries = () => {
   const useSnapshotsForPath = (
     serverId: string | null, 
     path: string | null,
+    enabled: boolean = true,
     options?: UseQueryOptions<Snapshot[]>
   ) => {
     return useQuery({
@@ -30,7 +31,7 @@ export const useSnapshotQueries = () => {
         server_id: serverId!, 
         path: path! 
       }),
-      enabled: !!serverId && !!path,
+      enabled: enabled && !!serverId && !!path,
       staleTime: 1 * 60 * 1000, // 1分钟 - 路径相关快照需要较新的数据
       refetchInterval: false,
       ...options,
