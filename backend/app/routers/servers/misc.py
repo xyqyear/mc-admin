@@ -1,4 +1,5 @@
 import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -100,7 +101,7 @@ async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_
         instance = mc_manager.get_instance(server_id)
         status = await instance.get_status()
 
-        return ServerStatus(status=str(status))
+        return ServerStatus(status=status.name)
 
     except Exception as e:
         raise HTTPException(
