@@ -5,8 +5,8 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   PlusOutlined,
-  TeamOutlined,
-  FileTextOutlined,
+  CloudDownloadOutlined,
+  FileZipOutlined,
   MonitorOutlined
 } from '@ant-design/icons'
 
@@ -38,17 +38,17 @@ const Home: React.FC = () => {
       color: '#722ed1'
     },
     {
-      title: '玩家管理',
-      description: '监控在线玩家，执行管理操作和查看统计数据',
-      icon: <TeamOutlined style={{ fontSize: 32, color: '#fa8c16' }} />,
-      path: '/overview',
+      title: '快照管理',
+      description: '创建和管理服务器快照，支持数据备份和恢复操作',
+      icon: <CloudDownloadOutlined style={{ fontSize: 32, color: '#fa8c16' }} />,
+      path: '/snapshots',
       color: '#fa8c16'
     },
     {
-      title: '配置编辑',
-      description: '编辑 Docker Compose 文件和服务器配置',
-      icon: <FileTextOutlined style={{ fontSize: 32, color: '#eb2f96' }} />,
-      path: '/overview',
+      title: '归档管理',
+      description: '管理服务器归档文件，支持上传和删除服务器压缩包',
+      icon: <FileZipOutlined style={{ fontSize: 32, color: '#eb2f96' }} />,
+      path: '/archives',
       color: '#eb2f96'
     },
     {
