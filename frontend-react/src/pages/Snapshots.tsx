@@ -20,6 +20,7 @@ import type { Snapshot } from '@/hooks/api/snapshotApi';
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
 import { formatDateTime } from '@/utils/formatUtils';
+import { formatUtils } from '@/utils/serverUtils';
 
 const { Text } = Typography;
 
@@ -45,13 +46,6 @@ const Snapshots: React.FC = () => {
     createSnapshotMutation.mutate();
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-  };
 
   const columns: TableProps<Snapshot>['columns'] = [
     {
@@ -140,7 +134,7 @@ const Snapshots: React.FC = () => {
               <Text strong>文件:</Text> {summary.total_files_processed} 个
             </div>
             <div>
-              <Text strong>数据:</Text> {formatBytes(summary.total_bytes_processed)}
+              <Text strong>数据:</Text> {formatUtils.formatBytes(summary.total_bytes_processed)}
             </div>
             <div>
               <Text strong>新增:</Text> {summary.files_new} 文件 / {summary.dirs_new} 目录

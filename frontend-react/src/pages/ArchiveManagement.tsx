@@ -30,7 +30,8 @@ import { SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
-import { formatFileSize, formatDate, formatBytes } from '@/utils/formatUtils'
+import { formatFileSize, formatDate } from '@/utils/formatUtils'
+import { formatUtils } from '@/utils/serverUtils'
 import { detectFileLanguage, isFileEditable } from '@/config/fileEditingConfig'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
 import type { ColumnType } from 'antd/es/table/interface'
@@ -168,7 +169,7 @@ const ArchiveManagement: React.FC = () => {
     if (timeDiff <= 0) return '0 B/s'
     
     const speed = bytesDiff / timeDiff
-    return `${formatBytes(speed)}/s`
+    return `${formatUtils.formatBytes(speed)}/s`
   }
 
   const handleUploadWithProgress = async (file: File) => {
