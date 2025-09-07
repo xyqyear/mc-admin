@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from ..common.file_operations import (
     FileContent,
@@ -23,12 +24,18 @@ from ..common.file_operations import (
 )
 from ..config import settings
 from ..dependencies import get_current_user
+from ..minecraft.utils import exec_command
 from ..models import UserPublic
 
 router = APIRouter(
     prefix="/archive",
     tags=["archive"],
 )
+
+
+class SHA256Response(BaseModel):
+    sha256: str
+    filename: str
 
 
 def _get_archive_base_path() -> Path:
@@ -194,3 +201,42 @@ async def rename_archive_file_or_directory(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to rename archive item: {str(e)}")
+
+
+@router.get("/sha256", response_model=SHA256Response)
+async def get_archive_file_sha256(
+    path: str, _: UserPublic = Depends(get_current_user)
+):
+    """Calculate SHA256 hash of a specific archive file"""
+    try:
+        base_path = _get_archive_base_path()
+        file_path = base_path / path.lstrip("/")
+
+        # Validate file exists and is a file (not a directory)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Archive file not found")
+
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail="Path is not a file")
+
+        # Execute sha256sum command
+        output = await exec_command("sha256sum", str(file_path))
+        
+        # Parse output: "{hash} {file}" format, split by space and take first part
+        parts = output.strip().split()
+        if len(parts) < 1:
+            raise HTTPException(status_code=500, detail="Invalid sha256sum output")
+        
+        sha256_hash = parts[0]
+        
+        return SHA256Response(
+            sha256=sha256_hash,
+            filename=file_path.name
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to calculate SHA256 hash: {str(e)}"
+        )
