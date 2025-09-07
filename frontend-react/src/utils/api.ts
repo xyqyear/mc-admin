@@ -166,6 +166,13 @@ export const queryKeys = {
     forPath: (serverId: string, path: string) => 
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
+
+  // 压缩包管理
+  archive: {
+    all: ["archive"] as const,
+    files: (path: string) => [...queryKeys.archive.all, "files", path] as const,
+    content: (path: string) => [...queryKeys.archive.all, "content", path] as const,
+  },
 } as const;
 
 export default api;

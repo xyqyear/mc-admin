@@ -13,6 +13,7 @@ const Login = React.lazy(() => import('@/pages/Login'))
 const Home = React.lazy(() => import('@/pages/Home'))
 const Overview = React.lazy(() => import('@/pages/Overview'))
 const Snapshots = React.lazy(() => import('@/pages/Snapshots'))
+const ArchiveManagement = React.lazy(() => import('@/pages/ArchiveManagement'))
 const ServerNew = React.lazy(() => import('@/pages/server/ServerNew'))
 const ServerDetail = React.lazy(() => import('@/pages/server/servers/ServerDetail'))
 const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'))
@@ -80,6 +81,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/overview" element={<Overview />} />
           <Route path="/snapshots" element={<Snapshots />} />
+          <Route path="/archives" element={<ArchiveManagement />} />
           <Route path="/server">
             <Route path="new" element={<ServerNew />} />
             <Route path=":id" element={<ServerDetail />} />

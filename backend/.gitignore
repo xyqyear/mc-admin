@@ -8,3 +8,4 @@ notebooks/
 dev-servers*/
 cov.xml
 .coverage
+archives/

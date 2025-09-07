@@ -37,3 +37,16 @@ export function formatDateTime(timeString: string): string {
     second: '2-digit',
   });
 }
+
+/**
+ * Format bytes to human readable format for speed display
+ * @param bytes - Number of bytes
+ * @returns Formatted bytes string with 1 decimal place and no space
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))}${sizes[i]}`;
+}

@@ -17,6 +17,7 @@ import {
   CrownOutlined,
   UserOutlined,
   HistoryOutlined,
+  FileZipOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
@@ -124,6 +125,11 @@ const AppSidebar: React.FC = () => {
       title: '快照管理',
       icon: <HistoryOutlined />,
       path: '/snapshots',
+    },
+    {
+      title: '压缩包管理',
+      icon: <FileZipOutlined />,
+      path: '/archives',
     },
   ]
 
