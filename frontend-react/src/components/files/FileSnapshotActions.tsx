@@ -11,8 +11,11 @@ import type { Snapshot, RestorePreviewAction } from '@/hooks/api/snapshotApi'
 const { Text } = Typography
 
 interface FileSnapshotActionsProps {
-  file: FileItem
+  file?: FileItem
   serverId: string
+  path?: string
+  isServerMode?: boolean
+  onRefresh?: () => void
 }
 
 interface SafetyCheckModalProps {
@@ -21,6 +24,7 @@ interface SafetyCheckModalProps {
   onCreateAndRestore: () => void
   onContinueWithoutCreate: () => void
   loading?: boolean
+  isServerMode?: boolean
 }
 
 const SafetyCheckModal: React.FC<SafetyCheckModalProps> = ({
@@ -28,7 +32,8 @@ const SafetyCheckModal: React.FC<SafetyCheckModalProps> = ({
   onCancel,
   onCreateAndRestore,
   onContinueWithoutCreate,
-  loading = false
+  loading = false,
+  isServerMode = false
 }) => (
   <Modal
     title="安全检查"
@@ -59,7 +64,7 @@ const SafetyCheckModal: React.FC<SafetyCheckModalProps> = ({
   >
     <div className="space-y-4">
       <Text type="warning">
-        ⚠️ 检测到该路径在过去1分钟内没有创建快照。
+        ⚠️ 检测到{isServerMode ? '整个服务器' : '该路径'}在过去1分钟内没有创建快照。
       </Text>
       <Text>
         为了安全起见，建议您在回滚前先创建一个当前状态的快照。
@@ -87,6 +92,7 @@ interface SnapshotSelectionModalProps {
   filePath: string
   onPreview: (snapshotId: string) => void
   previewLoading: boolean
+  isServerMode?: boolean
 }
 
 const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
@@ -98,7 +104,8 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
   restoreLoading,
   filePath,
   onPreview,
-  previewLoading
+  previewLoading,
+  isServerMode = false
 }) => {
   const columns: TableProps<Snapshot>['columns'] = [
     {
@@ -165,7 +172,7 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
 
   return (
     <Modal
-      title={`选择要回滚的快照 - ${filePath}`}
+      title={`选择要回滚的快照 - ${isServerMode ? '整个服务器' : filePath}`}
       open={open}
       onCancel={onCancel}
       width={800}
@@ -177,7 +184,7 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
     >
       <div className="space-y-4">
         <Text type="secondary">
-          以下是包含该路径的所有快照，请选择要回滚的版本：
+          以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要回滚的版本：
         </Text>
         
         <Table<Snapshot>
@@ -187,7 +194,7 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
           loading={loading}
           pagination={false}
           size="small"
-          locale={{ emptyText: '没有找到包含该路径的快照' }}
+          locale={{ emptyText: `没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照` }}
         />
       </div>
     </Modal>
@@ -201,6 +208,7 @@ interface PreviewModalProps {
   previewSummary: string | null
   loading: boolean
   snapshotId: string
+  isServerMode?: boolean
 }
 
 const PreviewModal: React.FC<PreviewModalProps> = ({
@@ -209,10 +217,11 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
   previewData,
   previewSummary,
   loading,
-  snapshotId
+  snapshotId,
+  isServerMode = false
 }) => (
   <Drawer
-    title={`预览快照回滚 - ${snapshotId}`}
+    title={`预览${isServerMode ? '服务器' : ''}快照回滚 - ${snapshotId}`}
     open={open}
     onClose={onCancel}
     width={800}
@@ -270,7 +279,13 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
   </Drawer>
 )
 
-const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverId }) => {
+const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ 
+  file, 
+  serverId, 
+  path, 
+  isServerMode = false,
+  onRefresh 
+}) => {
   const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false)
   const [isSafetyCheckVisible, setIsSafetyCheckVisible] = useState(false)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('')
@@ -287,20 +302,24 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
   const restoreSnapshotMutation = useRestoreSnapshot()
   const previewRestoreMutation = usePreviewRestore()
 
+  // 确定实际的路径和文件名
+  const actualPath = path || file?.path || '/'
+  const displayName = isServerMode ? '整个服务器' : (file?.name || '服务器')
+
   // Queries - 默认禁用自动查询，只有用户点击回滚按钮时才请求数据
   const { 
     data: snapshots = [], 
     isLoading: isLoadingSnapshots,
     refetch: refetchSnapshots
-  } = useSnapshotsForPath(serverId, file.path, false)
+  } = useSnapshotsForPath(serverId, actualPath, false)
 
   const handleBackup = async () => {
     try {
       await createSnapshotMutation.mutateAsync({
         server_id: serverId,
-        path: file.path
+        path: actualPath
       })
-      message.success(`已为 ${file.name} 创建快照`)
+      message.success(`已为 ${displayName} 创建快照`)
     } catch (error) {
       message.error(`创建快照失败: ${error}`)
     }
@@ -320,11 +339,13 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: file.path
+        path: actualPath
       })
       
-      message.success(`已成功回滚 ${file.name}`)
+      message.success(`已成功回滚 ${displayName}`)
       setIsSnapshotModalVisible(false)
+      // 如果有刷新回调，执行刷新
+      onRefresh?.()
     } catch (error: any) {
       // 检查是否是安全检查错误
       if (error?.message?.includes('no recent snapshot') || error?.message?.includes('1 minute')) {
@@ -342,19 +363,21 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
       // 先创建快照
       await createSnapshotMutation.mutateAsync({
         server_id: serverId,
-        path: file.path
+        path: actualPath
       })
       
       // 然后执行回滚
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
-        path: file.path
+        path: actualPath
       })
       
-      message.success(`已创建安全快照并成功回滚 ${file.name}`)
+      message.success(`已创建安全快照并成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
+      // 如果有刷新回调，执行刷新
+      onRefresh?.()
     } catch (error: any) {
       message.error(`操作失败: ${error?.message || '未知错误'}`)
     }
@@ -370,7 +393,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
       const previewResult = await previewRestoreMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: file.path
+        path: actualPath
       })
       
       setPreviewData(previewResult.actions)
@@ -387,13 +410,15 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
-        path: file.path,
+        path: actualPath,
         skip_safety_check: true  // 关闭安全检查
       })
       
-      message.success(`已成功回滚 ${file.name}`)
+      message.success(`已成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
+      // 如果有刷新回调，执行刷新
+      onRefresh?.()
     } catch (error: any) {
       message.error(`回滚失败: ${error?.message || '未知错误'}`)
     }
@@ -402,21 +427,26 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
   return (
     <>
       <Space size="small">
-        <Tooltip title={`为 ${file.name} 创建快照`}>
+        <Tooltip title={`为 ${displayName} 创建快照`}>
           <Button
             icon={<DatabaseOutlined />}
-            size="small"
+            size={isServerMode ? "middle" : "small"}
             onClick={handleBackup}
             loading={createSnapshotMutation.isPending}
-          />
+          >
+            {isServerMode ? '创建快照' : ''}
+          </Button>
         </Tooltip>
         
-        <Tooltip title={`回滚 ${file.name}`}>
+        <Tooltip title={`回滚 ${displayName}`}>
           <Button
             icon={<HistoryOutlined />}
-            size="small"
+            size={isServerMode ? "middle" : "small"}
+            type={isServerMode ? "primary" : "default"}
             onClick={handleRollback}
-          />
+          >
+            {isServerMode ? '快照回滚' : ''}
+          </Button>
         </Tooltip>
       </Space>
 
@@ -428,9 +458,10 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
         loading={isLoadingSnapshots}
         onRestore={handleSnapshotRestore}
         restoreLoading={restoreSnapshotMutation.isPending}
-        filePath={file.path}
+        filePath={actualPath}
         onPreview={handlePreviewRestore}
         previewLoading={previewRestoreMutation.isPending}
+        isServerMode={isServerMode}
       />
 
       {/* 安全检查Modal */}
@@ -443,6 +474,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
         onCreateAndRestore={handleCreateAndRestore}
         onContinueWithoutCreate={handleContinueWithoutCreate}
         loading={createSnapshotMutation.isPending || restoreSnapshotMutation.isPending}
+        isServerMode={isServerMode}
       />
 
       {/* 预览Modal */}
@@ -453,6 +485,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ file, serverI
         previewSummary={previewSummary}
         loading={previewRestoreMutation.isPending}
         snapshotId={selectedSnapshotId}
+        isServerMode={isServerMode}
       />
     </>
   )

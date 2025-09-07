@@ -441,14 +441,24 @@ const ServerFiles: React.FC = () => {
                 返回上级
               </Button>
             )}
-            <Button
-              icon={<FileZipOutlined />}
-              danger
-              onClick={() => setIsArchiveModalVisible(true)}
-              loading={populateServerMutation.isPending}
-            >
-              替换服务器文件
-            </Button>
+            {currentPath === '/' && (
+              <>
+                <FileSnapshotActions 
+                  serverId={id || ''} 
+                  path="/" 
+                  isServerMode={true} 
+                  onRefresh={refetch} 
+                />
+                <Button
+                  icon={<FileZipOutlined />}
+                  danger
+                  onClick={() => setIsArchiveModalVisible(true)}
+                  loading={populateServerMutation.isPending}
+                >
+                  替换服务器文件
+                </Button>
+              </>
+            )}
             <Button
               icon={<UploadOutlined />}
               onClick={() => setIsUploadModalVisible(true)}
