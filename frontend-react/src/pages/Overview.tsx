@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Card,
   Table,
@@ -32,6 +32,10 @@ import { useServerOperationConfirm } from '@/components/modals/ServerOperationCo
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
+
+  // 分页状态管理
+  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // 使用新的数据架构 - 通过分离查询获取完整数据
   const {
@@ -418,10 +422,25 @@ const Overview: React.FC = () => {
           scroll={{ x: 'max-content' }}
           loading={isLoading || isStatusLoading}
           pagination={{
-            pageSize: 10,
+            current: currentPage,
+            pageSize: pageSize,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个服务器`
+            pageSizeOptions: ['10', '20', '50', '100'],
+            showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个服务器`,
+            simple: false,
+            size: "default",
+            onChange: (page, size) => {
+              setCurrentPage(page);
+              if (size !== pageSize) {
+                setPageSize(size);
+                setCurrentPage(1); // Reset to first page when page size changes
+              }
+            },
+            onShowSizeChange: (_, size) => {
+              setPageSize(size);
+              setCurrentPage(1); // Reset to first page when page size changes
+            },
           }}
         />
       </Card>
