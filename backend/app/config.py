@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     server_path: Path
     logs_dir: Path = Field(default=Path("logs"))
+    archive_path: Path = Field(default=Path("archives"))
 
     @classmethod
     def settings_customise_sources(

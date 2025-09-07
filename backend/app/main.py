@@ -5,7 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .audit import OperationAuditMiddleware
 from .db.database import init_db
-from .routers import admin, auth, system, user, snapshots
+from .routers import admin, archive, auth, system, user, snapshots
 from .routers.servers import console, files, misc, rcon
 
 
@@ -33,6 +33,7 @@ app.include_router(user.router)
 app.include_router(admin.router)
 app.include_router(system.router)
 app.include_router(snapshots.router)
+app.include_router(archive.router)
 app.include_router(misc.router)
 app.include_router(console.router)
 app.include_router(rcon.router)
