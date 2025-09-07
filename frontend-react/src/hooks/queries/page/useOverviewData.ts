@@ -20,8 +20,8 @@ export const useOverviewData = () => {
   const systemDiskQuery = useSystemDiskUsage();
   const backupRepositoryQuery = useBackupRepositoryUsage();
 
-  // 基础数据
-  const serversData = serversQuery.data || [];
+  // 基础数据 - 使用 useMemo 避免在每次渲染时创建新的对象引用
+  const serversData = useMemo(() => serversQuery.data || [], [serversQuery.data]);
   const serverNum = serversData.length;
 
   // 使用稳定的服务器ID列表
@@ -36,7 +36,7 @@ export const useOverviewData = () => {
     staleTime: 2000, // 2秒
   });
 
-  const serverStatuses = statusesQuery.data || {};
+  const serverStatuses = useMemo(() => statusesQuery.data || {}, [statusesQuery.data]);
 
   // 计算运行中的服务器数量
   const runningServers = Object.values(serverStatuses).filter((status) =>
