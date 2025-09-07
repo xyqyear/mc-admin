@@ -5,8 +5,17 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .audit import OperationAuditMiddleware
 from .db.database import init_db
-from .routers import admin, archive, auth, system, user, snapshots
-from .routers.servers import console, files, misc, rcon
+from .routers import admin, archive, auth, snapshots, system, user
+from .routers.servers import compose as server_compose
+from .routers.servers import console as server_console
+from .routers.servers import create as server_create
+from .routers.servers import files as server_files
+from .routers.servers import misc as server_misc
+from .routers.servers import operations as server_operations
+from .routers.servers import players as server_players
+from .routers.servers import populate as server_populate
+from .routers.servers import rcon as server_rcon
+from .routers.servers import resources as server_resources
 
 
 @asynccontextmanager
@@ -34,7 +43,13 @@ app.include_router(admin.router)
 app.include_router(system.router)
 app.include_router(snapshots.router)
 app.include_router(archive.router)
-app.include_router(misc.router)
-app.include_router(console.router)
-app.include_router(rcon.router)
-app.include_router(files.router)
+app.include_router(server_misc.router)
+app.include_router(server_resources.router)
+app.include_router(server_players.router)
+app.include_router(server_compose.router)
+app.include_router(server_operations.router)
+app.include_router(server_create.router)
+app.include_router(server_populate.router)
+app.include_router(server_console.router)
+app.include_router(server_rcon.router)
+app.include_router(server_files.router)
