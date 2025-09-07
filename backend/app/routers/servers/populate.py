@@ -1,4 +1,6 @@
 import asyncio
+import json
+from dataclasses import dataclass
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,7 +12,7 @@ from ...dependencies import get_current_user
 from ...minecraft import DockerMCManager, MCServerStatus
 from ...minecraft.utils import async_rmtree
 from ...models import UserPublic
-from ...utils.decompression import extract_minecraft_server, DecompressionError
+from ...utils.decompression import extract_minecraft_server
 
 router = APIRouter(
     prefix="/servers",
@@ -23,6 +25,17 @@ mc_manager = DockerMCManager(settings.server_path)
 
 class PopulateServerRequest(BaseModel):
     archive_filename: str
+
+
+@dataclass
+class EventData:
+    event: str
+    data: dict
+    error: str | None = None
+
+    def __str__(self) -> str:
+        final_data = dict(**self.data, error=self.error) if self.error else self.data
+        return f"event: {self.event}\ndata: {json.dumps(final_data).replace('\n', '').replace('\r', '')}\n\n"
 
 
 @router.post("/{server_id}/populate")
@@ -59,49 +72,81 @@ async def populate_server(
 
         # Get server data directory path
         server_data_dir = settings.server_path / server_id / "data"
-        
+
         async def generate_progress() -> AsyncGenerator[str, None]:
+            last_step = "cleanup"
             try:
-                # Step 1: Clear data directory (but keep the directory itself)
                 if server_data_dir.exists():
-                    # Remove all contents in data directory
                     for item in server_data_dir.iterdir():
                         if item.is_dir():
                             await async_rmtree(item)
                         else:
                             await asyncio.to_thread(item.unlink)
-                    
-                    yield "data: {\"step\": \"cleanup\", \"success\": true, \"message\": \"已清空数据目录\", \"error_details\": null}\n\n"
-                else:
-                    # Create data directory if it doesn't exist
-                    server_data_dir.mkdir(parents=True, exist_ok=True)
-                    yield "data: {\"step\": \"cleanup\", \"success\": true, \"message\": \"已创建数据目录\", \"error_details\": null}\n\n"
 
-                # Step 2: Extract archive to data directory using the generator
+                    yield str(
+                        EventData(
+                            event="data",
+                            data={
+                                "step": "cleanup",
+                                "success": True,
+                                "message": "已清空数据目录",
+                            },
+                        )
+                    )
+                else:
+                    server_data_dir.mkdir(parents=True, exist_ok=True)
+                    yield str(
+                        EventData(
+                            event="data",
+                            data={
+                                "step": "cleanup",
+                                "success": True,
+                                "message": "已创建数据目录",
+                            },
+                        )
+                    )
+
                 async for step_result in extract_minecraft_server(
                     str(archive_path), str(server_data_dir)
                 ):
-                    # Convert DecompressionStepResult to JSON and send as SSE
-                    step_json = step_result.model_dump_json()
-                    yield f"data: {step_json}\n\n"
+                    if step_result.success:
+                        yield str(
+                            EventData(event="data", data=step_result.model_dump())
+                        )
+                        last_step = step_result.step
+                    else:
+                        yield str(
+                            EventData(
+                                event="data", data=step_result.model_dump(), error=step_result.message
+                            )
+                        )
 
                 # Final completion message
-                yield "data: {\"step\": \"complete\", \"success\": true, \"message\": \"服务器填充完成\", \"error_details\": null}\n\n"
-                
+                yield str(
+                    EventData(
+                        event="data",
+                        data={
+                            "step": "complete",
+                            "success": True,
+                            "message": "服务器填充完成",
+                        },
+                    )
+                )
+
             except Exception as e:
                 # Send error as SSE event
-                error_message = str(e).replace('"', '\\"')  # Escape quotes in error message
-                if isinstance(e, DecompressionError):
-                    step = e.step
-                    error_details_str = str(e.error_details).replace('"', '\\"') if e.error_details else None
-                else:
-                    step = "unknown"
-                    error_details_str = None
-                
-                # Format error_details for JSON
-                error_details_json = "null" if error_details_str is None else f'"{error_details_str}"'
-                
-                yield f'data: {{"step": "{step}", "success": false, "message": "{error_message}", "error_details": {error_details_json}}}\\n\\n'
+                error_message = str(e)
+                yield str(
+                    EventData(
+                        event="data",
+                        data={
+                            "step": last_step,
+                            "success": False,
+                            "message": error_message,
+                        },
+                        error=error_message
+                    )
+                )
 
         return StreamingResponse(
             generate_progress(),

@@ -156,7 +156,7 @@ def test_client_with_temp_path(temp_server_path):
         with patch("app.config.settings.master_token", "test-master-token"):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
-            with patch("app.routers.servers.misc.mc_manager", real_mc_manager):
+            with patch("app.routers.servers.create.mc_manager", real_mc_manager):
                 client = TestClient(app)
                 yield client
 
@@ -424,7 +424,7 @@ class TestPortExtractionUtility:
     
     def test_extract_ports_valid_yaml(self):
         """Test extracting ports from valid YAML."""
-        from app.routers.servers.misc import extract_ports_from_yaml
+        from app.routers.servers.create import extract_ports_from_yaml
         
         game_port, rcon_port = extract_ports_from_yaml(VALID_YAML_BASIC)
         assert game_port == 25565
@@ -436,7 +436,7 @@ class TestPortExtractionUtility:
     
     def test_extract_ports_invalid_yaml(self):
         """Test extracting ports from invalid YAML."""
-        from app.routers.servers.misc import extract_ports_from_yaml
+        from app.routers.servers.create import extract_ports_from_yaml
         
         with pytest.raises(ValueError) as exc_info:
             extract_ports_from_yaml(INVALID_YAML_NO_VERSION)
