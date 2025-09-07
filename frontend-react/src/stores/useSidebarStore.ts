@@ -64,7 +64,7 @@ export const getOpenKeysFromPath = (pathname: string): string[] => {
   const openKeys: string[] = [];
 
   // Check if we're on a server-specific page
-  const serverMatch = pathname.match(/^\/server\/([^\/]+)/);
+  const serverMatch = pathname.match(/^\/server\/([^/]+)/);
   if (serverMatch) {
     const serverId = serverMatch[1];
     if (serverId !== "new") {

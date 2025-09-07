@@ -69,7 +69,7 @@ const ServerFiles: React.FC = () => {
     useRenameFile,
     downloadFile
   } = useFileMutations(id)
-  
+
   // Initialize mutation hooks
   const updateFileMutation = useUpdateFile()
   const uploadFileMutation = useUploadFile()
@@ -261,7 +261,7 @@ const ServerFiles: React.FC = () => {
     try {
       await refetch()
       message.success('刷新成功')
-    } catch (error) {
+    } catch {
       message.error('刷新失败')
     }
   }
@@ -349,7 +349,7 @@ const ServerFiles: React.FC = () => {
         <Space size="small">
           {/* 快照操作按钮 */}
           <FileSnapshotActions file={file} serverId={id || ''} />
-          
+
           <Tooltip title="下载">
             <Button
               icon={<DownloadOutlined />}

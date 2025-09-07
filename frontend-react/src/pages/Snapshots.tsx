@@ -227,7 +227,7 @@ const Snapshots: React.FC = () => {
             showSizeChanger: true,
             showQuickJumper: true,
             pageSizeOptions: ['10', '20', '50', '100'],
-            showTotal: (total, range) => 
+            showTotal: (total, range) =>
               `${range[0]}-${range[1]} 共 ${total} 个快照`,
             simple: false,
             size: "default",
@@ -249,7 +249,7 @@ const Snapshots: React.FC = () => {
                 <CloudServerOutlined className="text-4xl text-gray-300 mb-2" />
                 <div className="text-gray-500">暂无快照数据</div>
                 <div className="text-gray-400 text-sm mt-1">
-                  点击"创建全局快照"开始备份服务器数据
+                  点击&quot;创建全局快照&quot;开始备份服务器数据
                 </div>
               </div>
             ),

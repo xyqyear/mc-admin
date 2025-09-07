@@ -196,7 +196,7 @@ export const serverApi = {
       try {
         const status = await serverApi.getServerStatus(id);
         return { id, status };
-      } catch (error) {
+      } catch {
         // If a server status fails, return null status to avoid breaking the whole request
         return { id, status: null };
       }
@@ -215,11 +215,11 @@ export const serverApi = {
   },
 };
 
-
-
 // Export types for use in other modules
 export type {
-  ServerDiskUsageResponse, ServerIOStatsResponse, ServerListItem,
+  ServerDiskUsageResponse,
+  ServerIOStatsResponse,
+  ServerListItem,
   ServerStatusResponse
 };
 

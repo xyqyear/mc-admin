@@ -1,20 +1,17 @@
 import { serverApi, type ServerDiskUsageResponse } from "@/hooks/api/serverApi";
+import { useServerQueries } from "@/hooks/queries/base/useServerQueries";
+import { useSnapshotQueries } from "@/hooks/queries/base/useSnapshotQueries";
+import { useSystemQueries } from "@/hooks/queries/base/useSystemQueries";
 import type { ServerStatus } from "@/types/ServerInfo";
 import { queryKeys } from "@/utils/api";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useServerQueries } from "@/hooks/queries/base/useServerQueries";
-import { useSystemQueries } from "@/hooks/queries/base/useSystemQueries";
-import { useSnapshotQueries } from "@/hooks/queries/base/useSnapshotQueries";
 
 // 🎯 总览页面专用的组合hooks - 使用批量查询避免动态hooks问题
 export const useOverviewData = () => {
   const { useServers } = useServerQueries();
-  const { 
-    useSystemInfo, 
-    useSystemCpuPercent, 
-    useSystemDiskUsage 
-  } = useSystemQueries();
+  const { useSystemInfo, useSystemCpuPercent, useSystemDiskUsage } =
+    useSystemQueries();
   const { useBackupRepositoryUsage } = useSnapshotQueries();
 
   const serversQuery = useServers();
@@ -50,7 +47,7 @@ export const useOverviewData = () => {
   const healthyServerIds = useMemo(
     () =>
       Object.entries(serverStatuses)
-        .filter(([_, status]) => status === "HEALTHY")
+        .filter(([, status]) => status === "HEALTHY")
         .map(([id]) => id),
     [serverStatuses]
   );
@@ -72,7 +69,7 @@ export const useOverviewData = () => {
   const runningServerIds = useMemo(
     () =>
       Object.entries(serverStatuses)
-        .filter(([_, status]) =>
+        .filter(([, status]) =>
           ["RUNNING", "STARTING", "HEALTHY"].includes(status)
         )
         .map(([id]) => id),

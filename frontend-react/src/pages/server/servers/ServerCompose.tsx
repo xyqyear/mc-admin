@@ -107,7 +107,7 @@ const ServerCompose: React.FC = () => {
     try {
       // 强制重新获取最新的服务器配置，确保diff对比是准确的
       await composeQuery.refetch()
-    } catch (error) {
+    } catch {
       message.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
     }
 
@@ -219,7 +219,7 @@ const ServerCompose: React.FC = () => {
       // 强制重新获取最新的服务器配置
       await composeQuery.refetch()
       setIsCompareVisible(true)
-    } catch (error) {
+    } catch {
       message.error('获取最新配置失败，使用当前缓存的配置进行对比')
       setIsCompareVisible(true)
     }

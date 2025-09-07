@@ -40,7 +40,7 @@ const Login: React.FC = () => {
     try {
       await navigator.clipboard.writeText(code)
       message.success('复制成功')
-    } catch (error) {
+    } catch {
       message.error('复制失败')
     }
   }

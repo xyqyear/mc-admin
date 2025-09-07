@@ -56,7 +56,7 @@ const UserManagement: React.FC = () => {
       await createUserMutation.mutateAsync(values as UserCreate)
       setIsCreateModalOpen(false)
       createForm.resetFields()
-    } catch (error) {
+    } catch {
       // Error is handled by the mutation
     }
   }

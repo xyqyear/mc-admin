@@ -88,7 +88,7 @@ const ServerDetail: React.FC = () => {
             description={
               isServerNotFound ? (
                 <div className="space-y-3">
-                  <p>服务器 "{id}" 不存在。</p>
+                  <p>服务器 &quot;{id}&quot; 不存在。</p>
                   {availableServers.length > 0 && (
                     <div>
                       <p className="font-medium">可用的服务器：</p>
