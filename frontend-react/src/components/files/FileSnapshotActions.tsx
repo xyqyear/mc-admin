@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Button, Modal, Table, Tooltip, message, Space, Tag, Typography, Drawer, Divider, type TableProps } from 'antd'
+import { Button, Modal, Table, Tooltip, message, Space, Tag, Typography, Drawer, Divider, Popconfirm, type TableProps } from 'antd'
 import { DatabaseOutlined, HistoryOutlined, EyeOutlined } from '@ant-design/icons'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -107,6 +107,16 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
   previewLoading,
   isServerMode = false
 }) => {
+  // 分页状态管理
+  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // 当模态框打开时重置分页状态
+  React.useEffect(() => {
+    if (open) {
+      setCurrentPage(1)
+    }
+  }, [open])
   const columns: TableProps<Snapshot>['columns'] = [
     {
       title: '快照ID',
@@ -176,11 +186,7 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
       open={open}
       onCancel={onCancel}
       width={800}
-      footer={[
-        <Button key="cancel" onClick={onCancel}>
-          取消
-        </Button>
-      ]}
+      footer={[]}
     >
       <div className="space-y-4">
         <Text type="secondary">
@@ -192,7 +198,28 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
           dataSource={snapshots}
           rowKey="id"
           loading={loading}
-          pagination={false}
+          pagination={{
+            current: currentPage,
+            pageSize: pageSize,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            pageSizeOptions: ['5', '10', '20', '50'],
+            showTotal: (total, range) =>
+              `${range[0]}-${range[1]} 共 ${total} 个快照`,
+            simple: false,
+            size: "small",
+            onChange: (page, size) => {
+              setCurrentPage(page)
+              if (size !== pageSize) {
+                setPageSize(size)
+                setCurrentPage(1) // Reset to first page when page size changes
+              }
+            },
+            onShowSizeChange: (_, size) => {
+              setPageSize(size)
+              setCurrentPage(1) // Reset to first page when page size changes
+            },
+          }}
           size="small"
           locale={{ emptyText: `没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照` }}
         />
@@ -427,16 +454,23 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   return (
     <>
       <Space size="small">
-        <Tooltip title={`为 ${displayName} 创建快照`}>
-          <Button
-            icon={<DatabaseOutlined />}
-            size={isServerMode ? "middle" : "small"}
-            onClick={handleBackup}
-            loading={createSnapshotMutation.isPending}
-          >
-            {isServerMode ? '创建快照' : ''}
-          </Button>
-        </Tooltip>
+        <Popconfirm
+          title={`确认创建快照`}
+          description={`确定要为 ${displayName} 创建快照吗？`}
+          onConfirm={handleBackup}
+          okText="确定"
+          cancelText="取消"
+        >
+          <Tooltip title={`为 ${displayName} 创建快照`}>
+            <Button
+              icon={<DatabaseOutlined />}
+              size={isServerMode ? "middle" : "small"}
+              loading={createSnapshotMutation.isPending}
+            >
+              {isServerMode ? '创建快照' : ''}
+            </Button>
+          </Tooltip>
+        </Popconfirm>
         
         <Tooltip title={`回滚 ${displayName}`}>
           <Button
