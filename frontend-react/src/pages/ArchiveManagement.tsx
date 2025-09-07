@@ -34,7 +34,7 @@ import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import { formatUtils } from '@/utils/serverUtils'
 import { detectFileLanguage, isFileEditable } from '@/config/fileEditingConfig'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
-import type { ColumnType } from 'antd/es/table/interface'
+import type { ColumnType, SortOrder } from 'antd/es/table/interface'
 
 const ArchiveManagement: React.FC = () => {
   const { message } = App.useApp()
@@ -310,6 +310,14 @@ const ArchiveManagement: React.FC = () => {
       title: '文件名',
       dataIndex: 'name',
       key: 'name',
+      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => {
+        // Custom sorting: directories first, then files, both alphabetically
+        if (a.type !== b.type) {
+          return a.type === 'directory' ? -1 : 1
+        }
+        return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' })
+      },
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (name: string, file: ArchiveFileItem) => {
         const isEditable = isFileEditable(file.name)
         const isDirectory = file.type === 'directory'
@@ -345,6 +353,8 @@ const ArchiveManagement: React.FC = () => {
       dataIndex: 'size',
       key: 'size',
       width: 90,
+      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => a.size - b.size,
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (size: number, record: ArchiveFileItem) =>
         record.type === 'file' ? formatFileSize(size) : '-',
     },
@@ -353,6 +363,9 @@ const ArchiveManagement: React.FC = () => {
       dataIndex: 'modified_at',
       key: 'modified_at',
       width: 150,
+      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => a.modified_at - b.modified_at,
+      sortDirections: ['ascend', 'descend'] as SortOrder[],
+      defaultSortOrder: 'descend' as SortOrder,
       render: (modified_at: number) => formatDate(modified_at),
     },
     {
