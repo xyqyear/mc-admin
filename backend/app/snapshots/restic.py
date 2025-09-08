@@ -64,17 +64,28 @@ class ResticRestorePreviewAction(BaseModel):
 class ResticManager:
     """Core restic operations manager"""
 
-    def __init__(self, repository_path: str, password: str):
+    def __init__(self, repository_path: str, password: str | None = None):
         """
-        Initialize restic manager with repository and password
+        Initialize restic manager with repository and optional password
 
         Args:
             repository_path: Path to restic repository
-            password: Repository password
+            password: Repository password (None or empty string for no password)
         """
         self.repository_path = repository_path
         self.password = password
-        self.env = {"RESTIC_REPOSITORY": repository_path, "RESTIC_PASSWORD": password}
+        self.use_password = password is not None and password.strip() != ""
+        
+        # Set up environment variables
+        self.env = {"RESTIC_REPOSITORY": repository_path}
+        if self.use_password:
+            self.env["RESTIC_PASSWORD"] = password
+
+    def _add_password_args(self, args: list[str]) -> list[str]:
+        """Add password-related arguments to restic command"""
+        if not self.use_password:
+            args.append("--insecure-no-password")
+        return args
 
     async def backup(
         self, path: Path, uid: int | None = None, gid: int | None = None
@@ -93,9 +104,8 @@ class ResticManager:
         if not path.is_absolute():
             raise ValueError("Path must be absolute for restic backup")
 
-        result = await exec_command(
-            "restic", "backup", str(path), "--json", uid=uid, gid=gid, env=self.env
-        )
+        args = self._add_password_args(["restic", "backup", str(path), "--json"])
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
         # Parse the backup result to get summary and snapshot_id
         lines = result.strip().split("\n")
@@ -119,9 +129,8 @@ class ResticManager:
             )
 
         # Now get the full snapshot information using the snapshot_id
-        snapshots_result = await exec_command(
-            "restic", "snapshots", snapshot_id, "--json", uid=uid, gid=gid, env=self.env
-        )
+        args = self._add_password_args(["restic", "snapshots", snapshot_id, "--json"])
+        snapshots_result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
         try:
             snapshots_list = json.loads(snapshots_result)
@@ -183,8 +192,7 @@ class ResticManager:
         Returns:
             List of snapshots
         """
-        args = ["restic", "snapshots", "--json"]
-
+        args = self._add_password_args(["restic", "snapshots", "--json"])
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
         try:
@@ -268,6 +276,7 @@ class ResticManager:
         if include_path:
             args.extend(["--include", str(include_path)])
 
+        args = self._add_password_args(args)
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
         actions = []
@@ -330,6 +339,7 @@ class ResticManager:
         if include_path:
             args.extend(["--include", str(include_path)])
 
+        args = self._add_password_args(args)
         await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
     async def has_recent_snapshot(

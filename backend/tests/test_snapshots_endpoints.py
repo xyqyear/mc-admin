@@ -178,14 +178,14 @@ world-settings:
 
 @contextmanager
 def mock_snapshot_dependencies_setup(
-    instance, temp_restic_repo: Path, restic_password: str = "test-password"
+    instance, temp_restic_repo: Path, restic_password: str | None = "test-password"
 ):
     """Context manager for mocking snapshot dependencies.
 
     Args:
         instance: The MockMCInstance to use for testing
         temp_restic_repo: Path to temporary restic repository
-        restic_password: Password for restic repository
+        restic_password: Password for restic repository (None for no password)
     """
     with (
         patch("app.routers.snapshots.mc_manager") as mock_manager,
@@ -249,6 +249,21 @@ class TestSnapshotEndpoints:
             await exec_command("restic", "init", env=env)
         except Exception as e:
             pytest.fail(f"Failed to initialize restic repository: {e}")
+
+        return temp_restic_repo
+
+    @pytest.fixture
+    async def initialized_restic_repo_no_password(self, temp_restic_repo):
+        """Initialize restic repository without password."""
+
+        env = {
+            "RESTIC_REPOSITORY": str(temp_restic_repo),
+        }
+
+        try:
+            await exec_command("restic", "init", "--insecure-no-password", env=env)
+        except Exception as e:
+            pytest.fail(f"Failed to initialize restic repository without password: {e}")
 
         return temp_restic_repo
 
@@ -933,6 +948,189 @@ modified=true
                     "Files in other subdirectories should not be affected by plugins-only restore"
                 )
                 assert world_final_check.json()["content"] == world_test_content
+
+    @pytest.mark.asyncio
+    async def test_create_snapshot_no_password(
+        self, client, mock_instance, initialized_restic_repo_no_password
+    ):
+        """Test creating a snapshot with no password repository."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+            response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify response structure
+            assert "message" in data
+            assert "snapshot" in data
+            assert "Snapshot created successfully" in data["message"]
+
+            # Verify snapshot details
+            snapshot = data["snapshot"]
+            assert snapshot["id"] is not None
+            assert len(snapshot["id"]) == 64  # SHA256 hash
+            assert snapshot["short_id"] is not None
+            assert len(snapshot["short_id"]) == 8
+            assert len(snapshot["paths"]) > 0
+            assert str(instance.project_path) in snapshot["paths"]
+
+    @pytest.mark.asyncio
+    async def test_list_snapshots_no_password(
+        self, client, mock_instance, initialized_restic_repo_no_password
+    ):
+        """Test listing snapshots with no password repository."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+            # Create a snapshot first
+            create_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert create_response.status_code == 200
+            created_snapshot_id = create_response.json()["snapshot"]["id"]
+
+            # List snapshots
+            list_response = client.get(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
+            )
+
+            assert list_response.status_code == 200
+            data = list_response.json()
+
+            # Verify response structure
+            assert "snapshots" in data
+            assert len(data["snapshots"]) == 1
+
+            # Verify snapshot details
+            snapshot = data["snapshots"][0]
+            assert snapshot["id"] == created_snapshot_id
+            assert str(instance.project_path) in snapshot["paths"]
+
+    @pytest.mark.asyncio
+    async def test_restore_preview_no_password(
+        self, client, mock_instance, initialized_restic_repo_no_password
+    ):
+        """Test restore preview with no password repository."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+            # Create a snapshot
+            create_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert create_response.status_code == 200
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            # Modify some files to create changes
+            (instance.data_path / "server.properties").write_text(
+                "server-port=25566\nmodified=true"
+            )
+            (instance.data_path / "new_file.txt").write_text("This is a new file")
+
+            # Preview restore
+            preview_response = client.post(
+                "/snapshots/restore/preview",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+
+            assert preview_response.status_code == 200
+            data = preview_response.json()
+
+            # Verify response structure
+            assert "actions" in data
+            assert "preview_summary" in data
+            assert len(data["actions"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_restore_no_password(
+        self, client, mock_instance, initialized_restic_repo_no_password
+    ):
+        """Test actual restore with no password repository."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+            # Record original file content
+            original_props_response = client.get(
+                f"/servers/{server_id}/files/content",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"path": "/server.properties"},
+            )
+            assert original_props_response.status_code == 200
+            original_props_content = original_props_response.json()["content"]
+
+            # Create initial snapshot
+            snapshot_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert snapshot_response.status_code == 200
+            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+
+            # Modify file
+            modified_content = "# MODIFIED CONFIG\nserver-port=25566\nmax-players=10"
+            modify_response = client.post(
+                f"/servers/{server_id}/files/content",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"path": "/server.properties"},
+                json={"content": modified_content},
+            )
+            assert modify_response.status_code == 200
+
+            # Create safety snapshot and restore
+            client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+
+            restore_response = client.post(
+                "/snapshots/restore",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+            assert restore_response.status_code == 200
+
+            # Verify restoration
+            restored_props_response = client.get(
+                f"/servers/{server_id}/files/content",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"path": "/server.properties"},
+            )
+            assert restored_props_response.status_code == 200
+            restored_content = restored_props_response.json()["content"]
+            assert restored_content == original_props_content
+
+    @pytest.mark.asyncio
+    async def test_no_password_empty_string(
+        self, client, mock_instance, initialized_restic_repo_no_password
+    ):
+        """Test that empty string password is treated as no password."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=""):
+            response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "Snapshot created successfully" in data["message"]
 
 
 if __name__ == "__main__":

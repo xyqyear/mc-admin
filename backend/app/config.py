@@ -30,7 +30,7 @@ class AuditSettings(BaseModel):
 
 class ResticSettings(BaseModel):
     repository_path: str
-    password: str
+    password: str | None = None
 
 
 class Settings(BaseSettings):

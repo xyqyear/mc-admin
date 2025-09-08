@@ -33,6 +33,7 @@ services:
       # Restic backup configuration
       - RESTIC__REPOSITORY_PATH=/data/restic
       # CHANGE THIS IN PRODUCTION!
+      # if the repository doesn't have a password, the following line can be removed
       - RESTIC__PASSWORD=your-restic-password-change-in-production
 
       # cgroup path
