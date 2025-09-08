@@ -1,324 +1,618 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
-import {
-  Card,
-  Input,
-  Button,
-  Alert,
-  Space,
-  Spin,
-  Switch
-} from 'antd'
-import {
-  SendOutlined,
-  CodeOutlined
-} from '@ant-design/icons'
-import { useParams } from 'react-router-dom'
-import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
-import LoadingSpinner from '@/components/layout/LoadingSpinner'
-import PageHeader from '@/components/layout/PageHeader'
-import { useToken } from '@/stores/useTokenStore'
-import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket'
-import { log } from '@/utils/devLogger'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Card, Switch, Button, Space, Alert, Typography, Spin } from 'antd';
+import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined } from '@ant-design/icons';
+import { useXTerm } from 'react-xtermjs';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 
-const { TextArea } = Input
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
+import { useTokenStore } from '@/stores/useTokenStore';
+import { getApiBaseUrl } from '@/utils/api';
+import { Terminal } from '@xterm/xterm';
+import PageHeader from '@/components/layout/PageHeader';
+import LoadingSpinner from '@/components/layout/LoadingSpinner';
+
+const { Text } = Typography;
+
+// WebSocket消息类型
+interface WebSocketMessage {
+  type: 'log' | 'error' | 'info' | 'logs_refreshed';
+  content?: string;
+  message?: string;
+  filter_rcon?: boolean;
+}
+
+// WebSocket连接状态
+type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR' | 'RETRYING';
+
+// 重试配置常量
+const MAX_RETRY_COUNT = 5;
+const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避延迟
 
 const ServerConsole: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
-  const token = useToken()
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const serverId = id!;
+  const { token } = useTokenStore();
 
-  // 使用数据管理系统
-  const { useServerConsoleData } = useServerDetailQueries(id || '')
+  // React Query hooks
+  const { useServerStatus, useServerInfo } = useServerQueries();
+  const { data: serverStatus } = useServerStatus(serverId);
+  const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
 
-  const {
-    serverInfo,
-    status,
-    isLoading,
-    isError,
-    error,
-    hasServerInfo,
-    refetch,
-  } = useServerConsoleData()
+  // WebSocket refs
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
 
-  // 本地状态
-  const [logs, setLogs] = useState<string>('')
-  const [command, setCommand] = useState('')
-  const [filterRcon, setFilterRcon] = useState(true) // 默认开启RCON过滤
-  const [autoScroll, setAutoScroll] = useState(true) // 自动滚动开关
+  // Terminal instance ref - 用于打破循环依赖
+  const terminalInstanceRef = useRef<Terminal | null>(null);
 
-  // Refs
-  const logsRef = useRef<any>(null) // 使用any类型避免TypeScript错误
+  // State
+  const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
+  const [filterRcon, setFilterRcon] = useState(true);
+  const [currentCommand, setCurrentCommand] = useState('');
+  const [lastError, setLastError] = useState<string | null>(null);
 
-  // WebSocket回调函数
-  const handleLogsUpdate = useCallback((content: string) => {
-    setLogs(prev => prev + content)
-  }, [])
+  // XTerm 配置 - 使用useMemo来避免每次渲染重新创建
+  const terminalOptions = useMemo(() => ({
+    theme: {
+      background: '#000000',
+      foreground: '#ffffff',
+      cursor: '#ffffff',
+    },
+    fontFamily: 'Consolas, "Courier New", monospace',
+    fontSize: 14,
+    cursorBlink: true,
+    convertEol: true,
+    disableStdin: false,
+  }), []);
 
-  const handleLogsRefresh = useCallback((content: string) => {
-    setLogs(content)
-    setAutoScroll(true)
-  }, [])
+  const terminalAddons = useMemo(() => [new FitAddon(), new WebLinksAddon()], []);
 
+  // 获取FitAddon引用
+  const fitAddon = terminalAddons[0] as FitAddon;
 
-  const handleError = useCallback((message: string) => {
-    setLogs(prev => prev + `[ERROR] ${message}\n`)
-  }, [])
+  // 使用 useXTerm 钩子
+  const terminal = useXTerm({
+    options: terminalOptions,
+    addons: terminalAddons,
+  });
 
-  const handleInfo = useCallback((message: string) => {
-    setLogs(prev => prev + `[INFO] ${message}\n`)
-  }, [])
+  // 同步terminal实例到ref
+  useEffect(() => {
+    terminalInstanceRef.current = terminal.instance;
+  }, [terminal.instance]);
 
-  const handleAutoScrollEnable = useCallback(() => {
-    setAutoScroll(true)
-  }, [])
+  // 创建稳定的terminal访问器
+  const getTerminal = useCallback(() => terminalInstanceRef.current, []);
 
-  const handleErrorDisconnect = useCallback(() => {
-    // 收到错误消息时刷新服务器状态
-    // useEffect 会自动处理重连逻辑
-    refetch()
-  }, [refetch])
+  // 处理终端数据输入 - 使用稳定的访问器
+  const handleTerminalData = useCallback((data: string) => {
+    const terminalInstance = getTerminal();
 
-  // 使用WebSocket hook
-  const {
-    isConnected,
-    isConnecting,
-    connect: connectWebSocket,
-    sendCommand: wsCommandSend
-  } = useServerConsoleWebSocket({
-    serverId: id || '',
-    token: token || '',
-    serverStatus: status || null,
-    filterRcon,
-    onLogsUpdate: handleLogsUpdate,
-    onLogsRefresh: handleLogsRefresh,
-    onError: handleError,
-    onInfo: handleInfo,
-    onAutoScrollEnable: handleAutoScrollEnable,
-    onErrorDisconnect: handleErrorDisconnect
-  })
+    // 处理回车键
+    if (data === '\r') {
+      if (currentCommand.trim()) {
+        // 发送命令
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          try {
+            wsRef.current.send(JSON.stringify({
+              type: 'command',
+              command: currentCommand.trim(),
+            }));
+          } catch (error) {
+            console.error('Failed to send command:', error);
+            if (terminalInstance) {
+              terminalInstance.write('\x1b[31mFailed to send command\x1b[0m\r\n');
+            }
+          }
+        }
+        setCurrentCommand('');
+      }
+      if (terminalInstance) {
+        terminalInstance.write('\r\n');
+      }
+      return;
+    }
 
-  // 检查是否可以发送命令
-  const canSendCommand = useCallback(() => {
-    if (!isConnected) return false
-    if (!status) return false
-    return ['RUNNING', 'STARTING', 'HEALTHY'].includes(status)
-  }, [isConnected, status])
+    // 处理退格键
+    if (data === '\x7f') {
+      if (currentCommand.length > 0) {
+        setCurrentCommand(prev => prev.slice(0, -1));
+        if (terminalInstance) {
+          terminalInstance.write('\b \b');
+        }
+      }
+      return;
+    }
 
-  // 发送命令
-  const sendCommand = () => {
-    if (!command.trim() || !canSendCommand()) return
+    // 处理 ESC
+    if (data === '\x1b') {
+      setCurrentCommand('');
+      if (terminalInstance) {
+        terminalInstance.write('^C\r\n');
+      }
+      return;
+    }
 
-    wsCommandSend(command)
-    setCommand('')
-  }
-
-
-  // 处理滚动
-  const handleScroll = () => {
-    if ((logsRef.current as any)?.resizableTextArea?.textArea) {
-      // Ant Design TextArea 实际的 DOM 元素在 resizableTextArea.textArea 中
-      const textArea = (logsRef.current as any).resizableTextArea.textArea
-      const { scrollTop, scrollHeight, clientHeight } = textArea
-
-      // 如果用户滚动到接近底部(容差10px)，则自动开启自动滚动
-      // 否则，关闭自动滚动，让用户查看历史日志
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10
-      if (isAtBottom && !autoScroll) {
-        setAutoScroll(true)
-        log.log('Auto scroll enabled - user scrolled to bottom')
-      } else if (!isAtBottom && autoScroll) {
-        setAutoScroll(false)
-        log.log('Auto scroll disabled - user scrolled away from bottom')
+    // 处理普通字符
+    if (data >= ' ' || data === '\t') {
+      setCurrentCommand(prev => prev + data);
+      if (terminalInstance) {
+        terminalInstance.write(data);
       }
     }
-  }
+  }, [currentCommand, getTerminal]); // 使用稳定的getTerminal
 
-  // 当服务器ID变化时清空日志
+  // 设置终端数据监听器 - 使用稳定的引用
   useEffect(() => {
-    setLogs('')
-  }, [id])
+    if (terminal.instance) {
+      const disposable = terminal.instance.onData(handleTerminalData);
+      return () => {
+        disposable?.dispose();
+      };
+    }
+  }, [terminal.instance, handleTerminalData]);
+
+  // 自动调整终端大小
+  useEffect(() => {
+    if (fitAddon && terminal.instance) {
+      setTimeout(() => fitAddon.fit(), 0);
+
+      const handleResize = () => {
+        fitAddon.fit();
+      };
+
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [fitAddon, terminal.instance, serverId]);
 
   // 检查服务器状态是否允许WebSocket连接
   const canConnectWebSocket = useCallback(() => {
-    if (!status) return false
-    return status !== 'REMOVED' && status !== 'EXISTS'
-  }, [status])
+    if (!serverStatus) return false;
+    return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
+  }, [serverStatus]);
 
-  // 组件挂载时连接WebSocket
-  useEffect(() => {
-    // 只有在有必要信息且未连接时，并且服务器状态允许连接时才尝试连接
-    if (id && token && hasServerInfo && !isConnecting && !isConnected && canConnectWebSocket()) {
-      connectWebSocket()
+  // 构建WebSocket URL
+  const buildWebSocketUrl = useCallback(() => {
+    if (!serverId || !token) return null;
+    const baseUrl = getApiBaseUrl(true); // true for WebSocket
+    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}`;
+  }, [serverId, token]);
+
+  // 断开WebSocket
+  const disconnectWebSocket = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-  }, [id, hasServerInfo, token, connectWebSocket, isConnecting, isConnected, canConnectWebSocket])
 
-  // 当日志内容更新时，如果应该自动滚动，则滚动到底部
-  useEffect(() => {
-    if (logs && autoScroll && logsRef.current && (logsRef.current as any).resizableTextArea?.textArea) {
-      setTimeout(() => {
-        if (logsRef.current && (logsRef.current as any).resizableTextArea?.textArea) {
-          const textArea = (logsRef.current as any).resizableTextArea.textArea
-          textArea.scrollTop = textArea.scrollHeight
-          log.log('Auto scrolled to bottom due to logs update or autoScroll enabled')
+    if (wsRef.current) {
+      // 避免触发onclose事件导致重连
+      const ws = wsRef.current;
+      wsRef.current = null;
+
+      // 移除事件监听器以避免竞争条件
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+
+      // 如果连接还在进行中，直接关闭
+      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+        ws.close(1000); // 正常关闭
+      }
+    }
+
+    setConnectionState('DISCONNECTED');
+  }, []);
+
+  // Use refs to break circular dependencies
+  const connectWebSocketRef = useRef<() => void>();
+  const scheduleReconnectRef = useRef<() => void>();
+
+  // WebSocket消息处理 - 使用稳定的访问器
+  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+    const terminalInstance = getTerminal();
+    if (!terminalInstance) return;
+
+    try {
+      const message: WebSocketMessage = JSON.parse(event.data);
+
+      switch (message.type) {
+        case 'log':
+          if (message.content) {
+            terminalInstance.write(message.content);
+          }
+          break;
+
+        case 'logs_refreshed':
+          if (message.content !== undefined) {
+            terminalInstance.write(message.content);
+          }
+          break;
+
+        case 'error':
+          if (message.message) {
+            terminalInstance.write(`\x1b[31mError: ${message.message}\x1b[0m\r\n`);
+            setLastError(message.message);
+            // 错误时断开连接并重试
+            disconnectWebSocket();
+            if (scheduleReconnectRef.current) {
+              scheduleReconnectRef.current();
+            }
+          }
+          break;
+
+        case 'info':
+          if (message.message) {
+            terminalInstance.write(`\x1b[36mInfo: ${message.message}\x1b[0m\r\n`);
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Failed to parse WebSocket message:', error);
+    }
+  }, [getTerminal, disconnectWebSocket]); // 使用稳定的getTerminal
+
+  // 清屏 - 使用稳定的访问器
+  const handleClearScreen = useCallback(() => {
+    const terminalInstance = getTerminal();
+    if (terminalInstance) {
+      terminalInstance.clear();
+    }
+  }, [getTerminal]); // 使用稳定的getTerminal
+
+  // 发送过滤设置更新
+  const sendFilterUpdate = useCallback((newFilterRcon: boolean) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_filter',
+        filter_rcon: newFilterRcon,
+      }));
+    } catch (error) {
+      console.error('Failed to send filter update:', error);
+    }
+  }, []);
+
+  // 连接WebSocket
+  const connectWebSocket = useCallback(() => {
+    // 如果已经有连接在进行中或已连接，先断开
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+      disconnectWebSocket();
+    }
+
+    if (!canConnectWebSocket() || !token || !serverId) {
+      return;
+    }
+
+    const wsUrl = buildWebSocketUrl();
+    if (!wsUrl) {
+      console.error('Failed to build WebSocket URL');
+      return;
+    }
+
+    setConnectionState('CONNECTING');
+    setLastError(null);
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws; // 立即设置引用
+
+      ws.onopen = () => {
+        // 检查连接是否仍然有效
+        if (wsRef.current !== ws) {
+          ws.close();
+          return;
         }
-      }, 10)
-    }
-  }, [logs, autoScroll])
 
-  // 处理键盘事件
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendCommand()
-    }
-  }
+        console.log('WebSocket connected');
+        setConnectionState('CONNECTED');
+        retryCountRef.current = 0;
 
-  // 如果没有服务器ID
+        // 使用稳定的访问器
+        const terminalInstance = getTerminal();
+        if (terminalInstance) {
+          handleClearScreen();
+          terminalInstance.write('\x1b[32mConnected to server console\x1b[0m\r\n');
+        }
+
+        // 发送初始过滤设置
+        setTimeout(() => {
+          if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+            sendFilterUpdate(filterRcon);
+          }
+        }, 100);
+      };
+
+      ws.onmessage = handleWebSocketMessage;
+
+      ws.onclose = (event) => {
+        // 检查这是否是当前活动的连接
+        if (wsRef.current !== ws) {
+          return;
+        }
+
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        wsRef.current = null;
+        setConnectionState('DISCONNECTED');
+
+        // 使用稳定的访问器
+        const terminalInstance = getTerminal();
+        if (terminalInstance) {
+          terminalInstance.write('\x1b[33mDisconnected from server console\x1b[0m\r\n');
+        }
+
+        // 如果不是手动断开，尝试重连
+        if (event.code !== 1000 && event.code !== 1001) {
+          if (scheduleReconnectRef.current) {
+            scheduleReconnectRef.current();
+          }
+        }
+      };
+
+      ws.onerror = (error) => {
+        // 检查这是否是当前活动的连接
+        if (wsRef.current !== ws) {
+          return;
+        }
+
+        console.error('WebSocket error:', error);
+        setConnectionState('ERROR');
+        setLastError('WebSocket connection error');
+
+        // 使用稳定的访问器
+        const terminalInstance = getTerminal();
+        if (terminalInstance) {
+          terminalInstance.write('\x1b[31mConnection error\x1b[0m\r\n');
+        }
+      };
+
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+      setConnectionState('ERROR');
+      setLastError('Failed to create WebSocket connection');
+    }
+  }, [canConnectWebSocket, token, serverId, buildWebSocketUrl, filterRcon, sendFilterUpdate, handleWebSocketMessage, getTerminal, disconnectWebSocket, handleClearScreen]);
+
+  // 安排重连 - 使用稳定的访问器
+  const scheduleReconnect = useCallback(() => {
+    if (retryCountRef.current >= MAX_RETRY_COUNT) {
+      setConnectionState('ERROR');
+      setLastError(`Maximum retry attempts (${MAX_RETRY_COUNT}) exceeded`);
+      return;
+    }
+
+    const delay = RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)];
+    retryCountRef.current++;
+
+    setConnectionState('RETRYING');
+
+    // 使用稳定的访问器
+    const terminalInstance = getTerminal();
+    if (terminalInstance) {
+      terminalInstance.write(`\x1b[33mRetrying connection in ${delay / 1000}s... (${retryCountRef.current}/${MAX_RETRY_COUNT})\x1b[0m\r\n`);
+    }
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (connectWebSocketRef.current) {
+        connectWebSocketRef.current();
+      }
+    }, delay);
+  }, [getTerminal]); // 使用稳定的getTerminal
+
+  // Update refs after callbacks are defined
+  connectWebSocketRef.current = connectWebSocket;
+  scheduleReconnectRef.current = scheduleReconnect;
+
+  // 请求刷新日志
+  const requestLogRefresh = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'refresh_logs',
+      }));
+    } catch (error) {
+      console.error('Failed to request log refresh:', error);
+    }
+  }, []);
+
+  // 处理过滤开关变化
+  const handleFilterChange = useCallback((checked: boolean) => {
+    setFilterRcon(checked);
+    sendFilterUpdate(checked);
+
+    // 延迟请求刷新日志
+    setTimeout(() => {
+      requestLogRefresh();
+    }, 100);
+  }, [sendFilterUpdate, requestLogRefresh]);
+
+  // 手动重连
+  const handleManualReconnect = useCallback(() => {
+    retryCountRef.current = 0;
+    disconnectWebSocket();
+    setTimeout(() => {
+      connectWebSocket();
+    }, 100);
+  }, [disconnectWebSocket, connectWebSocket]);
+
+
+  // 管理WebSocket连接
+  useEffect(() => {
+    let mounted = true;
+
+    if (canConnectWebSocket()) {
+      // 使用setTimeout避免在快速状态变化时立即重连
+      const timeoutId = setTimeout(() => {
+        if (mounted) {
+          connectWebSocket();
+        }
+      }, 100);
+
+      return () => {
+        mounted = false;
+        clearTimeout(timeoutId);
+        disconnectWebSocket();
+      };
+    } else {
+      disconnectWebSocket();
+    }
+
+    return () => {
+      mounted = false;
+      disconnectWebSocket();
+    };
+  }, [canConnectWebSocket, connectWebSocket, disconnectWebSocket]);
+
+  // 当服务器ID变化时重置状态
+  useEffect(() => {
+    retryCountRef.current = 0;
+    setLastError(null);
+    setCurrentCommand('');
+    handleClearScreen();
+  }, [serverId, handleClearScreen]);
+
+  // 获取连接状态显示
+  const getConnectionStatus = () => {
+    switch (connectionState) {
+      case 'CONNECTED':
+        return { text: '已连接', color: 'success', icon: <LinkOutlined /> };
+      case 'CONNECTING':
+        return { text: '正在连接...', color: 'processing', icon: <Spin size="small" /> };
+      case 'RETRYING':
+        return { text: `正在重试... (${retryCountRef.current}/${MAX_RETRY_COUNT})`, color: 'warning', icon: <Spin size="small" /> };
+      case 'ERROR':
+        return { text: '连接错误', color: 'error', icon: <DisconnectOutlined /> };
+      default:
+        return { text: '已断开连接', color: 'default', icon: <DisconnectOutlined /> };
+    }
+  };
+
+  const connectionStatus = getConnectionStatus();
+
+
+  // 如果没有服务器ID，返回错误
   if (!id) {
     return (
-      <Alert
-        message="错误"
-        description="未提供服务器ID"
-        type="error"
-        showIcon
-      />
+      <div className="flex justify-center items-center min-h-64">
+        <Alert
+          message="参数错误"
+          description="缺少服务器ID参数"
+          type="error"
+          action={
+            <Button size="small" onClick={() => navigate('/overview')}>
+              返回概览
+            </Button>
+          }
+        />
+      </div>
     )
   }
 
-  // 如果没有认证令牌
-  if (!token) {
+  // 错误状态
+  if (serverInfoError) {
     return (
-      <Alert
-        message="认证错误"
-        description="您需要登录才能访问服务器控制台"
-        type="error"
-        showIcon
-      />
+      <div className="flex justify-center items-center min-h-64">
+        <Alert
+          message="加载失败"
+          description={`无法加载服务器 "${id}" 的信息`}
+          type="error"
+          action={
+            <Button size="small" onClick={() => navigate('/overview')}>
+              返回概览
+            </Button>
+          }
+        />
+      </div>
     )
   }
 
   // 加载状态
-  if (isLoading || !hasServerInfo || !serverInfo) {
+  if (serverInfoLoading || !serverInfo) {
     return <LoadingSpinner height="16rem" tip="加载服务器信息中..." />
   }
 
-  // 错误状态
-  if (isError || !serverInfo) {
-    return (
-      <Alert
-        message="服务器未找到"
-        description={error?.message || "无法找到指定的服务器"}
-        type="error"
-        showIcon
-      />
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="控制台"
-        icon={<CodeOutlined />}
-        serverTag={serverInfo.name}
-      />
-
-      {/* 连接状态 */}
-      <Alert
-        message={
-          isConnecting ?
-            <><Spin size="small" /> 正在连接到服务器控制台...</> :
-            isConnected ?
-              '已连接到服务器控制台' :
-              !canConnectWebSocket() ?
-                '服务器必须处于已停止、运行、启动或健康状态才能连接控制台' :
-                '未连接到服务器控制台'
-        }
-        type={
-          isConnecting ? "info" :
-            isConnected ? "success" :
-              !canConnectWebSocket() ? "warning" :
-                "warning"
-        }
-        showIcon={!isConnecting}
-        action={
-          !isConnected && !isConnecting && canConnectWebSocket() ? (
-            <Button size="small" onClick={connectWebSocket}>
-              重新连接
-            </Button>
-          ) : undefined
-        }
-      />
-
-
-      <Card
-        title={
-          <div className="flex items-center justify-between">
-            <span>服务器日志</span>
-            <div className="flex items-center space-x-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-none space-y-4">
+        <PageHeader
+          title="控制台"
+          icon={<CodeOutlined />}
+          serverTag={serverInfo.name}
+          actions={
+            <>
               <div className="flex items-center space-x-2">
-                <Switch
-                  checked={filterRcon}
-                  onChange={setFilterRcon}
-                  size="small"
-                />
-                <span className="text-sm text-gray-600">过滤 RCON 日志</span>
+                <Text type="secondary">状态:</Text>
+                <Space size="small">
+                  {connectionStatus.icon}
+                  <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
+                </Space>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={autoScroll}
-                  onChange={setAutoScroll}
-                  size="small"
-                />
-                <span className="text-sm text-gray-600">自动滚动</span>
-              </div>
-            </div>
-          </div>
-        }
-        className="h-full"
-      >
-        <div className="space-y-4">
-          {/* 日志显示区域 */}
-          <TextArea
-            ref={logsRef}
-            value={logs}
-            placeholder="服务器日志将在这里显示..."
-            rows={25}
-            readOnly
-            onScroll={handleScroll}
-            className="font-mono text-sm"
-            style={{
-              backgroundColor: '#1e1e1e',
-              color: '#ffffff',
-              border: '1px solid #404040',
-              resize: 'vertical'
-            }}
+              <Switch
+                checked={filterRcon}
+                onChange={handleFilterChange}
+                checkedChildren="过滤RCON"
+                unCheckedChildren="展示所有"
+                disabled={connectionState === 'CONNECTING'}
+              />
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleManualReconnect}
+                disabled={connectionState === 'CONNECTING'}
+                type="primary"
+              >
+                重新连接
+              </Button>
+              <Button onClick={handleClearScreen}>
+                清屏
+              </Button>
+            </>
+          }
+        />
+
+        {lastError && (
+          <Alert
+            message="连接错误"
+            description={lastError}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setLastError(null)}
           />
+        )}
 
-          {/* 命令输入 */}
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder={
-                canSendCommand()
-                  ? "输入服务器命令 (例如: list, say hello, weather clear)"
-                  : "服务器控制台已连接并且服务器正在运行才能发送命令"
-              }
-              disabled={!canSendCommand()}
-            />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={sendCommand}
-              disabled={!command.trim() || !canSendCommand()}
-            >
-              发送
-            </Button>
-          </Space.Compact>
-        </div>
+        {!canConnectWebSocket() && (
+          <Alert
+            message="控制台不可用"
+            description={`控制台仅在服务器状态不是 REMOVED 或 EXISTS 时可用。当前状态: ${serverStatus}`}
+            type="info"
+            showIcon
+          />
+        )}
+      </div>
+
+      <Card className="flex-1 min-h-0 mt-4" styles={{ body: { height: '100%', width: '100%' } }}>
+        <div
+          ref={terminal.ref as React.LegacyRef<HTMLDivElement>}
+          className="h-full w-full"
+          style={{ minHeight: '400px' }}
+        />
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default ServerConsole
+export default ServerConsole;

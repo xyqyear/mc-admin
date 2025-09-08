@@ -169,7 +169,12 @@ class ConsoleWebSocketHandler:
         except RuntimeError as e:
             error_message = str(e)
             if "CREATE_CONSOLE_IN_PIPE" in error_message:
-                await self._send_dict({"type": "info", "message": "发送指令需要在Compose文件中设置环境变量CREATE_CONSOLE_IN_PIPE=true"})
+                await self._send_dict(
+                    {
+                        "type": "info",
+                        "message": "发送指令需要在Compose文件中设置环境变量CREATE_CONSOLE_IN_PIPE=true",
+                    }
+                )
             else:
                 await self._send_dict({"type": "info", "message": error_message})
         except Exception as e:
@@ -179,10 +184,6 @@ class ConsoleWebSocketHandler:
         """Handle RCON filter toggle."""
         filter_rcon = data.get("filter_rcon", True)
         self.filter_rcon = bool(filter_rcon)
-
-        await self._send_dict(
-            {"type": "filter_updated", "filter_rcon": self.filter_rcon}
-        )
 
     async def _handle_log_refresh(self, _data: dict):
         """Handle log refresh request with current filter settings."""

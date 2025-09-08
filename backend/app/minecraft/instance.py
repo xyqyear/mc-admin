@@ -555,7 +555,8 @@ class MCInstance:
         """
         if not await self.running():
             raise RuntimeError(f"Server {self._name} is not running")
-        await self._compose_manager.exec("mc", "mc-send-to-console", command)
+        uid, _ = await get_uid_gid(self.get_project_path())
+        await self._compose_manager.exec("--user", str(uid), "mc", "mc-send-to-console", command)
 
     async def get_container_id(self) -> str:
         """Get the Docker container ID for the mc service."""
