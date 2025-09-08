@@ -16,7 +16,6 @@ import { useParams } from 'react-router-dom'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
-import ServerStateTag from '@/components/overview/ServerStateTag'
 import { useToken } from '@/stores/useTokenStore'
 import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket'
 import { log } from '@/utils/devLogger'
@@ -59,11 +58,6 @@ const ServerConsole: React.FC = () => {
     setAutoScroll(true)
   }, [])
 
-  const handleCommandResult = useCallback((command: string, result: string) => {
-    const commandLog = `> ${command}\n${result}\n`
-    setLogs(prev => prev + commandLog)
-    setAutoScroll(true)
-  }, [])
 
   const handleError = useCallback((message: string) => {
     setLogs(prev => prev + `[ERROR] ${message}\n`)
@@ -96,20 +90,25 @@ const ServerConsole: React.FC = () => {
     filterRcon,
     onLogsUpdate: handleLogsUpdate,
     onLogsRefresh: handleLogsRefresh,
-    onCommandResult: handleCommandResult,
     onError: handleError,
     onInfo: handleInfo,
     onAutoScrollEnable: handleAutoScrollEnable,
     onErrorDisconnect: handleErrorDisconnect
   })
 
+  // 检查是否可以发送命令
+  const canSendCommand = useCallback(() => {
+    if (!isConnected) return false
+    if (!status) return false
+    return ['RUNNING', 'STARTING', 'HEALTHY'].includes(status)
+  }, [isConnected, status])
+
   // 发送命令
   const sendCommand = () => {
-    if (!command.trim() || !isConnected) return
+    if (!command.trim() || !canSendCommand()) return
 
-    if (wsCommandSend(command)) {
-      setCommand('')
-    }
+    wsCommandSend(command)
+    setCommand('')
   }
 
 
@@ -249,20 +248,6 @@ const ServerConsole: React.FC = () => {
         }
       />
 
-      {/* 服务器状态警告 */}
-      {status && status !== 'HEALTHY' && (
-        <Alert
-          message={
-            <div className="flex items-center space-x-2">
-              <span>服务器状态:</span>
-              <ServerStateTag state={status} />
-            </div>
-          }
-          description="只有服务器处于健康状态时才能发送命令"
-          type="warning"
-          showIcon
-        />
-      )}
 
       <Card
         title={
@@ -315,17 +300,17 @@ const ServerConsole: React.FC = () => {
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={handleKeyPress}
               placeholder={
-                status === 'HEALTHY'
+                canSendCommand()
                   ? "输入服务器命令 (例如: list, say hello, weather clear)"
-                  : "服务器必须处于健康状态才能发送命令"
+                  : "服务器控制台已连接并且服务器正在运行才能发送命令"
               }
-              disabled={!isConnected || status !== 'HEALTHY'}
+              disabled={!canSendCommand()}
             />
             <Button
               type="primary"
               icon={<SendOutlined />}
               onClick={sendCommand}
-              disabled={!command.trim() || !isConnected || status !== 'HEALTHY'}
+              disabled={!command.trim() || !canSendCommand()}
             >
               发送
             </Button>

@@ -7,14 +7,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface WebSocketMessage {
   type:
     | "log"
-    | "command_result"
     | "error"
     | "info"
     | "filter_updated"
     | "logs_refreshed";
   content?: string;
-  command?: string;
-  result?: string;
   message?: string;
   filter_rcon?: boolean;
 }
@@ -26,7 +23,6 @@ interface UseServerConsoleWebSocketProps {
   filterRcon: boolean;
   onLogsUpdate: (content: string) => void;
   onLogsRefresh: (content: string) => void;
-  onCommandResult: (command: string, result: string) => void;
   onError: (message: string) => void;
   onInfo: (message: string) => void;
   onAutoScrollEnable?: () => void;
@@ -50,7 +46,6 @@ export function useServerConsoleWebSocket({
   filterRcon,
   onLogsUpdate,
   onLogsRefresh,
-  onCommandResult,
   onError,
   onInfo,
   onAutoScrollEnable,
@@ -173,13 +168,6 @@ export function useServerConsoleWebSocket({
             }
             break;
 
-          case "command_result":
-            if (message.command && message.result) {
-              onCommandResult(message.command, message.result);
-              onAutoScrollEnable?.();
-            }
-            break;
-
           case "error":
             if (message.message) {
               onError(message.message);
@@ -202,7 +190,6 @@ export function useServerConsoleWebSocket({
     [
       onLogsUpdate,
       onLogsRefresh,
-      onCommandResult,
       onError,
       onInfo,
       onAutoScrollEnable,
@@ -278,7 +265,6 @@ export function useServerConsoleWebSocket({
   }, [
     serverId,
     token,
-    serverStatus,
     canConnectWebSocket,
     filterRcon,
     buildWebSocketUrl,
