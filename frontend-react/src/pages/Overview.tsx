@@ -16,9 +16,10 @@ import {
   StopOutlined,
   ReloadOutlined,
   DeleteOutlined,
-  ExportOutlined,
   PlusOutlined,
   DownOutlined,
+  DashboardOutlined,
+  CodeOutlined,
 } from '@ant-design/icons'
 import SimpleMetricCard from '@/components/overview/SimpleMetricCard'
 import ProgressMetricCard from '@/components/overview/ProgressMetricCard'
@@ -295,10 +296,17 @@ const Overview: React.FC = () => {
           </Tooltip>
           <Tooltip title="服务器详情">
             <Button
-              icon={<ExportOutlined />}
+              icon={<DashboardOutlined />}
               size="small"
               type="primary"
               onClick={() => navigate(`/server/${record.id}`)}
+            />
+          </Tooltip>
+          <Tooltip title="控制台">
+            <Button
+              icon={<CodeOutlined />}
+              size="small"
+              onClick={() => navigate(`/server/${record.id}/console`)}
             />
           </Tooltip>
           <Tooltip title="删除服务器">
