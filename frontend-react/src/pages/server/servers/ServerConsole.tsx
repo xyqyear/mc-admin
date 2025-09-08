@@ -37,6 +37,7 @@ const ServerConsole: React.FC = () => {
     isError,
     error,
     hasServerInfo,
+    refetch,
   } = useServerConsoleData()
 
   // 本地状态
@@ -76,6 +77,12 @@ const ServerConsole: React.FC = () => {
     setAutoScroll(true)
   }, [])
 
+  const handleErrorDisconnect = useCallback(() => {
+    // 收到错误消息时刷新服务器状态
+    // useEffect 会自动处理重连逻辑
+    refetch()
+  }, [refetch])
+
   // 使用WebSocket hook
   const {
     isConnected,
@@ -85,13 +92,15 @@ const ServerConsole: React.FC = () => {
   } = useServerConsoleWebSocket({
     serverId: id || '',
     token: token || '',
+    serverStatus: status || null,
     filterRcon,
     onLogsUpdate: handleLogsUpdate,
     onLogsRefresh: handleLogsRefresh,
     onCommandResult: handleCommandResult,
     onError: handleError,
     onInfo: handleInfo,
-    onAutoScrollEnable: handleAutoScrollEnable
+    onAutoScrollEnable: handleAutoScrollEnable,
+    onErrorDisconnect: handleErrorDisconnect
   })
 
   // 发送命令
@@ -124,13 +133,24 @@ const ServerConsole: React.FC = () => {
     }
   }
 
+  // 当服务器ID变化时清空日志
+  useEffect(() => {
+    setLogs('')
+  }, [id])
+
+  // 检查服务器状态是否允许WebSocket连接
+  const canConnectWebSocket = useCallback(() => {
+    if (!status) return false
+    return status !== 'REMOVED' && status !== 'EXISTS'
+  }, [status])
+
   // 组件挂载时连接WebSocket
   useEffect(() => {
-    // 只有在有必要信息且未连接时才尝试连接
-    if (id && token && hasServerInfo && !isConnecting && !isConnected) {
+    // 只有在有必要信息且未连接时，并且服务器状态允许连接时才尝试连接
+    if (id && token && hasServerInfo && !isConnecting && !isConnected && canConnectWebSocket()) {
       connectWebSocket()
     }
-  }, [id, hasServerInfo, token, connectWebSocket, isConnecting, isConnected])
+  }, [id, hasServerInfo, token, connectWebSocket, isConnecting, isConnected, canConnectWebSocket])
 
   // 当日志内容更新时，如果应该自动滚动，则滚动到底部
   useEffect(() => {
@@ -209,12 +229,19 @@ const ServerConsole: React.FC = () => {
             <><Spin size="small" /> 正在连接到服务器控制台...</> :
             isConnected ?
               '已连接到服务器控制台' :
-              '未连接到服务器控制台'
+              !canConnectWebSocket() ?
+                '服务器必须处于已停止、运行、启动或健康状态才能连接控制台' :
+                '未连接到服务器控制台'
         }
-        type={isConnecting ? "info" : isConnected ? "success" : "warning"}
+        type={
+          isConnecting ? "info" :
+            isConnected ? "success" :
+              !canConnectWebSocket() ? "warning" :
+                "warning"
+        }
         showIcon={!isConnecting}
         action={
-          !isConnected && !isConnecting ? (
+          !isConnected && !isConnecting && canConnectWebSocket() ? (
             <Button size="small" onClick={connectWebSocket}>
               重新连接
             </Button>

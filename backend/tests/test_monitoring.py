@@ -107,30 +107,6 @@ async def test_get_container_id_with_docker(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_get_pid_with_docker(mc_server_session: MCInstance):
-    """Test that get_pid() returns the correct process ID"""
-    # Get PID from API
-    api_pid = await mc_server_session.get_pid()
-
-    # Get PID from Docker command
-    docker_result = subprocess.run(
-        [
-            "docker",
-            "inspect",
-            f"mc-{mc_server_session.get_name()}",
-            "--format",
-            "{{.State.Pid}}",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    docker_pid = int(docker_result.stdout.strip())
-
-    # They should match exactly
-    assert api_pid == docker_pid
-    assert api_pid > 0  # Should be a valid PID
-
-
 @pytest.mark.asyncio
 async def test_get_memory_usage_with_docker(mc_server_session: MCInstance):
     """Test that get_memory_usage() returns valid memory statistics"""
@@ -155,18 +131,12 @@ async def test_get_memory_usage_with_docker(mc_server_session: MCInstance):
 
 @pytest.mark.asyncio
 async def test_get_cpu_percentage_with_docker(mc_server_session: MCInstance):
-    """Test that get_cpu_percentage() works correctly with two-call pattern"""
-    # First call establishes baseline
-    cpu_1 = await mc_server_session.get_cpu_percentage()
-    assert cpu_1 == 0.0  # First call should return 0
-
-    # Wait a bit and call again for real measurement
-    await asyncio.sleep(2)
-    cpu_2 = await mc_server_session.get_cpu_percentage()
+    """Test that get_cpu_percentage() works correctly"""
+    cpu_percent = await mc_server_session.get_cpu_percentage()
 
     # Second call should return a valid percentage (>= 0, <= 100)
-    assert cpu_2 >= 0.0
-    assert cpu_2 <= 100.0
+    assert cpu_percent >= 0.0
+    assert cpu_percent <= 100.0
 
 
 @pytest.mark.asyncio

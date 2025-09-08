@@ -51,15 +51,11 @@ class MockMCInstance:
         # Create directories
         (self.data_path / "plugins").mkdir(exist_ok=True)
         (self.data_path / "world").mkdir(exist_ok=True)
-        (self.data_path / "logs").mkdir(exist_ok=True)
 
         # Create nested files
         (self.data_path / "plugins" / "config.yml").write_text("plugin-config: true\n")
         (self.data_path / "plugins" / "plugin.jar").write_bytes(b"\x00\x01\x02\x03")
         (self.data_path / "world" / "level.dat").write_bytes(b"\x01\x02\x03\x04")
-        (self.data_path / "logs" / "latest.log").write_text(
-            "[INFO] Server starting...\n[INFO] Server started\n"
-        )
 
 
 @contextmanager
@@ -142,7 +138,6 @@ class TestFileOperations:
             dir_names_set = set(dir_names)
             assert "plugins" in dir_names_set
             assert "world" in dir_names_set
-            assert "logs" in dir_names_set
 
     def test_list_files_subdirectory(self, client, mock_instance):
         """Test listing files in subdirectory."""

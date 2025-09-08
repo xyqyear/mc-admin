@@ -1,5 +1,6 @@
-import { log } from "@/utils/devLogger";
+import { ServerStatus } from "@/types/ServerInfo";
 import { getApiBaseUrl } from "@/utils/api";
+import { log } from "@/utils/devLogger";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // WebSocket消息类型
@@ -21,6 +22,7 @@ interface WebSocketMessage {
 interface UseServerConsoleWebSocketProps {
   serverId: string;
   token: string;
+  serverStatus: ServerStatus | null;
   filterRcon: boolean;
   onLogsUpdate: (content: string) => void;
   onLogsRefresh: (content: string) => void;
@@ -28,6 +30,7 @@ interface UseServerConsoleWebSocketProps {
   onError: (message: string) => void;
   onInfo: (message: string) => void;
   onAutoScrollEnable?: () => void;
+  onErrorDisconnect?: () => void;
 }
 
 interface UseServerConsoleWebSocketReturn {
@@ -43,6 +46,7 @@ interface UseServerConsoleWebSocketReturn {
 export function useServerConsoleWebSocket({
   serverId,
   token,
+  serverStatus,
   filterRcon,
   onLogsUpdate,
   onLogsRefresh,
@@ -50,12 +54,30 @@ export function useServerConsoleWebSocket({
   onError,
   onInfo,
   onAutoScrollEnable,
+  onErrorDisconnect,
 }: UseServerConsoleWebSocketProps): UseServerConsoleWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const prevFilterRconRef = useRef<boolean>(filterRcon);
+
+  // 断开WebSocket连接
+  const disconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+      setIsConnected(false);
+      setIsConnecting(false);
+      log.log("WebSocket connection manually closed");
+    }
+  }, []);
+
+  // 检查服务器状态是否允许WebSocket连接
+  const canConnectWebSocket = useCallback(() => {
+    if (!serverStatus) return false
+    return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS'
+  }, [serverStatus])
 
   // 构建WebSocket URL
   const buildWebSocketUrl = useCallback(() => {
@@ -161,6 +183,9 @@ export function useServerConsoleWebSocket({
           case "error":
             if (message.message) {
               onError(message.message);
+              // 收到错误消息时断开连接并触发回调
+              disconnect();
+              onErrorDisconnect?.();
             }
             break;
 
@@ -181,6 +206,8 @@ export function useServerConsoleWebSocket({
       onError,
       onInfo,
       onAutoScrollEnable,
+      onErrorDisconnect,
+      disconnect,
     ]
   );
 
@@ -191,6 +218,11 @@ export function useServerConsoleWebSocket({
         serverId,
         token: !!token,
       });
+      return;
+    }
+
+    if (!canConnectWebSocket()) {
+      log.log("Cannot connect WebSocket: server status does not allow connection");
       return;
     }
 
@@ -246,22 +278,13 @@ export function useServerConsoleWebSocket({
   }, [
     serverId,
     token,
+    serverStatus,
+    canConnectWebSocket,
     filterRcon,
     buildWebSocketUrl,
     sendFilterUpdate,
     handleMessage,
   ]);
-
-  // 断开WebSocket连接
-  const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setIsConnected(false);
-      setIsConnecting(false);
-      log.log("WebSocket connection manually closed");
-    }
-  }, []);
 
   // 当过滤开关变化时，发送设置到后端并请求刷新日志
   useEffect(() => {
@@ -283,6 +306,14 @@ export function useServerConsoleWebSocket({
     // 更新上一次的值
     prevFilterRconRef.current = filterRcon;
   }, [filterRcon, isConnected, sendFilterUpdate, requestLogRefresh]);
+
+  // 当serverId变化时，断开当前连接并重置状态
+  useEffect(() => {
+    // 如果有活跃连接，先断开
+    if (wsRef.current) {
+      disconnect();
+    }
+  }, [serverId, disconnect]);
 
   // 清理函数
   useEffect(() => {

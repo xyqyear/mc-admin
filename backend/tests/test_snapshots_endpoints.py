@@ -153,22 +153,6 @@ world-settings:
 """
         )
 
-        # Create logs directory with log files
-        logs_path = self.data_path / "logs"
-        logs_path.mkdir(exist_ok=True)
-        (logs_path / "latest.log").write_text(
-            """[10:30:45] [main/INFO]: Starting minecraft server version 1.20.4
-[10:30:45] [main/INFO]: Loading properties
-[10:30:46] [main/INFO]: Default game type: SURVIVAL
-[10:30:46] [main/INFO]: Generating keypair
-[10:30:46] [main/INFO]: Starting Minecraft server on *:25565
-[10:30:47] [main/INFO]: Done (2.1s)! For help, type "help"
-"""
-        )
-        (logs_path / "2024-01-15-1.log.gz").write_bytes(
-            b"\x1f\x8b\x08\x00\x00\x00\x00\x00"
-        )  # Fake gzip log
-
         # Create cache and temp directories
         (self.data_path / "cache").mkdir(exist_ok=True)
         (self.data_path / "cache" / "mojang_1.20.4.jar").write_bytes(b"\x00" * 1000)
@@ -384,10 +368,16 @@ class TestSnapshotEndpoints:
             summary = data["preview_summary"]
             # Check if it contains either Chinese or English patterns for file operations
             has_file_operations = (
-                "updated" in summary or "deleted" in summary or "restored" in summary or
-                "更新" in summary or "删除" in summary or "恢复" in summary
+                "updated" in summary
+                or "deleted" in summary
+                or "restored" in summary
+                or "更新" in summary
+                or "删除" in summary
+                or "恢复" in summary
             )
-            assert has_file_operations, f"Preview summary should contain file operation indicators: {summary}"
+            assert has_file_operations, (
+                f"Preview summary should contain file operation indicators: {summary}"
+            )
 
             # Verify actions contain required fields
             for action in data["actions"]:
@@ -888,7 +878,11 @@ modified=true
             restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id, "path": "/plugins"},
+                json={
+                    "snapshot_id": snapshot_id,
+                    "server_id": server_id,
+                    "path": "/plugins",
+                },
             )
             assert restore_response.status_code == 200
 
@@ -956,7 +950,9 @@ modified=true
         """Test creating a snapshot with no password repository."""
         server_id, instance = mock_instance
 
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo_no_password, restic_password=None
+        ):
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -987,7 +983,9 @@ modified=true
         """Test listing snapshots with no password repository."""
         server_id, instance = mock_instance
 
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo_no_password, restic_password=None
+        ):
             # Create a snapshot first
             create_response = client.post(
                 "/snapshots",
@@ -1023,7 +1021,9 @@ modified=true
         """Test restore preview with no password repository."""
         server_id, instance = mock_instance
 
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo_no_password, restic_password=None
+        ):
             # Create a snapshot
             create_response = client.post(
                 "/snapshots",
@@ -1061,7 +1061,9 @@ modified=true
         """Test actual restore with no password repository."""
         server_id, instance = mock_instance
 
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=None):
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo_no_password, restic_password=None
+        ):
             # Record original file content
             original_props_response = client.get(
                 f"/servers/{server_id}/files/content",
@@ -1121,7 +1123,9 @@ modified=true
         """Test that empty string password is treated as no password."""
         server_id, instance = mock_instance
 
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo_no_password, restic_password=""):
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo_no_password, restic_password=""
+        ):
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},

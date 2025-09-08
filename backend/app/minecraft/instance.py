@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -187,13 +188,26 @@ class MCInstance:
 
         return mc_compose
 
-    def _get_log_path(self) -> Path:
-        return self._project_path / "data" / "logs" / "latest.log"
+    async def _get_log_path(self) -> Path:
+        container_id = await self.get_container_id()
+        return Path(
+            f"/var/lib/docker/containers/{container_id}/{container_id}-json.log"
+        )
 
     async def get_log_file_end_pointer(self) -> int:
-        async with aiofiles.open(self._get_log_path(), mode="r", encoding="utf8") as f:
+        log_path = await self._get_log_path()
+        async with aiofiles.open(log_path, mode="r", encoding="utf8") as f:
             await f.seek(0, 2)
             return await f.tell()
+
+    def _parse_docker_json_log_line(self, line: str) -> str:
+        """Parse a single Docker JSON log line and return the log content."""
+        try:
+            log_entry = json.loads(line.strip())
+            return log_entry.get("log", "")
+        except (json.JSONDecodeError, KeyError):
+            # If parsing fails, return the original line
+            return line
 
     async def get_logs_from_file(self, start: int = 0) -> LogType:
         """
@@ -203,7 +217,8 @@ class MCInstance:
         raises:
             FileNotFoundError: if the log file does not exist
         """
-        async with aiofiles.open(self._get_log_path(), mode="r", encoding="utf8") as f:
+        log_path = await self._get_log_path()
+        async with aiofiles.open(log_path, mode="r", encoding="utf8") as f:
             await f.seek(0, 2)
             file_size = await f.tell()
             if start < 0:
@@ -213,7 +228,16 @@ class MCInstance:
             elif start > file_size:
                 start = 0
             await f.seek(start)
-            log = await f.read()
+            raw_log = await f.read()
+
+            # Parse Docker JSON log format
+            parsed_lines = []
+            for line in raw_log.splitlines(keepends=True):
+                if line.strip():
+                    parsed_content = self._parse_docker_json_log_line(line)
+                    parsed_lines.append(parsed_content)
+
+            log = "".join(parsed_lines)
             return LogType(content=log, pointer=await f.tell())
 
     @staticmethod
@@ -265,7 +289,7 @@ class MCInstance:
         return result
 
     async def get_logs_from_file_filtered(
-        self, start: int = 0, filter_rcon: bool = True
+        self, start: int = 0, filter_rcon: bool = True, max_chars: int = 1024 * 1024
     ) -> LogType:
         """
         Get logs from file with optional RCON filtering and 1M character limit.
@@ -273,6 +297,7 @@ class MCInstance:
         Args:
             start: Starting position for reading logs
             filter_rcon: Whether to filter out RCON-related logs
+            max_chars: Maximum number of characters to return
 
         Returns:
             LogType with filtered content, truncated to 1M characters if needed
@@ -284,9 +309,6 @@ class MCInstance:
         # Apply RCON filtering if requested
         if filter_rcon:
             content = self.filter_rcon_logs(content)
-
-        # If content is larger than 1M characters after filtering, truncate from the end
-        max_chars = 1024 * 1024  # 1M characters
 
         if len(content) > max_chars:
             # Truncate from the end (keep the most recent logs)
@@ -545,10 +567,12 @@ class MCInstance:
         Raises:
             RuntimeError: If the container is not running or not found
         """
-        if not await self.running():
-            raise RuntimeError(f"Server {self._name} is not running")
+        if not await self.created():
+            raise RuntimeError(f"Server {self._name} is not created")
 
-        container_id = await self._compose_manager.run_compose_command("ps", "-q", "mc")
+        container_id = await self._compose_manager.run_compose_command(
+            "ps", "--all", "-q", "mc"
+        )
         container_id = container_id.strip()
 
         if not container_id:
