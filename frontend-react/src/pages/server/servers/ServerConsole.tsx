@@ -9,10 +9,10 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
 import { useTokenStore } from '@/stores/useTokenStore';
 import { getApiBaseUrl } from '@/utils/api';
-import { Terminal } from '@xterm/xterm';
 import PageHeader from '@/components/layout/PageHeader';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
+import { ServerInfo, ServerStatus } from '@/types/ServerInfo';
 
 const { Text } = Typography;
 
@@ -31,24 +31,23 @@ type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR' | '
 const MAX_RETRY_COUNT = 5;
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避延迟
 
-const ServerConsole: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const serverId = id!;
-  const { token } = useTokenStore();
+interface ServerConsoleInnerProps {
+  serverId: string;
+  serverInfo: ServerInfo;
+  serverStatus?: ServerStatus;
+}
 
-  // React Query hooks
-  const { useServerStatus, useServerInfo } = useServerQueries();
-  const { data: serverStatus } = useServerStatus(serverId);
-  const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
+const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
+  serverId,
+  serverInfo,
+  serverStatus
+}) => {
+  const { token } = useTokenStore();
 
   // WebSocket refs
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
-
-  // Terminal instance ref - 用于打破循环依赖
-  const terminalInstanceRef = useRef<Terminal | null>(null);
 
   // State
   const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
@@ -81,18 +80,11 @@ const ServerConsole: React.FC = () => {
     addons: terminalAddons,
   });
 
-  // 同步terminal实例到ref
-  useEffect(() => {
-    terminalInstanceRef.current = terminal.instance;
-  }, [terminal.instance]);
+  const terminalRef = terminal.ref;
+  const terminalInstance = terminal.instance;
 
-  // 创建稳定的terminal访问器
-  const getTerminal = useCallback(() => terminalInstanceRef.current, []);
-
-  // 处理终端数据输入 - 使用稳定的访问器
+  // 处理终端数据输入
   const handleTerminalData = useCallback((data: string) => {
-    const terminalInstance = getTerminal();
-
     // 处理回车键
     if (data === '\r') {
       if (currentCommand.trim()) {
@@ -145,21 +137,21 @@ const ServerConsole: React.FC = () => {
         terminalInstance.write(data);
       }
     }
-  }, [currentCommand, getTerminal]); // 使用稳定的getTerminal
+  }, [currentCommand, terminalInstance]);
 
-  // 设置终端数据监听器 - 使用稳定的引用
+  // 设置终端数据监听器
   useEffect(() => {
-    if (terminal.instance) {
-      const disposable = terminal.instance.onData(handleTerminalData);
+    if (terminalInstance) {
+      const disposable = terminalInstance.onData(handleTerminalData);
       return () => {
         disposable?.dispose();
       };
     }
-  }, [terminal.instance, handleTerminalData]);
+  }, [terminalInstance, handleTerminalData]);
 
   // 自动调整终端大小
   useEffect(() => {
-    if (fitAddon && terminal.instance) {
+    if (fitAddon && terminalInstance) {
       setTimeout(() => fitAddon.fit(), 0);
 
       const handleResize = () => {
@@ -171,10 +163,10 @@ const ServerConsole: React.FC = () => {
         window.removeEventListener('resize', handleResize);
       };
     }
-  }, [fitAddon, terminal.instance, serverId]);
+  }, [fitAddon, terminalInstance, serverId]);
 
   // 检查服务器状态是否允许WebSocket连接
-  const canConnectWebSocket = useCallback(() => {
+  const canConnectWebSocket = useMemo(() => {
     if (!serverStatus) return false;
     return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
   }, [serverStatus]);
@@ -217,9 +209,8 @@ const ServerConsole: React.FC = () => {
   const connectWebSocketRef = useRef<() => void>();
   const scheduleReconnectRef = useRef<() => void>();
 
-  // WebSocket消息处理 - 使用稳定的访问器
+  // WebSocket消息处理
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    const terminalInstance = getTerminal();
     if (!terminalInstance) return;
 
     try {
@@ -259,15 +250,13 @@ const ServerConsole: React.FC = () => {
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);
     }
-  }, [getTerminal, disconnectWebSocket]); // 使用稳定的getTerminal
+  }, [terminalInstance, disconnectWebSocket]);
 
-  // 清屏 - 使用稳定的访问器
   const handleClearScreen = useCallback(() => {
-    const terminalInstance = getTerminal();
     if (terminalInstance) {
       terminalInstance.clear();
     }
-  }, [getTerminal]); // 使用稳定的getTerminal
+  }, [terminalInstance]);
 
   // 发送过滤设置更新
   const sendFilterUpdate = useCallback((newFilterRcon: boolean) => {
@@ -292,7 +281,7 @@ const ServerConsole: React.FC = () => {
       disconnectWebSocket();
     }
 
-    if (!canConnectWebSocket() || !token || !serverId) {
+    if (!canConnectWebSocket || !token || !serverId) {
       return;
     }
 
@@ -320,8 +309,6 @@ const ServerConsole: React.FC = () => {
         setConnectionState('CONNECTED');
         retryCountRef.current = 0;
 
-        // 使用稳定的访问器
-        const terminalInstance = getTerminal();
         if (terminalInstance) {
           handleClearScreen();
           terminalInstance.write('\x1b[32mConnected to server console\x1b[0m\r\n');
@@ -347,8 +334,6 @@ const ServerConsole: React.FC = () => {
         wsRef.current = null;
         setConnectionState('DISCONNECTED');
 
-        // 使用稳定的访问器
-        const terminalInstance = getTerminal();
         if (terminalInstance) {
           terminalInstance.write('\x1b[33mDisconnected from server console\x1b[0m\r\n');
         }
@@ -371,8 +356,6 @@ const ServerConsole: React.FC = () => {
         setConnectionState('ERROR');
         setLastError('WebSocket connection error');
 
-        // 使用稳定的访问器
-        const terminalInstance = getTerminal();
         if (terminalInstance) {
           terminalInstance.write('\x1b[31mConnection error\x1b[0m\r\n');
         }
@@ -383,9 +366,8 @@ const ServerConsole: React.FC = () => {
       setConnectionState('ERROR');
       setLastError('Failed to create WebSocket connection');
     }
-  }, [canConnectWebSocket, token, serverId, buildWebSocketUrl, filterRcon, sendFilterUpdate, handleWebSocketMessage, getTerminal, disconnectWebSocket, handleClearScreen]);
+  }, [canConnectWebSocket, token, serverId, buildWebSocketUrl, filterRcon, sendFilterUpdate, handleWebSocketMessage, disconnectWebSocket, handleClearScreen, terminalInstance]);
 
-  // 安排重连 - 使用稳定的访问器
   const scheduleReconnect = useCallback(() => {
     if (retryCountRef.current >= MAX_RETRY_COUNT) {
       setConnectionState('ERROR');
@@ -398,8 +380,6 @@ const ServerConsole: React.FC = () => {
 
     setConnectionState('RETRYING');
 
-    // 使用稳定的访问器
-    const terminalInstance = getTerminal();
     if (terminalInstance) {
       terminalInstance.write(`\x1b[33mRetrying connection in ${delay / 1000}s... (${retryCountRef.current}/${MAX_RETRY_COUNT})\x1b[0m\r\n`);
     }
@@ -409,7 +389,7 @@ const ServerConsole: React.FC = () => {
         connectWebSocketRef.current();
       }
     }, delay);
-  }, [getTerminal]); // 使用稳定的getTerminal
+  }, [terminalInstance]);
 
   // Update refs after callbacks are defined
   connectWebSocketRef.current = connectWebSocket;
@@ -455,7 +435,7 @@ const ServerConsole: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
-    if (canConnectWebSocket()) {
+    if (canConnectWebSocket) {
       // 使用setTimeout避免在快速状态变化时立即重连
       const timeoutId = setTimeout(() => {
         if (mounted) {
@@ -504,6 +484,99 @@ const ServerConsole: React.FC = () => {
 
   const connectionStatus = getConnectionStatus();
 
+  return (
+    <div className="h-full flex flex-col space-y-4">
+      <PageHeader
+        title="控制台"
+        icon={<CodeOutlined />}
+        serverTag={serverInfo?.name}
+        actions={
+          <ServerOperationButtons
+            serverId={serverId}
+            serverName={serverInfo?.name}
+            status={serverStatus}
+          />
+        }
+      />
+
+      {lastError && (
+        <Alert
+          message="连接错误"
+          description={lastError}
+          type="error"
+          showIcon
+          closable
+          onClose={() => setLastError(null)}
+        />
+      )}
+
+      {serverStatus && !canConnectWebSocket && (
+        <Alert
+          message="控制台不可用"
+          description={`控制台仅在服务器状态不是 REMOVED 或 EXISTS 时可用。当前状态: ${serverStatus}`}
+          type="info"
+          showIcon
+        />
+      )}
+
+      {/* 控制台容器 */}
+      <Card 
+        className="flex-1 min-h-0 flex flex-col" 
+        classNames={{ body: "flex flex-col flex-1 !p-4" }}
+        title={
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Text type="secondary">连接状态:</Text>
+                <Space size="small">
+                  {connectionStatus.icon}
+                  <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
+                </Space>
+              </div>
+              <Switch
+                checked={filterRcon}
+                onChange={handleFilterChange}
+                checkedChildren="过滤RCON"
+                unCheckedChildren="展示所有"
+                disabled={connectionState === 'CONNECTING'}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleManualReconnect}
+                disabled={connectionState === 'CONNECTING'}
+                type="primary"
+                size="small"
+              >
+                重新连接
+              </Button>
+              <Button onClick={handleClearScreen} size="small">
+                清屏
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        {/* 终端区域 */}
+        <div
+          ref={terminalRef as React.LegacyRef<HTMLDivElement>}
+          className="h-full"
+        />
+      </Card>
+    </div>
+  );
+};
+
+const ServerConsole: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const serverId = id!;
+
+  // React Query hooks for data loading and error checking
+  const { useServerStatus, useServerInfo } = useServerQueries();
+  const { data: serverStatus } = useServerStatus(serverId);
+  const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
 
   // 如果没有服务器ID，返回错误
   if (!id) {
@@ -520,7 +593,7 @@ const ServerConsole: React.FC = () => {
           }
         />
       </div>
-    )
+    );
   }
 
   // 错误状态
@@ -529,7 +602,7 @@ const ServerConsole: React.FC = () => {
       <div className="flex justify-center items-center min-h-64">
         <Alert
           message="加载失败"
-          description={`无法加载服务器 "${id}" 的信息`}
+          description={`无法加载服务器 "${serverId}" 的信息`}
           type="error"
           action={
             <Button size="small" onClick={() => navigate('/overview')}>
@@ -538,98 +611,22 @@ const ServerConsole: React.FC = () => {
           }
         />
       </div>
-    )
+    );
   }
 
   // 加载状态
   if (serverInfoLoading || !serverInfo) {
-    return <LoadingSpinner height="16rem" tip="加载服务器信息中..." />
+    return <LoadingSpinner height="16rem" tip="加载服务器信息中..." />;
   }
 
+  // 所有数据就绪，渲染内层组件
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-none mb-4">
-        <PageHeader
-          title="控制台"
-          icon={<CodeOutlined />}
-          serverTag={serverInfo.name}
-          actions={
-            <ServerOperationButtons
-              serverId={serverId}
-              serverName={serverInfo.name}
-              status={serverStatus}
-            />
-          }
-        />
-
-        {lastError && (
-          <Alert
-            message="连接错误"
-            description={lastError}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setLastError(null)}
-          />
-        )}
-
-        {!canConnectWebSocket() && (
-          <Alert
-            message="控制台不可用"
-            description={`控制台仅在服务器状态不是 REMOVED 或 EXISTS 时可用。当前状态: ${serverStatus}`}
-            type="info"
-            showIcon
-          />
-        )}
-      </div>
-
-      {/* 控制台控制面板 */}
-      <Card
-        className="flex-none"
-        styles={{ body: { padding: '12px 16px' } }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Text type="secondary">连接状态:</Text>
-              <Space size="small">
-                {connectionStatus.icon}
-                <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
-              </Space>
-            </div>
-            <Switch
-              checked={filterRcon}
-              onChange={handleFilterChange}
-              checkedChildren="过滤RCON"
-              unCheckedChildren="展示所有"
-              disabled={connectionState === 'CONNECTING'}
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleManualReconnect}
-              disabled={connectionState === 'CONNECTING'}
-              type="primary"
-              size="small"
-            >
-              重新连接
-            </Button>
-            <Button onClick={handleClearScreen} size="small">
-              清屏
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="flex-1 min-h-0" styles={{ body: { height: '100%', width: '100%' } }}>
-        <div
-          ref={terminal.ref as React.LegacyRef<HTMLDivElement>}
-          className="h-full w-full"
-          style={{ minHeight: '400px' }}
-        />
-      </Card>
-    </div>
+    <ServerConsoleInner
+      key={serverId}
+      serverId={serverId}
+      serverInfo={serverInfo}
+      serverStatus={serverStatus}
+    />
   );
 };
 
