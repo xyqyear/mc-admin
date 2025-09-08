@@ -599,9 +599,9 @@ class MCInstance:
         for line in lines[1:]:
             parts = line.split(maxsplit=column_num - 1)
             if len(parts) >= column_num:
-                cmd = parts[pid_column]
+                cmd = parts[column_num - 1]
                 if cmd.strip().startswith("java"):
-                    pid_str = parts[1]
+                    pid_str = parts[pid_column]
                     try:
                         return int(pid_str)
                     except ValueError:
