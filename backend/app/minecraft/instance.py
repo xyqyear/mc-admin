@@ -8,6 +8,7 @@ import aiofiles
 import aiofiles.os as aioos
 import yaml
 
+from ..common.file_operations import _chown_async, get_uid_gid
 from .compose import MCComposeFile, ServerType
 from .docker.cgroup import (
     BlockIOStats,
@@ -319,6 +320,11 @@ class MCInstance:
         compose_file_path = self._project_path / "docker-compose.yml"
         async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
             await file.write(compose_yaml)
+
+        # Set ownership to match the servers_path directory
+        uid, gid = await get_uid_gid(self._servers_path)
+        if uid is not None and gid is not None:
+            await _chown_async(compose_file_path, uid, gid)
 
         await aioos.makedirs(self._project_path / "data", exist_ok=True)
 
