@@ -556,7 +556,9 @@ class MCInstance:
         if not await self.running():
             raise RuntimeError(f"Server {self._name} is not running")
         uid, _ = await get_uid_gid(self.get_project_path())
-        await self._compose_manager.exec("--user", str(uid), "mc", "mc-send-to-console", command)
+        await self._compose_manager.exec(
+            "--user", str(uid), "mc", "mc-send-to-console", command
+        )
 
     async def get_container_id(self) -> str:
         """Get the Docker container ID for the mc service."""
@@ -577,20 +579,29 @@ class MCInstance:
 
     async def get_pid(self) -> int:
         """Get the Java process PID from the Docker container using docker compose top"""
-        # Use docker compose top to get process information
         result = await self._compose_manager.run_compose_command("top")
 
-        # Parse the output to find the Java process
         lines = result.strip().split("\n")
 
-        # Skip header lines and find Java process
-        for line in lines:
-            # Split by whitespace, max 8 splits to get CMD as 8th element
-            parts = line.split(None, 7)
-            if len(parts) >= 8:
-                cmd = parts[7]  # 8th column (0-indexed 7) is CMD
+        if not lines:
+            raise RuntimeError(
+                f"docker compose top command returned no processes for server {self._name}"
+            )
+
+        first_line = lines[0]
+        if first_line.strip().startswith("SERVICE"):
+            column_num = 10
+            pid_column = 3
+        else:
+            column_num = 8
+            pid_column = 1
+
+        for line in lines[1:]:
+            parts = line.split(maxsplit=column_num - 1)
+            if len(parts) >= column_num:
+                cmd = parts[pid_column]
                 if cmd.strip().startswith("java"):
-                    pid_str = parts[1]  # 2nd column (0-indexed 1) is PID
+                    pid_str = parts[1]
                     try:
                         return int(pid_str)
                     except ValueError:
