@@ -9,6 +9,7 @@ from aiofiles import os as aioos
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from ..common.file_operations import get_uid_gid
 from ..config import settings
 from ..minecraft.utils import async_rmtree, exec_command
 
@@ -27,15 +28,6 @@ class DecompressionStepResult(BaseModel):
     ]
     success: bool
     message: str
-
-
-async def get_path_ownership(path: Path) -> tuple[int, int] | None:
-    """Get the UID and GID of the specified path."""
-    try:
-        stat_info = await aioos.stat(path)
-        return stat_info.st_uid, stat_info.st_gid
-    except FileNotFoundError:
-        return None
 
 
 async def extract_minecraft_server(
@@ -113,13 +105,12 @@ async def extract_minecraft_server(
     temp_dir = f"{archive_path}.dir"
     try:
         # Get server_path ownership for chown later
-        ownership_result = await get_path_ownership(settings.server_path)
-        if ownership_result is None:
+        server_uid, server_gid = await get_uid_gid(settings.server_path)
+        if server_uid is None or server_gid is None:
             raise HTTPException(
                 status_code=500,
                 detail=f"路径不存在: {settings.server_path}",
             )
-        server_uid, server_gid = ownership_result
 
         # Extract archive
         await exec_command("7z", "x", archive_path, f"-o{temp_dir}")

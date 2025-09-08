@@ -188,7 +188,7 @@ async def upload_file(
     uid, gid = await get_uid_gid(base_path)
     if uid is not None and gid is not None:
         try:
-            os.chown(file_path, uid, gid)
+            _chown_async(file_path, uid, gid)
         except (OSError, PermissionError):
             # Ignore ownership errors (common in containers)
             pass

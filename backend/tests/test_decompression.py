@@ -17,7 +17,6 @@ from fastapi import HTTPException
 
 from app.utils.decompression import (
     extract_minecraft_server,
-    get_path_ownership,
 )
 
 
@@ -252,31 +251,6 @@ class TestFailureScenarios:
         # Should get 400 with Chinese error message about corrupted archive
         assert exc_info.value.status_code == 400
         assert "压缩包文件损坏或格式不支持" in exc_info.value.detail
-
-
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
-class TestUtilityFunctions:
-    """Test utility functions."""
-
-    async def test_get_path_ownership_success(self, temp_dir):
-        """Test successful path ownership retrieval."""
-        test_file = temp_dir / "test_file"
-        test_file.touch()
-
-        result = await get_path_ownership(test_file)
-        assert result is not None
-        uid, gid = result
-        assert isinstance(uid, int)
-        assert isinstance(gid, int)
-        assert uid >= 0
-        assert gid >= 0
-
-    async def test_get_path_ownership_nonexistent(self, temp_dir):
-        """Test path ownership retrieval for nonexistent path."""
-        nonexistent = temp_dir / "nonexistent"
-
-        result = await get_path_ownership(nonexistent)
-        assert result is None
 
 
 @pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
