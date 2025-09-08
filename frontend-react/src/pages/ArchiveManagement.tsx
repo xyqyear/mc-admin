@@ -25,10 +25,12 @@ import {
   FolderOutlined,
   FileZipOutlined,
   MoreOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons'
 import { SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
+import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
@@ -76,6 +78,7 @@ const ArchiveManagement: React.FC = () => {
   const [sha256Path, setSha256Path] = useState<string | null>(null)
   const [sha256ModalVisible, setSha256ModalVisible] = useState(false)
   const [sha256Result, setSha256Result] = useState<{ fileName: string; hash: string } | null>(null)
+  const [sha256HelpVisible, setSha256HelpVisible] = useState(false)
 
   // Upload progress tracking
   const [uploadProgress, setUploadProgress] = useState<number>(0)
@@ -665,6 +668,25 @@ const ArchiveManagement: React.FC = () => {
             仅支持 .zip 和 .7z 格式的压缩包文件
           </div>
 
+          <Alert
+            message={
+              <div className="flex items-center justify-between">
+                <span>重要提醒</span>
+                <Button
+                  type="text"
+                  icon={<QuestionCircleOutlined />}
+                  onClick={() => setSha256HelpVisible(true)}
+                  className="text-orange-600 hover:text-orange-700"
+                  title="查看Windows SHA256校验方法"
+                />
+              </div>
+            }
+            description="上传后请使用SHA256功能核对文件的完整性，确保文件在传输过程中没有损坏。"
+            type="warning"
+            showIcon
+            className="mt-3"
+          />
+
           {isUploading && (
             <div className="mt-4">
               <Progress
@@ -709,11 +731,28 @@ const ArchiveManagement: React.FC = () => {
 
       {/* 压缩包管理说明 */}
       <Alert
-        message="压缩包管理说明"
-        description="您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。"
+        message={
+          <div className="flex items-center justify-between">
+            <span>压缩包管理说明</span>
+            <Button
+              type="text"
+              icon={<QuestionCircleOutlined />}
+              onClick={() => setSha256HelpVisible(true)}
+              className="text-blue-600 hover:text-blue-700"
+              title="查看SHA256校验方法"
+            />
+          </div>
+        }
+        description="您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。建议上传后使用SHA256功能核对文件完整性。"
         type="info"
         showIcon
         closable
+      />
+
+      {/* SHA256 帮助模态框 */}
+      <SHA256HelpModal
+        open={sha256HelpVisible}
+        onCancel={() => setSha256HelpVisible(false)}
       />
     </div>
   )
