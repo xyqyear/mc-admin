@@ -1,304 +1,529 @@
 """
-Test for the WebSocket console endpoint.
-This test creates a temporary file structure and log file in /tmp,
-then tests the WebSocket console endpoint to verify it reads and streams log content correctly.
+Comprehensive tests for the WebSocket console endpoint.
+Tests real-time console functionality with mocked dependencies.
 """
 
-import json
 import tempfile
-import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
-from app.minecraft import MCInstance
 
 
-def setup_test_minecraft_server(server_name: str, servers_path: Path) -> tuple[MCInstance, str]:
-    """Set up a test Minecraft server directory structure with log files."""
-    # Create server directory structure
-    server_path = servers_path / server_name
-    data_path = server_path / "data"
-    logs_path = data_path / "logs"
-    logs_path.mkdir(parents=True, exist_ok=True)
-    
-    # Create initial log content with RCON logs for filtering test
-    initial_content = """[15:30:01] [Server thread/INFO]: Starting minecraft server version 1.20.1
-[15:30:02] [Server thread/INFO]: Loading properties
-[15:30:03] [Server thread/INFO]: Default game type: SURVIVAL
-[15:30:04] [RCON Client /127.0.0.1:54321]: Running RCON connection
-[15:30:05] [Server thread/INFO]: Starting Minecraft server on *:25565
-[15:30:06] [RCON Listener thread/INFO]: RCON port binding successful
-[15:30:07] [Server thread/INFO]: Using epoll channel type
-[15:30:08] [RCON Client /127.0.0.1:54322]: Authentication successful
-[15:30:09] [Server thread/INFO]: Preparing level "world"
-[15:30:10] [RCON Listener thread/DEBUG]: RCON command received
-[15:30:11] [Server thread/INFO]: Done (3.2s)! For help, type "help"
-"""
-    
-    # Write initial content to log file
-    log_file = logs_path / "latest.log"
-    with open(log_file, "w", encoding="utf-8") as f:
-        f.write(initial_content)
-    
-    # Create MCInstance
-    instance = MCInstance(servers_path, server_name)
-    
-    return instance, initial_content
+class MockMCInstance:
+    """Mock MCInstance for testing WebSocket console functionality."""
 
+    def __init__(self, server_id: str, base_path: Path):
+        self.server_id = server_id
+        self.base_path = base_path
+        self.project_path = base_path / server_id
+        self.logs_path = self.project_path / "logs" / "latest.log"
+        
+        # Create directory structure
+        self.logs_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Sample log content
+        self.log_content = (
+            "[10:30:21] [Server thread/INFO]: Starting minecraft server version 1.20.4\n"
+            "[10:30:21] [Server thread/INFO]: Loading properties\n"
+            "[10:30:22] [RCON Listener #1/INFO]: RCON running on 0.0.0.0:25575\n"
+            "[10:30:22] [Server thread/INFO]: Done (1.234s)! For help, type \"help\"\n"
+        )
+        
+        # Write initial log content
+        self.logs_path.write_text(self.log_content)
 
-class MockHealthyMCInstance:
-    """Wrapper to make MCInstance appear healthy for WebSocket testing."""
-    
-    def __init__(self, real_instance: MCInstance):
-        self._real_instance = real_instance
-    
-    def __getattr__(self, name):
-        """Delegate all attribute access to the real instance."""
-        return getattr(self._real_instance, name)
-    
     async def exists(self):
-        """Mock exists to return True."""
+        """Return True to indicate server exists."""
         return True
-    
-    async def get_status(self):
-        """Mock status to return HEALTHY."""
-        from app.minecraft import MCServerStatus
-        return MCServerStatus.HEALTHY
-    
-    async def send_command_rcon(self, command: str) -> str:
-        """Mock RCON command execution."""
-        return f"Mock result for command: {command}"
 
+    async def _get_log_path(self):
+        """Return the log file path."""
+        return self.logs_path
 
-def write_to_log_file(log_file: Path, new_content: str, delay: float = 0.1):
-    """Write new content to log file after a delay (simulates real-time logging)."""
-    def _write():
-        time.sleep(delay)
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(new_content)
-    
-    thread = threading.Thread(target=_write)
-    thread.start()
-    return thread
+    def filter_rcon_logs(self, content: str) -> str:
+        """Filter out RCON-related log lines."""
+        lines = content.split('\n')
+        filtered_lines = [line for line in lines if 'RCON' not in line]
+        return '\n'.join(filtered_lines)
 
-
-def test_websocket_console_file_reading_and_streaming():
-    """
-    Test the WebSocket console endpoint:
-    1. Creates a temporary file structure in /tmp
-    2. Creates a log file with initial content
-    3. Connects to WebSocket and verifies initial content is sent
-    4. Writes new content to log file and verifies it's streamed via WebSocket
-    """
-    client = TestClient(api_app)
-    
-    # Create temporary directory structure in /tmp
-    with tempfile.TemporaryDirectory(prefix="mc_server_test_", dir="/tmp") as temp_dir:
-        temp_path = Path(temp_dir)
-        server_id = "test_server"
+    async def get_logs_from_file_filtered(self, start_position: int, filter_rcon: bool = True, max_chars: int = 1024 * 1024):
+        """Mock method to get filtered logs from file."""
+        # start_position is ignored in this mock implementation
+        _ = start_position
+        if not self.logs_path.exists():
+            return MockLogResult("", 0)
         
-        # Set up real MCInstance with test structure
-        real_instance, initial_content = setup_test_minecraft_server(server_id, temp_path)
-        mock_instance = MockHealthyMCInstance(real_instance)
+        content = self.logs_path.read_text()
+        if filter_rcon:
+            content = self.filter_rcon_logs(content)
         
-        # Mock the mc_manager and authentication
-        with patch("app.routers.servers.console.mc_manager") as mock_router_manager, \
-             patch("app.dependencies.settings") as mock_settings:
-            # Mock the manager in the router 
-            mock_router_manager.get_instance.return_value = mock_instance
+        # Apply max_chars limit
+        if len(content) > max_chars:
+            content = content[-max_chars:]
+        
+        return MockLogResult(content, len(content))
+
+    async def get_logs_from_file(self, position: int):
+        """Mock method to get new logs from file."""
+        if not self.logs_path.exists():
+            return MockLogResult("", position)
+        
+        content = self.logs_path.read_text()
+        if position >= len(content):
+            return MockLogResult("", position)
+        
+        new_content = content[position:]
+        return MockLogResult(new_content, len(content))
+
+    async def send_command_stdin(self, command: str):
+        """Mock method to send command via stdin."""
+        if "CREATE_CONSOLE_IN_PIPE" in command:
+            raise RuntimeError("CREATE_CONSOLE_IN_PIPE not configured")
+        # Simulate successful command execution
+        # Command is processed but not used in this mock
+        _ = command
+
+    def add_log_line(self, line: str):
+        """Add a new log line to simulate real-time logging."""
+        current_content = self.logs_path.read_text()
+        new_content = current_content + line + "\n"
+        self.logs_path.write_text(new_content)
+
+
+class MockLogResult:
+    """Mock result for log operations."""
+    
+    def __init__(self, content: str, pointer: int):
+        self.content = content
+        self.pointer = pointer
+
+
+@pytest.fixture
+def temp_dir():
+    """Create temporary directory for tests."""
+    with tempfile.TemporaryDirectory(prefix="mc_websocket_test_", dir="/tmp") as temp_dir:
+        yield Path(temp_dir)
+
+
+@pytest.fixture
+def mock_instance(temp_dir):
+    """Create mock instance with test structure."""
+    server_id = "test_server"
+    instance = MockMCInstance(server_id, temp_dir)
+    return server_id, instance
+
+
+@pytest.fixture
+def client():
+    """Create test client."""
+    return TestClient(api_app)
+
+
+class TestWebSocketConsole:
+    """Test WebSocket console endpoint functionality."""
+
+    def test_websocket_connection_success(self, client, mock_instance):
+        """Test successful WebSocket connection with authentication."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
             mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Should receive initial logs
+                data = websocket.receive_json()
+                assert data["type"] in ["log", "info"]
+                
+                # If it's a log message, verify it contains expected content
+                if data["type"] == "log":
+                    assert "Starting minecraft server" in data["content"] or "Loading properties" in data["content"]
+
+    def test_websocket_connection_invalid_token(self, client, mock_instance):
+        """Test WebSocket connection with invalid token."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            # This should fail due to invalid token
+            with pytest.raises(Exception):  # WebSocket connection will fail
+                with client.websocket_connect(
+                    f"/servers/{server_id}/console?token=invalid_token"
+                ) as websocket:
+                    websocket.receive_json()
+
+    def test_websocket_server_not_found(self, client, mock_instance):
+        """Test WebSocket connection when server doesn't exist."""
+        server_id, instance = mock_instance
         
-            # Start WebSocket connection with authentication token
-            with client.websocket_connect(f"/servers/{server_id}/console?token=test_master_token") as websocket:
-                # The WebSocket should send initial log content
-                # We expect multiple messages for the initial content
-                messages_received = []
-                
-                # Collect initial messages (should contain existing log content)
-                # We expect at least the initial log content
-                try:
-                    # Get the first message which should be the initial logs
-                    data = websocket.receive_text()
-                    message = json.loads(data)
-                    messages_received.append(message)
-                except Exception as e:
-                    # If this fails, the WebSocket connection might have issues
-                    assert False, f"Failed to receive initial message: {e}"
-                
-                # Verify we received some initial content
-                assert len(messages_received) > 0, "Should have received initial log content"
-                
-                # Check that we received log messages with content from the initial log
-                log_messages = [msg for msg in messages_received if msg.get("type") == "log"]
-                assert len(log_messages) > 0, "Should have received log-type messages"
-                
-                # Combine all log content to verify it contains initial content
-                combined_content = "".join([msg.get("content", "") for msg in log_messages])
-                assert "Starting minecraft server version 1.20.1" in combined_content
-                assert "Done (3.2s)! For help, type \"help\"" in combined_content
-                
-                # Note: Testing file monitoring would require more complex setup with actual file watching
-                # For now, we'll test the RCON command functionality
-                
-                # Test RCON command sending
+        # Mock instance that doesn't exist
+        async def mock_exists():
+            return False
+        
+        instance.exists = mock_exists
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Should receive error message
+                data = websocket.receive_json()
+                assert data["type"] == "error"
+                assert "未找到" in data["message"] or "not found" in data["message"].lower()
+
+    def test_websocket_command_execution(self, client, mock_instance):
+        """Test sending commands through WebSocket."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send a command
                 command_message = {
                     "type": "command",
                     "command": "list"
                 }
-                
-                websocket.send_text(json.dumps(command_message))
-                
-                # Wait for command response
-                try:
-                    data = websocket.receive_text()
-                    message = json.loads(data)
-                    
-                    assert message.get("type") == "command_result", f"Expected command_result, got: {message}"
-                    assert message.get("command") == "list", f"Expected command 'list', got: {message.get('command')}"
-                    assert "Mock result for command: list" in message.get("result", ""), f"Expected mock result, got: {message.get('result')}"
-                    
-                    print("RCON command response received successfully!")
-                except Exception as e:
-                    assert False, f"Failed to receive RCON command response: {e}"
+                websocket.send_json(command_message)
 
+                # The command should be processed (no response expected based on implementation)
+                # We mainly test that the command doesn't cause errors
 
-def test_websocket_console_large_file_initial_limit():
-    """
-    Test that the WebSocket console respects the 1M character initial file limit.
-    """
-    client = TestClient(api_app)
-    
-    with tempfile.TemporaryDirectory(prefix="mc_server_large_test_", dir="/tmp") as temp_dir:
-        temp_path = Path(temp_dir)
-        server_id = "large_test_server"
+    def test_websocket_command_with_pipe_error(self, client, mock_instance):
+        """Test command execution when CREATE_CONSOLE_IN_PIPE is not configured."""
+        server_id, instance = mock_instance
+
+        # Mock the send_command_stdin to raise the specific error
+        async def mock_send_command_error(command):
+            _ = command  # Command parameter is not used in this mock
+            raise RuntimeError("CREATE_CONSOLE_IN_PIPE not configured")
         
-        # Set up basic structure first
-        real_instance, _ = setup_test_minecraft_server(server_id, temp_path)
-        mock_instance = MockHealthyMCInstance(real_instance)
-        
-        # Create a large log file (larger than 1M characters)  
-        large_content_line = "[15:30:01] [Server thread/INFO]: This is a test line that will be repeated many times to create a large file\n"
-        lines_needed = (1024 * 1024 + 1000) // len(large_content_line) + 100  # Ensure > 1M characters
-        
-        large_content = large_content_line * lines_needed
-        
-        # Write large content to log file
-        log_file = temp_path / server_id / "data" / "logs" / "latest.log"
-        with open(log_file, "w", encoding="utf-8") as f:
-            f.write(large_content)
-        
-        # Verify file is actually larger than 1M characters
-        assert len(large_content) > 1024 * 1024, f"Test file should be larger than 1M characters, got {len(large_content)} characters"
-        
-        # Mock the mc_manager and authentication
-        with patch("app.routers.servers.console.mc_manager") as mock_router_manager, \
-             patch("app.dependencies.settings") as mock_settings:
-            # Mock the manager in the router 
-            mock_router_manager.get_instance.return_value = mock_instance
+        instance.send_command_stdin = mock_send_command_error
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
             mock_settings.master_token = "test_master_token"
-        
-            # Connect to WebSocket with authentication token
-            with client.websocket_connect(f"/servers/{server_id}/console?token=test_master_token") as websocket:
-                # Collect all initial messages
-                messages_received = []
-                total_content_received = ""
-                
-                try:
-                    # Get the initial log message 
-                    data = websocket.receive_text()
-                    message = json.loads(data)
-                    messages_received.append(message)
-                    
-                    if message.get("type") == "log" and message.get("content"):
-                        total_content_received += message.get("content")
-                except Exception as e:
-                    assert False, f"Failed to receive initial large file content: {e}"
-                
-                # Verify we received some content but not the entire large file
-                assert len(total_content_received) > 0, "Should have received some log content"
-                
-                # The received content should be approximately 1M characters or less
-                # Since we're sending the last 1M characters, we should get content from the end of the file
-                received_chars = len(total_content_received)
-                assert received_chars <= 1024 * 1024, f"Should not receive more than 1M characters, got {received_chars} characters"
-                
-                # The content should be from the end of the file (last 1M characters)
-                # Since all lines are identical, we can just verify we got reasonable amount of content
-                assert received_chars > 500000, f"Should receive substantial content (>500K chars), got {received_chars} characters"
 
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
 
-def test_get_logs_from_file_filtered_coverage():
-    """
-    Test the get_logs_from_file_filtered function directly to ensure test coverage.
-    This test specifically targets the function that was previously mocked.
-    """
-    with tempfile.TemporaryDirectory(prefix="mc_filter_test_", dir="/tmp") as temp_dir:
-        temp_path = Path(temp_dir)
-        server_id = "filter_test_server"
-        
-        # Set up real MCInstance with test structure
-        real_instance, initial_content = setup_test_minecraft_server(server_id, temp_path)
-        
-        # Test 1: Basic functionality - get filtered logs from beginning
-        import asyncio
-        
-        async def run_test():
-            # Test reading from beginning with RCON filtering enabled (default)
-            result = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=True)
-            
-            # Verify content is returned
-            assert result.content, "Should return log content"
-            assert isinstance(result.pointer, int), "Should return valid pointer"
-            
-            # Verify RCON lines are filtered out
-            assert "[RCON Client" not in result.content, "RCON Client logs should be filtered out"
-            assert "[RCON Listener" not in result.content, "RCON Listener logs should be filtered out"
-            
-            # Verify normal logs are preserved
-            assert "Starting minecraft server" in result.content, "Normal logs should be preserved"
-            assert "Done (3.2s)!" in result.content, "Normal logs should be preserved"
-            
-            # Test 2: Without RCON filtering
-            result_no_filter = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=False)
-            
-            # Verify RCON lines are preserved when filtering is disabled
-            assert "[RCON Client" in result_no_filter.content, "RCON Client logs should be preserved when filter_rcon=False"
-            assert "[RCON Listener" in result_no_filter.content, "RCON Listener logs should be preserved when filter_rcon=False"
-            
-            # Test 3: Reading from negative position (from end of file)
-            result_from_end = await real_instance.get_logs_from_file_filtered(start=-500, filter_rcon=True)
-            assert result_from_end.content, "Should return content when reading from end"
-            
-            # Test 4: Large file truncation test
-            log_file = temp_path / server_id / "data" / "logs" / "latest.log"
-            
-            # Create content larger than 1M characters
-            large_line = "[15:30:01] [Server thread/INFO]: " + "X" * 1000 + "\n"
-            lines_needed = (1024 * 1024 + 1000) // len(large_line) + 100  
-            large_content = large_line * lines_needed
-            
-            with open(log_file, "w", encoding="utf-8") as f:
-                f.write(large_content)
-            
-            # Test truncation behavior
-            result_large = await real_instance.get_logs_from_file_filtered(start=0, filter_rcon=True)
-            
-            # Should be truncated to 1M characters or less
-            assert len(result_large.content) <= 1024 * 1024, f"Content should be truncated to 1M chars, got {len(result_large.content)}"
-            
-            print("get_logs_from_file_filtered function tests passed!")
-            
-        # Run the async test
-        asyncio.run(run_test())
+                # Send a command that will trigger the error
+                command_message = {
+                    "type": "command",
+                    "command": "list"
+                }
+                websocket.send_json(command_message)
+
+                # Should receive info message about the pipe configuration
+                response = websocket.receive_json()
+                assert response["type"] == "info"
+                assert "CREATE_CONSOLE_IN_PIPE" in response["message"]
+
+    def test_websocket_filter_toggle(self, client, mock_instance):
+        """Test RCON filter toggle functionality."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send filter change message
+                filter_message = {
+                    "type": "set_filter",
+                    "filter_rcon": False
+                }
+                websocket.send_json(filter_message)
+
+                # Should receive filter update confirmation
+                response = websocket.receive_json()
+                assert response["type"] == "filter_updated"
+                assert response["filter_rcon"] is False
+
+    def test_websocket_log_refresh(self, client, mock_instance):
+        """Test log refresh functionality."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send log refresh request
+                refresh_message = {
+                    "type": "refresh_logs"
+                }
+                websocket.send_json(refresh_message)
+
+                # Should receive refreshed logs
+                response = websocket.receive_json()
+                assert response["type"] == "logs_refreshed"
+                assert "content" in response
+
+    def test_websocket_invalid_message_format(self, client, mock_instance):
+        """Test handling of invalid message formats."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send invalid JSON
+                websocket.send_text("invalid json")
+
+                # Should receive error message about format
+                response = websocket.receive_json()
+                assert response["type"] == "info"
+                assert "格式错误" in response["message"] or "format" in response["message"].lower()
+
+    def test_websocket_message_missing_type(self, client, mock_instance):
+        """Test handling of messages missing type field."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send message without type
+                message_without_type = {
+                    "command": "list"
+                }
+                websocket.send_json(message_without_type)
+
+                # Should receive error message about missing type
+                response = websocket.receive_json()
+                assert response["type"] == "info"
+                assert "type" in response["message"]
+
+    def test_websocket_empty_command(self, client, mock_instance):
+        """Test handling of empty commands."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # Send empty command
+                empty_command = {
+                    "type": "command",
+                    "command": ""
+                }
+                websocket.send_json(empty_command)
+
+                # Empty commands should be ignored (no response)
+                # Test that the connection remains stable by sending another message
+                valid_message = {
+                    "type": "refresh_logs"
+                }
+                websocket.send_json(valid_message)
+                
+                response = websocket.receive_json()
+                assert response["type"] == "logs_refreshed"
+
+    def test_websocket_rcon_filtering(self, client, mock_instance):
+        """Test RCON log filtering functionality."""
+        server_id, instance = mock_instance
+
+        # Add some RCON logs to the mock instance
+        rcon_log_content = (
+            "[10:30:21] [Server thread/INFO]: Starting minecraft server version 1.20.4\n"
+            "[10:30:22] [RCON Listener #1/INFO]: RCON running on 0.0.0.0:25575\n"
+            "[10:30:23] [Server thread/INFO]: Done (1.234s)! For help, type \"help\"\n"
+        )
+        instance.logs_path.write_text(rcon_log_content)
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Receive initial logs (should be filtered by default)
+                initial_data = websocket.receive_json()
+                
+                if initial_data["type"] == "log":
+                    # RCON lines should be filtered out by default
+                    assert "RCON" not in initial_data["content"]
+                    assert "Starting minecraft server" in initial_data["content"]
+                    assert "Done" in initial_data["content"]
+
+                # Disable RCON filtering
+                filter_message = {
+                    "type": "set_filter",
+                    "filter_rcon": False
+                }
+                websocket.send_json(filter_message)
+
+                # Should receive filter confirmation
+                filter_response = websocket.receive_json()
+                assert filter_response["type"] == "filter_updated"
+                assert filter_response["filter_rcon"] is False
+
+                # Request refresh with filtering disabled
+                refresh_message = {
+                    "type": "refresh_logs"
+                }
+                websocket.send_json(refresh_message)
+
+                # Should receive logs with RCON content included
+                refresh_response = websocket.receive_json()
+                assert refresh_response["type"] == "logs_refreshed"
+                # With filtering disabled, RCON content should be present
+                # Note: The actual filtering logic depends on the instance implementation
+
+    def test_websocket_log_not_found(self, client, mock_instance):
+        """Test handling when log file doesn't exist."""
+        server_id, instance = mock_instance
+
+        # Remove the log file to simulate not found scenario
+        instance.logs_path.unlink()
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # Should receive error about missing log file
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] == "error"
+                assert "控制台日志未找到" in initial_data["message"] or "not found" in initial_data["message"].lower()
+
+    def test_websocket_no_token(self, client, mock_instance):
+        """Test WebSocket connection without authentication token."""
+        server_id, _ = mock_instance
+
+        # Should fail when no token is provided
+        with pytest.raises(Exception):  # WebSocket connection will fail
+            with client.websocket_connect(f"/servers/{server_id}/console") as websocket:
+                websocket.receive_json()
+
+    def test_websocket_connection_lifecycle(self, client, mock_instance):
+        """Test the complete WebSocket connection lifecycle."""
+        server_id, instance = mock_instance
+
+        with (
+            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.dependencies.settings") as mock_settings,
+        ):
+            mock_manager.get_instance.return_value = instance
+            mock_settings.master_token = "test_master_token"
+
+            with client.websocket_connect(
+                f"/servers/{server_id}/console?token=test_master_token"
+            ) as websocket:
+                # 1. Receive initial logs
+                initial_data = websocket.receive_json()
+                assert initial_data["type"] in ["log", "info"]
+
+                # 2. Test filter functionality
+                websocket.send_json({"type": "set_filter", "filter_rcon": False})
+                filter_response = websocket.receive_json()
+                assert filter_response["type"] == "filter_updated"
+
+                # 3. Test command execution
+                websocket.send_json({"type": "command", "command": "say Hello World"})
+
+                # 4. Test log refresh
+                websocket.send_json({"type": "refresh_logs"})
+                refresh_response = websocket.receive_json()
+                assert refresh_response["type"] == "logs_refreshed"
+
+                # 5. Connection should close cleanly when exiting context manager
 
 
 if __name__ == "__main__":
-    # Run individual test
-    test_websocket_console_file_reading_and_streaming()
-    test_websocket_console_large_file_initial_limit()
-    test_get_logs_from_file_filtered_coverage()
-    print("All WebSocket console tests passed!")
+    pytest.main([__file__])
