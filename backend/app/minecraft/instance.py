@@ -560,26 +560,34 @@ class MCInstance:
 
     async def get_pid(self) -> int:
         """
-        Get the main process PID of the Docker container.
+        Get the Java process PID from the Docker container using docker compose top.
 
         Returns:
-            int: The process ID
+            int: The Java process ID
 
         Raises:
-            RuntimeError: If the container is not running or PID cannot be retrieved
+            RuntimeError: If the container is not running or Java PID cannot be retrieved
         """
-        container_id = await self.get_container_id()
+        # Use docker compose top to get process information
+        result = await self._compose_manager.run_compose_command("top")
 
-        # Use docker inspect to get the PID
-        result = await exec_command(
-            "docker", "inspect", "--format={{.State.Pid}}", container_id
-        )
-        pid_str = result.strip()
+        # Parse the output to find the Java process
+        lines = result.strip().split("\n")
 
-        if not pid_str or pid_str == "0":
-            raise RuntimeError(f"Could not retrieve PID for container {container_id}")
+        # Skip header lines and find Java process
+        for line in lines:
+            # Split by whitespace, max 8 splits to get CMD as 8th element
+            parts = line.split(None, 7)
+            if len(parts) >= 8:
+                cmd = parts[7]  # 8th column (0-indexed 7) is CMD
+                if cmd.strip().startswith("java"):
+                    pid_str = parts[1]  # 2nd column (0-indexed 1) is PID
+                    try:
+                        return int(pid_str)
+                    except ValueError:
+                        continue
 
-        return int(pid_str)
+        raise RuntimeError(f"Could not find Java process PID for server {self._name}")
 
     async def get_memory_usage(self) -> MemoryStats:
         """
