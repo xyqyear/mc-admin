@@ -1,8 +1,10 @@
 services:
   mcadmin:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Build from cwd
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ghcr.io/xyqyear/mc-admin
     container_name: mcadmin
     pid: host
     ports:
