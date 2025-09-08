@@ -313,10 +313,10 @@ class MCInstance:
         await aioos.makedirs(self._project_path, exist_ok=True)
         if await self.get_compose_file_path() is not None:
             raise FileExistsError(
-                f"compose.yaml already exists for server {self._name}"
+                f"compose file already exists for server {self._name}"
             )
 
-        compose_file_path = self._project_path / "compose.yaml"
+        compose_file_path = self._project_path / "docker-compose.yml"
         async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
             await file.write(compose_yaml)
 
