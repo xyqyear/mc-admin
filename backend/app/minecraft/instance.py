@@ -554,7 +554,7 @@ class MCInstance:
         this method will send a command to the server using mc-send-to-console
         """
         if not await self.running():
-            raise RuntimeError(f"Server {self._name} is not healthy")
+            raise RuntimeError(f"Server {self._name} is not running")
         await self._compose_manager.exec("mc", "mc-send-to-console", command)
 
     async def get_container_id(self) -> str:
