@@ -1,24 +1,18 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Button, Space, Progress, Alert, Descriptions, Tooltip } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Alert, Descriptions, Button, Space } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  PlayCircleOutlined,
-  StopOutlined,
-  ReloadOutlined,
   UserOutlined,
   HddOutlined,
   WifiOutlined,
   GlobalOutlined,
   DashboardOutlined,
-  DownOutlined,
 } from '@ant-design/icons'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
+import ServerOperationButtons from '@/components/server/ServerOperationButtons'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
-import { useServerMutations } from '@/hooks/mutations/useServerMutations'
-import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
-import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -30,7 +24,6 @@ const ServerDetail: React.FC = () => {
 
   // 使用新的数据管理系统
   const { useServerDetailData } = useServerDetailQueries(id || '')
-  const { useServerOperation } = useServerMutations()
 
   // 获取服务器详情数据
   const {
@@ -52,10 +45,6 @@ const ServerDetail: React.FC = () => {
     isRunning,
     isHealthy,
   } = useServerDetailData()
-
-  // 服务器操作
-  const serverOperationMutation = useServerOperation()
-  const { showConfirm } = useServerOperationConfirm()
 
   // 如果没有服务器ID，返回错误
   if (!id) {
@@ -136,36 +125,6 @@ const ServerDetail: React.FC = () => {
     return <LoadingSpinner height="16rem" />
   }
 
-  // 检查操作是否可用
-  const isOperationAvailable = (operation: string) => {
-    if (!status) return false
-    return serverStatusUtils.isOperationAvailable(operation, status)
-  }
-
-  // 智能启动：根据服务器状态决定使用 start 还是 up
-  const handleStartServer = () => {
-    if (!serverInfo || !status) return
-
-    // 根据状态决定操作类型
-    const operation = status === 'CREATED' ? 'start' : 'up'
-
-    serverOperationMutation.mutate({ action: operation, serverId: id })
-  }
-
-  // 需要确认的服务器操作处理（停止、重启、下线）
-  const handleConfirmableServerOperation = (operation: 'stop' | 'restart' | 'down') => {
-    if (!serverInfo) return
-    
-    showConfirm({
-      operation,
-      serverName: serverInfo.name,
-      serverId: id,
-      onConfirm: (action, serverId) => {
-        serverOperationMutation.mutate({ action, serverId })
-      }
-    })
-  }
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -173,53 +132,11 @@ const ServerDetail: React.FC = () => {
         icon={<DashboardOutlined />}
         serverTag={serverInfo.name}
         actions={
-          <>
-            <Tooltip title="启动服务器">
-              <Button
-                type={status === 'CREATED' || status === 'EXISTS' ? 'primary' : 'default'}
-                icon={<PlayCircleOutlined />}
-                disabled={!isOperationAvailable('start') && !isOperationAvailable('up')}
-                loading={serverOperationMutation.isPending}
-                onClick={handleStartServer}
-              >
-                启动
-              </Button>
-            </Tooltip>
-            <Tooltip title="停止服务器">
-              <Button
-                danger
-                icon={<StopOutlined />}
-                disabled={!isOperationAvailable('stop')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleConfirmableServerOperation('stop')}
-              >
-                停止
-              </Button>
-            </Tooltip>
-            <Tooltip title="重启服务器">
-              <Button
-                danger
-                icon={<ReloadOutlined />}
-                disabled={!isOperationAvailable('restart')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleConfirmableServerOperation('restart')}
-              >
-                重启
-              </Button>
-            </Tooltip>
-            <Tooltip title="下线服务器">
-              <Button
-                danger
-                icon={<DownOutlined />}
-                disabled={!isOperationAvailable('down')}
-                loading={serverOperationMutation.isPending}
-                onClick={() => handleConfirmableServerOperation('down')}
-              >
-                下线
-              </Button>
-            </Tooltip>
-            <Button onClick={() => navigate('/overview')}>返回总览</Button>
-          </>
+          <ServerOperationButtons
+            serverId={id}
+            serverName={serverInfo.name}
+            status={status}
+          />
         }
       />
 

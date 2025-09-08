@@ -12,6 +12,7 @@ import { getApiBaseUrl } from '@/utils/api';
 import { Terminal } from '@xterm/xterm';
 import PageHeader from '@/components/layout/PageHeader';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
+import ServerOperationButtons from '@/components/server/ServerOperationButtons';
 
 const { Text } = Typography;
 
@@ -547,39 +548,17 @@ const ServerConsole: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-none space-y-4">
+      <div className="flex-none mb-4">
         <PageHeader
           title="控制台"
           icon={<CodeOutlined />}
           serverTag={serverInfo.name}
           actions={
-            <>
-              <div className="flex items-center space-x-2">
-                <Text type="secondary">状态:</Text>
-                <Space size="small">
-                  {connectionStatus.icon}
-                  <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
-                </Space>
-              </div>
-              <Switch
-                checked={filterRcon}
-                onChange={handleFilterChange}
-                checkedChildren="过滤RCON"
-                unCheckedChildren="展示所有"
-                disabled={connectionState === 'CONNECTING'}
-              />
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleManualReconnect}
-                disabled={connectionState === 'CONNECTING'}
-                type="primary"
-              >
-                重新连接
-              </Button>
-              <Button onClick={handleClearScreen}>
-                清屏
-              </Button>
-            </>
+            <ServerOperationButtons
+              serverId={serverId}
+              serverName={serverInfo.name}
+              status={serverStatus}
+            />
           }
         />
 
@@ -604,7 +583,46 @@ const ServerConsole: React.FC = () => {
         )}
       </div>
 
-      <Card className="flex-1 min-h-0 mt-4" styles={{ body: { height: '100%', width: '100%' } }}>
+      {/* 控制台控制面板 */}
+      <Card
+        className="flex-none"
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Text type="secondary">连接状态:</Text>
+              <Space size="small">
+                {connectionStatus.icon}
+                <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
+              </Space>
+            </div>
+            <Switch
+              checked={filterRcon}
+              onChange={handleFilterChange}
+              checkedChildren="过滤RCON"
+              unCheckedChildren="展示所有"
+              disabled={connectionState === 'CONNECTING'}
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleManualReconnect}
+              disabled={connectionState === 'CONNECTING'}
+              type="primary"
+              size="small"
+            >
+              重新连接
+            </Button>
+            <Button onClick={handleClearScreen} size="small">
+              清屏
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="flex-1 min-h-0" styles={{ body: { height: '100%', width: '100%' } }}>
         <div
           ref={terminal.ref as React.LegacyRef<HTMLDivElement>}
           className="h-full w-full"
