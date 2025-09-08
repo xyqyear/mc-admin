@@ -180,9 +180,9 @@ class MCComposeFile(BaseModel):
 
     def get_server_type(self) -> ServerType:
         """获取服务器类型"""
-        if "SERVER_TYPE" not in self.mc_service.environment:
+        if "TYPE" not in self.mc_service.environment:
             return ServerType.VANILLA
-        server_type_value = self.mc_service.environment["SERVER_TYPE"]
+        server_type_value = self.mc_service.environment["TYPE"]
         return ServerType(str(server_type_value))
 
     def get_java_version(self) -> int:
