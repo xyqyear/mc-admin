@@ -19,11 +19,11 @@ WIP
   - [x] overview page: console, online players (same as bellow), cpu & memory usage (w/docker), disk space usage (w/du), warning for backup mod
   - [x] player listing (use log tracking and occasional sync using rcon. info queried from 25565 isn't reliable)
   - [x] compose file management page
-  - [ ] file management page
+  - [x] file management page
     - [x] basic file management
-    - [ ] restore file: for player files, restore when player isn't online; for other files, ask for server stop.
+    - [x] restore file: for player files, restore when player isn't online; for other files, ask for server stop.
   - [ ] pack and download archive (warn about server stop)
-- [ ] create new server page
+- [x] create new server page
 - [x] snapshot management page
 - [x] super admmin page
   - [x] user management page
