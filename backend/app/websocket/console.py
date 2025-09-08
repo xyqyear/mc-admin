@@ -164,10 +164,16 @@ class ConsoleWebSocketHandler:
         if not command:
             return
 
-        result = await self.instance.send_command_rcon(command)
-        await self._send_dict(
-            {"type": "command_result", "command": command, "result": result}
-        )
+        try:
+            await self.instance.send_command_stdin(command)
+        except RuntimeError as e:
+            error_message = str(e)
+            if "CREATE_CONSOLE_IN_PIPE" in error_message:
+                await self._send_dict({"type": "info", "message": "发送指令需要在Compose文件中设置环境变量CREATE_CONSOLE_IN_PIPE=true"})
+            else:
+                await self._send_dict({"type": "info", "message": error_message})
+        except Exception as e:
+            await self._send_dict({"type": "info", "message": str(e)})
 
     async def _handle_filter_change(self, data: dict):
         """Handle RCON filter toggle."""
