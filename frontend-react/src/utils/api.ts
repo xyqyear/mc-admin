@@ -34,7 +34,7 @@ export const getApiBaseUrl = (ws: boolean = false): string => {
 // Create axios instance with better defaults
 export const api = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 30000, // Increased timeout for larger operations
+  timeout: 60000, // Increased timeout for larger operations
   headers: {
     "Content-Type": "application/json",
   },
