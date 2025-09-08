@@ -2,8 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -11,8 +10,8 @@ from alembic import context
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 # Import your model's MetaData object
-from app.models import Base
 from app.config import settings
+from app.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,8 +20,8 @@ config = context.config
 # Set the database URL from the app settings
 # Convert async SQLite URL to sync URL for Alembic
 database_url = settings.database_url
-if database_url.startswith('sqlite+aiosqlite://'):
-    database_url = database_url.replace('sqlite+aiosqlite://', 'sqlite:///')
+if database_url.startswith('sqlite+aiosqlite:///'):
+    database_url = database_url.replace('sqlite+aiosqlite:///', 'sqlite:///')
 config.set_main_option('sqlalchemy.url', database_url)
 
 # Interpret the config file for Python logging.

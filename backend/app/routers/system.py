@@ -36,6 +36,10 @@ class CpuPercent(BaseModel):
     cpuPercentage: float
 
 
+class HealthCheck(BaseModel):
+    status: str
+
+
 @router.get(
     "/info", dependencies=[Depends(get_current_user)], response_model=ServerInfo
 )
@@ -81,3 +85,9 @@ async def get_cpu_percent_endpoint():
     return CpuPercent(
         cpuPercentage=cpu_percent,
     )
+
+
+@router.get("/health", response_model=HealthCheck)
+async def get_health():
+    """Simple healthcheck endpoint for Docker"""
+    return HealthCheck(status="healthy")

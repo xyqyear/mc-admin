@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     )
 
     static_path: Path = Field(default=Path("static"))
-    host: str = Field(default="0.0.0.0")
-    port: int = Field(default=5678)
+
+    cgroup_path: Path = Field(default=Path("/sys/fs/cgroup"))
 
     database_url: str = Field(default="sqlite+aiosqlite:///./db.sqlite3")
     master_token: str

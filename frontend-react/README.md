@@ -55,16 +55,6 @@ src/
 npm install
 ```
 
-2. Copy environment file:
-```bash
-cp .env.local.example .env.local
-```
-
-3. Update the API base URL in `.env.local`:
-```
-VITE_API_BASE_URL=http://localhost:5678/api
-```
-
 ### Development
 
 Start the development server:

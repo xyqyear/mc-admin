@@ -1,0 +1,50 @@
+services:
+  mcadmin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcadmin
+    pid: host
+    ports:
+      - "8000:8000"
+    volumes:
+      # Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/cgroup:ro
+      # Data directory for logs and db
+      - ./data:/data
+      # Backup repository directory (CHANGE THIS IN PRODUCTION!)
+      - /path/to/restic/repository:/data/restic
+      # Minecraft server files (CHANGE THIS IN PRODUCTION!)
+      # has to be the same in container for docker to work
+      - /data/servers/change/in/production:/data/servers/change/in/production
+    environment:
+      # Server management paths (CHANGE THIS IN PRODUCTION!)
+      - SERVER_PATH=/data/servers/change/in/production
+
+      # Master token for system access (CHANGE THIS IN PRODUCTION!)
+      - MASTER_TOKEN=your-master-token-change-in-production
+
+      # JWT configuration (CHANGE THESE IN PRODUCTION!)
+      - JWT__SECRET_KEY=your-super-secret-jwt-key-change-in-production
+      - JWT__ALGORITHM=HS256
+      - JWT__ACCESS_TOKEN_EXPIRE_MINUTES=43200
+
+      # Restic backup configuration
+      - RESTIC__REPOSITORY_PATH=/data/restic
+      # CHANGE THIS IN PRODUCTION!
+      - RESTIC__PASSWORD=your-restic-password-change-in-production
+
+      # cgroup path
+      - CGROUP_PATH=/cgroup
+
+      # Database configuration
+      - DATABASE_URL=sqlite:////data/db.sqlite3
+
+      # Audit configuration
+      - AUDIT__ENABLED=true
+      - AUDIT__LOG_FILE=operations.log
+      - AUDIT__LOG_REQUEST_BODY=true
+      - AUDIT__MAX_BODY_SIZE=10240
+
+    restart: unless-stopped

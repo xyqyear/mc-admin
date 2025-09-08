@@ -20,16 +20,8 @@ export interface ApiResponse<T = any> {
  * @returns 处理后的完整URL
  */
 export const getApiBaseUrl = (ws: boolean = false): string => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5678/api";
-  
-  let baseUrl = envUrl;
-  
-  // 如果URL以"/"开头，表示相对路径，需要拼接当前页面的protocol和host
-  if (envUrl.startsWith('/')) {
-    baseUrl = `${window.location.protocol}//${window.location.host}${envUrl}`;
-  }
-  
-  // 如果需要WebSocket URL，替换协议
+  let baseUrl = window.location.origin + "/api"
+
   if (ws) {
     baseUrl = baseUrl
       .replace(/^https:/, 'wss:')

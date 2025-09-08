@@ -10,6 +10,8 @@ from typing import Dict, List
 import aiofiles
 from pydantic import BaseModel
 
+from ...config import settings
+
 
 class MemoryStats(BaseModel):
     """Memory statistics from cgroup v2 memory.stat file.
@@ -161,17 +163,10 @@ class CGroupStats(BaseModel):
     memory: MemoryStats | None = None
     block_io: BlockIOStats | None = None
 
-    @property
-    def cgroup_path(self) -> str:
-        """Path to the container's cgroup directory."""
-        return f"/sys/fs/cgroup/system.slice/docker-{self.container_id}.scope"
-
 
 async def read_memory_stats(container_id: str) -> MemoryStats:
     """Read memory statistics for a Docker container."""
-    memory_stat_path = (
-        f"/sys/fs/cgroup/system.slice/docker-{container_id}.scope/memory.stat"
-    )
+    memory_stat_path = settings.cgroup_path / f"system.slice/docker-{container_id}.scope/memory.stat"
 
     try:
         async with aiofiles.open(memory_stat_path, "r") as f:
@@ -187,7 +182,7 @@ async def read_memory_stats(container_id: str) -> MemoryStats:
 
 async def read_block_io_stats(container_id: str) -> BlockIOStats:
     """Read block I/O statistics for a Docker container."""
-    io_stat_path = f"/sys/fs/cgroup/system.slice/docker-{container_id}.scope/io.stat"
+    io_stat_path = settings.cgroup_path / f"system.slice/docker-{container_id}.scope/io.stat"
 
     try:
         async with aiofiles.open(io_stat_path, "r") as f:
