@@ -156,15 +156,15 @@ class MCInstance:
         Get the current compose file content as a YAML string
 
         Returns:
-            str: The current compose.yaml file content
+            str: The current compose file content
 
         Raises:
-            FileNotFoundError: If compose.yaml doesn't exist for this server
+            FileNotFoundError: If compose doesn't exist for this server
         """
         compose_file_path = await self.get_compose_file_path()
         if compose_file_path is None:
             raise FileNotFoundError(
-                f"Could not find compose.yaml for server {self._name}"
+                f"Could not find compose file for server {self._name}"
             )
 
         async with aiofiles.open(compose_file_path, "r", encoding="utf8") as file:
@@ -174,7 +174,7 @@ class MCInstance:
         compose_file_path = await self.get_compose_file_path()
         if compose_file_path is None:
             raise FileNotFoundError(
-                f"Could not find compose.yaml for server {self._name}"
+                f"Could not find compose file for server {self._name}"
             )
         compose_obj = await ComposeFile.async_from_file(compose_file_path)
 
@@ -182,7 +182,7 @@ class MCInstance:
         mc_compose = MCComposeFile(compose_obj)
         if mc_compose.get_server_name() != self._name:
             raise FileNotFoundError(
-                f"Could not find valid compose.yaml file for server {self._name}"
+                f"Could not find valid compose file file for server {self._name}"
             )
 
         return mc_compose
@@ -304,7 +304,7 @@ class MCInstance:
 
         Raises:
             ValueError: If YAML is invalid or doesn't meet Minecraft server requirements
-            FileExistsError: If compose.yaml already exists for this server
+            FileExistsError: If compose file already exists for this server
         """
         if not self._verify_compose_yaml(compose_yaml):
             raise ValueError(
@@ -338,7 +338,7 @@ class MCInstance:
         Raises:
             RuntimeError: If server is currently created/running
             ValueError: If YAML is invalid or doesn't meet Minecraft server requirements
-            FileNotFoundError: If compose.yaml doesn't exist for this server
+            FileNotFoundError: If compose file doesn't exist for this server
         """
         if await self.created():
             raise RuntimeError(f"Cannot update server {self._name} while it is created")
@@ -350,7 +350,7 @@ class MCInstance:
         compose_file_path = await self.get_compose_file_path()
         if compose_file_path is None:
             raise FileNotFoundError(
-                f"Could not find compose.yaml for server {self._name}"
+                f"Could not find compose file for server {self._name}"
             )
 
         # Write YAML string directly to file

@@ -55,8 +55,8 @@ async def test_integration_with_docker(teardown: list[str]):
     )
     assert set(await docker_mc_manager.get_all_server_compose_paths()) == set(
         [
-            TEST_ROOT_PATH / "testserver1/compose.yaml",
-            TEST_ROOT_PATH / "testserver2/compose.yaml",
+            TEST_ROOT_PATH / "testserver1/docker-compose.yml",
+            TEST_ROOT_PATH / "testserver2/docker-compose.yml",
         ]
     )
     assert set(await docker_mc_manager.get_all_server_info()) == set(

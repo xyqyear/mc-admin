@@ -21,7 +21,7 @@ services:
 class MCCDockerWrapper:
     def __init__(self, path: str | Path, username: str, server: str):
         self.path = Path(path)
-        self.docker_compose_path = self.path / "compose.yaml"
+        self.docker_compose_path = self.path / "docker-compose.yml"
         self.docker_compose_content = docker_compose_content_template.format(
             username=username, server=server
         )

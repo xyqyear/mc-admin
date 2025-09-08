@@ -176,7 +176,7 @@ services:
         # Verify server exists on filesystem
         server_dir = server_path / server_id
         assert server_dir.exists()
-        assert (server_dir / "compose.yaml").exists()
+        assert (server_dir / "docker-compose.yml").exists()
         assert (server_dir / "data").exists()
         
         # Step 3: Create and upload archive file
