@@ -273,7 +273,7 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 
 - **No External Docker Library**: Minecraft management is fully integrated in `backend/app/minecraft/`
 - **Integrated Backup System**: Restic snapshot management built into `backend/app/snapshots/`
-- **Frontend API Configuration**: Configurable base URL via `VITE_API_BASE_URL` (default: http://localhost:5678/api)
+- **Frontend API Configuration**: Configurable base URL via vite proxy (default: http://localhost:5678/api)
 - **WebSocket Auto-Derivation**: WS endpoints automatically derived from HTTP base URL
 - **CORS Configuration**: Backend configured for localhost:3000 development
 - **Consistent Async Patterns**: Full async/await throughout both components

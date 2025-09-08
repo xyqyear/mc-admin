@@ -127,9 +127,6 @@ poetry run alembic downgrade <revision_id>  # Go to specific revision
 # Method 1: Using uvicorn directly (recommended for development)
 poetry run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 
-# Method 2: Run module directly  
-poetry run python -m app.main
-
 # The app serves routes under /api due to root_path="/api" configuration
 ```
 

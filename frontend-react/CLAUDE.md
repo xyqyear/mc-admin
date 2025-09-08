@@ -45,15 +45,8 @@ pnpm preview    # Preview production build
 
 **Note**: Development server is typically already running. Check before starting another instance.
 
-### Environment Configuration
-```bash
-# Create .env.local for local development overrides
-VITE_API_BASE_URL=http://localhost:5678/api  # Backend API endpoint
-```
-
 **Configuration Details:**
-- **API Base URL**: Configurable via `VITE_API_BASE_URL` environment variable
-- **Default**: `http://localhost:5678/api` (defined in `src/utils/api.ts`)
+- **Default**: `http://localhost:5678/api` (defined in `vite.config.ts`)
 - **WebSocket**: Automatically derives from HTTP base URL (`ws://` or `wss://`)
 
 ## Architecture Overview
