@@ -1,5 +1,6 @@
 """Global snapshot management endpoints using restic"""
 
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,6 +26,46 @@ router = APIRouter(
 )
 
 mc_manager = DockerMCManager(settings.server_path)
+
+
+def _check_backup_time_restriction():
+    """
+    Check if current time is in restricted backup periods.
+    
+    Raises HTTPException if current time is within 30 seconds before 
+    to 1 minute after the quarter-hour marks (0, 15, 30, 45 minutes).
+    """
+    now = datetime.now()
+    current_minute = now.minute
+    current_second = now.second
+    
+    # Convert current time to total seconds from the start of the hour
+    current_total_seconds = current_minute * 60 + current_second
+    
+    # Quarter-hour marks in seconds: 0min, 15min, 30min, 45min
+    quarter_hour_marks = [0, 15 * 60, 30 * 60, 45 * 60]
+    
+    for mark_seconds in quarter_hour_marks:
+        # Check if within restricted window:
+        # From 30 seconds before to 60 seconds after the mark
+        start_restriction = mark_seconds - 30
+        end_restriction = mark_seconds + 60
+        
+        # Handle wrap-around for the 0-minute mark (going back to previous hour)
+        if start_restriction < 0:
+            # Check if in the wrap-around period (last 30 seconds of previous hour)
+            if current_total_seconds >= (3600 + start_restriction) or current_total_seconds <= end_restriction:
+                raise HTTPException(
+                    status_code=400,
+                    detail="请不要在(0, 15, 30, 45)分的备份时间前后一分钟尝试创建快照。"
+                )
+        else:
+            # Normal case: check if current time is in the restricted window
+            if start_restriction <= current_total_seconds <= end_restriction:
+                raise HTTPException(
+                    status_code=400,
+                    detail="请不要在(0, 15, 30, 45)分的备份时间前后一分钟尝试创建快照。"
+                )
 
 
 def _get_restic_manager() -> ResticManager:
@@ -114,6 +155,9 @@ async def create_global_snapshot(
 ):
     """Create a global snapshot or snapshot of the specified server/path"""
     try:
+        # Check if current time is in restricted backup periods
+        _check_backup_time_restriction()
+        
         backup_path = _resolve_backup_path(request.server_id, request.path)
 
         if not backup_path.exists():
