@@ -244,7 +244,7 @@ class MCInstance:
     def parse_player_messages_from_log(log: str) -> list[MCPlayerMessage]:
         return [
             MCPlayerMessage(
-                player=match.group("player"), message=match.group("message")
+                player=match.group("player"), message=match.group("message").strip()
             )
             for match in PLAYER_MESSAGE_PATTERN.finditer(log)
         ]
@@ -553,20 +553,12 @@ class MCInstance:
         """
         this method will send a command to the server using mc-send-to-console
         """
-        if not await self.healthy():
+        if not await self.running():
             raise RuntimeError(f"Server {self._name} is not healthy")
         await self._compose_manager.exec("mc", "mc-send-to-console", command)
 
     async def get_container_id(self) -> str:
-        """
-        Get the Docker container ID for the mc service.
-
-        Returns:
-            str: The container ID
-
-        Raises:
-            RuntimeError: If the container is not running or not found
-        """
+        """Get the Docker container ID for the mc service."""
         if not await self.created():
             raise RuntimeError(f"Server {self._name} is not created")
 
@@ -583,15 +575,7 @@ class MCInstance:
         return container_id
 
     async def get_pid(self) -> int:
-        """
-        Get the Java process PID from the Docker container using docker compose top.
-
-        Returns:
-            int: The Java process ID
-
-        Raises:
-            RuntimeError: If the container is not running or Java PID cannot be retrieved
-        """
+        """Get the Java process PID from the Docker container using docker compose top"""
         # Use docker compose top to get process information
         result = await self._compose_manager.run_compose_command("top")
 
@@ -614,53 +598,21 @@ class MCInstance:
         raise RuntimeError(f"Could not find Java process PID for server {self._name}")
 
     async def get_memory_usage(self) -> MemoryStats:
-        """
-        Get memory usage statistics from cgroup for the container.
-
-        Returns:
-            MemoryStats: Memory usage statistics
-
-        Raises:
-            RuntimeError: If the container is not running or stats cannot be retrieved
-        """
+        """Get memory usage statistics from cgroup for the container."""
         container_id = await self.get_container_id()
         return await read_memory_stats(container_id)
 
     async def get_cpu_percentage(self) -> float:
-        """
-        Get CPU usage percentage for the container process.
-
-        Returns:
-            float: CPU usage percentage (0.0 to 100.0+)
-
-        Raises:
-            RuntimeError: If the container is not running or CPU stats cannot be retrieved
-        """
+        """Get CPU usage percentage for the container process."""
         pid = await self.get_pid()
         return await get_process_cpu_usage(pid)
 
     async def get_disk_io(self) -> BlockIOStats:
-        """
-        Get disk I/O statistics from cgroup for the container.
-
-        Returns:
-            BlockIOStats: Disk I/O statistics
-
-        Raises:
-            RuntimeError: If the container is not running or stats cannot be retrieved
-        """
+        """Get disk I/O statistics from cgroup for the container."""
         container_id = await self.get_container_id()
         return await read_block_io_stats(container_id)
 
     async def get_network_io(self) -> NetworkStats:
-        """
-        Get network I/O statistics for the container process.
-
-        Returns:
-            NetworkStats: Network I/O statistics
-
-        Raises:
-            RuntimeError: If the container is not running or stats cannot be retrieved
-        """
+        """Get network I/O statistics for the container process."""
         pid = await self.get_pid()
         return await read_container_network_stats(pid)

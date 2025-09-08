@@ -63,7 +63,7 @@ async def exec_command(
         stderr = b""
 
     if process.returncode != 0:
-        raise RuntimeError(f"Failed to exec command: {command}\n{stderr.decode()}")
+        raise RuntimeError(f"Failed to exec command: {command}\n{stderr.decode()}\n{stdout.decode()}")
     return stdout.decode()
 
 
