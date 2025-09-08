@@ -1,7 +1,7 @@
-ARG PYTHON_VERSION=3.13
-ARG NODE_VERSION=22
+ARG PYTHON_IMAGE_VERSION=3.13-alpine@sha256:9ba6d8cbebf0fb6546ae71f2a1c14f6ffd2fdab83af7fa5669734ef30ad48844
+ARG NODE_IMAGE_VERSION=22-alpine@sha256:d2166de198f26e17e5a442f537754dd616ab069c47cc57b889310a717e0abbf9
 
-FROM node:${NODE_VERSION}-alpine AS frontend-build
+FROM node:${NODE_IMAGE_VERSION} AS frontend-build
 
 WORKDIR /frontend
 
@@ -11,7 +11,7 @@ RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY frontend-react/ ./
 RUN pnpm build
 
-FROM python:${PYTHON_VERSION}-alpine AS poetry-base
+FROM python:${PYTHON_IMAGE_VERSION} AS poetry-base
 
 ARG POETRY_VERSION=2.1.4
 
@@ -47,7 +47,7 @@ RUN apk add --no-cache \
     musl-dev \
     libffi-dev
 
-FROM python:${PYTHON_VERSION}-alpine AS app
+FROM python:${PYTHON_IMAGE_VERSION} AS app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
