@@ -3,6 +3,7 @@ from pathlib import Path
 
 from aiofiles import os as aioos
 
+from ..logger import logger
 from .compose import MCComposeFile
 from .docker.manager import DockerManager
 from .instance import MCInstance, MCServerInfo
@@ -20,6 +21,11 @@ class DockerMCManager:
                 compose_obj_list.append(await instance.get_compose_obj())
             except FileNotFoundError:
                 continue
+            # 验证失败则忽略
+            except ValueError:
+                continue
+            except Exception as e:
+                logger.warning(f"Failed to get compose object for {sub_dir}: {e}")
         return compose_obj_list
 
     async def get_all_server_names(self) -> list[str]:
