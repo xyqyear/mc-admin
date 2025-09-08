@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mc-admin-backend"
-version = "0.0.1"
+version = ""
 description = ""
 authors = ["xyqyear <xyqyear@gmail.com>"]
 readme = "README.md"
