@@ -84,6 +84,18 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   const terminalRef = terminal.ref;
   const terminalInstance = terminal.instance;
 
+  const calculateDisplayWidth = (text: string): number => {
+    let width = 0;
+    for (const char of text) {
+      if (char === '\t') {
+        width += 7;
+      } else {
+        width += 1;
+      }
+    }
+    return width;
+  };
+
   // 处理终端数据输入
   const handleTerminalData = useCallback((data: string) => {
     // 处理回车键
@@ -124,10 +136,13 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
 
     // 处理 ESC
     if (data === '\x1b') {
-      setCurrentCommand('');
-      if (terminalInstance) {
-        terminalInstance.write('^C\r\n');
+      if (currentCommand.length > 0) {
+        const clearLine = '\r' + ' '.repeat(calculateDisplayWidth(currentCommand)) + '\r';
+        if (terminalInstance) {
+          terminalInstance.write(clearLine);
+        }
       }
+      setCurrentCommand('');
       return;
     }
 
