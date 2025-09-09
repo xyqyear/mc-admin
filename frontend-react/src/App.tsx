@@ -6,6 +6,8 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { ErrorFallback } from '@/components/layout/ErrorFallback'
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
 import { MainLayout } from '@/components/layout/MainLayout'
+import VersionUpdateModal from '@/components/VersionUpdateModal'
+import { useVersionCheck } from '@/hooks/useVersionCheck'
 import { useTokenStore } from '@/stores/useTokenStore'
 
 // Lazy load pages for better performance
@@ -53,6 +55,7 @@ function AuthRoutes() {
 
 function App() {
   const { notification } = AntdApp.useApp()
+  const { shouldShowModal, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
 
   // Global error handler
   const handleError = (error: Error, errorInfo: ErrorInfo) => {
@@ -97,6 +100,15 @@ function App() {
         {/* Catch all route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Version Update Modal - 只在登录后的页面显示 */}
+      <VersionUpdateModal
+        visible={shouldShowModal}
+        onClose={handleClose}
+        onRemindLater={handleRemindLater}
+        fromVersion={fromVersion}
+        toVersion={toVersion}
+      />
     </ErrorBoundary>
   )
 }
