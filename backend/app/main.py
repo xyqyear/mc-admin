@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import aiofiles
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -73,11 +74,13 @@ app.mount(
     app=StaticFiles(directory=(settings.static_path / "assets").resolve()),
     name="assets",
 )
-app.mount(
-    path="/robots.txt",
-    app=StaticFiles(directory=settings.static_path.resolve()),
-    name="robots",
-)
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    async with aiofiles.open(settings.static_path / "robots.txt") as f:
+        return await f.read()
+
 
 # 支持 SPA 的前端路由
 templates = Jinja2Templates(directory=settings.static_path.resolve())
