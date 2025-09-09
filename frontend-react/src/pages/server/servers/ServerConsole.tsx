@@ -12,6 +12,7 @@ import { getApiBaseUrl } from '@/utils/api';
 import PageHeader from '@/components/layout/PageHeader';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
+import ServerStateTag from '@/components/overview/ServerStateTag';
 import { ServerInfo, ServerStatus } from '@/types/ServerInfo';
 
 const { Text } = Typography;
@@ -513,15 +514,19 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
       {serverStatus && !canConnectWebSocket && (
         <Alert
           message="控制台不可用"
-          description={`控制台仅在服务器状态不是 REMOVED 或 EXISTS 时可用。当前状态: ${serverStatus}`}
+          description={
+            <span>
+              控制台仅在服务器状态不是 <ServerStateTag state="REMOVED" /> 或 <ServerStateTag state="EXISTS" /> 时可用。当前状态: <ServerStateTag state={serverStatus} />
+            </span>
+          }
           type="info"
           showIcon
         />
       )}
 
       {/* 控制台容器 */}
-      <Card 
-        className="flex-1 min-h-0 flex flex-col" 
+      <Card
+        className="flex-1 min-h-0 flex flex-col"
         classNames={{ body: "flex flex-col flex-1 !p-4" }}
         title={
           <div className="flex items-center justify-between w-full">
