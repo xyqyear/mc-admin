@@ -44,6 +44,15 @@ export const versionUpdates: VersionUpdate[] = [
       '压缩过程中添加友好提示，告知用户不要关闭窗口',
       '压缩进行时禁用窗口关闭功能，防止用户误操作',
     ]
+  },
+  {
+    version: '0.1.6',
+    date: '2025-09-09',
+    title: '增加文件上传超时时间',
+    description: '增加文件上传超时时间',
+    improvements: [
+      '增加文件上传的超时时间',
+    ]
   }
 ]
 
