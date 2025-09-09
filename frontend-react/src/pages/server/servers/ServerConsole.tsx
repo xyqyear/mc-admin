@@ -53,8 +53,10 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   // State
   const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
   const [filterRcon, setFilterRcon] = useState(true);
-  const [currentCommand, setCurrentCommand] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
+
+  // 使用 ref 存储当前命令，避免不必要的重渲染和依赖问题
+  const currentCommandRef = useRef('');
 
   // XTerm 配置 - 使用useMemo来避免每次渲染重新创建
   const terminalOptions = useMemo(() => ({
@@ -100,13 +102,13 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   const handleTerminalData = useCallback((data: string) => {
     // 处理回车键
     if (data === '\r') {
-      if (currentCommand.trim()) {
+      if (currentCommandRef.current.trim()) {
         // 发送命令
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           try {
             wsRef.current.send(JSON.stringify({
               type: 'command',
-              command: currentCommand.trim(),
+              command: currentCommandRef.current.trim(),
             }));
           } catch (error) {
             console.error('Failed to send command:', error);
@@ -115,7 +117,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
             }
           }
         }
-        setCurrentCommand('');
+        currentCommandRef.current = ''; // 直接操作 ref
       }
       if (terminalInstance) {
         terminalInstance.write('\r\n');
@@ -125,8 +127,8 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
 
     // 处理退格键
     if (data === '\x7f') {
-      if (currentCommand.length > 0) {
-        setCurrentCommand(prev => prev.slice(0, -1));
+      if (currentCommandRef.current.length > 0) {
+        currentCommandRef.current = currentCommandRef.current.slice(0, -1); // 直接操作 ref
         if (terminalInstance) {
           terminalInstance.write('\b \b');
         }
@@ -136,24 +138,24 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
 
     // 处理 ESC
     if (data === '\x1b') {
-      if (currentCommand.length > 0) {
-        const clearLine = '\r' + ' '.repeat(calculateDisplayWidth(currentCommand)) + '\r';
+      if (currentCommandRef.current.length > 0) {
+        const clearLine = '\r' + ' '.repeat(calculateDisplayWidth(currentCommandRef.current)) + '\r';
         if (terminalInstance) {
           terminalInstance.write(clearLine);
         }
       }
-      setCurrentCommand('');
+      currentCommandRef.current = ''; // 直接操作 ref
       return;
     }
 
     // 处理普通字符
     if (data >= ' ' || data === '\t') {
-      setCurrentCommand(prev => prev + data);
+      currentCommandRef.current += data; // 直接操作 ref
       if (terminalInstance) {
         terminalInstance.write(data);
       }
     }
-  }, [currentCommand, terminalInstance]);
+  }, [terminalInstance]); // 只依赖 terminalInstance
 
   // 设置终端数据监听器
   useEffect(() => {
@@ -225,6 +227,12 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   const connectWebSocketRef = useRef<() => void>();
   const scheduleReconnectRef = useRef<() => void>();
 
+  const rewriteCurrentCommand = useCallback(() => {
+    if (terminalInstance && currentCommandRef.current) {
+      terminalInstance.write(currentCommandRef.current);
+    }
+  }, [terminalInstance]); // 移除 currentCommand 依赖，使用 ref 避免重连
+
   // WebSocket消息处理
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
     if (!terminalInstance) return;
@@ -236,12 +244,16 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         case 'log':
           if (message.content) {
             terminalInstance.write(message.content);
+            // 重新写入当前命令
+            rewriteCurrentCommand();
           }
           break;
 
         case 'logs_refreshed':
           if (message.content !== undefined) {
             terminalInstance.write(message.content);
+            // 重新写入当前命令
+            rewriteCurrentCommand();
           }
           break;
 
@@ -249,6 +261,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
           if (message.message) {
             terminalInstance.write(`\x1b[31mError: ${message.message}\x1b[0m\r\n`);
             setLastError(message.message);
+            rewriteCurrentCommand();
             // 错误时断开连接并重试
             disconnectWebSocket();
             if (scheduleReconnectRef.current) {
@@ -260,13 +273,15 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         case 'info':
           if (message.message) {
             terminalInstance.write(`\x1b[36mInfo: ${message.message}\x1b[0m\r\n`);
+            // 信息消息后也重新写入当前命令
+            rewriteCurrentCommand();
           }
           break;
       }
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);
     }
-  }, [terminalInstance, disconnectWebSocket]);
+  }, [terminalInstance, disconnectWebSocket, rewriteCurrentCommand]);
 
   const handleClearScreen = useCallback(() => {
     if (terminalInstance) {
@@ -478,7 +493,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   useEffect(() => {
     retryCountRef.current = 0;
     setLastError(null);
-    setCurrentCommand('');
+    currentCommandRef.current = ''; // 直接重置 ref
     handleClearScreen();
   }, [serverId, handleClearScreen]);
 
