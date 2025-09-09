@@ -14,19 +14,8 @@ export const ServerAddressCard: React.FC<ServerAddressCardProps> = ({ serverId, 
   const addresses = generateServerAddresses(serverId);
 
   const handleCopyAddress = async (address: string) => {
-    try {
-      await navigator.clipboard.writeText(address);
-      message.success(`Address copied: ${address}`);
-    } catch {
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = address;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      message.success(`Address copied: ${address}`);
-    }
+    await navigator.clipboard.writeText(address);
+    message.success(`地址已复制: ${address}`);
   };
 
   return (
