@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -160,7 +161,7 @@ async def create_global_snapshot(
         
         backup_path = _resolve_backup_path(request.server_id, request.path)
 
-        if not backup_path.exists():
+        if not await aioos.path.exists(backup_path):
             error_msg = f"Path not found: {backup_path}"
             logger.error(f"Snapshot creation failed: {error_msg} (server_id={request.server_id}, path={request.path})")
             raise HTTPException(

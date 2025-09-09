@@ -6,6 +6,7 @@ Provides CRUD operations for archive files using the configured archive director
 from pathlib import Path
 from typing import Optional
 
+from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -124,10 +125,10 @@ async def download_archive_file(path: str, _: UserPublic = Depends(get_current_u
         file_path = base_path / path.lstrip("/")
 
         # Validate file exists and is a file (not a directory)
-        if not file_path.exists():
+        if not await aioos.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Archive file not found")
 
-        if not file_path.is_file():
+        if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
         return FileResponse(
@@ -236,10 +237,10 @@ async def get_archive_file_sha256(path: str, _: UserPublic = Depends(get_current
         file_path = base_path / path.lstrip("/")
 
         # Validate file exists and is a file (not a directory)
-        if not file_path.exists():
+        if not await aioos.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Archive file not found")
 
-        if not file_path.is_file():
+        if not await aioos.path.isfile(file_path):
             raise HTTPException(status_code=400, detail="Path is not a file")
 
         # Execute sha256sum command
@@ -277,7 +278,7 @@ async def create_server_archive_endpoint(
         project_path = instance.get_project_path()
 
         # Validate server exists
-        if not project_path.exists():
+        if not await aioos.path.exists(project_path):
             raise HTTPException(
                 status_code=404, detail=f"Server '{request.server_id}' not found"
             )
@@ -292,12 +293,12 @@ async def create_server_archive_endpoint(
             data_dir = project_path / "data"
             if request.path != "/":
                 target_path = data_dir / request.path.lstrip("/")
-                if not target_path.exists():
+                if not await aioos.path.exists(target_path):
                     raise HTTPException(
                         status_code=404,
                         detail=f"Path '{request.path}' not found in server data directory",
                     )
-            elif not data_dir.exists():
+            elif not await aioos.path.exists(data_dir):
                 # If requesting root data directory, ensure it exists
                 raise HTTPException(
                     status_code=404, detail="Server data directory not found"
