@@ -1,4 +1,5 @@
 import api from '@/utils/api'
+import { AxiosRequestConfig } from 'axios'
 
 export interface ArchiveFileItem {
   name: string
@@ -82,9 +83,10 @@ export const archiveApi = {
     const formData = new FormData()
     formData.append('file', file)
     
-    const config: any = {
+    const config: AxiosRequestConfig = {
       params: { path, allow_overwrite: allowOverwrite },
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 1800000 // 30 minutes timeout for uploads
     }
     
     if (options?.onUploadProgress) {

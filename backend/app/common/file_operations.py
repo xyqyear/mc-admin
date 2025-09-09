@@ -138,9 +138,7 @@ async def get_file_content(base_path: Path, path: str) -> str:
             async with aiofiles.open(file_path, "r", encoding="latin1") as f:
                 content = await f.read()
         except Exception:
-            raise HTTPException(
-                status_code=400, detail="Unable to read file as text"
-            )
+            raise HTTPException(status_code=400, detail="Unable to read file as text")
 
     return content
 
@@ -169,9 +167,7 @@ async def upload_file(
     await aioos.makedirs(target_dir, exist_ok=True)
 
     if not await aioos.path.isdir(target_dir):
-        raise HTTPException(
-            status_code=400, detail="Target path is not a directory"
-        )
+        raise HTTPException(status_code=400, detail="Target path is not a directory")
 
     file_path = target_dir / (file.filename or "unnamed_file")
 

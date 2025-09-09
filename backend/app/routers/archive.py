@@ -11,17 +11,17 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..common.file_operations import (
+    CreateFileRequest,
     FileContent,
     FileListResponse,
-    CreateFileRequest,
     RenameFileRequest,
-    get_file_items,
-    get_file_content,
-    update_file_content,
-    upload_file,
     create_file_or_directory,
     delete_file_or_directory,
+    get_file_content,
+    get_file_items,
     rename_file_or_directory,
+    update_file_content,
+    upload_file,
 )
 from ..config import settings
 from ..dependencies import get_current_user
@@ -71,7 +71,9 @@ async def list_archive_files(
         return FileListResponse(items=items, current_path=path)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list archive files: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list archive files: {str(e)}"
+        )
 
 
 @router.get("/content")
@@ -88,7 +90,9 @@ async def get_archive_file_content(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read archive file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read archive file: {str(e)}"
+        )
 
 
 @router.post("/content")
@@ -107,13 +111,13 @@ async def update_archive_file_content(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update archive file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update archive file: {str(e)}"
+        )
 
 
 @router.get("/download")
-async def download_archive_file(
-    path: str, _: UserPublic = Depends(get_current_user)
-):
+async def download_archive_file(path: str, _: UserPublic = Depends(get_current_user)):
     """Download a specific archive file"""
     try:
         base_path = _get_archive_base_path()
@@ -150,14 +154,18 @@ async def upload_archive_file(
     """Upload a file to the archive"""
     try:
         base_path = _get_archive_base_path()
-        filename = await upload_file(base_path, path, file, allow_overwrite=allow_overwrite)
+        filename = await upload_file(
+            base_path, path, file, allow_overwrite=allow_overwrite
+        )
 
         return {"message": f"Archive file '{filename}' uploaded successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload archive file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload archive file: {str(e)}"
+        )
 
 
 @router.post("/create")
@@ -195,7 +203,9 @@ async def delete_archive_file_or_directory(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete archive item: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete archive item: {str(e)}"
+        )
 
 
 @router.post("/rename")
@@ -213,13 +223,13 @@ async def rename_archive_file_or_directory(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to rename archive item: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to rename archive item: {str(e)}"
+        )
 
 
 @router.get("/sha256", response_model=SHA256Response)
-async def get_archive_file_sha256(
-    path: str, _: UserPublic = Depends(get_current_user)
-):
+async def get_archive_file_sha256(path: str, _: UserPublic = Depends(get_current_user)):
     """Calculate SHA256 hash of a specific archive file"""
     try:
         base_path = _get_archive_base_path()
@@ -234,18 +244,15 @@ async def get_archive_file_sha256(
 
         # Execute sha256sum command
         output = await exec_command("sha256sum", str(file_path))
-        
+
         # Parse output: "{hash} {file}" format, split by space and take first part
         parts = output.strip().split()
         if len(parts) < 1:
             raise HTTPException(status_code=500, detail="Invalid sha256sum output")
-        
+
         sha256_hash = parts[0]
-        
-        return SHA256Response(
-            sha256=sha256_hash,
-            filename=file_path.name
-        )
+
+        return SHA256Response(sha256=sha256_hash, filename=file_path.name)
 
     except HTTPException:
         raise
@@ -265,23 +272,22 @@ async def create_server_archive_endpoint(
         # Initialize manager and get server instance
         manager = DockerMCManager(settings.server_path)
         instance = manager.get_instance(request.server_id)
-        
+
         # Get server project path
         project_path = instance.get_project_path()
-        
+
         # Validate server exists
         if not project_path.exists():
             raise HTTPException(
-                status_code=404, 
-                detail=f"Server '{request.server_id}' not found"
+                status_code=404, detail=f"Server '{request.server_id}' not found"
             )
-        
+
         # Validate path if provided
         if request.path is not None:
             # Ensure path starts with /
             if not request.path.startswith("/"):
                 request.path = "/" + request.path
-            
+
             # Validate that the target path exists
             data_dir = project_path / "data"
             if request.path != "/":
@@ -289,37 +295,32 @@ async def create_server_archive_endpoint(
                 if not target_path.exists():
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Path '{request.path}' not found in server data directory"
+                        detail=f"Path '{request.path}' not found in server data directory",
                     )
             elif not data_dir.exists():
                 # If requesting root data directory, ensure it exists
                 raise HTTPException(
-                    status_code=404,
-                    detail="Server data directory not found"
+                    status_code=404, detail="Server data directory not found"
                 )
-        
+
         # Create archive
         archive_filename = await create_server_archive(
             server_name=request.server_id,
             server_project_path=project_path,
-            relative_path=request.path
+            relative_path=request.path,
         )
-        
+
         # Build response message
         if request.path is None:
             message = f"Successfully created archive '{archive_filename}' containing entire server '{request.server_id}'"
         else:
             message = f"Successfully created archive '{archive_filename}' containing '{request.path}' from server '{request.server_id}'"
-        
-        return CreateArchiveResponse(
-            archive_filename=archive_filename,
-            message=message
-        )
-        
+
+        return CreateArchiveResponse(archive_filename=archive_filename, message=message)
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to create server archive: {str(e)}"
+            status_code=500, detail=f"Failed to create server archive: {str(e)}"
         )
