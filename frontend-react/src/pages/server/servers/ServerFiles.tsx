@@ -1,32 +1,15 @@
 import React, { useState } from 'react'
 import {
   Card,
-  Table,
-  Button,
-  Space,
   Modal,
   Form,
   App,
-  Breadcrumb,
-  Dropdown,
-  Tooltip,
-  Alert,
-  Popconfirm
+  Alert
 } from 'antd'
 import {
-  DeleteOutlined,
-  DownloadOutlined,
-  PlusOutlined,
-  HomeOutlined,
-  ReloadOutlined,
-  MoreOutlined,
-  ArrowUpOutlined,
-  UploadOutlined,
-  FolderOutlined,
-  FileZipOutlined
+  FolderOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import FileIcon from '@/components/files/FileIcon'
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import {
@@ -44,11 +27,12 @@ import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
-import { formatFileSize, formatDate } from '@/utils/formatUtils'
-import FileSnapshotActions from '@/components/files/FileSnapshotActions'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
+import FileTable from '@/components/server/FileTable'
+import FileToolbar from '@/components/server/FileToolbar'
+import FileBreadcrumb from '@/components/server/FileBreadcrumb'
+import DragDropOverlay from '@/components/server/DragDropOverlay'
 import type { FileItem } from '@/types/Server'
-import type { SortOrder, ColumnType } from 'antd/es/table/interface'
 
 const ServerFiles: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -385,139 +369,19 @@ const ServerFiles: React.FC = () => {
     }
   }
 
-  const moreActions = (file: FileItem) => [
-    {
-      key: 'rename',
-      label: '重命名',
-      onClick: () => handleFileRename(file)
-    },
-    {
-      key: 'compress',
-      label: '压缩',
-      onClick: () => handleCompress(file)
-    }
-  ]
+  // 工具栏事件处理函数
+  const handleNavigateToParent = () => {
+    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+    handleNavigateToPath(parentPath)
+  }
 
-  const columns: ColumnType<FileItem>[] = [
-    {
-      title: '文件名',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a: FileItem, b: FileItem) => {
-        // Custom sorting: directories first, then files, both alphabetically
-        if (a.type !== b.type) {
-          return a.type === 'directory' ? -1 : 1
-        }
-        return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' })
-      },
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      defaultSortOrder: 'ascend' as SortOrder,
-      render: (name: string, file: FileItem) => {
-        const isEditable = isFileEditable(file.name)
-        const isDirectory = file.type === 'directory'
+  const handleCompressServer = () => {
+    handleCompress(undefined, 'server')
+  }
 
-        return (
-          <div className="flex items-center space-x-2">
-            <FileIcon file={file} />
-            <Tooltip
-              title={
-                isDirectory ? '点击打开文件夹' :
-                  isEditable ? '点击编辑文件' :
-                    undefined
-              }
-            >
-              <span
-                className={
-                  isDirectory ? 'font-medium cursor-pointer hover:text-blue-600' :
-                    isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
-                      'font-medium'
-                }
-                onClick={() => {
-                  if (isDirectory) {
-                    handleFolderOpen(file)
-                  } else if (isEditable) {
-                    handleFileEdit(file)
-                  }
-                }}
-              >
-                {name}
-              </span>
-            </Tooltip>
-          </div>
-        )
-      },
-    },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      width: 90,
-      sorter: (a: FileItem, b: FileItem) => a.size - b.size,
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      render: (size: number) => formatFileSize(size),
-    },
-    {
-      title: '修改时间',
-      dataIndex: 'modified_at',
-      key: 'modified_at',
-      width: 150,
-      sorter: (a: FileItem, b: FileItem) => a.modified_at - b.modified_at,
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      render: (timestamp: number) => formatDate(timestamp),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 200,
-      render: (_: any, file: FileItem) => (
-        <Space size="small">
-          {/* 快照操作按钮 */}
-          <FileSnapshotActions file={file} serverId={id || ''} />
-
-          <Tooltip title="下载">
-            <Button
-              icon={<DownloadOutlined />}
-              size="small"
-              onClick={() => handleFileDownload(file)}
-            />
-          </Tooltip>
-          <Tooltip title="压缩">
-            <Button
-              icon={<FileZipOutlined />}
-              size="small"
-              onClick={() => handleCompress(file)}
-              loading={createArchiveMutation.isPending}
-            />
-          </Tooltip>
-          <Dropdown
-            menu={{
-              items: moreActions(file).map(action => ({
-                ...action,
-                onClick: action.onClick
-              }))
-            }}
-            trigger={['click']}
-          >
-            <Button size="small" icon={<MoreOutlined />} />
-          </Dropdown>
-          <Popconfirm
-            title="确定要删除这个文件吗？"
-            onConfirm={() => handleFileDelete(file)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button
-              icon={<DeleteOutlined />}
-              size="small"
-              danger
-            />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ]
-
-  const pathSegments = currentPath.split('/').filter(Boolean)
+  const handleReplaceServerFiles = () => {
+    setIsArchiveModalVisible(true)
+  }
 
   if (filesError) {
     return <div>加载文件列表失败: {filesError.message}</div>
@@ -526,163 +390,57 @@ const ServerFiles: React.FC = () => {
   return (
     <div className={`space-y-4 ${isDragging ? 'relative' : ''}`}>
       {/* 拖拽覆盖层 */}
-      {isDragging && (
-        <div className="fixed inset-0 bg-blue-500 bg-opacity-10 border-2 border-dashed border-blue-500 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <UploadOutlined className="text-4xl text-blue-500 mb-4" />
-            <div className="text-xl font-medium text-blue-600 mb-2">拖拽文件到此处上传</div>
-            <div className="text-gray-500">松开鼠标完成文件选择</div>
-          </div>
-        </div>
-      )}
+      <DragDropOverlay isDragging={isDragging} />
+      
       <PageHeader
         title="文件"
         icon={<FolderOutlined />}
         serverTag={hasServerInfo ? serverInfo?.name : undefined}
         actions={
-          <>
-            {currentPath !== '/' && (
-              <Button
-                icon={<ArrowUpOutlined />}
-                onClick={() => {
-                  const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
-                  handleNavigateToPath(parentPath)
-                }}
-              >
-                返回上级
-              </Button>
-            )}
-            {currentPath === '/' && (
-              <>
-                <FileSnapshotActions 
-                  serverId={id || ''} 
-                  path="/" 
-                  isServerMode={true} 
-                  onRefresh={refetch} 
-                />
-                <Button
-                  icon={<FileZipOutlined />}
-                  onClick={() => handleCompress(undefined, 'server')}
-                  loading={createArchiveMutation.isPending}
-                >
-                  打包服务器
-                </Button>
-                <Button
-                  icon={<FileZipOutlined />}
-                  danger
-                  onClick={() => setIsArchiveModalVisible(true)}
-                  loading={populateServerMutation.isPending}
-                >
-                  替换服务器文件
-                </Button>
-              </>
-            )}
-            <Button
-              icon={<UploadOutlined />}
-              onClick={() => setIsUploadModalVisible(true)}
-            >
-              上传文件
-            </Button>
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() => setIsCreateModalVisible(true)}
-            >
-              新建文件/文件夹
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              loading={isLoadingFiles}
-            >
-              刷新
-            </Button>
-            {selectedFiles.length > 0 && (
-              <Button
-                icon={<DeleteOutlined />}
-                danger
-                onClick={handleBulkDelete}
-                loading={deleteFileMutation.isPending}
-              >
-                批量删除 ({selectedFiles.length})
-              </Button>
-            )}
-          </>
+          <FileToolbar
+            currentPath={currentPath}
+            selectedFiles={selectedFiles}
+            serverId={id || ''}
+            isLoadingFiles={isLoadingFiles}
+            createArchiveMutation={createArchiveMutation}
+            populateServerMutation={populateServerMutation}
+            deleteFileMutation={deleteFileMutation}
+            onNavigateToParent={handleNavigateToParent}
+            onRefresh={handleRefresh}
+            onUpload={() => setIsUploadModalVisible(true)}
+            onCreateFile={() => setIsCreateModalVisible(true)}
+            onBulkDelete={handleBulkDelete}
+            onCompressServer={handleCompressServer}
+            onReplaceServerFiles={handleReplaceServerFiles}
+            onRefreshSnapshot={refetch}
+          />
         }
       />
 
       <Card>
         <div className="space-y-4">
-          <Breadcrumb
-            items={[
-              {
-                title: (
-                  <>
-                    <HomeOutlined />
-                    <span
-                      className="cursor-pointer ml-1"
-                      onClick={() => handleNavigateToPath('/')}
-                    >
-                      根目录
-                    </span>
-                  </>
-                )
-              },
-              ...pathSegments.map((segment, index) => ({
-                title: (
-                  <span
-                    className="cursor-pointer"
-                    onClick={() => handleNavigateToPath('/' + pathSegments.slice(0, index + 1).join('/'))}
-                  >
-                    {segment}
-                  </span>
-                )
-              }))
-            ]}
+          <FileBreadcrumb
+            currentPath={currentPath}
+            onNavigateToPath={handleNavigateToPath}
           />
 
-          <Table
-            dataSource={fileData?.items || []}
-            columns={columns}
-            rowKey="path"
-            size="small"
-            loading={isLoadingFiles}
-            rowSelection={{
-              selectedRowKeys: selectedFiles,
-              onChange: (selectedRowKeys: React.Key[]) => {
-                setSelectedFiles(selectedRowKeys as string[])
-              },
-              getCheckboxProps: (record: FileItem) => ({
-                name: record.name,
-              }),
-            }}
-            pagination={{
-              current: currentPage,
-              pageSize: pageSize,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              pageSizeOptions: ['10', '20', '50', '100'],
-              showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个文件`,
-              simple: false,
-              size: "default",
-              onChange: (page, size) => {
-                setCurrentPage(page)
-                if (size !== pageSize) {
-                  setPageSize(size)
-                  setCurrentPage(1) // Reset to first page when page size changes
-                }
-              },
-              onShowSizeChange: (_, size) => {
-                setPageSize(size)
-                setCurrentPage(1) // Reset to first page when page size changes
-              }
-            }}
-            onRow={(record) => ({
-              onDoubleClick: () => {
-                if (record.type === 'directory') {
-                  handleFolderOpen(record)
-                }
-              }
-            })}
+          <FileTable
+            fileData={fileData}
+            isLoadingFiles={isLoadingFiles}
+            selectedFiles={selectedFiles}
+            setSelectedFiles={setSelectedFiles}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            setCurrentPage={setCurrentPage}
+            setPageSize={setPageSize}
+            serverId={id || ''}
+            onFileEdit={handleFileEdit}
+            onFileDelete={handleFileDelete}
+            onFileDownload={handleFileDownload}
+            onFileRename={handleFileRename}
+            onFolderOpen={handleFolderOpen}
+            onFileCompress={handleCompress}
+            createArchiveMutation={createArchiveMutation}
           />
         </div>
       </Card>
