@@ -270,11 +270,11 @@ class TestWebSocketConsole:
             with client.websocket_connect(
                 f"/servers/{server_id}/console?token=test_master_token"
             ) as websocket:
-                # Receive initial logs
+                # Receive initial logs first
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
 
-                # Send filter change message
+                # Send filter change message after receiving initial logs
                 filter_message = {
                     "type": "set_filter",
                     "filter_rcon": False
@@ -427,7 +427,7 @@ class TestWebSocketConsole:
             with client.websocket_connect(
                 f"/servers/{server_id}/console?token=test_master_token"
             ) as websocket:
-                # Receive initial logs (should be filtered by default)
+                # Receive initial logs first (should be filtered by default)
                 initial_data = websocket.receive_json()
                 
                 if initial_data["type"] == "log":
@@ -436,7 +436,7 @@ class TestWebSocketConsole:
                     assert "Starting minecraft server" in initial_data["content"]
                     assert "Done" in initial_data["content"]
 
-                # Disable RCON filtering
+                # After receiving initial logs, disable RCON filtering
                 filter_message = {
                     "type": "set_filter",
                     "filter_rcon": False
@@ -505,11 +505,11 @@ class TestWebSocketConsole:
             with client.websocket_connect(
                 f"/servers/{server_id}/console?token=test_master_token"
             ) as websocket:
-                # 1. Receive initial logs
+                # 1. Receive initial logs first
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
 
-                # 2. Test filter functionality
+                # 2. Test filter functionality after receiving initial logs
                 websocket.send_json({"type": "set_filter", "filter_rcon": False})
                 filter_response = websocket.receive_json()
                 assert filter_response["type"] == "filter_updated"

@@ -184,6 +184,12 @@ class ConsoleWebSocketHandler:
         """Handle RCON filter toggle."""
         filter_rcon = data.get("filter_rcon", True)
         self.filter_rcon = bool(filter_rcon)
+        
+        # Send confirmation message
+        await self._send_dict({
+            "type": "filter_updated",
+            "filter_rcon": self.filter_rcon
+        })
 
     async def _handle_log_refresh(self, _data: dict):
         """Handle log refresh request with current filter settings."""
