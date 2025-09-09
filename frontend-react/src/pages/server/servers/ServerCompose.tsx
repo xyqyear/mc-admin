@@ -36,7 +36,6 @@ const ServerCompose: React.FC = () => {
     serverLoading,
     serverError,
     serverErrorMessage,
-    hasServerInfo,
     composeQuery
   } = useServerComposeData()
 
@@ -77,7 +76,7 @@ const ServerCompose: React.FC = () => {
   }
 
   // 错误状态
-  if (serverError || composeQuery.isError || !hasServerInfo) {
+  if (serverError || composeQuery.isError) {
     const errorMessage = (serverErrorMessage as any)?.message || `无法加载服务器 "${id}" 的配置信息`
     return (
       <div className="flex justify-center items-center min-h-64">
