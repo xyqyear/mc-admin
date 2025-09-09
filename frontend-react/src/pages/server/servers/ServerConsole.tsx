@@ -1,36 +1,18 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Switch, Button, Space, Alert, Typography, Spin } from 'antd';
 import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined } from '@ant-design/icons';
-import { useXTerm } from 'react-xtermjs';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
-import { useTokenStore } from '@/stores/useTokenStore';
-import { getApiBaseUrl } from '@/utils/api';
+import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket';
 import PageHeader from '@/components/layout/PageHeader';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
 import ServerStateTag from '@/components/overview/ServerStateTag';
+import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
 import { ServerInfo, ServerStatus } from '@/types/ServerInfo';
 
 const { Text } = Typography;
-
-// WebSocket消息类型
-interface WebSocketMessage {
-  type: 'log' | 'error' | 'info' | 'logs_refreshed';
-  content?: string;
-  message?: string;
-  filter_rcon?: boolean;
-}
-
-// WebSocket连接状态
-type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR' | 'RETRYING';
-
-// 重试配置常量
-const MAX_RETRY_COUNT = 5;
-const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避延迟
 
 interface ServerConsoleInnerProps {
   serverId: string;
@@ -43,145 +25,8 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
   serverInfo,
   serverStatus
 }) => {
-  const { token } = useTokenStore();
-
-  // WebSocket refs
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const retryCountRef = useRef(0);
-
-  // State
-  const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
-  const [filterRcon, setFilterRcon] = useState(true);
-  const [lastError, setLastError] = useState<string | null>(null);
-
-  // 使用 ref 存储当前命令，避免不必要的重渲染和依赖问题
-  const currentCommandRef = useRef('');
-
-  // XTerm 配置 - 使用useMemo来避免每次渲染重新创建
-  const terminalOptions = useMemo(() => ({
-    theme: {
-      background: '#000000',
-      foreground: '#ffffff',
-      cursor: '#ffffff',
-    },
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 14,
-    cursorBlink: true,
-    convertEol: true,
-    disableStdin: false,
-  }), []);
-
-  const terminalAddons = useMemo(() => [new FitAddon(), new WebLinksAddon()], []);
-
-  // 获取FitAddon引用
-  const fitAddon = terminalAddons[0] as FitAddon;
-
-  // 使用 useXTerm 钩子
-  const terminal = useXTerm({
-    options: terminalOptions,
-    addons: terminalAddons,
-  });
-
-  const terminalRef = terminal.ref;
-  const terminalInstance = terminal.instance;
-
-  const calculateDisplayWidth = (text: string): number => {
-    let width = 0;
-    for (const char of text) {
-      if (char === '\t') {
-        width += 7;
-      } else {
-        width += 1;
-      }
-    }
-    return width;
-  };
-
-  // 处理终端数据输入
-  const handleTerminalData = useCallback((data: string) => {
-    // 处理回车键
-    if (data === '\r') {
-      if (currentCommandRef.current.trim()) {
-        // 发送命令
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          try {
-            wsRef.current.send(JSON.stringify({
-              type: 'command',
-              command: currentCommandRef.current.trim(),
-            }));
-          } catch (error) {
-            console.error('Failed to send command:', error);
-            if (terminalInstance) {
-              terminalInstance.write('\x1b[31mFailed to send command\x1b[0m\r\n');
-            }
-          }
-        }
-        currentCommandRef.current = ''; // 直接操作 ref
-      }
-      if (terminalInstance) {
-        terminalInstance.write('\r\n');
-      }
-      return;
-    }
-
-    // 处理退格键
-    if (data === '\x7f') {
-      if (currentCommandRef.current.length > 0) {
-        currentCommandRef.current = currentCommandRef.current.slice(0, -1); // 直接操作 ref
-        if (terminalInstance) {
-          terminalInstance.write('\b \b');
-        }
-      }
-      return;
-    }
-
-    // 处理 ESC
-    if (data === '\x1b') {
-      if (currentCommandRef.current.length > 0) {
-        const clearLine = '\r' + ' '.repeat(calculateDisplayWidth(currentCommandRef.current)) + '\r';
-        if (terminalInstance) {
-          terminalInstance.write(clearLine);
-        }
-      }
-      currentCommandRef.current = ''; // 直接操作 ref
-      return;
-    }
-
-    // 处理普通字符
-    if (data >= ' ' || data === '\t') {
-      currentCommandRef.current += data; // 直接操作 ref
-      if (terminalInstance) {
-        terminalInstance.write(data);
-      }
-    }
-  }, [terminalInstance]); // 只依赖 terminalInstance
-
-  // 设置终端数据监听器
-  useEffect(() => {
-    if (terminalInstance) {
-      const disposable = terminalInstance.onData(handleTerminalData);
-      return () => {
-        disposable?.dispose();
-      };
-    }
-  }, [terminalInstance, handleTerminalData]);
-
-  // 自动调整终端大小
-  useEffect(() => {
-    if (fitAddon && terminalInstance) {
-      setTimeout(() => fitAddon.fit(), 0);
-
-      const handleResize = () => {
-        fitAddon.fit();
-      };
-
-      window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-      };
-    }
-  }, [fitAddon, terminalInstance, serverId]);
+  // 终端引用
+  const terminalRef = useRef<ServerTerminalRef>(null);
 
   // 检查服务器状态是否允许WebSocket连接
   const canConnectWebSocket = useMemo(() => {
@@ -189,313 +34,66 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
   }, [serverStatus]);
 
-  // 构建WebSocket URL
-  const buildWebSocketUrl = useCallback(() => {
-    if (!serverId || !token) return null;
-    const baseUrl = getApiBaseUrl(true); // true for WebSocket
-    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}`;
-  }, [serverId, token]);
+  // WebSocket hook
+  const {
+    connectionState,
+    lastError,
+    filterRcon,
+    sendCommand,
+    setFilterRcon,
+    onMessage,
+    connect,
+    disconnect
+  } = useServerConsoleWebSocket(serverId, canConnectWebSocket);
 
-  // 断开WebSocket
-  const disconnectWebSocket = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    if (wsRef.current) {
-      // 避免触发onclose事件导致重连
-      const ws = wsRef.current;
-      wsRef.current = null;
-
-      // 移除事件监听器以避免竞争条件
-      ws.onopen = null;
-      ws.onmessage = null;
-      ws.onclose = null;
-      ws.onerror = null;
-
-      // 如果连接还在进行中，直接关闭
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-        ws.close(1000); // 正常关闭
+  // 终端准备就绪时设置消息监听器
+  const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
+    // 注册消息监听器，将WebSocket消息传递给终端
+    onMessage((message) => {
+      if (terminal.onMessage) {
+        terminal.onMessage(message);
       }
-    }
+    });
+  }, [onMessage]);
 
-    setConnectionState('DISCONNECTED');
-  }, []);
-
-  // Use refs to break circular dependencies
-  const connectWebSocketRef = useRef<() => void>();
-  const scheduleReconnectRef = useRef<() => void>();
-
-  const rewriteCurrentCommand = useCallback(() => {
-    if (terminalInstance && currentCommandRef.current) {
-      terminalInstance.write(currentCommandRef.current);
-    }
-  }, [terminalInstance]); // 移除 currentCommand 依赖，使用 ref 避免重连
-
-  // WebSocket消息处理
-  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    if (!terminalInstance) return;
-
-    try {
-      const message: WebSocketMessage = JSON.parse(event.data);
-
-      switch (message.type) {
-        case 'log':
-          if (message.content) {
-            terminalInstance.write(message.content);
-            // 重新写入当前命令
-            rewriteCurrentCommand();
-          }
-          break;
-
-        case 'logs_refreshed':
-          if (message.content !== undefined) {
-            terminalInstance.write(message.content);
-            // 重新写入当前命令
-            rewriteCurrentCommand();
-          }
-          break;
-
-        case 'error':
-          if (message.message) {
-            terminalInstance.write(`\x1b[31mError: ${message.message}\x1b[0m\r\n`);
-            setLastError(message.message);
-            rewriteCurrentCommand();
-            // 错误时断开连接并重试
-            disconnectWebSocket();
-            if (scheduleReconnectRef.current) {
-              scheduleReconnectRef.current();
-            }
-          }
-          break;
-
-        case 'info':
-          if (message.message) {
-            terminalInstance.write(`\x1b[36mInfo: ${message.message}\x1b[0m\r\n`);
-            // 信息消息后也重新写入当前命令
-            rewriteCurrentCommand();
-          }
-          break;
-      }
-    } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
-    }
-  }, [terminalInstance, disconnectWebSocket, rewriteCurrentCommand]);
-
-  const handleClearScreen = useCallback(() => {
-    if (terminalInstance) {
-      terminalInstance.clear();
-    }
-  }, [terminalInstance]);
-
-  // 发送过滤设置更新
-  const sendFilterUpdate = useCallback((newFilterRcon: boolean) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    try {
-      wsRef.current.send(JSON.stringify({
-        type: 'set_filter',
-        filter_rcon: newFilterRcon,
-      }));
-    } catch (error) {
-      console.error('Failed to send filter update:', error);
-    }
-  }, []);
-
-  // 连接WebSocket
-  const connectWebSocket = useCallback(() => {
-    // 如果已经有连接在进行中或已连接，先断开
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
-      disconnectWebSocket();
-    }
-
-    if (!canConnectWebSocket || !token || !serverId) {
-      return;
-    }
-
-    const wsUrl = buildWebSocketUrl();
-    if (!wsUrl) {
-      console.error('Failed to build WebSocket URL');
-      return;
-    }
-
-    setConnectionState('CONNECTING');
-    setLastError(null);
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws; // 立即设置引用
-
-      ws.onopen = () => {
-        // 检查连接是否仍然有效
-        if (wsRef.current !== ws) {
-          ws.close();
-          return;
-        }
-
-        console.log('WebSocket connected');
-        setConnectionState('CONNECTED');
-        retryCountRef.current = 0;
-
-        if (terminalInstance) {
-          handleClearScreen();
-          terminalInstance.write('\x1b[32mConnected to server console\x1b[0m\r\n');
-        }
-
-        // 发送初始过滤设置
-        setTimeout(() => {
-          if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
-            sendFilterUpdate(filterRcon);
-          }
-        }, 100);
-      };
-
-      ws.onmessage = handleWebSocketMessage;
-
-      ws.onclose = (event) => {
-        // 检查这是否是当前活动的连接
-        if (wsRef.current !== ws) {
-          return;
-        }
-
-        console.log('WebSocket disconnected:', event.code, event.reason);
-        wsRef.current = null;
-        setConnectionState('DISCONNECTED');
-
-        if (terminalInstance) {
-          terminalInstance.write('\x1b[33mDisconnected from server console\x1b[0m\r\n');
-        }
-
-        // 如果不是手动断开，尝试重连
-        if (event.code !== 1000 && event.code !== 1001) {
-          if (scheduleReconnectRef.current) {
-            scheduleReconnectRef.current();
-          }
-        }
-      };
-
-      ws.onerror = (error) => {
-        // 检查这是否是当前活动的连接
-        if (wsRef.current !== ws) {
-          return;
-        }
-
-        console.error('WebSocket error:', error);
-        setConnectionState('ERROR');
-        setLastError('WebSocket connection error');
-
-        if (terminalInstance) {
-          terminalInstance.write('\x1b[31mConnection error\x1b[0m\r\n');
-        }
-      };
-
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      setConnectionState('ERROR');
-      setLastError('Failed to create WebSocket connection');
-    }
-  }, [canConnectWebSocket, token, serverId, buildWebSocketUrl, filterRcon, sendFilterUpdate, handleWebSocketMessage, disconnectWebSocket, handleClearScreen, terminalInstance]);
-
-  const scheduleReconnect = useCallback(() => {
-    if (retryCountRef.current >= MAX_RETRY_COUNT) {
-      setConnectionState('ERROR');
-      setLastError(`Maximum retry attempts (${MAX_RETRY_COUNT}) exceeded`);
-      return;
-    }
-
-    const delay = RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)];
-    retryCountRef.current++;
-
-    setConnectionState('RETRYING');
-
-    if (terminalInstance) {
-      terminalInstance.write(`\x1b[33mRetrying connection in ${delay / 1000}s... (${retryCountRef.current}/${MAX_RETRY_COUNT})\x1b[0m\r\n`);
-    }
-
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (connectWebSocketRef.current) {
-        connectWebSocketRef.current();
-      }
-    }, delay);
-  }, [terminalInstance]);
-
-  // Update refs after callbacks are defined
-  connectWebSocketRef.current = connectWebSocket;
-  scheduleReconnectRef.current = scheduleReconnect;
-
-  // 请求刷新日志
-  const requestLogRefresh = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    try {
-      wsRef.current.send(JSON.stringify({
-        type: 'refresh_logs',
-      }));
-    } catch (error) {
-      console.error('Failed to request log refresh:', error);
-    }
-  }, []);
+  // 处理终端命令
+  const handleCommand = useCallback((command: string) => {
+    sendCommand(command);
+  }, [sendCommand]);
 
   // 处理过滤开关变化
   const handleFilterChange = useCallback((checked: boolean) => {
     setFilterRcon(checked);
-    sendFilterUpdate(checked);
-
-    // 延迟请求刷新日志
-    setTimeout(() => {
-      requestLogRefresh();
-    }, 100);
-  }, [sendFilterUpdate, requestLogRefresh]);
+  }, [setFilterRcon]);
 
   // 手动重连
   const handleManualReconnect = useCallback(() => {
-    retryCountRef.current = 0;
-    disconnectWebSocket();
+    disconnect();
     setTimeout(() => {
-      connectWebSocket();
+      connect();
     }, 100);
-  }, [disconnectWebSocket, connectWebSocket]);
+  }, [disconnect, connect]);
 
-
-  // 管理WebSocket连接
-  useEffect(() => {
-    let mounted = true;
-
-    if (canConnectWebSocket) {
-      // 使用setTimeout避免在快速状态变化时立即重连
-      const timeoutId = setTimeout(() => {
-        if (mounted) {
-          connectWebSocket();
-        }
-      }, 100);
-
-      return () => {
-        mounted = false;
-        clearTimeout(timeoutId);
-        disconnectWebSocket();
-      };
-    } else {
-      disconnectWebSocket();
+  // 清屏
+  const handleClearScreen = useCallback(() => {
+    if (terminalRef.current) {
+      terminalRef.current.clear();
     }
+  }, []);
 
-    return () => {
-      mounted = false;
-      disconnectWebSocket();
-    };
-  }, [canConnectWebSocket, connectWebSocket, disconnectWebSocket]);
-
-  // 当服务器ID变化时重置状态
+  // 连接成功时显示连接信息
   useEffect(() => {
-    retryCountRef.current = 0;
-    setLastError(null);
-    currentCommandRef.current = ''; // 直接重置 ref
-    handleClearScreen();
-  }, [serverId, handleClearScreen]);
+    if (connectionState === 'CONNECTED' && terminalRef.current) {
+      terminalRef.current.clear();
+      terminalRef.current.write('\x1b[32mConnected to server console\x1b[0m\r\n');
+    } else if (connectionState === 'DISCONNECTED' && terminalRef.current) {
+      terminalRef.current.write('\x1b[33mDisconnected from server console\x1b[0m\r\n');
+    } else if (connectionState === 'ERROR' && terminalRef.current) {
+      terminalRef.current.write('\x1b[31mConnection error\x1b[0m\r\n');
+    } else if (connectionState === 'RETRYING' && terminalRef.current) {
+      terminalRef.current.write('\x1b[33mRetrying connection...\x1b[0m\r\n');
+    }
+  }, [connectionState]);
 
   // 获取连接状态显示
   const getConnectionStatus = () => {
@@ -505,7 +103,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
       case 'CONNECTING':
         return { text: '正在连接...', color: 'processing', icon: <Spin size="small" /> };
       case 'RETRYING':
-        return { text: `正在重试... (${retryCountRef.current}/${MAX_RETRY_COUNT})`, color: 'warning', icon: <Spin size="small" /> };
+        return { text: '正在重试...', color: 'warning', icon: <Spin size="small" /> };
       case 'ERROR':
         return { text: '连接错误', color: 'error', icon: <DisconnectOutlined /> };
       default:
@@ -537,7 +135,9 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
           type="error"
           showIcon
           closable
-          onClose={() => setLastError(null)}
+          onClose={() => {
+            // 可以在这里调用清除错误的函数，但目前WebSocket hook没有提供
+          }}
         />
       )}
 
@@ -594,8 +194,10 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         }
       >
         {/* 终端区域 */}
-        <div
-          ref={terminalRef as React.LegacyRef<HTMLDivElement>}
+        <ServerTerminal
+          ref={terminalRef}
+          onCommand={handleCommand}
+          onReady={handleTerminalReady}
           className="h-full"
         />
       </Card>
