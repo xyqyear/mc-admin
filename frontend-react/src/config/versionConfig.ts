@@ -53,6 +53,15 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '增加文件上传的超时时间',
     ]
+  },
+  {
+    version: '0.1.7',
+    date: '2025-09-10',
+    title: '添加服务器地址卡片',
+    description: '添加服务器地址卡片',
+    improvements: [
+      '在服务器的概览页面添加服务器地址卡片，支持按钮复制',
+    ]
   }
 ]
 
