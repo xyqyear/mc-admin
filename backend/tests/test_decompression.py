@@ -98,9 +98,10 @@ def create_test_archive(archive_path: Path, structure: dict, format_type: str = 
             with open(full_path, "w") as f:
                 f.write(content)
 
-        # Create 7z archive
+        # Create 7z archive using parent directory as cwd (matching compression.py logic)
         subprocess.run(
-            ["7z", "a", str(archive_path), f"{temp_extract_dir}/*"],
+            ["7z", "a", str(archive_path), temp_extract_dir.name],
+            cwd=str(temp_extract_dir.parent),
             capture_output=True,
             check=True,
         )
