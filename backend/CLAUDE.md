@@ -37,6 +37,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Dual API Structure**: Global and server-specific snapshot management endpoints
 
 ### Integrated Archive Management Stack
+- **Compression Support**: 7z archive creation for server files and directories via app.utils.compression
 - **Decompression Support**: ZIP, TAR, TAR.GZ format support via app.utils.decompression
 - **SHA256 Verification**: Built-in file integrity checking for uploaded archives
 - **Server Population**: Archive-to-server deployment via populate endpoint
@@ -138,7 +139,7 @@ During development iteration, **NEVER run Docker container tests** to avoid time
 
 ```bash
 # ✅ Safe for frequent development iteration
-poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py tests/test_archive_compression.py tests/test_time_restriction.py -v
 
 # ✅ Safe unit tests (don't bring up containers)
 poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
@@ -153,19 +154,15 @@ poetry run pytest tests/test_snapshots_basic.py tests/test_snapshots_endpoints.p
 # poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
-# poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
-# poetry run pytest tests/test_populate_integration.py  # Real archive population
 
 # ❌ NEVER run all tests during development
 # poetry run pytest tests/ -v  # Will timeout due to container tests
 ```
 
 **Docker Container Tests:**
-- `test_monitoring.py`: All 8 functions now end with `_with_docker`
+- `test_monitoring.py`: All 8 functions end with `_with_docker`
 - `test_integration.py`: `test_integration_with_docker` 
 - `test_instance.py`: `test_server_status_lifecycle_with_docker`, `test_get_disk_space_info_with_docker`
-- `test_snapshots_integrated.py`: All tests require real Restic operations with containers
-- `test_populate_integration.py`: All tests require Docker containers for archive population
 
 **Code Quality:**
 DO NOT use black to format code
@@ -259,13 +256,15 @@ tests/                      # Test suite (separate from app package)
 ├── test_decompression.py   # ✅ SAFE - Archive decompression utility tests
 ├── test_archive_operations.py # ✅ SAFE - Archive management API tests
 ├── test_archive_sha256.py  # ✅ SAFE - SHA256 calculation and validation tests
+├── test_archive_compression.py # ✅ SAFE - Archive compression utility tests
 ├── test_common_file_operations.py # ✅ SAFE - Common file operations utility tests
 ├── test_create_server.py   # ✅ SAFE - Server creation logic tests
+├── test_time_restriction.py # ✅ SAFE - Time-based access restriction tests
 ├── test_instance.py        # ⚠️ MIXED - Some safe unit tests, some _with_docker container tests
 ├── test_monitoring.py      # ❌ DOCKER - All functions end with _with_docker  
 ├── test_integration.py     # ❌ DOCKER - test_integration_with_docker
-├── test_snapshots_integrated.py # ❌ DOCKER - Real Restic integration tests with containers
-├── test_populate_integration.py # ❌ DOCKER - Real archive population tests with containers
+├── test_snapshots_integrated.py # ✅ SAFE - Real Restic integration tests with containers
+├── test_populate_integration.py # ✅ SAFE - Real archive population tests with containers
 └── fixtures/               # Test utilities and fixtures
     ├── __init__.py
     ├── test_utils.py       # Test helper functions and cleanup utilities
@@ -375,6 +374,13 @@ class ResticSnapshotWithSummary(BaseModel):
 - File upload handling with multipart form data support
 - SHA256 hash calculation for file integrity verification
 - Archive deletion with proper file system cleanup
+
+**Compression Utilities** (`app.utils.compression`):
+- 7z archive creation for server files and directories with high compression ratio
+- Automatic filename generation with timestamps and sanitization
+- Support for both full server compression and selective file/directory compression
+- Progress tracking and error handling with detailed HTTP exceptions
+- Async compression operations using subprocess integration
 
 **Decompression Utilities** (`app.utils.decompression`):
 - Support for ZIP, TAR, and TAR.GZ format extraction
@@ -591,7 +597,6 @@ snapshot_response = await restic_manager.create_snapshot(["/path/to/backup"])
 **Test Categories:**
 1. **✅ Safe Unit Tests**: Fast tests for individual components (majority during development)
 2. **❌ Container Tests**: Full Docker workflow tests (avoid during development iteration)
-3. **❌ Integration Tests**: Real Restic integration tests (avoid during development iteration)
 4. **⚠️ Mixed Tests**: Some safe, some container tests (test selectively)
 
 **Safe Tests for Development:**
@@ -605,19 +610,21 @@ snapshot_response = await restic_manager.create_snapshot(["/path/to/backup"])
 - `test_decompression.py` - Archive decompression utility testing
 - `test_archive_operations.py` - Archive management API testing
 - `test_archive_sha256.py` - SHA256 calculation and validation testing
+- `test_archive_compression.py` - Archive compression utility testing
 - `test_common_file_operations.py` - Common file operations utility testing
 - `test_create_server.py` - Server creation logic testing
+- `test_time_restriction.py` - Time-based access restriction testing
 - `test_instance.py::test_disk_space_info_dataclass` - Data model testing
 - `test_instance.py::test_minecraft_instance` - Configuration testing (no container startup)
 - `test_audit.py` - Operation audit middleware testing (configuration, masking, pattern matching)
+- `test_snapshots_integrated.py` - Real Restic operations with containers and filesystem
+- `test_populate_integration.py` - Real archive population testing with containers
 
 **Container/Integration Tests (Avoid During Development):**
 - `test_monitoring.py` - All functions ending with `_with_docker`
 - `test_integration.py::test_integration_with_docker` - Full workflow
 - `test_instance.py::test_server_status_lifecycle_with_docker` - Container lifecycle
 - `test_instance.py::test_get_disk_space_info_with_docker` - Disk space with container
-- `test_snapshots_integrated.py` - Real Restic operations with containers and filesystem
-- `test_populate_integration.py` - Real archive population testing with containers
 
 **Running Tests:**
 ```bash
@@ -700,6 +707,8 @@ Always resolve library ID first, then fetch focused docs for the specific featur
 - **Container Management**: Direct Docker CLI integration without Python SDK dependency
 - **Separated APIs**: Disk usage and I/O statistics split for better reliability and performance
 - **Backup Integration**: Restic subprocess integration with async/await patterns
+- **Compression Integration**: 7z compression utilities for server file archiving with async operations
+- **CI/CD Ready**: Automated testing and build pipelines compatible with GitHub Actions workflows
 
 ## Update Instructions
 
@@ -716,10 +725,12 @@ When adding new features, dependencies, or changing the API:
 6. **External libraries**: Add Context7 library IDs to this file
 7. **Minecraft module changes**: Update integration patterns and test coverage
 8. **Snapshot system changes**: Update ResticManager integration patterns and test coverage
-9. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
-10. **Test changes**: Mark Docker container tests with `_with_docker` suffix and integration tests with `integrated`
-11. **API separations**: Document endpoint purpose and data separation rationale
-12. **Audit configuration**: Update audit patterns in `OperationAuditMiddleware` for new sensitive operations
+9. **Compression utilities**: Update `app.utils.compression` for new compression features and test with `test_archive_compression.py`
+10. **WebSocket endpoints**: Follow existing patterns in `app.websocket` module
+11. **Test changes**: Mark Docker container tests with `_with_docker` suffix and integration tests with `integrated`
+12. **API separations**: Document endpoint purpose and data separation rationale
+13. **Audit configuration**: Update audit patterns in `OperationAuditMiddleware` for new sensitive operations
+14. **Time restrictions**: Update time-based access controls and test with `test_time_restriction.py`
 
 **IMPORTANT EDITING GUIDELINES:**
 

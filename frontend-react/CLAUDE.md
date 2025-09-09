@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, fully integrated Monaco editor with Docker Compose schema validation, and comprehensive backup management with snapshot integration.
+Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, fully integrated Monaco editor with Docker Compose schema validation, comprehensive backup management with snapshot integration, automatic version update notifications, and development debug tools.
 
 ## Tech Stack
 
@@ -62,17 +62,27 @@ src/
 │   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard, ServerStateIcon
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
 │   ├── files/               # FileIcon, FileSnapshotActions
+│   ├── server/              # Server-specific components
+│   │   ├── ServerOperationButtons.tsx   # Reusable server operation buttons
+│   │   └── ServerTerminal.tsx           # Server terminal component
+│   ├── debug/               # Development debug tools (dev-only)
+│   │   ├── DebugModal.tsx              # Debug information modal
+│   │   └── DebugTool.tsx               # Debug tool sidebar entry
+│   ├── VersionUpdateModal.tsx          # Version update notification modal
 │   └── modals/              # Organized modal components with barrel exports
 │       ├── ServerFiles/     # Modular server file management modals
-│       │   ├── index.ts            # Barrel export for all server file modals
-│       │   ├── UploadModal.tsx     # File upload modal
-│       │   ├── CreateModal.tsx     # File/folder creation modal
-│       │   ├── RenameModal.tsx     # File rename modal
-│       │   ├── FileEditModal.tsx   # File editing with Monaco editor
-│       │   └── FileDiffModal.tsx   # File diff comparison modal
+│       │   ├── index.ts                        # Barrel export for all server file modals
+│       │   ├── UploadModal.tsx                 # File upload modal
+│       │   ├── CreateModal.tsx                 # File/folder creation modal
+│       │   ├── RenameModal.tsx                 # File rename modal
+│       │   ├── FileEditModal.tsx               # File editing with Monaco editor
+│       │   ├── FileDiffModal.tsx               # File diff comparison modal
+│       │   ├── CompressionConfirmModal.tsx     # File compression confirmation
+│       │   └── CompressionResultModal.tsx      # Compression result display
 │       ├── ArchiveSelectionModal.tsx    # Archive selection for server creation
 │       ├── PopulateProgressModal.tsx    # Progress tracking for server population
 │       ├── DockerComposeHelpModal.tsx   # Help modal for Docker Compose editing
+│       ├── SHA256HelpModal.tsx          # SHA256 calculation help modal
 │       └── ServerTemplateModal.tsx      # Server template selection modal
 ├── hooks/
 │   ├── api/                 # Raw Axios-based API functions with type safety
@@ -102,7 +112,9 @@ src/
 │   │   ├── useArchiveMutations.ts   # Archive management mutations
 │   │   └── useUserMutations.ts      # User administration mutations
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code-based authentication
-│   └── useServerConsoleWebSocket.ts # Real-time server console integration
+│   ├── useServerConsoleWebSocket.ts # Real-time server console integration
+│   ├── usePageDragUpload.ts         # Drag-and-drop file upload validation
+│   └── useVersionCheck.ts           # Version update detection and management
 ├── pages/                   # Route components with descriptive file names
 │   ├── Overview.tsx         # Server dashboard with metrics cards
 │   ├── Login.tsx            # Dual authentication interface
@@ -134,7 +146,8 @@ src/
 │   ├── devLogger.ts         # Development logging utilities
 │   └── fileLanguageDetector.ts # File type detection for editors
 ├── config/
-│   └── fileEditingConfig.ts # File editing configuration and validation
+│   ├── fileEditingConfig.ts # File editing configuration and validation
+│   └── versionConfig.ts     # Version management and update configuration
 └── index.css                # Tailwind directives and base styles
 ```
 
@@ -319,12 +332,13 @@ const Home = React.lazy(() => import('@/pages/Home'))
 
 **Archive Features:**
 - Upload ZIP, TAR, TAR.GZ archive files with validation and progress tracking
-- Calculate and verify SHA256 hashes for file integrity
+- Calculate and verify SHA256 hashes for file integrity with dedicated help modal
 - Delete archive files with confirmation dialogs
 - Archive selection interface for server population from existing archives
 - Integration with server creation workflow for template and archive-based deployment
 - Real-time upload progress and error handling with user feedback
 - Manual refresh patterns optimized for file operations
+- Enhanced drag-and-drop validation with format-specific error messages
 
 ### Dual Authentication System
 
@@ -395,13 +409,25 @@ const Home = React.lazy(() => import('@/pages/Home'))
 
 2. **Layout Components**:
    - **`MainLayout`**: Standard sidebar + content layout with responsive design
-   - **`AppSidebar`**: Dynamic navigation with server-aware menu items and snapshot integration
+   - **`AppSidebar`**: Dynamic navigation with server-aware menu items, snapshot integration, and development debug tools
    - **`PageHeader`**: **NEW** - Standardized page header component for consistency
    - **`LoadingSpinner`**: Flexible loading component with multiple display modes
    - **`ErrorFallback`**: Error boundary fallback with user-friendly error display
 
-3. **Modal Components**:
+3. **Server Components**:
+   - **`ServerOperationButtons`**: **NEW** - Reusable server operation buttons with intelligent state management
+   - **`ServerTerminal`**: **NEW** - Dedicated terminal component for server console integration
+
+4. **Modal Components**:
    - **`ServerOperationConfirmModal`**: **NEW** - Reusable confirmation modals for server operations
+   - **`VersionUpdateModal`**: **NEW** - Version update notification with changelog display
+   - **`CompressionConfirmModal`**: **NEW** - File compression confirmation with options
+   - **`CompressionResultModal`**: **NEW** - Compression result display with download links
+   - **`SHA256HelpModal`**: **NEW** - SHA256 hash calculation help and guidance
+
+5. **Development Tools**:
+   - **`DebugTool`**: **NEW** - Development-only debug tool sidebar entry
+   - **`DebugModal`**: **NEW** - Debug information and development utilities modal
 
 **Styling Strategy:**
 - **Ant Design First**: Use AntD components as primary building blocks
@@ -461,6 +487,68 @@ export const queryKeys = {
 - **Snapshot Data**: Medium cache (2 minutes) - manual refresh pattern for backup operations
 - **Player Data**: Conditional queries - only enabled when server is healthy
 - **Disk Usage**: Medium cache (30 seconds) - always available regardless of server status
+
+### Version Update System
+
+**Frontend Version Management (`src/config/versionConfig.ts`):**
+- **Version Configuration**: Centralized version definition with structured update history
+- **Version Comparison**: Semantic version comparison utility (`compareVersions`) for update detection
+- **Update Records**: Structured version entries with features, fixes, and improvements
+- **Current Version Detection**: Automatic current version detection from update configuration
+
+**Version Check Hook (`src/hooks/useVersionCheck.ts`):**
+- **Automatic Detection**: Checks for version updates on application startup with 1-second delay
+- **localStorage Integration**: Tracks last seen version and reminder preferences
+- **Reminder System**: "Remind later" functionality with 1-hour delay before showing again
+- **User Control**: Handles "Got it" and "Remind later" user interactions
+
+**Version Update Modal (`src/components/VersionUpdateModal.tsx`):**
+- **Timeline Display**: Shows version history with chronological timeline
+- **Feature Categorization**: Displays new features, improvements, and bug fixes with icons
+- **User-Friendly Interface**: Clean modal design with version comparison and update summary
+- **Action Options**: "Got it" (dismiss permanently) and "Remind later" (1-hour delay)
+
+**Version Management Features:**
+- First-time visit handling (sets current version without showing modal)
+- Persistent storage of user preferences and reminder times
+- Detailed changelog display between version ranges
+- Automatic integration with application startup flow
+- Development-friendly configuration for testing version updates
+
+### Development Debug System
+
+**Debug Tools (`src/components/debug/`):**
+- **Development-Only Access**: Debug tools visible only when `import.meta.env.MODE === 'development'`
+- **Debug Modal**: Centralized debugging interface with development utilities and system information
+- **Sidebar Integration**: Easy access through application sidebar with bug icon
+- **Expandable Framework**: Built to accommodate additional development debugging features
+
+**Debug Features:**
+- System environment information display
+- Development mode detection and utilities
+- Easy access during development workflow
+- Clean separation from production code
+
+### Enhanced File Upload System
+
+**Drag-and-Drop Validation (`src/hooks/usePageDragUpload.ts`):**
+- **Universal Page-Level Drag Support**: Page-wide drag-and-drop detection and handling
+- **File Type Validation**: Configurable file format filtering with accept patterns
+- **Folder Detection**: Automatic detection and rejection of folder uploads with user-friendly messages
+- **Error Handling**: Customizable error callbacks with format-specific messaging
+- **Multi-file Support**: Configurable single or multiple file handling
+
+**Enhanced File Upload Features:**
+- **Format-Specific Validation**: Different validation rules for different pages (e.g., .zip/.7z for archives)
+- **User-Friendly Error Messages**: Chinese error messages for better user experience
+- **Drag Counter Management**: Proper drag enter/leave tracking to prevent UI flicker
+- **Integration with Ant Design**: Seamless integration with existing message API for notifications
+- **File Processing**: Automatic conversion to FileList format for upload components
+
+**Usage Patterns:**
+- **Archive Management**: Validates only .zip and .7z files with specific error messaging
+- **Server Files**: Rejects folder uploads with file-only messaging
+- **Flexible Configuration**: Easily adaptable for different file type requirements
 
 ### WebSocket Integration
 
@@ -555,6 +643,7 @@ import ServerStateTag from '@/components/overview/ServerStateTag'
 - **Environment Variables**: All config via `VITE_` prefixed variables
 - **Asset Optimization**: Automatic code splitting, tree shaking, and asset optimization
 - **Future Compatibility**: React Router v7 future flags enabled for smooth migration
+- **CI/CD Integration**: Automated Docker image building with GitHub Actions workflows
 
 ## Development Guidelines
 
@@ -596,6 +685,10 @@ When adding new features, libraries, or changing architecture:
 12. **API integrations**: Document new endpoint purposes and data flow patterns
 13. **Query optimizations**: Update caching strategies and refetch intervals appropriately
 14. **Import consistency**: Use absolute imports (`@/`) for all new files and components
+15. **Version management**: Update version configuration in `src/config/versionConfig.ts` for new releases
+16. **Development tools**: Add new debug utilities to development-only components
+17. **User experience**: Implement drag-and-drop validation and enhanced error messaging
+18. **Component reusability**: Extract reusable components for better maintainability
 
 **IMPORTANT EDITING GUIDELINES:**
 

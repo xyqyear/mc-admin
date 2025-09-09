@@ -11,7 +11,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 **Key Features:**
 - Complete Minecraft server lifecycle management (create, start, stop, monitor, delete)
 - **Enterprise Snapshot System** - Full backup and restoration using Restic with global and server-specific snapshots
-- **Archive Management System** - Comprehensive archive file management with SHA256 verification, decompression support, and server population from archives
+- **Archive Management System** - Comprehensive archive file management with SHA256 verification, compression/decompression support, and server population from archives
 - Real-time system and server resource monitoring (CPU, memory, disk, network via cgroup v2)
 - Docker Compose configuration management with Monaco editor and schema validation
 - JWT-based authentication with role-based access control (ADMIN/OWNER) + Master token system
@@ -23,6 +23,11 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Separated disk usage API**: Disk space information available regardless of server status
 - **Operation audit system**: Non-invasive middleware-based audit logging for all state-changing operations
 - **Modular Component Architecture** - Organized modal components and reusable UI elements
+- **Version Update System** - Automatic version update notifications with configurable reminder system
+- **Development Debug Tools** - Built-in debug modal and tools for development environment
+- **Server File Compression** - 7z archive creation for server files and directories with progress tracking
+- **Enhanced Drag-and-Drop** - File upload validation with format-specific error messages
+- **CI/CD Integration** - Automated Docker image building and GitHub Actions workflows
 
 ## Architecture
 
@@ -31,7 +36,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Authentication**: JWT tokens with OAuth2 password flow + WebSocket rotating login codes + Master token fallback
 - **Container Management**: Integrated Docker Compose management (not external dependency)
 - **Backup System**: Restic-based snapshot management with configurable repositories
-- **Archive System**: Complete archive lifecycle with decompression, validation, and server population
+- **Archive System**: Complete archive lifecycle with compression/decompression, validation, and server population
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
@@ -53,7 +58,7 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **System Monitoring**: psutil + direct cgroup v2 filesystem monitoring
 - **Container Integration**: **Integrated** Minecraft Docker management module (app.minecraft)
 - **Backup System**: **Integrated** Restic snapshot management (app.snapshots)
-- **Archive System**: **Integrated** archive management with decompression utilities (app.utils.decompression)
+- **Archive System**: **Integrated** archive management with compression/decompression utilities (app.utils.compression, app.utils.decompression)
 - **Common Operations**: Shared file operations module (app.common.file_operations)
 - **WebSocket Support**: FastAPI WebSocket + Watchdog file monitoring for console streaming
 - **Package Management**: Poetry
@@ -71,6 +76,7 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Error Handling**: react-error-boundary for graceful error boundaries
 - **Linting**: ESLint v9 with TypeScript and React plugins (modern flat config)
 - **Package Management**: pnpm (preferred - pnpm-lock.yaml present)
+- **Version Management**: Built-in version update system with localStorage persistence and configurable notifications
 
 ## Development Environment
 
@@ -104,10 +110,20 @@ mc-admin/
 ├── frontend-react/   # React frontend application
 │   ├── src/
 │   │   ├── components/
-│   │   │   └── modals/           # Organized modal components
-│   │   │       ├── ServerFiles/  # Server file management modals
-│   │   │       ├── ArchiveSelectionModal.tsx
-│   │   │       └── ServerTemplateModal.tsx
+│   │   │   ├── modals/           # Organized modal components
+│   │   │   │   ├── ServerFiles/  # Server file management modals
+│   │   │   │   │   ├── CompressionConfirmModal.tsx
+│   │   │   │   │   └── CompressionResultModal.tsx
+│   │   │   │   ├── ArchiveSelectionModal.tsx
+│   │   │   │   ├── ServerTemplateModal.tsx
+│   │   │   │   └── SHA256HelpModal.tsx
+│   │   │   ├── server/           # Server-specific components
+│   │   │   │   ├── ServerOperationButtons.tsx
+│   │   │   │   └── ServerTerminal.tsx
+│   │   │   ├── debug/            # Development debug tools
+│   │   │   │   ├── DebugModal.tsx
+│   │   │   │   └── DebugTool.tsx
+│   │   │   └── VersionUpdateModal.tsx  # Version update notification
 │   │   ├── hooks/
 │   │   │   ├── api/             # Raw API layer
 │   │   │   │   ├── archiveApi.ts
@@ -116,8 +132,12 @@ mc-admin/
 │   │   │   │   ├── base/        # Resource-focused query hooks
 │   │   │   │   │   └── useArchiveQueries.ts
 │   │   │   │   └── page/        # Composed page-level queries
-│   │   │   └── mutations/       # Organized mutation hooks
-│   │   │       └── useArchiveMutations.ts
+│   │   │   ├── mutations/       # Organized mutation hooks
+│   │   │   │   └── useArchiveMutations.ts
+│   │   │   ├── usePageDragUpload.ts  # Drag-and-drop validation
+│   │   │   └── useVersionCheck.ts    # Version update checking
+│   │   ├── config/
+│   │   │   └── versionConfig.ts      # Version management configuration
 │   │   └── pages/
 │   │       ├── ArchiveManagement.tsx  # Archive management
 │   │       └── Snapshots.tsx          # Global snapshot management
@@ -160,6 +180,10 @@ Each component has dedicated development instructions:
 - **Error Boundaries**: Graceful error handling with fallback components
 - **Modern ESLint Configuration**: Flat config with TypeScript and React plugins
 - **Absolute Import System**: Consistent use of @/ alias for all imports
+- **Version Update System**: Automatic detection and notification of version updates with configurable reminders
+- **Development Debug Tools**: Built-in debug modal and tools visible only in development environment
+- **Enhanced User Experience**: Drag-and-drop validation with format-specific error messages and improved file handling
+- **Component Reusability**: Modular server operation buttons and terminal components for better code organization
 
 ## Snapshot Management System
 
@@ -181,6 +205,7 @@ Each component has dedicated development instructions:
 
 ### Backend Archive Architecture
 - **Archive Router**: Comprehensive archive operations (`/api/archives/`) - upload, list, delete, SHA256 calculation
+- **Compression Utilities**: 7z archive creation for server files and directories with progress tracking (`app.utils.compression`)
 - **Decompression Utilities**: Support for ZIP, TAR, TAR.GZ formats with validation (`app.utils.decompression`)
 - **Server Population**: Integrated archive-to-server deployment via populate endpoint
 - **SHA256 Verification**: Built-in file integrity checking for uploaded archives
@@ -189,9 +214,11 @@ Each component has dedicated development instructions:
 ### Frontend Archive Features
 - **Archive Management Page**: Dedicated UI for viewing, uploading, and managing archive files
 - **Archive Selection Modal**: Streamlined archive selection interface for server creation
-- **SHA256 Verification UI**: Visual feedback for file integrity checking
+- **SHA256 Verification UI**: Visual feedback for file integrity checking with dedicated help modal
 - **Server Population Integration**: Seamless archive deployment to new servers
 - **Progress Tracking**: Real-time feedback for upload and deployment operations
+- **File Compression**: Server file and directory compression with confirmation and result modals
+- **Enhanced Drag-and-Drop**: Format validation with specific error messages for unsupported file types
 
 ## Testing Strategy & Guidelines
 
@@ -210,6 +237,8 @@ Each component has dedicated development instructions:
 - `test_archive_sha256.py` - SHA256 calculation and validation testing
 - `test_common_file_operations.py` - Common file operations utility testing
 - `test_create_server.py` - Server creation logic testing
+- `test_archive_compression.py` - Archive compression utility testing
+- `test_time_restriction.py` - Time-based access restriction testing
 
 **Container/Integration Tests (Slow, Docker Required):**
 - `test_monitoring.py` - Real container monitoring (functions end with `_with_docker`)
@@ -224,7 +253,7 @@ Each component has dedicated development instructions:
 
 ```bash
 # ✅ Safe for development - Run these frequently
-poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py -v
+poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py tests/test_archive_compression.py tests/test_time_restriction.py tests/test_snapshots_integrated.py tests/test_populate_integration.py -v
 
 # ✅ Safe unit tests from test_instance.py (don't bring up containers)
 poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
@@ -233,8 +262,6 @@ poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/t
 # poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
 # poetry run pytest tests/test_integration.py::test_integration_with_docker
 # poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
-# poetry run pytest tests/test_snapshots_integrated.py  # Real Restic operations
-# poetry run pytest tests/test_populate_integration.py  # Real archive population
 
 # ✅ Skip container tests during development
 poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
@@ -269,6 +296,30 @@ poetry run pytest tests/test_archive_operations.py tests/test_decompression.py t
 
 Use the resolve-library-id tool first, then get-library-docs with specific topics.
 
+## Version Update System
+
+### Frontend Version Management (`src/config/versionConfig.ts`)
+- **Version Configuration**: Centralized version definition with automatic current version detection
+- **Update History**: Structured version update records with features, fixes, and improvements
+- **Version Comparison**: Semantic version comparison utility for update detection
+- **Update Modal**: User-friendly version update notification with detailed changelog
+- **Reminder System**: Configurable "remind later" functionality with 1-hour delay
+- **localStorage Persistence**: Tracks last seen version and reminder preferences
+
+### Version Update Features
+- **Automatic Detection**: Checks for version updates on application startup
+- **Detailed Changelog**: Displays features, fixes, and improvements between versions
+- **User Control**: "Remind later" and "Got it" options for managing update notifications
+- **Development Integration**: Seamless integration with build and deployment workflows
+
+## Development Tools System
+
+### Debug Tools (`src/components/debug/`)
+- **Development-Only Access**: Debug tools visible only in development environment
+- **Debug Modal**: Centralized debugging interface with development utilities
+- **Sidebar Integration**: Easy access through application sidebar
+- **Tool Collection**: Expandable framework for adding development-specific debugging features
+
 ## Current Architecture Integration
 
 - **No External Docker Library**: Minecraft management is fully integrated in `backend/app/minecraft/`
@@ -279,6 +330,9 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 - **Consistent Async Patterns**: Full async/await throughout both components
 - **Separated API Endpoints**: Disk usage information separated from I/O statistics for better reliability
 - **Three-Layer Frontend Architecture**: Complete separation between API, base queries, and page compositions
+- **Version Management**: Centralized version configuration with automatic update detection
+- **Development Tools**: Integrated debug tools and development utilities
+- **CI/CD Pipeline**: Automated Docker image building with GitHub Actions
 
 ## Operation Audit System
 
@@ -349,6 +403,11 @@ When you add new technologies, APIs, dependencies, or make architectural changes
 - Container management improvements
 - Test structure changes (like new snapshot testing)
 - Frontend architecture restructuring (like base/page query organization)
-- New major features (like backup/snapshot system)
+- New major features (like backup/snapshot system, version update system)
+- Version management configuration changes
+- Development tools and debugging features
+- UI/UX enhancements (like drag-and-drop validation)
+- CI/CD pipeline updates and deployment automation
+- Component architecture improvements
 
 These CLAUDE.md files are automatically loaded into Claude's context - keep them accurate, concise, and focused on development-relevant information that reflects the actual codebase implementation.
