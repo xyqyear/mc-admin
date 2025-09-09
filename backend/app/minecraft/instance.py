@@ -115,6 +115,10 @@ class MCInstance:
     def get_compose_manager(self) -> ComposeManager:
         return self._compose_manager
 
+    def get_data_path(self) -> Path:
+        """Get the data path for the server instance."""
+        return self._project_path / "data"
+
     async def get_compose_file_path(self) -> Path | None:
         candidates = [
             self._project_path / "docker-compose.yml",
@@ -343,13 +347,13 @@ class MCInstance:
         async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
             await file.write(compose_yaml)
 
-        await aioos.makedirs(self._project_path / "data", exist_ok=True)
+        await aioos.makedirs(self.get_data_path(), exist_ok=True)
 
         # Set ownership to match the servers_path directory
         uid, gid = await get_uid_gid(self._servers_path)
         if uid is not None and gid is not None:
             await _chown_async(self._project_path, uid, gid)
-            await _chown_async(self._project_path / "data", uid, gid)
+            await _chown_async(self.get_data_path(), uid, gid)
             await _chown_async(compose_file_path, uid, gid)
 
     async def update_compose_file(self, compose_yaml: str) -> None:
@@ -468,11 +472,11 @@ class MCInstance:
         Raises:
             RuntimeError: If data directory does not exist
         """
-        if not await aioos.path.exists(self._project_path / "data"):
+        if not await aioos.path.exists(self.get_data_path()):
             raise RuntimeError(f"Data directory does not exist for server {self._name}")
 
         # Get used space with du command
-        du_result = await exec_command("du", "-sb", str(self._project_path / "data"))
+        du_result = await exec_command("du", "-sb", str(self.get_data_path()))
         du_usage_str = du_result.split()[0]
         try:
             used_bytes = int(du_usage_str)
@@ -480,13 +484,13 @@ class MCInstance:
             used_bytes = 0
 
         # Get filesystem information with df command
-        df_result = await exec_command("df", "-B1", str(self._project_path / "data"))
+        df_result = await exec_command("df", "-B1", str(self.get_data_path()))
         # df output format: Filesystem 1B-blocks Used Available Use% Mounted on
         # We want the second line with the actual data
         df_lines = df_result.strip().split("\n")
         if len(df_lines) < 2:
             raise RuntimeError(
-                f"Unable to get filesystem info for {self._project_path / 'data'}"
+                f"Unable to get filesystem info for {self.get_data_path()}"
             )
 
         # Parse df output - handle case where filesystem name might be on separate line

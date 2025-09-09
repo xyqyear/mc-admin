@@ -30,14 +30,22 @@ class MockUploadFile(UploadFile):
     def __init__(self, filename: str, content: bytes):
         self.filename = filename
         self._content = content
+        self._pos = 0
 
     async def read(
         self,
         size: int = -1,
     ) -> bytes:
+        if self._pos >= len(self._content):
+            return b""
         if size == -1:
-            return self._content
-        return self._content[:size]
+            result = self._content[self._pos :]
+            self._pos = len(self._content)
+            return result
+        else:
+            result = self._content[self._pos : self._pos + size]
+            self._pos += size
+            return result
 
 
 class TestCommonFileOperations:

@@ -5,17 +5,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from ...common.file_operations import (
+    CreateFileRequest,
     FileContent,
     FileListResponse,
-    CreateFileRequest,
     RenameFileRequest,
-    get_file_items,
-    get_file_content,
-    update_file_content,
-    upload_file,
     create_file_or_directory,
     delete_file_or_directory,
+    get_file_content,
+    get_file_items,
     rename_file_or_directory,
+    update_file_content,
+    upload_file,
 )
 from ...config import settings
 from ...dependencies import get_current_user
@@ -29,12 +29,6 @@ router = APIRouter(
 
 # Initialize the Docker MC Manager
 mc_manager = DockerMCManager(settings.server_path)
-
-
-# Helper functions for file management
-def _get_server_data_path(instance) -> Path:
-    """Get the data path for the server instance."""
-    return instance.get_project_path() / "data"
 
 
 # File management endpoints
@@ -52,7 +46,7 @@ async def list_files(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         items = await get_file_items(base_path, path)
 
         return FileListResponse(items=items, current_path=path)
@@ -77,7 +71,7 @@ async def get_file_content_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         content = await get_file_content(base_path, path)
 
         return FileContent(content=content)
@@ -105,7 +99,7 @@ async def update_file_content_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         await update_file_content(base_path, path, file_content.content)
 
         return {"message": "File updated successfully"}
@@ -130,7 +124,7 @@ async def download_file(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         file_path = base_path / path.lstrip("/")
 
         if not await aioos.path.exists(file_path):
@@ -170,7 +164,7 @@ async def upload_file_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         filename = await upload_file(base_path, path, file, allow_overwrite=False)
 
         return {"message": f"File '{filename}' uploaded successfully"}
@@ -197,7 +191,7 @@ async def create_file_or_directory_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         message = await create_file_or_directory(base_path, create_request)
 
         return {"message": message}
@@ -225,7 +219,7 @@ async def delete_file_or_directory_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         message = await delete_file_or_directory(base_path, path)
 
         return {"message": message}
@@ -252,7 +246,7 @@ async def rename_file_or_directory_endpoint(
                 status_code=404, detail=f"Server '{server_id}' not found"
             )
 
-        base_path = _get_server_data_path(instance)
+        base_path = instance.get_data_path()
         message = await rename_file_or_directory(base_path, rename_request)
 
         return {"message": message}

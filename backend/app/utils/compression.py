@@ -9,6 +9,8 @@ from typing import Optional
 from aiofiles import os as aioos
 from fastapi import HTTPException
 
+from app.minecraft.instance import MCInstance
+
 from ..config import settings
 from ..minecraft.utils import exec_command
 
@@ -91,7 +93,7 @@ def _generate_archive_filename(
 
 
 async def create_server_archive(
-    server_name: str, server_project_path: Path, relative_path: Optional[str] = None
+    instance: MCInstance, relative_path: Optional[str] = None
 ) -> str:
     """
     Create a compressed archive of server files.
@@ -114,15 +116,15 @@ async def create_server_archive(
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
     # Generate archive filename
-    archive_filename = _generate_archive_filename(server_name, relative_path)
+    archive_filename = _generate_archive_filename(instance.get_name(), relative_path)
     archive_path = archive_base_path / archive_filename
 
     # Determine source path
     if relative_path is None:
         # Compress entire server directory
-        source_path = server_project_path
+        source_path = instance.get_project_path()
     else:
-        data_dir = server_project_path / "data"
+        data_dir = instance.get_data_path()
         clean_relative_path = relative_path.lstrip("/")
 
         if clean_relative_path == "":

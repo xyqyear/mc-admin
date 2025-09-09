@@ -274,11 +274,8 @@ async def create_server_archive_endpoint(
         manager = DockerMCManager(settings.server_path)
         instance = manager.get_instance(request.server_id)
 
-        # Get server project path
-        project_path = instance.get_project_path()
-
         # Validate server exists
-        if not await aioos.path.exists(project_path):
+        if not await instance.exists():
             raise HTTPException(
                 status_code=404, detail=f"Server '{request.server_id}' not found"
             )
@@ -290,7 +287,7 @@ async def create_server_archive_endpoint(
                 request.path = "/" + request.path
 
             # Validate that the target path exists
-            data_dir = project_path / "data"
+            data_dir = instance.get_data_path()
             if request.path != "/":
                 target_path = data_dir / request.path.lstrip("/")
                 if not await aioos.path.exists(target_path):
@@ -306,8 +303,7 @@ async def create_server_archive_endpoint(
 
         # Create archive
         archive_filename = await create_server_archive(
-            server_name=request.server_id,
-            server_project_path=project_path,
+            instance=instance,
             relative_path=request.path,
         )
 

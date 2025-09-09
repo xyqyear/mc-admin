@@ -27,6 +27,10 @@ class MockMCInstance:
         """Return the project path."""
         return self.project_path
 
+    def get_data_path(self) -> Path:
+        """Return the data path."""
+        return self.data_path
+
     async def exists(self):
         """Return True to indicate server exists."""
         return True
