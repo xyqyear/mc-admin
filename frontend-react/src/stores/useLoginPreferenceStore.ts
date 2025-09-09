@@ -12,7 +12,7 @@ interface LoginPreferenceStore {
 export const useLoginPreferenceStore = create<LoginPreferenceStore>()(
   persist(
     (set, get) => ({
-      loginPreference: "code",
+      loginPreference: "password",
       setLoginPreference: (preference: LoginPreference) =>
         set({ loginPreference: preference }),
       toggleLoginPreference: () => {
