@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useTokenStore } from '@/stores/useTokenStore';
-import { getApiBaseUrl } from '@/utils/api';
+import { useTokenStore } from "@/stores/useTokenStore";
+import { getApiBaseUrl } from "@/utils/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // WebSocket消息类型
 export interface WebSocketMessage {
-  type: 'log' | 'error' | 'info' | 'logs_refreshed';
+  type: "log" | "error" | "info" | "logs_refreshed";
   content?: string;
   message?: string;
   filter_rcon?: boolean;
 }
 
 // WebSocket连接状态
-export type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR' | 'RETRYING';
+export type ConnectionState =
+  | "DISCONNECTED"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "ERROR"
+  | "RETRYING";
 
 // 重试配置常量
 const MAX_RETRY_COUNT = 5;
@@ -27,12 +32,14 @@ export interface UseServerConsoleWebSocketReturn {
   setFilterRcon: (enabled: boolean) => void;
   requestLogRefresh: () => void;
   onMessage: (callback: (message: WebSocketMessage) => void) => void;
-  removeMessageListener: (callback: (message: WebSocketMessage) => void) => void;
+  removeMessageListener: (
+    callback: (message: WebSocketMessage) => void,
+  ) => void;
 }
 
 export const useServerConsoleWebSocket = (
   serverId: string,
-  canConnect: boolean = true
+  canConnect: boolean = true,
 ): UseServerConsoleWebSocketReturn => {
   const { token } = useTokenStore();
 
@@ -40,10 +47,13 @@ export const useServerConsoleWebSocket = (
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
-  const messageCallbacksRef = useRef<Set<(message: WebSocketMessage) => void>>(new Set());
+  const messageCallbacksRef = useRef<Set<(message: WebSocketMessage) => void>>(
+    new Set(),
+  );
 
   // State
-  const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("DISCONNECTED");
   const [filterRcon, setFilterRconState] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
 
@@ -77,41 +87,47 @@ export const useServerConsoleWebSocket = (
       ws.onerror = null;
 
       // 如果连接还在进行中，直接关闭
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+      if (
+        ws.readyState === WebSocket.CONNECTING ||
+        ws.readyState === WebSocket.OPEN
+      ) {
         ws.close(1000); // 正常关闭
       }
     }
 
-    setConnectionState('DISCONNECTED');
+    setConnectionState("DISCONNECTED");
   }, []);
 
   // WebSocket消息处理
-  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    try {
-      const message: WebSocketMessage = JSON.parse(event.data);
-      
-      // 调用所有注册的回调函数
-      messageCallbacksRef.current.forEach(callback => {
-        callback(message);
-      });
+  const handleWebSocketMessage = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const message: WebSocketMessage = JSON.parse(event.data);
 
-      // 处理特定的消息类型
-      switch (message.type) {
-        case 'error':
-          if (message.message) {
-            setLastError(message.message);
-            // 错误时断开连接并重试
-            disconnect();
-            if (scheduleReconnectRef.current) {
-              scheduleReconnectRef.current();
+        // 调用所有注册的回调函数
+        messageCallbacksRef.current.forEach((callback) => {
+          callback(message);
+        });
+
+        // 处理特定的消息类型
+        switch (message.type) {
+          case "error":
+            if (message.message) {
+              setLastError(message.message);
+              // 错误时断开连接并重试
+              disconnect();
+              if (scheduleReconnectRef.current) {
+                scheduleReconnectRef.current();
+              }
             }
-          }
-          break;
+            break;
+        }
+      } catch (error) {
+        console.error("Failed to parse WebSocket message:", error);
       }
-    } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
-    }
-  }, [disconnect]);
+    },
+    [disconnect],
+  );
 
   // 发送过滤设置更新
   const sendFilterUpdate = useCallback((newFilterRcon: boolean) => {
@@ -120,19 +136,25 @@ export const useServerConsoleWebSocket = (
     }
 
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'set_filter',
-        filter_rcon: newFilterRcon,
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "set_filter",
+          filter_rcon: newFilterRcon,
+        }),
+      );
     } catch (error) {
-      console.error('Failed to send filter update:', error);
+      console.error("Failed to send filter update:", error);
     }
   }, []);
 
   // 连接WebSocket
   const connect = useCallback(() => {
     // 如果已经有连接在进行中或已连接，先断开
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.CONNECTING ||
+        wsRef.current.readyState === WebSocket.OPEN)
+    ) {
       disconnect();
     }
 
@@ -142,11 +164,11 @@ export const useServerConsoleWebSocket = (
 
     const wsUrl = buildWebSocketUrl();
     if (!wsUrl) {
-      console.error('Failed to build WebSocket URL');
+      console.error("Failed to build WebSocket URL");
       return;
     }
 
-    setConnectionState('CONNECTING');
+    setConnectionState("CONNECTING");
     setLastError(null);
 
     try {
@@ -160,16 +182,9 @@ export const useServerConsoleWebSocket = (
           return;
         }
 
-        console.log('WebSocket connected');
-        setConnectionState('CONNECTED');
+        console.log("WebSocket connected");
+        setConnectionState("CONNECTED");
         retryCountRef.current = 0;
-
-        // 发送初始过滤设置
-        setTimeout(() => {
-          if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
-            sendFilterUpdate(filterRcon);
-          }
-        }, 100);
       };
 
       ws.onmessage = handleWebSocketMessage;
@@ -180,9 +195,9 @@ export const useServerConsoleWebSocket = (
           return;
         }
 
-        console.log('WebSocket disconnected:', event.code, event.reason);
+        console.log("WebSocket disconnected:", event.code, event.reason);
         wsRef.current = null;
-        setConnectionState('DISCONNECTED');
+        setConnectionState("DISCONNECTED");
 
         // 如果不是手动断开，尝试重连
         if (event.code !== 1000 && event.code !== 1001) {
@@ -198,29 +213,36 @@ export const useServerConsoleWebSocket = (
           return;
         }
 
-        console.error('WebSocket error:', error);
-        setConnectionState('ERROR');
-        setLastError('WebSocket connection error');
+        console.error("WebSocket error:", error);
+        setConnectionState("ERROR");
+        setLastError("WebSocket connection error");
       };
-
     } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      setConnectionState('ERROR');
-      setLastError('Failed to create WebSocket connection');
+      console.error("Failed to create WebSocket:", error);
+      setConnectionState("ERROR");
+      setLastError("Failed to create WebSocket connection");
     }
-  }, [canConnect, token, serverId, buildWebSocketUrl, filterRcon, sendFilterUpdate, handleWebSocketMessage, disconnect]);
+  }, [
+    canConnect,
+    token,
+    serverId,
+    buildWebSocketUrl,
+    handleWebSocketMessage,
+    disconnect,
+  ]);
 
   const scheduleReconnect = useCallback(() => {
     if (retryCountRef.current >= MAX_RETRY_COUNT) {
-      setConnectionState('ERROR');
+      setConnectionState("ERROR");
       setLastError(`Maximum retry attempts (${MAX_RETRY_COUNT}) exceeded`);
       return;
     }
 
-    const delay = RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)];
+    const delay =
+      RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)];
     retryCountRef.current++;
 
-    setConnectionState('RETRYING');
+    setConnectionState("RETRYING");
 
     reconnectTimeoutRef.current = setTimeout(() => {
       if (connectWebSocketRef.current) {
@@ -235,17 +257,23 @@ export const useServerConsoleWebSocket = (
 
   // 发送命令
   const sendCommand = useCallback((command: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !command.trim()) {
+    if (
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN ||
+      !command.trim()
+    ) {
       return;
     }
 
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'command',
-        command: command.trim(),
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "command",
+          command: command.trim(),
+        }),
+      );
     } catch (error) {
-      console.error('Failed to send command:', error);
+      console.error("Failed to send command:", error);
     }
   }, []);
 
@@ -256,34 +284,45 @@ export const useServerConsoleWebSocket = (
     }
 
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'refresh_logs',
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "refresh_logs",
+        }),
+      );
     } catch (error) {
-      console.error('Failed to request log refresh:', error);
+      console.error("Failed to request log refresh:", error);
     }
   }, []);
 
   // 设置过滤器
-  const setFilterRcon = useCallback((enabled: boolean) => {
-    setFilterRconState(enabled);
-    sendFilterUpdate(enabled);
+  const setFilterRcon = useCallback(
+    (enabled: boolean) => {
+      setFilterRconState(enabled);
+      sendFilterUpdate(enabled);
 
-    // 延迟请求刷新日志
-    setTimeout(() => {
-      requestLogRefresh();
-    }, 100);
-  }, [sendFilterUpdate, requestLogRefresh]);
+      // 延迟请求刷新日志
+      setTimeout(() => {
+        requestLogRefresh();
+      }, 100);
+    },
+    [sendFilterUpdate, requestLogRefresh],
+  );
 
   // 注册消息监听器
-  const onMessage = useCallback((callback: (message: WebSocketMessage) => void) => {
-    messageCallbacksRef.current.add(callback);
-  }, []);
+  const onMessage = useCallback(
+    (callback: (message: WebSocketMessage) => void) => {
+      messageCallbacksRef.current.add(callback);
+    },
+    [],
+  );
 
   // 移除消息监听器
-  const removeMessageListener = useCallback((callback: (message: WebSocketMessage) => void) => {
-    messageCallbacksRef.current.delete(callback);
-  }, []);
+  const removeMessageListener = useCallback(
+    (callback: (message: WebSocketMessage) => void) => {
+      messageCallbacksRef.current.delete(callback);
+    },
+    [],
+  );
 
   // 管理WebSocket连接
   useEffect(() => {
