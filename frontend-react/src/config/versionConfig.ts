@@ -33,6 +33,17 @@ export const versionUpdates: VersionUpdate[] = [
       '支持文件拖拽上传',
     ],
     improvements: []
+  },
+  {
+    version: '0.1.5',
+    date: '2025-09-09',
+    title: '压缩包功能增强',
+    description: '优化服务器文件压缩体验，增加超时保护和用户友好提示。',
+    improvements: [
+      '压缩包创建API超时时间延长至15分钟，支持大型服务器压缩',
+      '压缩过程中添加友好提示，告知用户不要关闭窗口',
+      '压缩进行时禁用窗口关闭功能，防止用户误操作',
+    ]
   }
 ]
 

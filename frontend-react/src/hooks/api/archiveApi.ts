@@ -127,5 +127,5 @@ export const archiveApi = {
 
   // Create archive from server files
   createArchive: (request: CreateArchiveRequest): Promise<CreateArchiveResponse> =>
-    api.post('/archive/compress', request).then((res: any) => res.data),
+    api.post('/archive/compress', request, { timeout: 900000 }).then((res: any) => res.data), // 10 minutes timeout for compression
 }

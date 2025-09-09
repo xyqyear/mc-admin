@@ -70,10 +70,13 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
       title="创建压缩包"
       open={open}
       onOk={onOk}
-      onCancel={onCancel}
+      onCancel={confirmLoading ? undefined : onCancel}
       confirmLoading={confirmLoading}
-      okText="开始压缩"
+      okText={confirmLoading ? "压缩中..." : "开始压缩"}
       cancelText="取消"
+      cancelButtonProps={{ disabled: confirmLoading }}
+      closable={!confirmLoading}
+      maskClosable={!confirmLoading}
       width={500}
     >
       <div className="space-y-4">
@@ -100,6 +103,15 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
           type="warning"
           showIcon
         />
+        
+        {confirmLoading && (
+          <Alert
+            message="正在压缩中..."
+            description="压缩正在进行中，请不要关闭此窗口，否则无法收到压缩完成的提示。压缩可能需要几分钟时间，请耐心等待。"
+            type="info"
+            showIcon
+          />
+        )}
       </div>
     </Modal>
   )
