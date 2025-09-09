@@ -41,6 +41,7 @@ async def exec_command(
     uid: int | None = None,
     gid: int | None = None,
     env: dict[str, str] = dict(),
+    cwd: str | None = None,
 ) -> str:
     def demote():
         if uid is not None and gid is not None:
@@ -52,6 +53,7 @@ async def exec_command(
         *args,
         preexec_fn=demote,
         env=env,
+        cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -63,7 +65,9 @@ async def exec_command(
         stderr = b""
 
     if process.returncode != 0:
-        raise RuntimeError(f"Failed to exec command: {command}\n{stderr.decode()}\n{stdout.decode()}")
+        raise RuntimeError(
+            f"Failed to exec command: {command}\n{stderr.decode()}\n{stdout.decode()}"
+        )
     return stdout.decode()
 
 
