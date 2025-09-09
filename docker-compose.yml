@@ -12,6 +12,7 @@ services:
     volumes:
       # Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro
       - /sys/fs/cgroup:/cgroup:ro
       # Data directory for logs and db
       - ./data:/data
