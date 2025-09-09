@@ -42,6 +42,16 @@ export interface UploadOptions {
   signal?: AbortSignal
 }
 
+export interface CreateArchiveRequest {
+  server_id: string
+  path?: string | null
+}
+
+export interface CreateArchiveResponse {
+  archive_filename: string
+  message: string
+}
+
 export const archiveApi = {
   // List archive files
   getArchiveFiles: (path: string = '/'): Promise<ArchiveFileListResponse> =>
@@ -114,4 +124,8 @@ export const archiveApi = {
   // Calculate SHA256 hash
   calculateSHA256: (path: string): Promise<{ sha256: string }> =>
     api.get('/archive/sha256', { params: { path } }).then((res: any) => res.data),
+
+  // Create archive from server files
+  createArchive: (request: CreateArchiveRequest): Promise<CreateArchiveResponse> =>
+    api.post('/archive/compress', request).then((res: any) => res.data),
 }

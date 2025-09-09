@@ -34,12 +34,15 @@ import {
   CreateModal,
   RenameModal,
   FileEditModal,
-  FileDiffModal
+  FileDiffModal,
+  CompressionConfirmModal,
+  CompressionResultModal
 } from '@/components/modals/ServerFiles'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries'
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
@@ -84,6 +87,10 @@ const ServerFiles: React.FC = () => {
   const { usePopulateServer } = useServerMutations()
   const populateServerMutation = usePopulateServer()
 
+  // Archive mutations for compression
+  const { useCreateArchive, downloadFile: downloadArchiveFile } = useArchiveMutations()
+  const createArchiveMutation = useCreateArchive()
+
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
@@ -101,6 +108,13 @@ const ServerFiles: React.FC = () => {
   
   // Replace server files state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
+
+  // Compression modal states
+  const [isCompressionConfirmModalVisible, setIsCompressionConfirmModalVisible] = useState(false)
+  const [isCompressionResultModalVisible, setIsCompressionResultModalVisible] = useState(false)
+  const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
+  const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
+  const [compressionResult, setCompressionResult] = useState<{filename: string, message: string} | null>(null)
 
   // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
@@ -297,11 +311,70 @@ const ServerFiles: React.FC = () => {
     }
   }
 
+  // Compression handlers
+  const handleCompress = (file?: FileItem, compressionType?: 'file' | 'folder' | 'server') => {
+    setCompressionFile(file || null)
+    setCompressionType(compressionType || (file?.type === 'directory' ? 'folder' : 'file'))
+    setIsCompressionConfirmModalVisible(true)
+  }
+
+  const handleCompressionConfirm = async () => {
+    if (!id) return
+
+    let compressionPath: string | null = null
+
+    // Determine compression path based on type
+    switch (compressionType) {
+      case 'file':
+        compressionPath = compressionFile?.path || null
+        break
+      case 'folder':
+        compressionPath = compressionFile?.path || currentPath
+        break
+      case 'server':
+        compressionPath = null // null means compress entire server
+        break
+    }
+
+    try {
+      const result = await createArchiveMutation.mutateAsync({
+        server_id: id,
+        path: compressionPath
+      })
+
+      setCompressionResult({
+        filename: result.archive_filename,
+        message: result.message
+      })
+      
+      setIsCompressionConfirmModalVisible(false)
+      setIsCompressionResultModalVisible(true)
+      setCompressionFile(null)
+    } catch (error: any) {
+      message.error(`压缩失败: ${error.message || '未知错误'}`)
+    }
+  }
+
+  const handleDownloadCompressed = async () => {
+    if (!compressionResult) return
+
+    try {
+      await downloadArchiveFile(`/${compressionResult.filename}`, compressionResult.filename)
+    } catch (error: any) {
+      message.error(`下载失败: ${error.message || '未知错误'}`)
+    }
+  }
+
   const moreActions = (file: FileItem) => [
     {
       key: 'rename',
       label: '重命名',
       onClick: () => handleFileRename(file)
+    },
+    {
+      key: 'compress',
+      label: '压缩',
+      onClick: () => handleCompress(file)
     }
   ]
 
@@ -388,6 +461,14 @@ const ServerFiles: React.FC = () => {
               onClick={() => handleFileDownload(file)}
             />
           </Tooltip>
+          <Tooltip title="压缩">
+            <Button
+              icon={<FileZipOutlined />}
+              size="small"
+              onClick={() => handleCompress(file)}
+              loading={createArchiveMutation.isPending}
+            />
+          </Tooltip>
           <Dropdown
             menu={{
               items: moreActions(file).map(action => ({
@@ -449,6 +530,13 @@ const ServerFiles: React.FC = () => {
                   isServerMode={true} 
                   onRefresh={refetch} 
                 />
+                <Button
+                  icon={<FileZipOutlined />}
+                  onClick={() => handleCompress(undefined, 'server')}
+                  loading={createArchiveMutation.isPending}
+                >
+                  打包服务器
+                </Button>
                 <Button
                   icon={<FileZipOutlined />}
                   danger
@@ -651,6 +739,34 @@ const ServerFiles: React.FC = () => {
         description="选择要用于替换服务器文件的压缩包文件"
         selectButtonText="替换服务器文件"
         selectButtonType="danger"
+      />
+
+      {/* 压缩确认弹窗 */}
+      <CompressionConfirmModal
+        open={isCompressionConfirmModalVisible}
+        onCancel={() => {
+          setIsCompressionConfirmModalVisible(false)
+          setCompressionFile(null)
+        }}
+        onOk={handleCompressionConfirm}
+        confirmLoading={createArchiveMutation.isPending}
+        selectedFile={compressionFile}
+        currentPath={currentPath}
+        compressionType={compressionType}
+        serverName={hasServerInfo ? serverInfo?.name : ''}
+      />
+
+      {/* 压缩结果弹窗 */}
+      <CompressionResultModal
+        open={isCompressionResultModalVisible}
+        onCancel={() => {
+          setIsCompressionResultModalVisible(false)
+          setCompressionResult(null)
+        }}
+        archiveFilename={compressionResult?.filename || ''}
+        message={compressionResult?.message || ''}
+        onDownload={handleDownloadCompressed}
+        downloadLoading={false}
       />
 
     </div>

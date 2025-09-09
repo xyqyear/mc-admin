@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
-import { archiveApi, type CreateArchiveFileRequest, type RenameArchiveFileRequest, type UploadOptions } from '@/hooks/api/archiveApi'
+import { archiveApi, type CreateArchiveFileRequest, type RenameArchiveFileRequest, type UploadOptions, type CreateArchiveRequest } from '@/hooks/api/archiveApi'
 import { queryKeys } from '@/utils/api'
 
 export const useArchiveMutations = () => {
@@ -120,6 +120,22 @@ export const useArchiveMutations = () => {
     }
   }
 
+  // Create archive from server files
+  const useCreateArchive = () => {
+    return useMutation({
+      mutationFn: (request: CreateArchiveRequest) =>
+        archiveApi.createArchive(request),
+      onSuccess: (data) => {
+        // Invalidate archive file list to show the new archive
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+        message.success(data.message)
+      },
+      onError: (error: any) => {
+        message.error(`创建压缩包失败: ${error.message}`)
+      }
+    })
+  }
+
 
   return {
     useUploadFile,
@@ -127,6 +143,7 @@ export const useArchiveMutations = () => {
     useDeleteItem,
     useRenameItem,
     useUpdateFileContent,
+    useCreateArchive,
     downloadFile,
   }
 }
