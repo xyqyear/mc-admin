@@ -93,8 +93,8 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
       dataIndex: 'javaVersion',
       key: 'javaVersion',
       width: 100,
-      render: () => (
-        <span className="text-sm">Java 17</span>
+      render: (javaVersion: number) => (
+        <span className="text-sm">Java {javaVersion}</span>
       ),
     },
     {

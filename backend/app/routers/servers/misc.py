@@ -27,6 +27,7 @@ class ServerInfo(BaseModel):
     gamePort: int
     maxMemoryBytes: int
     rconPort: int
+    javaVersion: int
 
 
 class ServerStatus(BaseModel):
@@ -84,6 +85,7 @@ async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
             gamePort=server_info.game_port,
             maxMemoryBytes=server_info.max_memory_bytes or 0,
             rconPort=server_info.rcon_port,
+            javaVersion=server_info.java_version,
         )
 
     except HTTPException:

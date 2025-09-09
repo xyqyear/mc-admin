@@ -10,6 +10,7 @@ interface ServerListItem {
   gamePort: number;
   maxMemoryBytes: number;
   rconPort: number;
+  javaVersion: number;
 }
 
 interface ServerStatusResponse {
@@ -83,6 +84,7 @@ export const serverApi = {
       gamePort: number;
       maxMemoryBytes: number;
       rconPort: number;
+      javaVersion: number;
     }>(`/servers/${id}`);
 
     // Transform backend response to match frontend ServerInfo type
@@ -90,7 +92,7 @@ export const serverApi = {
       id: res.data.id,
       name: res.data.name,
       path: `/servers/${id}`, // Default path
-      javaVersion: 17, // Default Java version
+      javaVersion: res.data.javaVersion, // Default Java version
       maxMemoryBytes: res.data.maxMemoryBytes,
       serverType: res.data.serverType.toUpperCase() as any,
       gameVersion: res.data.gameVersion,

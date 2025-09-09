@@ -5,6 +5,7 @@ from ....minecraft import MCInstance
 
 class ServerListItem(BaseModel):
     """Server list item model with basic server information only"""
+
     id: str
     name: str
     serverType: str
@@ -12,6 +13,7 @@ class ServerListItem(BaseModel):
     gamePort: int
     maxMemoryBytes: int
     rconPort: int
+    javaVersion: int
 
 
 async def get_server_list_item(instance: MCInstance) -> ServerListItem:
@@ -25,23 +27,15 @@ async def get_server_list_item(instance: MCInstance) -> ServerListItem:
         return ServerListItem(
             id=server_id,
             name=server_info.name,
-            serverType=server_info.server_type or "vanilla",
-            gameVersion=server_info.game_version or "latest",
-            gamePort=server_info.game_port or 25565,
-            maxMemoryBytes=server_info.max_memory_bytes or 2147483648,
-            rconPort=server_info.rcon_port or 25575,
+            serverType=server_info.server_type,
+            gameVersion=server_info.game_version,
+            gamePort=server_info.game_port,
+            maxMemoryBytes=server_info.max_memory_bytes,
+            rconPort=server_info.rcon_port,
+            javaVersion=server_info.java_version,
         )
 
     except Exception as e:
-        # Log error but don't fail the entire request
-        print(f"Error getting server list item for {instance.get_name()}: {e}")
-        # Return minimal data
-        return ServerListItem(
-            id=instance.get_name(),
-            name=instance.get_name(),
-            serverType="unknown",
-            gameVersion="unknown",
-            gamePort=25565,
-            maxMemoryBytes=2147483648,
-            rconPort=25575,
+        raise RuntimeError(
+            f"Error getting server list item for {instance.get_name()}: {e}"
         )
