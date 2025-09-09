@@ -19,11 +19,13 @@ const { Title, Text, Paragraph } = Typography
 interface DockerComposeHelpModalProps {
   open: boolean
   onCancel: () => void
+  page?: string
 }
 
 const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
   open,
   onCancel,
+  page,
 }) => {
   return (
     <Modal
@@ -40,7 +42,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
       style={{ top: 20 }}
     >
       <div className="space-y-6 max-h-[70vh] overflow-y-auto">
-        
+
         {/* 重要提醒 */}
         <Alert
           message="重要提醒"
@@ -49,6 +51,17 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
           showIcon
           icon={<WarningOutlined />}
         />
+
+        {/* ServerCompose 页面特有警示 */}
+        {page === 'ServerCompose' && (
+          <Alert
+            message="配置更新警告"
+            description="如果您在设置界面，请注意需要点击【提交并重建】按钮才能应用配置更改。提交并重建会重启服务器，会中断当前游戏。"
+            type="error"
+            showIcon
+            icon={<WarningOutlined />}
+          />
+        )}
 
         {/* Docker 镜像版本 */}
         <Card size="small" title={<Text strong><InfoCircleOutlined /> Docker 镜像与 Java 版本</Text>}>
@@ -95,7 +108,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
 
         {/* 环境变量 */}
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 环境变量 (environment)</Text>}>
-          
+
           {/* 基础配置 */}
           <Title level={5}>基础配置</Title>
           <div className="space-y-3 ml-4">
@@ -115,6 +128,11 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
                 showIcon
                 style={{ marginTop: 8, marginLeft: 0 }}
               />
+            </div>
+            <div>
+              <Text strong>CREATE_CONSOLE_IN_PIPE:</Text> 控制台命令输入 (推荐: <Text code>true</Text>)
+              <br />
+              <Text type="secondary">设置为 true 才能在控制台界面发送指令给服务器</Text>
             </div>
           </div>
 
@@ -154,7 +172,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
               </div>
             </div>
           </div>
-          
+
           <Paragraph style={{ marginTop: 12 }}>
             <LinkOutlined /> <Text strong>详细配置参考：</Text>{' '}
             <a href="https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/" target="_blank" rel="noopener noreferrer">
@@ -169,7 +187,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
         {/* 端口配置 */}
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 端口配置 (ports)</Text>}>
           <Paragraph>
-            <Text strong>格式：</Text> <Text code>[外部端口]:[容器内部端口]</Text>
+            <Text strong>格式：</Text> <Text code>[外部端口]:[容器内部端口]</Text> 注意请不要修改容器内部端口
           </Paragraph>
           <div className="space-y-2 ml-4">
             <div>
@@ -214,25 +232,33 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 配置示例</Text>}>
           <Title level={5}>Fabric 1.20.1 服务器示例</Title>
           <pre className="bg-gray-50 p-4 rounded text-sm overflow-x-auto">
-{`services:
+            {`services:
   mc:
-    image: itzg/minecraft-server:java17
-    container_name: mc-fabric-survival
+    image: itzg/minecraft-server:java21-graalvm
+    container_name: mc-server1
     environment:
       EULA: true
       TZ: Asia/Shanghai
       VERSION: 1.20.1
-      TYPE: FABRIC
-      FABRIC_LAUNCHER_VERSION: 0.11.2
-      FABRIC_LOADER_VERSION: 0.14.22
-      INIT_MEMORY: 2G
-      MAX_MEMORY: 6G
+      INIT_MEMORY: 0G
+      MAX_MEMORY: 4G
       ONLINE_MODE: true
-      DIFFICULTY: normal
+      TYPE: FORGE
+      FORGE_VERSION: 47.4.4
+      SPAWN_PROTECTION: 0
+      ENABLE_RCON: true
+      RCON_PASSWORD: password
       MODE: survival
+      VIEW_DISTANCE: 1
+      DIFFICULTY: hard
+      USE_AIKAR_FLAGS: true
+      ENABLE_COMMAND_BLOCK: true
+      PREVENT_PROXY_CONNECTIONS: false
+      ALLOW_FLIGHT: false
+      CREATE_CONSOLE_IN_PIPE: true
     ports:
-      - 25566:25565
-      - 25576:25575
+      - 25517:25565
+      - 25617:25575
     volumes:
       - ./data:/data
     stdin_open: true

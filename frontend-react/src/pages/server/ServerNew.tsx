@@ -36,10 +36,10 @@ const ServerNew: React.FC = () => {
   // Archive selection state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
   const [selectedArchiveFile, setSelectedArchiveFile] = useState<string | null>(null)
-  
+
   // Template selection state
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
-  
+
   // Help modal state
   const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
 
@@ -156,8 +156,8 @@ const ServerNew: React.FC = () => {
         </Card>
 
         {/* 第三部分：Compose文件编辑 */}
-        <Card 
-          title="Docker Compose 配置" 
+        <Card
+          title="Docker Compose 配置"
           className="mb-6"
           extra={
             <Space>
@@ -259,7 +259,7 @@ const ServerNew: React.FC = () => {
               <Text type="secondary">
                 {selectedArchiveFile
                   ? `将使用压缩包 "${selectedArchiveFile}" 填充服务器数据`
-                  : composeContent 
+                  : composeContent
                     ? '将使用自定义 Docker Compose 配置创建服务器'
                     : '请先选择模板或输入 Docker Compose 配置'
                 }

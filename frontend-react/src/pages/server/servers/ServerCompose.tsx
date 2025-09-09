@@ -12,12 +12,14 @@ import {
   ExclamationCircleOutlined,
   CloudServerOutlined,
   DiffOutlined,
-  SettingOutlined
+  SettingOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
+import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 
@@ -46,6 +48,7 @@ const ServerCompose: React.FC = () => {
   // 本地状态
   const [rawYaml, setRawYaml] = useState('')
   const [isCompareVisible, setIsCompareVisible] = useState(false)
+  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
   const [editorKey, setEditorKey] = useState(0) // 用于强制重新渲染编辑器
   const editorRef = useRef<any>(null)
 
@@ -262,7 +265,21 @@ const ServerCompose: React.FC = () => {
         }
       />
 
-      <Card title="Docker Compose 配置">
+      <Card
+        title={
+          <div className="flex items-center justify-between w-full">
+            <span>Docker Compose 配置</span>
+            <Button
+              size="small"
+              icon={<QuestionCircleOutlined />}
+              onClick={() => setIsHelpModalVisible(true)}
+              type="text"
+            >
+              配置帮助
+            </Button>
+          </div>
+        }
+      >
         <ComposeYamlEditor
           key={editorKey}
           height="600px"
@@ -319,6 +336,13 @@ const ServerCompose: React.FC = () => {
         description="请直接编辑上方的 Docker Compose YAML 配置文件。需要点击提交并重建才能生效。"
         type="info"
         showIcon
+      />
+
+      {/* Docker Compose 帮助模态框 */}
+      <DockerComposeHelpModal
+        open={isHelpModalVisible}
+        onCancel={() => setIsHelpModalVisible(false)}
+        page="ServerCompose"
       />
     </div>
   )
