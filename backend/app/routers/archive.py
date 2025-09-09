@@ -4,6 +4,7 @@ Provides CRUD operations for archive files using the configured archive director
 """
 
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -24,8 +25,10 @@ from ..common.file_operations import (
 )
 from ..config import settings
 from ..dependencies import get_current_user
+from ..minecraft import DockerMCManager
 from ..minecraft.utils import exec_command
 from ..models import UserPublic
+from ..utils.compression import create_server_archive
 
 router = APIRouter(
     prefix="/archive",
@@ -36,6 +39,16 @@ router = APIRouter(
 class SHA256Response(BaseModel):
     sha256: str
     filename: str
+
+
+class CreateArchiveRequest(BaseModel):
+    server_id: str
+    path: Optional[str] = None
+
+
+class CreateArchiveResponse(BaseModel):
+    archive_filename: str
+    message: str
 
 
 def _get_archive_base_path() -> Path:
@@ -239,4 +252,74 @@ async def get_archive_file_sha256(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to calculate SHA256 hash: {str(e)}"
+        )
+
+
+@router.post("/compress", response_model=CreateArchiveResponse)
+async def create_server_archive_endpoint(
+    request: CreateArchiveRequest,
+    _: UserPublic = Depends(get_current_user),
+):
+    """Create a compressed archive from server files"""
+    try:
+        # Initialize manager and get server instance
+        manager = DockerMCManager(settings.server_path)
+        instance = manager.get_instance(request.server_id)
+        
+        # Get server project path
+        project_path = instance.get_project_path()
+        
+        # Validate server exists
+        if not project_path.exists():
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Server '{request.server_id}' not found"
+            )
+        
+        # Validate path if provided
+        if request.path is not None:
+            # Ensure path starts with /
+            if not request.path.startswith("/"):
+                request.path = "/" + request.path
+            
+            # Validate that the target path exists
+            data_dir = project_path / "data"
+            if request.path != "/":
+                target_path = data_dir / request.path.lstrip("/")
+                if not target_path.exists():
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Path '{request.path}' not found in server data directory"
+                    )
+            elif not data_dir.exists():
+                # If requesting root data directory, ensure it exists
+                raise HTTPException(
+                    status_code=404,
+                    detail="Server data directory not found"
+                )
+        
+        # Create archive
+        archive_filename = await create_server_archive(
+            server_name=request.server_id,
+            server_project_path=project_path,
+            relative_path=request.path
+        )
+        
+        # Build response message
+        if request.path is None:
+            message = f"Successfully created archive '{archive_filename}' containing entire server '{request.server_id}'"
+        else:
+            message = f"Successfully created archive '{archive_filename}' containing '{request.path}' from server '{request.server_id}'"
+        
+        return CreateArchiveResponse(
+            archive_filename=archive_filename,
+            message=message
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to create server archive: {str(e)}"
         )
