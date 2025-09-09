@@ -198,7 +198,7 @@ const ServerFiles: React.FC = () => {
 
   const handleFileDownload = (file: FileItem) => {
     if (file.type === 'directory') {
-      message.info('文件夹下载暂不开放')
+      message.info('请点击压缩按钮进行压缩下载')
       return
     }
 
