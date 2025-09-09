@@ -177,14 +177,14 @@ async def upload_file(
 
     # Write file
     async with aiofiles.open(file_path, "wb") as f:
-        content = await file.read()
-        await f.write(content)
+        while chunk := await file.read(10 * 1024 * 1024):
+            await f.write(chunk)
 
     # Try to set ownership to match parent directory
     uid, gid = await get_uid_gid(base_path)
     if uid is not None and gid is not None:
         try:
-            _chown_async(file_path, uid, gid)
+            await _chown_async(file_path, uid, gid)
         except (OSError, PermissionError):
             # Ignore ownership errors (common in containers)
             pass
