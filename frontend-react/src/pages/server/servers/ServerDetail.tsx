@@ -1,16 +1,19 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Progress, Alert, Descriptions, Button, Space } from 'antd'
+import { Card, Row, Col, Alert, Button, Space } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  UserOutlined,
-  HddOutlined,
-  WifiOutlined,
-  GlobalOutlined,
   DashboardOutlined,
 } from '@ant-design/icons'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import ServerOperationButtons from '@/components/server/ServerOperationButtons'
+import ServerAddressCard from '@/components/server/ServerAddressCard'
+import ServerInfoCard from '@/components/server/ServerInfoCard'
+import ServerStatsCard from '@/components/server/ServerStatsCard'
+import ServerDiskUsageCard from '@/components/server/ServerDiskUsageCard'
+import ServerResourcesCard from '@/components/server/ServerResourcesCard'
+import ServerIOStatsCard from '@/components/server/ServerIOStatsCard'
+import ServerPlayersCard from '@/components/server/ServerPlayersCard'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 
@@ -142,194 +145,56 @@ const ServerDetail: React.FC = () => {
 
 
       {/* 服务器状态统计 */}
-      <Card>
-        <Row gutter={16}>
-          <Col span={6}>
-            <Statistic
-              title="在线玩家"
-              value={players?.length || 0}
-              suffix={`/ ${20}`} // 默认最大玩家数，后续可从配置获取
-              prefix={<UserOutlined />}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="游戏端口"
-              value={serverInfo.gamePort}
-              formatter={(value) => `${value}`}
-              prefix={<GlobalOutlined />}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="RCON端口"
-              value={serverInfo.rconPort}
-              formatter={(value) => `${value}`}
-              prefix={<HddOutlined />}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="运行时间"
-              value={isRunning ? '运行中' : '未运行'}
-              prefix={<WifiOutlined />}
-            />
-          </Col>
-        </Row>
-      </Card>
+      <ServerStatsCard
+        serverInfo={serverInfo}
+        playersCount={players?.length || 0}
+        isRunning={isRunning || false}
+      />
+
+      {/* 服务器地址和详情 */}
+      <Row gutter={16}>
+        <Col xs={24} sm={24} md={24} lg={12} xl={12}>
+          <ServerAddressCard serverId={id} />
+        </Col>
+        <Col xs={24} sm={24} md={24} lg={12} xl={12}>
+          <ServerInfoCard serverInfo={serverInfo} />
+        </Col>
+      </Row>
 
       {/* 磁盘使用空间 - 始终显示 */}
-      <Card title="磁盘使用空间">
-        {hasDiskUsageData && diskUsage ? (
-          <div>
-            <div className="flex justify-between mb-2">
-              <span className="text-base font-medium">存储空间分配</span>
-              <span className="text-sm text-gray-600">
-                服务器: {(diskUsage.diskUsageBytes / (1024 ** 3)).toFixed(1)}GB /
-                剩余: {(diskUsage.diskAvailableBytes / (1024 ** 3)).toFixed(1)}GB /
-                总计: {(diskUsage.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
-              </span>
-            </div>
-            <Progress
-              percent={((diskUsage.diskTotalBytes - diskUsage.diskAvailableBytes) / diskUsage.diskTotalBytes) * 100}
-              success={{
-                percent: (diskUsage.diskUsageBytes / diskUsage.diskTotalBytes) * 100,
-                strokeColor: '#52c41a'
-              }}
-              strokeColor="#faad14"
-              showInfo={false}
-              size="default"
-            />
-            <div className="mt-2 text-xs text-gray-500">
-              <span className="inline-block w-3 h-3 bg-green-500 rounded mr-1"></span>该服务器使用
-              <span className="inline-block w-3 h-3 bg-yellow-500 rounded mx-1 ml-4"></span>其他文件使用
-              <span className="ml-4">未填充部分为剩余空间</span>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            <p>磁盘使用信息暂不可用</p>
-            <p className="text-xs">请检查服务器连接状态</p>
-          </div>
-        )}
-      </Card>
+      <ServerDiskUsageCard
+        diskUsageBytes={diskUsage?.diskUsageBytes}
+        diskTotalBytes={diskUsage?.diskTotalBytes}
+        diskAvailableBytes={diskUsage?.diskAvailableBytes}
+        hasDiskUsageData={hasDiskUsageData || false}
+      />
 
       {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
-      {isRunning && (hasCpuData || hasMemoryData) && (cpu || memory) && (
-        <Card title="系统资源使用情况">
-          <Row gutter={[16, 16]}>
-            {hasCpuData && cpu && (
-              <Col span={12}>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>CPU 使用率</span>
-                    <span>{cpu.cpuPercentage.toFixed(1)}%</span>
-                  </div>
-                  <Progress
-                    percent={cpu.cpuPercentage}
-                    strokeColor={cpu.cpuPercentage > 80 ? '#ff4d4f' : cpu.cpuPercentage > 60 ? '#faad14' : '#52c41a'}
-                    showInfo={false}
-                  />
-                </div>
-              </Col>
-            )}
-            {hasMemoryData && memory && (
-              <Col span={12}>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>内存使用</span>
-                    <span>
-                      {(memory.memoryUsageBytes / (1024 ** 3)).toFixed(1)}GB /
-                      {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
-                    </span>
-                  </div>
-                  <Progress
-                    percent={(memory.memoryUsageBytes / serverInfo.maxMemoryBytes) * 100}
-                    strokeColor={(memory.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.8 ? '#ff4d4f' :
-                      (memory.memoryUsageBytes / serverInfo.maxMemoryBytes) > 0.6 ? '#faad14' : '#52c41a'}
-                    showInfo={false}
-                  />
-                </div>
-              </Col>
-            )}
-          </Row>
-        </Card>
-      )}
+      <ServerResourcesCard
+        cpuPercentage={cpu?.cpuPercentage}
+        memoryUsageBytes={memory?.memoryUsageBytes}
+        serverInfo={serverInfo}
+        isRunning={isRunning || false}
+        hasCpuData={hasCpuData || false}
+        hasMemoryData={hasMemoryData || false}
+      />
 
       {/* I/O统计 - 仅在运行状态且有I/O数据时显示 */}
-      {isRunning && hasIOStatsData && iostats && (
-        <Card title="I/O统计">
-          <Row gutter={[16, 16]}>
-            <Col span={12}>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>磁盘读取</span>
-                    <span>{(iostats.diskReadBytes / (1024 ** 2)).toFixed(1)}MB</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>磁盘写入</span>
-                    <span>{(iostats.diskWriteBytes / (1024 ** 2)).toFixed(1)}MB</span>
-                  </div>
-                </div>
-              </div>
-            </Col>
-            <Col span={12}>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>网络接收</span>
-                    <span>{(iostats.networkReceiveBytes / (1024 ** 2)).toFixed(1)}MB</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span>网络发送</span>
-                    <span>{(iostats.networkSendBytes / (1024 ** 2)).toFixed(1)}MB</span>
-                  </div>
-                </div>
-              </div>
-            </Col>
-          </Row>
-        </Card>
-      )}
+      <ServerIOStatsCard
+        diskReadBytes={iostats?.diskReadBytes}
+        diskWriteBytes={iostats?.diskWriteBytes}
+        networkReceiveBytes={iostats?.networkReceiveBytes}
+        networkSendBytes={iostats?.networkSendBytes}
+        isRunning={isRunning || false}
+        hasIOStatsData={hasIOStatsData || false}
+      />
 
       {/* 在线玩家列表 */}
-      {isHealthy && players && players.length > 0 && (
-        <Card title={`在线玩家 (${players.length})`}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {players.map(player => (
-              <div key={player} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <UserOutlined className="text-white" />
-                </div>
-                <div>
-                  <div className="font-medium">{player}</div>
-                  <div className="text-sm text-gray-500">在线</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <ServerPlayersCard
+        players={players}
+        isHealthy={isHealthy || false}
+      />
 
-      {/* 服务器详细信息 */}
-      <Card title="服务器详情">
-        <Descriptions column={2}>
-          <Descriptions.Item label="服务器ID">{serverInfo.id}</Descriptions.Item>
-          <Descriptions.Item label="服务器类型">{serverInfo.serverType}</Descriptions.Item>
-          <Descriptions.Item label="游戏版本">{serverInfo.gameVersion}</Descriptions.Item>
-          <Descriptions.Item label="Java版本">{serverInfo.javaVersion}</Descriptions.Item>
-          <Descriptions.Item label="游戏端口">{serverInfo.gamePort}</Descriptions.Item>
-          <Descriptions.Item label="RCON端口">{serverInfo.rconPort}</Descriptions.Item>
-          <Descriptions.Item label="最大内存">
-            {(serverInfo.maxMemoryBytes / (1024 ** 3)).toFixed(1)}GB
-          </Descriptions.Item>
-          <Descriptions.Item label="服务器路径">{serverInfo.path}</Descriptions.Item>
-        </Descriptions>
-      </Card>
     </div>
   )
 }
