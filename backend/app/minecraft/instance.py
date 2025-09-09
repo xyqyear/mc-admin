@@ -343,12 +343,14 @@ class MCInstance:
         async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
             await file.write(compose_yaml)
 
+        await aioos.makedirs(self._project_path / "data", exist_ok=True)
+
         # Set ownership to match the servers_path directory
         uid, gid = await get_uid_gid(self._servers_path)
         if uid is not None and gid is not None:
+            await _chown_async(self._project_path, uid, gid)
+            await _chown_async(self._project_path / "data", uid, gid)
             await _chown_async(compose_file_path, uid, gid)
-
-        await aioos.makedirs(self._project_path / "data", exist_ok=True)
 
     async def update_compose_file(self, compose_yaml: str) -> None:
         """
