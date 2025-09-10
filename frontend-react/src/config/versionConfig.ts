@@ -50,7 +50,7 @@ export const versionUpdates: VersionUpdate[] = [
     date: '2025-09-09',
     title: '增加文件上传超时时间',
     description: '增加文件上传超时时间',
-    improvements: [
+    features: [
       '增加文件上传的超时时间',
     ]
   },
@@ -59,8 +59,20 @@ export const versionUpdates: VersionUpdate[] = [
     date: '2025-09-10',
     title: '添加服务器地址卡片',
     description: '添加服务器地址卡片',
-    improvements: [
+    features: [
       '在服务器的概览页面添加服务器地址卡片，支持按钮复制',
+    ]
+  },
+  {
+    version: '0.1.8',
+    date: '2025-09-10',
+    title: '终端支持 Ctrl+C 和 Ctrl+V',
+    description: '终端支持 Ctrl+C 和 Ctrl+V',
+    features: [
+      '终端支持 Ctrl+C 和 Ctrl+V',
+    ],
+    improvements: [
+      '修复服务器地址卡片显示错误问题'
     ]
   }
 ]

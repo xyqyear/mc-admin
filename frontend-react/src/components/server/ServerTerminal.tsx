@@ -196,6 +196,18 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance, handleTerminalData]);
 
+  // 配置自定义键盘事件处理器，让Ctrl+C和Ctrl+V使用浏览器默认行为
+  useEffect(() => {
+    if (terminalInstance) {
+      terminalInstance.attachCustomKeyEventHandler((event) => {
+        if (event.ctrlKey && (event.key === 'c' || event.key === 'v')) {
+          return false;
+        }
+        return true;
+      });
+    }
+  }, [terminalInstance]);
+
   // 自动调整终端大小
   useEffect(() => {
     if (fitAddon && terminalInstance) {

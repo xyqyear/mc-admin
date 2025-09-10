@@ -10,7 +10,7 @@ export interface ServerAddressConfig {
 
 // Default configuration - modify this to match your server setup
 export const serverAddressConfig: ServerAddressConfig = {
-  domain: "example.com",
+  domain: "mc.xyqyear.com",
   subdomains: [
     { subdomain: "*", label: "主地址" },
     { subdomain: "backup", label: "备用地址" },
