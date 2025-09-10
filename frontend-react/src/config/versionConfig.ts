@@ -64,7 +64,7 @@ export const versionUpdates: VersionUpdate[] = [
     ]
   },
   {
-    version: '0.1.8',
+    version: '0.1.9',
     date: '2025-09-10',
     title: '终端支持 Ctrl+C 和 Ctrl+V',
     description: '终端支持 Ctrl+C 和 Ctrl+V',
