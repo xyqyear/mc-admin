@@ -9,8 +9,10 @@ from starlette.middleware.cors import CORSMiddleware
 from .audit import OperationAuditMiddleware
 from .config import settings
 from .db.database import init_db
+from .dynamic_config import config_manager
 from .logger import logger
 from .routers import admin, archive, auth, snapshots, system, user
+from .routers.config import router as config_router
 from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
 from .routers.servers import create as server_create
@@ -27,6 +29,10 @@ from .routers.servers import resources as server_resources
 async def lifespan(app: FastAPI):
     logger.info("Starting up and initializing the database...")
     await init_db()
+
+    logger.info("Initializing dynamic configuration system...")
+    await config_manager.initialize_all_configs()
+
     logger.info("Startup complete.")
     yield
 
@@ -50,6 +56,7 @@ api_app.include_router(admin.router)
 api_app.include_router(system.router)
 api_app.include_router(snapshots.router)
 api_app.include_router(archive.router)
+api_app.include_router(config_router)
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
 api_app.include_router(server_players.router)

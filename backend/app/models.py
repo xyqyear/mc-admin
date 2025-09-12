@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import DateTime, String
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -58,3 +58,17 @@ class UserCreate(BaseModel):
     username: str = PydanticField(min_length=3, max_length=50)
     password: str
     role: UserRole = UserRole.ADMIN
+
+
+class DynamicConfig(Base):
+    """Dynamic configuration table for modular configuration management."""
+
+    __tablename__ = "dynamic_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    module_name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    config_data: Mapped[dict] = mapped_column(JSON)
+    config_schema_version: Mapped[str] = mapped_column(String(50))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
