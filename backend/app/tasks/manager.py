@@ -1,489 +1,346 @@
-"""Task management system for MC Admin."""
+"""Simplified task management system for MC Admin."""
 
 import asyncio
 import logging
+import traceback
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
-from ..db.database import AsyncSessionLocal
-from .executor import TaskExecutor
-from .models import Task, TaskExecution, TaskStatus, TaskType
-from .registry import TaskRegistry
-from .scheduler import TaskScheduler
+from .models import AsyncFunc, TaskInfo, TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    """Main task management class that coordinates scheduling and execution."""
-    
+    """Simplified task manager for runtime task execution."""
+
     def __init__(self):
-        self.registry = TaskRegistry()
-        self.scheduler = TaskScheduler()
-        self.executor = TaskExecutor(self.registry)
+        self._tasks: Dict[str, TaskInfo] = {}
+        self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._scheduler: Optional[AsyncIOScheduler] = None
         self._running = False
-        self._background_task: Optional[asyncio.Task] = None
-    
+
     async def start(self) -> None:
-        """Start the task management system."""
+        """Start the task manager."""
         if self._running:
             logger.warning("TaskManager is already running")
             return
-        
+
         logger.info("Starting TaskManager")
-        
-        try:
-            # Start the scheduler
-            await self.scheduler.start()
-            
-            # Load and schedule existing tasks from database
-            await self._load_and_schedule_tasks()
-            
-            # Start background maintenance task
-            self._background_task = asyncio.create_task(self._maintenance_loop())
-            
-            self._running = True
-            logger.info("TaskManager started successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to start TaskManager: {e}")
-            await self.stop()
-            raise
-    
-    async def stop(self) -> None:
-        """Stop the task management system."""
-        if not self._running:
-            logger.warning("TaskManager is not running")
-            return
-        
-        logger.info("Stopping TaskManager")
-        
-        try:
-            # Stop background maintenance
-            if self._background_task:
-                self._background_task.cancel()
-                try:
-                    await self._background_task
-                except asyncio.CancelledError:
-                    pass
-                self._background_task = None
-            
-            # Stop all background tasks
-            await self.executor.cancel_all_background_tasks()
-            
-            # Stop scheduler
-            await self.scheduler.stop()
-            
-            self._running = False
-            logger.info("TaskManager stopped successfully")
-            
-        except Exception as e:
-            logger.error(f"Error stopping TaskManager: {e}")
-            raise
-    
+
+        self._scheduler = AsyncIOScheduler()
+        self._scheduler.start()
+
+        self._running = True
+        logger.info("TaskManager started successfully")
+
     def is_running(self) -> bool:
         """Check if the task manager is running."""
         return self._running
-    
-    async def create_task(
-        self,
-        name: str,
-        task_type: TaskType,
+
+    def submit_task(
+        self, 
+        func: AsyncFunc, 
+        task_name: str,
         description: Optional[str] = None,
-        function_args: Optional[Dict[str, Any]] = None,
-        function_kwargs: Optional[Dict[str, Any]] = None,
-        schedule_config: Optional[Dict[str, Any]] = None,
-        max_instances: int = 1,
-        misfire_grace_time: Optional[int] = None,
-        jitter: Optional[int] = None,
-        task_metadata: Optional[Dict[str, Any]] = None,
-        is_system_task: bool = False,
-        created_by_user_id: Optional[int] = None,
-        auto_start: bool = True
-    ) -> int:
-        """Create a new task.
-        
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> TaskInfo:
+        """Submit a task for immediate execution.
+
         Args:
-            name: Unique task name
-            task_type: Type of task (ONE_TIME, RECURRING, BACKGROUND)
-            description: Task description
-            function_args: Arguments to pass to the function (after context)
-            function_kwargs: Keyword arguments to pass to the function
-            schedule_config: Scheduling configuration for APScheduler
-            max_instances: Maximum concurrent instances
-            misfire_grace_time: Grace time for misfired jobs in seconds
-            jitter: Random delay in seconds
-            task_metadata: Additional metadata
-            is_system_task: Whether this is a system task
-            created_by_user_id: User ID who created the task (if applicable)
-            auto_start: Whether to automatically start the task
-            
+            func: The async function to execute
+            task_name: Name for the task (for logging and tracking)
+            description: Optional description of the task
+            metadata: Optional metadata dictionary
+
         Returns:
-            Task ID
-            
+            TaskInfo: Task information for tracking
+
         Raises:
-            ValueError: If task configuration is invalid
             RuntimeError: If task manager is not running
         """
         if not self._running:
             raise RuntimeError("TaskManager is not running")
-        
-        # Validate function exists in registry
-        if name not in self.registry:
-            raise ValueError(f"Task function not found in registry: {name}")
-        
-        async with AsyncSessionLocal() as session:
-            # Check for duplicate task name
-            existing = await session.scalar(
-                select(Task).where(Task.name == name)
-            )
-            if existing:
-                raise ValueError(f"Task with name '{name}' already exists")
-            
-            # Create task in database
-            task = Task(
-                name=name,
-                description=description,
-                task_type=task_type,
-                function_args=function_args or {},
-                function_kwargs=function_kwargs or {},
-                schedule_config=schedule_config,
-                max_instances=max_instances,
-                misfire_grace_time=misfire_grace_time,
-                jitter=jitter,
-                task_metadata=task_metadata or {},
-                is_system_task=is_system_task,
-                created_by_user_id=created_by_user_id,
-                status=TaskStatus.PENDING
-            )
-            
-            session.add(task)
-            await session.commit()
-            await session.refresh(task)
-            
-            task_id = task.id
-            logger.info(f"Created task: {name} (ID: {task_id})")
-            
-            # Schedule the task if auto_start is True
-            if auto_start:
-                await self._schedule_task(task)
-            
-            return task_id
-    
-    async def update_task(
+
+        task_id = str(uuid.uuid4())
+        task_info = TaskInfo(
+            task_id=task_id,
+            task_name=task_name,
+            status=TaskStatus.RUNNING,
+            task_type=TaskType.ONESHOT,
+            created_at=datetime.now(timezone.utc),
+            description=description,
+            metadata=metadata or {}
+        )
+
+        self._tasks[task_id] = task_info
+
+        # Create and start the async task
+        async_task = asyncio.create_task(self._execute_task(func, task_info))
+        self._running_tasks[task_id] = async_task
+
+        logger.info(f"Submitted task: {task_name} (ID: {task_id})")
+        return task_info
+
+    def schedule_task(
         self,
-        task_id: int,
-        **updates
-    ) -> bool:
-        """Update an existing task.
-        
+        func: AsyncFunc,
+        task_name: str,
+        cron_expression: Optional[str] = None,
+        interval_seconds: Optional[int] = None,
+        start_time: Optional[datetime] = None,
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> TaskInfo:
+        """Schedule a task for future execution.
+
         Args:
-            task_id: Task ID to update
-            **updates: Fields to update
-            
+            func: The async function to execute
+            task_name: Name for the task
+            cron_expression: Cron expression for scheduling (e.g., "0 2 * * *")
+            interval_seconds: Interval in seconds for repeated execution
+            start_time: When to start the scheduled task
+            description: Optional description of the task
+            metadata: Optional metadata dictionary
+
         Returns:
-            True if task was updated, False if not found
+            TaskInfo: Task information for tracking
+
+        Raises:
+            RuntimeError: If task manager is not running
+            ValueError: If neither cron_expression nor interval_seconds is provided
         """
         if not self._running:
             raise RuntimeError("TaskManager is not running")
-        
-        async with AsyncSessionLocal() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                return False
-            
-            # Update allowed fields
-            allowed_fields = {
-                'description', 'status', 'schedule_config', 'max_instances',
-                'misfire_grace_time', 'jitter', 'task_metadata'
-            }
-            
-            for field, value in updates.items():
-                if field in allowed_fields:
-                    setattr(task, field, value)
-            
-            task.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-            
-            logger.info(f"Updated task: {task.name} (ID: {task_id})")
-            
-            # Re-schedule if necessary
-            if 'schedule_config' in updates or 'status' in updates:
-                await self._reschedule_task(task)
-            
-            return True
-    
-    async def delete_task(self, task_id: int) -> bool:
-        """Delete a task.
-        
-        Args:
-            task_id: Task ID to delete
-            
-        Returns:
-            True if task was deleted, False if not found
-        """
-        if not self._running:
-            raise RuntimeError("TaskManager is not running")
-        
-        async with AsyncSessionLocal() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                return False
-            
-            # Stop the task first
-            await self._unschedule_task(task)
-            
-            # Delete from database
-            await session.delete(task)
-            await session.commit()
-            
-            logger.info(f"Deleted task: {task.name} (ID: {task_id})")
-            return True
-    
-    async def start_task(self, task_id: int) -> bool:
-        """Start/resume a task.
-        
-        Args:
-            task_id: Task ID to start
-            
-        Returns:
-            True if task was started, False if not found
-        """
-        async with AsyncSessionLocal() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                return False
-            
-            if task.status != TaskStatus.PAUSED:
-                task.status = TaskStatus.PENDING
-                await session.commit()
-            
-            await self._schedule_task(task)
-            logger.info(f"Started task: {task.name} (ID: {task_id})")
-            return True
-    
-    async def stop_task(self, task_id: int) -> bool:
-        """Stop/pause a task.
-        
-        Args:
-            task_id: Task ID to stop
-            
-        Returns:
-            True if task was stopped, False if not found
-        """
-        async with AsyncSessionLocal() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                return False
-            
-            task.status = TaskStatus.PAUSED
-            await session.commit()
-            
-            await self._unschedule_task(task)
-            logger.info(f"Stopped task: {task.name} (ID: {task_id})")
-            return True
-    
-    async def execute_task_now(self, task_id: int) -> Optional[str]:
-        """Execute a task immediately.
-        
-        Args:
-            task_id: Task ID to execute
-            
-        Returns:
-            Execution ID if successful, None if task not found
-        """
-        async with AsyncSessionLocal() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                return None
-            
-            # Execute the task directly
-            context = await self.executor.execute_task(
-                task_id=task.id,
-                task_name=task.name,
-                function_args=task.function_args,
-                function_kwargs=task.function_kwargs,
-                metadata=task.task_metadata
+
+        if not cron_expression and not interval_seconds:
+            raise ValueError(
+                "Either cron_expression or interval_seconds must be provided"
             )
-            
-            # Update last run time
-            task.last_run_at = datetime.now(timezone.utc)
-            await session.commit()
-            
-            return context.execution_id
-    
-    async def get_task(self, task_id: int) -> Optional[Task]:
-        """Get a task by ID."""
-        async with AsyncSessionLocal() as session:
-            return await session.get(Task, task_id)
-    
-    async def list_tasks(
-        self,
-        task_type: Optional[TaskType] = None,
-        status: Optional[TaskStatus] = None,
-        system_only: bool = False
-    ) -> List[Task]:
-        """List tasks with optional filtering."""
-        async with AsyncSessionLocal() as session:
-            query = select(Task)
-            
-            if task_type:
-                query = query.where(Task.task_type == task_type)
-            if status:
-                query = query.where(Task.status == status)
-            if system_only:
-                query = query.where(Task.is_system_task == True)
-            
-            result = await session.execute(query)
-            return list(result.scalars().all())
-    
-    async def get_task_executions(
-        self,
-        task_id: int,
-        limit: int = 50
-    ) -> List[TaskExecution]:
-        """Get execution history for a task."""
-        async with AsyncSessionLocal() as session:
-            query = (
-                select(TaskExecution)
-                .where(TaskExecution.task_id == task_id)
-                .order_by(TaskExecution.created_at.desc())
-                .limit(limit)
-            )
-            result = await session.execute(query)
-            return list(result.scalars().all())
-    
-    async def _load_and_schedule_tasks(self) -> None:
-        """Load tasks from database and schedule active ones."""
-        try:
-            async with AsyncSessionLocal() as session:
-                # Load active tasks
-                query = select(Task).where(
-                    Task.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING])
-                )
-                result = await session.execute(query)
-                tasks = list(result.scalars().all())
-                
-                logger.info(f"Loading {len(tasks)} active tasks from database")
-                
-                for task in tasks:
-                    try:
-                        await self._schedule_task(task)
-                    except Exception as e:
-                        logger.error(f"Failed to schedule task {task.name}: {e}")
-                        # Mark task as failed
-                        task.status = TaskStatus.FAILED
-                        await session.commit()
-                        
-        except Exception as e:
-            logger.error(f"Failed to load tasks from database: {e}")
-    
-    async def _schedule_task(self, task: Task) -> None:
-        """Schedule a single task with APScheduler."""
-        if task.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
-            return
+
+        if not self._scheduler:
+            raise RuntimeError("Scheduler is not available")
+
+        task_id = str(uuid.uuid4())
         
-        try:
-            # Create job wrapper function
-            async def job_wrapper():
-                context = await self.executor.execute_task(
-                    task_id=task.id,
-                    task_name=task.name,
-                    function_args=task.function_args,
-                    function_kwargs=task.function_kwargs,
-                    metadata=task.task_metadata
-                )
-                
-                # Update task status and last run time
-                async with AsyncSessionLocal() as session:
-                    db_task = await session.get(Task, task.id)
-                    if db_task:
-                        db_task.last_run_at = datetime.now(timezone.utc)
-                        if task.task_type == TaskType.ONE_TIME:
-                            db_task.status = TaskStatus.COMPLETED
-                        await session.commit()
-            
-            # Handle different task types
-            if task.task_type == TaskType.BACKGROUND:
-                # Background tasks are handled differently
-                await self.executor.execute_background_task(
-                    task_id=task.id,
-                    task_name=task.name,
-                    function_args=task.function_args,
-                    function_kwargs=task.function_kwargs,
-                    metadata=task.task_metadata
-                )
-            else:
-                # Schedule with APScheduler
-                job_id = f"task_{task.id}"
-                self.scheduler.add_job(
-                    func=job_wrapper,
-                    task_type=task.task_type,
-                    job_id=job_id,
-                    schedule_config=task.schedule_config,
-                    max_instances=task.max_instances,
-                    misfire_grace_time=task.misfire_grace_time,
-                    jitter=task.jitter
-                )
-            
-            # Update task status
-            async with AsyncSessionLocal() as session:
-                db_task = await session.get(Task, task.id)
-                if db_task:
-                    db_task.status = TaskStatus.RUNNING
-                    await session.commit()
-            
-            logger.debug(f"Scheduled task: {task.name}")
-            
-        except Exception as e:
-            logger.error(f"Failed to schedule task {task.name}: {e}")
-            raise
-    
-    async def _unschedule_task(self, task: Task) -> None:
-        """Unschedule a task."""
-        try:
-            job_id = f"task_{task.id}"
-            
-            if task.task_type == TaskType.BACKGROUND:
-                # Cancel background task
-                task_key = f"bg_{task.id}"
-                await self.executor.cancel_background_task(task_key)
-            else:
-                # Remove from scheduler
-                try:
-                    self.scheduler.remove_job(job_id)
-                except Exception:
-                    # Job might not exist, that's okay
-                    pass
-            
-            logger.debug(f"Unscheduled task: {task.name}")
-            
-        except Exception as e:
-            logger.error(f"Failed to unschedule task {task.name}: {e}")
-    
-    async def _reschedule_task(self, task: Task) -> None:
-        """Reschedule a task (unschedule then schedule)."""
-        await self._unschedule_task(task)
-        if task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
-            await self._schedule_task(task)
-    
-    async def _maintenance_loop(self) -> None:
-        """Background maintenance loop."""
-        while self._running:
+        # Calculate next run time
+        now = datetime.now(timezone.utc)
+        next_run = start_time or now
+        
+        task_info = TaskInfo(
+            task_id=task_id,
+            task_name=task_name,
+            status=TaskStatus.RUNNING,
+            task_type=TaskType.SCHEDULED,
+            created_at=now,
+            description=description,
+            metadata=metadata or {},
+            cron_expression=cron_expression,
+            interval_seconds=interval_seconds,
+            start_time=start_time,
+            next_run_at=next_run
+        )
+
+        self._tasks[task_id] = task_info
+
+        # Create trigger
+        if cron_expression:
+            trigger = CronTrigger.from_crontab(cron_expression)
+        else:
+            trigger = IntervalTrigger(seconds=interval_seconds or 60)  # Default to 60 seconds
+
+        # Schedule the task
+        self._scheduler.add_job(
+            func=self._execute_scheduled_task,
+            trigger=trigger,
+            args=[func, task_info],
+            id=task_id,
+            name=task_name,
+            start_date=start_time,
+        )
+
+        logger.info(f"Scheduled task: {task_name} (ID: {task_id}, Trigger: {trigger})")
+        return task_info
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task.
+
+        Args:
+            task_id: ID of the task to cancel
+
+        Returns:
+            bool: True if task was cancelled, False if not found
+        """
+        # Cancel async task
+        if task_id in self._running_tasks:
+            task = self._running_tasks[task_id]
+            task.cancel()
+            del self._running_tasks[task_id]
+            logger.info(f"Cancelled async task: {task_id}")
+
+        # Cancel scheduled task
+        if self._scheduler:
             try:
-                # Clean up old execution records, update task statuses, etc.
-                await asyncio.sleep(300)  # Run every 5 minutes
-                
-                # TODO: Implement maintenance tasks
-                # - Clean up old execution records
-                # - Update next_run_at timestamps
-                # - Check for orphaned jobs
-                # - Health checks
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in maintenance loop: {e}")
-                await asyncio.sleep(60)  # Wait before retry
+                self._scheduler.remove_job(task_id)
+                logger.info(f"Cancelled scheduled task: {task_id}")
+            except Exception:
+                pass  # Job might not exist in scheduler
+
+        # Update task status
+        if task_id in self._tasks:
+            task_info = self._tasks[task_id]
+            task_info.status = TaskStatus.CANCELLED
+            task_info.completed_at = datetime.now(timezone.utc)
+            return True
+
+        return False
+
+    def get_task(self, task_id: str) -> Optional[TaskInfo]:
+        """Get task information by ID.
+
+        Args:
+            task_id: ID of the task to retrieve
+
+        Returns:
+            TaskInfo: Task information if found, None otherwise
+        """
+        return self._tasks.get(task_id)
+
+    def get_all_tasks(self) -> List[TaskInfo]:
+        """Get information for all tasks.
+
+        Returns:
+            List[TaskInfo]: List of all task information
+        """
+        return list(self._tasks.values())
+
+    def get_scheduled_tasks(self) -> List[TaskInfo]:
+        """Get all scheduled/recurring tasks.
+
+        Returns:
+            List[TaskInfo]: List of scheduled tasks
+        """
+        return [task for task in self._tasks.values() if task.task_type == TaskType.SCHEDULED]
+
+    def get_oneshot_tasks(self) -> List[TaskInfo]:
+        """Get all one-time tasks.
+
+        Returns:
+            List[TaskInfo]: List of one-time tasks
+        """
+        return [task for task in self._tasks.values() if task.task_type == TaskType.ONESHOT]
+
+    def get_task_schedule_info(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed schedule information for a task.
+
+        Args:
+            task_id: ID of the task to get schedule info for
+
+        Returns:
+            Dict containing schedule information, or None if task not found
+        """
+        task = self._tasks.get(task_id)
+        if not task:
+            return None
+
+        return {
+            "task_id": task.task_id,
+            "task_name": task.task_name,
+            "task_type": task.task_type,
+            "cron_expression": task.cron_expression,
+            "interval_seconds": task.interval_seconds,
+            "next_run_at": task.next_run_at,
+            "last_run_at": task.last_run_at,
+            "execution_count": task.execution_count,
+            "start_time": task.start_time
+        }
+
+    async def _execute_task(self, func: AsyncFunc, task_info: TaskInfo) -> None:
+        """Execute a task function and update task info.
+
+        Args:
+            func: The async function to execute
+            task_info: Task information to update
+        """
+        try:
+            logger.info(
+                f"Starting task execution: {task_info.task_name} (ID: {task_info.task_id})"
+            )
+
+            # Execute the function
+            result = await func()
+
+            # Update task info on success
+            task_info.status = TaskStatus.COMPLETED
+            task_info.completed_at = datetime.now(timezone.utc)
+            task_info.result = result
+            task_info.execution_count += 1
+            task_info.last_run_at = task_info.completed_at
+
+            logger.info(
+                f"Task execution completed: {task_info.task_name} (ID: {task_info.task_id})"
+            )
+
+        except asyncio.CancelledError:
+            # Task was cancelled
+            task_info.status = TaskStatus.CANCELLED
+            task_info.completed_at = datetime.now(timezone.utc)
+            logger.info(
+                f"Task execution cancelled: {task_info.task_name} (ID: {task_info.task_id})"
+            )
+            raise
+
+        except Exception as e:
+            # Task failed
+            error_message = str(e)
+            error_traceback = traceback.format_exc()
+
+            task_info.status = TaskStatus.FAILED
+            task_info.completed_at = datetime.now(timezone.utc)
+            task_info.error_message = error_message
+
+            logger.error(
+                f"Task execution failed: {task_info.task_name} (ID: {task_info.task_id}): {error_message}"
+            )
+            logger.debug(f"Task failure traceback:\n{error_traceback}")
+
+        finally:
+            # Remove from running tasks
+            self._running_tasks.pop(task_info.task_id, None)
+
+    async def _execute_scheduled_task(
+        self, func: AsyncFunc, task_info: TaskInfo
+    ) -> None:
+        """Execute a scheduled task function.
+
+        Args:
+            func: The async function to execute
+            task_info: Task information (for logging context)
+        """
+        try:
+            logger.info(
+                f"Executing scheduled task: {task_info.task_name} (ID: {task_info.task_id})"
+            )
+            await func()
+            
+            # Update execution statistics
+            task_info.execution_count += 1
+            task_info.last_run_at = datetime.now(timezone.utc)
+            
+            logger.info(
+                f"Scheduled task completed: {task_info.task_name} (ID: {task_info.task_id})"
+            )
+
+        except Exception as e:
+            error_message = str(e)
+            error_traceback = traceback.format_exc()
+
+            logger.error(
+                f"Scheduled task failed: {task_info.task_name} (ID: {task_info.task_id}): {error_message}"
+            )
+            logger.debug(f"Scheduled task failure traceback:\n{error_traceback}")
