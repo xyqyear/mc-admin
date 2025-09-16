@@ -25,6 +25,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def get_async_session() -> AsyncSession:
+    """Get an async database session for use outside of FastAPI dependency injection."""
+    return AsyncSessionLocal()
+
+
 async def init_db():
     """Initialize database tables asynchronously."""
     async with engine.begin() as conn:
