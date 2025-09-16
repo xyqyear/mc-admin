@@ -128,6 +128,7 @@ async def test_config_manager(test_db_engine):
     from unittest.mock import patch
 
     with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
+
         def get_test_session():
             return TestSessionLocal()
 

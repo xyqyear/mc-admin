@@ -71,10 +71,18 @@ class TestArchiveOperations:
         (archive_path / "worlds").mkdir(exist_ok=True)
 
         # Create nested files
-        (archive_path / "plugins" / "essentials.jar").write_bytes(b"\x00\x01\x02\x03" * 50)
-        (archive_path / "plugins" / "permissions.yml").write_text("permissions:\n  default: true\n")
-        (archive_path / "backups" / "world_backup.zip").write_bytes(b"\x01\x02\x03\x04" * 200)
-        (archive_path / "worlds" / "world.tar.gz").write_bytes(b"\x05\x06\x07\x08" * 150)
+        (archive_path / "plugins" / "essentials.jar").write_bytes(
+            b"\x00\x01\x02\x03" * 50
+        )
+        (archive_path / "plugins" / "permissions.yml").write_text(
+            "permissions:\n  default: true\n"
+        )
+        (archive_path / "backups" / "world_backup.zip").write_bytes(
+            b"\x01\x02\x03\x04" * 200
+        )
+        (archive_path / "worlds" / "world.tar.gz").write_bytes(
+            b"\x05\x06\x07\x08" * 150
+        )
 
         return archive_path
 
@@ -185,7 +193,9 @@ class TestArchiveOperations:
         archive_path = archive_setup
 
         with mock_archive_operations_setup(archive_path):
-            new_content = "# Updated config\nserver:\n  port: 25566\n  motd: 'Updated Server'\n"
+            new_content = (
+                "# Updated config\nserver:\n  port: 25566\n  motd: 'Updated Server'\n"
+            )
 
             response = client.post(
                 "/archive/content?path=/config.yml",
@@ -245,7 +255,9 @@ class TestArchiveOperations:
             response = client.post(
                 "/archive/upload?path=/plugins",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("new_plugin.jar", test_content, "application/java-archive")},
+                files={
+                    "file": ("new_plugin.jar", test_content, "application/java-archive")
+                },
             )
 
             assert response.status_code == 200
@@ -453,7 +465,7 @@ class TestArchiveOperations:
     def test_archive_directory_creation_on_access(self, client, temp_dir):
         """Test that archive directory is created automatically when accessed."""
         archive_path = temp_dir / "archives"
-        
+
         # Ensure directory doesn't exist initially
         assert not archive_path.exists()
 
@@ -483,10 +495,11 @@ class TestArchiveOperations:
 
             # Find the server.jar file and check its size
             server_jar = next(
-                item for item in data["items"] 
+                item
+                for item in data["items"]
                 if item["name"] == "server.jar" and item["type"] == "file"
             )
-            
+
             # Should report the actual file size (600 bytes from b"\x00\x01\x02\x03\x04\x05" * 100)
             assert server_jar["size"] == 600
 

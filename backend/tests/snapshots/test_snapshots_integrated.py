@@ -495,7 +495,9 @@ class TestResticManagerNoPasswordIntegrated:
     @pytest.fixture
     def temp_backup_dir_no_password(self):
         """Create temporary directory with test files for backup"""
-        with tempfile.TemporaryDirectory(prefix="restic_test_backup_nopass_") as temp_dir:
+        with tempfile.TemporaryDirectory(
+            prefix="restic_test_backup_nopass_"
+        ) as temp_dir:
             backup_dir = Path(temp_dir)
 
             # Create test files
@@ -522,14 +524,18 @@ class TestResticManagerNoPasswordIntegrated:
 
         # Initialize the repository without password
         try:
-            await exec_command("restic", "init", "--insecure-no-password", env=manager.env)
+            await exec_command(
+                "restic", "init", "--insecure-no-password", env=manager.env
+            )
         except Exception as e:
             pytest.fail(f"Failed to initialize restic repository without password: {e}")
 
         return manager
 
     @pytest.mark.asyncio
-    async def test_backup_and_list_no_password(self, restic_manager_no_password, temp_backup_dir_no_password):
+    async def test_backup_and_list_no_password(
+        self, restic_manager_no_password, temp_backup_dir_no_password
+    ):
         """Test basic backup creation and listing without password"""
         manager = restic_manager_no_password
 
@@ -553,7 +559,9 @@ class TestResticManagerNoPasswordIntegrated:
         assert snapshots[0].paths == snapshot.paths
 
     @pytest.mark.asyncio
-    async def test_restore_preview_no_password(self, restic_manager_no_password, temp_backup_dir_no_password):
+    async def test_restore_preview_no_password(
+        self, restic_manager_no_password, temp_backup_dir_no_password
+    ):
         """Test restore preview functionality without password"""
         manager = restic_manager_no_password
 
@@ -561,11 +569,15 @@ class TestResticManagerNoPasswordIntegrated:
         snapshot = await manager.backup(temp_backup_dir_no_password)
 
         # Modify files to create changes
-        (temp_backup_dir_no_password / "test_file1.txt").write_text("Modified for preview test")
+        (temp_backup_dir_no_password / "test_file1.txt").write_text(
+            "Modified for preview test"
+        )
 
         # Preview restore
         actions = await manager.restore_preview(
-            snapshot_id=snapshot.id, target_path=Path("/"), include_path=temp_backup_dir_no_password
+            snapshot_id=snapshot.id,
+            target_path=Path("/"),
+            include_path=temp_backup_dir_no_password,
         )
 
         # Verify preview provides meaningful information
@@ -578,7 +590,9 @@ class TestResticManagerNoPasswordIntegrated:
             assert action.item is not None
 
     @pytest.mark.asyncio
-    async def test_restore_no_password(self, restic_manager_no_password, temp_backup_dir_no_password):
+    async def test_restore_no_password(
+        self, restic_manager_no_password, temp_backup_dir_no_password
+    ):
         """Test actual restore functionality without password"""
         manager = restic_manager_no_password
 
@@ -589,8 +603,12 @@ class TestResticManagerNoPasswordIntegrated:
         snapshot = await manager.backup(temp_backup_dir_no_password)
 
         # Modify files
-        (temp_backup_dir_no_password / "test_file1.txt").write_text("Modified for restore test")
-        (temp_backup_dir_no_password / "extra_file.txt").write_text("Extra file to be deleted")
+        (temp_backup_dir_no_password / "test_file1.txt").write_text(
+            "Modified for restore test"
+        )
+        (temp_backup_dir_no_password / "extra_file.txt").write_text(
+            "Extra file to be deleted"
+        )
 
         # Verify modification
         modified_content = (temp_backup_dir_no_password / "test_file1.txt").read_text()
@@ -612,7 +630,9 @@ class TestResticManagerNoPasswordIntegrated:
         assert not (temp_backup_dir_no_password / "extra_file.txt").exists()
 
     @pytest.mark.asyncio
-    async def test_has_recent_snapshot_no_password(self, restic_manager_no_password, temp_backup_dir_no_password):
+    async def test_has_recent_snapshot_no_password(
+        self, restic_manager_no_password, temp_backup_dir_no_password
+    ):
         """Test recent snapshot detection without password"""
         manager = restic_manager_no_password
 
@@ -632,7 +652,9 @@ class TestResticManagerNoPasswordIntegrated:
         assert has_recent is True
 
     @pytest.mark.asyncio
-    async def test_path_filtering_no_password(self, restic_manager_no_password, temp_backup_dir_no_password):
+    async def test_path_filtering_no_password(
+        self, restic_manager_no_password, temp_backup_dir_no_password
+    ):
         """Test snapshot filtering by path without password"""
         manager = restic_manager_no_password
 
@@ -650,7 +672,9 @@ class TestResticManagerNoPasswordIntegrated:
         assert len(all_snapshots) == 2
 
         # Filter by main directory - should include snapshot that covers it
-        main_filtered = await manager.list_snapshots(path_filter=temp_backup_dir_no_password)
+        main_filtered = await manager.list_snapshots(
+            path_filter=temp_backup_dir_no_password
+        )
         main_ids = {s.id for s in main_filtered}
         assert snapshot_full.id in main_ids
 

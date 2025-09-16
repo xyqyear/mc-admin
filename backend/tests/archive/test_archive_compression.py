@@ -93,15 +93,18 @@ class TestArchiveCompression:
             mock_instance = mock_manager.get_instance.return_value
             mock_instance.get_project_path.return_value = server_setup
             mock_instance.get_data_path.return_value = server_setup / "data"
+
             # Configure dynamic server name based on get_instance parameter
             def mock_get_instance(server_id):
                 mock_instance.get_name.return_value = server_id
                 return mock_instance
+
             mock_manager.get_instance.side_effect = mock_get_instance
-            
+
             # Configure async exists method
             async def mock_exists():
                 return True
+
             mock_instance.exists = mock_exists
 
             yield {
@@ -255,7 +258,10 @@ class TestArchiveCompression:
         )
 
         assert response.status_code == 404
-        assert ("not found" in response.json()["detail"] or "does not exist" in response.json()["detail"])
+        assert (
+            "not found" in response.json()["detail"]
+            or "does not exist" in response.json()["detail"]
+        )
 
     def test_create_server_archive_nonexistent_path(self, client, real_server_manager):
         """Test creating archive for nonexistent path within server."""
@@ -368,10 +374,11 @@ class TestArchiveCompression:
             mock_instance.get_project_path.return_value = server_path
             mock_instance.get_data_path.return_value = server_path / "data"
             mock_instance.get_name.return_value = "test_server"
-            
+
             # Configure async exists method
             async def mock_exists():
                 return True
+
             mock_instance.exists = mock_exists
 
             response = client.post(

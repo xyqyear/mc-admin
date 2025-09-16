@@ -73,6 +73,7 @@ async def test_api_db():
 
     # Patch get_async_session to use test database
     with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
+
         def get_test_session():
             return TestSessionLocal()
 
