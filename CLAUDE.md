@@ -12,6 +12,8 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Complete Minecraft server lifecycle management (create, start, stop, monitor, delete)
 - **Enterprise Snapshot System** - Full backup and restoration using Restic with global and server-specific snapshots
 - **Archive Management System** - Comprehensive archive file management with SHA256 verification, compression/decompression support, and server population from archives
+- **Cron Job System** - Advanced scheduled task management with APScheduler, database persistence, and execution monitoring
+- **Dynamic Configuration System** - Runtime configuration management with schema migration, validation, and memory caching
 - Real-time system and server resource monitoring (CPU, memory, disk, network via cgroup v2)
 - Docker Compose configuration management with Monaco editor and schema validation
 - JWT-based authentication with role-based access control (ADMIN/OWNER) + Master token system
@@ -37,16 +39,20 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Container Management**: Integrated Docker Compose management (not external dependency)
 - **Backup System**: Restic-based snapshot management with configurable repositories
 - **Archive System**: Complete archive lifecycle with compression/decompression, validation, and server population
+- **Cron System**: APScheduler-based job scheduling with database persistence and execution tracking
+- **Dynamic Configuration**: Runtime config management with schema migration and memory caching
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
-- **API Architecture**: Modular router-based design with separated concerns (operations, compose, files, resources, players)
+- **API Architecture**: Modular router-based design with separated concerns (operations, compose, files, resources, players, cron, config)
 - **Audit System**: FastAPI middleware with automatic operation logging to structured JSON files
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
                                                 ↔ Restic Backup System ↔ Backup Repository
                                                 ↔ Archive Management ↔ File System
+                                                ↔ Cron Job System ↔ APScheduler
+                                                ↔ Dynamic Config System ↔ Config Database
 
 ## Technology Stack Summary
 
@@ -59,6 +65,8 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Container Integration**: **Integrated** Minecraft Docker management module (app.minecraft)
 - **Backup System**: **Integrated** Restic snapshot management (app.snapshots)
 - **Archive System**: **Integrated** archive management with compression/decompression utilities (app.utils.compression, app.utils.decompression)
+- **Cron System**: **Integrated** APScheduler-based task scheduling with database persistence (app.cron)
+- **Dynamic Configuration**: **Integrated** runtime configuration management with schema migration (app.dynamic_config)
 - **Common Operations**: Shared file operations module (app.common.file_operations)
 - **WebSocket Support**: FastAPI WebSocket + Watchdog file monitoring for console streaming
 - **Package Management**: Poetry
@@ -97,9 +105,13 @@ mc-admin/
 │   │   ├── utils/           # Decompression and utility functions
 │   │   ├── snapshots/       # Restic backup integration
 │   │   ├── minecraft/       # Docker container lifecycle
+│   │   ├── cron/            # APScheduler-based cron job system
+│   │   ├── dynamic_config/  # Runtime configuration management
 │   │   └── routers/
 │   │       ├── archive.py        # Archive management API
 │   │       ├── snapshots.py      # Global snapshot management
+│   │       ├── cron.py           # Cron job management API
+│   │       ├── config.py         # Dynamic configuration API
 │   │       └── servers/          # Server-specific endpoints
 │   │           ├── compose.py    # Docker Compose management
 │   │           ├── create.py     # Server creation
@@ -219,63 +231,6 @@ Each component has dedicated development instructions:
 - **Progress Tracking**: Real-time feedback for upload and deployment operations
 - **File Compression**: Server file and directory compression with confirmation and result modals
 - **Enhanced Drag-and-Drop**: Format validation with specific error messages for unsupported file types
-
-## Testing Strategy & Guidelines
-
-### Test Categories
-
-**Safe Tests (Fast, No Docker Containers):**
-- `test_compose.py` - Pure unit tests for Pydantic models
-- `test_compose_file.py` - File operations and YAML parsing
-- `test_rcon_filtering.py` - Utility function testing
-- `test_file_operations.py` - Mocked API endpoint testing
-- `test_websocket_console.py` - WebSocket protocol testing with mocks
-- `test_snapshots_basic.py` - Snapshot model and basic functionality testing
-- `test_snapshots_endpoints.py` - Snapshot API endpoint testing with mocks
-- `test_decompression.py` - Archive decompression utility testing
-- `test_archive_operations.py` - Archive management API testing
-- `test_archive_sha256.py` - SHA256 calculation and validation testing
-- `test_common_file_operations.py` - Common file operations utility testing
-- `test_create_server.py` - Server creation logic testing
-- `test_archive_compression.py` - Archive compression utility testing
-- `test_time_restriction.py` - Time-based access restriction testing
-
-**Container/Integration Tests (Slow, Docker Required):**
-- `test_monitoring.py` - Real container monitoring (functions end with `_with_docker`)
-- `test_integration.py` - Full workflow testing (`test_integration_with_docker`)
-- `test_instance.py` - Container lifecycle testing (`*_with_docker` functions)
-- `test_snapshots_integrated.py` - Real Restic integration tests with containers
-- `test_populate_integration.py` - Real archive population testing with containers
-
-### Development Testing Guidelines
-
-**⚠️ CRITICAL: During development iteration, NEVER run Docker container tests to avoid timeouts:**
-
-```bash
-# ✅ Safe for development - Run these frequently
-poetry run pytest tests/test_compose.py tests/test_compose_file.py tests/test_rcon_filtering.py tests/test_file_operations.py tests/test_websocket_console.py tests/test_snapshots_basic.py tests/test_snapshots_endpoints.py tests/test_decompression.py tests/test_archive_operations.py tests/test_archive_sha256.py tests/test_common_file_operations.py tests/test_create_server.py tests/test_archive_compression.py tests/test_time_restriction.py tests/test_snapshots_integrated.py tests/test_populate_integration.py -v
-
-# ✅ Safe unit tests from test_instance.py (don't bring up containers)
-poetry run pytest tests/test_instance.py::test_disk_space_info_dataclass tests/test_instance.py::test_minecraft_instance -v
-
-# ❌ AVOID during development - These bring up Docker containers
-# poetry run pytest tests/test_monitoring.py  # All functions end with _with_docker
-# poetry run pytest tests/test_integration.py::test_integration_with_docker
-# poetry run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker
-
-# ✅ Skip container tests during development
-poetry run pytest tests/ -v -k "not _with_docker and not test_integration"
-
-# ✅ Test only specific changes (example for archive changes)
-poetry run pytest tests/test_archive_operations.py tests/test_decompression.py tests/test_create_server.py -v
-```
-
-**Docker Test Functions:**
-- All functions in `test_monitoring.py` end with `_with_docker`
-- `test_server_status_lifecycle_with_docker` in `test_instance.py`
-- `test_get_disk_space_info_with_docker` in `test_instance.py`
-- `test_integration_with_docker` in `test_integration.py`
-- All functions in `test_populate_integration.py` require Docker containers
 
 ## External Documentation
 

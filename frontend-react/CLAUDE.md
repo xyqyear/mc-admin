@@ -62,9 +62,20 @@ src/
 │   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard, ServerStateIcon
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
 │   ├── files/               # FileIcon, FileSnapshotActions
-│   ├── server/              # Server-specific components
+│   ├── server/              # Server-specific components (expanded modular architecture)
 │   │   ├── ServerOperationButtons.tsx   # Reusable server operation buttons
-│   │   └── ServerTerminal.tsx           # Server terminal component
+│   │   ├── ServerTerminal.tsx           # Server terminal component
+│   │   ├── ServerInfoCard.tsx           # Server details and configuration display
+│   │   ├── ServerStatsCard.tsx          # Server statistics overview
+│   │   ├── ServerPlayersCard.tsx        # Online player information display
+│   │   ├── ServerDiskUsageCard.tsx      # Disk usage visualization
+│   │   ├── ServerIOStatsCard.tsx        # I/O performance metrics
+│   │   ├── ServerResourcesCard.tsx      # CPU/memory resource monitoring
+│   │   ├── ServerAddressCard.tsx        # Server address configuration display
+│   │   ├── FileBreadcrumb.tsx           # File navigation breadcrumb component
+│   │   ├── DragDropOverlay.tsx          # Drag and drop file upload overlay
+│   │   ├── FileTable.tsx                # File listing table with operations
+│   │   └── FileToolbar.tsx              # File management toolbar with actions
 │   ├── debug/               # Development debug tools (dev-only)
 │   │   ├── DebugModal.tsx              # Debug information modal
 │   │   └── DebugTool.tsx               # Debug tool sidebar entry
@@ -147,7 +158,8 @@ src/
 │   └── fileLanguageDetector.ts # File type detection for editors
 ├── config/
 │   ├── fileEditingConfig.ts # File editing configuration and validation
-│   └── versionConfig.ts     # Version management and update configuration
+│   ├── versionConfig.ts     # Version management and update configuration
+│   └── serverAddressConfig.ts # Server address configuration for domain/subdomain mapping
 └── index.css                # Tailwind directives and base styles
 ```
 
@@ -417,6 +429,13 @@ const Home = React.lazy(() => import('@/pages/Home'))
 3. **Server Components**:
    - **`ServerOperationButtons`**: **NEW** - Reusable server operation buttons with intelligent state management
    - **`ServerTerminal`**: **NEW** - Dedicated terminal component for server console integration
+   - **`ServerInfoCard`**: **NEW** - Server details and configuration display with structured information
+   - **`ServerStatsCard`**: **NEW** - Server statistics overview with real-time data
+   - **`ServerPlayersCard`**: **NEW** - Online player information with formatted display
+   - **`ServerDiskUsageCard`**: **NEW** - Disk usage visualization with usage bars
+   - **`ServerIOStatsCard`**: **NEW** - I/O performance metrics with throughput display
+   - **`ServerResourcesCard`**: **NEW** - CPU/memory resource monitoring with live updates
+   - **`ServerAddressCard`**: **NEW** - Server address configuration with copy functionality
 
 4. **Modal Components**:
    - **`ServerOperationConfirmModal`**: **NEW** - Reusable confirmation modals for server operations
@@ -425,7 +444,13 @@ const Home = React.lazy(() => import('@/pages/Home'))
    - **`CompressionResultModal`**: **NEW** - Compression result display with download links
    - **`SHA256HelpModal`**: **NEW** - SHA256 hash calculation help and guidance
 
-5. **Development Tools**:
+5. **File Management Components**:
+   - **`FileTable`**: **NEW** - Advanced file listing table with sorting, pagination, and batch operations
+   - **`FileToolbar`**: **NEW** - Comprehensive file management toolbar with create, upload, and operation buttons
+   - **`FileBreadcrumb`**: **NEW** - Hierarchical navigation breadcrumb for file system traversal
+   - **`DragDropOverlay`**: **NEW** - Visual drag-and-drop overlay for intuitive file upload experience
+
+6. **Development Tools**:
    - **`DebugTool`**: **NEW** - Development-only debug tool sidebar entry
    - **`DebugModal`**: **NEW** - Debug information and development utilities modal
 
@@ -689,6 +714,47 @@ When adding new features, libraries, or changing architecture:
 16. **Development tools**: Add new debug utilities to development-only components
 17. **User experience**: Implement drag-and-drop validation and enhanced error messaging
 18. **Component reusability**: Extract reusable components for better maintainability
+19. **File management**: Use modular file components for consistent file operations
+20. **Server address configuration**: Update server address config for different environments
+
+## Enhanced File Management System
+
+**Modular File Components (`src/components/server/`):**
+- **FileTable**: Advanced file listing with sorting, filtering, and batch selection capabilities
+- **FileToolbar**: Comprehensive toolbar with create, upload, download, and management operations
+- **FileBreadcrumb**: Hierarchical navigation for intuitive directory traversal
+- **DragDropOverlay**: Visual feedback for drag-and-drop file upload operations
+
+**File Management Features:**
+- **Drag-and-Drop Upload**: Intuitive file upload with visual overlay and progress tracking
+- **Batch Operations**: Multi-file selection and operations (delete, download, compress)
+- **Real-time Updates**: Live file list updates and operation status feedback
+- **Advanced Navigation**: Breadcrumb navigation with clickable path segments
+- **File Type Recognition**: Icon-based file type visualization and appropriate actions
+- **Permission Management**: Context-aware file operations based on file types and permissions
+
+**User Experience Enhancements:**
+- **Visual Feedback**: Clear loading states, progress indicators, and operation confirmations
+- **Error Handling**: Comprehensive error messages with actionable recovery suggestions
+- **Responsive Design**: Optimized file management interface for different screen sizes
+- **Accessibility**: Keyboard navigation support and screen reader compatibility
+
+## Server Detail Page Enhancement
+
+**Modular Card Architecture:**
+- **ServerInfoCard**: Structured server configuration and details display
+- **ServerStatsCard**: Real-time server statistics with formatted metrics
+- **ServerResourcesCard**: Live CPU and memory monitoring with usage visualization
+- **ServerDiskUsageCard**: Disk space usage with progress bars and alerts
+- **ServerIOStatsCard**: I/O performance metrics with throughput indicators
+- **ServerPlayersCard**: Online player information with formatted display
+- **ServerAddressCard**: Configurable server addresses with copy functionality
+
+**Integration Benefits:**
+- **Consistent Layout**: Uniform card-based design across server management interface
+- **Real-time Data**: Live updates for all server metrics and status information
+- **Responsive Grid**: Adaptive layout that adjusts to different screen sizes
+- **Modular Updates**: Independent component updates without affecting other sections
 
 **IMPORTANT EDITING GUIDELINES:**
 
