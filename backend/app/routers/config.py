@@ -188,43 +188,6 @@ async def get_module_schema(
         )
 
 
-@router.get("/modules/{module_name}/metadata")
-async def get_module_metadata(
-    module_name: str, _: UserPublic = Depends(get_current_user)
-):
-    """
-    Get JSON Schema for a specific module.
-
-    This endpoint provides a standard JSON Schema representation of the
-    configuration module, which is useful for building dynamic configuration
-    UIs, data validation, form generation, and API documentation.
-
-    Args:
-        module_name: Name of the configuration module
-
-    Returns:
-        JSON Schema for the configuration module
-    """
-    try:
-        schema_info = config_manager.get_schema_info(module_name)
-        return {
-            "module_name": module_name,
-            "schema_version": schema_info["version"],
-            "json_schema": schema_info["json_schema"],
-        }
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Configuration module '{module_name}' not found",
-        )
-    except Exception as e:
-        logger.error(f"Failed to get metadata for module '{module_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve metadata: {str(e)}",
-        )
-
-
 @router.post("/modules/{module_name}/reset", response_model=ConfigUpdateResponse)
 async def reset_module_config(
     module_name: str, _: UserPublic = Depends(get_current_user)

@@ -294,43 +294,6 @@ class TestConfigAPI:
         assert "api_deprecated" in properties  # Still a valid field in schema
 
     @pytest.mark.asyncio
-    async def test_get_module_metadata(
-        self, test_api_db, api_client, authenticated_headers
-    ):
-        """Test GET /api/config/modules/{module_name}/metadata - Get detailed metadata."""
-        response = api_client.get(
-            "/api/config/modules/api_complex/metadata", headers=authenticated_headers
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["module_name"] == "api_complex"
-        assert "schema_version" in data
-        assert "json_schema" in data
-
-        # Check JSON Schema structure
-        json_schema = data["json_schema"]
-        assert json_schema["$schema"] == "http://json-schema.org/draft-07/schema#"
-        assert json_schema["title"] == "ApiComplexConfig"
-        assert json_schema["type"] == "object"
-        assert "properties" in json_schema
-        assert "definitions" in json_schema
-
-        # Check nested structure through JSON Schema
-        properties = json_schema["properties"]
-        assert "nested" in properties
-        assert properties["nested"]["$ref"] == "#/definitions/ApiNestedConfig"
-
-        definitions = json_schema["definitions"]
-        assert "ApiNestedConfig" in definitions
-        nested_schema = definitions["ApiNestedConfig"]
-        assert "nested_value" in nested_schema["properties"]
-        assert (
-            nested_schema["properties"]["nested_value"]["description"] == "Nested value"
-        )
-
-    @pytest.mark.asyncio
     async def test_reset_module_config(
         self, test_api_db, api_client, authenticated_headers
     ):
@@ -469,9 +432,6 @@ class TestConfigAPI:
         assert response.status_code == 401  # Unauthorized
 
         response = api_client.get("/api/config/modules/api_test/schema")
-        assert response.status_code == 401  # Unauthorized
-
-        response = api_client.get("/api/config/modules/api_test/metadata")
         assert response.status_code == 401  # Unauthorized
 
         response = api_client.get("/api/config/health")
