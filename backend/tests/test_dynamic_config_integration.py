@@ -124,20 +124,20 @@ async def test_config_manager(test_db_engine):
         expire_on_commit=False,
     )
 
-    # Replace the get_db_session context manager
-    import app.dynamic_config.manager as manager_module
+    # Patch get_async_session to use test database
+    from unittest.mock import patch
 
-    original_session_local = manager_module.AsyncSessionLocal
-    manager_module.AsyncSessionLocal = TestSessionLocal
+    with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
+        def get_test_session():
+            return TestSessionLocal()
 
-    # Register test configurations
-    manager.register_config("simple", SimpleTestConfig)
-    manager.register_config("complex", ComplexTestConfig)
+        mock_get_session.side_effect = get_test_session
 
-    yield manager
+        # Register test configurations
+        manager.register_config("simple", SimpleTestConfig)
+        manager.register_config("complex", ComplexTestConfig)
 
-    # Restore original session
-    manager_module.AsyncSessionLocal = original_session_local
+        yield manager
 
 
 class TestConfigManagerIntegration:

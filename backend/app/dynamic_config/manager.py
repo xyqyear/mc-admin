@@ -3,26 +3,18 @@ Dynamic configuration manager with memory caching and database synchronization.
 """
 
 import logging
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Type
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.database import AsyncSessionLocal
+from ..db.database import get_async_session
 from ..models import DynamicConfig
 from .migration import ConfigMigrator
 from .schemas import BaseConfigSchema
 
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def get_db_session():
-    """Context manager for database sessions."""
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 class ConfigManager:
@@ -95,7 +87,7 @@ class ConfigManager:
 
         logger.info(f"Initializing {len(self._schemas)} configuration modules...")
 
-        async with get_db_session() as session:
+        async with get_async_session() as session:
             # Load all existing configurations from database
             result = await session.execute(select(DynamicConfig))
             existing_configs = {
@@ -235,7 +227,7 @@ class ConfigManager:
             )
 
         # Update database
-        async with get_db_session() as session:
+        async with get_async_session() as session:
             result = await session.execute(
                 select(DynamicConfig).where(DynamicConfig.module_name == module_name)
             )

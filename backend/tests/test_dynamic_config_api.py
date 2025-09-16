@@ -62,11 +62,7 @@ async def test_api_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Replace the database session in manager module
-    import app.dynamic_config.manager as manager_module
-
-    original_session_local = manager_module.AsyncSessionLocal
-
+    # Replace the get_async_session function in manager module
     TestSessionLocal = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
@@ -74,31 +70,36 @@ async def test_api_db():
         autoflush=False,
         expire_on_commit=False,
     )
-    manager_module.AsyncSessionLocal = TestSessionLocal
 
-    # Create and setup test configuration manager
-    test_manager = ConfigManager()
-    test_manager.register_config("api_test", ApiTestConfig)
-    test_manager.register_config("api_complex", ApiComplexConfig)
+    # Patch get_async_session to use test database
+    with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
+        def get_test_session():
+            return TestSessionLocal()
 
-    # Replace global config manager
-    import app.dynamic_config as config_module
-    import app.routers.config as router_module
+        mock_get_session.side_effect = get_test_session
 
-    original_manager = config_module.config_manager
-    original_router_manager = router_module.config_manager
-    config_module.config_manager = test_manager
-    router_module.config_manager = test_manager
+        # Create and setup test configuration manager
+        test_manager = ConfigManager()
+        test_manager.register_config("api_test", ApiTestConfig)
+        test_manager.register_config("api_complex", ApiComplexConfig)
 
-    # Initialize configurations
-    await test_manager.initialize_all_configs()
+        # Replace global config manager
+        import app.dynamic_config as config_module
+        import app.routers.config as router_module
 
-    yield test_manager
+        original_manager = config_module.config_manager
+        original_router_manager = router_module.config_manager
+        config_module.config_manager = test_manager
+        router_module.config_manager = test_manager
 
-    # Cleanup
-    config_module.config_manager = original_manager
-    router_module.config_manager = original_router_manager
-    manager_module.AsyncSessionLocal = original_session_local
+        # Initialize configurations
+        await test_manager.initialize_all_configs()
+
+        yield test_manager
+
+        # Cleanup
+        config_module.config_manager = original_manager
+        router_module.config_manager = original_router_manager
     await engine.dispose()
     Path(temp_db.name).unlink(missing_ok=True)
 
