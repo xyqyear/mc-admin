@@ -451,6 +451,30 @@ class TestConfigAPI:
         )
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_unauthenticated_access(self, test_api_db, api_client):
+        """Test that unauthenticated access is denied."""
+        response = api_client.get("/api/config/modules")
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.get("/api/config/modules/api_test")
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.put("/api/config/modules/api_test", json={})
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.post("/api/config/modules/api_test/reset")
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.get("/api/config/modules/api_test/schema")
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.get("/api/config/modules/api_test/metadata")
+        assert response.status_code == 401  # Unauthorized
+
+        response = api_client.get("/api/config/health")
+        assert response.status_code == 401  # Unauthorized
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

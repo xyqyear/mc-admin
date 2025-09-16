@@ -8,6 +8,8 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.models import UserPublic
+
 from ..dependencies import get_current_user
 from ..dynamic_config.manager import config_manager
 
@@ -65,7 +67,7 @@ class SuccessResponse(BaseModel):
 
 
 @router.get("/modules", response_model=ConfigModuleList)
-async def list_all_modules():
+async def list_all_modules(_: UserPublic = Depends(get_current_user)):
     """
     List all registered configuration modules with their schema information.
 
@@ -87,7 +89,9 @@ async def list_all_modules():
 
 
 @router.get("/modules/{module_name}", response_model=ConfigData)
-async def get_module_config(module_name: str):
+async def get_module_config(
+    module_name: str, _: UserPublic = Depends(get_current_user)
+):
     """
     Get configuration data for a specific module.
 
@@ -120,7 +124,11 @@ async def get_module_config(module_name: str):
 
 
 @router.put("/modules/{module_name}", response_model=ConfigUpdateResponse)
-async def update_module_config(module_name: str, request: ConfigUpdateRequest):
+async def update_module_config(
+    module_name: str,
+    request: ConfigUpdateRequest,
+    _: UserPublic = Depends(get_current_user),
+):
     """
     Update configuration for a specific module.
 
@@ -152,7 +160,9 @@ async def update_module_config(module_name: str, request: ConfigUpdateRequest):
 
 
 @router.get("/modules/{module_name}/schema", response_model=ConfigModuleInfo)
-async def get_module_schema(module_name: str):
+async def get_module_schema(
+    module_name: str, _: UserPublic = Depends(get_current_user)
+):
     """
     Get schema information for a specific module.
 
@@ -179,7 +189,9 @@ async def get_module_schema(module_name: str):
 
 
 @router.get("/modules/{module_name}/metadata")
-async def get_module_metadata(module_name: str):
+async def get_module_metadata(
+    module_name: str, _: UserPublic = Depends(get_current_user)
+):
     """
     Get JSON Schema for a specific module.
 
@@ -214,7 +226,9 @@ async def get_module_metadata(module_name: str):
 
 
 @router.post("/modules/{module_name}/reset", response_model=ConfigUpdateResponse)
-async def reset_module_config(module_name: str):
+async def reset_module_config(
+    module_name: str, _: UserPublic = Depends(get_current_user)
+):
     """
     Reset configuration for a module to default values.
 
@@ -246,7 +260,7 @@ async def reset_module_config(module_name: str):
 
 
 @router.get("/health", response_model=SuccessResponse)
-async def config_health_check():
+async def config_health_check(_: UserPublic = Depends(get_current_user)):
     """
     Health check endpoint for the dynamic configuration system.
 
