@@ -323,6 +323,40 @@ class CronManager:
                 for ex in executions
             ]
 
+    async def get_next_run_time(self, cronjob_id: str) -> Optional[datetime]:
+        """
+        Get the next scheduled run time for a cron job.
+
+        Args:
+            cronjob_id: CronJob ID
+
+        Returns:
+            Next run time as datetime or None if job not found/not running
+
+        Raises:
+            ValueError: If cron job not found or not in active state
+        """
+        async with get_async_session() as session:
+            # Check if cron job exists and get its status
+            result = await session.execute(
+                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
+            )
+            cronjob_row = result.scalar_one_or_none()
+
+            if not cronjob_row:
+                raise ValueError(f"CronJob {cronjob_id} not found")
+
+            # Only return next run time if job is active
+            if cronjob_row.status != CronJobStatus.ACTIVE:
+                raise ValueError(f"CronJob {cronjob_id} is not in active state")
+
+        # Get the job from scheduler
+        scheduler_job = self.scheduler.get_job(cronjob_id)
+        if scheduler_job is None:
+            raise ValueError(f"CronJob {cronjob_id} not found in scheduler")
+
+        return scheduler_job.next_run_time
+
     async def _submit_cronjob_to_scheduler(
         self,
         cronjob_id: str,

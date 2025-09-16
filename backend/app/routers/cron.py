@@ -51,6 +51,13 @@ class CronJobExecutionResponse(BaseModel):
     messages: List[str]
 
 
+class CronJobNextRunTimeResponse(BaseModel):
+    """Response model for cron job next run time."""
+
+    cronjob_id: str
+    next_run_time: str
+
+
 class RegisteredCronJobResponse(BaseModel):
     """Response model for registered cron job information."""
 
@@ -222,9 +229,7 @@ async def get_cronjob_executions(
                 started_at=ex.started_at.isoformat() if ex.started_at else None,
                 ended_at=ex.ended_at.isoformat() if ex.ended_at else None,
                 duration_ms=ex.duration_ms,
-                status=ex.status.value
-                if hasattr(ex.status, "value")
-                else ex.status,
+                status=ex.status.value if hasattr(ex.status, "value") else ex.status,
                 messages=ex.messages,
             )
             for ex in executions
@@ -234,3 +239,34 @@ async def get_cronjob_executions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get cron job executions: {str(e)}",
         )
+
+
+@router.get("/{cronjob_id}/next-run-time", response_model=CronJobNextRunTimeResponse)
+async def get_cronjob_next_run_time(
+    cronjob_id: str, _: UserPublic = Depends(get_current_user)
+):
+    """
+    Get the next scheduled run time for a cron job.
+
+    Returns the next run time for an active cron job. Only active cron jobs
+    have scheduled run times.
+    """
+    try:
+        next_run_time = await cron_manager.get_next_run_time(cronjob_id)
+    except ValueError as e:
+        # Handle cases where job not found or not active
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get next run time: {str(e)}",
+        )
+    if next_run_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to determine next run time",
+        )
+
+    return CronJobNextRunTimeResponse(
+        cronjob_id=cronjob_id, next_run_time=next_run_time.isoformat()
+    )
