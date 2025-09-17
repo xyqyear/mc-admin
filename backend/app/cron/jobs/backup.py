@@ -1,6 +1,8 @@
+import time
 from pathlib import Path
 from typing import Annotated, List, Optional, cast
 
+import requests
 from pydantic import Field, field_validator, model_validator
 
 from ...config import settings
@@ -56,6 +58,11 @@ class BackupJobParams(BaseConfigSchema):
         bool, Field(description="是否在 forget 后运行 prune (默认 True)")
     ] = True
 
+    # Uptime Kuma integration
+    uptimekuma_url: Annotated[
+        Optional[str], Field(description="Uptime Kuma 推送监控 URL (可选)")
+    ] = None
+
     @model_validator(mode="after")
     def validate_forget_params(self):
         """Validate that if forget is enabled, at least one retention policy is specified"""
@@ -102,6 +109,47 @@ def _get_restic_manager() -> ResticManager:
     )
 
 
+async def _send_uptimekuma_notification(
+    context: ExecutionContext,
+    uptimekuma_url: str,
+    ok: bool,
+    msg: str,
+    ping: float
+):
+    """
+    Send notification to Uptime Kuma push monitor
+
+    Args:
+        context: Execution context for logging
+        uptimekuma_url: Uptime Kuma push monitor URL
+        ok: Whether the backup was successful
+        msg: Message (OK for success, error message for failure)
+        ping: Running time in seconds
+    """
+    try:
+        context.log(f"发送 Uptime Kuma 通知到: {uptimekuma_url}")
+
+        # Uptime Kuma push monitor parameters
+        params = {
+            "status": "up" if ok else "down",
+            "msg": msg,
+            "ping": int(ping * 1000)  # Convert to milliseconds
+        }
+
+        # Send GET request to Uptime Kuma
+        response = requests.get(uptimekuma_url, params=params, timeout=30)
+
+        if response.status_code == 200:
+            context.log(f"Uptime Kuma 通知发送成功 (状态码: {response.status_code})")
+        else:
+            context.log(f"Uptime Kuma 通知响应状态码非 200: {response.status_code}")
+
+    except requests.RequestException as e:
+        context.log(f"发送 Uptime Kuma 通知失败: {str(e)}")
+    except Exception as e:
+        context.log(f"Uptime Kuma 通知时发生未知错误: {str(e)}")
+
+
 def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
     """
     Resolve the actual backup path based on server_id and path parameters
@@ -141,6 +189,7 @@ async def backup_cronjob(context: ExecutionContext):
     clean up old snapshots based on retention policies.
     """
     params = cast(BackupJobParams, context.params)
+    start_time = time.time()
 
     try:
         # Get restic manager
@@ -205,7 +254,21 @@ async def backup_cronjob(context: ExecutionContext):
 
         context.log(f"备份任务完成: {backup_desc} -> 快照 {snapshot.short_id}")
 
+        # Send Uptime Kuma notification for success if configured
+        if params.uptimekuma_url and params.uptimekuma_url.strip():
+            running_time = time.time() - start_time
+            await _send_uptimekuma_notification(
+                context, params.uptimekuma_url, True, "OK", running_time
+            )
+
     except Exception as e:
         error_msg = f"备份任务失败: {str(e)}"
-        context.log(error_msg)
-        raise RuntimeError(error_msg)
+
+        # Send Uptime Kuma notification for failure if configured
+        if params.uptimekuma_url and params.uptimekuma_url.strip():
+            running_time = time.time() - start_time
+            await _send_uptimekuma_notification(
+                context, params.uptimekuma_url, False, error_msg, running_time
+            )
+
+        raise
