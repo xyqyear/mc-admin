@@ -198,6 +198,15 @@ export const queryKeys = {
     content: (path: string) => [...queryKeys.archive.all, "content", path] as const,
     sha256: (path: string) => [...queryKeys.archive.all, "sha256", path] as const,
   },
+
+  // 动态配置管理
+  config: {
+    all: ["config"] as const,
+    modules: () => [...queryKeys.config.all, "modules"] as const,
+    moduleConfig: (moduleName: string) => [...queryKeys.config.all, "module", moduleName] as const,
+    moduleSchema: (moduleName: string) => [...queryKeys.config.all, "schema", moduleName] as const,
+    health: () => [...queryKeys.config.all, "health"] as const,
+  },
 } as const;
 
 export default api;

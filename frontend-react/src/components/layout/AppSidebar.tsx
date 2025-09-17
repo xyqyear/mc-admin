@@ -132,6 +132,11 @@ const AppSidebar: React.FC = () => {
       icon: <FileZipOutlined />,
       path: '/archives',
     },
+    {
+      title: '动态配置',
+      icon: <SettingOutlined />,
+      path: '/config',
+    },
   ]
 
   const handleMenuClick = (path: string) => {
