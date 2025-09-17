@@ -89,11 +89,6 @@ class TestBaseConfigSchema:
                 default=["a", "b"], description="Simple list"
             )
 
-            # default_factory with BaseModel
-            nested_factory: NestedTestConfig = Field(
-                default_factory=NestedTestConfig, description="Nested from factory"
-            )
-
             # Direct BaseModel default
             nested_direct: NestedTestConfig = Field(
                 default=NestedTestConfig(nested_name="direct", nested_value=200),
@@ -106,12 +101,6 @@ class TestBaseConfigSchema:
         # Test simple defaults work
         assert properties["simple_str"]["default"] == "test"
         assert properties["simple_list"]["default"] == ["a", "b"]
-
-        # Test BaseModel default_factory produces dict
-        nested_factory_default = properties["nested_factory"]["default"]
-        assert isinstance(nested_factory_default, dict)
-        assert nested_factory_default["nested_name"] == "nested"
-        assert nested_factory_default["nested_value"] == 99
 
         # Test direct BaseModel default produces dict
         nested_direct_default = properties["nested_direct"]["default"]

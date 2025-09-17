@@ -3,7 +3,7 @@ Tests for JSON Schema generation functionality in BaseConfigSchema.
 """
 
 import json
-from typing import List, Literal, Optional, Union
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import Field
 
@@ -64,19 +64,17 @@ class ComprehensiveTestConfig(BaseConfigSchema):
     )
 
     # List fields
-    string_list: List[str] = Field(
-        default_factory=list, description="A list of strings"
-    )
+    string_list: List[str] = Field(default=[], description="A list of strings")
     int_list: List[int] = Field(default=[1, 2, 3], description="A list of integers")
 
     # Nested object
     nested_config: NestedConfig = Field(
-        default_factory=NestedConfig, description="A nested configuration object"
+        default=NestedConfig(), description="A nested configuration object"
     )
 
     # List of nested objects
     config_list: List[ListItemConfig] = Field(
-        default_factory=list, description="A list of configuration objects"
+        default=[], description="A list of configuration objects"
     )
 
     # Complex nested union
@@ -347,13 +345,13 @@ class TestJSONSchemaGeneration:
                 default="aws", description="Provider type"
             )
             params: ProviderParams = Field(
-                default_factory=ProviderParams, description="Provider parameters"
+                default=ProviderParams(), description="Provider parameters"
             )
 
         class ComplexConfig(BaseConfigSchema):
             enabled: bool = Field(default=False, description="Whether enabled")
             providers: List[ProviderConfig] = Field(
-                default_factory=list, description="List of providers"
+                default=[], description="List of providers"
             )
             fallback: Union[ProviderConfig, str] = Field(
                 default="none", description="Fallback configuration"
@@ -406,28 +404,29 @@ class TestJSONSchemaGeneration:
         """Test discriminated union schema generation with proper discriminator field."""
 
         class DatabaseConfig(BaseConfigSchema):
-            type: Literal["database"] = Field(
-                default="database", description="Database type"
+            type: Annotated[Literal["database"], Field(description="Database type")] = (
+                "database"
             )
-            host: str = Field(default="localhost", description="Database host")
-            port: int = Field(default=5432, description="Database port")
+            host: Annotated[str, Field(description="Database host")] = "localhost"
+            port: Annotated[int, Field(description="Database port")] = 5432
 
         class FileConfig(BaseConfigSchema):
-            type: Literal["file"] = Field(default="file", description="File type")
-            path: str = Field(default="/tmp/data", description="File path")
-            format: Literal["json", "yaml"] = Field(
-                default="json", description="File format"
-            )
+            type: Annotated[Literal["file"], Field(description="File type")] = "file"
+            path: Annotated[str, Field(description="File path")] = "/tmp/data"
+            format: Annotated[
+                Literal["json", "yaml"], Field(description="File format")
+            ] = "json"
 
         class CacheConfig(BaseConfigSchema):
-            type: Literal["cache"] = Field(default="cache", description="Cache type")
-            ttl: int = Field(default=3600, description="Time to live")
+            type: Annotated[Literal["cache"], Field(description="Cache type")] = "cache"
+            ttl: Annotated[int, Field(description="Time to live")] = 3600
 
         class ConfigWithDiscriminatedUnion(BaseConfigSchema):
-            name: str = Field(default="config", description="Configuration name")
-            storage: Union[DatabaseConfig, FileConfig, CacheConfig] = Field(
-                default_factory=DatabaseConfig, description="Storage configuration"
-            )
+            name: Annotated[str, Field(description="Configuration name")] = "config"
+            storage: Annotated[
+                Union[DatabaseConfig, FileConfig, CacheConfig],
+                Field(description="Storage configuration", discriminator="type"),
+            ] = DatabaseConfig()
 
         schema = ConfigWithDiscriminatedUnion.get_json_schema()
 
@@ -510,6 +509,99 @@ class TestJSONSchemaGeneration:
         assert "oneOf" not in optional_schema
         assert "discriminator" not in optional_schema
         assert optional_schema["type"] == "string"
+
+    def test_annotated_list_with_discriminated_union_schema(self):
+        """Test Annotated list with discriminated union items."""
+
+        class ItemA(BaseConfigSchema):
+            type: Annotated[Literal["item_a"], Field(description="Item type A")] = (
+                "item_a"
+            )
+            value_a: Annotated[str, Field(description="Value A")] = "default_a"
+
+        class ItemB(BaseConfigSchema):
+            type: Annotated[Literal["item_b"], Field(description="Item type B")] = (
+                "item_b"
+            )
+            value_b: Annotated[int, Field(description="Value B")] = 42
+
+        class ConfigWithAnnotatedList(BaseConfigSchema):
+            items: Annotated[
+                list[Annotated[Union[ItemA, ItemB], Field(discriminator="type")]],
+                Field(description="List of discriminated items"),
+            ] = []
+
+        schema = ConfigWithAnnotatedList.get_json_schema()
+
+        # Check basic structure
+        assert schema["title"] == "ConfigWithAnnotatedList"
+        assert "properties" in schema
+        assert "definitions" in schema
+
+        # Check items array
+        properties = schema["properties"]
+        items_schema = properties["items"]
+        assert items_schema["type"] == "array"
+        assert "items" in items_schema
+
+        # Check array items have discriminated union
+        array_items_schema = items_schema["items"]
+        assert "oneOf" in array_items_schema
+        assert "discriminator" in array_items_schema
+        assert array_items_schema["discriminator"]["propertyName"] == "type"
+
+        # Check definitions
+        definitions = schema["definitions"]
+        assert "ItemA" in definitions
+        assert "ItemB" in definitions
+
+    def test_dns_config_style_schema(self):
+        """Test DNS-style configuration schema generation."""
+
+        class ProviderA(BaseConfigSchema):
+            type: Annotated[Literal["provider_a"], Field(description="Provider A")] = (
+                "provider_a"
+            )
+            api_key: Annotated[str, Field(description="API key")] = "key"
+
+        class ProviderB(BaseConfigSchema):
+            type: Annotated[Literal["provider_b"], Field(description="Provider B")] = (
+                "provider_b"
+            )
+            token: Annotated[str, Field(description="Token")] = "token"
+
+        class DNSStyleConfig(BaseConfigSchema):
+            enabled: Annotated[bool, Field(description="Enable DNS")] = True
+            provider: Annotated[
+                ProviderA | ProviderB,
+                Field(description="DNS Provider", discriminator="type"),
+            ] = ProviderA()
+            servers: Annotated[
+                list[
+                    Annotated[Union[ProviderA, ProviderB], Field(discriminator="type")]
+                ],
+                Field(description="List of DNS servers"),
+            ] = []
+
+        schema = DNSStyleConfig.get_json_schema()
+
+        # Check main structure
+        assert schema["title"] == "DNSStyleConfig"
+        properties = schema["properties"]
+
+        # Check provider field has discriminator
+        provider_schema = properties["provider"]
+        assert "oneOf" in provider_schema
+        assert "discriminator" in provider_schema
+        assert provider_schema["discriminator"]["propertyName"] == "type"
+
+        # Check servers list has discriminated union items
+        servers_schema = properties["servers"]
+        assert servers_schema["type"] == "array"
+        array_items = servers_schema["items"]
+        assert "oneOf" in array_items
+        assert "discriminator" in array_items
+        assert array_items["discriminator"]["propertyName"] == "type"
 
 
 if __name__ == "__main__":

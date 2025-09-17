@@ -48,7 +48,7 @@ class ComplexTestConfig(BaseConfigSchema):
 
     # Nested configuration
     nested: NestedTestConfig = Field(
-        default_factory=NestedTestConfig, description="Nested configuration"
+        default=NestedTestConfig(), description="Nested configuration"
     )
 
     # List of nested configurations

@@ -43,7 +43,7 @@ class ApiComplexConfig(BaseConfigSchema):
 
     main_field: str = Field(default="api_main", description="Main field")
     nested: ApiNestedConfig = Field(
-        default_factory=ApiNestedConfig, description="Nested configuration"
+        default=ApiNestedConfig(), description="Nested configuration"
     )
     tags: list[str] = Field(default=["api", "test"], description="List of tags")
 
