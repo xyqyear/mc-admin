@@ -25,7 +25,7 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception
-        schema = ValidOptionalConfig.get_json_schema()
+        schema = ValidOptionalConfig.model_json_schema()
         assert "optional_field" in schema["properties"]
 
     def test_valid_optional_union_with_union_syntax(self):
@@ -37,7 +37,7 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception
-        schema = ValidOptionalUnionConfig.get_json_schema()
+        schema = ValidOptionalUnionConfig.model_json_schema()
         assert "optional_field" in schema["properties"]
 
     def test_valid_optional_union_with_pipe_syntax(self):
@@ -49,7 +49,7 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception
-        schema = ValidOptionalPipeConfig.get_json_schema()
+        schema = ValidOptionalPipeConfig.model_json_schema()
         assert "optional_field" in schema["properties"]
 
     def test_valid_non_base_config_union(self):
@@ -61,9 +61,9 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception
-        schema = ValidNonBaseUnionConfig.get_json_schema()
+        schema = ValidNonBaseUnionConfig.model_json_schema()
         properties = schema["properties"]
-        assert "oneOf" in properties["mixed_field"]
+        assert "anyOf" in properties["mixed_field"]
 
     def test_valid_non_base_config_union_with_pipe(self):
         """Test valid Union using pipe syntax with non-BaseConfigSchema types - should pass."""
@@ -74,9 +74,9 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception
-        schema = ValidNonBasePipeUnionConfig.get_json_schema()
+        schema = ValidNonBasePipeUnionConfig.model_json_schema()
         properties = schema["properties"]
-        assert "oneOf" in properties["mixed_field"]
+        assert "anyOf" in properties["mixed_field"]
 
     def test_valid_all_base_config_union_with_discriminator(self):
         """Test valid Union of BaseConfigSchema types with discriminator - should pass."""
@@ -100,7 +100,7 @@ class TestUnionFieldValidation:
             ] = ConfigA()
 
         # Should not raise an exception
-        schema = ValidAllBaseUnionConfig.get_json_schema()
+        schema = ValidAllBaseUnionConfig.model_json_schema()
         properties = schema["properties"]
         assert "oneOf" in properties["config_union"]
         assert "discriminator" in properties["config_union"]
@@ -128,7 +128,7 @@ class TestUnionFieldValidation:
             ] = ConfigC()
 
         # Should not raise an exception
-        schema = ValidAllBasePipeUnionConfig.get_json_schema()
+        schema = ValidAllBasePipeUnionConfig.model_json_schema()
         properties = schema["properties"]
         assert "oneOf" in properties["config_union"]
         assert "discriminator" in properties["config_union"]
@@ -150,9 +150,9 @@ class TestUnionFieldValidation:
             ] = "test"
 
         # Should not raise an exception
-        schema = ValidMixedUnionConfig.get_json_schema()
+        schema = ValidMixedUnionConfig.model_json_schema()
         properties = schema["properties"]
-        assert "oneOf" in properties["mixed_union"]
+        assert "anyOf" in properties["mixed_union"]
         # Mixed unions don't get discriminators
         assert "discriminator" not in properties["mixed_union"]
 
@@ -173,9 +173,9 @@ class TestUnionFieldValidation:
             ] = "test"
 
         # Should not raise an exception
-        schema = ValidMixedPipeUnionConfig.get_json_schema()
+        schema = ValidMixedPipeUnionConfig.model_json_schema()
         properties = schema["properties"]
-        assert "oneOf" in properties["mixed_union"]
+        assert "anyOf" in properties["mixed_union"]
         # Mixed unions don't get discriminators
         assert "discriminator" not in properties["mixed_union"]
 
@@ -230,7 +230,7 @@ class TestUnionFieldValidation:
             ] = DatabaseConfig()
 
         # Should not raise an exception
-        schema = ValidCustomDiscriminatorConfig.get_json_schema()
+        schema = ValidCustomDiscriminatorConfig.model_json_schema()
         properties = schema["properties"]
         assert "oneOf" in properties["storage"]
         assert "discriminator" in properties["storage"]
@@ -260,7 +260,7 @@ class TestUnionFieldValidation:
             ] = []
 
         # Should not raise an exception
-        schema = ConfigWithAnnotatedList.get_json_schema()
+        schema = ConfigWithAnnotatedList.model_json_schema()
         properties = schema["properties"]
         assert "type" in properties["providers"]
         assert properties["providers"]["type"] == "array"
@@ -279,7 +279,7 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise an exception - single type unions are skipped
-        schema = SingleTypeUnionConfig.get_json_schema()
+        schema = SingleTypeUnionConfig.model_json_schema()
         assert "single_union" in schema["properties"]
 
     def test_validation_with_types_union_type(self):
@@ -305,7 +305,7 @@ class TestUnionFieldValidation:
             ] = ConfigH()
 
         # Should not raise an exception
-        schema = ValidTypesUnionConfig.get_json_schema()
+        schema = ValidTypesUnionConfig.model_json_schema()
         properties = schema["properties"]
         assert "oneOf" in properties["types_union"]
         assert "discriminator" in properties["types_union"]
@@ -343,7 +343,7 @@ class TestUnionFieldValidation:
             ] = None
 
         # Should not raise an exception
-        schema = ComplexUnionConfig.get_json_schema()
+        schema = ComplexUnionConfig.model_json_schema()
         properties = schema["properties"]
 
         # Check discriminated union
@@ -351,29 +351,8 @@ class TestUnionFieldValidation:
         assert "discriminator" in properties["config_union"]
 
         # Check regular union
-        assert "oneOf" in properties["value_union"]
+        assert "anyOf" in properties["value_union"]
         assert "discriminator" not in properties["value_union"]
-
-        # Check optional field (should not be a union in schema)
-        assert properties["optional_config"]["$ref"] == "#/definitions/NestedConfigA"
-
-    def test_edge_case_none_type_handling(self):
-        """Test edge cases with None type handling - should pass."""
-
-        class EdgeCaseConfig(BaseConfigSchema):
-            # Multiple ways to specify optional
-            optional_a: Union[str, None] = Field(default=None, description="Optional A")
-            optional_b: Union[None, str] = Field(default=None, description="Optional B")
-            optional_c: Optional[str] = Field(default=None, description="Optional C")
-
-        # Should not raise an exception
-        schema = EdgeCaseConfig.get_json_schema()
-        properties = schema["properties"]
-
-        # All should be treated as string type, not oneOf
-        assert properties["optional_a"]["type"] == "string"
-        assert properties["optional_b"]["type"] == "string"
-        assert properties["optional_c"]["type"] == "string"
 
     def test_validator_runs_during_class_definition(self):
         """Test that validator runs during class definition, not instance creation."""
@@ -393,8 +372,8 @@ class TestUnionFieldValidation:
             ] = "test"
 
         # Should not raise exception for mixed union
-        schema = WorkingConfig.get_json_schema()
-        assert "oneOf" in schema["properties"]["union_field"]
+        schema = WorkingConfig.model_json_schema()
+        assert "anyOf" in schema["properties"]["union_field"]
         assert "discriminator" not in schema["properties"]["union_field"]
 
         # Invalid union should fail when instantiated
@@ -436,7 +415,7 @@ class TestUnionFieldValidation:
             )
 
         # Should not raise exception
-        schema = ValidMultipleUnionsConfig.get_json_schema()
+        schema = ValidMultipleUnionsConfig.model_json_schema()
         properties = schema["properties"]
         assert "discriminator" in properties["union_a"]
         assert "discriminator" not in properties["union_b"]

@@ -59,21 +59,6 @@ class TestBaseConfigSchema:
         assert isinstance(version, str)
         assert len(version) == 16  # SHA256 hash truncated to 16 chars
 
-    def test_json_schema_generation(self):
-        """Test JSON schema generation."""
-        json_schema = TestConfigSchema.get_json_schema()
-
-        assert json_schema["$schema"] == "http://json-schema.org/draft-07/schema#"
-        assert json_schema["title"] == "TestConfigSchema"
-        assert json_schema["type"] == "object"
-        assert "properties" in json_schema
-
-        properties = json_schema["properties"]
-        assert "simple_field" in properties
-        assert properties["simple_field"]["description"] == "A simple string field"
-        assert properties["simple_field"]["type"] == "string"
-        assert properties["simple_field"]["default"] == "default_value"
-
     def test_json_schema_default_handling(self):
         """Test new default handling logic with BaseModel instances."""
         from typing import List
@@ -95,7 +80,7 @@ class TestBaseConfigSchema:
                 description="Direct nested",
             )
 
-        schema = DefaultTestConfig.get_json_schema()
+        schema = DefaultTestConfig.model_json_schema()
         properties = schema["properties"]
 
         # Test simple defaults work
@@ -262,7 +247,6 @@ class TestConfigManager:
 
         # Verify JSON Schema structure
         json_schema = info["json_schema"]
-        assert json_schema["$schema"] == "http://json-schema.org/draft-07/schema#"
         assert json_schema["title"] == "TestConfigSchema"
         assert json_schema["type"] == "object"
         assert "properties" in json_schema

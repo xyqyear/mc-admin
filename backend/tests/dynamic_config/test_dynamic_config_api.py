@@ -151,7 +151,6 @@ class TestConfigAPI:
 
         # Verify JSON Schema structure
         json_schema = api_test_module["json_schema"]
-        assert json_schema["$schema"] == "http://json-schema.org/draft-07/schema#"
         assert json_schema["title"] == "ApiTestConfig"
         assert json_schema["type"] == "object"
         assert "properties" in json_schema
@@ -282,7 +281,6 @@ class TestConfigAPI:
 
         # Check JSON Schema structure
         json_schema = data["json_schema"]
-        assert json_schema["$schema"] == "http://json-schema.org/draft-07/schema#"
         assert json_schema["title"] == "ApiTestConfig"
         assert json_schema["type"] == "object"
         assert "properties" in json_schema

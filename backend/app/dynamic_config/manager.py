@@ -317,7 +317,7 @@ class ConfigManager:
             "module_name": module_name,
             "schema_class": schema_cls.__name__,
             "version": schema_cls.get_schema_version(),
-            "json_schema": schema_cls.get_json_schema(),
+            "json_schema": schema_cls.model_json_schema(),
         }
 
     def get_all_schema_info(self) -> Dict[str, Dict[str, Any]]:
