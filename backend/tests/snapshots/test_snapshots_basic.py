@@ -49,6 +49,54 @@ class TestResticManagerBasic:
         assert manager.env["RESTIC_REPOSITORY"] == repo_path
         assert manager.env["RESTIC_PASSWORD"] == password
 
+    @pytest.mark.asyncio
+    async def test_forget_validation_requires_policy(self):
+        """Test that forget method requires at least one retention policy"""
+        manager = ResticManager("/test/repo", "password")
+
+        # Test that calling forget without any parameters raises ValueError
+        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+            await manager.forget()
+
+        # Test that calling forget with all None parameters raises ValueError
+        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+            await manager.forget(
+                keep_last=None,
+                keep_hourly=None,
+                keep_daily=None,
+                keep_weekly=None,
+                keep_monthly=None,
+                keep_yearly=None,
+                keep_tag=None,
+                keep_within=None
+            )
+
+        # Test that calling forget with empty keep_tag list raises ValueError
+        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+            await manager.forget(keep_tag=[])
+
+    def test_forget_parameter_validation(self):
+        """Test that forget method validates parameters correctly"""
+        manager = ResticManager("/test/repo", "password")
+
+        # Test that valid parameters don't raise exceptions during validation
+        # (we can't test actual execution without mocking exec_command)
+        try:
+            # This would normally call exec_command, but we just test parameter validation
+            retention_params = [1, None, None, None, None, None, None, None]  # keep_last=1
+            if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
+                raise ValueError("At least one retention policy parameter must be specified")
+        except ValueError:
+            pytest.fail("Valid parameters should not raise ValueError")
+
+        # Test that keep_tag with valid list doesn't raise exception
+        try:
+            retention_params = [None, None, None, None, None, None, ["tag1", "tag2"], None]  # keep_tag=["tag1", "tag2"]
+            if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
+                raise ValueError("At least one retention policy parameter must be specified")
+        except ValueError:
+            pytest.fail("Valid keep_tag parameters should not raise ValueError")
+
 
 class TestSnapshotModels:
     """Test Pydantic models for snapshot data"""

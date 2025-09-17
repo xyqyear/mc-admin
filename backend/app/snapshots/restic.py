@@ -379,3 +379,80 @@ class ResticManager:
                 return True
 
         return False
+
+    async def forget(
+        self,
+        keep_last: Optional[int] = None,
+        keep_hourly: Optional[int] = None,
+        keep_daily: Optional[int] = None,
+        keep_weekly: Optional[int] = None,
+        keep_monthly: Optional[int] = None,
+        keep_yearly: Optional[int] = None,
+        keep_tag: Optional[List[str]] = None,
+        keep_within: Optional[str] = None,
+        prune: bool = True,
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> str:
+        """
+        Remove snapshots according to retention policy
+
+        Args:
+            keep_last: Keep the n last (most recent) snapshots
+            keep_hourly: For the last n hours which have one or more snapshots, keep only the most recent one for each hour
+            keep_daily: For the last n days which have one or more snapshots, keep only the most recent one for each day
+            keep_weekly: For the last n weeks which have one or more snapshots, keep only the most recent one for each week
+            keep_monthly: For the last n months which have one or more snapshots, keep only the most recent one for each month
+            keep_yearly: For the last n years which have one or more snapshots, keep only the most recent one for each year
+            keep_tag: Keep all snapshots which have all tags specified (can be specified multiple times)
+            keep_within: Keep all snapshots having a timestamp within the specified duration of the latest snapshot
+            prune: Whether to run prune after forget (default: True)
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            Command output
+
+        Raises:
+            ValueError: If no retention policy is specified
+        """
+        # Check that at least one retention policy is specified
+        retention_params = [keep_last, keep_hourly, keep_daily, keep_weekly, keep_monthly, keep_yearly, keep_tag, keep_within]
+        if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
+            raise ValueError("At least one retention policy parameter must be specified")
+
+        args = ["restic", "forget"]
+
+        # Add retention policy arguments
+        if keep_last is not None:
+            args.extend(["--keep-last", str(keep_last)])
+
+        if keep_hourly is not None:
+            args.extend(["--keep-hourly", str(keep_hourly)])
+
+        if keep_daily is not None:
+            args.extend(["--keep-daily", str(keep_daily)])
+
+        if keep_weekly is not None:
+            args.extend(["--keep-weekly", str(keep_weekly)])
+
+        if keep_monthly is not None:
+            args.extend(["--keep-monthly", str(keep_monthly)])
+
+        if keep_yearly is not None:
+            args.extend(["--keep-yearly", str(keep_yearly)])
+
+        if keep_tag is not None and len(keep_tag) > 0:
+            for tag in keep_tag:
+                args.extend(["--keep-tag", tag])
+
+        if keep_within is not None:
+            args.extend(["--keep-within", keep_within])
+
+        # Add prune option if enabled
+        if prune:
+            args.append("--prune")
+
+        args = self._add_password_args(args)
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        return result
