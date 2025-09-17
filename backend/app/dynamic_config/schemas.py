@@ -232,26 +232,30 @@ class BaseConfigSchema(BaseModel):
                 if field_info.description:
                     field_schema["description"] = field_info.description
 
-                # Step 1: Get default value
+                # Step 1: Check if this field uses oneOf
+                is_one_of_field = "oneOf" in field_schema
+
+                # Step 2: Get default value (skip for oneOf fields)
                 default_value = None
                 has_default = False
 
-                if field_info.default is not PydanticUndefined:
-                    default_value = field_info.default
-                    has_default = True
-                elif (
-                    hasattr(field_info, "default_factory")
-                    and field_info.default_factory is not None
-                ):
-                    try:
-                        default_value = field_info.default_factory()  # type: ignore
+                if not is_one_of_field:  # Only process defaults for non-oneOf fields
+                    if field_info.default is not PydanticUndefined:
+                        default_value = field_info.default
                         has_default = True
-                    except Exception:
-                        # If factory fails, skip default
-                        has_default = False
+                    elif (
+                        hasattr(field_info, "default_factory")
+                        and field_info.default_factory is not None
+                    ):
+                        try:
+                            default_value = field_info.default_factory()  # type: ignore
+                            has_default = True
+                        except Exception:
+                            # If factory fails, skip default
+                            has_default = False
 
-                # Step 2: Process default value to JSON
-                if has_default:
+                # Step 3: Process default value to JSON (skip for oneOf fields)
+                if has_default and not is_one_of_field:
                     try:
                         # Check if default_value is a BaseModel instance
                         if isinstance(default_value, BaseModel):

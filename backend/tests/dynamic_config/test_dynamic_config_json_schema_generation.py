@@ -186,7 +186,7 @@ class TestJSONSchemaGeneration:
         union_types = union_schema["oneOf"]
         assert {"type": "string"} in union_types
         assert {"type": "integer"} in union_types
-        assert union_schema["default"] == "default"
+        assert "default" not in union_schema
 
         # Simple union with types.UnionType
         union_type_schema = properties["union_type_field"]
@@ -194,7 +194,7 @@ class TestJSONSchemaGeneration:
         union_type_options = union_type_schema["oneOf"]
         assert {"type": "string"} in union_type_options
         assert {"type": "integer"} in union_type_options
-        assert union_type_schema["default"] == "default"
+        assert "default" not in union_type_schema
 
         # Complex union
         complex_union_schema = properties["complex_union"]
