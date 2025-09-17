@@ -5,6 +5,7 @@ Cron job registry for registering and managing cron job functions.
 from typing import Dict, Optional, Type
 
 from ..dynamic_config.schemas import BaseConfigSchema
+from .jobs.backup import BackupJobParams, backup_cronjob
 from .jobs.restart import ServerRestartParams, restart_server_cronjob
 from .types import AsyncCronJobFunction, CronJobRegistration
 
@@ -146,4 +147,11 @@ cron_registry.register_func(
     schema_cls=ServerRestartParams,
     identifier="restart_server",
     description="重启服务器",
+)
+
+cron_registry.register_func(
+    func=backup_cronjob,
+    schema_cls=BackupJobParams,
+    identifier="backup",
+    description="创建备份快照并清理旧快照",
 )

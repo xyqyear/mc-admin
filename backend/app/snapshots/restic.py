@@ -75,7 +75,7 @@ class ResticManager:
         self.repository_path = repository_path
         self.password = password
         self.use_password = password is not None and password.strip() != ""
-        
+
         # Set up environment variables
         self.env = {"RESTIC_REPOSITORY": repository_path}
         if password is not None and self.use_password:
@@ -303,7 +303,9 @@ class ResticManager:
         for action in actions:
             if action.action in ["updated", "deleted", "restored"]:
                 # Exclude restored operations with zero or None size
-                if action.action == "restored" and (action.size is None or action.size == 0):
+                if action.action == "restored" and (
+                    action.size is None or action.size == 0
+                ):
                     continue
                 filtered_actions.append(action)
 
@@ -417,9 +419,25 @@ class ResticManager:
             ValueError: If no retention policy is specified
         """
         # Check that at least one retention policy is specified
-        retention_params = [keep_last, keep_hourly, keep_daily, keep_weekly, keep_monthly, keep_yearly, keep_tag, keep_within]
-        if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
-            raise ValueError("At least one retention policy parameter must be specified")
+        retention_params = [
+            keep_last,
+            keep_hourly,
+            keep_daily,
+            keep_weekly,
+            keep_monthly,
+            keep_yearly,
+            keep_tag,
+            keep_within,
+        ]
+        if all(
+            param is None
+            or (isinstance(param, list) and len(param) == 0)
+            or (isinstance(param, str) and param.strip() == "")
+            for param in retention_params
+        ):
+            raise ValueError(
+                "At least one retention policy parameter must be specified"
+            )
 
         args = ["restic", "forget"]
 
