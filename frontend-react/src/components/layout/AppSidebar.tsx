@@ -134,11 +134,6 @@ const AppSidebar: React.FC = () => {
       path: '/archives',
     },
     {
-      title: '动态配置',
-      icon: <SettingOutlined />,
-      path: '/config',
-    },
-    {
       title: '任务管理',
       icon: <ScheduleOutlined />,
       path: '/cron',
