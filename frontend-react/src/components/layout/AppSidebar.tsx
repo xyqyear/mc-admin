@@ -18,6 +18,7 @@ import {
   UserOutlined,
   HistoryOutlined,
   FileZipOutlined,
+  ScheduleOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
@@ -136,6 +137,11 @@ const AppSidebar: React.FC = () => {
       title: '动态配置',
       icon: <SettingOutlined />,
       path: '/config',
+    },
+    {
+      title: '任务管理',
+      icon: <ScheduleOutlined />,
+      path: '/cron',
     },
   ]
 

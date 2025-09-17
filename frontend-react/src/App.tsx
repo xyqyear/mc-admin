@@ -17,6 +17,7 @@ const Overview = React.lazy(() => import('@/pages/Overview'))
 const Snapshots = React.lazy(() => import('@/pages/Snapshots'))
 const ArchiveManagement = React.lazy(() => import('@/pages/ArchiveManagement'))
 const DynamicConfig = React.lazy(() => import('@/pages/DynamicConfig'))
+const CronManagement = React.lazy(() => import('@/pages/CronManagement'))
 const ServerNew = React.lazy(() => import('@/pages/server/ServerNew'))
 const ServerDetail = React.lazy(() => import('@/pages/server/servers/ServerDetail'))
 const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'))
@@ -87,6 +88,7 @@ function App() {
           <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/archives" element={<ArchiveManagement />} />
           <Route path="/config" element={<DynamicConfig />} />
+          <Route path="/cron" element={<CronManagement />} />
           <Route path="/server">
             <Route path="new" element={<ServerNew />} />
             <Route path=":id" element={<ServerDetail />} />

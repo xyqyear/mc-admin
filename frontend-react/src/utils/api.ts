@@ -207,6 +207,18 @@ export const queryKeys = {
     moduleSchema: (moduleName: string) => [...queryKeys.config.all, "schema", moduleName] as const,
     health: () => [...queryKeys.config.all, "health"] as const,
   },
+
+  // Cron 任务管理
+  cron: {
+    all: ["cron"] as const,
+    list: (filters?: { identifier?: string; status?: string[] }) =>
+      [...queryKeys.cron.all, "list", filters] as const,
+    registeredTypes: () => [...queryKeys.cron.all, "registered"] as const,
+    detail: (cronjobId: string) => [...queryKeys.cron.all, "detail", cronjobId] as const,
+    executions: (cronjobId: string, limit?: number) =>
+      [...queryKeys.cron.all, "executions", cronjobId, ...(limit ? [limit] : [])] as const,
+    nextRunTime: (cronjobId: string) => [...queryKeys.cron.all, "next-run-time", cronjobId] as const,
+  },
 } as const;
 
 export default api;

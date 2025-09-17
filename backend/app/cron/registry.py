@@ -5,6 +5,7 @@ Cron job registry for registering and managing cron job functions.
 from typing import Dict, Optional, Type
 
 from ..dynamic_config.schemas import BaseConfigSchema
+from .jobs.restart import ServerRestartParams, restart_server_cronjob
 from .types import AsyncCronJobFunction, CronJobRegistration
 
 
@@ -40,8 +41,7 @@ class CronRegistry:
         Example:
             ```python
             class ServerRestartParams(BaseConfigSchema):
-                server_name: str
-                force: bool = False
+                server_id: str
 
             @cron_registry.register(
                 schema_cls=ServerRestartParams,
@@ -49,20 +49,44 @@ class CronRegistry:
                 description="Restart a Minecraft server"
             )
             async def restart_server_cronjob(context: ExecutionContext):
-                server_name = context.params.server_name
-                context.log(f"Restarting server: {server_name}")
+                server_id = context.params.server_id
+                context.log(f"Restarting server: {server_id}")
                 # Restart logic here...
             ```
         """
 
         def decorator(func: AsyncCronJobFunction) -> AsyncCronJobFunction:
-            cronjob_identifier = identifier or func.__name__
-            self._cronjobs[cronjob_identifier] = CronJobRegistration(
-                function=func, description=description, schema_cls=schema_cls
+            return self.register_func(
+                func=func,
+                schema_cls=schema_cls,
+                identifier=identifier,
+                description=description,
             )
-            return func
 
         return decorator
+
+    def register_func(
+        self,
+        func: AsyncCronJobFunction,
+        schema_cls: Type[BaseConfigSchema],
+        identifier: Optional[str] = None,
+        description: str = "",
+    ):
+        """
+        Register a cron job function.
+
+        Args:
+            func: The cron job function to register
+            schema_cls: The Pydantic schema class for cron job parameters
+            identifier: CronJob identifier (defaults to function name)
+            description: Human-readable description of the cron job
+        """
+        cronjob_identifier = identifier or func.__name__
+        self._cronjobs[cronjob_identifier] = CronJobRegistration(
+            function=func, description=description, schema_cls=schema_cls
+        )
+
+        return func
 
     def get_cronjob(self, identifier: str) -> Optional[CronJobRegistration]:
         """
@@ -115,3 +139,11 @@ class CronRegistry:
 
 # Global cron registry instance
 cron_registry = CronRegistry()
+
+
+cron_registry.register_func(
+    func=restart_server_cronjob,
+    schema_cls=ServerRestartParams,
+    identifier="restart_server",
+    description="重启服务器",
+)

@@ -4,12 +4,13 @@ Cron job management API endpoints.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 from pydantic import BaseModel
 
 from ..cron import cron_manager, cron_registry
 from ..dependencies import get_current_user
-from ..models import UserPublic
+from ..models import CronJobStatus, UserPublic
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 
@@ -22,6 +23,15 @@ class CreateCronJobRequest(BaseModel):
     cron: str
     cronjob_id: Optional[str] = None
     name: Optional[str] = None
+    second: Optional[str] = None
+
+
+class UpdateCronJobRequest(BaseModel):
+    """Request model for updating a cron job."""
+
+    identifier: str
+    params: dict  # Will be validated against the schema class
+    cron: str
     second: Optional[str] = None
 
 
@@ -88,6 +98,59 @@ async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
     return result
 
 
+@router.get("/", response_model=List[CronJobResponse])
+async def list_cronjobs(
+    identifier: Optional[str] = Query(
+        None, description="Filter by job type identifier"
+    ),
+    status: List[CronJobStatus] = Query(
+        default=[CronJobStatus.ACTIVE, CronJobStatus.PAUSED],
+        description="Filter by job status (default: active and paused jobs)",
+    ),
+    _: UserPublic = Depends(get_current_user),
+):
+    """
+    List cron jobs with optional filtering.
+
+    Returns information about cron jobs in the system, optionally filtered by
+    job type identifier and/or status.
+
+    Args:
+        identifier: Optional job type identifier to filter by
+        status: List of job statuses to include (default: [active, paused])
+    """
+    try:
+        # Pass filters directly to manager
+        cronjob_configs = await cron_manager.get_all_cronjobs(
+            identifier=identifier,
+            status=status
+        )
+
+        result = []
+        for config in cronjob_configs:
+            result.append(
+                CronJobResponse(
+                    cronjob_id=config.cronjob_id,
+                    identifier=config.identifier,
+                    name=config.name,
+                    cron=config.cron,
+                    second=config.second,
+                    params=config.params.model_dump(),
+                    execution_count=config.execution_count,
+                    status=config.status.value,
+                    created_at=config.created_at.isoformat(),
+                    updated_at=config.updated_at.isoformat(),
+                )
+            )
+
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list cron jobs: {str(e)}",
+        )
+
+
 @router.post("/", response_model=dict)
 async def create_cronjob(
     request: CreateCronJobRequest, _: UserPublic = Depends(get_current_user)
@@ -101,7 +164,7 @@ async def create_cronjob(
     schema_cls = cron_registry.get_schema_class(request.identifier)
     if not schema_cls:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"CronJob identifier '{request.identifier}' is not registered",
         )
 
@@ -110,7 +173,7 @@ async def create_cronjob(
         params = schema_cls.model_validate(request.params)
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid parameters: {str(e)}",
         )
 
@@ -127,7 +190,7 @@ async def create_cronjob(
         return {"cronjob_id": cronjob_id, "message": "CronJob created successfully"}
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create cron job: {str(e)}",
         )
 
@@ -142,7 +205,7 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
     cronjob_config = await cron_manager.get_cronjob_config(cronjob_id)
     if not cronjob_config:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="CronJob not found"
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="CronJob not found"
         )
 
     return CronJobResponse(
@@ -159,6 +222,56 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
     )
 
 
+@router.put("/{cronjob_id}", response_model=dict)
+async def update_cronjob(
+    cronjob_id: str,
+    request: UpdateCronJobRequest,
+    _: UserPublic = Depends(get_current_user)
+):
+    """
+    Update an existing cron job configuration.
+
+    Updates the configuration of an existing cron job. The task name cannot be changed.
+    """
+    # Validate that the identifier is registered
+    schema_cls = cron_registry.get_schema_class(request.identifier)
+    if not schema_cls:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"CronJob identifier '{request.identifier}' is not registered",
+        )
+
+    # Validate parameters against schema
+    try:
+        params = schema_cls.model_validate(request.params)
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid parameters: {str(e)}",
+        )
+
+    # Update the cron job
+    try:
+        await cron_manager.update_cronjob(
+            cronjob_id=cronjob_id,
+            identifier=request.identifier,
+            params=params,
+            cron=request.cron,
+            second=request.second,
+        )
+        return {"message": "CronJob updated successfully"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update cron job: {str(e)}",
+        )
+
+
 @router.post("/{cronjob_id}/pause")
 async def pause_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)):
     """
@@ -171,7 +284,7 @@ async def pause_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_use
         return {"message": "CronJob paused successfully"}
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to pause cron job: {str(e)}",
         )
 
@@ -188,7 +301,7 @@ async def resume_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
         return {"message": "CronJob resumed successfully"}
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to resume cron job: {str(e)}",
         )
 
@@ -206,7 +319,7 @@ async def cancel_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
         return {"message": "CronJob cancelled successfully"}
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to cancel cron job: {str(e)}",
         )
 
@@ -236,7 +349,7 @@ async def get_cronjob_executions(
         ]
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get cron job executions: {str(e)}",
         )
 
@@ -255,15 +368,15 @@ async def get_cronjob_next_run_time(
         next_run_time = await cron_manager.get_next_run_time(cronjob_id)
     except ValueError as e:
         # Handle cases where job not found or not active
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get next run time: {str(e)}",
         )
     if next_run_time is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to determine next run time",
         )
 
