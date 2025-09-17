@@ -17,8 +17,11 @@ async def restart_server_cronjob(context: ExecutionContext):
 
     instance = mc_manager.get_instance(params.server_id)
     if not await instance.exists():
-        context.log(f"服务器 '{params.server_id}' 未找到")
         raise ValueError(f"服务器 '{params.server_id}' 未找到")
+    
+    if not await instance.running():
+        context.log(f"服务器 '{params.server_id}' 未在运行中，跳过重启")
+        return
 
     context.log(f"正在重启服务器: {params.server_id}")
     await instance.restart()
