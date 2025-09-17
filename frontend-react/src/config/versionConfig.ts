@@ -103,6 +103,15 @@ export const versionUpdates: VersionUpdate[] = [
       '数据库迁移文件清理和优化',
       '构建脚本优化'
     ]
+  },
+  {
+    version: '0.2.1',
+    date: '2025-09-18',
+    title: '备份任务集成 Uptime Kuma 监控',
+    description: '定时备份任务新增 Uptime Kuma 监控集成，可以自动向 Uptime Kuma 推送备份任务的执行状态和运行时间。',
+    features: [
+      '备份任务支持 Uptime Kuma 推送监控',
+    ]
   }
 ]
 
