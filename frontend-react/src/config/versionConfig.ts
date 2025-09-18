@@ -112,6 +112,15 @@ export const versionUpdates: VersionUpdate[] = [
     features: [
       '备份任务支持 Uptime Kuma 推送监控',
     ]
+  },
+  {
+    version: '0.2.2',
+    date: '2025-09-19',
+    title: '数据库时间显示时区错误修复',
+    description: '修复数据库时间显示时区错误问题，确保所有前端显示时间均为本地时间。',
+    fixes: [
+      '修复数据库时间显示时区错误问题'
+    ]
   }
 ]
 
