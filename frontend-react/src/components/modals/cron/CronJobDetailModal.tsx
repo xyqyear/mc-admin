@@ -38,6 +38,8 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
   onCancel
 }) => {
   const [activeTab, setActiveTab] = useState<string>('info')
+  const [logModalOpen, setLogModalOpen] = useState(false)
+  const [selectedLogs, setSelectedLogs] = useState<string[]>([])
 
   const {
     data: jobDetail,
@@ -62,6 +64,11 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
     refetchJob()
     refetchExecutions()
     refetchNextRun()
+  }
+
+  const handleViewAllLogs = (messages: string[]) => {
+    setSelectedLogs(messages)
+    setLogModalOpen(true)
   }
 
   const executionsColumns: TableProps<CronJobExecution>['columns'] = [
@@ -129,9 +136,14 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
               </div>
             ))}
             {messages.length > 2 && (
-              <Text type="secondary" className="text-xs">
-                ...还有 {messages.length - 2} 条
-              </Text>
+              <Button
+                type="link"
+                size="small"
+                className="text-xs p-0 h-auto"
+                onClick={() => handleViewAllLogs(messages)}
+              >
+                ...还有 {messages.length - 2} 条 (查看全部)
+              </Button>
             )}
           </div>
         ) : (
@@ -322,6 +334,28 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
         onChange={setActiveTab}
         items={tabItems}
       />
+
+      {/* 日志查看模态框 */}
+      <Modal
+        title="执行日志"
+        open={logModalOpen}
+        onCancel={() => setLogModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setLogModalOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        width={600}
+      >
+        <div>
+          {selectedLogs.map((log, index) => (
+            <div key={index} className="border-b border-gray-100 pb-2 last:border-b-0">
+              <Text className="text-xs text-gray-500 mr-2">{index + 1}.</Text>
+              <Text className="text-sm">{log}</Text>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </Modal>
   )
 }
