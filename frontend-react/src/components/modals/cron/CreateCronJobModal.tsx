@@ -187,6 +187,27 @@ const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
           />
         </Card>
 
+        {/* Restart-Backup Conflict Warning */}
+        {selectedJobType === 'restart_server' && (
+          <Alert
+            type="warning"
+            showIcon
+            message="重启时间冲突提醒"
+            description={
+              <div>
+                <p>为了避免数据丢失，请确保服务器重启时间不与备份任务时间重合。</p>
+                <p><strong>建议：</strong></p>
+                <ul className="mt-2 ml-4">
+                  <li>如果配置了每15分钟备份（0,15,30,45分），请避开这些分钟进行重启</li>
+                  <li>如果配置了每小时0分备份，请避开0分进行重启</li>
+                  <li>建议在备份间隔的中间时间点进行重启，如40分、50分等</li>
+                </ul>
+              </div>
+            }
+            className="mb-4"
+          />
+        )}
+
         {/* Basic Configuration */}
         <Card size="small" title="基本配置">
           <Form
