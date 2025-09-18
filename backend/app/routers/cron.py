@@ -2,6 +2,7 @@
 Cron job management API endpoints.
 """
 
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -46,16 +47,16 @@ class CronJobResponse(BaseModel):
     params: dict
     execution_count: int
     status: str
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class CronJobExecutionResponse(BaseModel):
     """Response model for cron job execution information."""
 
     execution_id: str
-    started_at: Optional[str]
-    ended_at: Optional[str]
+    started_at: Optional[datetime]
+    ended_at: Optional[datetime]
     duration_ms: Optional[int]
     status: str
     messages: List[str]
@@ -65,7 +66,7 @@ class CronJobNextRunTimeResponse(BaseModel):
     """Response model for cron job next run time."""
 
     cronjob_id: str
-    next_run_time: str
+    next_run_time: datetime
 
 
 class RegisteredCronJobResponse(BaseModel):
@@ -122,8 +123,7 @@ async def list_cronjobs(
     try:
         # Pass filters directly to manager
         cronjob_configs = await cron_manager.get_all_cronjobs(
-            identifier=identifier,
-            status=status
+            identifier=identifier, status=status
         )
 
         result = []
@@ -138,8 +138,8 @@ async def list_cronjobs(
                     params=config.params.model_dump(),
                     execution_count=config.execution_count,
                     status=config.status.value,
-                    created_at=config.created_at.isoformat(),
-                    updated_at=config.updated_at.isoformat(),
+                    created_at=config.created_at,
+                    updated_at=config.updated_at,
                 )
             )
 
@@ -217,8 +217,8 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
         params=cronjob_config.params.model_dump(),
         execution_count=cronjob_config.execution_count,
         status=cronjob_config.status.value,
-        created_at=cronjob_config.created_at.isoformat(),
-        updated_at=cronjob_config.updated_at.isoformat(),
+        created_at=cronjob_config.created_at,
+        updated_at=cronjob_config.updated_at,
     )
 
 
@@ -226,7 +226,7 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
 async def update_cronjob(
     cronjob_id: str,
     request: UpdateCronJobRequest,
-    _: UserPublic = Depends(get_current_user)
+    _: UserPublic = Depends(get_current_user),
 ):
     """
     Update an existing cron job configuration.
@@ -339,8 +339,8 @@ async def get_cronjob_executions(
         return [
             CronJobExecutionResponse(
                 execution_id=ex.execution_id,
-                started_at=ex.started_at.isoformat() if ex.started_at else None,
-                ended_at=ex.ended_at.isoformat() if ex.ended_at else None,
+                started_at=ex.started_at,
+                ended_at=ex.ended_at,
                 duration_ms=ex.duration_ms,
                 status=ex.status.value if hasattr(ex.status, "value") else ex.status,
                 messages=ex.messages,
@@ -381,5 +381,5 @@ async def get_cronjob_next_run_time(
         )
 
     return CronJobNextRunTimeResponse(
-        cronjob_id=cronjob_id, next_run_time=next_run_time.isoformat()
+        cronjob_id=cronjob_id, next_run_time=next_run_time
     )

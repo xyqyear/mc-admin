@@ -8,6 +8,28 @@ from sqlalchemy import JSON, TEXT, DateTime, Integer, String
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
+
+
+class TZDatetime(TypeDecorator):
+    """Custom DateTime type that ensures timezone-aware datetimes."""
+
+    impl = DateTime(timezone=True)
+
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            raise ValueError(
+                "Naive datetime is not allowed. Please provide a timezone-aware datetime."
+            )
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            # Assume UTC if no timezone info is present
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -33,7 +55,7 @@ class User(Base):
         SQLAlchemyEnum(UserRole), default=UserRole.ADMIN
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -70,7 +92,7 @@ class DynamicConfig(Base):
     config_data: Mapped[dict] = mapped_column(JSON)
     config_schema_version: Mapped[str] = mapped_column(String(50))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -111,10 +133,10 @@ class CronJob(Base):
         SQLAlchemyEnum(CronJobStatus), default=CronJobStatus.ACTIVE
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -126,8 +148,8 @@ class CronJobExecution(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     cronjob_id: Mapped[str] = mapped_column(String(255), index=True)
     execution_id: Mapped[str] = mapped_column(String(50), unique=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(TZDatetime())
+    ended_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
     status: Mapped[ExecutionStatus] = mapped_column(SQLAlchemyEnum(ExecutionStatus))
     messages_json: Mapped[str] = mapped_column(TEXT, default="[]")
