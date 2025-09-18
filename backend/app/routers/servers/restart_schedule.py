@@ -94,8 +94,8 @@ async def create_or_update_restart_schedule(
                 cron=cron_expr,
             )
 
-            # Resume if it was paused
-            if existing_job.status == CronJobStatus.PAUSED:
+            # Resume if it's not active
+            if existing_job.status != CronJobStatus.ACTIVE:
                 await cron_manager.resume_cronjob(cronjob_id)
         else:
             # Create new restart schedule
