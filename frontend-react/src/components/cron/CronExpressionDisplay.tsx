@@ -22,8 +22,8 @@ const CronExpressionDisplay: React.FC<CronExpressionDisplayProps> = ({
     if (value === '?') return '忽略'
 
     const ranges = {
-      minute: { min: 0, max: 59, name: '分钟' },
-      hour: { min: 0, max: 23, name: '小时' },
+      minute: { min: 0, max: 59, name: '分' },
+      hour: { min: 0, max: 23, name: '时' },
       day: { min: 1, max: 31, name: '日' },
       month: { min: 1, max: 12, name: '月' },
       dayOfWeek: { min: 0, max: 7, name: '周' },
