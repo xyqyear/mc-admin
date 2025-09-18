@@ -382,9 +382,9 @@ class CronManager:
             if status:
                 query = query.where(CronJob.status.in_(status))
 
-            # Apply name filter
+            # Apply name filter (case-insensitive partial match)
             if name:
-                query = query.where(CronJob.name == name)
+                query = query.where(CronJob.name.ilike(f"%{name}%"))
 
             # Order by creation date (newest first)
             query = query.order_by(CronJob.created_at.desc())

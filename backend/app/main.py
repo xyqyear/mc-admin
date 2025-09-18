@@ -24,6 +24,7 @@ from .routers.servers import players as server_players
 from .routers.servers import populate as server_populate
 from .routers.servers import rcon as server_rcon
 from .routers.servers import resources as server_resources
+from .routers.servers import restart_schedule as server_restart_schedule
 
 
 @asynccontextmanager
@@ -75,6 +76,7 @@ api_app.include_router(server_populate.router)
 api_app.include_router(server_console.router)
 api_app.include_router(server_rcon.router)
 api_app.include_router(server_files.router)
+api_app.include_router(server_restart_schedule.router)
 
 app = FastAPI(lifespan=lifespan, title="MC Admin")
 app.mount("/api", api_app)
@@ -103,5 +105,4 @@ templates = Jinja2Templates(directory=settings.static_path.resolve())
 
 @app.get("/{full_path:path}")
 async def serve_spa(request: Request, full_path: str):
-    print(f"Serving path: {full_path}")
     return templates.TemplateResponse("index.html", {"request": request})
