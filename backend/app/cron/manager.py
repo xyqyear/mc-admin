@@ -296,7 +296,7 @@ class CronManager:
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
-            
+
             if cronjob_row.status == CronJobStatus.CANCELLED:
                 raise ValueError(f"CronJob {cronjob_id} is already cancelled")
 
@@ -357,6 +357,7 @@ class CronManager:
         self,
         identifier: Optional[str] = None,
         status: Optional[List[CronJobStatus]] = None,
+        name: Optional[str] = None,
     ) -> List[CronJobConfig]:
         """
         Get all cron job configurations with optional filtering.
@@ -364,6 +365,7 @@ class CronManager:
         Args:
             identifier: Optional job type identifier to filter by
             status: Optional list of job statuses to filter by
+            name: Optional job name to filter by
 
         Returns:
             List of CronJobConfig instances
@@ -379,6 +381,10 @@ class CronManager:
             # Apply status filter
             if status:
                 query = query.where(CronJob.status.in_(status))
+
+            # Apply name filter
+            if name:
+                query = query.where(CronJob.name == name)
 
             # Order by creation date (newest first)
             query = query.order_by(CronJob.created_at.desc())
