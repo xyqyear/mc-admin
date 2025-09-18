@@ -219,7 +219,7 @@ export const useServerQueries = () => {
       enabled: !!id,
       staleTime: 30 * 1000, // 30秒 - 建议会根据其他任务变化
       gcTime: 2 * 60 * 1000, // 2分钟
-      retry: (failureCount, error: any) => {
+      retry: (failureCount) => {
         return failureCount < 2;
       },
       ...options,

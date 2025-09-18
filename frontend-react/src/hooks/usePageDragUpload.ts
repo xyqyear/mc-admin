@@ -16,9 +16,9 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      
+
       dragCounterRef.current++
-      
+
       if (e.dataTransfer?.items) {
         const hasFiles = Array.from(e.dataTransfer.items).some(
           item => item.kind === 'file'
@@ -32,9 +32,9 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      
+
       dragCounterRef.current--
-      
+
       if (dragCounterRef.current === 0) {
         setIsDragging(false)
       }
@@ -48,12 +48,12 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
     const handleDrop = (e: DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      
+
       setIsDragging(false)
       dragCounterRef.current = 0
 
       const files = Array.from(e.dataTransfer?.files || [])
-      
+
       if (files.length === 0) return
 
       // 检查是否包含文件夹
@@ -118,7 +118,7 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       document.removeEventListener('dragover', handleDragOver)
       document.removeEventListener('drop', handleDrop)
     }
-  }, [onFileDrop, accept, multiple])
+  }, [onFileDrop, accept, multiple, onError])
 
   return {
     isDragging

@@ -67,9 +67,11 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
       case 'range':
         return `${params?.start || rangeStart}-${params?.end || rangeEnd}`
       case 'interval':
-        const start = params?.start || intervalStart
-        const step = params?.step || intervalStep
-        return start === config.min ? `*/${step}` : `${start}/${step}`
+        {
+          const start = params?.start || intervalStart
+          const step = params?.step || intervalStep
+          return start === config.min ? `*/${step}` : `${start}/${step}`
+        }
       case 'list':
         return (params?.values || listValues).join(',')
       case 'raw':

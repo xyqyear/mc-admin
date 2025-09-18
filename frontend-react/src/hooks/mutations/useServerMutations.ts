@@ -235,7 +235,7 @@ export const useServerMutations = () => {
       }) => {
         return serverApi.createOrUpdateRestartSchedule(serverId, customCron);
       },
-      onSuccess: (data, { serverId }) => {
+      onSuccess: (_, { serverId }) => {
         message.success(`服务器 "${serverId}" 重启计划配置成功`);
 
         // 失效重启计划相关查询
