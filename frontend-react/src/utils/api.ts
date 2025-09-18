@@ -219,6 +219,13 @@ export const queryKeys = {
       [...queryKeys.cron.all, "executions", cronjobId, ...(limit ? [limit] : [])] as const,
     nextRunTime: (cronjobId: string) => [...queryKeys.cron.all, "next-run-time", cronjobId] as const,
   },
+
+  // 重启计划管理
+  restartSchedule: {
+    all: ["restartSchedule"] as const,
+    detail: (serverId: string) => [...queryKeys.restartSchedule.all, "detail", serverId] as const,
+    suggestions: (serverId: string) => [...queryKeys.restartSchedule.all, "suggestions", serverId] as const,
+  },
 } as const;
 
 export default api;

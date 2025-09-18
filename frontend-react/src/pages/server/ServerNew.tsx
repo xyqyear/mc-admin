@@ -8,6 +8,7 @@ import {
   Typography,
   Alert,
   Space,
+  Switch,
   message,
   Divider
 } from 'antd'
@@ -43,10 +44,14 @@ const ServerNew: React.FC = () => {
   // Help modal state
   const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
 
+  // Restart schedule state
+  const [enableRestartSchedule, setEnableRestartSchedule] = useState(true)
+
   // Use mutations
-  const { useCreateServer, usePopulateServer } = useServerMutations()
+  const { useCreateServer, usePopulateServer, useCreateOrUpdateRestartSchedule } = useServerMutations()
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
+  const createRestartScheduleMutation = useCreateOrUpdateRestartSchedule()
 
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)
@@ -76,6 +81,18 @@ const ServerNew: React.FC = () => {
         yamlContent: composeContent,
       })
 
+      // 如果启用了重启计划，创建重启计划
+      if (enableRestartSchedule) {
+        try {
+          await createRestartScheduleMutation.mutateAsync({
+            serverId: values.serverName,
+          })
+        } catch (restartScheduleError: any) {
+          // 重启计划创建失败，但不阻止整个流程
+          message.warning(`服务器 "${values.serverName}" 创建成功，但重启计划创建失败: ${restartScheduleError.message || '未知错误'}`)
+        }
+      }
+
       if (selectedArchiveFile) {
         // 如果选择了压缩包，填充服务器数据
         try {
@@ -85,7 +102,7 @@ const ServerNew: React.FC = () => {
           })
           message.success(`服务器 "${values.serverName}" 创建并填充完成!`)
         } catch (populateError: any) {
-          // 创建成功但填充失败，提示用户  
+          // 创建成功但填充失败，提示用户
           message.warning(`服务器 "${values.serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
         }
       }
@@ -152,6 +169,27 @@ const ServerNew: React.FC = () => {
               placeholder="例如: vanilla-survival"
               size="large"
             />
+          </Form.Item>
+
+          <Form.Item
+            label="自动重启计划"
+            tooltip="启用后将自动为服务器创建重启计划，避免与现有备份任务的时间冲突"
+          >
+            <div className="flex items-center space-x-3">
+              <Switch
+                checked={enableRestartSchedule}
+                onChange={setEnableRestartSchedule}
+                size="default"
+              />
+              <span className={enableRestartSchedule ? 'text-green-600' : 'text-gray-500'}>
+                {enableRestartSchedule ? '已启用' : '已禁用'}
+              </span>
+            </div>
+            {enableRestartSchedule && (
+              <div className="text-sm text-gray-500 mt-2">
+                系统将自动选择与现有备份任务不冲突的时间创建重启计划
+              </div>
+            )}
           </Form.Item>
         </Card>
 
@@ -270,12 +308,16 @@ const ServerNew: React.FC = () => {
                 type="primary"
                 size="large"
                 icon={<PlayCircleOutlined />}
-                loading={createServerMutation.isPending || populateServerMutation.isPending}
+                loading={createServerMutation.isPending || populateServerMutation.isPending || createRestartScheduleMutation.isPending}
                 onClick={handleCreate}
               >
-                {createServerMutation.isPending || populateServerMutation.isPending
-                  ? (createServerMutation.isPending ? '创建中...' : '填充数据中...')
-                  : '创建服务器'}
+                {createServerMutation.isPending
+                  ? '创建中...'
+                  : createRestartScheduleMutation.isPending
+                    ? '配置重启计划中...'
+                    : populateServerMutation.isPending
+                      ? '填充数据中...'
+                      : '创建服务器'}
               </Button>
             </Space>
           </div>

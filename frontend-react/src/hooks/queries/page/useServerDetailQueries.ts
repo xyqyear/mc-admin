@@ -13,6 +13,7 @@ export const useServerDetailQueries = (serverId: string) => {
     useServerIOStats,
     useServerDiskUsage,
     useComposeFile,
+    useRestartSchedule,
   } = useServerQueries();
 
   // 服务器详情页面的主要数据 (使用分离API)
@@ -38,6 +39,9 @@ export const useServerDetailQueries = (serverId: string) => {
     // 磁盘使用信息 (30秒刷新，始终可用)
     const diskUsageQuery = useServerDiskUsage(serverId);
 
+    // 重启计划信息 (2分钟缓存，手动刷新)
+    const restartScheduleQuery = useRestartSchedule(serverId);
+
     return {
       // 原始查询对象
       configQuery,
@@ -47,6 +51,7 @@ export const useServerDetailQueries = (serverId: string) => {
       playersQuery,
       iostatsQuery,
       diskUsageQuery,
+      restartScheduleQuery,
 
       // 便捷的数据访问
       serverInfo: configQuery.data,
@@ -56,6 +61,7 @@ export const useServerDetailQueries = (serverId: string) => {
       players: playersQuery.data || [],
       iostats: iostatsQuery.data,
       diskUsage: diskUsageQuery.data,
+      restartSchedule: restartScheduleQuery.data,
 
       // 组合状态
       isLoading: configQuery.isLoading || statusQuery.isLoading,
@@ -69,6 +75,7 @@ export const useServerDetailQueries = (serverId: string) => {
       hasPlayersData: !!playersQuery.data?.length,
       hasIOStatsData: !!iostatsQuery.data,
       hasDiskUsageData: !!diskUsageQuery.data,
+      hasRestartScheduleData: !!restartScheduleQuery.data,
 
       // 状态判断
       isRunning:

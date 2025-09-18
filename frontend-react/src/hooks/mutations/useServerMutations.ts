@@ -28,7 +28,18 @@ export const useServerMutations = () => {
           case "down":
             return serverApi.downServer(serverId);
           case "remove":
-            return serverApi.serverOperation(serverId, "remove");
+            // First remove the server
+            const result = await serverApi.serverOperation(serverId, "remove");
+
+            // Then try to delete the restart schedule (if it exists)
+            try {
+              await serverApi.deleteRestartSchedule(serverId);
+            } catch (scheduleError) {
+              // Ignore errors if restart schedule doesn't exist or deletion fails
+              console.warn(`Failed to delete restart schedule for server ${serverId}:`, scheduleError);
+            }
+
+            return result;
           default:
             throw new Error(`Unknown action: ${action}`);
         }
@@ -69,6 +80,13 @@ export const useServerMutations = () => {
 
           // 失效兼容的servers查询
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+
+          // 如果是删除操作，也要失效重启计划查询
+          if (action === 'remove') {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.restartSchedule.detail(serverId),
+            });
+          }
         }, 1000);
       },
       onError: (error: Error, { action, serverId }) => {
@@ -203,11 +221,59 @@ export const useServerMutations = () => {
     });
   };
 
+  // 创建或更新重启计划
+  const useCreateOrUpdateRestartSchedule = () => {
+    return useMutation({
+      mutationFn: async ({
+        serverId,
+        customCron
+      }: {
+        serverId: string;
+        customCron?: string;
+      }) => {
+        return serverApi.createOrUpdateRestartSchedule(serverId, customCron);
+      },
+      onSuccess: (data, { serverId }) => {
+        message.success(`服务器 "${serverId}" 重启计划配置成功`);
+
+        // 失效重启计划相关查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.restartSchedule.detail(serverId),
+        });
+      },
+      onError: (error: Error, { serverId }) => {
+        message.error(`配置服务器 "${serverId}" 重启计划失败: ${error.message}`);
+      },
+    });
+  };
+
+  // 删除重启计划
+  const useDeleteRestartSchedule = () => {
+    return useMutation({
+      mutationFn: async (serverId: string) => {
+        return serverApi.deleteRestartSchedule(serverId);
+      },
+      onSuccess: (_, serverId) => {
+        message.success(`服务器 "${serverId}" 重启计划已删除`);
+
+        // 失效重启计划相关查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.restartSchedule.detail(serverId),
+        });
+      },
+      onError: (error: Error, serverId) => {
+        message.error(`删除服务器 "${serverId}" 重启计划失败: ${error.message}`);
+      },
+    });
+  };
+
   return {
     useServerOperation,
     useRconCommand,
     useUpdateCompose,
     usePopulateServer,
     useCreateServer,
+    useCreateOrUpdateRestartSchedule,
+    useDeleteRestartSchedule,
   };
 };

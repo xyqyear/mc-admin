@@ -67,6 +67,29 @@ interface PopulateServerResponse {
   message: string;
 }
 
+interface RestartScheduleResponse {
+  cronjob_id: string;
+  server_id: string;
+  name: string;
+  cron: string;
+  status: string;
+  next_run_time: string | null;
+  scheduled_time: string;
+}
+
+interface RestartScheduleSuggestionsResponse {
+  suggested_time: string;
+  suggested_cron: string;
+  conflict_analysis: {
+    backup_minutes: number[];
+    restart_minutes: number[];
+    conflicts: number[];
+    available_5min_slots: number[];
+    restart_start_time: string;
+  };
+  message: string;
+}
+
 export const serverApi = {
   // 获取所有服务器基础信息 (仅包含配置信息，不包含状态或运行时数据)
   getServers: async (): Promise<ServerListItem[]> => {
@@ -224,6 +247,55 @@ export const serverApi = {
     return res.data;
   },
 
+  // 重启计划管理API
+  createOrUpdateRestartSchedule: async (
+    serverId: string,
+    customCron?: string,
+  ): Promise<RestartScheduleResponse> => {
+    const res = await api.post<RestartScheduleResponse>(
+      `/servers/${serverId}/restart-schedule`,
+      {
+        custom_cron: customCron,
+      },
+    );
+    return res.data;
+  },
+
+  getRestartSchedule: async (
+    serverId: string,
+  ): Promise<RestartScheduleResponse | null> => {
+    try {
+      const res = await api.get<RestartScheduleResponse>(
+        `/servers/${serverId}/restart-schedule`,
+      );
+      return res.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  deleteRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.delete(`/servers/${serverId}/restart-schedule`);
+  },
+
+  pauseRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.post(`/servers/${serverId}/restart-schedule/pause`);
+  },
+
+  resumeRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.post(`/servers/${serverId}/restart-schedule/resume`);
+  },
+
+  getRestartScheduleSuggestions: async (serverId: string): Promise<RestartScheduleSuggestionsResponse> => {
+    const res = await api.get<RestartScheduleSuggestionsResponse>(
+      `/servers/${serverId}/restart-schedule/suggestions`,
+    );
+    return res.data;
+  },
+
   // 批量获取服务器状态
   getAllServerStatuses: async (
     serverIds: string[],
@@ -257,6 +329,8 @@ export type {
   CreateServerRequest,
   PopulateServerRequest,
   PopulateServerResponse,
+  RestartScheduleResponse,
+  RestartScheduleSuggestionsResponse,
   ServerDiskUsageResponse,
   ServerIOStatsResponse,
   ServerListItem,

@@ -14,6 +14,7 @@ import ServerDiskUsageCard from '@/components/server/ServerDiskUsageCard'
 import ServerResourcesCard from '@/components/server/ServerResourcesCard'
 import ServerIOStatsCard from '@/components/server/ServerIOStatsCard'
 import ServerPlayersCard from '@/components/server/ServerPlayersCard'
+import ServerRestartScheduleCard from '@/components/server/ServerRestartScheduleCard'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 
@@ -37,6 +38,8 @@ const ServerDetail: React.FC = () => {
     players,
     iostats,
     diskUsage,
+    restartSchedule,
+    restartScheduleQuery,
     isLoading,
     isError,
     error,
@@ -161,13 +164,23 @@ const ServerDetail: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 磁盘使用空间 - 始终显示 */}
-      <ServerDiskUsageCard
-        diskUsageBytes={diskUsage?.diskUsageBytes}
-        diskTotalBytes={diskUsage?.diskTotalBytes}
-        diskAvailableBytes={diskUsage?.diskAvailableBytes}
-        hasDiskUsageData={hasDiskUsageData || false}
-      />
+      {/* 重启计划和磁盘使用空间 */}
+      <Row gutter={16}>
+        <Col xs={24} sm={24} md={24} lg={8} xl={6}>
+          <ServerRestartScheduleCard
+            restartSchedule={restartSchedule}
+            isLoading={restartScheduleQuery?.isLoading}
+          />
+        </Col>
+        <Col xs={24} sm={24} md={24} lg={16} xl={18}>
+          <ServerDiskUsageCard
+            diskUsageBytes={diskUsage?.diskUsageBytes}
+            diskTotalBytes={diskUsage?.diskTotalBytes}
+            diskAvailableBytes={diskUsage?.diskAvailableBytes}
+            hasDiskUsageData={hasDiskUsageData || false}
+          />
+        </Col>
+      </Row>
 
       {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
       <ServerResourcesCard
