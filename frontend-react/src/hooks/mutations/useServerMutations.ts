@@ -29,17 +29,19 @@ export const useServerMutations = () => {
             return serverApi.downServer(serverId);
           case "remove":
             // First remove the server
-            const result = await serverApi.serverOperation(serverId, "remove");
+            {
+              const result = await serverApi.serverOperation(serverId, "remove");
 
-            // Then try to delete the restart schedule (if it exists)
-            try {
-              await serverApi.deleteRestartSchedule(serverId);
-            } catch (scheduleError) {
-              // Ignore errors if restart schedule doesn't exist or deletion fails
-              console.warn(`Failed to delete restart schedule for server ${serverId}:`, scheduleError);
+              // Then try to delete the restart schedule (if it exists)
+              try {
+                await serverApi.deleteRestartSchedule(serverId);
+              } catch (scheduleError) {
+                // Ignore errors if restart schedule doesn't exist or deletion fails
+                console.warn(`Failed to delete restart schedule for server ${serverId}:`, scheduleError);
+              }
+
+              return result;
             }
-
-            return result;
           default:
             throw new Error(`Unknown action: ${action}`);
         }
@@ -240,6 +242,11 @@ export const useServerMutations = () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.restartSchedule.detail(serverId),
         });
+
+        // 失效所有cron查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.cron.all,
+        });
       },
       onError: (error: Error, { serverId }) => {
         message.error(`配置服务器 "${serverId}" 重启计划失败: ${error.message}`);
@@ -259,6 +266,11 @@ export const useServerMutations = () => {
         // 失效重启计划相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.restartSchedule.detail(serverId),
+        });
+
+        // 失效所有cron查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.cron.all,
         });
       },
       onError: (error: Error, serverId) => {

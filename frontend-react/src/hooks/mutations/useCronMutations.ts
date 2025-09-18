@@ -11,10 +11,15 @@ export const useCronMutations = () => {
   const useCreateCronJob = () => {
     return useMutation({
       mutationFn: (request: CreateCronJobRequest) => cronApi.createCronJob(request),
-      onSuccess: (data) => {
+      onSuccess: (data, request) => {
         message.success(`任务创建成功: ${data.cronjob_id}`)
         // Invalidate relevant queries
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
+
+        // 如果是restart_server类型的任务，失效所有restart-schedule查询
+        if (request.identifier === 'restart_server') {
+          queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
+        }
       },
       onError: (error: any) => {
         message.error(`创建任务失败: ${error.response?.data?.detail || error.message}`)
