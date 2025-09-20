@@ -10,10 +10,9 @@ from .audit import OperationAuditMiddleware
 from .config import settings
 from .cron import cron_manager
 from .db.database import init_db
-from .dns import dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
-from .routers import admin, archive, auth, cron, snapshots, system, user
+from .routers import admin, archive, auth, cron, dns, snapshots, system, user
 from .routers.config import router as config_router
 from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
@@ -39,14 +38,8 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing cron management system...")
     await cron_manager.initialize()
 
-    logger.info("Starting DNS management system...")
-    await dns_manager.start()
-
     logger.info("Startup complete.")
     yield
-
-    logger.info("Shutting down DNS management system...")
-    await dns_manager.stop()
 
     logger.info("Shutting down cron management system...")
     await cron_manager.shutdown()
@@ -72,6 +65,7 @@ api_app.include_router(system.router)
 api_app.include_router(snapshots.router)
 api_app.include_router(archive.router)
 api_app.include_router(cron.router)
+api_app.include_router(dns.router)
 api_app.include_router(config_router)
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)

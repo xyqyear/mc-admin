@@ -1,339 +1,332 @@
 """
-Main DNS Manager that coordinates DNS, Router, and Server monitoring.
+Simplified DNS Manager
 
-This class integrates all components to automatically manage DNS records and
-router configurations based on Minecraft server status.
+A lightweight DNS management system that directly integrates with DockerMCManager
+to synchronize DNS records and MC Router configurations without background tasks.
 """
 
 import asyncio
-from typing import NamedTuple, Optional
+from typing import Dict, List, Literal, NamedTuple
 
 from ..config import settings
 from ..dynamic_config import config
 from ..logger import logger
+from ..minecraft import DockerMCManager
+from .dns import DNSClient
 from .dnspod import DNSPodClient
 from .huawei import HuaweiDNSClient
-from .mcdns import MCDNS, AddressesT, AddressInfoT
-from .monitor import DockerWatcher, NatmapMonitorClient, ServersT
-from .router import MCRouter, MCRouterClient
+from .router import MCRouterClient
+from .types import AddRecordT, ReturnRecordT
 
 
-class PullResultT(NamedTuple):
-    addresses: AddressesT
-    servers: ServersT
+class AddressInfo(NamedTuple):
+    """Address information for DNS records"""
+
+    type: Literal["A", "AAAA", "CNAME"]
+    host: str
+    port: int
 
 
-class Local:
-    """Handles local server and network monitoring"""
+class DNSRecord(NamedTuple):
+    """Abstract DNS record representation"""
 
-    def __init__(
-        self,
-        docker_watcher: DockerWatcher,
-        natmap_monitor_client: Optional[NatmapMonitorClient],
-        addresses_config: list,
-    ) -> None:
-        self._docker_watcher = docker_watcher
-        self._natmap_monitor_client = natmap_monitor_client
-        self._addresses_config = addresses_config
-
-    async def pull(self) -> PullResultT:
-        """Pull current local state (servers and addresses)"""
-        addresses = AddressesT()
-
-        # Process configured addresses
-        for addr_config in self._addresses_config:
-            address_name = addr_config.name
-            if addr_config.type == "natmap":
-                # Handle natmap addresses
-                if self._natmap_monitor_client:
-                    try:
-                        mappings = await self._natmap_monitor_client._get_mappings()
-                        protocol_and_port = f"tcp:{addr_config.internal_port}"
-                        if protocol_and_port in mappings:
-                            mapping = mappings[protocol_and_port]
-                            addresses[address_name] = AddressInfoT(
-                                type="A",
-                                host=mapping["ip"],
-                                port=mapping["port"],
-                            )
-                        else:
-                            logger.warning(
-                                f"Port {addr_config.internal_port} not found in natmap mappings"
-                            )
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to get natmap mapping for {address_name}: {e}"
-                        )
-            elif addr_config.type == "manual":
-                # Handle manual addresses
-                addresses[address_name] = AddressInfoT(
-                    type=addr_config.record_type,
-                    host=addr_config.value,
-                    port=addr_config.port,
-                )
-
-        # Get servers from Docker watcher
-        servers = await self._docker_watcher.get_servers()
-
-        return PullResultT(addresses=addresses, servers=servers)
+    sub_domain: str
+    record_type: str
+    value: str
+    ttl: int
 
 
-class Remote:
-    """Handles remote DNS and router state management"""
+class RouteEntry(NamedTuple):
+    """MC Router route entry"""
 
-    def __init__(self, mc_router: MCRouter, mc_dns: MCDNS) -> None:
-        self._mc_router = mc_router
-        self._mc_dns = mc_dns
-
-    async def push(self, addresses: AddressesT, servers: ServersT):
-        """Push state to both router and DNS"""
-        await asyncio.gather(
-            self._mc_router.push(list(addresses.keys()), servers),
-            self._mc_dns.push(addresses, list(servers.keys())),
-        )
-
-    async def pull(self) -> Optional[PullResultT]:
-        """
-        Pull current remote state (router and DNS)
-        Returns None if DNS/router state is inconsistent
-        """
-        (address_list, servers), mcdns_pull_result = await asyncio.gather(
-            self._mc_router.pull(), self._mc_dns.pull()
-        )
-
-        if not mcdns_pull_result:
-            return None
-
-        addresses, server_list = mcdns_pull_result
-
-        # Check consistency between router and DNS
-        if set(address_list) != set(addresses.keys()):
-            return None
-
-        if set(server_list) != set(servers.keys()):
-            return None
-
-        return PullResultT(addresses, servers)
+    server_address: str
+    backend: str
 
 
-class DNSManager:
+class SimpleDNSManager:
     """
-    Main DNS manager that coordinates all components.
+    Simplified DNS manager that provides a single update() API.
 
-    This class monitors local server state and automatically updates
-    DNS records and router configurations to keep everything in sync.
+    This manager:
+    1. Uses DockerMCManager to get current server list and ports
+    2. Combines with configuration to generate DNS records and routes
+    3. Updates DNS client and MC Router with complete record/route lists
     """
 
     def __init__(self):
-        self._background_tasks: list[asyncio.Task] = []
-        self._running = False
-
-        # Components will be initialized in start()
-        self._mcdns: Optional[MCDNS] = None
-        self._mcrouter: Optional[MCRouter] = None
-        self._docker_watcher: Optional[DockerWatcher] = None
-        self._natmap_monitor: Optional[NatmapMonitorClient] = None
-        self._local: Optional[Local] = None
-        self._remote: Optional[Remote] = None
-
-        # Control variables
-        self._update_queue = 0
+        self._dns_client: DNSClient | None = None
+        self._mc_router_client: MCRouterClient | None = None
+        self._docker_manager: DockerMCManager | None = None
         self._update_lock = asyncio.Lock()
-        self._backoff_timer = 2
 
-    def _queue_update(self):
-        """Queue an update due to a detected change"""
-        logger.info("queueing update")
-        self._update_queue += 1
-
-    async def _update(self):
-        """
-        Check for updates and apply them if necessary
-        :return: True if updated, False otherwise
-        """
-        if not self._remote or not self._local:
-            return False
-
-        logger.debug("checking for updates...")
-        remote_pull_result, local_pull_result = await asyncio.gather(
-            self._remote.pull(), self._local.pull()
-        )
-
-        if remote_pull_result == local_pull_result:
-            return False
-
-        logger.info(f"pushing changes: {local_pull_result}")
-        await self._remote.push(local_pull_result.addresses, local_pull_result.servers)
-        return True
-
-    async def _try_update(self):
-        """Try to update with backoff on errors"""
-        await asyncio.sleep(self._backoff_timer - 2)
-        try:
-            async with self._update_lock:
-                if await self._update():
-                    # wait for DNS provider to update
-                    await asyncio.sleep(10)
-            # reset backoff timer if successful
-            self._backoff_timer = 2
-        except Exception as e:
-            logger.warning(f"error while updating: {e}")
-            # set a maximum backoff timer of 60 seconds
-            if self._backoff_timer < 60:
-                self._backoff_timer *= 1.5
-
-    async def _check_queue_loop(self):
-        """Process update queue"""
-        while self._running:
-            if self._update_queue > 0:
-                self._update_queue -= 1
-                await self._try_update()
-            await asyncio.sleep(1)
-
-    async def _polling_loop(self):
-        """Main polling loop"""
-        while self._running:
-            poll_interval = config.dns.poll_interval
-            await asyncio.sleep(poll_interval)
-            await self._try_update()
-
-    async def start(self):
-        """Start the DNS manager"""
-        if self._running:
-            logger.warning("DNS manager already running")
-            return
-
+    async def initialize(self):
+        """Initialize the DNS manager with current configuration"""
         dns_config = config.dns
 
         if not dns_config.enabled:
             logger.info("DNS manager is disabled in configuration")
             return
 
-        logger.info("Starting DNS manager...")
+        # Initialize DNS client
+        if dns_config.dns.type == "dnspod":
+            self._dns_client = DNSPodClient(
+                dns_config.dns.domain,
+                dns_config.dns.id,
+                dns_config.dns.key,
+            )
+        elif dns_config.dns.type == "huawei":
+            self._dns_client = HuaweiDNSClient(
+                dns_config.dns.domain,
+                dns_config.dns.ak,
+                dns_config.dns.sk,
+                dns_config.dns.region,
+            )
+        else:
+            raise ValueError(f"Unsupported DNS provider: {dns_config.dns.type}")
 
-        try:
-            # Initialize DNS client based on configuration
-            if dns_config.dns.type == "dnspod":
-                dns_client = DNSPodClient(
-                    dns_config.dns.domain,
-                    dns_config.dns.id,
-                    dns_config.dns.key,
+        # Initialize DNS client
+        if not self._dns_client.is_initialized():
+            await self._dns_client.init()
+
+        # Initialize MC Router client
+        self._mc_router_client = MCRouterClient(dns_config.mc_router_base_url)
+
+        # Initialize Docker manager
+        self._docker_manager = DockerMCManager(settings.server_path)
+
+        logger.info("Simplified DNS manager initialized successfully")
+
+    async def update(self):
+        """
+        Update DNS records and MC Router configurations based on current server state.
+
+        This method:
+        1. Gets server list and ports from DockerMCManager
+        2. Combines with address configuration to generate records
+        3. Updates DNS and MC Router with complete lists
+        """
+        if (
+            not self._dns_client
+            or not self._mc_router_client
+            or not self._docker_manager
+        ):
+            raise RuntimeError("DNS manager not initialized. Call initialize() first.")
+
+        async with self._update_lock:
+            logger.info("Starting DNS update...")
+
+            dns_config = config.dns
+
+            try:
+                # Get current server information
+                server_info_list = await self._docker_manager.get_all_server_info()
+                servers = {info.name: info.game_port for info in server_info_list}
+
+                # Get addresses from configuration
+                addresses = await self._get_addresses_from_config(dns_config.addresses)
+
+                if not addresses or not servers:
+                    logger.warning("No addresses or servers found, skipping DNS update")
+                    return
+
+                logger.info(
+                    f"Found {len(servers)} servers and {len(addresses)} addresses"
                 )
-            elif dns_config.dns.type == "huawei":
-                dns_client = HuaweiDNSClient(
-                    dns_config.dns.domain,
-                    dns_config.dns.ak,
-                    dns_config.dns.sk,
-                    dns_config.dns.region,
+
+                # Generate DNS records and routes
+                dns_records = self._generate_dns_records(
+                    addresses,
+                    list(servers.keys()),
+                    dns_config.managed_sub_domain,
+                    dns_config.dns_ttl,
                 )
+
+                routes = self._generate_routes(
+                    addresses,
+                    servers,
+                    dns_config.managed_sub_domain,
+                    self._dns_client.get_domain(),
+                )
+
+                # Update DNS and MC Router in parallel
+                await asyncio.gather(
+                    self._update_dns_records(dns_records),
+                    self._update_mc_router(routes),
+                )
+
+                logger.info("DNS update completed successfully")
+
+            except Exception as e:
+                logger.error(f"Error during DNS update: {e}")
+                raise
+
+    async def _get_addresses_from_config(
+        self, addresses_config: list
+    ) -> Dict[str, AddressInfo]:
+        """Extract addresses from configuration"""
+        addresses = {}
+
+        for addr_config in addresses_config:
+            if addr_config.type == "manual":
+                addresses[addr_config.name] = AddressInfo(
+                    type=addr_config.record_type,
+                    host=addr_config.value,
+                    port=addr_config.port,
+                )
+            elif addr_config.type == "natmap":
+                # For natmap, we would need to query the natmap service
+                # For now, skip natmap addresses in the simplified implementation
+                logger.warning(
+                    f"Natmap address {addr_config.name} skipped - not implemented in simplified manager"
+                )
+                continue
+
+        return addresses
+
+    def _generate_dns_records(
+        self,
+        addresses: Dict[str, AddressInfo],
+        server_list: List[str],
+        managed_sub_domain: str,
+        dns_ttl: int,
+    ) -> List[DNSRecord]:
+        """Generate complete list of DNS records"""
+        records = []
+
+        for address_name, address_info in addresses.items():
+            # Generate base address record (A/AAAA/CNAME)
+            if address_name == "*":
+                sub_domain_base = managed_sub_domain
             else:
-                raise ValueError(f"Unsupported DNS provider: {dns_config.dns.type}")
+                sub_domain_base = f"{address_name}.{managed_sub_domain}"
 
-            # Initialize MCDNS
-            self._mcdns = MCDNS(
-                dns_client, dns_config.managed_sub_domain, dns_config.dns_ttl
-            )
-
-            # Initialize MC Router client
-            mcrouter_client = MCRouterClient(dns_config.mc_router_base_url)
-            self._mcrouter = MCRouter(
-                mcrouter_client,
-                dns_client.get_domain(),
-                dns_config.managed_sub_domain,
-            )
-
-            # Initialize Docker watcher
-            self._docker_watcher = DockerWatcher(settings.server_path)
-
-            # Initialize Natmap monitor if enabled
-            if dns_config.natmap_monitor.enabled:
-                self._natmap_monitor = NatmapMonitorClient(
-                    dns_config.natmap_monitor.base_url
+            # Wildcard record for this address
+            records.append(
+                DNSRecord(
+                    sub_domain=f"*.{sub_domain_base}",
+                    record_type=address_info.type,
+                    value=address_info.host,
+                    ttl=dns_ttl,
                 )
-            else:
-                self._natmap_monitor = None
-
-            # Initialize local and remote managers
-            self._local = Local(
-                self._docker_watcher, self._natmap_monitor, dns_config.addresses
             )
-            self._remote = Remote(self._mcrouter, self._mcdns)
 
-            # Run initial update
-            logger.info("running initial check...")
-            while True:
-                try:
-                    await self._update()
-                    break
-                except Exception as e:
-                    logger.warning(f"error while initializing: {e}")
-                    await asyncio.sleep(self._backoff_timer - 2)
-                    self._backoff_timer *= 1.5
-            self._backoff_timer = 2
-            logger.info("initial check done.")
-
-            # Start monitoring tasks
-            self._running = True
-
-            # Start background tasks
-            self._background_tasks = []
-            if self._docker_watcher:
-                self._background_tasks.append(
-                    asyncio.create_task(
-                        self._docker_watcher.watch_servers(self._queue_update)
+            # SRV records for each server
+            for server_name in server_list:
+                domain = (
+                    self._dns_client.get_domain() if self._dns_client else "localhost"
+                )
+                srv_value = (
+                    f"0 5 {address_info.port} {server_name}.{sub_domain_base}.{domain}"
+                )
+                records.append(
+                    DNSRecord(
+                        sub_domain=f"_minecraft._tcp.{server_name}.{sub_domain_base}",
+                        record_type="SRV",
+                        value=srv_value,
+                        ttl=dns_ttl,
                     )
                 )
-            self._background_tasks.append(asyncio.create_task(self._check_queue_loop()))
-            self._background_tasks.append(asyncio.create_task(self._polling_loop()))
 
-            if self._natmap_monitor:
-                self._background_tasks.append(
-                    asyncio.create_task(
-                        self._natmap_monitor.listen_to_ws(self._queue_update)
-                    )
+        return records
+
+    def _generate_routes(
+        self,
+        addresses: Dict[str, AddressInfo],
+        servers: Dict[str, int],
+        managed_sub_domain: str,
+        domain: str,
+    ) -> List[RouteEntry]:
+        """Generate complete list of MC Router routes"""
+        routes = []
+
+        for server_name, server_port in servers.items():
+            for address_name in addresses.keys():
+                if address_name == "*":
+                    sub_domain_base = managed_sub_domain
+                else:
+                    sub_domain_base = f"{address_name}.{managed_sub_domain}"
+
+                server_address = f"{server_name}.{sub_domain_base}.{domain}"
+                backend = f"localhost:{server_port}"
+
+                routes.append(
+                    RouteEntry(server_address=server_address, backend=backend)
                 )
 
-            logger.info("DNS manager started successfully")
+        return routes
 
-        except Exception as e:
-            logger.error(f"Failed to start DNS manager: {e}")
-            await self.stop()
-            raise
-
-    async def stop(self):
-        """Stop the DNS manager"""
-        if not self._running:
+    async def _update_dns_records(self, target_records: List[DNSRecord]):
+        """Update DNS records to match target state"""
+        if not self._dns_client:
             return
 
-        logger.info("Stopping DNS manager...")
-        self._running = False
+        # Convert target records to the format expected by DNS client
+        target_add_records = [
+            AddRecordT(
+                sub_domain=record.sub_domain,
+                value=record.value,
+                record_type=record.record_type,
+                ttl=record.ttl,
+            )
+            for record in target_records
+        ]
 
-        # Cancel all background tasks
-        for task in self._background_tasks:
-            if not task.done():
-                task.cancel()
+        # Let the DNS client handle the diffing and updates
+        await self._dns_client.update_records(target_add_records)
 
-        # Wait for all tasks to complete or be cancelled
-        if self._background_tasks:
-            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+    async def _update_mc_router(self, target_routes: List[RouteEntry]):
+        """Update MC Router with target routes"""
+        if not self._mc_router_client:
+            return
 
-        self._background_tasks.clear()
+        # Convert to the format expected by MC Router client
+        routes_dict = {route.server_address: route.backend for route in target_routes}
 
-        # Clean up resources
-        if self._natmap_monitor:
-            await self._natmap_monitor.close()
+        logger.info(f"Updating MC Router with {len(routes_dict)} routes")
+        await self._mc_router_client.override_routes(routes_dict)
 
-        # Clean up router client session
-        if self._mcrouter and hasattr(self._mcrouter, "_client"):
-            await self._mcrouter._client.close()
+    async def _get_relevant_dns_records(self) -> List[ReturnRecordT]:
+        """Get DNS records that are relevant to our management"""
+        if not self._dns_client:
+            return []
 
-        logger.info("DNS manager stopped")
+        dns_config = config.dns
+        all_records = await self._dns_client.list_records()
+        relevant_records = []
+
+        for record in all_records:
+            # Check if this is a record we manage
+            is_wildcard_address = (
+                record.record_type in ("A", "AAAA", "CNAME")
+                and record.sub_domain.startswith("*")
+                and record.sub_domain.endswith(f".{dns_config.managed_sub_domain}")
+            )
+
+            is_srv_record = (
+                record.record_type == "SRV"
+                and record.sub_domain.startswith("_minecraft._tcp.")
+                and record.sub_domain.endswith(f".{dns_config.managed_sub_domain}")
+            )
+
+            if is_wildcard_address or is_srv_record:
+                relevant_records.append(record)
+
+        return relevant_records
+
+    async def close(self):
+        """Clean up resources"""
+        if self._mc_router_client:
+            await self._mc_router_client.close()
 
     @property
-    def is_running(self) -> bool:
-        """Check if the DNS manager is running"""
-        return self._running
+    def is_initialized(self) -> bool:
+        """Check if the manager is initialized"""
+        return (
+            self._dns_client is not None
+            and self._mc_router_client is not None
+            and self._docker_manager is not None
+        )
 
 
-# Global DNS manager instance
-dns_manager = DNSManager()
+# Global instance
+simple_dns_manager = SimpleDNSManager()

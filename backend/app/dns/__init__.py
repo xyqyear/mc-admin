@@ -1,22 +1,23 @@
 """
 DNS Management System
 
-Integrated DNS management for Minecraft servers with Docker integration.
-Supports DNSPod and Huawei Cloud DNS providers with automatic server discovery and routing.
+Simplified DNS management for Minecraft servers with direct Docker integration.
+Supports DNSPod and Huawei Cloud DNS providers with on-demand updates.
 """
 
-from .dns import (
+from .dns import DNSClient
+from .dnspod import DNSPodClient
+from .huawei import HuaweiDNSClient
+from .manager import SimpleDNSManager, simple_dns_manager
+from .router import MCRouterClient
+from .types import (
     AddRecordListT,
     AddRecordT,
-    DNSClient,
     RecordIdListT,
     RecordListT,
     ReturnRecordT,
 )
-from .dnspod import DNSPodClient
-from .huawei import HuaweiDNSClient
-from .manager import DNSManager, dns_manager
-from .mcdns import MCDNS, AddressesT, AddressInfoT, MCDNSPullResultT
+from .utils import RecordDiff, RecordKey, diff_dns_records
 
 __all__ = [
     "DNSClient",
@@ -27,10 +28,10 @@ __all__ = [
     "RecordIdListT",
     "DNSPodClient",
     "HuaweiDNSClient",
-    "MCDNS",
-    "AddressesT",
-    "AddressInfoT",
-    "MCDNSPullResultT",
-    "DNSManager",
-    "dns_manager",
+    "MCRouterClient",
+    "SimpleDNSManager",
+    "simple_dns_manager",
+    "RecordKey",
+    "RecordDiff",
+    "diff_dns_records",
 ]

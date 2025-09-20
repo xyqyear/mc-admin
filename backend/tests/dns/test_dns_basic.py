@@ -1,7 +1,15 @@
-import pytest
 from typing import NamedTuple
 
-from app.dns.dns import AddRecordT, AddRecordListT, DNSClient, RecordIdListT, RecordListT, ReturnRecordT
+import pytest
+
+from app.dns import ReturnRecordT
+from app.dns.dns import (
+    AddRecordListT,
+    AddRecordT,
+    DNSClient,
+    RecordIdListT,
+    RecordListT,
+)
 
 
 class DummyDNSClient(DNSClient):
@@ -39,14 +47,26 @@ class DummyDNSClient(DNSClient):
             for record_id, record in self._records.items()
         ]
 
-    async def update_records(self, records: RecordListT):
-        for record in records:
-            self._records[record.record_id] = AddRecordT(
-                sub_domain=record.sub_domain,
-                value=record.value,
-                record_type=record.record_type,
-                ttl=record.ttl,
-            )
+    async def update_records(self, target_records: AddRecordListT):
+        # Get current records and calculate diff
+        current_records = await self.list_records()
+        from app.dns.utils import diff_dns_records
+
+        diff = diff_dns_records(current_records, target_records)
+
+        # Apply changes
+        if diff.records_to_remove:
+            await self.remove_records(diff.records_to_remove)
+        if diff.records_to_add:
+            await self.add_records(diff.records_to_add)
+        # Handle updates by removing and re-adding
+        if diff.records_to_update:
+            await self.remove_records([r.record_id for r in diff.records_to_update])
+            update_adds = [
+                AddRecordT(r.sub_domain, r.value, r.record_type, r.ttl)
+                for r in diff.records_to_update
+            ]
+            await self.add_records(update_adds)
 
     async def remove_records(self, record_ids: RecordIdListT):
         for record_id in record_ids:
@@ -139,10 +159,9 @@ async def test_dns_client_update_records():
 
     # Update the record
     record_to_update = listed_records[0]
-    updated_record = ReturnRecordT(
+    updated_record = AddRecordT(
         sub_domain=record_to_update.sub_domain,
         value="2.2.2.2",
-        record_id=record_to_update.record_id,
         record_type=record_to_update.record_type,
         ttl=600,
     )

@@ -7,9 +7,9 @@ from typing import (
     cast,
 )
 
-from huaweicloudsdkcore.auth.credentials import BasicCredentials  # type: ignore
-from huaweicloudsdkcore.exceptions import exceptions  # type: ignore
-from huaweicloudsdkdns.v2 import (  # type: ignore
+from huaweicloudsdkcore.auth.credentials import BasicCredentials
+from huaweicloudsdkcore.exceptions import exceptions
+from huaweicloudsdkdns.v2 import (
     BatchDeleteRecordSetWithLineRequest,
     BatchDeleteRecordSetWithLineRequestBody,
     BatchUpdateRecordSet,
@@ -24,7 +24,8 @@ from huaweicloudsdkdns.v2 import (  # type: ignore
 from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
 
 from ..logger import logger
-from .dns import AddRecordListT, DNSClient, RecordIdListT, RecordListT, ReturnRecordT
+from .dns import DNSClient
+from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
 
 
 class ZoneInfoT:
@@ -166,19 +167,17 @@ class HuaweiDNSClient(DNSClient):
 
         return sanitized_record_list
 
-    def has_update_capability(self) -> bool:
-        return True
-
-    async def update_records(self, records: RecordListT):
+    async def _update_records_batch(self, records: RecordListT):
+        """Update records using Huawei's batch update API"""
         if not records:
             return
 
         recordsets = [
             BatchUpdateRecordSet(
-                id=record_id,
-                records=[value],
+                id=record.record_id,
+                records=[record.value],
             )
-            for _, value, record_id, *_ in records
+            for record in records
         ]
         request_body = BatchUpdateRecordSetWithLineRequestBody(recordsets=recordsets)
         request = BatchUpdateRecordSetWithLineRequest(
@@ -187,6 +186,9 @@ class HuaweiDNSClient(DNSClient):
         await self._try_request(
             self._huawei_client.batch_update_record_set_with_line, request
         )
+
+    def has_update_capability(self) -> bool:
+        return True
 
     async def remove_records(self, record_ids: RecordIdListT):
         if not record_ids:

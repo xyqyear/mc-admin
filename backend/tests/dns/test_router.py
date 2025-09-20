@@ -1,115 +1,207 @@
-from typing import NamedTuple
+"""
+Tests for the simplified MC Router client
+"""
+
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.dns.router import AddressNameListT, MCRouter, MCRouterClient, RoutesT, ServersT
+from app.dns.router import MCRouterClient
 
 
-class DummyMCRouterClient(MCRouterClient):
-    def __init__(self, base_url: str):
-        self._base_url = base_url
-        self._routes = RoutesT()
+class MockAsyncContext:
+    """Mock async context manager for aiohttp response"""
 
-    async def get_routes(self) -> RoutesT:
-        return self._routes
+    def __init__(self, response):
+        self._response = response
 
-    async def override_routes(self, routes: RoutesT):
-        self._routes = routes
+    async def __aenter__(self):
+        return self._response
 
-    async def close(self):
-        pass
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return None
 
 
-class RoutesTestPairT(NamedTuple):
-    address_name_list: AddressNameListT
-    servers: ServersT
-    routes: RoutesT
+@pytest.fixture
+def mock_session():
+    """Mock aiohttp ClientSession"""
+    session = AsyncMock()
+    return session
 
 
-push_test_pairs = [
-    RoutesTestPairT(
-        address_name_list=["*", "backup", "relay"],
-        servers={"vanilla": 25565, "gtnh": 25566},
-        routes={
-            "vanilla.mc.example.com": "localhost:25565",
-            "vanilla.backup.mc.example.com": "localhost:25565",
-            "vanilla.relay.mc.example.com": "localhost:25565",
-            "gtnh.mc.example.com": "localhost:25566",
-            "gtnh.backup.mc.example.com": "localhost:25566",
-            "gtnh.relay.mc.example.com": "localhost:25566",
-        },
-    ),
-    RoutesTestPairT(
-        address_name_list=["*"],
-        servers={"vanilla": 25565},
-        routes={"vanilla.mc.example.com": "localhost:25565"},
-    ),
-    RoutesTestPairT(
-        address_name_list=["*", "backup"],
-        servers={"vanilla": 25565},
-        routes={
-            "vanilla.mc.example.com": "localhost:25565",
-            "vanilla.backup.mc.example.com": "localhost:25565",
-        },
-    ),
-    RoutesTestPairT(
-        address_name_list=["backup"],
-        servers={"vanilla": 25565},
-        routes={"vanilla.backup.mc.example.com": "localhost:25565"},
-    ),
-]
+@pytest.fixture
+def router_client():
+    """Create router client with mocked session"""
+    with patch("app.dns.router.aiohttp.ClientSession"):
+        client = MCRouterClient("http://localhost:26666")
+        client._session = AsyncMock()
+        return client
 
 
-@pytest.mark.parametrize("address_name_list, servers, expected_routes", push_test_pairs)
-async def test_mcrouter_push(
-    address_name_list: AddressNameListT, servers: ServersT, expected_routes: RoutesT
-):
-    dummy_router = DummyMCRouterClient("http://localhost:5000")
-    mcrouter = MCRouter(dummy_router, "example.com", "mc")
+@pytest.mark.asyncio
+async def test_get_routes(router_client):
+    """Test getting routes from MC Router"""
+    expected_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
 
-    await mcrouter.push(address_name_list, servers)
+    # Directly mock the _send_request method instead of session.request
+    router_client._send_request = AsyncMock(return_value=expected_routes)
 
-    routes = await dummy_router.get_routes()
+    routes = await router_client.get_routes()
+
     assert routes == expected_routes
-
-
-@pytest.mark.parametrize(
-    "expected_address_name_list, expected_servers, routes", push_test_pairs
-)
-async def test_mcrouter_pull(
-    expected_address_name_list: AddressNameListT,
-    expected_servers: ServersT,
-    routes: RoutesT,
-):
-    dummy_router = DummyMCRouterClient("http://localhost:5000")
-    await dummy_router.override_routes(routes)
-    mcrouter = MCRouter(dummy_router, "example.com", "mc")
-
-    pulled_address_name_list, pulled_servers = await mcrouter.pull()
-
-    assert set(pulled_address_name_list) == set(expected_address_name_list)
-    assert pulled_servers == expected_servers
+    router_client._send_request.assert_called_once_with(
+        "GET", "routes", headers={"Accept": "application/json"}
+    )
 
 
 @pytest.mark.asyncio
-async def test_mcrouter_empty_routes():
-    """Test MCRouter with empty routes"""
-    dummy_router = DummyMCRouterClient("http://localhost:5000")
-    mcrouter = MCRouter(dummy_router, "example.com", "mc")
+async def test_get_routes_empty_response(router_client):
+    """Test getting routes with empty response"""
+    # Mock empty response
+    router_client._send_request = AsyncMock(return_value=None)
 
-    pulled_address_name_list, pulled_servers = await mcrouter.pull()
+    routes = await router_client.get_routes()
 
-    assert pulled_address_name_list == []
-    assert pulled_servers == {}
+    assert routes is None
 
 
 @pytest.mark.asyncio
-async def test_mcrouter_push_empty():
-    """Test MCRouter push with empty data"""
-    dummy_router = DummyMCRouterClient("http://localhost:5000")
-    mcrouter = MCRouter(dummy_router, "example.com", "mc")
+async def test_add_route(router_client):
+    """Test adding a single route"""
+    # Mock response
+    router_client._send_request = AsyncMock(return_value=None)
 
-    await mcrouter.push([], {})
+    await router_client._add_route("vanilla.mc.example.com", "localhost:25565")
 
-    routes = await dummy_router.get_routes()
-    assert routes == {}
+    router_client._send_request.assert_called_once_with(
+        "POST",
+        "routes",
+        headers={"Content-Type": "application/json"},
+        json={"serverAddress": "vanilla.mc.example.com", "backend": "localhost:25565"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_remove_route(router_client):
+    """Test removing a single route"""
+    # Mock response
+    router_client._send_request = AsyncMock(return_value=None)
+
+    await router_client._remove_route("vanilla.mc.example.com")
+
+    router_client._send_request.assert_called_once_with(
+        "DELETE", "routes/vanilla.mc.example.com"
+    )
+
+
+@pytest.mark.asyncio
+async def test_remove_all_routes(router_client):
+    """Test removing all routes"""
+    existing_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+
+    # Mock get_routes to return existing routes
+    router_client.get_routes = AsyncMock(return_value=existing_routes)
+
+    # Mock _remove_route
+    router_client._remove_route = AsyncMock()
+
+    await router_client._remove_all_routes()
+
+    # Should call _remove_route for each existing route
+    assert router_client._remove_route.call_count == 2
+    router_client._remove_route.assert_any_call("vanilla.mc.example.com")
+    router_client._remove_route.assert_any_call("modded.mc.example.com")
+
+
+@pytest.mark.asyncio
+async def test_add_routes(router_client):
+    """Test adding multiple routes"""
+    routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+
+    # Mock _add_route
+    router_client._add_route = AsyncMock()
+
+    await router_client._add_routes(routes)
+
+    # Should call _add_route for each route
+    assert router_client._add_route.call_count == 2
+    router_client._add_route.assert_any_call(
+        "vanilla.mc.example.com", "localhost:25565"
+    )
+    router_client._add_route.assert_any_call("modded.mc.example.com", "localhost:25566")
+
+
+@pytest.mark.asyncio
+async def test_override_routes(router_client):
+    """Test overriding all routes"""
+    new_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+
+    # Mock helper methods
+    router_client._remove_all_routes = AsyncMock()
+    router_client._add_routes = AsyncMock()
+
+    await router_client.override_routes(new_routes)
+
+    # Should remove all routes first, then add new ones
+    router_client._remove_all_routes.assert_called_once()
+    router_client._add_routes.assert_called_once_with(new_routes)
+
+
+@pytest.mark.asyncio
+async def test_override_routes_empty(router_client):
+    """Test overriding with empty routes"""
+    # Mock helper methods
+    router_client._remove_all_routes = AsyncMock()
+    router_client._add_routes = AsyncMock()
+
+    await router_client.override_routes({})
+
+    # Should remove all routes but not add any
+    router_client._remove_all_routes.assert_called_once()
+    router_client._add_routes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_close(router_client):
+    """Test closing the router client"""
+    await router_client.close()
+
+    router_client._session.close.assert_called_once()
+
+
+def test_base_url_normalization():
+    """Test that base URL is normalized with trailing slash"""
+    with patch("app.dns.router.aiohttp.ClientSession"):
+        # Test URL without trailing slash
+        client1 = MCRouterClient("http://localhost:26666")
+        assert client1._base_url == "http://localhost:26666/"
+
+        # Test URL with trailing slash
+        client2 = MCRouterClient("http://localhost:26666/")
+        assert client2._base_url == "http://localhost:26666/"
+
+
+def test_timeout_configuration():
+    """Test that the session is configured with proper timeout"""
+    with (
+        patch("app.dns.router.aiohttp.ClientSession") as session_mock,
+        patch("app.dns.router.aiohttp.ClientTimeout") as timeout_mock,
+    ):
+        MCRouterClient("http://localhost:26666")
+
+        # Should create timeout with 10 seconds
+        timeout_mock.assert_called_once_with(total=10)
+        # Should pass timeout to session
+        session_mock.assert_called_once_with(timeout=timeout_mock.return_value)

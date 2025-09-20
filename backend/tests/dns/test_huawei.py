@@ -165,15 +165,22 @@ async def test_huawei_client_update_records(mock_huawei_client):
     client, mock_instance = mock_huawei_client
     client._zone_id = "zone123"
 
-    records = [
-        ("test", "2.2.2.2", "rec1", "A", 600),
-        ("srv", "0 5 25566 target.example.com", "rec2", "SRV", 300),
+    from app.dns.dns import AddRecordT
+
+    target_records = [
+        AddRecordT("test", "2.2.2.2", "A", 600),
+        AddRecordT("srv", "0 5 25566 target.example.com", "SRV", 300),
     ]
 
-    await client.update_records(records)
+    # Mock list_records to return empty list
+    from unittest.mock import AsyncMock
 
-    # Verify the API was called
-    mock_instance.batch_update_record_set_with_line.assert_called_once()
+    client.list_records = AsyncMock(return_value=[])
+
+    await client.update_records(target_records)
+
+    # Verify the API was called (should call add_records since current is empty)
+    assert mock_instance.create_record_set.call_count >= 1
 
 
 @pytest.mark.asyncio
@@ -223,7 +230,7 @@ async def test_huawei_client_empty_operations(mock_huawei_client):
     client._zone_id = "zone123"
 
     # Test empty operations don't call APIs
-    await client.update_records([])
+    await client.update_records([])  # Empty target records
     mock_instance.batch_update_record_set_with_line.assert_not_called()
 
     await client.remove_records([])

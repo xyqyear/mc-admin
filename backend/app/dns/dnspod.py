@@ -10,7 +10,8 @@ from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.dnspod.v20210323 import dnspod_client, models
 
-from .dns import AddRecordListT, DNSClient, RecordIdListT, RecordListT, ReturnRecordT
+from .dns import DNSClient
+from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
 
 
 class DNSPodSDKRequestT(Protocol):
@@ -126,23 +127,23 @@ class DNSPodClient(DNSClient):
         self._request_mapping = {
             "DescribeDomainList": DNSPodRequestInfoT(
                 constructor=models.DescribeDomainListRequest,
-                api_call=self._client.DescribeDomainList,  # type: ignore
+                api_call=self._client.DescribeDomainList,
             ),
             "DescribeRecordList": DNSPodRequestInfoT(
                 constructor=models.DescribeRecordListRequest,
-                api_call=self._client.DescribeRecordList,  # type: ignore
+                api_call=self._client.DescribeRecordList,
             ),
             "ModifyRecordBatch": DNSPodRequestInfoT(
                 constructor=models.ModifyRecordBatchRequest,
-                api_call=self._client.ModifyRecordBatch,  # type: ignore
+                api_call=self._client.ModifyRecordBatch,
             ),
             "DeleteRecordBatch": DNSPodRequestInfoT(
                 constructor=models.DeleteRecordBatchRequest,
-                api_call=self._client.DeleteRecordBatch,  # type: ignore
+                api_call=self._client.DeleteRecordBatch,
             ),
             "CreateRecordBatch": DNSPodRequestInfoT(
                 constructor=models.CreateRecordBatchRequest,
-                api_call=self._client.CreateRecordBatch,  # type: ignore
+                api_call=self._client.CreateRecordBatch,
             ),
         }
 
