@@ -175,26 +175,32 @@ def test_dns_router_authentication_required():
 
 def test_get_dns_records_success(client):
     """Test DNS records endpoint success"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager:
+    with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
+         patch("app.dynamic_config.config") as mock_config:
         # Mock manager as initialized
         mock_manager.is_initialized = True
 
+        # Mock DNS config
+        mock_dns_config = Mock()
+        mock_dns_config.managed_sub_domain = "mc"
+        mock_config.dns = mock_dns_config
+
         # Mock DNS client with sample records
         mock_dns_client = Mock()
-        mock_dns_client.list_records = AsyncMock(
+        mock_dns_client.list_relevant_records = AsyncMock(
             return_value=[
                 ReturnRecordT(
-                    sub_domain="server1",
+                    sub_domain="*.mc",
                     value="192.168.1.100",
                     record_id="12345",
                     record_type="A",
                     ttl=300,
                 ),
                 ReturnRecordT(
-                    sub_domain="server2",
-                    value="192.168.1.101",
+                    sub_domain="_minecraft._tcp.server1.mc",
+                    value="0 5 25565 server1.mc.example.com",
                     record_id="12346",
-                    record_type="A",
+                    record_type="SRV",
                     ttl=300,
                 ),
             ]
@@ -209,29 +215,35 @@ def test_get_dns_records_success(client):
         data = response.json()
 
         assert len(data) == 2
-        assert data[0]["sub_domain"] == "server1"
+        assert data[0]["sub_domain"] == "*.mc"
         assert data[0]["value"] == "192.168.1.100"
         assert data[0]["record_id"] == "12345"
         assert data[0]["record_type"] == "A"
         assert data[0]["ttl"] == 300
 
-        assert data[1]["sub_domain"] == "server2"
-        assert data[1]["value"] == "192.168.1.101"
+        assert data[1]["sub_domain"] == "_minecraft._tcp.server1.mc"
+        assert data[1]["value"] == "0 5 25565 server1.mc.example.com"
         assert data[1]["record_id"] == "12346"
-        assert data[1]["record_type"] == "A"
+        assert data[1]["record_type"] == "SRV"
         assert data[1]["ttl"] == 300
 
 
 def test_get_dns_records_not_initialized(client):
     """Test DNS records endpoint when manager not initialized"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager:
+    with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
+         patch("app.dynamic_config.config") as mock_config:
         # Mock manager as not initialized
         mock_manager.is_initialized = False
         mock_manager.initialize = AsyncMock()
 
+        # Mock DNS config
+        mock_dns_config = Mock()
+        mock_dns_config.managed_sub_domain = "mc"
+        mock_config.dns = mock_dns_config
+
         # Mock DNS client after initialization
         mock_dns_client = Mock()
-        mock_dns_client.list_records = AsyncMock(return_value=[])
+        mock_dns_client.list_relevant_records = AsyncMock(return_value=[])
         mock_manager._dns_client = mock_dns_client
 
         response = client.get(
@@ -395,3 +407,63 @@ def test_refresh_dns_manager_endpoint_integration(client):
         data = response.json()
         assert data["success"] is True
         assert "refreshed successfully" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_list_relevant_records_filtering():
+    """Test that list_relevant_records properly filters DNS records"""
+    from app.dns.types import ReturnRecordT
+    from app.dns.dns import DNSClient
+
+    # Create a mock DNS client that implements list_records
+    class MockDNSClient(DNSClient):
+        def get_domain(self) -> str:
+            return "example.com"
+
+        def is_initialized(self) -> bool:
+            return True
+
+        async def init(self):
+            pass
+
+        async def list_records(self):
+            # Return a mix of relevant and irrelevant records
+            return [
+                # Relevant: Wildcard A record for managed subdomain
+                ReturnRecordT("*.mc", "192.168.1.100", "1", "A", 300),
+                # Relevant: SRV record for minecraft
+                ReturnRecordT("_minecraft._tcp.server1.mc", "0 5 25565 server1.mc.example.com", "2", "SRV", 300),
+                # Irrelevant: Regular A record outside managed subdomain
+                ReturnRecordT("www", "192.168.1.200", "3", "A", 300),
+                # Irrelevant: Wildcard but wrong subdomain
+                ReturnRecordT("*.api", "192.168.1.300", "4", "A", 300),
+                # Irrelevant: SRV but not minecraft
+                ReturnRecordT("_http._tcp.web.mc", "0 5 80 web.mc.example.com", "5", "SRV", 300),
+                # Relevant: Another minecraft SRV record
+                ReturnRecordT("_minecraft._tcp.server2.backup.mc", "0 5 25566 server2.backup.mc.example.com", "6", "SRV", 300),
+            ]
+
+        def has_update_capability(self) -> bool:
+            return False
+
+        async def remove_records(self, record_ids): pass
+        async def add_records(self, records): pass
+
+    client = MockDNSClient()
+
+    # Test filtering
+    relevant_records = await client.list_relevant_records("mc")
+
+    # Should only return 3 relevant records
+    assert len(relevant_records) == 3
+
+    # Check that we got the right records
+    relevant_subdomains = [record.sub_domain for record in relevant_records]
+    assert "*.mc" in relevant_subdomains
+    assert "_minecraft._tcp.server1.mc" in relevant_subdomains
+    assert "_minecraft._tcp.server2.backup.mc" in relevant_subdomains
+
+    # Check that irrelevant records are filtered out
+    assert "www" not in relevant_subdomains
+    assert "*.api" not in relevant_subdomains
+    assert "_http._tcp.web.mc" not in relevant_subdomains

@@ -34,9 +34,14 @@ class MockDNSClient(DNSClient):
     async def list_records(self):
         return self.records
 
-    async def update_records(self, target_records):
-        # Simple mock - just store the target records
+    async def list_relevant_records(self, managed_sub_domain):
+        # For testing, just return all records (can be refined if needed)
+        return self.records
+
+    async def update_records(self, target_records, managed_sub_domain=None):
+        # Simple mock - just store the target records and managed_sub_domain
         self.last_update_call = target_records
+        self.last_managed_sub_domain = managed_sub_domain
 
     def has_update_capability(self) -> bool:
         return True
@@ -302,8 +307,10 @@ async def test_update_integration():
 
         await dns_manager.update()
 
-        # Verify DNS client was called
+        # Verify DNS client was called with managed_sub_domain
         assert hasattr(mock_dns_client, "last_update_call")
+        assert hasattr(mock_dns_client, "last_managed_sub_domain")
+        assert mock_dns_client.last_managed_sub_domain == "mc"
 
         # Verify router was updated
         assert len(mock_router_client.routes) == 2

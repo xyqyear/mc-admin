@@ -2,9 +2,7 @@
 Tests for DNS utility functions
 """
 
-import pytest
-
-from app.dns.dns import AddRecordT, ReturnRecordT
+from app.dns import AddRecordT, ReturnRecordT
 from app.dns.utils import RecordDiff, RecordKey, diff_dns_records
 
 

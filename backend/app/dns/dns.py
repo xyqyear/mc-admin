@@ -15,7 +15,44 @@ class DNSClient:
 
     async def list_records(self) -> RecordListT: ...
 
-    async def update_records(self, target_records: AddRecordListT):
+    async def list_relevant_records(self, managed_sub_domain: str) -> RecordListT:
+        """
+        Get only DNS records that are relevant to our Minecraft management.
+
+        This method filters records to only include:
+        - Wildcard address records (A/AAAA/CNAME) that end with the managed subdomain
+        - SRV records for Minecraft services under the managed subdomain
+
+        Args:
+            managed_sub_domain: The subdomain we manage (e.g., "mc" for "*.mc.example.com")
+
+        Returns:
+            List of relevant DNS records only
+        """
+        all_records = await self.list_records()
+        relevant_records = RecordListT()
+
+        for record in all_records:
+            # Check if this is a wildcard address record we manage
+            is_wildcard_address = (
+                record.record_type in ("A", "AAAA", "CNAME") and
+                record.sub_domain.startswith("*") and
+                record.sub_domain.endswith(f".{managed_sub_domain}")
+            )
+
+            # Check if this is a Minecraft SRV record we manage
+            is_srv_record = (
+                record.record_type == "SRV" and
+                record.sub_domain.startswith("_minecraft._tcp.") and
+                record.sub_domain.endswith(f".{managed_sub_domain}")
+            )
+
+            if is_wildcard_address or is_srv_record:
+                relevant_records.append(record)
+
+        return relevant_records
+
+    async def update_records(self, target_records: AddRecordListT, managed_sub_domain: str | None = None):
         """
         Update DNS records to match target state by comparing current and target records.
 
@@ -24,12 +61,17 @@ class DNSClient:
 
         Args:
             target_records: Target state for DNS records
+            managed_sub_domain: The subdomain we manage. If provided, only relevant records will be compared.
         """
         if not target_records:
             return
 
         # Get current records from DNS provider
-        current_records = await self.list_records()
+        # Use filtered records if managed_sub_domain is provided for safety
+        if managed_sub_domain:
+            current_records = await self.list_relevant_records(managed_sub_domain)
+        else:
+            current_records = await self.list_records()
 
         # Calculate differences
         diff = diff_dns_records(current_records, target_records)

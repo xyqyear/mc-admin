@@ -116,7 +116,10 @@ async def get_dns_records(
             )
 
         # Get current DNS records from the provider
-        records = await simple_dns_manager._dns_client.list_records()
+        # Only get records relevant to our Minecraft management
+        from ..dynamic_config import config
+        dns_config = config.dns
+        records = await simple_dns_manager._dns_client.list_relevant_records(dns_config.managed_sub_domain)
 
         # Convert records to DNSRecord models for JSON response
         return [

@@ -16,7 +16,7 @@ from .dns import DNSClient
 from .dnspod import DNSPodClient
 from .huawei import HuaweiDNSClient
 from .router import MCRouterClient
-from .types import AddRecordT, ReturnRecordT
+from .types import AddRecordT
 
 
 class AddressInfo(NamedTuple):
@@ -272,7 +272,9 @@ class SimpleDNSManager:
         ]
 
         # Let the DNS client handle the diffing and updates
-        await self._dns_client.update_records(target_add_records)
+        # Pass managed_sub_domain to ensure only relevant records are updated
+        dns_config = config.dns
+        await self._dns_client.update_records(target_add_records, dns_config.managed_sub_domain)
 
     async def _update_mc_router(self, target_routes: List[RouteEntry]):
         """Update MC Router with target routes"""
@@ -285,33 +287,6 @@ class SimpleDNSManager:
         logger.info(f"Updating MC Router with {len(routes_dict)} routes")
         await self._mc_router_client.override_routes(routes_dict)
 
-    async def _get_relevant_dns_records(self) -> List[ReturnRecordT]:
-        """Get DNS records that are relevant to our management"""
-        if not self._dns_client:
-            return []
-
-        dns_config = config.dns
-        all_records = await self._dns_client.list_records()
-        relevant_records = []
-
-        for record in all_records:
-            # Check if this is a record we manage
-            is_wildcard_address = (
-                record.record_type in ("A", "AAAA", "CNAME")
-                and record.sub_domain.startswith("*")
-                and record.sub_domain.endswith(f".{dns_config.managed_sub_domain}")
-            )
-
-            is_srv_record = (
-                record.record_type == "SRV"
-                and record.sub_domain.startswith("_minecraft._tcp.")
-                and record.sub_domain.endswith(f".{dns_config.managed_sub_domain}")
-            )
-
-            if is_wildcard_address or is_srv_record:
-                relevant_records.append(record)
-
-        return relevant_records
 
     async def close(self):
         """Clean up resources"""
