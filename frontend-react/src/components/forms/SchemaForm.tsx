@@ -1,6 +1,5 @@
 import React from 'react'
 import { Button } from 'antd'
-import { StyleProvider } from '@ant-design/cssinjs'
 import Form from '@rjsf/antd'
 import validator from '@rjsf/validator-ajv8'
 import { RJSFSchema } from '@rjsf/utils'
@@ -47,41 +46,39 @@ const SchemaForm: React.FC<SchemaFormProps> = ({
   }
 
   return (
-    <StyleProvider>
-      <div className="schema-form-container">
-        <style>
-          {`
+    <div className="schema-form-container">
+      <style>
+        {`
             .schema-form-container #root {
               height: auto !important;
             }
           `}
-        </style>
-        <Form
-          key={formKey}
-          schema={schema}
-          formData={formData}
-          validator={validator}
-          onChange={handleFormChange}
-          onSubmit={handleFormSubmit}
-          onError={handleFormError}
-          showErrorList={showErrorList}
-          liveValidate={liveValidate}
-          disabled={disabled}
-        >
-          {showSubmitButton && (
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              disabled={disabled}
-            >
-              {submitButtonText}
-            </Button>
-          )}
-          {!showSubmitButton && <div />}
-        </Form>
-      </div>
-    </StyleProvider>
+      </style>
+      <Form
+        key={formKey}
+        schema={schema}
+        formData={formData}
+        validator={validator}
+        onChange={handleFormChange}
+        onSubmit={handleFormSubmit}
+        onError={handleFormError}
+        showErrorList={showErrorList}
+        liveValidate={liveValidate}
+        disabled={disabled}
+      >
+        {showSubmitButton && (
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={disabled}
+          >
+            {submitButtonText}
+          </Button>
+        )}
+        {!showSubmitButton && <div />}
+      </Form>
+    </div>
   )
 }
 

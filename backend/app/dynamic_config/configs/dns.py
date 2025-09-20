@@ -35,6 +35,7 @@ class DockerWatcherConfig(BaseConfigSchema):
 
 class Natmap(BaseConfigSchema):
     type: Annotated[Literal["natmap"], Field(description="地址配置的类型")] = "natmap"
+    name: Annotated[str, Field(description="地址名称")] = "*"
     internal_port: Annotated[int, Field(description="Minecraft服务器的内部端口")] = (
         25565
     )
@@ -42,6 +43,7 @@ class Natmap(BaseConfigSchema):
 
 class Manual(BaseConfigSchema):
     type: Annotated[Literal["manual"], Field(description="地址配置的类型")] = "manual"
+    name: Annotated[str, Field(description="地址名称")] = "*"
     record_type: Annotated[
         Literal["A", "AAAA", "CNAME"], Field(description="DNS记录的类型")
     ] = "A"
@@ -74,8 +76,7 @@ class DNSManagerConfig(BaseConfigSchema):
 
     poll_interval: Annotated[int, Field(description="轮询间隔（秒）")] = 15
 
-    # addresses: Annotated[list[Annotated[Union[Natmap, Manual], Field(discriminator="type")]], Field(default_factory=list, description="地址配置列表")]
     addresses: Annotated[
         list[Annotated[Union[Natmap, Manual], Field(discriminator="type")]],
-        Field(description="地址配置列表"),
-    ] = list()
+        Field(description="地址配置列表", default_factory=list),
+    ]

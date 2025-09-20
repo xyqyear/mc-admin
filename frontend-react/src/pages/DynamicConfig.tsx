@@ -18,7 +18,6 @@ import {
   UndoOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons'
-import { StyleProvider } from '@ant-design/cssinjs'
 import Form from '@rjsf/antd'
 import validator from '@rjsf/validator-ajv8'
 import { MonacoDiffEditor } from '@/components/editors'
@@ -26,6 +25,7 @@ import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import { useConfigModules, useModuleConfig, useModuleSchema } from '@/hooks/queries/base/useConfigQueries'
 import { useUpdateModuleConfig, useResetModuleConfig } from '@/hooks/mutations/useConfigMutations'
+import { RJSFSchema } from '@rjsf/utils'
 
 const { Title, Text } = Typography
 
@@ -34,7 +34,6 @@ const DynamicConfig: React.FC = () => {
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
   const [formData, setFormData] = useState<any>({})
   const [isCompareVisible, setIsCompareVisible] = useState(false)
-  const [formKey, setFormKey] = useState(0) // Force form re-render
 
   // API hooks
   const { data: modules, isLoading: modulesLoading, error: modulesError } = useConfigModules()
@@ -57,7 +56,6 @@ const DynamicConfig: React.FC = () => {
   useEffect(() => {
     if (moduleConfig?.config_data) {
       setFormData(moduleConfig.config_data)
-      setFormKey(prev => prev + 1) // Force form re-render
     }
   }, [moduleConfig])
 
@@ -85,7 +83,6 @@ const DynamicConfig: React.FC = () => {
           const refreshedConfig = await refetchConfig()
           if (refreshedConfig.data?.config_data) {
             setFormData(refreshedConfig.data.config_data)
-            setFormKey(prev => prev + 1) // Force form re-render
           }
           message.info('配置已重新载入')
         } catch (error: any) {
@@ -111,7 +108,6 @@ const DynamicConfig: React.FC = () => {
           const result = await resetConfigMutation.mutateAsync(selectedModule)
           if (result.updated_config) {
             setFormData(result.updated_config)
-            setFormKey(prev => prev + 1) // Force form re-render
           }
         } catch (error: any) {
           // Error handling is already done in the mutation
@@ -358,22 +354,17 @@ const DynamicConfig: React.FC = () => {
                     style={{ flex: 1, minHeight: 0 }}
                     styles={{ body: { height: '100%', overflow: 'auto' } }}
                   >
-                    <StyleProvider>
-                      <Form
-                        key={formKey}
-                        schema={moduleSchema.json_schema}
-                        formData={formData}
-                        validator={validator}
-                        onChange={handleFormChange}
-                        onSubmit={handleSubmitConfig}
-                        onError={(errors) => console.log('Form validation errors:', errors)}
-                        showErrorList={false}
-                        liveValidate
-                      >
-                        <div />
-                      </Form>
-                    </StyleProvider>
-                    
+                    <Form
+                      schema={moduleSchema.json_schema as RJSFSchema}
+                      formData={formData}
+                      validator={validator}
+                      onChange={handleFormChange}
+                      onSubmit={handleSubmitConfig}
+                      onError={(errors) => console.log('Form validation errors:', errors)}
+                      liveValidate
+                    >
+                      <div />
+                    </Form>
                   </Card>
                 </div>
               )}

@@ -11,6 +11,8 @@ Usage:
 """
 
 # Import all configuration schema classes
+from typing import cast
+
 from .configs.dns import DNSManagerConfig
 from .manager import config_manager
 from .schemas import BaseConfigSchema
@@ -40,7 +42,7 @@ class ConfigProxy:
 
     @property
     def dns(self):
-        return getattr(self, "dns")
+        return cast(DNSManagerConfig, self._manager.get_config("dns"))
 
     def __getattr__(self, module_name: str):
         """
