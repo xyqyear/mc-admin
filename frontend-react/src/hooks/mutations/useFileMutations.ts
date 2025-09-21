@@ -3,10 +3,12 @@ import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
 import { fileApi } from "@/hooks/api/fileApi";
+import { useDownloadManager } from "@/utils/downloadUtils";
 
 export const useFileMutations = (serverId: string | undefined) => {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
+  const { executeDownload } = useDownloadManager();
 
   const invalidateFileList = () => {
     // Invalidate all file-related queries for this server
@@ -97,20 +99,15 @@ export const useFileMutations = (serverId: string | undefined) => {
 
   // 下载文件 (非mutations，但是文件操作相关)
   const downloadFile = async (path: string, filename: string) => {
-    try {
-      const blob = await fileApi.downloadFile(serverId!, path);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      message.success("下载开始");
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || "下载失败");
-    }
+    if (!serverId) return;
+
+    await executeDownload(
+      (onProgress, signal) => fileApi.downloadFileWithProgress(serverId, path, onProgress, signal),
+      {
+        filename,
+        serverId,
+      }
+    );
   };
 
   return {

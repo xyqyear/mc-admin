@@ -66,12 +66,40 @@ export const archiveApi = {
   updateArchiveFileContent: (path: string, content: string) =>
     api.post('/archive/content', { content }, { params: { path } }).then((res: any) => res.data),
 
-  // Download file
-  downloadArchiveFile: (path: string): Promise<Blob> =>
-    api.get('/archive/download', { 
+  // Download file with progress tracking and cancellation support
+  downloadArchiveFileWithProgress: async (
+    path: string,
+    onProgress?: (progress: { loaded: number; total: number; percent: number; speed?: number }) => void,
+    signal?: AbortSignal
+  ): Promise<Blob> => {
+    const startTime = Date.now()
+
+    const response = await api.get('/archive/download', {
       params: { path },
-      responseType: 'blob'
-    }).then((res: any) => res.data),
+      responseType: 'blob',
+      timeout: 3600000, // 1 hour timeout for downloads
+      signal, // 支持取消
+      onDownloadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+
+          // 计算下载速度
+          const currentTime = Date.now()
+          const elapsedTime = (currentTime - startTime) / 1000 // 秒
+          const speed = elapsedTime > 0 ? progressEvent.loaded / elapsedTime : 0
+
+          onProgress({
+            loaded: progressEvent.loaded,
+            total: progressEvent.total,
+            percent,
+            speed,
+          })
+        }
+      },
+    });
+
+    return response.data;
+  },
 
   // Upload file
   uploadArchiveFile: (
@@ -82,13 +110,13 @@ export const archiveApi = {
   ) => {
     const formData = new FormData()
     formData.append('file', file)
-    
+
     const config: AxiosRequestConfig = {
       params: { path, allow_overwrite: allowOverwrite },
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 1800000 // 30 minutes timeout for uploads
     }
-    
+
     if (options?.onUploadProgress) {
       config.onUploadProgress = (progressEvent: any) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -103,11 +131,11 @@ export const archiveApi = {
         options.onUploadProgress!(uploadProgressEvent)
       }
     }
-    
+
     if (options?.signal) {
       config.signal = options.signal
     }
-    
+
     return api.post('/archive/upload', formData, config).then((res: any) => res.data)
   },
 

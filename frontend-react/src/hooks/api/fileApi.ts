@@ -43,12 +43,39 @@ export const fileApi = {
     return response.data;
   },
 
-  // Download file
-  downloadFile: async (serverId: string, path: string): Promise<Blob> => {
+  // Download file with progress tracking and cancellation support
+  downloadFileWithProgress: async (
+    serverId: string,
+    path: string,
+    onProgress?: (progress: { loaded: number; total: number; percent: number; speed?: number }) => void,
+    signal?: AbortSignal
+  ): Promise<Blob> => {
+    const startTime = Date.now()
+
     const response = await api.get(`/servers/${serverId}/files/download`, {
       params: { path },
       responseType: "blob",
+      timeout: 3600000, // 1 hour timeout for downloads
+      signal, // 支持取消
+      onDownloadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+
+          // 计算下载速度
+          const currentTime = Date.now()
+          const elapsedTime = (currentTime - startTime) / 1000 // 秒
+          const speed = elapsedTime > 0 ? progressEvent.loaded / elapsedTime : 0
+
+          onProgress({
+            loaded: progressEvent.loaded,
+            total: progressEvent.total,
+            percent,
+            speed,
+          })
+        }
+      },
     });
+
     return response.data;
   },
 

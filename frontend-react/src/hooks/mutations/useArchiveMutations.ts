@@ -2,10 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
 import { archiveApi, type CreateArchiveFileRequest, type RenameArchiveFileRequest, type UploadOptions, type CreateArchiveRequest } from '@/hooks/api/archiveApi'
 import { queryKeys } from '@/utils/api'
+import { useDownloadManager } from '@/utils/downloadUtils'
 
 export const useArchiveMutations = () => {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const { executeDownload } = useDownloadManager()
 
   // Upload file
   const useUploadFile = () => {
@@ -102,22 +104,14 @@ export const useArchiveMutations = () => {
     })
   }
 
-  // Download file helper
+  // Download file helper with progress tracking
   const downloadFile = async (path: string, filename: string) => {
-    try {
-      const blob = await archiveApi.downloadArchiveFile(path)
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-      message.success('下载开始')
-    } catch (error: any) {
-      message.error(`下载失败: ${error.message}`)
-    }
+    await executeDownload(
+      (onProgress, signal) => archiveApi.downloadArchiveFileWithProgress(path, onProgress, signal),
+      {
+        filename,
+      }
+    );
   }
 
   // Create archive from server files
