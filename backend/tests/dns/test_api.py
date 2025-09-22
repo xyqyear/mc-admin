@@ -353,60 +353,6 @@ def test_dns_endpoints_authentication_required(client):
     response = client.get("/api/dns/routes")
     assert response.status_code == 401
 
-    # Test refresh endpoint
-    response = client.post("/api/dns/refresh")
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_refresh_dns_manager_success(client, mock_admin_user):
-    """Test successful DNS manager refresh"""
-    from app.routers.dns import refresh_dns_manager
-
-    with patch("app.routers.dns.simple_dns_manager") as dns_manager_mock:
-        # Mock DNS manager
-        dns_manager_mock.initialize = AsyncMock()
-
-        # Call the endpoint function directly, bypassing auth
-        result = await refresh_dns_manager(mock_admin_user)
-
-        assert result.success is True
-        assert "refreshed successfully" in result.message
-        dns_manager_mock.initialize.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_refresh_dns_manager_initialization_fails(client, mock_admin_user):
-    """Test DNS manager refresh when initialization fails"""
-    from fastapi import HTTPException
-
-    from app.routers.dns import refresh_dns_manager
-
-    with patch("app.routers.dns.simple_dns_manager") as dns_manager_mock:
-        # Mock DNS manager - initialization fails
-        dns_manager_mock.initialize = AsyncMock(side_effect=Exception("Refresh failed"))
-
-        with pytest.raises(HTTPException) as exc_info:
-            await refresh_dns_manager(mock_admin_user)
-
-        assert exc_info.value.status_code == 500
-        assert "Refresh failed" in str(exc_info.value.detail)
-
-
-def test_refresh_dns_manager_endpoint_integration(client):
-    """Test refresh endpoint through HTTP client"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager:
-        # Mock manager initialization
-        mock_manager.initialize = AsyncMock()
-
-        response = client.post(
-            "/api/dns/refresh", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert "refreshed successfully" in data["message"]
 
 
 @pytest.mark.asyncio

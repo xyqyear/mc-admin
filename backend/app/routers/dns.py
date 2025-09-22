@@ -4,13 +4,14 @@ DNS Management API Router
 Provides a simple API endpoint for triggering DNS updates.
 """
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ..dependencies import RequireRole, get_current_user
 from ..dns.manager import simple_dns_manager
+from ..dynamic_config import config
 from ..logger import logger
 from ..models import UserPublic, UserRole
 
@@ -117,9 +118,10 @@ async def get_dns_records(
 
         # Get current DNS records from the provider
         # Only get records relevant to our Minecraft management
-        from ..dynamic_config import config
         dns_config = config.dns
-        records = await simple_dns_manager._dns_client.list_relevant_records(dns_config.managed_sub_domain)
+        records = await simple_dns_manager._dns_client.list_relevant_records(
+            dns_config.managed_sub_domain
+        )
 
         # Convert records to DNSRecord models for JSON response
         return [
@@ -174,35 +176,6 @@ async def get_router_routes(
         raise
     except Exception as e:
         error_msg = f"Failed to get router routes: {str(e)}"
-        logger.error(error_msg)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg
-        ) from e
-
-
-@router.post("/refresh", response_model=DNSUpdateResponse)
-async def refresh_dns_manager(
-    _: UserPublic = Depends(RequireRole((UserRole.ADMIN, UserRole.OWNER))),
-) -> DNSUpdateResponse:
-    """
-    Refresh DNS manager by reinitializing with current configuration.
-
-    This endpoint will reinitialize the DNS manager with the latest configuration
-    from the dynamic config system, which is useful when DNS settings have been
-    updated and need to be applied without restarting the application.
-
-    Requires ADMIN role or higher.
-    """
-    try:
-        logger.info("Refreshing DNS manager with current configuration...")
-        await simple_dns_manager.initialize()
-
-        return DNSUpdateResponse(
-            success=True, message="DNS manager refreshed successfully"
-        )
-
-    except Exception as e:
-        error_msg = f"Failed to refresh DNS manager: {str(e)}"
         logger.error(error_msg)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg
