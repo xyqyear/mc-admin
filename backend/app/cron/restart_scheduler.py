@@ -6,7 +6,7 @@ conflicts with existing backup tasks by analyzing their cron schedules.
 """
 
 from datetime import time
-from typing import Set, Tuple
+from typing import Optional, Set, Tuple
 
 from ..models import CronJobStatus
 from .manager import CronManager
@@ -58,12 +58,18 @@ class RestartScheduler:
 
         return backup_minutes
 
-    async def get_restart_minutes(self) -> Set[int]:
+    async def get_restart_time_slots(
+        self, exclude_server_id: Optional[str] = None
+    ) -> Set[Tuple[int, int]]:
         """
-        Get all minutes used by restart_server tasks from their cron expressions.
+        Get all hour:minute combinations used by restart_server tasks.
+
+        Args:
+            exclude_server_id: Optional server ID to exclude from consideration
+                              (useful when creating/updating a schedule for that server)
 
         Returns:
-            Set of minutes (0-59) used by restart_server tasks
+            Set of (hour, minute) tuples used by restart_server tasks
         """
         # Get all active restart_server tasks
         restart_jobs = await self.cron_manager.get_all_cronjobs(
@@ -71,18 +77,88 @@ class RestartScheduler:
             status=[CronJobStatus.ACTIVE, CronJobStatus.PAUSED],
         )
 
-        restart_minutes = set()
+        restart_time_slots = set()
 
         for job in restart_jobs:
+            # Skip if this is the job for the server we're trying to schedule
+            if exclude_server_id:
+                schedule_name = f"restart-{exclude_server_id}"
+                if job.name == schedule_name:
+                    continue
+
             cron_parts = job.cron.strip().split()
-            if len(cron_parts) >= 1:
+            if len(cron_parts) >= 2:
                 minute_part = cron_parts[0]
+                hour_part = cron_parts[1]
 
-                # Parse minute expressions
+                # Parse minute and hour expressions
                 minutes = self._parse_cron_minute_field(minute_part)
-                restart_minutes.update(minutes)
+                hours = self._parse_cron_hour_field(hour_part)
 
-        return restart_minutes
+                # Add all combinations of hour:minute
+                for hour in hours:
+                    for minute in minutes:
+                        restart_time_slots.add((hour, minute))
+
+        return restart_time_slots
+
+    def _parse_cron_field(self, field_value: str, max_value: int) -> Set[int]:
+        """
+        Parse a cron field and return all possible values.
+
+        Supports:
+        - Single values: "30"
+        - Lists: "0,15,30"
+        - Ranges: "0-15"
+        - Step values: "*/5", "0-30/10"
+        - Wildcards: "*"
+
+        Args:
+            field_value: Cron field string
+            max_value: Maximum value for this field (60 for minutes, 24 for hours)
+
+        Returns:
+            Set of integer values within the field's range
+        """
+        values = set()
+
+        # Handle wildcard
+        if field_value == "*":
+            return set(range(max_value))
+
+        # Split by comma for multiple values
+        for part in field_value.split(","):
+            part = part.strip()
+
+            # Handle step values (e.g., "*/5", "0-30/5")
+            if "/" in part:
+                base_part, step_str = part.split("/", 1)
+                step = int(step_str)
+
+                if base_part == "*":
+                    # */step pattern
+                    values.update(range(0, max_value, step))
+                elif "-" in base_part:
+                    # range/step pattern (e.g., "0-30/5")
+                    start_str, end_str = base_part.split("-", 1)
+                    start, end = int(start_str), int(end_str)
+                    values.update(range(start, end + 1, step))
+                else:
+                    # single value with step (treat as start point)
+                    start = int(base_part)
+                    values.update(range(start, max_value, step))
+
+            # Handle ranges (e.g., "0-15")
+            elif "-" in part:
+                start_str, end_str = part.split("-", 1)
+                start, end = int(start_str), int(end_str)
+                values.update(range(start, end + 1))
+
+            # Handle single values
+            else:
+                values.add(int(part))
+
+        return values
 
     def _parse_cron_minute_field(self, minute_field: str) -> Set[int]:
         """
@@ -101,58 +177,41 @@ class RestartScheduler:
         Returns:
             Set of minute values (0-59)
         """
-        minutes = set()
+        return self._parse_cron_field(minute_field, 60)
 
-        # Handle wildcard
-        if minute_field == "*":
-            return set(range(60))
-
-        # Split by comma for multiple values
-        for part in minute_field.split(","):
-            part = part.strip()
-
-            # Handle step values (e.g., "*/5", "0-30/5")
-            if "/" in part:
-                base_part, step_str = part.split("/", 1)
-                step = int(step_str)
-
-                if base_part == "*":
-                    # */step pattern
-                    minutes.update(range(0, 60, step))
-                elif "-" in base_part:
-                    # range/step pattern (e.g., "0-30/5")
-                    start_str, end_str = base_part.split("-", 1)
-                    start, end = int(start_str), int(end_str)
-                    minutes.update(range(start, end + 1, step))
-                else:
-                    # single value with step (treat as start point)
-                    start = int(base_part)
-                    minutes.update(range(start, 60, step))
-
-            # Handle ranges (e.g., "0-15")
-            elif "-" in part:
-                start_str, end_str = part.split("-", 1)
-                start, end = int(start_str), int(end_str)
-                minutes.update(range(start, end + 1))
-
-            # Handle single values
-            else:
-                minutes.add(int(part))
-
-        return minutes
-
-    async def find_next_available_restart_time(self) -> Tuple[int, int]:
+    def _parse_cron_hour_field(self, hour_field: str) -> Set[int]:
         """
-        Find the next available restart time that doesn't conflict with backups.
+        Parse a cron hour field and return all possible hour values.
+
+        Supports the same patterns as minute field but for hours (0-23).
+
+        Args:
+            hour_field: Cron hour field string
+
+        Returns:
+            Set of hour values (0-23)
+        """
+        return self._parse_cron_field(hour_field, 24)
+
+    async def find_next_available_restart_time(
+        self, exclude_server_id: Optional[str] = None
+    ) -> Tuple[int, int]:
+        """
+        Find the next available restart time that doesn't conflict with backups or other restart tasks.
 
         Starting from restart_start_time, finds the first time slot where:
         1. Minutes are divisible by 5 (0, 5, 10, 15, ...)
         2. Minutes don't conflict with any backup task minutes
+        3. Hour:minute combination doesn't conflict with other restart tasks
+
+        Args:
+            exclude_server_id: Optional server ID to exclude when checking restart conflicts
 
         Returns:
             Tuple of (hour, minute) for the next available restart time
         """
         backup_minutes = await self.get_backup_minutes()
+        restart_time_slots = await self.get_restart_time_slots(exclude_server_id)
 
         # Start from the configured restart start time
         current_hour = self.restart_start_time.hour
@@ -165,7 +224,9 @@ class RestartScheduler:
         for _ in range(24 * 60 // 5):  # Max iterations to avoid infinite loop
             # Check if current minute conflicts with backup minutes
             if current_minute not in backup_minutes:
-                return (current_hour, current_minute)
+                # Check if current hour:minute conflicts with other restart tasks
+                if (current_hour, current_minute) not in restart_time_slots:
+                    return (current_hour, current_minute)
 
             # Move to next 5-minute interval
             current_minute += 5
@@ -183,52 +244,47 @@ class RestartScheduler:
         day_pattern: str = "*",
         month_pattern: str = "*",
         weekday_pattern: str = "*",
+        exclude_server_id: Optional[str] = None,
     ) -> str:
         """
-        Generate a cron expression for server restart that avoids backup conflicts.
+        Generate a cron expression for server restart that avoids backup and restart conflicts.
 
         Args:
             day_pattern: Day of month pattern (default: "*" for every day)
             month_pattern: Month pattern (default: "*" for every month)
             weekday_pattern: Day of week pattern (default: "*" for every day)
+            exclude_server_id: Optional server ID to exclude when checking restart conflicts
 
         Returns:
             Complete cron expression string (5 fields: minute hour day month weekday)
         """
-        hour, minute = await self.find_next_available_restart_time()
+        hour, minute = await self.find_next_available_restart_time(exclude_server_id)
 
         return f"{minute} {hour} {day_pattern} {month_pattern} {weekday_pattern}"
 
-    async def check_time_conflict(self, hour: int, minute: int) -> bool:
+    async def check_time_conflict(
+        self, hour: int, minute: int, exclude_server_id: Optional[str] = None
+    ) -> bool:
         """
-        Check if a specific time conflicts with existing backup tasks.
+        Check if a specific time conflicts with existing backup tasks or other restart tasks.
 
         Args:
             hour: Hour to check (0-23)
             minute: Minute to check (0-59)
+            exclude_server_id: Optional server ID to exclude when checking restart conflicts
 
         Returns:
             True if there's a conflict, False otherwise
         """
         backup_minutes = await self.get_backup_minutes()
-        return minute in backup_minutes
+        restart_time_slots = await self.get_restart_time_slots(exclude_server_id)
 
-    async def get_conflict_summary(self) -> dict:
-        """
-        Get a summary of current backup and restart task schedules.
+        # Check backup minute conflicts
+        if minute in backup_minutes:
+            return True
 
-        Returns:
-            Dictionary with backup_minutes, restart_minutes, and conflict analysis
-        """
-        backup_minutes = await self.get_backup_minutes()
-        restart_minutes = await self.get_restart_minutes()
+        # Check restart time slot conflicts
+        if (hour, minute) in restart_time_slots:
+            return True
 
-        return {
-            "backup_minutes": sorted(list(backup_minutes)),
-            "restart_minutes": sorted(list(restart_minutes)),
-            "conflicts": sorted(list(backup_minutes.intersection(restart_minutes))),
-            "available_5min_slots": sorted(
-                [m for m in range(0, 60, 5) if m not in backup_minutes]
-            ),
-            "restart_start_time": self.restart_start_time.strftime("%H:%M"),
-        }
+        return False

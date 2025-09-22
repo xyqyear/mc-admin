@@ -77,19 +77,6 @@ interface RestartScheduleResponse {
   scheduled_time: string;
 }
 
-interface RestartScheduleSuggestionsResponse {
-  suggested_time: string;
-  suggested_cron: string;
-  conflict_analysis: {
-    backup_minutes: number[];
-    restart_minutes: number[];
-    conflicts: number[];
-    available_5min_slots: number[];
-    restart_start_time: string;
-  };
-  message: string;
-}
-
 export const serverApi = {
   // 获取所有服务器基础信息 (仅包含配置信息，不包含状态或运行时数据)
   getServers: async (): Promise<ServerListItem[]> => {
@@ -289,13 +276,6 @@ export const serverApi = {
     await api.post(`/servers/${serverId}/restart-schedule/resume`);
   },
 
-  getRestartScheduleSuggestions: async (serverId: string): Promise<RestartScheduleSuggestionsResponse> => {
-    const res = await api.get<RestartScheduleSuggestionsResponse>(
-      `/servers/${serverId}/restart-schedule/suggestions`,
-    );
-    return res.data;
-  },
-
   // 批量获取服务器状态
   getAllServerStatuses: async (
     serverIds: string[],
@@ -330,7 +310,6 @@ export type {
   PopulateServerRequest,
   PopulateServerResponse,
   RestartScheduleResponse,
-  RestartScheduleSuggestionsResponse,
   ServerDiskUsageResponse,
   ServerIOStatsResponse,
   ServerListItem,

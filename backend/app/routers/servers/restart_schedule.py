@@ -69,8 +69,12 @@ async def create_or_update_restart_schedule(
                 scheduled_time = "Custom"
         else:
             # Use automatic scheduling to avoid conflicts
-            cron_expr = await restart_scheduler.generate_restart_cron()
-            hour, minute = await restart_scheduler.find_next_available_restart_time()
+            cron_expr = await restart_scheduler.generate_restart_cron(
+                exclude_server_id=server_id
+            )
+            hour, minute = await restart_scheduler.find_next_available_restart_time(
+                exclude_server_id=server_id
+            )
             scheduled_time = f"{hour:02d}:{minute:02d}"
 
         # Create server restart parameters
@@ -331,36 +335,4 @@ async def resume_restart_schedule(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to resume restart schedule: {str(e)}",
-        )
-
-
-@router.get("/{server_id}/restart-schedule/suggestions")
-async def get_restart_schedule_suggestions(
-    server_id: str,
-    current_user: UserPublic = Depends(get_current_user),
-):
-    """
-    Get restart schedule suggestions and conflict analysis.
-    """
-    try:
-        restart_scheduler = RestartScheduler(cron_manager)
-
-        # Get conflict analysis
-        summary = await restart_scheduler.get_conflict_summary()
-
-        # Get suggested time
-        hour, minute = await restart_scheduler.find_next_available_restart_time()
-        suggested_cron = await restart_scheduler.generate_restart_cron()
-
-        return {
-            "suggested_time": f"{hour:02d}:{minute:02d}",
-            "suggested_cron": suggested_cron,
-            "conflict_analysis": summary,
-            "message": "Suggested restart time based on current backup schedule conflicts",
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get restart schedule suggestions: {str(e)}",
         )
