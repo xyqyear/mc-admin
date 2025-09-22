@@ -226,6 +226,15 @@ export const queryKeys = {
     detail: (serverId: string) => [...queryKeys.restartSchedule.all, "detail", serverId] as const,
     suggestions: (serverId: string) => [...queryKeys.restartSchedule.all, "suggestions", serverId] as const,
   },
+
+  // DNS 管理
+  dns: {
+    all: ["dns"] as const,
+    status: () => [...queryKeys.dns.all, "status"] as const,
+    enabled: () => [...queryKeys.dns.all, "enabled"] as const,
+    records: () => [...queryKeys.dns.all, "records"] as const,
+    routes: () => [...queryKeys.dns.all, "routes"] as const,
+  },
 } as const;
 
 export default api;
