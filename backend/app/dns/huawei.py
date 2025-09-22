@@ -176,6 +176,7 @@ class HuaweiDNSClient(DNSClient):
             BatchUpdateRecordSet(
                 id=record.record_id,
                 records=[record.value],
+                ttl=record.ttl,
             )
             for record in records
         ]
