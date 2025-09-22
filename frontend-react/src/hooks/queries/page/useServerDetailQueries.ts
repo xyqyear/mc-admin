@@ -86,34 +86,34 @@ export const useServerDetailQueries = (serverId: string) => {
       // 组合数据对象 (用于传递给组件)
       serverData: configQuery.data
         ? {
-            ...configQuery.data,
-            status: statusQuery.data,
-            cpu: cpuQuery.data,
-            memory: memoryQuery.data,
-            onlinePlayers: playersQuery.data || [],
-            // 添加计算属性
-            memoryUsagePercent:
-              memoryQuery.data && configQuery.data
-                ? (memoryQuery.data.memoryUsageBytes /
-                    configQuery.data.maxMemoryBytes) *
-                  100
-                : 0,
+          ...configQuery.data,
+          status: statusQuery.data,
+          cpu: cpuQuery.data,
+          memory: memoryQuery.data,
+          onlinePlayers: playersQuery.data || [],
+          // 添加计算属性
+          memoryUsagePercent:
+            memoryQuery.data && configQuery.data
+              ? (memoryQuery.data.memoryUsageBytes /
+                configQuery.data.maxMemoryBytes) *
+              100
+              : 0,
 
-            // 格式化的显示值
-            displayMemoryUsage:
-              memoryQuery.data && configQuery.data
-                ? `${(memoryQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(
-                    1
-                  )}GB / ${(
-                    configQuery.data.maxMemoryBytes /
-                    1024 ** 3
-                  ).toFixed(1)}GB`
-                : "未知",
-
-            displayCpuUsage: cpuQuery.data
-              ? `${cpuQuery.data.cpuPercentage.toFixed(1)}%`
+          // 格式化的显示值
+          displayMemoryUsage:
+            memoryQuery.data && configQuery.data
+              ? `${(memoryQuery.data.memoryUsageBytes / 1024 ** 3).toFixed(
+                1
+              )}GB / ${(
+                configQuery.data.maxMemoryBytes /
+                1024 ** 3
+              ).toFixed(1)}GB`
               : "未知",
-          }
+
+          displayCpuUsage: cpuQuery.data
+            ? `${cpuQuery.data.cpuPercentage.toFixed(1)}%`
+            : "未知",
+        }
         : undefined,
     };
   };

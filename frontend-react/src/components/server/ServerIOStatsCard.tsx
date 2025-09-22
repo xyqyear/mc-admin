@@ -20,9 +20,9 @@ export const ServerIOStatsCard: React.FC<ServerIOStatsCardProps> = ({
   hasIOStatsData,
   className
 }) => {
-  if (!isRunning || !hasIOStatsData || 
-      diskReadBytes === undefined || diskWriteBytes === undefined || 
-      networkReceiveBytes === undefined || networkSendBytes === undefined) {
+  if (!isRunning || !hasIOStatsData ||
+    diskReadBytes === undefined || diskWriteBytes === undefined ||
+    networkReceiveBytes === undefined || networkSendBytes === undefined) {
     return null;
   }
 

@@ -124,8 +124,8 @@ const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
       onCancel={handleCancel}
       width={800}
       footer={[
-        <Button 
-          key="archives" 
+        <Button
+          key="archives"
           icon={<FolderOutlined />}
           onClick={handleGoToArchives}
         >

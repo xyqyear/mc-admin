@@ -56,15 +56,15 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
           返回上级
         </Button>
       )}
-      
+
       {/* 根目录特有的按钮 */}
       {currentPath === '/' && (
         <>
-          <FileSnapshotActions 
-            serverId={serverId} 
-            path="/" 
-            isServerMode={true} 
-            onRefresh={onRefreshSnapshot} 
+          <FileSnapshotActions
+            serverId={serverId}
+            path="/"
+            isServerMode={true}
+            onRefresh={onRefreshSnapshot}
           />
           <Button
             icon={<FileZipOutlined />}
@@ -83,7 +83,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
           </Button>
         </>
       )}
-      
+
       {/* 通用按钮 */}
       <Button
         icon={<UploadOutlined />}
@@ -104,7 +104,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
       >
         刷新
       </Button>
-      
+
       {/* 批量删除按钮 */}
       {selectedFiles.length > 0 && (
         <Button

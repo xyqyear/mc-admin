@@ -115,7 +115,7 @@ const Overview: React.FC = () => {
     if (operation === 'stop' || operation === 'restart' || operation === 'down' || operation === 'remove') {
       const server = enrichedServers.find(s => s.id === serverId)
       if (!server) return
-      
+
       showConfirm({
         operation: operation as 'stop' | 'restart' | 'down' | 'remove',
         serverName: server.name,

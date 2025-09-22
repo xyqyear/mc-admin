@@ -24,7 +24,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
   const refreshData = useCallback(() => {
     const version = localStorage.getItem(VERSION_STORAGE_KEY) || ''
     const remindTime = localStorage.getItem(REMIND_TIME_STORAGE_KEY) || ''
-    
+
     const data = { version, remindTime }
     setLocalStorageData(data)
     form.setFieldsValue(data)
@@ -147,7 +147,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
             <div>
               <Text strong>提醒时间: </Text>
               <Text code>
-                {localStorageData.remindTime 
+                {localStorageData.remindTime
                   ? new Date(localStorageData.remindTime).toLocaleString()
                   : '未设置'
                 }
@@ -158,7 +158,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
 
         <Form form={form} layout="vertical">
           <Divider>版本管理</Divider>
-          
+
           <Form.Item
             label="设置存储版本"
             name="version"

@@ -29,7 +29,7 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
       case 'file':
         return `将压缩文件 "${selectedFile?.name}" 为压缩包`
       case 'folder':
-        return selectedFile 
+        return selectedFile
           ? `将压缩文件夹 "${selectedFile.name}" 为压缩包`
           : `将压缩当前目录 "${currentPath}" 下的所有内容为压缩包`
       case 'server':
@@ -103,7 +103,7 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
           type="warning"
           showIcon
         />
-        
+
         {confirmLoading && (
           <Alert
             message="正在压缩中..."

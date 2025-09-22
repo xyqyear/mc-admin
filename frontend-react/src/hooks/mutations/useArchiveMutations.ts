@@ -12,14 +12,14 @@ export const useArchiveMutations = () => {
   // Upload file
   const useUploadFile = () => {
     return useMutation({
-      mutationFn: ({ 
-        path, 
-        file, 
-        allowOverwrite, 
-        options 
-      }: { 
-        path: string; 
-        file: File; 
+      mutationFn: ({
+        path,
+        file,
+        allowOverwrite,
+        options
+      }: {
+        path: string;
+        file: File;
         allowOverwrite?: boolean;
         options?: UploadOptions;
       }) =>

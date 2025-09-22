@@ -90,7 +90,7 @@ const ServerFiles: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
   const [originalFileContent, setOriginalFileContent] = useState('')
-  
+
   // Replace server files state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
 
@@ -99,7 +99,7 @@ const ServerFiles: React.FC = () => {
   const [isCompressionResultModalVisible, setIsCompressionResultModalVisible] = useState(false)
   const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
-  const [compressionResult, setCompressionResult] = useState<{filename: string, message: string} | null>(null)
+  const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
 
   // Page drag upload
   const { isDragging } = usePageDragUpload({
@@ -298,7 +298,7 @@ const ServerFiles: React.FC = () => {
   const handleArchiveSelect = async (filename: string) => {
     setIsArchiveModalVisible(false)
     message.success(`已选择压缩包: ${filename}`)
-    
+
     if (!id) return
 
     try {
@@ -350,7 +350,7 @@ const ServerFiles: React.FC = () => {
         filename: result.archive_filename,
         message: result.message
       })
-      
+
       setIsCompressionConfirmModalVisible(false)
       setIsCompressionResultModalVisible(true)
       setCompressionFile(null)
@@ -391,7 +391,7 @@ const ServerFiles: React.FC = () => {
     <div className={`space-y-4 ${isDragging ? 'relative' : ''}`}>
       {/* 拖拽覆盖层 */}
       <DragDropOverlay isDragging={isDragging} />
-      
+
       <PageHeader
         title="文件"
         icon={<FolderOutlined />}

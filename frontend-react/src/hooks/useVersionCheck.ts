@@ -22,13 +22,13 @@ export function useVersionCheck(): VersionCheckResult {
     const checkVersion = () => {
       const lastSeenVersion = localStorage.getItem(VERSION_STORAGE_KEY)
       const remindTimeStr = localStorage.getItem(REMIND_TIME_STORAGE_KEY)
-      
+
       // 如果这是首次访问，设置当前版本但不显示弹窗
       if (!lastSeenVersion) {
         localStorage.setItem(VERSION_STORAGE_KEY, currentVersion)
         return
       }
-      
+
       // 检查是否有新版本
       if (compareVersions(currentVersion, lastSeenVersion) > 0) {
         // 如果设置了稍后提醒，检查时间是否已过
@@ -36,13 +36,13 @@ export function useVersionCheck(): VersionCheckResult {
           const remindTime = new Date(remindTimeStr).getTime()
           const now = new Date().getTime()
           const oneHour = 60 * 60 * 1000 // 1小时的毫秒数
-          
+
           // 如果还没到提醒时间，不显示弹窗
           if (now < remindTime + oneHour) {
             return
           }
         }
-        
+
         // 显示版本更新弹窗
         setFromVersion(lastSeenVersion)
         setShouldShowModal(true)
@@ -51,7 +51,7 @@ export function useVersionCheck(): VersionCheckResult {
 
     // 延迟执行检查，确保页面加载完成
     const timer = setTimeout(checkVersion, 1000)
-    
+
     return () => clearTimeout(timer)
   }, [])
 

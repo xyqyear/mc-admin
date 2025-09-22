@@ -32,19 +32,19 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
   selectButtonText = "使用模板"
 }) => {
   const { useServers, useComposeFile } = useServerQueries()
-  const { data: servers, isLoading: serversLoading } = useServers({ 
-    enabled: open 
+  const { data: servers, isLoading: serversLoading } = useServers({
+    enabled: open
   })
-  
+
   const [selectedServer, setSelectedServer] = useState<ServerListItem | null>(null)
   const [previewModalVisible, setPreviewModalVisible] = useState(false)
-  
+
   // 获取选中服务器的Compose文件内容
   const { data: composeContent, isLoading: composeLoading } = useComposeFile(
     selectedServer?.id || '',
     { enabled: !!selectedServer }
   )
-  
+
   const handleSelect = () => {
     if (selectedServer && composeContent) {
       onSelect(composeContent)

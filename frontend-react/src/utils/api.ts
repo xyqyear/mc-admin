@@ -27,7 +27,7 @@ export const getApiBaseUrl = (ws: boolean = false): string => {
       .replace(/^https:/, 'wss:')
       .replace(/^http:/, 'ws:');
   }
-  
+
   return baseUrl;
 };
 
@@ -187,7 +187,7 @@ export const queryKeys = {
     all: ["snapshots"] as const,
     global: () => [...queryKeys.snapshots.all, "global"] as const,
     repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
-    forPath: (serverId: string, path: string) => 
+    forPath: (serverId: string, path: string) =>
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
 

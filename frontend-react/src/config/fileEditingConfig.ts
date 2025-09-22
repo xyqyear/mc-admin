@@ -279,97 +279,97 @@ export const EDITABLE_EXTENSIONS = new Set([
  * Configuration for files that can be overridden by Docker Compose settings
  */
 export const COMPOSE_OVERRIDE_WARNINGS: Record<string, ComposeOverrideWarning> =
-  {
-    "server.properties": {
-      shouldWarn: true,
-      title: "配置文件覆盖提醒",
-      message:
-        "此文件的部分设置可能会被 Docker Compose 配置覆盖。为确保配置生效，建议通过 Compose 配置页面进行修改。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+{
+  "server.properties": {
+    shouldWarn: true,
+    title: "配置文件覆盖提醒",
+    message:
+      "此文件的部分设置可能会被 Docker Compose 配置覆盖。为确保配置生效，建议通过 Compose 配置页面进行修改。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    "user_jvm_args.txt": {
-      shouldWarn: true,
-      title: "JVM 参数覆盖提醒",
-      message:
-        "此文件中的 JVM 参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 JVM 参数以确保生效。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  "user_jvm_args.txt": {
+    shouldWarn: true,
+    title: "JVM 参数覆盖提醒",
+    message:
+      "此文件中的 JVM 参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 JVM 参数以确保生效。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    "eula.txt": {
-      shouldWarn: true,
-      title: "EULA 配置提醒",
-      message:
-        "此文件的 EULA 同意状态通常由 Docker Compose 环境变量控制。建议通过 Compose 配置页面进行管理。",
-      linkText: "前往 Compose 配置",
-      severity: "info",
-    },
+  "eula.txt": {
+    shouldWarn: true,
+    title: "EULA 配置提醒",
+    message:
+      "此文件的 EULA 同意状态通常由 Docker Compose 环境变量控制。建议通过 Compose 配置页面进行管理。",
+    linkText: "前往 Compose 配置",
+    severity: "info",
+  },
 
-    ".rcon-cli.env": {
-      shouldWarn: true,
-      title: "RCON CLI 配置覆盖提醒",
-      message:
-        "此文件的 RCON 连接配置可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 RCON 参数以确保生效。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".rcon-cli.env": {
+    shouldWarn: true,
+    title: "RCON CLI 配置覆盖提醒",
+    message:
+      "此文件的 RCON 连接配置可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 RCON 参数以确保生效。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".rcon-cli.yaml": {
-      shouldWarn: true,
-      title: "RCON CLI 配置覆盖提醒",
-      message:
-        "此文件的 RCON 连接配置可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 RCON 参数以确保生效。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".rcon-cli.yaml": {
+    shouldWarn: true,
+    title: "RCON CLI 配置覆盖提醒",
+    message:
+      "此文件的 RCON 连接配置可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 RCON 参数以确保生效。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".forge-manifest.json": {
-      shouldWarn: true,
-      title: "Forge 模组配置覆盖提醒",
-      message:
-        "此文件的 Forge 模组配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组加载器设置。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".forge-manifest.json": {
+    shouldWarn: true,
+    title: "Forge 模组配置覆盖提醒",
+    message:
+      "此文件的 Forge 模组配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组加载器设置。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".fabric-manifest.json": {
-      shouldWarn: true,
-      title: "Fabric 模组配置覆盖提醒",
-      message:
-        "此文件的 Fabric 模组配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组加载器设置。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".fabric-manifest.json": {
+    shouldWarn: true,
+    title: "Fabric 模组配置覆盖提醒",
+    message:
+      "此文件的 Fabric 模组配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组加载器设置。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".run-forge.env": {
-      shouldWarn: true,
-      title: "Forge 运行环境覆盖提醒",
-      message:
-        "此文件的 Forge 运行参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 Forge 相关参数。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".run-forge.env": {
+    shouldWarn: true,
+    title: "Forge 运行环境覆盖提醒",
+    message:
+      "此文件的 Forge 运行参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 Forge 相关参数。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".install-fabric.env": {
-      shouldWarn: true,
-      title: "Fabric 安装环境覆盖提醒",
-      message:
-        "此文件的 Fabric 安装参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 Fabric 相关参数。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
+  ".install-fabric.env": {
+    shouldWarn: true,
+    title: "Fabric 安装环境覆盖提醒",
+    message:
+      "此文件的 Fabric 安装参数可能会被 Docker Compose 环境变量覆盖。建议通过 Compose 配置页面设置 Fabric 相关参数。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
 
-    ".modrinth-manifest.json": {
-      shouldWarn: true,
-      title: "Modrinth 模组配置覆盖提醒",
-      message:
-        "此文件的 Modrinth 模组包配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组包设置。",
-      linkText: "前往 Compose 配置",
-      severity: "warning",
-    },
-  };
+  ".modrinth-manifest.json": {
+    shouldWarn: true,
+    title: "Modrinth 模组配置覆盖提醒",
+    message:
+      "此文件的 Modrinth 模组包配置可能会被 Docker Compose 启动脚本覆盖。建议通过 Compose 配置页面管理模组包设置。",
+    linkText: "前往 Compose 配置",
+    severity: "warning",
+  },
+};
 
 // ========================================================================================
 // Monaco Editor Options Configuration

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
-  snapshotApi, 
+import {
+  snapshotApi,
   type CreateSnapshotResponse,
   type RestoreSnapshotResponse
 } from "@/hooks/api/snapshotApi";
@@ -16,7 +16,7 @@ export const useSnapshotMutations = () => {
       mutationFn: snapshotApi.createGlobalSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
         message.success(`快照创建成功: ${data.snapshot.short_id}`);
-        
+
         // 刷新快照列表
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.global(),
@@ -35,7 +35,7 @@ export const useSnapshotMutations = () => {
       mutationFn: snapshotApi.createSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
         message.success(`快照创建成功: ${data.snapshot.short_id}`);
-        
+
         // 刷新所有快照相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.all,
@@ -54,7 +54,7 @@ export const useSnapshotMutations = () => {
       mutationFn: snapshotApi.restoreSnapshot,
       onSuccess: (data: RestoreSnapshotResponse) => {
         message.success(data.message);
-        
+
         // 刷新文件列表和快照列表
         queryClient.invalidateQueries({
           queryKey: queryKeys.files.all,

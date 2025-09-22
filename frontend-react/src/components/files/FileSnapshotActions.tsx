@@ -43,18 +43,18 @@ const SafetyCheckModal: React.FC<SafetyCheckModalProps> = ({
       <Button key="cancel" onClick={onCancel}>
         取消
       </Button>,
-      <Button 
-        key="continue" 
-        type="default" 
+      <Button
+        key="continue"
+        type="default"
         danger
         onClick={onContinueWithoutCreate}
         loading={loading}
       >
         继续回滚
       </Button>,
-      <Button 
-        key="create" 
-        type="primary" 
+      <Button
+        key="create"
+        type="primary"
         onClick={onCreateAndRestore}
         loading={loading}
       >
@@ -192,7 +192,7 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
         <Text type="secondary">
           以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要回滚的版本：
         </Text>
-        
+
         <Table<Snapshot>
           columns={columns}
           dataSource={snapshots}
@@ -265,22 +265,22 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
             <Text strong>{previewSummary}</Text>
           </div>
         )}
-        
+
         <Divider>详细变更列表</Divider>
-        
+
         <div className="space-y-2">
           {previewData.map((action, index) => (
             <div key={index} className="p-3 border border-gray-200 rounded bg-gray-50">
               <div className="flex items-center space-x-2">
                 <Tag color={
                   action.action === 'updated' ? 'orange' :
-                  action.action === 'deleted' ? 'red' :
-                  action.action === 'restored' ? 'green' : 'blue'
+                    action.action === 'deleted' ? 'red' :
+                      action.action === 'restored' ? 'green' : 'blue'
                 }>
                   {action.action === 'updated' ? '更新' :
-                   action.action === 'deleted' ? '删除' :
-                   action.action === 'restored' ? '恢复' :
-                   action.action || action.message_type}
+                    action.action === 'deleted' ? '删除' :
+                      action.action === 'restored' ? '恢复' :
+                        action.action || action.message_type}
                 </Tag>
                 <Text className="font-mono text-xs">{action.item}</Text>
                 {action.action !== 'deleted' && action.size && (
@@ -306,12 +306,12 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
   </Drawer>
 )
 
-const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({ 
-  file, 
-  serverId, 
-  path, 
+const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
+  file,
+  serverId,
+  path,
   isServerMode = false,
-  onRefresh 
+  onRefresh
 }) => {
   const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false)
   const [isSafetyCheckVisible, setIsSafetyCheckVisible] = useState(false)
@@ -334,8 +334,8 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const displayName = isServerMode ? '整个服务器' : (file?.name || '服务器')
 
   // Queries - 默认禁用自动查询，只有用户点击回滚按钮时才请求数据
-  const { 
-    data: snapshots = [], 
+  const {
+    data: snapshots = [],
     isLoading: isLoadingSnapshots,
     refetch: refetchSnapshots
   } = useSnapshotsForPath(serverId, actualPath, false)
@@ -360,7 +360,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
   const handleSnapshotRestore = async (snapshotId: string) => {
     setSelectedSnapshotId(snapshotId)
-    
+
     try {
       // 首先尝试直接回滚，后端会检查安全性
       await restoreSnapshotMutation.mutateAsync({
@@ -368,7 +368,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         server_id: serverId,
         path: actualPath
       })
-      
+
       message.success(`已成功回滚 ${displayName}`)
       setIsSnapshotModalVisible(false)
       // 如果有刷新回调，执行刷新
@@ -392,14 +392,14 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         server_id: serverId,
         path: actualPath
       })
-      
+
       // 然后执行回滚
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
         path: actualPath
       })
-      
+
       message.success(`已创建安全快照并成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
@@ -416,13 +416,13 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       setPreviewData(null)
       setPreviewSummary(null)
       setIsPreviewVisible(true)
-      
+
       const previewResult = await previewRestoreMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
         path: actualPath
       })
-      
+
       setPreviewData(previewResult.actions)
       setPreviewSummary(previewResult.preview_summary)
     } catch (error: any) {
@@ -440,7 +440,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         path: actualPath,
         skip_safety_check: true  // 关闭安全检查
       })
-      
+
       message.success(`已成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
@@ -471,7 +471,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
             </Button>
           </Tooltip>
         </Popconfirm>
-        
+
         <Tooltip title={`回滚 ${displayName}`}>
           <Button
             icon={<HistoryOutlined />}

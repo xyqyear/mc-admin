@@ -98,8 +98,8 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
       <div>
         <Text strong>状态：</Text>
         <Text>{task.status === 'downloading' ? '下载中' :
-               task.status === 'completed' ? '已完成' :
-               task.status === 'error' ? '出错' : '已取消'}</Text>
+          task.status === 'completed' ? '已完成' :
+            task.status === 'error' ? '出错' : '已取消'}</Text>
       </div>
       <div>
         <Text strong>用时：</Text>

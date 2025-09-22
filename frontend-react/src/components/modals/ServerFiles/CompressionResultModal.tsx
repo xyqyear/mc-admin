@@ -57,7 +57,7 @@ const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
             <div className="text-gray-600">
               选择下一步操作：
             </div>
-            
+
             <Space size="middle">
               <Button
                 type="primary"
@@ -68,7 +68,7 @@ const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
               >
                 立即下载
               </Button>
-              
+
               <Button
                 icon={<DatabaseOutlined />}
                 onClick={handleNavigateToArchives}

@@ -71,14 +71,14 @@ interface RestorePreviewResponse {
 
 export const snapshotApi = {
   // 列出所有快照（可按路径过滤）
-  getAllSnapshots: async (params?: { 
+  getAllSnapshots: async (params?: {
     server_id?: string;
     path?: string;
   }): Promise<Snapshot[]> => {
     const queryParams = new URLSearchParams();
     if (params?.server_id) queryParams.set('server_id', params.server_id);
     if (params?.path) queryParams.set('path', params.path);
-    
+
     const url = `/snapshots${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     const res = await api.get<ListSnapshotsResponse>(url);
     return res.data.snapshots;
@@ -118,14 +118,14 @@ export const snapshotApi = {
 };
 
 // Export types for use in other modules
-export type { 
-  Snapshot, 
-  CreateSnapshotResponse, 
-  ListSnapshotsResponse, 
+export type {
+  Snapshot,
+  CreateSnapshotResponse,
+  ListSnapshotsResponse,
   RestoreSnapshotRequest,
   RestoreSnapshotResponse,
   RestorePreviewRequest,
   RestorePreviewAction,
   RestorePreviewResponse,
-  BackupRepositoryUsage 
+  BackupRepositoryUsage
 };
