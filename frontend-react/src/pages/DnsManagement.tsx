@@ -140,6 +140,25 @@ const DnsManagement: React.FC = () => {
     }))
   }, [routerRoutes])
 
+  // Helper function to check if there are actual changes
+  const hasActualChanges = (dnsStatus: any) => {
+    if (!dnsStatus) return false
+
+    const hasDnsChanges = dnsStatus.dns_diff && (
+      (dnsStatus.dns_diff.records_to_add?.length > 0) ||
+      (dnsStatus.dns_diff.records_to_update?.length > 0) ||
+      (dnsStatus.dns_diff.records_to_remove?.length > 0)
+    )
+
+    const hasRouterChanges = dnsStatus.router_diff && (
+      (Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0) ||
+      (Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0) ||
+      (Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0)
+    )
+
+    return hasDnsChanges || hasRouterChanges
+  }
+
   // Status indicators
   const renderStatusIndicator = () => {
     if (statusLoading || enabledLoading) {
@@ -158,8 +177,7 @@ const DnsManagement: React.FC = () => {
       return <Tag icon={<ExclamationCircleOutlined />} color="orange">DNS管理器未初始化</Tag>
     }
 
-    const hasDiff = dnsStatus?.dns_diff || dnsStatus?.router_diff
-    if (hasDiff) {
+    if (hasActualChanges(dnsStatus)) {
       return <Tag icon={<ExclamationCircleOutlined />} color="warning">有待同步的变更</Tag>
     }
 
@@ -168,7 +186,7 @@ const DnsManagement: React.FC = () => {
 
   // Render differences
   const renderDifferences = () => {
-    if (!dnsStatus || (!dnsStatus.dns_diff && !dnsStatus.router_diff)) {
+    if (!dnsStatus || !hasActualChanges(dnsStatus)) {
       return null
     }
 
@@ -176,37 +194,99 @@ const DnsManagement: React.FC = () => {
       <Alert
         message="检测到待同步的变更"
         description={
-          <div className="space-y-2">
+          <div className="space-y-4">
             {dnsStatus.dns_diff && (
+              dnsStatus.dns_diff.records_to_add?.length > 0 ||
+              dnsStatus.dns_diff.records_to_update?.length > 0 ||
+              dnsStatus.dns_diff.records_to_remove?.length > 0
+            ) && (
               <div>
                 <Text strong>DNS记录变更:</Text>
-                <ul className="ml-4 mt-1">
-                  {dnsStatus.dns_diff.records_to_add.length > 0 && (
-                    <li>新增记录: {dnsStatus.dns_diff.records_to_add.length} 条</li>
+                <div className="ml-4 mt-2 space-y-2">
+                  {dnsStatus.dns_diff.records_to_add?.length > 0 && (
+                    <div>
+                      <Text type="success" strong>新增记录 ({dnsStatus.dns_diff.records_to_add.length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_add.map((record: any, index: number) => (
+                          <li key={index} className="text-sm">
+                            <Text code>{record.sub_domain}</Text> → <Text type="success">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                  {dnsStatus.dns_diff.records_to_update.length > 0 && (
-                    <li>更新记录: {dnsStatus.dns_diff.records_to_update.length} 条</li>
+                  {dnsStatus.dns_diff.records_to_update?.length > 0 && (
+                    <div>
+                      <Text type="warning" strong>更新记录 ({dnsStatus.dns_diff.records_to_update.length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_update.map((record: any, index: number) => (
+                          <li key={index} className="text-sm">
+                            <Text code>{record.sub_domain}</Text> → <Text type="warning">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                  {dnsStatus.dns_diff.records_to_remove.length > 0 && (
-                    <li>删除记录: {dnsStatus.dns_diff.records_to_remove.length} 条</li>
+                  {dnsStatus.dns_diff.records_to_remove?.length > 0 && (
+                    <div>
+                      <Text type="danger" strong>删除记录 ({dnsStatus.dns_diff.records_to_remove.length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_remove.map((recordId: string, index: number) => (
+                          <li key={index} className="text-sm">
+                            <Text type="danger">记录ID: {recordId}</Text>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                </ul>
+                </div>
               </div>
             )}
             {dnsStatus.router_diff && (
+              Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 ||
+              Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 ||
+              Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0
+            ) && (
               <div>
                 <Text strong>路由变更:</Text>
-                <ul className="ml-4 mt-1">
+                <div className="ml-4 mt-2 space-y-2">
                   {Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 && (
-                    <li>新增路由: {Object.keys(dnsStatus.router_diff.routes_to_add).length} 条</li>
+                    <div>
+                      <Text type="success" strong>新增路由 ({Object.keys(dnsStatus.router_diff.routes_to_add).length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_add).map(([serverAddress, backend], index) => (
+                          <li key={index} className="text-sm">
+                            <Text code>{serverAddress}</Text> → <Text type="success">{String(backend)}</Text>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                   {Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 && (
-                    <li>更新路由: {Object.keys(dnsStatus.router_diff.routes_to_update).length} 条</li>
+                    <div>
+                      <Text type="warning" strong>更新路由 ({Object.keys(dnsStatus.router_diff.routes_to_update).length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_update).map(([serverAddress, changes], index) => (
+                          <li key={index} className="text-sm">
+                            <Text code>{serverAddress}</Text> → <Text type="warning">{JSON.stringify(changes)}</Text>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                   {Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0 && (
-                    <li>删除路由: {Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条</li>
+                    <div>
+                      <Text type="danger" strong>删除路由 ({Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条):</Text>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_remove).map(([serverAddress, backend], index) => (
+                          <li key={index} className="text-sm">
+                            <Text code>{serverAddress}</Text> → <Text type="danger">{String(backend)}</Text>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                </ul>
+                </div>
               </div>
             )}
           </div>

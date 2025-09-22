@@ -9,8 +9,8 @@ export const useDNSStatus = () => {
   return useQuery({
     queryKey: queryKeys.dns.status(),
     queryFn: dnsApi.getDNSStatus,
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time status
-    staleTime: 2000, // Consider stale after 2 seconds
+    refetchInterval: 60000, // Refresh every 60 seconds for real-time status
+    staleTime: 60000, // Consider stale after 60 seconds
   })
 }
 
@@ -34,7 +34,7 @@ export const useDNSRecords = (enabled: boolean = true) => {
     queryKey: queryKeys.dns.records(),
     queryFn: dnsApi.getDNSRecords,
     refetchInterval: enabled ? 10000 : false, // Only refresh if enabled
-    staleTime: 5000, // Consider stale after 5 seconds
+    staleTime: 60000, // Consider stale after 60 seconds
     enabled, // Only run query if DNS is enabled
   })
 }
@@ -48,7 +48,7 @@ export const useRouterRoutes = (enabled: boolean = true) => {
     queryKey: queryKeys.dns.routes(),
     queryFn: dnsApi.getRouterRoutes,
     refetchInterval: enabled ? 10000 : false, // Only refresh if enabled
-    staleTime: 5000, // Consider stale after 5 seconds
+    staleTime: 60000, // Consider stale after 60 seconds
     enabled, // Only run query if DNS is enabled
   })
 }

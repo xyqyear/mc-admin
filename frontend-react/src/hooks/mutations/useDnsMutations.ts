@@ -36,14 +36,7 @@ export const useRefreshDNSData = () => {
   return useMutation({
     mutationFn: async () => {
       // Force refresh all DNS-related queries
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() }),
-      ])
-
-      // Wait for the queries to complete
+      // Use refetchQueries instead of invalidateQueries + refetchQueries to avoid double requests
       await Promise.all([
         queryClient.refetchQueries({ queryKey: queryKeys.dns.status() }),
         queryClient.refetchQueries({ queryKey: queryKeys.dns.records() }),
