@@ -1,7 +1,6 @@
 import {
   serverApi,
   type RestartScheduleResponse,
-  type RestartScheduleSuggestionsResponse,
   type ServerDiskUsageResponse,
   type ServerIOStatsResponse,
   type ServerListItem,
@@ -208,25 +207,6 @@ export const useServerQueries = () => {
     });
   };
 
-  // 重启计划建议 (较短缓存，因为是基于其他任务的动态计算)
-  const useRestartScheduleSuggestions = (
-    id: string,
-    options?: Omit<UseQueryOptions<RestartScheduleSuggestionsResponse>, 'queryKey' | 'queryFn'>
-  ) => {
-    return useQuery({
-      queryKey: queryKeys.restartSchedule.suggestions(id),
-      queryFn: () => serverApi.getRestartScheduleSuggestions(id),
-      enabled: !!id,
-      staleTime: 30 * 1000, // 30秒 - 建议会根据其他任务变化
-      gcTime: 2 * 60 * 1000, // 2分钟
-      retry: (failureCount) => {
-        return failureCount < 2;
-      },
-      ...options,
-    });
-  };
-
-
   return {
     useServers, // 🌟 基础配置API - 用于获取服务器列表基本信息
     useServerInfo, // 详细配置信息
@@ -238,6 +218,5 @@ export const useServerQueries = () => {
     useServerDiskUsage, // 单个服务器磁盘使用信息 (磁盘空间，始终可用)
     useComposeFile, // Compose文件内容
     useRestartSchedule, // 重启计划信息
-    useRestartScheduleSuggestions, // 重启计划建议
   };
 };
