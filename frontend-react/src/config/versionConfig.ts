@@ -183,7 +183,16 @@ export const versionUpdates: VersionUpdate[] = [
       '修复动态配置模块选择问题',
       '修复配置更新后的缓存失效问题'
     ]
-  }
+  },
+  {
+    version: '0.3.1',
+    date: '2025-09-22',
+    title: '服务器概览使用真实地址',
+    description: '服务器概览页显示真实的服务器地址',
+    features: [
+      '服务器概览页显示真实的服务器地址'
+    ]
+  },
 ]
 
 export function compareVersions(a: string, b: string): number {
