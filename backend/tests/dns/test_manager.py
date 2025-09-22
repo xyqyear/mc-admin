@@ -90,12 +90,22 @@ def dns_manager():
 async def test_initialize_with_dnspod(dns_manager):
     """Test DNS manager initialization with DNSPod provider"""
     mock_config = Mock()
-    mock_config.dns.enabled = True
-    mock_config.dns.type = "dnspod"
-    mock_config.dns.domain = "example.com"
-    mock_config.dns.id = "test_id"
-    mock_config.dns.key = "test_key"
+    mock_config.enabled = True
     mock_config.mc_router_base_url = "http://localhost:26666"
+
+    # Create a proper mock for DNS config with model_dump
+    mock_dns = Mock()
+    mock_dns.type = "dnspod"
+    mock_dns.domain = "example.com"
+    mock_dns.id = "test_id"
+    mock_dns.key = "test_key"
+    mock_dns.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+        "id": "test_id",
+        "key": "test_key"
+    }
+    mock_config.dns = mock_dns
 
     with (
         patch("app.dns.manager.config") as config_mock,
@@ -124,13 +134,24 @@ async def test_initialize_with_dnspod(dns_manager):
 async def test_initialize_with_huawei(dns_manager):
     """Test DNS manager initialization with Huawei provider"""
     mock_config = Mock()
-    mock_config.dns.enabled = True
-    mock_config.dns.type = "huawei"
-    mock_config.dns.domain = "example.com"
-    mock_config.dns.ak = "test_ak"
-    mock_config.dns.sk = "test_sk"
-    mock_config.dns.region = "cn-south-1"
+    mock_config.enabled = True
     mock_config.mc_router_base_url = "http://localhost:26666"
+
+    # Create a proper mock for DNS config with model_dump
+    mock_dns = Mock()
+    mock_dns.type = "huawei"
+    mock_dns.domain = "example.com"
+    mock_dns.ak = "test_ak"
+    mock_dns.sk = "test_sk"
+    mock_dns.region = "cn-south-1"
+    mock_dns.model_dump.return_value = {
+        "type": "huawei",
+        "domain": "example.com",
+        "ak": "test_ak",
+        "sk": "test_sk",
+        "region": "cn-south-1"
+    }
+    mock_config.dns = mock_dns
 
     with (
         patch("app.dns.manager.config") as config_mock,
@@ -302,6 +323,9 @@ async def test_update_integration():
     mock_config.managed_sub_domain = "mc"
     mock_config.dns_ttl = 300
 
+    # Mock the ensure_up_to_date_config method
+    dns_manager._ensure_up_to_date_config = AsyncMock()
+
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_config
 
@@ -332,6 +356,9 @@ async def test_update_no_servers():
     dns_manager._mc_router_client = mock_router_client
     dns_manager._docker_manager = mock_docker_manager
 
+    # Mock the ensure_up_to_date_config method
+    dns_manager._ensure_up_to_date_config = AsyncMock()
+
     mock_config = Mock()
     mock_config.addresses = []
 
@@ -346,6 +373,9 @@ async def test_update_no_servers():
 async def test_update_not_initialized():
     """Test update when manager is not initialized"""
     dns_manager = SimpleDNSManager()
+
+    # Mock the ensure_up_to_date_config to not throw the ConfigManager error
+    dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with pytest.raises(RuntimeError, match="DNS manager not initialized"):
         await dns_manager.update()
@@ -387,3 +417,200 @@ def test_get_addresses_from_config():
     assert result["*"].port == 25565
     assert result["backup"].host == "5.6.7.8"
     assert result["backup"].port == 25566
+
+
+@pytest.mark.asyncio
+async def test_config_hash_calculation():
+    """Test configuration hash calculation for key fields"""
+    dns_manager = SimpleDNSManager()
+
+    # Create mock DNS config
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = True
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+
+    # Mock DNS provider config
+    mock_dns_provider = Mock()
+    mock_dns_provider.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+        "id": "test_id",
+        "key": "test_key"
+    }
+    mock_dns_config.dns = mock_dns_provider
+
+    # Calculate hash
+    hash1 = dns_manager._calculate_config_hash(mock_dns_config)
+    assert isinstance(hash1, str)
+    assert len(hash1) == 32  # MD5 hash length
+
+    # Calculate hash again with same config - should be identical
+    hash2 = dns_manager._calculate_config_hash(mock_dns_config)
+    assert hash1 == hash2
+
+    # Change a key field and verify hash changes
+    mock_dns_config.mc_router_base_url = "http://localhost:26667"
+    hash3 = dns_manager._calculate_config_hash(mock_dns_config)
+    assert hash1 != hash3
+
+
+@pytest.mark.asyncio
+async def test_config_hash_with_none_dns():
+    """Test configuration hash calculation when DNS config is None"""
+    dns_manager = SimpleDNSManager()
+
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = False
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+    mock_dns_config.dns = None
+
+    # Should not raise exception
+    hash_result = dns_manager._calculate_config_hash(mock_dns_config)
+    assert isinstance(hash_result, str)
+    assert len(hash_result) == 32
+
+
+@pytest.mark.asyncio
+async def test_ensure_up_to_date_config_no_change():
+    """Test ensure_up_to_date_config when configuration hasn't changed"""
+    dns_manager = SimpleDNSManager()
+
+    # Mock config
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = True
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+    mock_dns_provider = Mock()
+    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_config.dns = mock_dns_provider
+
+    # Set initial hash
+    initial_hash = dns_manager._calculate_config_hash(mock_dns_config)
+    dns_manager._last_config_hash = initial_hash
+
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = mock_dns_config
+
+        # Mock initialize method to track if it's called
+        dns_manager.initialize = AsyncMock()
+
+        await dns_manager._ensure_up_to_date_config()
+
+        # Initialize should not be called since config hasn't changed
+        dns_manager.initialize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_up_to_date_config_with_change():
+    """Test ensure_up_to_date_config when configuration has changed"""
+    dns_manager = SimpleDNSManager()
+
+    # Mock config
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = True
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+    mock_dns_provider = Mock()
+    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_config.dns = mock_dns_provider
+
+    # Set initial hash with different config
+    dns_manager._last_config_hash = "different_hash"
+
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = mock_dns_config
+
+        # Mock initialize method
+        dns_manager.initialize = AsyncMock()
+
+        await dns_manager._ensure_up_to_date_config()
+
+        # Initialize should be called since config changed
+        dns_manager.initialize.assert_called_once()
+
+        # Hash should be updated
+        expected_hash = dns_manager._calculate_config_hash(mock_dns_config)
+        assert dns_manager._last_config_hash == expected_hash
+
+
+@pytest.mark.asyncio
+async def test_ensure_up_to_date_config_first_time():
+    """Test ensure_up_to_date_config when no hash is set (first time)"""
+    dns_manager = SimpleDNSManager()
+
+    # Mock config
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = True
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+    mock_dns_provider = Mock()
+    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_config.dns = mock_dns_provider
+
+    # No initial hash set (None)
+    assert dns_manager._last_config_hash is None
+
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = mock_dns_config
+
+        # Mock initialize method
+        dns_manager.initialize = AsyncMock()
+
+        await dns_manager._ensure_up_to_date_config()
+
+        # Initialize should be called since no hash was set
+        dns_manager.initialize.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_up_to_date_config_initialization_failure():
+    """Test ensure_up_to_date_config when reinitialization fails"""
+    dns_manager = SimpleDNSManager()
+
+    # Mock config
+    mock_dns_config = Mock()
+    mock_dns_config.enabled = True
+    mock_dns_config.mc_router_base_url = "http://localhost:26666"
+    mock_dns_provider = Mock()
+    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_config.dns = mock_dns_provider
+
+    # Set different hash to trigger reinitialization
+    dns_manager._last_config_hash = "different_hash"
+
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = mock_dns_config
+
+        # Mock initialize method to raise exception
+        dns_manager.initialize = AsyncMock(side_effect=Exception("Init failed"))
+
+        with pytest.raises(Exception, match="Init failed"):
+            await dns_manager._ensure_up_to_date_config()
+
+
+@pytest.mark.asyncio
+async def test_update_with_automatic_reinitialization():
+    """Test update method with automatic configuration change detection"""
+    dns_manager = SimpleDNSManager()
+
+    # Set up the manager to be "initialized"
+    mock_dns_client = MockDNSClient()
+    mock_router_client = MockMCRouterClient("http://localhost:26666")
+    mock_docker_manager = AsyncMock()
+    mock_docker_manager.get_all_server_info.return_value = []
+
+    dns_manager._dns_client = mock_dns_client
+    dns_manager._mc_router_client = mock_router_client
+    dns_manager._docker_manager = mock_docker_manager
+
+    # Mock configuration
+    mock_config = Mock()
+    mock_config.addresses = []
+
+    # Mock the ensure_up_to_date_config method
+    dns_manager._ensure_up_to_date_config = AsyncMock()
+
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = mock_config
+
+        await dns_manager.update()
+
+        # Verify that ensure_up_to_date_config was called before the actual update
+        dns_manager._ensure_up_to_date_config.assert_called_once()

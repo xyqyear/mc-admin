@@ -6,6 +6,8 @@ to synchronize DNS records and MC Router configurations without background tasks
 """
 
 import asyncio
+import hashlib
+import json
 from typing import Dict, List, Literal, NamedTuple
 
 from ..config import settings
@@ -58,6 +60,7 @@ class SimpleDNSManager:
         self._mc_router_client: MCRouterClient | None = None
         self._docker_manager: DockerMCManager | None = None
         self._update_lock = asyncio.Lock()
+        self._last_config_hash: str | None = None
 
     async def initialize(self):
         """Initialize the DNS manager with current configuration"""
@@ -94,17 +97,73 @@ class SimpleDNSManager:
         # Initialize Docker manager
         self._docker_manager = DockerMCManager(settings.server_path)
 
+        # Update configuration hash to current state
+        self._last_config_hash = self._calculate_config_hash(dns_config)
+
         logger.info("Simplified DNS manager initialized successfully")
+
+    def _calculate_config_hash(self, dns_config) -> str:
+        """
+        Calculate hash of key configuration fields that affect client initialization.
+
+        Only includes configuration fields that would require reinitializing
+        DNS or MC Router clients if changed.
+
+        Args:
+            dns_config: DNS configuration object
+
+        Returns:
+            MD5 hash of key configuration fields
+        """
+        key_config = {
+            "enabled": dns_config.enabled,
+            "dns": dns_config.dns.model_dump() if dns_config.dns else None,
+            "mc_router_base_url": dns_config.mc_router_base_url,
+        }
+
+        # Use sorted JSON to ensure consistent hash calculation
+        config_str = json.dumps(key_config, sort_keys=True)
+        return hashlib.md5(config_str.encode()).hexdigest()
+
+    async def _ensure_up_to_date_config(self):
+        """
+        Ensure DNS manager is using the latest configuration.
+
+        Checks if key configuration fields have changed since last initialization
+        and automatically reinitializes clients if needed. This enables dynamic
+        configuration updates without manual intervention.
+
+        Raises:
+            Exception: If reinitialization fails
+        """
+        dns_config = config.dns
+        current_hash = self._calculate_config_hash(dns_config)
+
+        if self._last_config_hash != current_hash:
+            logger.info(
+                f"DNS configuration changed (hash: {self._last_config_hash} -> {current_hash}), reinitializing..."
+            )
+            try:
+                await self.initialize()
+                self._last_config_hash = current_hash
+                logger.info("DNS manager reinitialized successfully due to config change")
+            except Exception as e:
+                logger.error(f"Failed to reinitialize DNS manager after config change: {e}")
+                raise
 
     async def update(self):
         """
         Update DNS records and MC Router configurations based on current server state.
 
         This method:
-        1. Gets server list and ports from DockerMCManager
-        2. Combines with address configuration to generate records
-        3. Updates DNS and MC Router with complete lists
+        1. Ensures configuration is up-to-date (auto-reinitializes if config changed)
+        2. Gets server list and ports from DockerMCManager
+        3. Combines with address configuration to generate records
+        4. Updates DNS and MC Router with complete lists
         """
+        # Ensure we're using the latest configuration
+        await self._ensure_up_to_date_config()
+
         if (
             not self._dns_client
             or not self._mc_router_client

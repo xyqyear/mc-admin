@@ -176,7 +176,7 @@ def test_dns_router_authentication_required():
 def test_get_dns_records_success(client):
     """Test DNS records endpoint success"""
     with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
-         patch("app.dynamic_config.config") as mock_config:
+         patch("app.routers.dns.config") as mock_config:
         # Mock manager as initialized
         mock_manager.is_initialized = True
 
@@ -231,7 +231,7 @@ def test_get_dns_records_success(client):
 def test_get_dns_records_not_initialized(client):
     """Test DNS records endpoint when manager not initialized"""
     with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
-         patch("app.dynamic_config.config") as mock_config:
+         patch("app.routers.dns.config") as mock_config:
         # Mock manager as not initialized
         mock_manager.is_initialized = False
         mock_manager.initialize = AsyncMock()
