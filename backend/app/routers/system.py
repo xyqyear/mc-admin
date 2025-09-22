@@ -62,12 +62,14 @@ async def get_server_info():
 
 
 @router.get(
-    "/disk-usage", dependencies=[Depends(get_current_user)], response_model=DiskUsageInfo
+    "/disk-usage",
+    dependencies=[Depends(get_current_user)],
+    response_model=DiskUsageInfo,
 )
 async def get_system_disk_usage():
     """Get system disk usage information for server path"""
     disk_info = await get_disk_info(settings.server_path)
-    
+
     return DiskUsageInfo(
         diskUsedGB=disk_info.used / 1024**3,
         diskTotalGB=disk_info.total / 1024**3,

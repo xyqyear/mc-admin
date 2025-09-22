@@ -166,7 +166,9 @@ class CGroupStats(BaseModel):
 
 async def read_memory_stats(container_id: str) -> MemoryStats:
     """Read memory statistics for a Docker container."""
-    memory_stat_path = settings.cgroup_path / f"system.slice/docker-{container_id}.scope/memory.stat"
+    memory_stat_path = (
+        settings.cgroup_path / f"system.slice/docker-{container_id}.scope/memory.stat"
+    )
 
     try:
         async with aiofiles.open(memory_stat_path, "r") as f:
@@ -182,7 +184,9 @@ async def read_memory_stats(container_id: str) -> MemoryStats:
 
 async def read_block_io_stats(container_id: str) -> BlockIOStats:
     """Read block I/O statistics for a Docker container."""
-    io_stat_path = settings.cgroup_path / f"system.slice/docker-{container_id}.scope/io.stat"
+    io_stat_path = (
+        settings.cgroup_path / f"system.slice/docker-{container_id}.scope/io.stat"
+    )
 
     try:
         async with aiofiles.open(io_stat_path, "r") as f:

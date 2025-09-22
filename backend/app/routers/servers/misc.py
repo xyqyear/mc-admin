@@ -34,8 +34,6 @@ class ServerStatus(BaseModel):
     status: str
 
 
-
-
 @router.get("/", response_model=list[ServerListItem])
 async def get_servers(_: UserPublic = Depends(get_current_user)):
     """Get list of all servers with basic info only (no status or runtime data)"""

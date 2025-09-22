@@ -67,7 +67,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             return False
 
         method = request.method.upper()
-        
+
         # 审计所有非GET请求
         return method in self.AUDIT_METHODS
 

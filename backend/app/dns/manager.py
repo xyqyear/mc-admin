@@ -146,9 +146,13 @@ class SimpleDNSManager:
             try:
                 await self.initialize()
                 self._last_config_hash = current_hash
-                logger.info("DNS manager reinitialized successfully due to config change")
+                logger.info(
+                    "DNS manager reinitialized successfully due to config change"
+                )
             except Exception as e:
-                logger.error(f"Failed to reinitialize DNS manager after config change: {e}")
+                logger.error(
+                    f"Failed to reinitialize DNS manager after config change: {e}"
+                )
                 raise
 
     async def update(self):
@@ -333,7 +337,9 @@ class SimpleDNSManager:
         # Let the DNS client handle the diffing and updates
         # Pass managed_sub_domain to ensure only relevant records are updated
         dns_config = config.dns
-        await self._dns_client.update_records(target_add_records, dns_config.managed_sub_domain)
+        await self._dns_client.update_records(
+            target_add_records, dns_config.managed_sub_domain
+        )
 
     async def _update_mc_router(self, target_routes: List[RouteEntry]):
         """Update MC Router with target routes"""
@@ -345,7 +351,6 @@ class SimpleDNSManager:
 
         logger.info(f"Updating MC Router with {len(routes_dict)} routes")
         await self._mc_router_client.override_routes(routes_dict)
-
 
     async def close(self):
         """Clean up resources"""
@@ -374,7 +379,7 @@ class SimpleDNSManager:
             return {
                 "dns_diff": None,
                 "router_diff": None,
-                "errors": ["DNS manager not initialized"]
+                "errors": ["DNS manager not initialized"],
             }
 
         errors = []
@@ -395,7 +400,7 @@ class SimpleDNSManager:
                 return {
                     "dns_diff": None,
                     "router_diff": None,
-                    "errors": ["No addresses or servers found for diff calculation"]
+                    "errors": ["No addresses or servers found for diff calculation"],
                 }
 
             # Generate target DNS records and routes
@@ -426,27 +431,26 @@ class SimpleDNSManager:
                 ]
 
                 dns_diff = await self._dns_client.get_records_diff(
-                    target_add_records,
-                    dns_config.managed_sub_domain
+                    target_add_records, dns_config.managed_sub_domain
                 )
             except Exception as e:
                 errors.append(f"DNS diff calculation failed: {str(e)}")
 
             # Calculate Router diff
             try:
-                target_routes_dict = {route.server_address: route.backend for route in target_routes}
-                router_diff = await self._mc_router_client.get_routes_diff(target_routes_dict)
+                target_routes_dict = {
+                    route.server_address: route.backend for route in target_routes
+                }
+                router_diff = await self._mc_router_client.get_routes_diff(
+                    target_routes_dict
+                )
             except Exception as e:
                 errors.append(f"Router diff calculation failed: {str(e)}")
 
         except Exception as e:
             errors.append(f"General diff calculation failed: {str(e)}")
 
-        return {
-            "dns_diff": dns_diff,
-            "router_diff": router_diff,
-            "errors": errors
-        }
+        return {"dns_diff": dns_diff, "router_diff": router_diff, "errors": errors}
 
     @property
     def is_initialized(self) -> bool:

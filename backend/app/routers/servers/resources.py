@@ -1,4 +1,5 @@
 import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -76,9 +77,7 @@ async def get_server_cpu_percent(
 
 
 @router.get("/{server_id}/memory", response_model=ServerMemory)
-async def get_server_memory(
-    server_id: str, _: UserPublic = Depends(get_current_user)
-):
+async def get_server_memory(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get memory usage for a specific server (available when running/starting/healthy)"""
     try:
         instance = mc_manager.get_instance(server_id)

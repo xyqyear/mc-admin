@@ -112,7 +112,9 @@ async def update_dns(
 
 
 @router.get("/status", response_model=DNSStatusResponse)
-async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatusResponse:
+async def get_dns_status(
+    _: UserPublic = Depends(get_current_user),
+) -> DNSStatusResponse:
     """
     Get DNS manager status including current differences between expected and actual state.
 
@@ -138,7 +140,9 @@ async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatus
                     )
                     for record in dns_record_diff.records_to_add
                 ],
-                records_to_remove=[str(record_id) for record_id in dns_record_diff.records_to_remove],
+                records_to_remove=[
+                    str(record_id) for record_id in dns_record_diff.records_to_remove
+                ],
                 records_to_update=[
                     DNSRecord(
                         sub_domain=record.sub_domain,
@@ -148,7 +152,7 @@ async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatus
                         ttl=record.ttl,
                     )
                     for record in dns_record_diff.records_to_update
-                ]
+                ],
             )
 
         # Convert Router diff to response format
@@ -160,7 +164,7 @@ async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatus
             initialized=simple_dns_manager.is_initialized,
             dns_diff=dns_diff,
             router_diff=router_diff,
-            errors=diff_result["errors"]
+            errors=diff_result["errors"],
         )
 
     except Exception as e:
@@ -171,12 +175,14 @@ async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatus
             initialized=simple_dns_manager.is_initialized,
             dns_diff=None,
             router_diff=None,
-            errors=[error_msg]
+            errors=[error_msg],
         )
 
 
 @router.get("/enabled", response_model=DNSEnabledResponse)
-async def get_dns_enabled(_: UserPublic = Depends(get_current_user)) -> DNSEnabledResponse:
+async def get_dns_enabled(
+    _: UserPublic = Depends(get_current_user),
+) -> DNSEnabledResponse:
     """
     Get DNS manager enabled status from configuration.
 

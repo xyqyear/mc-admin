@@ -142,7 +142,7 @@ class MCRouterClient:
             elif current_routes[addr] != backend:
                 routes_to_update[addr] = {
                     "current": current_routes[addr],
-                    "target": backend
+                    "target": backend,
                 }
 
         # Check for routes to remove
@@ -153,7 +153,7 @@ class MCRouterClient:
         return {
             "routes_to_add": routes_to_add,
             "routes_to_remove": routes_to_remove,
-            "routes_to_update": routes_to_update
+            "routes_to_update": routes_to_update,
         }
 
     async def close(self):

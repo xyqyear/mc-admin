@@ -23,6 +23,7 @@ class CronJobRegistration:
 
     This replaces the tuple (function, description, schema_cls) for better type safety.
     """
+
     function: AsyncCronJobFunction
     description: str
     schema_cls: Type[BaseConfigSchema]
@@ -105,6 +106,7 @@ class CronJobExecutionRecord:
 
     This is returned by get_execution_history instead of dictionaries.
     """
+
     cronjob_id: str
     execution_id: str
     started_at: Optional[datetime]

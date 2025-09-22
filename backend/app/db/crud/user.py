@@ -35,7 +35,7 @@ async def delete_user(session: AsyncSession, user_id: int) -> bool:
     user = await get_user_by_id(session, user_id)
     if user is None:
         return False
-    
+
     await session.delete(user)
     await session.commit()
     return True

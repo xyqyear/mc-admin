@@ -19,12 +19,12 @@ from .network import (
 __all__ = [
     # Compose file and managers
     "ComposeFile",
-    "ComposeManager", 
+    "ComposeManager",
     "DockerManager",
     # CGroup monitoring
     "MemoryStats",
     "BlockIODevice",
-    "BlockIOStats", 
+    "BlockIOStats",
     "CGroupStats",
     "read_memory_stats",
     "read_block_io_stats",

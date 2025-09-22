@@ -110,11 +110,7 @@ def _get_restic_manager() -> ResticManager:
 
 
 async def _send_uptimekuma_notification(
-    context: ExecutionContext,
-    uptimekuma_url: str,
-    ok: bool,
-    msg: str,
-    ping: float
+    context: ExecutionContext, uptimekuma_url: str, ok: bool, msg: str, ping: float
 ):
     """
     Send notification to Uptime Kuma push monitor
@@ -133,7 +129,7 @@ async def _send_uptimekuma_notification(
         params = {
             "status": "up" if ok else "down",
             "msg": msg,
-            "ping": int(ping * 1000)  # Convert to milliseconds
+            "ping": int(ping * 1000),  # Convert to milliseconds
         }
 
         # Send GET request to Uptime Kuma
