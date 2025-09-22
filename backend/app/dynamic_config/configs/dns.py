@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from ..schemas import BaseConfigSchema
 
@@ -48,3 +48,11 @@ class DNSManagerConfig(BaseConfigSchema):
         list[Manual],
         Field(description="地址配置列表", default_factory=list),
     ]
+
+    # validate addresses list can not have duplicates of name
+    @field_validator("addresses")
+    def check_no_duplicate_names(cls, v: list[Manual]) -> list[Manual]:
+        names = [addr.name for addr in v]
+        if len(names) != len(set(names)):
+            raise ValueError("地址配置列表中不能有重复的名称")
+        return v
