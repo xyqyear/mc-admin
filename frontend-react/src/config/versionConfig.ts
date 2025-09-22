@@ -193,29 +193,38 @@ export const versionUpdates: VersionUpdate[] = [
       '服务器概览页显示真实的服务器地址'
     ]
   },
+  {
+    version: '0.3.2',
+    date: '2025-09-22',
+    title: '重启任务自动创建增强',
+    description: '修复重启任务自动创建的逻辑问题，确保新建服务器时正确添加重启任务。',
+    fixes: [
+      '修复重启任务自动创建的逻辑问题'
+    ]
+  },
 ]
 
 export function compareVersions(a: string, b: string): number {
-  const parseVersion = (version: string) => 
+  const parseVersion = (version: string) =>
     version.split('.').map(num => parseInt(num, 10))
-  
+
   const versionA = parseVersion(a)
   const versionB = parseVersion(b)
-  
+
   for (let i = 0; i < Math.max(versionA.length, versionB.length); i++) {
     const numA = versionA[i] || 0
     const numB = versionB[i] || 0
-    
+
     if (numA < numB) return -1
     if (numA > numB) return 1
   }
-  
+
   return 0
 }
 
 // 自动获取版本配置中的最大版本作为当前版本
-export const currentVersion = versionUpdates.length > 0 
-  ? versionUpdates.reduce((latest, update) => 
-      compareVersions(update.version, latest.version) > 0 ? update : latest
-    ).version
+export const currentVersion = versionUpdates.length > 0
+  ? versionUpdates.reduce((latest, update) =>
+    compareVersions(update.version, latest.version) > 0 ? update : latest
+  ).version
   : '0.1.0'
