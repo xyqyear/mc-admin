@@ -8,6 +8,7 @@ import {
   Alert,
   Space,
   Tooltip,
+  App,
   type TableProps
 } from 'antd'
 import { useNavigate } from 'react-router-dom'
@@ -28,11 +29,16 @@ import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerStatus } from '@/types/Server'
 import { useOverviewData } from '@/hooks/queries/page/useOverviewData'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/utils/api'
+import { serverApi } from '@/hooks/api/serverApi'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
+  const { message } = App.useApp()
 
   // 分页状态管理
   const [pageSize, setPageSize] = useState(10)
@@ -57,6 +63,25 @@ const Overview: React.FC = () => {
 
   const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
+  const autoUpdateDNS = useAutoUpdateDNS()
+  const queryClient = useQueryClient()
+
+  // 页面级别的删除重启计划mutation（不显示重复消息）
+  const deleteRestartScheduleMutation = useMutation({
+    mutationFn: async (serverId: string) => {
+      return serverApi.deleteRestartSchedule(serverId)
+    },
+    onSuccess: (_, serverId) => {
+      // 只失效缓存，不显示消息（消息在页面级别处理）
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.restartSchedule.detail(serverId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.cron.all,
+      })
+    },
+  })
+
   const { showConfirm } = useServerOperationConfirm()
 
 
@@ -95,8 +120,33 @@ const Overview: React.FC = () => {
         operation: operation as 'stop' | 'restart' | 'down' | 'remove',
         serverName: server.name,
         serverId,
-        onConfirm: (action, serverIdParam) => {
-          serverOperationMutation.mutate({ action, serverId: serverIdParam })
+        onConfirm: async (action, serverIdParam) => {
+          try {
+            await serverOperationMutation.mutateAsync({ action, serverId: serverIdParam })
+
+            // 如果是删除操作，在成功后执行后续操作
+            if (action === 'remove') {
+              // 删除重启计划
+              try {
+                await deleteRestartScheduleMutation.mutateAsync(serverIdParam)
+                message.success(`服务器 "${serverIdParam}" 重启计划删除成功`)
+              } catch (scheduleError: any) {
+                // 重启计划删除失败不影响服务器删除
+                message.warning(`服务器 "${serverIdParam}" 删除成功，但重启计划删除失败: ${scheduleError.message || '未知错误'}`)
+              }
+
+              // 触发DNS更新
+              try {
+                await autoUpdateDNS.mutateAsync()
+              } catch (dnsError: any) {
+                // DNS更新失败不影响删除操作，错误已在mutation中处理
+                console.warn('DNS自动更新失败:', dnsError)
+              }
+            }
+          } catch (error: any) {
+            // 操作失败，错误已在mutation中处理
+            console.error('服务器操作失败:', error)
+          }
         }
       })
       return

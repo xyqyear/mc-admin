@@ -52,3 +52,39 @@ export const useRefreshDNSData = () => {
     },
   })
 }
+
+/**
+ * Auto DNS update mutation for triggering after server operations
+ * This version checks DNS enabled status internally and provides user feedback
+ */
+export const useAutoUpdateDNS = () => {
+  const queryClient = useQueryClient()
+  const { message } = App.useApp()
+
+  return useMutation({
+    mutationFn: async () => {
+      // Check if DNS is enabled first
+      const enabledResponse = await dnsApi.getDNSEnabled()
+      if (!enabledResponse.enabled) {
+        return { skipped: true, message: 'DNS管理器未启用，跳过自动更新' }
+      }
+
+      // If enabled, trigger DNS update
+      const updateResponse = await dnsApi.updateDNS()
+      return { skipped: false, ...updateResponse }
+    },
+    onSuccess: (data) => {
+      if (!data.skipped) {
+        // Show success message and invalidate queries
+        message.success('DNS记录已自动更新')
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
+      }
+    },
+    onError: (error: any) => {
+      // Show error message to user
+      message.error(`DNS自动更新失败: ${error.message}`)
+    },
+  })
+}

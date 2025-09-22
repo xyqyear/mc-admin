@@ -28,20 +28,8 @@ export const useServerMutations = () => {
           case "down":
             return serverApi.downServer(serverId);
           case "remove":
-            // First remove the server
-            {
-              const result = await serverApi.serverOperation(serverId, "remove");
-
-              // Then try to delete the restart schedule (if it exists)
-              try {
-                await serverApi.deleteRestartSchedule(serverId);
-              } catch (scheduleError) {
-                // Ignore errors if restart schedule doesn't exist or deletion fails
-                console.warn(`Failed to delete restart schedule for server ${serverId}:`, scheduleError);
-              }
-
-              return result;
-            }
+            // Only remove the server, restart schedule deletion will be handled at page level
+            return serverApi.serverOperation(serverId, "remove");
           default:
             throw new Error(`Unknown action: ${action}`);
         }

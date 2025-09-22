@@ -25,6 +25,7 @@ import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
 
 const { Text } = Typography
 
@@ -52,6 +53,7 @@ const ServerNew: React.FC = () => {
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
   const createRestartScheduleMutation = useCreateOrUpdateRestartSchedule()
+  const autoUpdateDNS = useAutoUpdateDNS()
 
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)
@@ -87,9 +89,8 @@ const ServerNew: React.FC = () => {
           await createRestartScheduleMutation.mutateAsync({
             serverId: values.serverName,
           })
-        } catch (restartScheduleError: any) {
+        } catch {
           // 重启计划创建失败，但不阻止整个流程
-          message.warning(`服务器 "${values.serverName}" 创建成功，但重启计划创建失败: ${restartScheduleError.message || '未知错误'}`)
         }
       }
 
@@ -105,6 +106,14 @@ const ServerNew: React.FC = () => {
           // 创建成功但填充失败，提示用户
           message.warning(`服务器 "${values.serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
         }
+      }
+
+      // 服务器创建完成后，自动触发DNS更新
+      try {
+        await autoUpdateDNS.mutateAsync()
+      } catch (dnsError: any) {
+        // DNS更新失败不阻止页面跳转，错误已在mutation中处理
+        console.warn('DNS自动更新失败:', dnsError)
       }
 
       navigate('/overview')
