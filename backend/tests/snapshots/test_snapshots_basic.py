@@ -55,11 +55,17 @@ class TestResticManagerBasic:
         manager = ResticManager("/test/repo", "password")
 
         # Test that calling forget without any parameters raises ValueError
-        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+        with pytest.raises(
+            ValueError,
+            match="At least one retention policy parameter must be specified",
+        ):
             await manager.forget()
 
         # Test that calling forget with all None parameters raises ValueError
-        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+        with pytest.raises(
+            ValueError,
+            match="At least one retention policy parameter must be specified",
+        ):
             await manager.forget(
                 keep_last=None,
                 keep_hourly=None,
@@ -68,11 +74,14 @@ class TestResticManagerBasic:
                 keep_monthly=None,
                 keep_yearly=None,
                 keep_tag=None,
-                keep_within=None
+                keep_within=None,
             )
 
         # Test that calling forget with empty keep_tag list raises ValueError
-        with pytest.raises(ValueError, match="At least one retention policy parameter must be specified"):
+        with pytest.raises(
+            ValueError,
+            match="At least one retention policy parameter must be specified",
+        ):
             await manager.forget(keep_tag=[])
 
     def test_forget_parameter_validation(self):
@@ -83,17 +92,45 @@ class TestResticManagerBasic:
         # (we can't test actual execution without mocking exec_command)
         try:
             # This would normally call exec_command, but we just test parameter validation
-            retention_params = [1, None, None, None, None, None, None, None]  # keep_last=1
-            if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
-                raise ValueError("At least one retention policy parameter must be specified")
+            retention_params = [
+                1,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ]  # keep_last=1
+            if all(
+                param is None or (isinstance(param, list) and len(param) == 0)
+                for param in retention_params
+            ):
+                raise ValueError(
+                    "At least one retention policy parameter must be specified"
+                )
         except ValueError:
             pytest.fail("Valid parameters should not raise ValueError")
 
         # Test that keep_tag with valid list doesn't raise exception
         try:
-            retention_params = [None, None, None, None, None, None, ["tag1", "tag2"], None]  # keep_tag=["tag1", "tag2"]
-            if all(param is None or (isinstance(param, list) and len(param) == 0) for param in retention_params):
-                raise ValueError("At least one retention policy parameter must be specified")
+            retention_params = [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                ["tag1", "tag2"],
+                None,
+            ]  # keep_tag=["tag1", "tag2"]
+            if all(
+                param is None or (isinstance(param, list) and len(param) == 0)
+                for param in retention_params
+            ):
+                raise ValueError(
+                    "At least one retention policy parameter must be specified"
+                )
         except ValueError:
             pytest.fail("Valid keep_tag parameters should not raise ValueError")
 

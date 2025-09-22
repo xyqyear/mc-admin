@@ -37,16 +37,18 @@ def parse_cron_expression(cron_expr: str, second: str | None = None):
         raise ValueError("Cron expression must have exactly 5 fields")
 
     return {
-        'second': second or '0',
-        'minute': parts[0],
-        'hour': parts[1],
-        'day': parts[2],
-        'month': parts[3],
-        'day_of_week': parts[4]
+        "second": second or "0",
+        "minute": parts[0],
+        "hour": parts[1],
+        "day": parts[2],
+        "month": parts[3],
+        "day_of_week": parts[4],
     }
 
 
-def calculate_next_run_time(cron_fields: dict, current_time: datetime | None = None) -> datetime:
+def calculate_next_run_time(
+    cron_fields: dict, current_time: datetime | None = None
+) -> datetime:
     """
     Calculate the next run time based on cron fields.
 
@@ -64,18 +66,19 @@ def calculate_next_run_time(cron_fields: dict, current_time: datetime | None = N
         current_time = datetime.now(timezone.utc)
 
     # Parse fields
-    minute = int(cron_fields['minute']) if cron_fields['minute'] != '*' else current_time.minute
-    hour = int(cron_fields['hour']) if cron_fields['hour'] != '*' else current_time.hour
-    second = int(cron_fields['second']) if cron_fields['second'] != '*' else 0
+    minute = (
+        int(cron_fields["minute"])
+        if cron_fields["minute"] != "*"
+        else current_time.minute
+    )
+    hour = int(cron_fields["hour"]) if cron_fields["hour"] != "*" else current_time.hour
+    second = int(cron_fields["second"]) if cron_fields["second"] != "*" else 0
 
     # For simplicity, handle only basic cases for testing
-    if cron_fields['minute'] != '*' and cron_fields['hour'] != '*':
+    if cron_fields["minute"] != "*" and cron_fields["hour"] != "*":
         # Daily job at specific time
         next_run = current_time.replace(
-            hour=hour,
-            minute=minute,
-            second=second,
-            microsecond=0
+            hour=hour, minute=minute, second=second, microsecond=0
         )
 
         # If the time has passed today, schedule for tomorrow
@@ -84,13 +87,9 @@ def calculate_next_run_time(cron_fields: dict, current_time: datetime | None = N
 
         return next_run
 
-    elif cron_fields['minute'] != '*' and cron_fields['hour'] == '*':
+    elif cron_fields["minute"] != "*" and cron_fields["hour"] == "*":
         # Hourly job at specific minute
-        next_run = current_time.replace(
-            minute=minute,
-            second=second,
-            microsecond=0
-        )
+        next_run = current_time.replace(minute=minute, second=second, microsecond=0)
 
         # If the minute has passed this hour, schedule for next hour
         if next_run <= current_time:
@@ -98,7 +97,7 @@ def calculate_next_run_time(cron_fields: dict, current_time: datetime | None = N
 
         return next_run
 
-    elif cron_fields['minute'] == '*' and cron_fields['hour'] == '*':
+    elif cron_fields["minute"] == "*" and cron_fields["hour"] == "*":
         # Every minute job
         next_run = current_time.replace(second=second, microsecond=0)
         next_run += timedelta(minutes=1)
@@ -109,7 +108,12 @@ def calculate_next_run_time(cron_fields: dict, current_time: datetime | None = N
         return current_time + timedelta(minutes=1)
 
 
-def validate_next_run_time(cron_expr: str, second: str | None, actual_next_run: datetime, tolerance_seconds: int = 3600) -> bool:
+def validate_next_run_time(
+    cron_expr: str,
+    second: str | None,
+    actual_next_run: datetime,
+    tolerance_seconds: int = 3600,
+) -> bool:
     """
     Validate that the actual next run time matches our calculated expectation.
 
@@ -138,7 +142,13 @@ def validate_next_run_time(cron_expr: str, second: str | None, actual_next_run: 
         return True
 
 
-def validate_next_run_time_with_current_time(cron_expr: str, second: str | None, actual_next_run: datetime, current_time: datetime, tolerance_seconds: int = 3600) -> bool:
+def validate_next_run_time_with_current_time(
+    cron_expr: str,
+    second: str | None,
+    actual_next_run: datetime,
+    current_time: datetime,
+    tolerance_seconds: int = 3600,
+) -> bool:
     """
     Validate that the actual next run time matches our calculated expectation with a specified current time.
 
@@ -205,6 +215,7 @@ async def test_db():
 
     # Create a fresh test cron manager for this test to ensure isolation
     from .test_cron_manager import TestCronManager
+
     fresh_test_cron_manager = TestCronManager()
 
     # Patch global cron manager and registry with test versions
@@ -254,7 +265,9 @@ async def authenticated_headers():
 class TestCronJobNextRunTime:
     """Test cron job next run time calculation and API endpoint."""
 
-    def test_get_next_run_time_for_active_job(self, test_db, client, authenticated_headers):
+    def test_get_next_run_time_for_active_job(
+        self, test_db, client, authenticated_headers
+    ):
         """Test getting next run time for an active cron job."""
         # Create a cron job that runs daily at noon
         cronjob_data = {
@@ -282,7 +295,9 @@ class TestCronJobNextRunTime:
         assert "next_run_time" in data
 
         # Parse the returned time
-        next_run_time = datetime.fromisoformat(data["next_run_time"].replace('Z', '+00:00'))
+        next_run_time = datetime.fromisoformat(
+            data["next_run_time"].replace("Z", "+00:00")
+        )
 
         # Convert both times to UTC for comparison
         current_time_utc = datetime.now(timezone.utc)
@@ -295,7 +310,9 @@ class TestCronJobNextRunTime:
         # The minute should be 0 for our cron expression "0 12 * * *"
         assert next_run_utc.minute == 0
 
-    def test_get_next_run_time_with_second_field(self, test_db, client, authenticated_headers):
+    def test_get_next_run_time_with_second_field(
+        self, test_db, client, authenticated_headers
+    ):
         """Test getting next run time for a job with second field."""
         # Create a cron job with second field
         cronjob_data = {
@@ -321,7 +338,9 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         # Parse the returned time
-        next_run_time = datetime.fromisoformat(data["next_run_time"].replace('Z', '+00:00'))
+        next_run_time = datetime.fromisoformat(
+            data["next_run_time"].replace("Z", "+00:00")
+        )
 
         # Convert to UTC for comparison
         current_time_utc = datetime.now(timezone.utc)
@@ -336,7 +355,9 @@ class TestCronJobNextRunTime:
         # The minute should be 30 as specified in cron expression
         assert next_run_time.minute == 30
 
-    def test_get_next_run_time_job_not_found(self, test_db, client, authenticated_headers):
+    def test_get_next_run_time_job_not_found(
+        self, test_db, client, authenticated_headers
+    ):
         """Test getting next run time for non-existent job."""
         response = client.get(
             "/api/cron/nonexistent_job/next-run-time", headers=authenticated_headers
@@ -375,7 +396,9 @@ class TestCronJobNextRunTime:
         assert response.status_code == 400
         assert "not in active state" in response.json()["detail"]
 
-    def test_get_next_run_time_cancelled_job(self, test_db, client, authenticated_headers):
+    def test_get_next_run_time_cancelled_job(
+        self, test_db, client, authenticated_headers
+    ):
         """Test getting next run time for a cancelled job."""
         # Create and cancel a cron job
         cronjob_data = {
@@ -430,7 +453,9 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         # Parse the returned time
-        next_run_time = datetime.fromisoformat(data["next_run_time"].replace('Z', '+00:00'))
+        next_run_time = datetime.fromisoformat(
+            data["next_run_time"].replace("Z", "+00:00")
+        )
 
         # Convert to UTC for comparison
         current_time_utc = datetime.now(timezone.utc)
@@ -442,7 +467,9 @@ class TestCronJobNextRunTime:
         # Clean up
         client.delete(f"/api/cron/{cronjob_id}", headers=authenticated_headers)
 
-    def test_resumed_job_has_next_run_time(self, test_db, client, authenticated_headers):
+    def test_resumed_job_has_next_run_time(
+        self, test_db, client, authenticated_headers
+    ):
         """Test that a resumed job has a valid next run time."""
         # Create, pause, and resume a cron job
         cronjob_data = {
@@ -476,7 +503,9 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         # Parse the returned time
-        next_run_time = datetime.fromisoformat(data["next_run_time"].replace('Z', '+00:00'))
+        next_run_time = datetime.fromisoformat(
+            data["next_run_time"].replace("Z", "+00:00")
+        )
 
         # Convert to UTC for comparison
         current_time_utc = datetime.now(timezone.utc)
@@ -571,12 +600,18 @@ class TestCronExpressionValidation:
         expected_next_run = calculate_next_run_time(cron_fields, current_time)
 
         # Test exact match
-        assert validate_next_run_time_with_current_time("0 12 * * *", None, expected_next_run, current_time, tolerance_seconds=60)
+        assert validate_next_run_time_with_current_time(
+            "0 12 * * *", None, expected_next_run, current_time, tolerance_seconds=60
+        )
 
         # Test within tolerance (30 seconds later)
         actual_time = expected_next_run + timedelta(seconds=30)
-        assert validate_next_run_time_with_current_time("0 12 * * *", None, actual_time, current_time, tolerance_seconds=60)
+        assert validate_next_run_time_with_current_time(
+            "0 12 * * *", None, actual_time, current_time, tolerance_seconds=60
+        )
 
         # Test outside tolerance (2 hours later)
         actual_time = expected_next_run + timedelta(hours=2)
-        assert not validate_next_run_time_with_current_time("0 12 * * *", None, actual_time, current_time, tolerance_seconds=60)
+        assert not validate_next_run_time_with_current_time(
+            "0 12 * * *", None, actual_time, current_time, tolerance_seconds=60
+        )

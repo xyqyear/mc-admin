@@ -3,6 +3,7 @@ Test the RCON filtering functionality in the backend.
 """
 
 import pytest
+
 from app.minecraft import MCInstance
 
 
@@ -18,12 +19,12 @@ class TestRconFiltering:
 [15:30:05] [Server thread/INFO]: Done (3.2s)! For help, type "help"
 [15:30:06] [RCON Client] [INFO]: Command received: list
 """
-        
+
         expected = """[15:30:01] [Server thread/INFO]: Starting minecraft server version 1.20.1
 [15:30:03] [Server thread/INFO]: Loading properties  
 [15:30:05] [Server thread/INFO]: Done (3.2s)! For help, type "help"
 """
-        
+
         result = MCInstance.filter_rcon_logs(content)
         assert result.strip() == expected.strip()
 
@@ -48,7 +49,7 @@ class TestRconFiltering:
 [15:30:03] [RCON Client] [INFO]: Command received: list
 [15:30:04] [RCON Client] [INFO]: Client disconnected
 """
-        
+
         # Should result in empty string since all lines are filtered
         result = MCInstance.filter_rcon_logs(content)
         expected = ""
@@ -62,13 +63,13 @@ class TestRconFiltering:
 [15:30:04] [rcon client] [INFO]: This should NOT be filtered (different case)
 [15:30:05] [Server thread/INFO]: Done!
 """
-        
+
         expected = """[15:30:01] [Server thread/INFO]: Starting server
 [15:30:02] [RCON CLIENT] [INFO]: This should NOT be filtered (different case)
 [15:30:04] [rcon client] [INFO]: This should NOT be filtered (different case)
 [15:30:05] [Server thread/INFO]: Done!
 """
-        
+
         result = MCInstance.filter_rcon_logs(content)
         assert result == expected
 

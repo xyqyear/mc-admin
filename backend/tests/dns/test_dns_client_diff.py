@@ -2,8 +2,9 @@
 Tests for DNS client diff functionality
 """
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.dns.dns import DNSClient
 from app.dns.types import AddRecordT, ReturnRecordT
@@ -73,17 +74,14 @@ class TestDNSClientDiff:
         dns_client.set_current_records([])
         target_records = [
             AddRecordT(
-                sub_domain="*.mc",
-                value="192.168.1.100",
-                record_type="A",
-                ttl=300
+                sub_domain="*.mc", value="192.168.1.100", record_type="A", ttl=300
             ),
             AddRecordT(
                 sub_domain="_minecraft._tcp.server1.mc",
                 value="0 5 25565 server1.mc.example.com",
                 record_type="SRV",
-                ttl=300
-            )
+                ttl=300,
+            ),
         ]
 
         diff = await dns_client.get_records_diff(target_records)
@@ -110,15 +108,15 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             ReturnRecordT(
                 sub_domain="old.mc",
                 value="192.168.1.200",
                 record_id="record456",
                 record_type="A",
-                ttl=300
-            )
+                ttl=300,
+            ),
         ]
         dns_client.set_current_records(current_records)
         target_records = []
@@ -141,7 +139,7 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             )
         ]
         dns_client.set_current_records(current_records)
@@ -151,7 +149,7 @@ class TestDNSClientDiff:
                 sub_domain="*.mc",
                 value="192.168.1.200",  # Different IP
                 record_type="A",
-                ttl=600  # Different TTL
+                ttl=600,  # Different TTL
             )
         ]
 
@@ -176,7 +174,7 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             )
         ]
         dns_client.set_current_records(current_records)
@@ -186,7 +184,7 @@ class TestDNSClientDiff:
                 sub_domain="*.mc",
                 value="192.168.1.100",  # Same IP
                 record_type="A",
-                ttl=300  # Same TTL
+                ttl=300,  # Same TTL
             )
         ]
 
@@ -205,47 +203,41 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             ReturnRecordT(
                 sub_domain="old.mc",
                 value="192.168.1.200",
                 record_id="record456",
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             ReturnRecordT(
                 sub_domain="update.mc",
                 value="192.168.1.300",
                 record_id="record789",
                 record_type="A",
-                ttl=300
-            )
+                ttl=300,
+            ),
         ]
         dns_client.set_current_records(current_records)
 
         target_records = [
             # Keep this one unchanged
             AddRecordT(
-                sub_domain="*.mc",
-                value="192.168.1.100",
-                record_type="A",
-                ttl=300
+                sub_domain="*.mc", value="192.168.1.100", record_type="A", ttl=300
             ),
             # Update this one
             AddRecordT(
                 sub_domain="update.mc",
                 value="192.168.1.400",  # Different IP
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             # Add this new one
             AddRecordT(
-                sub_domain="new.mc",
-                value="192.168.1.500",
-                record_type="A",
-                ttl=300
-            )
+                sub_domain="new.mc", value="192.168.1.500", record_type="A", ttl=300
+            ),
             # old.mc is removed (not in target)
         ]
 
@@ -274,36 +266,35 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             ReturnRecordT(
                 sub_domain="www",  # This should be filtered out
                 value="192.168.1.200",
                 record_id="record456",
                 record_type="A",
-                ttl=300
+                ttl=300,
             ),
             ReturnRecordT(
                 sub_domain="_minecraft._tcp.server1.mc",
                 value="0 5 25565 server1.mc.example.com",
                 record_id="record789",
                 record_type="SRV",
-                ttl=300
-            )
+                ttl=300,
+            ),
         ]
         dns_client.set_current_records(all_records)
 
         target_records = [
             AddRecordT(
-                sub_domain="*.mc",
-                value="192.168.1.100",
-                record_type="A",
-                ttl=300
+                sub_domain="*.mc", value="192.168.1.100", record_type="A", ttl=300
             )
         ]
 
         # Test with managed subdomain - should filter records
-        diff = await dns_client.get_records_diff(target_records, managed_sub_domain="mc")
+        diff = await dns_client.get_records_diff(
+            target_records, managed_sub_domain="mc"
+        )
 
         # Should not try to remove the "www" record since it's not managed
         # Should only try to remove the SRV record since it's managed but not in target
@@ -321,7 +312,7 @@ class TestDNSClientDiff:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             )
         ]
         dns_client.set_current_records(current_records)

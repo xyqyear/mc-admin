@@ -32,8 +32,7 @@ class TestBackupJobBasic:
     def test_backup_params_valid_with_keep_tag(self):
         """Test valid backup parameters with keep_tag"""
         params = BackupJobParams(
-            server_id="test_server",
-            keep_tag=["important", "weekly"]
+            server_id="test_server", keep_tag=["important", "weekly"]
         )
         assert params.server_id == "test_server"
         assert params.keep_tag == ["important", "weekly"]
@@ -46,7 +45,7 @@ class TestBackupJobBasic:
             keep_last=10,
             keep_daily=7,
             keep_weekly=4,
-            keep_tag=["important"]
+            keep_tag=["important"],
         )
         assert params.server_id == "test_server"
         assert params.keep_last == 10
@@ -62,7 +61,9 @@ class TestBackupJobBasic:
 
     def test_backup_params_invalid_no_retention_policy(self):
         """Test that validation fails when forget is enabled but no retention policy is specified"""
-        with pytest.raises(ValueError, match="启用forget时至少需要指定一个保留策略参数"):
+        with pytest.raises(
+            ValueError, match="启用forget时至少需要指定一个保留策略参数"
+        ):
             BackupJobParams(server_id="test_server", enable_forget=True)
 
     def test_backup_params_invalid_path_without_server_id(self):
@@ -79,10 +80,7 @@ class TestBackupJobBasic:
 
     def test_backup_params_valid_with_keep_within(self):
         """Test valid backup parameters with keep_within"""
-        params = BackupJobParams(
-            server_id="test_server",
-            keep_within="2y5m7d3h"
-        )
+        params = BackupJobParams(server_id="test_server", keep_within="2y5m7d3h")
         assert params.server_id == "test_server"
         assert params.keep_within == "2y5m7d3h"
 
@@ -93,7 +91,9 @@ class TestBackupJobBasic:
 
     def test_backup_params_empty_keep_tag_list(self):
         """Test that empty keep_tag list is handled correctly"""
-        with pytest.raises(ValueError, match="启用forget时至少需要指定一个保留策略参数"):
+        with pytest.raises(
+            ValueError, match="启用forget时至少需要指定一个保留策略参数"
+        ):
             BackupJobParams(server_id="test_server", keep_tag=[], enable_forget=True)
 
     def test_backup_params_complex_scenario(self):
@@ -104,7 +104,7 @@ class TestBackupJobBasic:
             keep_daily=30,
             keep_weekly=12,
             keep_monthly=6,
-            prune=True
+            prune=True,
         )
         assert params.server_id == "minecraft_server"
         assert params.path == "world"

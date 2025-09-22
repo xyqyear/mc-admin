@@ -195,7 +195,9 @@ class TestResticManagerNoPasswordIntegrated:
         # Create multiple snapshots
         snapshots_created = []
         for i in range(3):
-            (temp_backup_dir_no_password / "test_file.txt").write_text(f"Version {i + 1}")
+            (temp_backup_dir_no_password / "test_file.txt").write_text(
+                f"Version {i + 1}"
+            )
             snapshot = await manager.backup(temp_backup_dir_no_password)
             snapshots_created.append(snapshot)
             time.sleep(0.1)  # Ensure different timestamps

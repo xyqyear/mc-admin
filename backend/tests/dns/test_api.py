@@ -110,8 +110,8 @@ async def test_update_dns_endpoint_update_fails(client, mock_admin_user):
 @pytest.mark.asyncio
 async def test_get_dns_status_success(client, mock_admin_user):
     """Test getting DNS status"""
-    from app.routers.dns import get_dns_status
     from app.dns.utils import RecordDiff
+    from app.routers.dns import get_dns_status
 
     with patch("app.routers.dns.simple_dns_manager") as dns_manager_mock:
         # Mock DNS manager
@@ -120,16 +120,14 @@ async def test_get_dns_status_success(client, mock_admin_user):
         # Mock get_current_diff to return empty diff
         mock_diff = {
             "dns_diff": RecordDiff(
-                records_to_add=[],
-                records_to_remove=[],
-                records_to_update=[]
+                records_to_add=[], records_to_remove=[], records_to_update=[]
             ),
             "router_diff": {
                 "routes_to_add": {},
                 "routes_to_remove": {},
-                "routes_to_update": {}
+                "routes_to_update": {},
             },
-            "errors": []
+            "errors": [],
         }
         dns_manager_mock.get_current_diff = AsyncMock(return_value=mock_diff)
 
@@ -155,7 +153,7 @@ async def test_get_dns_status_not_initialized(client, mock_admin_user):
         mock_diff = {
             "dns_diff": None,
             "router_diff": None,
-            "errors": ["DNS manager not initialized"]
+            "errors": ["DNS manager not initialized"],
         }
         dns_manager_mock.get_current_diff = AsyncMock(return_value=mock_diff)
 
@@ -206,8 +204,10 @@ def test_dns_router_authentication_required():
 
 def test_get_dns_records_success(client):
     """Test DNS records endpoint success"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
-         patch("app.routers.dns.config") as mock_config:
+    with (
+        patch("app.routers.dns.simple_dns_manager") as mock_manager,
+        patch("app.routers.dns.config") as mock_config,
+    ):
         # Mock manager as initialized
         mock_manager.is_initialized = True
 
@@ -261,8 +261,10 @@ def test_get_dns_records_success(client):
 
 def test_get_dns_records_not_initialized(client):
     """Test DNS records endpoint when manager not initialized"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager, \
-         patch("app.routers.dns.config") as mock_config:
+    with (
+        patch("app.routers.dns.simple_dns_manager") as mock_manager,
+        patch("app.routers.dns.config") as mock_config,
+    ):
         # Mock manager as not initialized
         mock_manager.is_initialized = False
         mock_manager.initialize = AsyncMock()
@@ -385,12 +387,11 @@ def test_dns_endpoints_authentication_required(client):
     assert response.status_code == 401
 
 
-
 @pytest.mark.asyncio
 async def test_list_relevant_records_filtering():
     """Test that list_relevant_records properly filters DNS records"""
-    from app.dns.types import ReturnRecordT
     from app.dns.dns import DNSClient
+    from app.dns.types import ReturnRecordT
 
     # Create a mock DNS client that implements list_records
     class MockDNSClient(DNSClient):
@@ -409,22 +410,39 @@ async def test_list_relevant_records_filtering():
                 # Relevant: Wildcard A record for managed subdomain
                 ReturnRecordT("*.mc", "192.168.1.100", "1", "A", 300),
                 # Relevant: SRV record for minecraft
-                ReturnRecordT("_minecraft._tcp.server1.mc", "0 5 25565 server1.mc.example.com", "2", "SRV", 300),
+                ReturnRecordT(
+                    "_minecraft._tcp.server1.mc",
+                    "0 5 25565 server1.mc.example.com",
+                    "2",
+                    "SRV",
+                    300,
+                ),
                 # Irrelevant: Regular A record outside managed subdomain
                 ReturnRecordT("www", "192.168.1.200", "3", "A", 300),
                 # Irrelevant: Wildcard but wrong subdomain
                 ReturnRecordT("*.api", "192.168.1.300", "4", "A", 300),
                 # Irrelevant: SRV but not minecraft
-                ReturnRecordT("_http._tcp.web.mc", "0 5 80 web.mc.example.com", "5", "SRV", 300),
+                ReturnRecordT(
+                    "_http._tcp.web.mc", "0 5 80 web.mc.example.com", "5", "SRV", 300
+                ),
                 # Relevant: Another minecraft SRV record
-                ReturnRecordT("_minecraft._tcp.server2.backup.mc", "0 5 25566 server2.backup.mc.example.com", "6", "SRV", 300),
+                ReturnRecordT(
+                    "_minecraft._tcp.server2.backup.mc",
+                    "0 5 25566 server2.backup.mc.example.com",
+                    "6",
+                    "SRV",
+                    300,
+                ),
             ]
 
         def has_update_capability(self) -> bool:
             return False
 
-        async def remove_records(self, record_ids): pass
-        async def add_records(self, records): pass
+        async def remove_records(self, record_ids):
+            pass
+
+        async def add_records(self, records):
+            pass
 
     client = MockDNSClient()
 

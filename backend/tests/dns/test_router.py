@@ -189,11 +189,7 @@ async def test_get_routes_diff_no_changes(router_client):
 
     diff = await router_client.get_routes_diff(target_routes)
 
-    assert diff == {
-        "routes_to_add": {},
-        "routes_to_remove": {},
-        "routes_to_update": {}
-    }
+    assert diff == {"routes_to_add": {}, "routes_to_remove": {}, "routes_to_update": {}}
 
 
 @pytest.mark.asyncio
@@ -218,7 +214,7 @@ async def test_get_routes_diff_add_routes(router_client):
             "creative.mc.example.com": "localhost:25567",
         },
         "routes_to_remove": {},
-        "routes_to_update": {}
+        "routes_to_update": {},
     }
 
 
@@ -244,7 +240,7 @@ async def test_get_routes_diff_remove_routes(router_client):
             "modded.mc.example.com": "localhost:25566",
             "old_server.mc.example.com": "localhost:25567",
         },
-        "routes_to_update": {}
+        "routes_to_update": {},
     }
 
 
@@ -270,9 +266,9 @@ async def test_get_routes_diff_update_routes(router_client):
         "routes_to_update": {
             "modded.mc.example.com": {
                 "current": "localhost:25566",
-                "target": "localhost:25567"
+                "target": "localhost:25567",
             }
-        }
+        },
     }
 
 
@@ -281,12 +277,12 @@ async def test_get_routes_diff_mixed_operations(router_client):
     """Test get_routes_diff with mixed add, remove, and update operations"""
     current_routes = {
         "vanilla.mc.example.com": "localhost:25565",  # Keep unchanged
-        "modded.mc.example.com": "localhost:25566",   # Update port
+        "modded.mc.example.com": "localhost:25566",  # Update port
         "old_server.mc.example.com": "localhost:25567",  # Remove
     }
     target_routes = {
         "vanilla.mc.example.com": "localhost:25565",  # Keep unchanged
-        "modded.mc.example.com": "localhost:25568",   # Update port
+        "modded.mc.example.com": "localhost:25568",  # Update port
         "new_server.mc.example.com": "localhost:25569",  # Add new
     }
 
@@ -304,9 +300,9 @@ async def test_get_routes_diff_mixed_operations(router_client):
         "routes_to_update": {
             "modded.mc.example.com": {
                 "current": "localhost:25566",
-                "target": "localhost:25568"
+                "target": "localhost:25568",
             }
-        }
+        },
     }
 
 
@@ -329,7 +325,7 @@ async def test_get_routes_diff_empty_current_routes(router_client):
             "modded.mc.example.com": "localhost:25566",
         },
         "routes_to_remove": {},
-        "routes_to_update": {}
+        "routes_to_update": {},
     }
 
 
@@ -352,7 +348,7 @@ async def test_get_routes_diff_empty_target_routes(router_client):
             "vanilla.mc.example.com": "localhost:25565",
             "modded.mc.example.com": "localhost:25566",
         },
-        "routes_to_update": {}
+        "routes_to_update": {},
     }
 
 

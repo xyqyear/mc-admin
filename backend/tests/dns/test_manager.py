@@ -103,7 +103,7 @@ async def test_initialize_with_dnspod(dns_manager):
         "type": "dnspod",
         "domain": "example.com",
         "id": "test_id",
-        "key": "test_key"
+        "key": "test_key",
     }
     mock_config.dns = mock_dns
 
@@ -149,7 +149,7 @@ async def test_initialize_with_huawei(dns_manager):
         "domain": "example.com",
         "ak": "test_ak",
         "sk": "test_sk",
-        "region": "cn-south-1"
+        "region": "cn-south-1",
     }
     mock_config.dns = mock_dns
 
@@ -435,7 +435,7 @@ async def test_config_hash_calculation():
         "type": "dnspod",
         "domain": "example.com",
         "id": "test_id",
-        "key": "test_key"
+        "key": "test_key",
     }
     mock_dns_config.dns = mock_dns_provider
 
@@ -480,7 +480,10 @@ async def test_ensure_up_to_date_config_no_change():
     mock_dns_config.enabled = True
     mock_dns_config.mc_router_base_url = "http://localhost:26666"
     mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_provider.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+    }
     mock_dns_config.dns = mock_dns_provider
 
     # Set initial hash
@@ -509,7 +512,10 @@ async def test_ensure_up_to_date_config_with_change():
     mock_dns_config.enabled = True
     mock_dns_config.mc_router_base_url = "http://localhost:26666"
     mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_provider.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+    }
     mock_dns_config.dns = mock_dns_provider
 
     # Set initial hash with different config
@@ -541,7 +547,10 @@ async def test_ensure_up_to_date_config_first_time():
     mock_dns_config.enabled = True
     mock_dns_config.mc_router_base_url = "http://localhost:26666"
     mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_provider.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+    }
     mock_dns_config.dns = mock_dns_provider
 
     # No initial hash set (None)
@@ -569,7 +578,10 @@ async def test_ensure_up_to_date_config_initialization_failure():
     mock_dns_config.enabled = True
     mock_dns_config.mc_router_base_url = "http://localhost:26666"
     mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {"type": "dnspod", "domain": "example.com"}
+    mock_dns_provider.model_dump.return_value = {
+        "type": "dnspod",
+        "domain": "example.com",
+    }
     mock_dns_config.dns = mock_dns_provider
 
     # Set different hash to trigger reinitialization

@@ -2,8 +2,9 @@
 Basic tests for DNS functionality without complex fixtures
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.dns.types import AddRecordT, ReturnRecordT
 from app.dns.utils import RecordDiff, diff_dns_records
@@ -20,7 +21,7 @@ class TestDNSBasicFunctionality:
                 value="192.168.1.100",
                 record_id="record123",
                 record_type="A",
-                ttl=300
+                ttl=300,
             )
         ]
 
@@ -29,7 +30,7 @@ class TestDNSBasicFunctionality:
                 sub_domain="*.mc",
                 value="192.168.1.200",  # Changed IP
                 record_type="A",
-                ttl=300
+                ttl=300,
             )
         ]
 
@@ -52,7 +53,9 @@ class TestDNSBasicFunctionality:
         mock_config.dns.enabled = True
 
         with patch("app.dns.manager.config", mock_config):
-            with patch.object(manager, "_ensure_up_to_date_config", new_callable=AsyncMock):
+            with patch.object(
+                manager, "_ensure_up_to_date_config", new_callable=AsyncMock
+            ):
                 result = await manager.get_current_diff()
 
         assert result["dns_diff"] is None
@@ -62,39 +65,28 @@ class TestDNSBasicFunctionality:
 
     def test_record_diff_structure(self):
         """Test RecordDiff structure"""
-        diff = RecordDiff(
-            records_to_add=[],
-            records_to_remove=[],
-            records_to_update=[]
-        )
+        diff = RecordDiff(records_to_add=[], records_to_remove=[], records_to_update=[])
 
-        assert hasattr(diff, 'records_to_add')
-        assert hasattr(diff, 'records_to_remove')
-        assert hasattr(diff, 'records_to_update')
+        assert hasattr(diff, "records_to_add")
+        assert hasattr(diff, "records_to_remove")
+        assert hasattr(diff, "records_to_update")
 
     @pytest.mark.asyncio
     async def test_dns_status_models(self):
         """Test DNS status response models"""
-        from app.routers.dns import DNSStatusResponse, DNSRecordDiff, RouterDiff
+        from app.routers.dns import DNSRecordDiff, DNSStatusResponse, RouterDiff
 
         # Test creating DNS status response
         dns_diff = DNSRecordDiff(
-            records_to_add=[],
-            records_to_remove=[],
-            records_to_update=[]
+            records_to_add=[], records_to_remove=[], records_to_update=[]
         )
 
         router_diff = RouterDiff(
-            routes_to_add={},
-            routes_to_remove={},
-            routes_to_update={}
+            routes_to_add={}, routes_to_remove={}, routes_to_update={}
         )
 
         status = DNSStatusResponse(
-            initialized=True,
-            dns_diff=dns_diff,
-            router_diff=router_diff,
-            errors=[]
+            initialized=True, dns_diff=dns_diff, router_diff=router_diff, errors=[]
         )
 
         assert status.initialized is True
