@@ -174,6 +174,189 @@ async def test_override_routes_empty(router_client):
 
 
 @pytest.mark.asyncio
+async def test_get_routes_diff_no_changes(router_client):
+    """Test get_routes_diff when no changes needed"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {},
+        "routes_to_remove": {},
+        "routes_to_update": {}
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_add_routes(router_client):
+    """Test get_routes_diff when routes need to be added"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+    }
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+        "creative.mc.example.com": "localhost:25567",
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {
+            "modded.mc.example.com": "localhost:25566",
+            "creative.mc.example.com": "localhost:25567",
+        },
+        "routes_to_remove": {},
+        "routes_to_update": {}
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_remove_routes(router_client):
+    """Test get_routes_diff when routes need to be removed"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+        "old_server.mc.example.com": "localhost:25567",
+    }
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {},
+        "routes_to_remove": {
+            "modded.mc.example.com": "localhost:25566",
+            "old_server.mc.example.com": "localhost:25567",
+        },
+        "routes_to_update": {}
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_update_routes(router_client):
+    """Test get_routes_diff when routes need to be updated"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25567",  # Different port
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {},
+        "routes_to_remove": {},
+        "routes_to_update": {
+            "modded.mc.example.com": {
+                "current": "localhost:25566",
+                "target": "localhost:25567"
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_mixed_operations(router_client):
+    """Test get_routes_diff with mixed add, remove, and update operations"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",  # Keep unchanged
+        "modded.mc.example.com": "localhost:25566",   # Update port
+        "old_server.mc.example.com": "localhost:25567",  # Remove
+    }
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",  # Keep unchanged
+        "modded.mc.example.com": "localhost:25568",   # Update port
+        "new_server.mc.example.com": "localhost:25569",  # Add new
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {
+            "new_server.mc.example.com": "localhost:25569",
+        },
+        "routes_to_remove": {
+            "old_server.mc.example.com": "localhost:25567",
+        },
+        "routes_to_update": {
+            "modded.mc.example.com": {
+                "current": "localhost:25566",
+                "target": "localhost:25568"
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_empty_current_routes(router_client):
+    """Test get_routes_diff when current routes are empty"""
+    current_routes = {}
+    target_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {
+            "vanilla.mc.example.com": "localhost:25565",
+            "modded.mc.example.com": "localhost:25566",
+        },
+        "routes_to_remove": {},
+        "routes_to_update": {}
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_routes_diff_empty_target_routes(router_client):
+    """Test get_routes_diff when target routes are empty"""
+    current_routes = {
+        "vanilla.mc.example.com": "localhost:25565",
+        "modded.mc.example.com": "localhost:25566",
+    }
+    target_routes = {}
+
+    router_client.get_routes = AsyncMock(return_value=current_routes)
+
+    diff = await router_client.get_routes_diff(target_routes)
+
+    assert diff == {
+        "routes_to_add": {},
+        "routes_to_remove": {
+            "vanilla.mc.example.com": "localhost:25565",
+            "modded.mc.example.com": "localhost:25566",
+        },
+        "routes_to_update": {}
+    }
+
+
+@pytest.mark.asyncio
 async def test_close(router_client):
     """Test closing the router client"""
     await router_client.close()

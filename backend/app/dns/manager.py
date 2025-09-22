@@ -352,6 +352,102 @@ class SimpleDNSManager:
         if self._mc_router_client:
             await self._mc_router_client.close()
 
+    async def get_current_diff(self):
+        """
+        Get the current differences between expected and actual DNS/Router state.
+
+        Returns a dictionary containing:
+        - dns_diff: RecordDiff with DNS record differences
+        - router_diff: Dict with router route differences
+        - errors: List of any errors encountered during diff calculation
+
+        This is useful for status checks and UI display of pending changes.
+        """
+        # Ensure we're using the latest configuration
+        await self._ensure_up_to_date_config()
+
+        if (
+            not self._dns_client
+            or not self._mc_router_client
+            or not self._docker_manager
+        ):
+            return {
+                "dns_diff": None,
+                "router_diff": None,
+                "errors": ["DNS manager not initialized"]
+            }
+
+        errors = []
+        dns_diff = None
+        router_diff = None
+
+        try:
+            dns_config = config.dns
+
+            # Get current server information
+            server_info_list = await self._docker_manager.get_all_server_info()
+            servers = {info.name: info.game_port for info in server_info_list}
+
+            # Get addresses from configuration
+            addresses = await self._get_addresses_from_config(dns_config.addresses)
+
+            if not addresses or not servers:
+                return {
+                    "dns_diff": None,
+                    "router_diff": None,
+                    "errors": ["No addresses or servers found for diff calculation"]
+                }
+
+            # Generate target DNS records and routes
+            target_dns_records = self._generate_dns_records(
+                addresses,
+                list(servers.keys()),
+                dns_config.managed_sub_domain,
+                dns_config.dns_ttl,
+            )
+
+            target_routes = self._generate_routes(
+                addresses,
+                servers,
+                dns_config.managed_sub_domain,
+                self._dns_client.get_domain(),
+            )
+
+            # Calculate DNS diff
+            try:
+                target_add_records = [
+                    AddRecordT(
+                        sub_domain=record.sub_domain,
+                        value=record.value,
+                        record_type=record.record_type,
+                        ttl=record.ttl,
+                    )
+                    for record in target_dns_records
+                ]
+
+                dns_diff = await self._dns_client.get_records_diff(
+                    target_add_records,
+                    dns_config.managed_sub_domain
+                )
+            except Exception as e:
+                errors.append(f"DNS diff calculation failed: {str(e)}")
+
+            # Calculate Router diff
+            try:
+                target_routes_dict = {route.server_address: route.backend for route in target_routes}
+                router_diff = await self._mc_router_client.get_routes_diff(target_routes_dict)
+            except Exception as e:
+                errors.append(f"Router diff calculation failed: {str(e)}")
+
+        except Exception as e:
+            errors.append(f"General diff calculation failed: {str(e)}")
+
+        return {
+            "dns_diff": dns_diff,
+            "router_diff": router_diff,
+            "errors": errors
+        }
+
     @property
     def is_initialized(self) -> bool:
         """Check if the manager is initialized"""

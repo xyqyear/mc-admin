@@ -111,15 +111,35 @@ async def test_update_dns_endpoint_update_fails(client, mock_admin_user):
 async def test_get_dns_status_success(client, mock_admin_user):
     """Test getting DNS status"""
     from app.routers.dns import get_dns_status
+    from app.dns.utils import RecordDiff
 
     with patch("app.routers.dns.simple_dns_manager") as dns_manager_mock:
         # Mock DNS manager
         dns_manager_mock.is_initialized = True
 
+        # Mock get_current_diff to return empty diff
+        mock_diff = {
+            "dns_diff": RecordDiff(
+                records_to_add=[],
+                records_to_remove=[],
+                records_to_update=[]
+            ),
+            "router_diff": {
+                "routes_to_add": {},
+                "routes_to_remove": {},
+                "routes_to_update": {}
+            },
+            "errors": []
+        }
+        dns_manager_mock.get_current_diff = AsyncMock(return_value=mock_diff)
+
         result = await get_dns_status(mock_admin_user)
 
-        assert result["initialized"] is True
-        assert result["enabled"] is True
+        # Now result is a DNSStatusResponse object
+        assert result.initialized is True
+        assert result.errors == []
+        assert result.dns_diff is not None
+        assert result.router_diff is not None
 
 
 @pytest.mark.asyncio
@@ -131,10 +151,21 @@ async def test_get_dns_status_not_initialized(client, mock_admin_user):
         # Mock DNS manager
         dns_manager_mock.is_initialized = False
 
+        # Mock get_current_diff to return error for not initialized
+        mock_diff = {
+            "dns_diff": None,
+            "router_diff": None,
+            "errors": ["DNS manager not initialized"]
+        }
+        dns_manager_mock.get_current_diff = AsyncMock(return_value=mock_diff)
+
         result = await get_dns_status(mock_admin_user)
 
-        assert result["initialized"] is False
-        assert result["enabled"] is True
+        # Now result is a DNSStatusResponse object
+        assert result.initialized is False
+        assert result.dns_diff is None
+        assert result.router_diff is None
+        assert "DNS manager not initialized" in result.errors
 
 
 @pytest.mark.asyncio

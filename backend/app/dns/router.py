@@ -114,6 +114,48 @@ class MCRouterClient:
         if routes:
             await self._add_routes(routes)
 
+    async def get_routes_diff(self, target_routes: RoutesT) -> dict:
+        """
+        Calculate the difference between current routes and target routes.
+
+        Returns a dictionary with:
+        - routes_to_add: Routes that need to be added
+        - routes_to_remove: Routes that need to be removed
+        - routes_to_update: Routes that need to be updated with current/target values
+
+        Args:
+            target_routes: Dictionary mapping server addresses to backends
+
+        Returns:
+            Dictionary with diff categorization
+        """
+        current_routes = await self.get_routes()
+
+        routes_to_add = {}
+        routes_to_remove = {}
+        routes_to_update = {}
+
+        # Check for routes to add or update
+        for addr, backend in target_routes.items():
+            if addr not in current_routes:
+                routes_to_add[addr] = backend
+            elif current_routes[addr] != backend:
+                routes_to_update[addr] = {
+                    "current": current_routes[addr],
+                    "target": backend
+                }
+
+        # Check for routes to remove
+        for addr in current_routes:
+            if addr not in target_routes:
+                routes_to_remove[addr] = current_routes[addr]
+
+        return {
+            "routes_to_add": routes_to_add,
+            "routes_to_remove": routes_to_remove,
+            "routes_to_update": routes_to_update
+        }
+
     async def close(self):
         """Clean up the session"""
         await self._session.close()

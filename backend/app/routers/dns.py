@@ -47,6 +47,37 @@ class RouterRoutesResponse(BaseModel):
     routes: Dict[str, str]
 
 
+class DNSRecordDiff(BaseModel):
+    """DNS record differences for status checks"""
+
+    records_to_add: List[DNSRecord]
+    records_to_remove: List[str]  # Record IDs
+    records_to_update: List[DNSRecord]
+
+
+class RouterDiff(BaseModel):
+    """Router route differences for status checks"""
+
+    routes_to_add: Dict[str, str]
+    routes_to_remove: Dict[str, str]
+    routes_to_update: Dict[str, Dict[str, str]]
+
+
+class DNSStatusResponse(BaseModel):
+    """Response for DNS status including diff information"""
+
+    initialized: bool
+    dns_diff: DNSRecordDiff | None
+    router_diff: RouterDiff | None
+    errors: List[str]
+
+
+class DNSEnabledResponse(BaseModel):
+    """Response for DNS enabled status"""
+
+    enabled: bool
+
+
 @router.post("/update", response_model=DNSUpdateResponse)
 async def update_dns(
     _: UserPublic = Depends(RequireRole((UserRole.ADMIN, UserRole.OWNER))),
@@ -80,18 +111,79 @@ async def update_dns(
         ) from e
 
 
-@router.get("/status")
-async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> dict:
+@router.get("/status", response_model=DNSStatusResponse)
+async def get_dns_status(_: UserPublic = Depends(get_current_user)) -> DNSStatusResponse:
     """
-    Get DNS manager status.
+    Get DNS manager status including current differences between expected and actual state.
 
-    Returns information about whether the DNS manager is initialized
-    and available for updates.
+    Returns information about whether the DNS manager is initialized, current differences
+    in DNS records and router routes, and any errors encountered.
     """
-    return {
-        "initialized": simple_dns_manager.is_initialized,
-        "enabled": True,  # We'll check config when needed
-    }
+    try:
+        # Get current diff information
+        diff_result = await simple_dns_manager.get_current_diff()
+
+        # Convert DNS diff to response format
+        dns_diff = None
+        if diff_result["dns_diff"]:
+            dns_record_diff = diff_result["dns_diff"]
+            dns_diff = DNSRecordDiff(
+                records_to_add=[
+                    DNSRecord(
+                        sub_domain=record.sub_domain,
+                        value=record.value,
+                        record_id="",  # Not applicable for records to add
+                        record_type=record.record_type,
+                        ttl=record.ttl,
+                    )
+                    for record in dns_record_diff.records_to_add
+                ],
+                records_to_remove=[str(record_id) for record_id in dns_record_diff.records_to_remove],
+                records_to_update=[
+                    DNSRecord(
+                        sub_domain=record.sub_domain,
+                        value=record.value,
+                        record_id=str(record.record_id),
+                        record_type=record.record_type,
+                        ttl=record.ttl,
+                    )
+                    for record in dns_record_diff.records_to_update
+                ]
+            )
+
+        # Convert Router diff to response format
+        router_diff = None
+        if diff_result["router_diff"]:
+            router_diff = RouterDiff(**diff_result["router_diff"])
+
+        return DNSStatusResponse(
+            initialized=simple_dns_manager.is_initialized,
+            dns_diff=dns_diff,
+            router_diff=router_diff,
+            errors=diff_result["errors"]
+        )
+
+    except Exception as e:
+        error_msg = f"Failed to get DNS status: {str(e)}"
+        logger.error(error_msg)
+
+        return DNSStatusResponse(
+            initialized=simple_dns_manager.is_initialized,
+            dns_diff=None,
+            router_diff=None,
+            errors=[error_msg]
+        )
+
+
+@router.get("/enabled", response_model=DNSEnabledResponse)
+async def get_dns_enabled(_: UserPublic = Depends(get_current_user)) -> DNSEnabledResponse:
+    """
+    Get DNS manager enabled status from configuration.
+
+    Returns whether the DNS manager is enabled in the dynamic configuration.
+    This is separate from the initialization status.
+    """
+    return DNSEnabledResponse(enabled=config.dns.enabled)
 
 
 @router.get("/records", response_model=List[DNSRecord])

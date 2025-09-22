@@ -35,16 +35,16 @@ class DNSClient:
         for record in all_records:
             # Check if this is a wildcard address record we manage
             is_wildcard_address = (
-                record.record_type in ("A", "AAAA", "CNAME") and
-                record.sub_domain.startswith("*") and
-                record.sub_domain.endswith(f".{managed_sub_domain}")
+                record.record_type in ("A", "AAAA", "CNAME")
+                and record.sub_domain.startswith("*")
+                and record.sub_domain.endswith(f".{managed_sub_domain}")
             )
 
             # Check if this is a Minecraft SRV record we manage
             is_srv_record = (
-                record.record_type == "SRV" and
-                record.sub_domain.startswith("_minecraft._tcp.") and
-                record.sub_domain.endswith(f".{managed_sub_domain}")
+                record.record_type == "SRV"
+                and record.sub_domain.startswith("_minecraft._tcp.")
+                and record.sub_domain.endswith(f".{managed_sub_domain}")
             )
 
             if is_wildcard_address or is_srv_record:
@@ -52,7 +52,9 @@ class DNSClient:
 
         return relevant_records
 
-    async def update_records(self, target_records: AddRecordListT, managed_sub_domain: str | None = None):
+    async def update_records(
+        self, target_records: AddRecordListT, managed_sub_domain: str | None = None
+    ):
         """
         Update DNS records to match target state by comparing current and target records.
 
@@ -118,3 +120,30 @@ class DNSClient:
     async def remove_records(self, record_ids: RecordIdListT): ...
 
     async def add_records(self, records: AddRecordListT): ...
+
+    async def get_records_diff(
+        self, target_records: AddRecordListT, managed_sub_domain: str | None = None
+    ):
+        """
+        Get differences between current DNS records and target records without applying changes.
+
+        This method provides a preview of what changes would be made during an update
+        without actually performing the update operations.
+
+        Args:
+            target_records: Target state for DNS records
+            managed_sub_domain: The subdomain we manage. If provided, only relevant records will be compared.
+
+        Returns:
+            RecordDiff with lists of records that would be added, removed, and updated
+        """
+        # Get current records from DNS provider
+        # Use filtered records if managed_sub_domain is provided for safety
+        if managed_sub_domain:
+            current_records = await self.list_relevant_records(managed_sub_domain)
+        else:
+            current_records = await self.list_records()
+
+        # Calculate and return differences without applying
+        # Even if target_records is empty, we still need to check for removals
+        return diff_dns_records(current_records, target_records)
