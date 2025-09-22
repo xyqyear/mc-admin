@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, fully integrated Monaco editor with Docker Compose schema validation, comprehensive backup management with snapshot integration, automatic version update notifications, and development debug tools.
+Modern React 18 + TypeScript single-page application providing the web UI for MC Admin Minecraft server management. Features a responsive interface with real-time updates, sophisticated three-layer data management architecture, dual authentication systems, fully integrated Monaco editor with Docker Compose schema validation, comprehensive backup management with snapshot integration, **DNS management system** with provider configuration, **advanced cron job management** with visual expression builders, **server restart scheduling** with conflict detection, **download manager** with progress tracking, automatic version update notifications, and development debug tools.
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ Modern React 18 + TypeScript single-page application providing the web UI for MC
 - **Theme**: Custom AntD theme with primary blue (#1677ff) color scheme
 
 **State & Data Management:**
-- **State Management**: Zustand v4.5.0 with localStorage persistence middleware (3 stores)
+- **State Management**: Zustand v4.5.0 with localStorage persistence middleware (4 stores including download task management)
 - **Data Fetching**: TanStack React Query v5.85.5 with sophisticated three-layer caching architecture
 - **API Integration**: Axios with interceptors, automatic token injection, and intelligent retry strategies
 
@@ -58,7 +58,7 @@ src/
 ├── App.tsx                  # Routes (lazy-loaded), error boundaries, auth wrappers
 ├── yaml.worker.js           # Monaco Editor YAML language worker for Docker Compose
 ├── components/
-│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, LoadingSpinner, PageHeader, ServerOperationConfirmModal
+│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, LoadingSpinner, PageHeader, ServerOperationConfirmModal, DownloadTaskContainer
 │   ├── overview/            # ServerStateTag, SimpleMetricCard, ProgressMetricCard, ServerStateIcon
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor (+ index.ts)
 │   ├── files/               # FileIcon, FileSnapshotActions
@@ -72,10 +72,23 @@ src/
 │   │   ├── ServerIOStatsCard.tsx        # I/O performance metrics
 │   │   ├── ServerResourcesCard.tsx      # CPU/memory resource monitoring
 │   │   ├── ServerAddressCard.tsx        # Server address configuration display
+│   │   ├── ServerRestartScheduleCard.tsx # Server restart scheduling display
 │   │   ├── FileBreadcrumb.tsx           # File navigation breadcrumb component
 │   │   ├── DragDropOverlay.tsx          # Drag and drop file upload overlay
 │   │   ├── FileTable.tsx                # File listing table with operations
 │   │   └── FileToolbar.tsx              # File management toolbar with actions
+│   ├── cron/                # Cron job management components
+│   │   ├── CronExpressionDisplay.tsx    # Cron expression visualization
+│   │   ├── CronJobFilters.tsx           # Job filtering and search
+│   │   ├── CronJobStatusTag.tsx         # Job status indicators
+│   │   ├── ExecutionStatusTag.tsx       # Execution status tags
+│   │   ├── NextRunTimeCell.tsx          # Next run time display
+│   │   ├── NextRunTimeDisplay.tsx       # Formatted next run time
+│   │   └── index.ts                     # Barrel exports
+│   ├── forms/               # Advanced form builders
+│   │   ├── CronExpressionBuilder.tsx    # Visual cron expression creation
+│   │   ├── CronFieldInput.tsx           # Individual cron field inputs
+│   │   └── SchemaForm.tsx               # Dynamic JSON schema forms
 │   ├── debug/               # Development debug tools (dev-only)
 │   │   ├── DebugModal.tsx              # Debug information modal
 │   │   └── DebugTool.tsx               # Debug tool sidebar entry
@@ -90,6 +103,10 @@ src/
 │       │   ├── FileDiffModal.tsx               # File diff comparison modal
 │       │   ├── CompressionConfirmModal.tsx     # File compression confirmation
 │       │   └── CompressionResultModal.tsx      # Compression result display
+│       ├── cron/         # Cron job management modals
+│       │   ├── CreateCronJobModal.tsx    # Cron job creation modal
+│       │   ├── CronJobDetailModal.tsx    # Cron job details and logs
+│       │   └── index.ts                  # Cron modal exports
 │       ├── ArchiveSelectionModal.tsx    # Archive selection for server creation
 │       ├── PopulateProgressModal.tsx    # Progress tracking for server population
 │       ├── DockerComposeHelpModal.tsx   # Help modal for Docker Compose editing
@@ -103,6 +120,9 @@ src/
 │   │   ├── fileApi.ts       # File operations API functions
 │   │   ├── serverApi.ts     # Server management API functions
 │   │   ├── archiveApi.ts    # Archive management API functions
+│   │   ├── cronApi.ts       # Cron job management API functions
+│   │   ├── dnsApi.ts        # DNS management API functions
+│   │   ├── configApi.ts     # Dynamic configuration API functions
 │   │   └── userApi.ts       # User management API functions
 │   ├── queries/
 │   │   ├── base/            # Resource-focused query hooks
@@ -110,6 +130,9 @@ src/
 │   │   │   ├── useFileQueries.ts      # File operations queries
 │   │   │   ├── useSnapshotQueries.ts  # Snapshot data queries
 │   │   │   ├── useArchiveQueries.ts   # Archive management queries
+│   │   │   ├── useCronQueries.ts      # Cron job management queries
+│   │   │   ├── useDnsQueries.ts       # DNS management queries
+│   │   │   ├── useConfigQueries.ts    # Dynamic configuration queries
 │   │   │   ├── useSystemQueries.ts    # System-wide queries
 │   │   │   └── useUserQueries.ts      # User management queries
 │   │   └── page/            # Composed page-level queries
@@ -121,6 +144,9 @@ src/
 │   │   ├── useServerMutations.ts    # Server management mutations
 │   │   ├── useSnapshotMutations.ts  # Snapshot management mutations
 │   │   ├── useArchiveMutations.ts   # Archive management mutations
+│   │   ├── useCronMutations.ts      # Cron job management mutations
+│   │   ├── useDnsMutations.ts       # DNS management mutations
+│   │   ├── useConfigMutations.ts    # Dynamic configuration mutations
 │   │   └── useUserMutations.ts      # User administration mutations
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code-based authentication
 │   ├── useServerConsoleWebSocket.ts # Real-time server console integration
@@ -132,6 +158,9 @@ src/
 │   ├── Home.tsx             # Landing/redirect page
 │   ├── Snapshots.tsx        # Global snapshot management page
 │   ├── ArchiveManagement.tsx # Archive management and upload page
+│   ├── CronManagement.tsx    # Cron job management page
+│   ├── DnsManagement.tsx     # DNS record management page
+│   ├── DynamicConfig.tsx     # Dynamic configuration management page
 │   ├── admin/
 │   │   └── UserManagement.tsx
 │   └── server/
@@ -144,18 +173,21 @@ src/
 ├── stores/                  # Zustand stores with persistence
 │   ├── useTokenStore.ts           # JWT token management
 │   ├── useSidebarStore.ts         # Navigation state
-│   └── useLoginPreferenceStore.ts # Authentication method preference
+│   ├── useLoginPreferenceStore.ts # Authentication method preference
+│   └── useDownloadStore.ts        # Download task state management
 ├── types/                   # TypeScript definitions
 │   ├── Server.ts            # Core server types and status definitions
 │   ├── ServerInfo.ts        # Server configuration and metadata
 │   ├── ServerRuntime.ts     # Runtime metrics and resource data
 │   ├── MenuItem.ts          # Navigation menu item definitions
-│   └── User.ts              # User management and authentication types
+│   ├── User.ts              # User management and authentication types
+│   └── Dns.ts               # DNS management type definitions
 ├── utils/                   # Core utilities
 │   ├── api.ts               # Axios configuration, query keys, request/response interceptors
 │   ├── serverUtils.ts       # Server state and utility functions
 │   ├── devLogger.ts         # Development logging utilities
-│   └── fileLanguageDetector.ts # File type detection for editors
+│   ├── fileLanguageDetector.ts # File type detection for editors
+│   └── downloadUtils.ts     # Download progress and management utilities
 ├── config/
 │   ├── fileEditingConfig.ts # File editing configuration and validation
 │   ├── versionConfig.ts     # Version management and update configuration
@@ -170,6 +202,9 @@ Raw Axios functions with full type safety, organized by domain:
 - **`authApi.ts`**: Authentication operations (login, registration, token verification)
 - **`snapshotApi.ts`**: Backup and snapshot management (create, list, restore snapshots)
 - **`archiveApi.ts`**: Archive management (upload, list, delete, SHA256 calculation)
+- **`cronApi.ts`**: Cron job management (create, pause, resume, cancel, execution history)
+- **`dnsApi.ts`**: DNS record management (status, records, provider configuration)
+- **`configApi.ts`**: Dynamic configuration management (get, update, schema info)
 - **`systemApi.ts`**: System information and resource monitoring
 - **`serverApi.ts`**: Server management, configuration, runtime data, and population from archives
 - **`fileApi.ts`**: File operations (read, write, upload, delete)
@@ -186,6 +221,9 @@ Resource-focused React Query hooks with intelligent caching strategies:
 - **`useFileQueries.ts`**: File operations queries with conditional loading
 - **`useSnapshotQueries.ts`**: Snapshot data with 2-minute stale time for backup operations
 - **`useArchiveQueries.ts`**: Archive data fetching with manual refresh patterns
+- **`useCronQueries.ts`**: Cron job data with execution history and status tracking
+- **`useDnsQueries.ts`**: DNS record queries with provider status monitoring
+- **`useConfigQueries.ts`**: Dynamic configuration queries with schema information
 - **`useSystemQueries.ts`**: System resource monitoring queries
 - **`useUserQueries.ts`**: User management and authentication queries
 
@@ -217,6 +255,9 @@ Organized mutation hooks separated by domain for better maintainability:
 - **`useServerMutations.ts`**: Server lifecycle management (start, stop, restart, configuration updates, population from archives)
 - **`useSnapshotMutations.ts`**: Backup creation and management operations
 - **`useArchiveMutations.ts`**: Archive upload, deletion, and SHA256 calculation operations
+- **`useCronMutations.ts`**: Cron job creation, management, and execution control
+- **`useDnsMutations.ts`**: DNS record updates and provider synchronization
+- **`useConfigMutations.ts`**: Dynamic configuration updates and validation
 - **`useUserMutations.ts`**: User administration and profile updates
 
 Each mutation hook provides:
@@ -633,6 +674,122 @@ import ServerStateTag from '@/components/overview/ServerStateTag'
 - **Query Error Handling**: Differentiated retry logic and error state management
 - **User Feedback**: Toast notifications, error alerts, and loading states
 - **Graceful Degradation**: Fallback behavior when features are unavailable
+
+## DNS Management System
+
+**DNS Management Page** (`src/pages/DnsManagement.tsx`):
+- **Provider Configuration**: Dynamic configuration interface for DNS provider settings
+- **Record Management**: View and manage DNS records across configured providers
+- **Status Monitoring**: Real-time DNS record status and synchronization tracking
+- **Batch Operations**: Efficient management of multiple DNS records
+- **Provider Integration**: Support for DNSPod and Huawei Cloud DNS providers
+
+**DNS API Integration** (`src/hooks/api/dnsApi.ts`):
+- **Status Queries**: DNS system status and provider connectivity
+- **Record Operations**: List, update, and synchronize DNS records
+- **Change Tracking**: Monitor pending DNS changes and synchronization status
+
+**DNS Query Management** (`src/hooks/queries/base/useDnsQueries.ts`):
+- **Provider Status**: Real-time monitoring of DNS provider connectivity
+- **Record Queries**: DNS record data fetching with appropriate caching strategies
+- **Change Detection**: Automatic detection of DNS configuration changes
+
+**DNS Mutations** (`src/hooks/mutations/useDnsMutations.ts`):
+- **Record Updates**: Batch DNS record updates with validation
+- **Provider Synchronization**: Force synchronization with DNS providers
+- **Configuration Management**: Update DNS provider settings
+
+## Advanced Cron Job Management System
+
+**Cron Management Page** (`src/pages/CronManagement.tsx`):
+- **Job Overview**: Comprehensive interface for viewing all scheduled tasks
+- **Job Creation**: Create new cron jobs with visual expression builder
+- **Status Management**: Monitor job status and execution history
+- **Filter and Search**: Advanced filtering and search capabilities
+
+**Cron Expression Builder** (`src/components/forms/CronExpressionBuilder.tsx`):
+- **Visual Builder**: Field-by-field cron expression creation
+- **Real-time Preview**: Live preview of cron expression meaning
+- **Validation**: Built-in validation for cron expression syntax
+- **User-Friendly Interface**: Intuitive interface for complex scheduling
+
+**Cron Job Components** (`src/components/cron/`):
+- **CronExpressionDisplay**: Visual representation of cron expressions
+- **CronJobStatusTag**: Status indicators for job states
+- **ExecutionStatusTag**: Execution result visualization
+- **NextRunTimeDisplay**: Formatted next execution time display
+- **CronJobFilters**: Advanced filtering and search functionality
+
+**Cron Job Modals** (`src/components/modals/cron/`):
+- **CreateCronJobModal**: Job creation with conflict detection
+- **CronJobDetailModal**: Detailed job information with execution logs
+
+**Cron API Integration** (`src/hooks/api/cronApi.ts`):
+- **Job Management**: Create, pause, resume, and cancel cron jobs
+- **Execution History**: Retrieve detailed execution history and logs
+- **Status Monitoring**: Real-time job status and next run time tracking
+
+## Server Restart Scheduling System
+
+**Server Restart Card** (`src/components/server/ServerRestartScheduleCard.tsx`):
+- **Schedule Display**: Visual indication of restart schedule status
+- **Next Execution**: Display of next scheduled restart time
+- **Management Controls**: Easy setup and modification of restart schedules
+- **Conflict Prevention**: Built-in warnings for potential scheduling conflicts
+
+**Restart Schedule Integration**:
+- **Server Creation**: Automatic default restart schedule creation
+- **Server Deletion**: Automatic cleanup of related restart schedules
+- **Status Integration**: Seamless integration with server overview displays
+
+## Download Manager System
+
+**Download Task Container** (`src/components/layout/DownloadTaskContainer.tsx`):
+- **Persistent Display**: Always-visible download progress in sidebar
+- **Progress Visualization**: Real-time progress bars and status updates
+- **Task Management**: Download cancellation and status monitoring
+- **Multiple Downloads**: Support for concurrent download tasks
+
+**Download Store** (`src/stores/useDownloadStore.ts`):
+- **State Management**: Centralized download task state with persistence
+- **Progress Tracking**: Real-time progress updates and status changes
+- **Task Lifecycle**: Complete download task lifecycle management
+
+**Download Utilities** (`src/utils/downloadUtils.ts`):
+- **Progress Calculation**: Download speed and time remaining calculations
+- **File Handling**: Efficient file download with progress tracking
+- **Error Recovery**: Proper error handling and cleanup for failed downloads
+
+**Download Features**:
+- **Server Files**: Download server files and directories with progress tracking
+- **Archive Files**: Download archive files with integrity verification
+- **Background Processing**: Non-blocking download operations
+- **Real-time Feedback**: Live progress updates and completion notifications
+
+## Dynamic Configuration Management System
+
+**Dynamic Configuration Page** (`src/pages/DynamicConfig.tsx`):
+- **Module Selection**: Interface for selecting configuration modules
+- **Schema-Driven Forms**: Automatic form generation based on JSON schemas
+- **Real-Time Validation**: Client-side validation with server-side schema enforcement
+- **Configuration Categories**: Organized configuration management by functional areas
+
+**Schema Form Builder** (`src/components/forms/SchemaForm.tsx`):
+- **Dynamic Forms**: Automatic form generation from JSON schemas
+- **Type Safety**: Full TypeScript integration with schema validation
+- **Complex Types**: Support for nested objects, arrays, and union types
+- **Validation Feedback**: Real-time validation feedback and error display
+
+**Configuration API Integration** (`src/hooks/api/configApi.ts`):
+- **Module Management**: List and retrieve configuration modules
+- **Schema Information**: Get JSON schemas for form generation
+- **Configuration Updates**: Update and validate configuration changes
+
+**Configuration Features**:
+- **Runtime Updates**: Live configuration updates without application restart
+- **Schema Migration**: Automatic handling of configuration schema changes
+- **Default Values**: Intelligent default value generation for new configurations
+- **Update Confirmation**: Visual feedback for configuration changes and validation
 
 ## External Documentation
 

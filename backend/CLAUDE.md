@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, **fully integrated** Minecraft Docker management capabilities (not an external library), enterprise-grade **Restic backup system** with snapshot management, **advanced cron job system** with APScheduler and database persistence, and **dynamic configuration management** with schema migration and memory caching.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, **fully integrated** Minecraft Docker management capabilities (not an external library), enterprise-grade **Restic backup system** with snapshot management, **DNS management system** with DNSPod and Huawei Cloud integration, **advanced cron job system** with APScheduler, backup jobs, and Uptime Kuma notifications, **server restart scheduling** with conflict detection, **download manager** with progress tracking, and **dynamic configuration management** with schema migration and memory caching.
 
 ## Tech Stack
 
@@ -18,7 +18,10 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **System Monitoring**: psutil v7.0.0 for CPU, memory, disk metrics
 - **Development**: pytest v8.3.3 + pytest-asyncio + black formatter
 - **Audit System**: FastAPI middleware with structured JSON logging and automatic log rotation
-- **Cron System**: APScheduler v3.11.0 for task scheduling with async support and database persistence
+- **DNS Management**: Integrated DNS record management with DNSPod and Huawei Cloud provider support
+- **Cron System**: APScheduler v3.11.0 for task scheduling with async support, backup jobs, and Uptime Kuma notifications
+- **Restart Scheduling**: Automated server restart management with backup conflict detection and timezone support
+- **Download Manager**: File download progress tracking with cancellation support and real-time status updates
 - **Dynamic Configuration**: Pydantic-based configuration management with schema migration and validation
 - **Additional**: python-multipart, asyncer v0.0.8, watchdog for file monitoring
 
@@ -225,19 +228,33 @@ app/                        # Main application package
 │   ├── __init__.py
 │   ├── decompression.py    # Archive decompression utilities (ZIP, TAR, TAR.GZ)
 │   └── compression.py      # Archive compression utilities (7z integration)
-├── cron/                   # **NEW** - Advanced cron job system with APScheduler
+├── dns/                    # **NEW** - DNS management system with provider support
+│   ├── __init__.py         # Public API exports (DNSManager, providers, types)
+│   ├── manager.py          # DNSManager class for unified DNS operations
+│   ├── dns.py              # DNS client base class and interface
+│   ├── dnspod.py           # DNSPod provider implementation
+│   ├── huawei.py           # Huawei Cloud DNS provider implementation
+│   ├── router.py           # Router management integration
+│   ├── types.py            # DNS-related type definitions and dataclasses
+│   └── utils.py            # DNS utility functions and helpers
+├── cron/                   # **ENHANCED** - Advanced cron job system with backup jobs and notifications
 │   ├── __init__.py         # Public API exports (CronManager, types, registry)
 │   ├── manager.py          # CronManager class with async job scheduling and execution tracking
 │   ├── registry.py         # CronJobRegistry for registering cron job functions and schemas
 │   ├── types.py            # Type definitions and dataclasses for cron job system
-│   └── instance.py         # Global cron manager instance
-├── dynamic_config/         # **NEW** - Dynamic configuration management system
+│   ├── instance.py         # Global cron manager instance
+│   ├── restart_scheduler.py # **NEW** - RestartScheduler for server restart management with conflict detection
+│   └── jobs/               # **NEW** - Specialized cron job implementations
+│       ├── __init__.py
+│       ├── backup.py       # Backup job with retention policies and Uptime Kuma notifications
+│       └── restart.py      # Server restart job implementation
+├── dynamic_config/         # **ENHANCED** - Dynamic configuration management system
 │   ├── __init__.py         # Public API exports (ConfigManager, schemas, migration)
 │   ├── manager.py          # ConfigManager class with memory caching and database sync
-│   ├── schemas.py          # BaseConfigSchema and configuration validation
+│   ├── schemas.py          # BaseConfigSchema and configuration validation with Union type support
 │   ├── migration.py        # ConfigMigrator for schema version migrations
 │   └── configs/            # Configuration schemas for different modules
-│       └── dns.py          # DNS configuration schema example
+│       └── dns.py          # DNS configuration schema for provider settings
 ├── routers/
 │   ├── __init__.py
 │   ├── auth.py             # Authentication endpoints + WebSocket /auth/code
@@ -246,8 +263,9 @@ app/                        # Main application package
 │   ├── system.py           # System metrics endpoints (psutil integration)
 │   ├── archive.py          # Archive management endpoints (upload, list, delete, SHA256)
 │   ├── snapshots.py        # Global snapshot management endpoints
-│   ├── cron.py             # **NEW** - Cron job management endpoints (create, pause, resume, cancel, history)
-│   ├── config.py           # **NEW** - Dynamic configuration endpoints (get, update, schema info)
+│   ├── cron.py             # **ENHANCED** - Cron job management endpoints (create, pause, resume, cancel, history)
+│   ├── config.py           # **ENHANCED** - Dynamic configuration endpoints (get, update, schema info)
+│   ├── dns.py              # **NEW** - DNS management endpoints (status, records, provider configuration)
 │   └── servers/
 │       ├── __init__.py
 │       ├── compose.py      # Docker Compose configuration management
@@ -256,6 +274,7 @@ app/                        # Main application package
 │       ├── resources.py    # Resource monitoring endpoints
 │       ├── players.py      # Player management endpoints
 │       ├── populate.py     # Server population from archives
+│       ├── restart_schedule.py # **NEW** - Server restart scheduling endpoints
 │       ├── misc.py         # Miscellaneous server endpoints
 │       ├── console.py      # Real-time console WebSocket endpoints
 │       ├── rcon.py         # RCON command execution endpoints
@@ -307,7 +326,19 @@ tests/                      # Test suite (separate from app package)
 │   ├── test_snapshots_basic.py # ✅ SAFE - Snapshot model and basic functionality tests
 │   ├── test_snapshots_endpoints.py # ✅ SAFE - Snapshot API endpoint tests with mocks
 │   └── test_snapshots_integrated.py # ✅ SAFE - Real Restic integration tests
-├── cron/                   # **NEW** - Cron job system tests
+├── dns/                    # **NEW** - DNS management system tests
+│   ├── __init__.py
+│   ├── test_api.py         # ✅ SAFE - DNS API endpoints with mocks
+│   ├── test_dns_basic.py   # ✅ SAFE - Basic DNS functionality and utilities
+│   ├── test_dns_basic_functionality.py # ✅ SAFE - Core DNS operations
+│   ├── test_dns_client_diff.py # ✅ SAFE - DNS client comparison tests
+│   ├── test_dns_manager_diff.py # ✅ SAFE - DNS manager functionality tests
+│   ├── test_dnspod.py      # ✅ SAFE - DNSPod provider tests
+│   ├── test_huawei.py      # ✅ SAFE - Huawei Cloud DNS provider tests
+│   ├── test_manager.py     # ✅ SAFE - DNS manager class tests
+│   ├── test_router.py      # ✅ SAFE - Router integration tests
+│   └── test_utils.py       # ✅ SAFE - DNS utility function tests
+├── cron/                   # **ENHANCED** - Cron job system tests with backup jobs
 │   ├── __init__.py
 │   ├── test_cron_basic.py  # ✅ SAFE - Cron job models and basic functionality
 │   ├── test_cron_api.py    # ✅ SAFE - Cron job API endpoints with mocks
@@ -315,12 +346,13 @@ tests/                      # Test suite (separate from app package)
 │   ├── test_cron_persistence.py # ✅ SAFE - Database persistence functionality
 │   ├── test_cron_next_run_time.py # ✅ SAFE - Next run time calculation
 │   ├── test_cronjobs.py    # ✅ SAFE - Cron job registry and execution
-│   └── test_cron_scheduling.py # ✅ SAFE - Real APScheduler integration tests
-├── dynamic_config/         # **NEW** - Dynamic configuration system tests
+│   ├── test_cron_scheduling.py # ✅ SAFE - Real APScheduler integration tests
+│   ├── test_backup_job.py  # ✅ SAFE - Backup job implementation tests
+│   └── test_restart_scheduler.py # ✅ SAFE - Restart scheduler conflict detection tests
+├── dynamic_config/         # **ENHANCED** - Dynamic configuration system tests
 │   ├── __init__.py
 │   ├── test_dynamic_config.py # ✅ SAFE - Configuration management core functionality
 │   ├── test_dynamic_config_api.py # ✅ SAFE - Configuration API endpoints
-│   ├── test_dynamic_config_json_schema_generation.py # ✅ SAFE - JSON schema generation
 │   ├── test_dynamic_config_union_validation.py # ✅ SAFE - Union type validation
 │   └── test_dynamic_config_integration.py # ✅ SAFE - Database integration tests
 └── fixtures/               # Test utilities and fixtures
@@ -405,6 +437,22 @@ tests/                      # Test suite (separate from app package)
 - `GET /config/schemas/` - Get JSON schemas for all configuration modules
 - `GET /config/schemas/{module_name}` - Get JSON schema for specific module
 
+**DNS Management Routes (`/api/dns/`)**:
+
+- `GET /dns/status` - Get DNS system status and provider connectivity
+- `GET /dns/records` - List all DNS records across configured providers
+- `POST /dns/records/update` - Batch update DNS records with validation
+- `GET /dns/changes` - Get pending DNS changes and synchronization status
+- `POST /dns/sync` - Force synchronization with DNS providers
+
+**Server Restart Scheduling Routes (`/api/servers/{id}/restart-schedule/`)**:
+
+- `GET /servers/{id}/restart-schedule/` - Get current restart schedule configuration
+- `POST /servers/{id}/restart-schedule/` - Create or update restart schedule
+- `DELETE /servers/{id}/restart-schedule/` - Remove restart schedule
+- `POST /servers/{id}/restart-schedule/pause` - Pause restart schedule
+- `POST /servers/{id}/restart-schedule/resume` - Resume restart schedule
+
 ### Snapshot Management System
 
 **ResticManager Class** (`app.snapshots.ResticManager`):
@@ -455,7 +503,32 @@ class ResticSnapshotWithSummary(BaseModel):
 - **Server Snapshots**: Individual server backups for specific Minecraft instances
 - **Configuration**: ResticSettings with repository path and password management
 
-## Cron Job System
+## DNS Management System
+
+**DNSManager Class** (`app.dns.DNSManager`):
+
+- Unified DNS record management across multiple DNS providers
+- Automatic DNS updates triggered by server operations and creation
+- Provider abstraction layer supporting DNSPod and Huawei Cloud DNS
+- Record synchronization and change detection
+- Configuration management through dynamic configuration system
+
+**DNS Provider Support** (`app.dns.dnspod`, `app.dns.huawei`):
+
+- **DNSPod Integration**: Full API support for record management and domain operations
+- **Huawei Cloud DNS**: Complete DNS record lifecycle with TTL configuration
+- **Provider Interface**: Unified interface for cross-provider operations
+- **Authentication**: Secure credential management for each provider
+- **Rate Limiting**: Automatic rate limiting and retry logic for API calls
+
+**Router Integration** (`app.dns.router`):
+
+- Automatic router configuration updates
+- Server address mapping and domain management
+- Integration with server creation and deletion workflows
+- Real-time address configuration synchronization
+
+## Enhanced Cron Job System
 
 **CronManager Class** (`app.cron.CronManager`):
 
@@ -472,6 +545,28 @@ class ResticSnapshotWithSummary(BaseModel):
 - Type-safe job parameter validation using Pydantic schemas
 - Automatic schema discovery and validation for registered cron jobs
 - Support for dynamic job registration during application startup
+
+**Specialized Cron Jobs** (`app.cron.jobs`):
+
+**Backup Job** (`app.cron.jobs.backup`):
+- Automated backup scheduling with retention policies
+- Uptime Kuma push notification integration for status reporting
+- Configurable backup targets and retention settings
+- Error handling and notification on backup failures
+
+**Restart Job** (`app.cron.jobs.restart`):
+- Automated server restart scheduling
+- Integration with RestartScheduler for conflict detection
+- Only restarts servers that are currently running
+- Timezone-aware execution with proper status management
+
+**RestartScheduler** (`app.cron.restart_scheduler`):
+
+- Intelligent server restart scheduling with backup conflict detection
+- Automatic validation to prevent restart-backup time conflicts
+- Timezone support for proper scheduling across different time zones
+- Active/inactive state management with automatic job lifecycle
+- Integration with cron job system for seamless restart management
 
 **Database Models**:
 
@@ -591,6 +686,43 @@ await config_manager.update_config("dns", {
     "primary_dns": "1.1.1.1",
     "timeout_seconds": 10
 })
+```
+
+## Download Manager System
+
+**File Download Management**:
+
+- **Progress Tracking**: Real-time file download progress monitoring with transfer rate calculation
+- **Cancellation Support**: Ability to cancel in-progress downloads with proper cleanup
+- **Status Management**: Comprehensive download status tracking (PENDING, DOWNLOADING, COMPLETED, CANCELLED, FAILED)
+- **Background Processing**: Async download operations that don't block API responses
+
+**Integration with File Operations**:
+
+- **Server Files**: Download server files and directories with progress tracking
+- **Archive Files**: Download archive files with integrity verification
+- **Large File Support**: Efficient handling of large file downloads with streaming
+- **Error Recovery**: Proper error handling and cleanup for failed downloads
+
+**Download Status Tracking**:
+
+```python
+class DownloadStatus(Enum):
+    """Download operation status"""
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+class DownloadProgress(BaseModel):
+    """Download progress information"""
+    bytes_downloaded: int
+    total_bytes: Optional[int]
+    progress_percentage: Optional[float]
+    download_speed: Optional[float]  # bytes per second
+    estimated_time_remaining: Optional[float]  # seconds
+    status: DownloadStatus
 ```
 
 ## Archive Management System

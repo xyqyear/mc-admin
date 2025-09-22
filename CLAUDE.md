@@ -12,8 +12,11 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Complete Minecraft server lifecycle management (create, start, stop, monitor, delete)
 - **Enterprise Snapshot System** - Full backup and restoration using Restic with global and server-specific snapshots
 - **Archive Management System** - Comprehensive archive file management with SHA256 verification, compression/decompression support, and server population from archives
-- **Cron Job System** - Advanced scheduled task management with APScheduler, database persistence, and execution monitoring
-- **Dynamic Configuration System** - Runtime configuration management with schema migration, validation, and memory caching
+- **DNS Management System** - Integrated DNS record management with DNSPod and Huawei Cloud support, automatic updates after server operations
+- **Cron Job System** - Advanced scheduled task management with APScheduler, database persistence, backup jobs, and Uptime Kuma notifications
+- **Server Restart Scheduling** - Automated server restart management with backup conflict detection and timezone-aware execution
+- **Download Manager System** - File download progress tracking with cancellation support and real-time status updates
+- **Dynamic Configuration System** - Runtime configuration management with schema migration, validation, memory caching, and web-based management interface
 - Real-time system and server resource monitoring (CPU, memory, disk, network via cgroup v2)
 - Docker Compose configuration management with Monaco editor and schema validation
 - JWT-based authentication with role-based access control (ADMIN/OWNER) + Master token system
@@ -29,6 +32,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Development Debug Tools** - Built-in debug modal and tools for development environment
 - **Server File Compression** - 7z archive creation for server files and directories with progress tracking
 - **Enhanced Drag-and-Drop** - File upload validation with format-specific error messages
+- **Server Address Management** - Real router-based address display with automatic configuration detection
 - **CI/CD Integration** - Automated Docker image building and GitHub Actions workflows
 
 ## Architecture
@@ -39,19 +43,24 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - **Container Management**: Integrated Docker Compose management (not external dependency)
 - **Backup System**: Restic-based snapshot management with configurable repositories
 - **Archive System**: Complete archive lifecycle with compression/decompression, validation, and server population
-- **Cron System**: APScheduler-based job scheduling with database persistence and execution tracking
-- **Dynamic Configuration**: Runtime config management with schema migration and memory caching
+- **DNS Management**: Integrated DNS record management with DNSPod and Huawei Cloud providers, automatic server operation integration
+- **Cron System**: APScheduler-based job scheduling with database persistence, backup jobs, and Uptime Kuma notifications
+- **Restart Scheduling**: Automated server restart management with backup conflict detection and timezone support
+- **Download Manager**: File download progress tracking with cancellation support and real-time status updates
+- **Dynamic Configuration**: Runtime config management with schema migration, memory caching, and web-based interface
 - **Communication**: RESTful API + WebSocket for real-time features (console streaming, login codes)
 - **Configuration**: TOML-based settings with environment variable overrides
 - **Monitoring**: cgroup v2 direct filesystem monitoring for container resources
-- **API Architecture**: Modular router-based design with separated concerns (operations, compose, files, resources, players, cron, config)
+- **API Architecture**: Modular router-based design with separated concerns (operations, compose, files, resources, players, cron, config, dns, restart_schedule)
 - **Audit System**: FastAPI middleware with automatic operation logging to structured JSON files
 
 **Data Flow:**
 Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module ↔ Docker Engine
                                                 ↔ Restic Backup System ↔ Backup Repository
                                                 ↔ Archive Management ↔ File System
+                                                ↔ DNS Management System ↔ DNS Providers (DNSPod/Huawei)
                                                 ↔ Cron Job System ↔ APScheduler
+                                                ↔ Download Manager ↔ File System
                                                 ↔ Dynamic Config System ↔ Config Database
 
 ## Technology Stack Summary
@@ -65,7 +74,9 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Container Integration**: **Integrated** Minecraft Docker management module (app.minecraft)
 - **Backup System**: **Integrated** Restic snapshot management (app.snapshots)
 - **Archive System**: **Integrated** archive management with compression/decompression utilities (app.utils.compression, app.utils.decompression)
-- **Cron System**: **Integrated** APScheduler-based task scheduling with database persistence (app.cron)
+- **DNS Management**: **Integrated** DNS record management with DNSPod and Huawei Cloud clients (app.dns)
+- **Cron System**: **Integrated** APScheduler-based task scheduling with database persistence, backup jobs, and Uptime Kuma notifications (app.cron)
+- **Restart Scheduling**: **Integrated** automated server restart management with conflict detection (app.cron.restart_scheduler)
 - **Dynamic Configuration**: **Integrated** runtime configuration management with schema migration (app.dynamic_config)
 - **Common Operations**: Shared file operations module (app.common.file_operations)
 - **WebSocket Support**: FastAPI WebSocket + Watchdog file monitoring for console streaming
@@ -77,9 +88,10 @@ Frontend (React Query) ↔ Backend API (FastAPI) ↔ Integrated Minecraft Module
 - **Build Tool**: Vite 5 with React plugin, path alias (@), and hot reload
 - **UI Library**: Ant Design 5 + @ant-design/icons + @ant-design/pro-components
 - **Styling**: Tailwind CSS 3 + PostCSS (preflight disabled for AntD compatibility)
-- **State Management**: Zustand v4.5.0 with localStorage persistence middleware
+- **State Management**: Zustand v4.5.0 with localStorage persistence middleware, download task management
 - **Data Fetching**: TanStack React Query v5.85.5 with sophisticated three-layer architecture
 - **Code Editor**: Monaco Editor v0.52.2 + monaco-yaml v5.4.0 with Docker Compose schema
+- **Form Management**: Advanced form builders with cron expression support and JSON schema rendering
 - **Routing**: React Router v6 with nested routes and future flags enabled
 - **Error Handling**: react-error-boundary for graceful error boundaries
 - **Linting**: ESLint v9 with TypeScript and React plugins (modern flat config)
@@ -105,20 +117,25 @@ mc-admin/
 │   │   ├── utils/           # Decompression and utility functions
 │   │   ├── snapshots/       # Restic backup integration
 │   │   ├── minecraft/       # Docker container lifecycle
+│   │   ├── dns/             # DNS management with DNSPod/Huawei providers
 │   │   ├── cron/            # APScheduler-based cron job system
+│   │   │   ├── jobs/        # Backup and restart job implementations
+│   │   │   └── restart_scheduler.py  # Server restart conflict management
 │   │   ├── dynamic_config/  # Runtime configuration management
 │   │   └── routers/
 │   │       ├── archive.py        # Archive management API
 │   │       ├── snapshots.py      # Global snapshot management
 │   │       ├── cron.py           # Cron job management API
 │   │       ├── config.py         # Dynamic configuration API
+│   │       ├── dns.py            # DNS management API
 │   │       └── servers/          # Server-specific endpoints
 │   │           ├── compose.py    # Docker Compose management
 │   │           ├── create.py     # Server creation
 │   │           ├── operations.py # Server operations (start/stop)
 │   │           ├── resources.py  # Resource monitoring
 │   │           ├── players.py    # Player management
-│   │           └── populate.py   # Server population from archives
+│   │           ├── populate.py   # Server population from archives
+│   │           └── restart_schedule.py  # Server restart scheduling
 ├── frontend-react/   # React frontend application
 │   ├── src/
 │   │   ├── components/
@@ -126,12 +143,23 @@ mc-admin/
 │   │   │   │   ├── ServerFiles/  # Server file management modals
 │   │   │   │   │   ├── CompressionConfirmModal.tsx
 │   │   │   │   │   └── CompressionResultModal.tsx
+│   │   │   │   ├── cron/         # Cron job management modals
+│   │   │   │   │   ├── CreateCronJobModal.tsx
+│   │   │   │   │   └── CronJobDetailModal.tsx
 │   │   │   │   ├── ArchiveSelectionModal.tsx
 │   │   │   │   ├── ServerTemplateModal.tsx
 │   │   │   │   └── SHA256HelpModal.tsx
 │   │   │   ├── server/           # Server-specific components
 │   │   │   │   ├── ServerOperationButtons.tsx
-│   │   │   │   └── ServerTerminal.tsx
+│   │   │   │   ├── ServerTerminal.tsx
+│   │   │   │   ├── ServerAddressCard.tsx
+│   │   │   │   └── ServerRestartScheduleCard.tsx
+│   │   │   ├── cron/             # Cron job display components
+│   │   │   ├── forms/            # Advanced form builders
+│   │   │   │   ├── CronExpressionBuilder.tsx
+│   │   │   │   └── SchemaForm.tsx
+│   │   │   ├── layout/           # Layout components
+│   │   │   │   └── DownloadTaskContainer.tsx
 │   │   │   ├── debug/            # Development debug tools
 │   │   │   │   ├── DebugModal.tsx
 │   │   │   │   └── DebugTool.tsx
@@ -139,20 +167,34 @@ mc-admin/
 │   │   ├── hooks/
 │   │   │   ├── api/             # Raw API layer
 │   │   │   │   ├── archiveApi.ts
-│   │   │   │   └── serverApi.ts
+│   │   │   │   ├── serverApi.ts
+│   │   │   │   ├── cronApi.ts
+│   │   │   │   ├── dnsApi.ts
+│   │   │   │   └── configApi.ts
 │   │   │   ├── queries/
 │   │   │   │   ├── base/        # Resource-focused query hooks
-│   │   │   │   │   └── useArchiveQueries.ts
+│   │   │   │   │   ├── useArchiveQueries.ts
+│   │   │   │   │   ├── useCronQueries.ts
+│   │   │   │   │   ├── useDnsQueries.ts
+│   │   │   │   │   └── useConfigQueries.ts
 │   │   │   │   └── page/        # Composed page-level queries
 │   │   │   ├── mutations/       # Organized mutation hooks
-│   │   │   │   └── useArchiveMutations.ts
+│   │   │   │   ├── useArchiveMutations.ts
+│   │   │   │   ├── useCronMutations.ts
+│   │   │   │   ├── useDnsMutations.ts
+│   │   │   │   └── useConfigMutations.ts
 │   │   │   ├── usePageDragUpload.ts  # Drag-and-drop validation
 │   │   │   └── useVersionCheck.ts    # Version update checking
+│   │   ├── stores/
+│   │   │   └── useDownloadStore.ts   # Download task state management
 │   │   ├── config/
 │   │   │   └── versionConfig.ts      # Version management configuration
 │   │   └── pages/
 │   │       ├── ArchiveManagement.tsx  # Archive management
-│   │       └── Snapshots.tsx          # Global snapshot management
+│   │       ├── Snapshots.tsx          # Global snapshot management
+│   │       ├── CronManagement.tsx     # Cron job management
+│   │       ├── DnsManagement.tsx      # DNS record management
+│   │       └── DynamicConfig.tsx      # Configuration management
 └── CLAUDE.md        # This project overview file
 ```
 
@@ -232,6 +274,84 @@ Each component has dedicated development instructions:
 - **File Compression**: Server file and directory compression with confirmation and result modals
 - **Enhanced Drag-and-Drop**: Format validation with specific error messages for unsupported file types
 
+## DNS Management System
+
+### Backend DNS Architecture
+- **DNS Module**: Integrated DNS management system (`app.dns`) with provider abstraction
+- **Provider Support**: DNSPod and Huawei Cloud DNS clients with unified interface
+- **DNS Router**: Comprehensive DNS operations (`/api/dns/`) - status, records, batch updates
+- **Auto-Integration**: Automatic DNS updates triggered by server operations and creation
+- **Configuration Management**: Dynamic DNS settings with validation and real-time updates
+- **Record Management**: Support for A records, TTL configuration, and batch operations
+
+### Frontend DNS Features
+- **DNS Management Page**: Dedicated UI for viewing and managing DNS records and providers
+- **Provider Configuration**: Dynamic configuration interface for DNS provider settings
+- **Record Status Display**: Real-time DNS record status and synchronization tracking
+- **Batch Operations**: Efficient management of multiple DNS records
+- **Integration Feedback**: Visual confirmation of automatic DNS updates during server operations
+
+## Cron Job Management System
+
+### Backend Cron Architecture
+- **Enhanced Cron System**: APScheduler-based job scheduling with specialized job types
+- **Backup Jobs**: Automated backup scheduling with retention policies and Uptime Kuma notifications
+- **Restart Scheduler**: Server restart management with backup conflict detection and timezone support
+- **Job Registry**: Extensible job type system with database persistence and execution tracking
+- **Conflict Detection**: Automatic validation to prevent restart-backup time conflicts
+- **Notification Integration**: Uptime Kuma push notifications for job status updates
+
+### Frontend Cron Features
+- **Cron Management Page**: Comprehensive interface for creating, viewing, and managing scheduled tasks
+- **Cron Expression Builder**: Visual cron expression creation with field-by-field input
+- **Job Detail Modal**: Detailed job information with execution logs and status tracking
+- **Conflict Warnings**: Real-time validation and warnings for scheduling conflicts
+- **Status Visualization**: Job status tags and next execution time displays
+
+## Server Restart Scheduling System
+
+### Backend Restart Scheduling
+- **RestartScheduler Class**: Intelligent restart scheduling with conflict avoidance
+- **Backup Integration**: Automatic detection and avoidance of backup job conflicts
+- **Timezone Support**: Proper timezone handling for scheduled restart operations
+- **Status Management**: Active/inactive state management with automatic job lifecycle
+- **Server Integration**: Seamless integration with server operation workflow
+
+### Frontend Restart Scheduling
+- **Server Restart Card**: Dedicated UI component for restart schedule management
+- **Schedule Configuration**: Easy setup and modification of restart schedules
+- **Status Display**: Visual indication of restart schedule status and next execution
+- **Conflict Prevention**: Built-in warnings for potential scheduling conflicts
+
+## Download Manager System
+
+### Backend Download Management
+- **Progress Tracking**: Real-time file download progress monitoring
+- **Cancellation Support**: Ability to cancel in-progress downloads
+- **Status Management**: Comprehensive download status tracking and reporting
+
+### Frontend Download Management
+- **Download Task Container**: Persistent download progress display
+- **Progress Visualization**: Real-time progress bars and status updates
+- **Task Management**: Download cancellation and status monitoring
+- **State Persistence**: Download task state management with Zustand store
+
+## Dynamic Configuration Management System
+
+### Backend Configuration Architecture
+- **Enhanced Schema System**: Advanced Pydantic schema handling with Union field validation and Annotated type support
+- **JSON Schema Generation**: Automatic schema generation from Pydantic models with oneOf field handling
+- **Configuration API**: RESTful configuration management with validation and real-time updates
+- **Memory Caching**: Efficient configuration caching with automatic invalidation
+- **Migration Support**: Schema migration capabilities for configuration updates
+
+### Frontend Configuration Features
+- **Dynamic Configuration Page**: Web-based interface for runtime configuration management
+- **Schema-Driven Forms**: Automatic form generation based on JSON schemas
+- **Real-Time Validation**: Client-side validation with server-side schema enforcement
+- **Configuration Categories**: Organized configuration management by functional areas
+- **Update Confirmation**: Visual feedback for configuration changes and validation
+
 ## External Documentation
 
 **IMPORTANT**: Always use Context7 for external library documentation before coding with unfamiliar APIs.
@@ -254,8 +374,8 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 ## Version Update System
 
 ### Frontend Version Management (`src/config/versionConfig.ts`)
-- **Version Configuration**: Centralized version definition with automatic current version detection
-- **Update History**: Structured version update records with features, fixes, and improvements
+- **Version Configuration**: Centralized version definition with automatic current version detection (currently v0.3.1)
+- **Update History**: Comprehensive structured version records including DNS management, cron enhancements, and server restart scheduling
 - **Version Comparison**: Semantic version comparison utility for update detection
 - **Update Modal**: User-friendly version update notification with detailed changelog
 - **Reminder System**: Configurable "remind later" functionality with 1-hour delay
@@ -263,9 +383,10 @@ Use the resolve-library-id tool first, then get-library-docs with specific topic
 
 ### Version Update Features
 - **Automatic Detection**: Checks for version updates on application startup
-- **Detailed Changelog**: Displays features, fixes, and improvements between versions
+- **Detailed Changelog**: Displays features, fixes, and improvements between versions with Chinese localization
 - **User Control**: "Remind later" and "Got it" options for managing update notifications
 - **Development Integration**: Seamless integration with build and deployment workflows
+- **Feature Tracking**: Complete history from initial release (v0.1.0) through current DNS integration (v0.3.1)
 
 ## Development Tools System
 
