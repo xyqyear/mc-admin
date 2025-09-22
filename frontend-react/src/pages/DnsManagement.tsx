@@ -200,95 +200,95 @@ const DnsManagement: React.FC = () => {
               dnsStatus.dns_diff.records_to_update?.length > 0 ||
               dnsStatus.dns_diff.records_to_remove?.length > 0
             ) && (
-              <div>
-                <Text strong>DNS记录变更:</Text>
-                <div className="ml-4 mt-2 space-y-2">
-                  {dnsStatus.dns_diff.records_to_add?.length > 0 && (
-                    <div>
-                      <Text type="success" strong>新增记录 ({dnsStatus.dns_diff.records_to_add.length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {dnsStatus.dns_diff.records_to_add.map((record: any, index: number) => (
-                          <li key={index} className="text-sm">
-                            <Text code>{record.sub_domain}</Text> → <Text type="success">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {dnsStatus.dns_diff.records_to_update?.length > 0 && (
-                    <div>
-                      <Text type="warning" strong>更新记录 ({dnsStatus.dns_diff.records_to_update.length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {dnsStatus.dns_diff.records_to_update.map((record: any, index: number) => (
-                          <li key={index} className="text-sm">
-                            <Text code>{record.sub_domain}</Text> → <Text type="warning">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {dnsStatus.dns_diff.records_to_remove?.length > 0 && (
-                    <div>
-                      <Text type="danger" strong>删除记录 ({dnsStatus.dns_diff.records_to_remove.length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {dnsStatus.dns_diff.records_to_remove.map((recordId: string, index: number) => (
-                          <li key={index} className="text-sm">
-                            <Text type="danger">记录ID: {recordId}</Text>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                <div>
+                  <Text strong>DNS记录变更:</Text>
+                  <div className="ml-4 mt-2 space-y-2">
+                    {dnsStatus.dns_diff.records_to_add?.length > 0 && (
+                      <div>
+                        <Text type="success" strong>新增记录 ({dnsStatus.dns_diff.records_to_add.length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {dnsStatus.dns_diff.records_to_add.map((record: any, index: number) => (
+                            <li key={index} className="text-sm">
+                              <Text code>{record.sub_domain}</Text> → <Text type="success">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {dnsStatus.dns_diff.records_to_update?.length > 0 && (
+                      <div>
+                        <Text type="warning" strong>更新记录 ({dnsStatus.dns_diff.records_to_update.length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {dnsStatus.dns_diff.records_to_update.map((record: any, index: number) => (
+                            <li key={index} className="text-sm">
+                              <Text code>{record.sub_domain}</Text> → <Text type="warning">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {dnsStatus.dns_diff.records_to_remove?.length > 0 && (
+                      <div>
+                        <Text type="danger" strong>删除记录 ({dnsStatus.dns_diff.records_to_remove.length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {dnsStatus.dns_diff.records_to_remove.map((recordId: string, index: number) => (
+                            <li key={index} className="text-sm">
+                              <Text type="danger">记录ID: {recordId}</Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             {dnsStatus.router_diff && (
               Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 ||
               Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 ||
               Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0
             ) && (
-              <div>
-                <Text strong>路由变更:</Text>
-                <div className="ml-4 mt-2 space-y-2">
-                  {Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 && (
-                    <div>
-                      <Text type="success" strong>新增路由 ({Object.keys(dnsStatus.router_diff.routes_to_add).length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {Object.entries(dnsStatus.router_diff.routes_to_add).map(([serverAddress, backend], index) => (
-                          <li key={index} className="text-sm">
-                            <Text code>{serverAddress}</Text> → <Text type="success">{String(backend)}</Text>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 && (
-                    <div>
-                      <Text type="warning" strong>更新路由 ({Object.keys(dnsStatus.router_diff.routes_to_update).length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {Object.entries(dnsStatus.router_diff.routes_to_update).map(([serverAddress, changes], index) => (
-                          <li key={index} className="text-sm">
-                            <Text code>{serverAddress}</Text> → <Text type="warning">{JSON.stringify(changes)}</Text>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0 && (
-                    <div>
-                      <Text type="danger" strong>删除路由 ({Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条):</Text>
-                      <ul className="ml-4 mt-1">
-                        {Object.entries(dnsStatus.router_diff.routes_to_remove).map(([serverAddress, backend], index) => (
-                          <li key={index} className="text-sm">
-                            <Text code>{serverAddress}</Text> → <Text type="danger">{String(backend)}</Text>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                <div>
+                  <Text strong>路由变更:</Text>
+                  <div className="ml-4 mt-2 space-y-2">
+                    {Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 && (
+                      <div>
+                        <Text type="success" strong>新增路由 ({Object.keys(dnsStatus.router_diff.routes_to_add).length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {Object.entries(dnsStatus.router_diff.routes_to_add).map(([serverAddress, backend], index) => (
+                            <li key={index} className="text-sm">
+                              <Text code>{serverAddress}</Text> → <Text type="success">{String(backend)}</Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 && (
+                      <div>
+                        <Text type="warning" strong>更新路由 ({Object.keys(dnsStatus.router_diff.routes_to_update).length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {Object.entries(dnsStatus.router_diff.routes_to_update).map(([serverAddress, changes], index) => (
+                            <li key={index} className="text-sm">
+                              <Text code>{serverAddress}</Text> → <Text type="warning">{JSON.stringify(changes)}</Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0 && (
+                      <div>
+                        <Text type="danger" strong>删除路由 ({Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条):</Text>
+                        <ul className="ml-4 mt-1">
+                          {Object.entries(dnsStatus.router_diff.routes_to_remove).map(([serverAddress, backend], index) => (
+                            <li key={index} className="text-sm">
+                              <Text code>{serverAddress}</Text> → <Text type="danger">{String(backend)}</Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         }
         type="warning"
@@ -360,8 +360,6 @@ const DnsManagement: React.FC = () => {
           </Space>
         }
       />
-
-      <div style={{ height: '1rem' }} />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Status and differences */}
