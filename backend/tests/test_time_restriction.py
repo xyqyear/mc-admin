@@ -4,6 +4,7 @@ Simple test script to verify the backup time restriction logic.
 Run this to test different time scenarios.
 """
 
+import asyncio
 from datetime import datetime
 
 from fastapi import HTTPException
@@ -11,7 +12,7 @@ from fastapi import HTTPException
 from app.routers.snapshots import _check_backup_time_restriction
 
 
-def test_time_scenarios():
+async def test_time_scenarios():
     """Test different time scenarios"""
     test_cases = [
         # Format: (minute, second, should_be_restricted)
@@ -56,16 +57,20 @@ def test_time_scenarios():
     all_passed = True
 
     for minute, second, should_be_restricted in test_cases:
-        # Mock the current time
+        # Mock the current time and backup minutes
         import unittest.mock
 
         mock_time = datetime(2024, 1, 1, 12, minute, second)
+        # Use the original quarter-hour marks for testing: 0, 15, 30, 45
+        backup_minutes = {0, 15, 30, 45}
 
-        with unittest.mock.patch("app.routers.snapshots.datetime") as mock_datetime:
+        with unittest.mock.patch("app.routers.snapshots.datetime") as mock_datetime, \
+             unittest.mock.patch("app.routers.snapshots.restart_scheduler.get_backup_minutes") as mock_get_backup_minutes:
             mock_datetime.now.return_value = mock_time
+            mock_get_backup_minutes.return_value = backup_minutes
 
             try:
-                _check_backup_time_restriction()
+                await _check_backup_time_restriction()
                 is_restricted = False
             except HTTPException:
                 is_restricted = True
@@ -92,4 +97,4 @@ def test_time_scenarios():
 
 
 if __name__ == "__main__":
-    test_time_scenarios()
+    asyncio.run(test_time_scenarios())

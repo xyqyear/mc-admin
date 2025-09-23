@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
+from ..cron.instance import cron_manager
+from ..cron.restart_scheduler import RestartScheduler
 from ..dependencies import get_current_user
 from ..logger import logger
 from ..minecraft import DockerMCManager
@@ -27,14 +29,15 @@ router = APIRouter(
 )
 
 mc_manager = DockerMCManager(settings.server_path)
+restart_scheduler = RestartScheduler(cron_manager)
 
 
-def _check_backup_time_restriction():
+async def _check_backup_time_restriction():
     """
     Check if current time is in restricted backup periods.
 
     Raises HTTPException if current time is within 30 seconds before
-    to 1 minute after the quarter-hour marks (0, 15, 30, 45 minutes).
+    to 1 minute after the backup minutes defined by active backup cron jobs.
     """
     now = datetime.now()
     current_minute = now.minute
@@ -43,10 +46,17 @@ def _check_backup_time_restriction():
     # Convert current time to total seconds from the start of the hour
     current_total_seconds = current_minute * 60 + current_second
 
-    # Quarter-hour marks in seconds: 0min, 15min, 30min, 45min
-    quarter_hour_marks = [0, 15 * 60, 30 * 60, 45 * 60]
+    # Get backup minutes from active backup cron jobs instead of hardcoded values
+    backup_minutes = await restart_scheduler.get_backup_minutes()
 
-    for mark_seconds in quarter_hour_marks:
+    # If no backup jobs are configured, no restriction needed
+    if not backup_minutes:
+        return
+
+    # Convert minutes to seconds for comparison
+    backup_marks_seconds = [minute * 60 for minute in backup_minutes]
+
+    for mark_seconds in backup_marks_seconds:
         # Check if within restricted window:
         # From 30 seconds before to 60 seconds after the mark
         start_restriction = mark_seconds - 30
@@ -61,14 +71,14 @@ def _check_backup_time_restriction():
             ):
                 raise HTTPException(
                     status_code=400,
-                    detail="请不要在(0, 15, 30, 45)分的备份时间前后一分钟尝试创建快照。",
+                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前后一分钟尝试创建快照。",
                 )
         else:
             # Normal case: check if current time is in the restricted window
             if start_restriction <= current_total_seconds <= end_restriction:
                 raise HTTPException(
                     status_code=400,
-                    detail="请不要在(0, 15, 30, 45)分的备份时间前后一分钟尝试创建快照。",
+                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前后一分钟尝试创建快照。",
                 )
 
 
@@ -162,7 +172,7 @@ async def create_global_snapshot(
     """Create a global snapshot or snapshot of the specified server/path"""
     try:
         # Check if current time is in restricted backup periods
-        _check_backup_time_restriction()
+        await _check_backup_time_restriction()
 
         backup_path = _resolve_backup_path(request.server_id, request.path)
 
