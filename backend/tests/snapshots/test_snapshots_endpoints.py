@@ -13,7 +13,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -176,11 +176,29 @@ def mock_snapshot_dependencies_setup(
         temp_restic_repo: Path to temporary restic repository
         restic_password: Password for restic repository (None for no password)
     """
+    # Create mock dynamic config
+    mock_time_restriction = MagicMock()
+    mock_time_restriction.enabled = True
+    mock_time_restriction.before_seconds = 30
+    mock_time_restriction.after_seconds = 60
+
+    mock_snapshots_config = MagicMock()
+    mock_snapshots_config.time_restriction = mock_time_restriction
+    mock_snapshots_config.restore_safety_max_age_seconds = 60
+
+    mock_config = MagicMock()
+    mock_config.snapshots = mock_snapshots_config
+
     with (
         patch("app.routers.snapshots.mc_manager") as mock_manager,
         patch("app.routers.snapshots.settings") as mock_settings,
         patch("app.routers.servers.files.mc_manager") as mock_file_manager,
         patch("app.dependencies.settings") as mock_dep_settings,
+        patch("app.routers.snapshots.config", mock_config),
+        patch(
+            "app.routers.snapshots.restart_scheduler.get_backup_minutes",
+            return_value=set(),
+        ),  # No backup jobs by default
     ):
         # Mock settings for snapshots
         mock_settings.server_path = instance.base_path

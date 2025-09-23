@@ -660,32 +660,67 @@ class DynamicConfig(BaseModel):
 **Configuration Schema Example**:
 
 ```python
-class DNSConfig(BaseConfigSchema):
-    """DNS management configuration"""
-    enabled: bool = True
-    primary_dns: str = "8.8.8.8"
-    secondary_dns: str = "8.8.4.4"
-    timeout_seconds: int = 5
-    retry_attempts: int = 3
+# Define configuration schema in app/dynamic_config/configs/module_name.py
+class TimeRestrictionConfig(BaseConfigSchema):
+    """Time restriction configuration sub-model"""
+    enabled: Annotated[bool, Field(description="是否启用快照创建时间限制")] = True
+    before_seconds: Annotated[int, Field(description="备份时间前多少秒禁止创建快照", ge=0, le=300)] = 30
+    after_seconds: Annotated[int, Field(description="备份时间后多少秒禁止创建快照", ge=0, le=300)] = 60
 
-    @classmethod
-    def get_schema_version(cls) -> str:
-        """Automatically generated from schema"""
-        ...
+class SnapshotsConfig(BaseConfigSchema):
+    """Snapshots management configuration"""
+    time_restriction: Annotated[TimeRestrictionConfig, Field(description="快照创建时间限制配置")] = TimeRestrictionConfig()
+    restore_safety_max_age_seconds: Annotated[int, Field(description="恢复安全检查要求的最近快照最大年龄（秒）", ge=30, le=3600)] = 60
+```
 
-# Registration during application startup
-config_manager.register_config("dns", DNSConfig)
-await config_manager.initialize_all_configs()
+**Registration and Usage Pattern**:
 
-# Runtime configuration access
-dns_config = config_manager.get_config("dns")
-print(f"Primary DNS: {dns_config.primary_dns}")
+```python
+# 1. Register configuration in app/dynamic_config/__init__.py
+from .configs.snapshots import SnapshotsConfig
 
-# Configuration updates with validation
-await config_manager.update_config("dns", {
-    "primary_dns": "1.1.1.1",
-    "timeout_seconds": 10
-})
+class ConfigProxy:
+    @property
+    def snapshots(self):
+        return cast(SnapshotsConfig, self._manager.get_config("snapshots"))
+
+# Register during module initialization
+config_manager.register_config("snapshots", SnapshotsConfig)
+
+# 2. Import and use in application code
+from app.dynamic_config import config
+
+# Access configuration with full type safety
+if not config.snapshots.time_restriction.enabled:
+    return
+
+before_seconds = config.snapshots.time_restriction.before_seconds
+max_age = config.snapshots.restore_safety_max_age_seconds
+
+# Configuration updates through API endpoints (automatic validation)
+# Runtime access is read-only through config proxy
+```
+
+**Testing with Dynamic Configuration**:
+
+```python
+# Mock configuration in tests
+from unittest.mock import MagicMock
+
+mock_time_restriction = MagicMock()
+mock_time_restriction.enabled = True
+mock_time_restriction.before_seconds = 30
+mock_time_restriction.after_seconds = 60
+
+mock_snapshots_config = MagicMock()
+mock_snapshots_config.time_restriction = mock_time_restriction
+
+mock_config = MagicMock()
+mock_config.snapshots = mock_snapshots_config
+
+with patch("app.routers.snapshots.config", mock_config):
+    # Test code here
+    pass
 ```
 
 ## Download Manager System

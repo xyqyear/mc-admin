@@ -12,6 +12,7 @@ from ..config import settings
 from ..cron.instance import cron_manager
 from ..cron.restart_scheduler import RestartScheduler
 from ..dependencies import get_current_user
+from ..dynamic_config import config
 from ..logger import logger
 from ..minecraft import DockerMCManager
 from ..models import UserPublic
@@ -36,9 +37,13 @@ async def _check_backup_time_restriction():
     """
     Check if current time is in restricted backup periods.
 
-    Raises HTTPException if current time is within 30 seconds before
-    to 1 minute after the backup minutes defined by active backup cron jobs.
+    Raises HTTPException if current time is within configured seconds before/after
+    the backup minutes defined by active backup cron jobs.
     """
+    # Check if time restriction is enabled
+    if not config.snapshots.time_restriction.enabled:
+        return
+
     now = datetime.now()
     current_minute = now.minute
     current_second = now.second
@@ -46,39 +51,43 @@ async def _check_backup_time_restriction():
     # Convert current time to total seconds from the start of the hour
     current_total_seconds = current_minute * 60 + current_second
 
-    # Get backup minutes from active backup cron jobs instead of hardcoded values
+    # Get backup minutes from active backup cron jobs
     backup_minutes = await restart_scheduler.get_backup_minutes()
 
     # If no backup jobs are configured, no restriction needed
     if not backup_minutes:
         return
 
+    # Get configured restriction window
+    before_seconds = config.snapshots.time_restriction.before_seconds
+    after_seconds = config.snapshots.time_restriction.after_seconds
+
     # Convert minutes to seconds for comparison
     backup_marks_seconds = [minute * 60 for minute in backup_minutes]
 
     for mark_seconds in backup_marks_seconds:
         # Check if within restricted window:
-        # From 30 seconds before to 60 seconds after the mark
-        start_restriction = mark_seconds - 30
-        end_restriction = mark_seconds + 60
+        # From configured seconds before to configured seconds after the mark
+        start_restriction = mark_seconds - before_seconds
+        end_restriction = mark_seconds + after_seconds
 
         # Handle wrap-around for the 0-minute mark (going back to previous hour)
         if start_restriction < 0:
-            # Check if in the wrap-around period (last 30 seconds of previous hour)
+            # Check if in the wrap-around period (last X seconds of previous hour)
             if (
                 current_total_seconds >= (3600 + start_restriction)
                 or current_total_seconds <= end_restriction
             ):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前后一分钟尝试创建快照。",
+                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前{before_seconds}秒到后{after_seconds}秒尝试创建快照。",
                 )
         else:
             # Normal case: check if current time is in the restricted window
             if start_restriction <= current_total_seconds <= end_restriction:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前后一分钟尝试创建快照。",
+                    detail=f"请不要在备份时间({sorted(backup_minutes)})分的前{before_seconds}秒到后{after_seconds}秒尝试创建快照。",
                 )
 
 
@@ -288,13 +297,14 @@ async def restore_global_snapshot(
 
         # Conditional safety check: Only perform if skip_safety_check is False
         if not request.skip_safety_check:
-            # Safety check: Ensure there's a recent snapshot (within 1 minute)
+            # Safety check: Ensure there's a recent snapshot (within configured time)
+            max_age_seconds = config.snapshots.restore_safety_max_age_seconds
             has_recent = await restic_manager.has_recent_snapshot(
-                target_path=target_path, max_age_seconds=60
+                target_path=target_path, max_age_seconds=max_age_seconds
             )
 
             if not has_recent:
-                error_msg = "No recent snapshot found. Create a snapshot within 1 minute before restoring to prevent data loss."
+                error_msg = f"No recent snapshot found. Create a snapshot within {max_age_seconds} seconds before restoring to prevent data loss."
                 logger.warning(
                     f"Restore blocked due to safety check: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})"
                 )
