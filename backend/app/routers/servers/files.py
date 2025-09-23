@@ -282,14 +282,18 @@ async def check_multi_file_upload(
             )
 
         base_path = instance.get_data_path()
-        conflict_response = await check_upload_conflicts(base_path, path, upload_request)
+        conflict_response = await check_upload_conflicts(
+            base_path, path, upload_request
+        )
 
         return conflict_response
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to check upload conflicts: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to check upload conflicts: {str(e)}"
+        )
 
 
 @router.post("/{server_id}/files/upload/policy")
@@ -317,7 +321,9 @@ async def set_multi_file_upload_policy(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to set upload policy: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set upload policy: {str(e)}"
+        )
 
 
 @router.post("/{server_id}/files/upload/multiple")
@@ -346,4 +352,6 @@ async def upload_multiple_files_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload multiple files: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload multiple files: {str(e)}"
+        )

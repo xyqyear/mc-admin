@@ -154,7 +154,9 @@ class TestPathConflictHandling:
             ],
         )
 
-        response = await check_upload_conflicts(base_path, "/plugins/mods", upload_request)
+        response = await check_upload_conflicts(
+            base_path, "/plugins/mods", upload_request
+        )
 
         assert len(response.conflicts) == 1
         # Path should be relative to upload path (/plugins/mods), not base path

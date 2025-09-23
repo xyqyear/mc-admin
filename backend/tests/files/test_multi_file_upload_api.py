@@ -39,7 +39,9 @@ class TestMultiFileUploadAPI:
         """Test server ID."""
         return "test_server"
 
-    def test_check_multi_file_upload_success(self, test_client, mock_auth_headers, server_id, temp_dir):
+    def test_check_multi_file_upload_success(
+        self, test_client, mock_auth_headers, server_id, temp_dir
+    ):
         """Test successful conflict checking."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -56,20 +58,19 @@ class TestMultiFileUploadAPI:
                             "path": "config.properties",
                             "name": "config.properties",
                             "type": "file",
-                            "size": 100
+                            "size": 100,
                         },
-                        {
-                            "path": "plugins",
-                            "name": "plugins",
-                            "type": "directory"
-                        }
+                        {"path": "plugins", "name": "plugins", "type": "directory"},
                     ]
                 }
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 200
@@ -78,7 +79,9 @@ class TestMultiFileUploadAPI:
                 assert "conflicts" in data
                 assert isinstance(data["conflicts"], list)
 
-    def test_check_multi_file_upload_server_not_found(self, test_client, mock_auth_headers, server_id):
+    def test_check_multi_file_upload_server_not_found(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test conflict checking with non-existent server."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -93,7 +96,7 @@ class TestMultiFileUploadAPI:
                             "path": "test.txt",
                             "name": "test.txt",
                             "type": "file",
-                            "size": 100
+                            "size": 100,
                         }
                     ]
                 }
@@ -101,13 +104,18 @@ class TestMultiFileUploadAPI:
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 404
                 assert "not found" in response.json()["detail"]
 
-    def test_set_multi_file_upload_policy_success(self, test_client, mock_auth_headers, server_id, temp_dir):
+    def test_set_multi_file_upload_policy_success(
+        self, test_client, mock_auth_headers, server_id, temp_dir
+    ):
         """Test successful policy setting."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -124,7 +132,7 @@ class TestMultiFileUploadAPI:
                             "path": "config.properties",
                             "name": "config.properties",
                             "type": "file",
-                            "size": 100
+                            "size": 100,
                         }
                     ]
                 }
@@ -132,27 +140,33 @@ class TestMultiFileUploadAPI:
                 check_response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 session_id = check_response.json()["session_id"]
 
                 # Set policy
-                policy_data = {
-                    "mode": "always_overwrite"
-                }
+                policy_data = {"mode": "always_overwrite"}
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/policy",
                     json=policy_data,
                     params={"session_id": session_id},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 200
                 assert "successfully" in response.json()["message"]
 
-    def test_set_multi_file_upload_policy_invalid_session(self, test_client, mock_auth_headers, server_id):
+    def test_set_multi_file_upload_policy_invalid_session(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test setting policy with invalid session."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -161,21 +175,24 @@ class TestMultiFileUploadAPI:
                 mock_instance.exists = AsyncMock(return_value=True)
                 mock_manager.get_instance.return_value = mock_instance
 
-                policy_data = {
-                    "mode": "always_overwrite"
-                }
+                policy_data = {"mode": "always_overwrite"}
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/policy",
                     json=policy_data,
                     params={"session_id": "invalid_session"},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 404
                 assert "session not found" in response.json()["detail"]
 
-    def test_upload_multiple_files_success(self, test_client, mock_auth_headers, server_id, temp_dir):
+    def test_upload_multiple_files_success(
+        self, test_client, mock_auth_headers, server_id, temp_dir
+    ):
         """Test successful multi-file upload."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -192,48 +209,55 @@ class TestMultiFileUploadAPI:
                             "path": "test1.txt",
                             "name": "test1.txt",
                             "type": "file",
-                            "size": 100
+                            "size": 100,
                         },
                         {
                             "path": "test2.txt",
                             "name": "test2.txt",
                             "type": "file",
-                            "size": 200
-                        }
+                            "size": 200,
+                        },
                     ]
                 }
 
                 check_response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 session_id = check_response.json()["session_id"]
 
                 # Set policy
-                policy_data = {
-                    "mode": "always_overwrite"
-                }
+                policy_data = {"mode": "always_overwrite"}
 
                 test_client.post(
                     f"/api/servers/{server_id}/files/upload/policy",
                     json=policy_data,
                     params={"session_id": session_id},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 # Upload files
                 files = [
                     ("files", ("test1.txt", b"content1", "text/plain")),
-                    ("files", ("test2.txt", b"content2", "text/plain"))
+                    ("files", ("test2.txt", b"content2", "text/plain")),
                 ]
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/multiple",
                     files=files,
                     params={"session_id": session_id, "path": "/"},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 200
@@ -241,7 +265,9 @@ class TestMultiFileUploadAPI:
                 assert "Upload completed" in data["message"]
                 assert "results" in data
 
-    def test_upload_multiple_files_invalid_session(self, test_client, mock_auth_headers, server_id):
+    def test_upload_multiple_files_invalid_session(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test uploading with invalid session."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -250,21 +276,24 @@ class TestMultiFileUploadAPI:
                 mock_instance.exists = AsyncMock(return_value=True)
                 mock_manager.get_instance.return_value = mock_instance
 
-                files = [
-                    ("files", ("test.txt", b"content", "text/plain"))
-                ]
+                files = [("files", ("test.txt", b"content", "text/plain"))]
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/multiple",
                     files=files,
                     params={"session_id": "invalid_session", "path": "/"},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 404
                 assert "session not found" in response.json()["detail"]
 
-    def test_upload_multiple_files_server_not_found(self, test_client, mock_auth_headers, server_id):
+    def test_upload_multiple_files_server_not_found(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test uploading to non-existent server."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -273,21 +302,24 @@ class TestMultiFileUploadAPI:
                 mock_instance.exists = AsyncMock(return_value=False)
                 mock_manager.get_instance.return_value = mock_instance
 
-                files = [
-                    ("files", ("test.txt", b"content", "text/plain"))
-                ]
+                files = [("files", ("test.txt", b"content", "text/plain"))]
 
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/multiple",
                     files=files,
                     params={"session_id": "dummy_session", "path": "/"},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 404
                 assert "not found" in response.json()["detail"]
 
-    def test_request_validation_invalid_file_type(self, test_client, mock_auth_headers, server_id):
+    def test_request_validation_invalid_file_type(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test request validation with invalid file type."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -303,7 +335,7 @@ class TestMultiFileUploadAPI:
                             "path": "test.txt",
                             "name": "test.txt",
                             "type": "invalid_type",  # Invalid type
-                            "size": 100
+                            "size": 100,
                         }
                     ]
                 }
@@ -311,12 +343,17 @@ class TestMultiFileUploadAPI:
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 422  # Validation error
 
-    def test_request_validation_missing_fields(self, test_client, mock_auth_headers, server_id):
+    def test_request_validation_missing_fields(
+        self, test_client, mock_auth_headers, server_id
+    ):
         """Test request validation with missing required fields."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -331,7 +368,7 @@ class TestMultiFileUploadAPI:
                         {
                             "path": "test.txt",
                             # Missing name and type
-                            "size": 100
+                            "size": 100,
                         }
                     ]
                 }
@@ -339,12 +376,17 @@ class TestMultiFileUploadAPI:
                 response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 422  # Validation error
 
-    def test_policy_validation_per_file_without_decisions(self, test_client, mock_auth_headers, server_id, temp_dir):
+    def test_policy_validation_per_file_without_decisions(
+        self, test_client, mock_auth_headers, server_id, temp_dir
+    ):
         """Test policy validation for per_file mode without decisions."""
         with patch("app.config.settings.master_token", "test_master_token"):
             with patch("app.routers.servers.files.mc_manager") as mock_manager:
@@ -365,7 +407,7 @@ class TestMultiFileUploadAPI:
                             "path": "existing.txt",
                             "name": "existing.txt",
                             "type": "file",
-                            "size": 100
+                            "size": 100,
                         }
                     ]
                 }
@@ -373,7 +415,10 @@ class TestMultiFileUploadAPI:
                 check_response = test_client.post(
                     f"/api/servers/{server_id}/files/upload/check?path=/",
                     json=request_data,
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 session_id = check_response.json()["session_id"]
@@ -388,7 +433,10 @@ class TestMultiFileUploadAPI:
                     f"/api/servers/{server_id}/files/upload/policy",
                     json=policy_data,
                     params={"session_id": session_id},
-                    headers={**mock_auth_headers, "Authorization": "Bearer test_master_token"}
+                    headers={
+                        **mock_auth_headers,
+                        "Authorization": "Bearer test_master_token",
+                    },
                 )
 
                 assert response.status_code == 400

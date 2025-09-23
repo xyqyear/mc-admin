@@ -49,6 +49,7 @@ class RenameFileRequest(BaseModel):
 # Multi-file upload models
 class FileStructureItem(BaseModel):
     """Represents a file or directory in the upload structure"""
+
     path: str  # Relative path within the upload structure
     name: str  # File or directory name
     type: Literal["file", "directory"]
@@ -57,11 +58,13 @@ class FileStructureItem(BaseModel):
 
 class MultiFileUploadRequest(BaseModel):
     """Request to check file structure before upload"""
+
     files: List[FileStructureItem]  # Files and directories to upload
 
 
 class OverwriteConflict(BaseModel):
     """Information about a file that would be overwritten"""
+
     path: str  # Full path on server
     type: Literal["file", "directory"]
     current_size: Optional[int] = None  # Current file size if it's a file
@@ -70,24 +73,30 @@ class OverwriteConflict(BaseModel):
 
 class UploadConflictResponse(BaseModel):
     """Response with overwrite conflicts"""
+
     session_id: str  # Unique session ID for this upload
     conflicts: List[OverwriteConflict]  # Files that would be overwritten
 
 
 class OverwriteDecision(BaseModel):
     """Overwrite decision for a specific file"""
+
     path: str
     overwrite: bool
 
 
 class OverwritePolicy(BaseModel):
     """Policy for handling overwrite conflicts"""
+
     mode: Literal["always_overwrite", "never_overwrite", "per_file"]
-    decisions: Optional[List[OverwriteDecision]] = None  # Required when mode is "per_file"
+    decisions: Optional[List[OverwriteDecision]] = (
+        None  # Required when mode is "per_file"
+    )
 
 
 class UploadSession(BaseModel):
     """Upload session data stored in memory"""
+
     session_id: str
     conflicts: List[OverwriteConflict]
     policy: Optional[OverwritePolicy] = None
@@ -99,12 +108,16 @@ class UploadSession(BaseModel):
 # Upload result models
 class UploadFileResult(BaseModel):
     """Result for individual file upload"""
+
     status: Literal["success", "failed", "skipped"]
-    reason: Optional[str] = None  # Error message for failed, reason for skipped ("exists", "no_decision")
+    reason: Optional[str] = (
+        None  # Error message for failed, reason for skipped ("exists", "no_decision")
+    )
 
 
 class MultiFileUploadResult(BaseModel):
     """Results for multi-file upload operation"""
+
     message: str
     results: Dict[str, UploadFileResult]  # Key is file path, value is result
 
@@ -118,7 +131,8 @@ def _cleanup_expired_sessions():
     """Remove expired upload sessions"""
     current_time = time.time()
     expired_sessions = [
-        session_id for session_id, session in _upload_sessions.items()
+        session_id
+        for session_id, session in _upload_sessions.items()
         if session.expires_at < current_time
     ]
     for session_id in expired_sessions:
@@ -378,12 +392,14 @@ async def check_upload_conflicts(
                 # This will match the file_relative_path used in upload_multiple_files
                 relative_conflict_path = file_item.path.lstrip("/")
 
-                conflicts.append(OverwriteConflict(
-                    path=relative_conflict_path,
-                    type="file",
-                    current_size=current_size,
-                    new_size=file_item.size
-                ))
+                conflicts.append(
+                    OverwriteConflict(
+                        path=relative_conflict_path,
+                        type="file",
+                        current_size=current_size,
+                        new_size=file_item.size,
+                    )
+                )
 
     # Create upload session
     session_id = _create_session_id()
@@ -393,30 +409,33 @@ async def check_upload_conflicts(
         session_id=session_id,
         conflicts=conflicts,
         expires_at=current_time + _SESSION_TIMEOUT,
-        created_at=current_time
+        created_at=current_time,
     )
 
     _upload_sessions[session_id] = session
 
-    return UploadConflictResponse(
-        session_id=session_id,
-        conflicts=conflicts
-    )
+    return UploadConflictResponse(session_id=session_id, conflicts=conflicts)
 
 
-async def set_upload_policy(session_id: str, policy: OverwritePolicy, reusable: bool = False) -> None:
+async def set_upload_policy(
+    session_id: str, policy: OverwritePolicy, reusable: bool = False
+) -> None:
     """Set the overwrite policy for an upload session"""
     _cleanup_expired_sessions()
 
     if session_id not in _upload_sessions:
-        raise HTTPException(status_code=404, detail="Upload session not found or expired")
+        raise HTTPException(
+            status_code=404, detail="Upload session not found or expired"
+        )
 
     session = _upload_sessions[session_id]
 
     # Validate per-file decisions if required
     if policy.mode == "per_file":
         if not policy.decisions:
-            raise HTTPException(status_code=400, detail="Decisions required for per_file mode")
+            raise HTTPException(
+                status_code=400, detail="Decisions required for per_file mode"
+            )
 
         conflict_paths = {conflict.path for conflict in session.conflicts}
         decision_paths = {decision.path for decision in policy.decisions}
@@ -424,7 +443,7 @@ async def set_upload_policy(session_id: str, policy: OverwritePolicy, reusable: 
         if conflict_paths != decision_paths:
             raise HTTPException(
                 status_code=400,
-                detail="Decisions must be provided for all conflicting files"
+                detail="Decisions must be provided for all conflicting files",
             )
 
     session.policy = policy
@@ -433,16 +452,15 @@ async def set_upload_policy(session_id: str, policy: OverwritePolicy, reusable: 
 
 
 async def upload_multiple_files(
-    base_path: Path,
-    session_id: str,
-    upload_path: str,
-    files: List[UploadFile]
+    base_path: Path, session_id: str, upload_path: str, files: List[UploadFile]
 ) -> MultiFileUploadResult:
     """Upload multiple files using the prepared session"""
     _cleanup_expired_sessions()
 
     if session_id not in _upload_sessions:
-        raise HTTPException(status_code=404, detail="Upload session not found or expired")
+        raise HTTPException(
+            status_code=404, detail="Upload session not found or expired"
+        )
 
     session = _upload_sessions[session_id]
 
@@ -504,8 +522,7 @@ async def upload_multiple_files(
                 if file_relative_path in overwrite_decisions:
                     if not overwrite_decisions[file_relative_path]:
                         results[result_key] = UploadFileResult(
-                            status="skipped",
-                            reason="exists"
+                            status="skipped", reason="exists"
                         )
                         continue
                 elif policy:
@@ -513,14 +530,12 @@ async def upload_multiple_files(
                         pass  # Overwrite
                     elif policy.mode == "never_overwrite":
                         results[result_key] = UploadFileResult(
-                            status="skipped",
-                            reason="exists"
+                            status="skipped", reason="exists"
                         )
                         continue
                     else:
                         results[result_key] = UploadFileResult(
-                            status="skipped",
-                            reason="no_decision"
+                            status="skipped", reason="no_decision"
                         )
                         continue
 
@@ -539,16 +554,12 @@ async def upload_multiple_files(
                     except (OSError, PermissionError):
                         pass
 
-                results[result_key] = UploadFileResult(
-                    status="success"
-                )
+                results[result_key] = UploadFileResult(status="success")
 
             except Exception as file_error:
                 results[result_key] = UploadFileResult(
-                    status="failed",
-                    reason=str(file_error)
+                    status="failed", reason=str(file_error)
                 )
-
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
@@ -559,7 +570,7 @@ async def upload_multiple_files(
 
     return MultiFileUploadResult(
         message=f"Upload completed. Success: {success_count}/{total_count}",
-        results=results
+        results=results,
     )
 
 
