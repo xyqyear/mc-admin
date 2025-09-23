@@ -6,6 +6,50 @@ import type {
 } from "@/types/Server";
 import { api } from "@/utils/api";
 
+// Multi-file upload types
+export interface FileStructureItem {
+  path: string;
+  name: string;
+  type: "file" | "directory";
+  size?: number;
+}
+
+export interface MultiFileUploadRequest {
+  files: FileStructureItem[];
+}
+
+export interface OverwriteConflict {
+  path: string;
+  type: "file" | "directory";
+  current_size?: number;
+  new_size?: number;
+}
+
+export interface UploadConflictResponse {
+  session_id: string;
+  conflicts: OverwriteConflict[];
+}
+
+export interface OverwriteDecision {
+  path: string;
+  overwrite: boolean;
+}
+
+export interface OverwritePolicy {
+  mode: "always_overwrite" | "never_overwrite" | "per_file";
+  decisions?: OverwriteDecision[];
+}
+
+export interface UploadFileResult {
+  status: "success" | "failed" | "skipped";
+  reason?: string; // Error message for failed, reason for skipped ("exists", "no_decision")
+}
+
+export interface MultiFileUploadResult {
+  message: string;
+  results: Record<string, UploadFileResult>; // Key is file path, value is result
+}
+
 export const fileApi = {
   // List files and directories
   listFiles: async (
@@ -135,5 +179,144 @@ export const fileApi = {
       renameRequest
     );
     return response.data;
+  },
+
+  // Multi-file upload: Check for conflicts
+  checkUploadConflicts: async (
+    serverId: string,
+    path: string,
+    uploadRequest: MultiFileUploadRequest
+  ): Promise<UploadConflictResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/check`,
+      uploadRequest,
+      { params: { path } }
+    );
+    return response.data;
+  },
+
+  // Multi-file upload: Set overwrite policy
+  setUploadPolicy: async (
+    serverId: string,
+    sessionId: string,
+    policy: OverwritePolicy,
+    reusable: boolean = false
+  ): Promise<{ message: string }> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/policy`,
+      policy,
+      { params: { session_id: sessionId, reusable } }
+    );
+    return response.data;
+  },
+
+  // Multi-file upload: Upload multiple files with chunking for large file sets
+  uploadMultipleFiles: async (
+    serverId: string,
+    sessionId: string,
+    path: string,
+    files: File[],
+    onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
+    abortSignal?: AbortSignal
+  ): Promise<MultiFileUploadResult> => {
+    const CHUNK_SIZE = 1000; // Maximum files per request
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    let totalLoaded = 0;
+
+    // Initialize combined results
+    const combinedResults: MultiFileUploadResult = {
+      message: "Files uploaded successfully",
+      results: {}
+    };
+
+    // If files count is within limit, upload directly
+    if (files.length <= CHUNK_SIZE) {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append("files", file);
+      });
+
+      const response = await api.post(
+        `/servers/${serverId}/files/upload/multiple`,
+        formData,
+        {
+          params: { session_id: sessionId, path },
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 1800000, // 30 minutes timeout for uploads
+          signal: abortSignal,
+          onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onProgress({
+                loaded: progressEvent.loaded,
+                total: progressEvent.total,
+                percent,
+              });
+            }
+          },
+        }
+      );
+      return response.data;
+    }
+
+    // Split files into chunks for large file sets
+    const chunks: File[][] = [];
+    for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+      chunks.push(files.slice(i, i + CHUNK_SIZE));
+    }
+
+    // Upload each chunk sequentially
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      const chunkSize = chunk.reduce((sum, file) => sum + file.size, 0);
+
+      const formData = new FormData();
+      chunk.forEach(file => {
+        formData.append("files", file);
+      });
+
+      const chunkResponse = await api.post(
+        `/servers/${serverId}/files/upload/multiple`,
+        formData,
+        {
+          params: { session_id: sessionId, path },
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 1800000, // 30 minutes timeout for uploads
+          signal: abortSignal,
+          onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+              // 当前chunk的上传进度
+              const chunkProgress = progressEvent.loaded / progressEvent.total;
+              // 当前chunk在总体中的比例
+              const chunkRatio = chunkSize / totalSize;
+              // 之前chunks已完成的比例
+              const previousProgress = totalLoaded / totalSize;
+              // 全局进度 = 之前完成的 + 当前chunk进度 * 当前chunk占比
+              const globalProgress = previousProgress + (chunkProgress * chunkRatio);
+              const globalLoaded = Math.round(globalProgress * totalSize);
+              const percent = Math.round(globalProgress * 100);
+
+              onProgress({
+                loaded: globalLoaded,
+                total: totalSize,
+                percent,
+              });
+            }
+          },
+        }
+      );
+
+      // Merge results from this chunk
+      Object.assign(combinedResults.results, chunkResponse.data.results);
+
+      // Update total loaded for next chunk
+      totalLoaded += chunkSize;
+    }
+
+    return combinedResults;
   },
 };

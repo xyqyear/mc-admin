@@ -3,6 +3,11 @@ import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
 import { fileApi } from "@/hooks/api/fileApi";
+import type {
+  MultiFileUploadRequest,
+  OverwritePolicy,
+  MultiFileUploadResult
+} from "@/hooks/api/fileApi";
 import { useDownloadManager } from "@/utils/downloadUtils";
 
 export const useFileMutations = (serverId: string | undefined) => {
@@ -82,6 +87,33 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
+  // 批量删除文件或目录
+  const useBulkDeleteFiles = () => {
+    return useMutation({
+      mutationFn: async (paths: string[]) => {
+        const results = await Promise.allSettled(
+          paths.map(path => fileApi.deleteFileOrDirectory(serverId!, path))
+        );
+
+        const successful = results.filter(result => result.status === 'fulfilled').length;
+        const failed = results.filter(result => result.status === 'rejected').length;
+
+        return { successful, failed, total: paths.length };
+      },
+      onSuccess: (result) => {
+        if (result.failed === 0) {
+          message.success(`成功删除 ${result.successful} 个文件`);
+        } else {
+          message.warning(`删除完成：成功 ${result.successful} 个，失败 ${result.failed} 个`);
+        }
+        invalidateFileList();
+      },
+      onError: (error: any) => {
+        message.error(error.response?.data?.detail || "批量删除失败");
+      },
+    });
+  };
+
   // 重命名文件或目录
   const useRenameFile = () => {
     return useMutation({
@@ -93,6 +125,59 @@ export const useFileMutations = (serverId: string | undefined) => {
       },
       onError: (error: any) => {
         message.error(error.response?.data?.detail || "重命名失败");
+      },
+    });
+  };
+
+  // 多文件上传: 检查冲突
+  const useCheckUploadConflicts = () => {
+    return useMutation({
+      mutationFn: ({ path, uploadRequest }: { path: string; uploadRequest: MultiFileUploadRequest }) =>
+        fileApi.checkUploadConflicts(serverId!, path, uploadRequest),
+      onError: (error: any) => {
+        message.error(error.response?.data?.detail || "检查冲突失败");
+      },
+    });
+  };
+
+  // 多文件上传: 设置覆盖策略
+  const useSetUploadPolicy = () => {
+    return useMutation({
+      mutationFn: ({ sessionId, policy, reusable }: { sessionId: string; policy: OverwritePolicy; reusable?: boolean }) =>
+        fileApi.setUploadPolicy(serverId!, sessionId, policy, reusable),
+      onError: (error: any) => {
+        message.error(error.response?.data?.detail || "设置覆盖策略失败");
+      },
+    });
+  };
+
+  // 多文件上传: 执行上传
+  const useUploadMultipleFiles = () => {
+    return useMutation({
+      mutationFn: ({
+        sessionId,
+        path,
+        files,
+        onProgress,
+        abortSignal
+      }: {
+        sessionId: string;
+        path: string;
+        files: File[];
+        onProgress?: (progress: { loaded: number; total: number; percent: number }) => void;
+        abortSignal?: AbortSignal;
+      }) =>
+        fileApi.uploadMultipleFiles(serverId!, sessionId, path, files, onProgress, abortSignal),
+      onSuccess: (result: MultiFileUploadResult) => {
+        const successCount = Object.values(result.results).filter(r =>
+          r.status === 'success'
+        ).length;
+        const totalCount = Object.keys(result.results).length;
+        message.success(`上传完成！成功: ${successCount}/${totalCount}`);
+        invalidateFileList();
+      },
+      onError: (error: any) => {
+        message.error(error.response?.data?.detail || "上传失败");
       },
     });
   };
@@ -115,7 +200,11 @@ export const useFileMutations = (serverId: string | undefined) => {
     useUploadFile,
     useCreateFile,
     useDeleteFile,
+    useBulkDeleteFiles,
     useRenameFile,
+    useCheckUploadConflicts,
+    useSetUploadPolicy,
+    useUploadMultipleFiles,
     downloadFile,
   };
 };

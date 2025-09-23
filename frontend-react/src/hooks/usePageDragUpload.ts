@@ -5,15 +5,65 @@ interface UsePageDragUploadOptions {
   onError?: (message: string) => void
   accept?: string
   multiple?: boolean
+  allowDirectories?: boolean
 }
 
 export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
-  const { onFileDrop, onError, accept, multiple = true } = options
+  const { onFileDrop, onError, accept, multiple = true, allowDirectories = false } = options
   const [isDragging, setIsDragging] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
   const dragCounterRef = useRef(0)
 
   useEffect(() => {
-    const handleDragEnter = (e: DragEvent) => {
+    // 递归获取文件夹中的所有文件
+    const getAllFilesFromDirectory = async (item: any): Promise<File[]> => {
+      const files: File[] = []
+
+      if (item.isFile) {
+        return new Promise((resolve) => {
+          item.file((originalFile: File) => {
+            // 获取相对路径（移除前导斜杠）
+            const relativePath = item.fullPath.substring(1)
+
+            // 创建新的 File 对象，将 name 设置为完整路径
+            const fileWithPath = new File([originalFile], relativePath, {
+              type: originalFile.type,
+              lastModified: originalFile.lastModified
+            })
+
+            resolve([fileWithPath])
+          })
+        })
+      } else if (item.isDirectory) {
+        const dirReader = item.createReader()
+        return new Promise((resolve) => {
+          const readEntries = async () => {
+            const entries = await new Promise<any[]>((resolve) => {
+              dirReader.readEntries(resolve)
+            })
+
+            if (entries.length === 0) {
+              resolve(files)
+              return
+            }
+
+            for (const entry of entries) {
+              const entryFiles = await getAllFilesFromDirectory(entry)
+              files.push(...entryFiles)
+            }
+
+            // 继续读取更多条目（Chrome限制每次只能读取100个）
+            await readEntries()
+          }
+
+          readEntries().then(() => resolve(files))
+        })
+      }
+
+      return files
+    }
+    const handleDragEnter = (evt: Event) => {
+      const e = evt as DragEvent
       e.preventDefault()
       e.stopPropagation()
 
@@ -29,7 +79,8 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       }
     }
 
-    const handleDragLeave = (e: DragEvent) => {
+    const handleDragLeave = (evt: Event) => {
+      const e = evt as DragEvent
       e.preventDefault()
       e.stopPropagation()
 
@@ -40,34 +91,77 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       }
     }
 
-    const handleDragOver = (e: DragEvent) => {
+    const handleDragOver = (evt: Event) => {
+      const e = evt as DragEvent
       e.preventDefault()
       e.stopPropagation()
     }
 
-    const handleDrop = (e: DragEvent) => {
+    const handleDrop = async (evt: Event) => {
+      const e = evt as DragEvent
       e.preventDefault()
       e.stopPropagation()
 
       setIsDragging(false)
       dragCounterRef.current = 0
 
-      const files = Array.from(e.dataTransfer?.files || [])
+      let allFiles: File[] = []
 
-      if (files.length === 0) return
+      // 处理拖拽的项目（支持文件夹和文件的混合）
+      if (e.dataTransfer?.items && allowDirectories) {
+        setIsScanning(true)
 
-      // 检查是否包含文件夹
-      const hasDirectories = files.some(file => file.size === 0 && file.type === '')
-      if (hasDirectories && onError) {
-        onError('仅支持上传文件，不支持文件夹')
-        return
+        try {
+          const items = e.dataTransfer.items;
+
+          // 使用 Promise.all 并行处理所有项目
+          const filePromises: Promise<File[]>[] = []
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            const entry = item.webkitGetAsEntry();
+            if (entry) {
+              // 将每个项目的处理添加到 Promise 数组
+              filePromises.push(getAllFilesFromDirectory(entry))
+            }
+          }
+
+          // 等待所有项目处理完成
+          const fileArrays = await Promise.all(filePromises)
+
+          // 合并所有文件
+          fileArrays.forEach(files => {
+            allFiles.push(...files)
+          })
+        } finally {
+          setIsScanning(false)
+        }
+
+      } else {
+        // 传统文件处理（不支持文件夹时）
+        const files = Array.from(e.dataTransfer?.files || [])
+
+        if (files.length === 0) return
+
+        // 检查是否包含文件夹（只在不允许文件夹时检查）
+        if (!allowDirectories) {
+          const hasDirectories = files.some(file => file.size === 0 && file.type === '')
+          if (hasDirectories && onError) {
+            onError('仅支持上传文件，不支持文件夹')
+            return
+          }
+        }
+
+        allFiles = files
       }
 
+      if (allFiles.length === 0) return
+
       // 过滤文件类型
-      let validFiles = files
+      let validFiles = allFiles
       if (accept) {
         const acceptedTypes = accept.split(',').map(type => type.trim())
-        validFiles = files.filter(file => {
+        validFiles = allFiles.filter(file => {
           return acceptedTypes.some(acceptedType => {
             if (acceptedType.startsWith('.')) {
               // 扩展名匹配
@@ -85,7 +179,7 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
         })
 
         // 如果有不支持的文件格式
-        if (validFiles.length < files.length && onError) {
+        if (validFiles.length < allFiles.length && onError) {
           if (accept === '.zip,.7z') {
             onError('仅支持7z或zip格式的压缩文件')
             return
@@ -106,7 +200,7 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       }
     }
 
-    // 绑定到整个页面
+    // 绑定到document
     document.addEventListener('dragenter', handleDragEnter)
     document.addEventListener('dragleave', handleDragLeave)
     document.addEventListener('dragover', handleDragOver)
@@ -118,9 +212,10 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       document.removeEventListener('dragover', handleDragOver)
       document.removeEventListener('drop', handleDrop)
     }
-  }, [onFileDrop, accept, multiple, onError])
+  }, [onFileDrop, accept, multiple, allowDirectories, onError])
 
   return {
-    isDragging
+    isDragging,
+    isScanning
   }
 }

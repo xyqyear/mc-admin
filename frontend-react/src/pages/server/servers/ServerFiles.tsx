@@ -12,8 +12,9 @@ import {
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
+import DragDropOverlay from '@/components/server/DragDropOverlay'
 import {
-  UploadModal,
+  MultiFileUploadModal,
   CreateModal,
   RenameModal,
   FileEditModal,
@@ -31,7 +32,6 @@ import { usePageDragUpload } from '@/hooks/usePageDragUpload'
 import FileTable from '@/components/server/FileTable'
 import FileToolbar from '@/components/server/FileToolbar'
 import FileBreadcrumb from '@/components/server/FileBreadcrumb'
-import DragDropOverlay from '@/components/server/DragDropOverlay'
 import type { FileItem } from '@/types/Server'
 
 const ServerFiles: React.FC = () => {
@@ -54,18 +54,18 @@ const ServerFiles: React.FC = () => {
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
   const {
     useUpdateFile,
-    useUploadFile,
     useCreateFile,
     useDeleteFile,
+    useBulkDeleteFiles,
     useRenameFile,
     downloadFile
   } = useFileMutations(id)
 
   // Initialize mutation hooks
   const updateFileMutation = useUpdateFile()
-  const uploadFileMutation = useUploadFile()
   const createFileMutation = useCreateFile()
   const deleteFileMutation = useDeleteFile()
+  const bulkDeleteMutation = useBulkDeleteFiles()
   const renameFileMutation = useRenameFile()
 
   // Server mutation for populate
@@ -80,16 +80,18 @@ const ServerFiles: React.FC = () => {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
   const [isEditModalVisible, setIsEditModalVisible] = useState(false)
-  const [isUploadModalVisible, setIsUploadModalVisible] = useState(false)
+  const [isMultiFileUploadModalVisible, setIsMultiFileUploadModalVisible] = useState(false)
   const [isRenameModalVisible, setIsRenameModalVisible] = useState(false)
   const [editingFile, setEditingFile] = useState<FileItem | null>(null)
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
   const [fileContent, setFileContent] = useState('')
-  const [uploadFileList, setUploadFileList] = useState<any[]>([])
+  const [selectedUploadFiles, setSelectedUploadFiles] = useState<File[]>([])
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
   const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
   const [originalFileContent, setOriginalFileContent] = useState('')
+
+
 
   // Replace server files state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
@@ -102,22 +104,20 @@ const ServerFiles: React.FC = () => {
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
 
   // Page drag upload
-  const { isDragging } = usePageDragUpload({
+  const { isDragging, isScanning } = usePageDragUpload({
     onFileDrop: (files) => {
-      // 转换为上传文件列表格式
-      const fileList = files.map((file, index) => ({
-        uid: `${Date.now()}-${index}`,
-        name: file.name,
-        status: 'done' as const,
-        originFileObj: file,
-      }))
-      setUploadFileList(fileList)
-      setIsUploadModalVisible(true)
+      console.log(`ServerFiles 接收到 ${files.length} 个文件:`)
+      files.forEach((file, index) => {
+        console.log(`  ${index + 1}. ${file.name} (${file.size} bytes) webkitRelativePath: ${(file as any).webkitRelativePath || 'none'}`)
+      })
+      setSelectedUploadFiles(files)
+      setIsMultiFileUploadModalVisible(true)
       message.info(`已选择 ${files.length} 个文件，请确认上传`)
     },
     onError: (errorMessage) => {
       message.error(errorMessage)
-    }
+    },
+    allowDirectories: true  // 启用文件夹拖拽支持
   })
 
   // Get file content for editing
@@ -266,23 +266,17 @@ const ServerFiles: React.FC = () => {
       content: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
       onOk: () => {
         if (id) {
-          selectedFiles.forEach(filePath => {
-            deleteFileMutation.mutate(filePath)
-          })
+          bulkDeleteMutation.mutate(selectedFiles)
           setSelectedFiles([])
         }
       }
     })
   }
 
-  const handleUpload = () => {
-    if (!id || uploadFileList.length === 0) return
-
-    uploadFileList.forEach(fileItem => {
-      uploadFileMutation.mutate({ path: currentPath, file: fileItem.originFileObj })
-    })
-    setUploadFileList([])
-    setIsUploadModalVisible(false)
+  const handleMultiFileUploadComplete = () => {
+    setSelectedUploadFiles([])
+    setIsMultiFileUploadModalVisible(false)
+    refetch() // Refresh file list
   }
 
   const handleRefresh = async () => {
@@ -388,9 +382,14 @@ const ServerFiles: React.FC = () => {
   }
 
   return (
-    <div className={`space-y-4 ${isDragging ? 'relative' : ''}`}>
+    <div className="space-y-4">
       {/* 拖拽覆盖层 */}
-      <DragDropOverlay isDragging={isDragging} />
+      <DragDropOverlay
+        isDragging={isDragging}
+        isScanning={isScanning}
+        allowDirectories={true}
+        pageType="serverFiles"
+      />
 
       <PageHeader
         title="文件"
@@ -404,10 +403,10 @@ const ServerFiles: React.FC = () => {
             isLoadingFiles={isLoadingFiles}
             createArchiveMutation={createArchiveMutation}
             populateServerMutation={populateServerMutation}
-            deleteFileMutation={deleteFileMutation}
+            bulkDeleteMutation={bulkDeleteMutation}
             onNavigateToParent={handleNavigateToParent}
             onRefresh={handleRefresh}
-            onUpload={() => setIsUploadModalVisible(true)}
+            onUpload={() => setIsMultiFileUploadModalVisible(true)}
             onCreateFile={() => setIsCreateModalVisible(true)}
             onBulkDelete={handleBulkDelete}
             onCompressServer={handleCompressServer}
@@ -445,15 +444,17 @@ const ServerFiles: React.FC = () => {
         </div>
       </Card>
 
-      {/* 上传文件模态框 */}
-      <UploadModal
-        open={isUploadModalVisible}
-        onCancel={() => setIsUploadModalVisible(false)}
-        onOk={handleUpload}
-        currentPath={currentPath}
-        uploadFileList={uploadFileList}
-        setUploadFileList={setUploadFileList}
-        confirmLoading={uploadFileMutation.isPending}
+      {/* 多文件上传模态框 */}
+      <MultiFileUploadModal
+        open={isMultiFileUploadModalVisible}
+        onCancel={() => {
+          setIsMultiFileUploadModalVisible(false)
+          setSelectedUploadFiles([])
+        }}
+        onComplete={handleMultiFileUploadComplete}
+        serverId={id || ''}
+        basePath={currentPath}
+        initialFiles={selectedUploadFiles}
       />
 
       {/* 创建文件/文件夹模态框 */}
@@ -508,6 +509,7 @@ const ServerFiles: React.FC = () => {
         serverId={id || ''}
         getCurrentFileLanguageConfig={getCurrentFileLanguageConfig}
       />
+
 
       {/* 文件管理说明 */}
       <Alert

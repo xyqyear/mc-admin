@@ -30,6 +30,7 @@ import {
 } from '@ant-design/icons'
 import { SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
+import DragDropOverlay from '@/components/server/DragDropOverlay'
 import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
@@ -90,7 +91,7 @@ const ArchiveManagement: React.FC = () => {
   const uploadAbortController = useRef<AbortController | null>(null)
 
   // Page drag upload
-  const { isDragging } = usePageDragUpload({
+  const { isDragging, isScanning } = usePageDragUpload({
     accept: '.zip,.7z',
     onFileDrop: (files) => {
       // 转换为上传文件列表格式
@@ -479,17 +480,13 @@ const ArchiveManagement: React.FC = () => {
   ]
 
   return (
-    <div className={`space-y-4 ${isDragging ? 'relative' : ''}`}>
+    <div className="space-y-4">
       {/* 拖拽覆盖层 */}
-      {isDragging && (
-        <div className="fixed inset-0 bg-blue-500 bg-opacity-10 border-2 border-dashed border-blue-500 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <FileZipOutlined className="text-4xl text-blue-500 mb-4" />
-            <div className="text-xl font-medium text-blue-600 mb-2">拖拽压缩包到此处上传</div>
-            <div className="text-gray-500">支持 .zip 和 .7z 格式文件</div>
-          </div>
-        </div>
-      )}
+      <DragDropOverlay
+        isDragging={isDragging}
+        isScanning={isScanning}
+        pageType="archive"
+      />
       <PageHeader
         title="压缩包管理"
         icon={<FileZipOutlined />}

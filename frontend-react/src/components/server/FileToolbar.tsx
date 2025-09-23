@@ -17,7 +17,7 @@ interface FileToolbarProps {
   isLoadingFiles: boolean
   createArchiveMutation: { isPending: boolean }
   populateServerMutation: { isPending: boolean }
-  deleteFileMutation: { isPending: boolean }
+  bulkDeleteMutation: { isPending: boolean }
   onNavigateToParent: () => void
   onRefresh: () => void
   onUpload: () => void
@@ -35,7 +35,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   isLoadingFiles,
   createArchiveMutation,
   populateServerMutation,
-  deleteFileMutation,
+  bulkDeleteMutation,
   onNavigateToParent,
   onRefresh,
   onUpload,
@@ -111,7 +111,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
           icon={<DeleteOutlined />}
           danger
           onClick={onBulkDelete}
-          loading={deleteFileMutation.isPending}
+          loading={bulkDeleteMutation.isPending}
         >
           批量删除 ({selectedFiles.length})
         </Button>
