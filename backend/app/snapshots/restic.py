@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from ..config import settings
 from ..minecraft.utils import exec_command
 
 
@@ -474,3 +475,12 @@ class ResticManager:
         args = self._add_password_args(args)
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
         return result
+
+
+# Singleton instance - only create if restic settings are available
+restic_manager = None
+if settings.restic:
+    restic_manager = ResticManager(
+        repository_path=settings.restic.repository_path,
+        password=settings.restic.password
+    )

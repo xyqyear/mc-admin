@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from ...cron import RestartScheduler, cron_manager
+from ...cron import cron_manager, restart_scheduler
 from ...cron.jobs.restart import ServerRestartParams
 from ...dependencies import get_current_user
 from ...models import CronJobStatus, UserPublic
@@ -52,9 +52,6 @@ async def create_or_update_restart_schedule(
     """
     # Generate restart schedule name
     schedule_name = f"restart-{server_id}"
-
-    # Initialize restart scheduler
-    restart_scheduler = RestartScheduler(cron_manager)
 
     try:
         # Determine cron expression

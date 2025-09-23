@@ -152,7 +152,7 @@ def test_client_with_temp_path(temp_server_path):
         with patch("app.config.settings.master_token", "test-master-token"):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
-            with patch("app.routers.servers.create.mc_manager", real_mc_manager):
+            with patch("app.routers.servers.create.docker_mc_manager", real_mc_manager):
                 client = TestClient(api_app)
                 yield client
 

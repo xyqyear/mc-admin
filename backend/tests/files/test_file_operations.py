@@ -73,7 +73,7 @@ def mock_file_operations_setup(instance):
         None: The context is set up with mocked dependencies
     """
     with (
-        patch("app.routers.servers.files.mc_manager") as mock_manager,
+        patch("app.routers.servers.files.docker_mc_manager") as mock_manager,
         patch("app.dependencies.settings") as mock_settings,
     ):
         mock_manager.get_instance.return_value = instance

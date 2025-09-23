@@ -3,18 +3,14 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager, MCServerStatus
+from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
     tags=["server-resources"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 class ServerCpuPercent(BaseModel):
@@ -47,7 +43,7 @@ async def get_server_cpu_percent(
 ):
     """Get CPU percentage for a specific server (available when running/starting/healthy)"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server is in a state where CPU monitoring is available
         status = await instance.get_status()
@@ -80,7 +76,7 @@ async def get_server_cpu_percent(
 async def get_server_memory(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get memory usage for a specific server (available when running/starting/healthy)"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server is in a state where memory monitoring is available
         status = await instance.get_status()
@@ -116,7 +112,7 @@ async def get_server_memory(server_id: str, _: UserPublic = Depends(get_current_
 async def get_server_iostats(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get comprehensive I/O statistics for a specific server (disk I/O, network I/O, disk usage)"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server is in a state where I/O monitoring is available
         status = await instance.get_status()
@@ -157,7 +153,7 @@ async def get_server_disk_usage(
 ):
     """Get disk usage information for a specific server (always available regardless of server status)"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():

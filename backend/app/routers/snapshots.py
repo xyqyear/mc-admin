@@ -9,18 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
-from ..cron.instance import cron_manager
-from ..cron.restart_scheduler import RestartScheduler
+from ..cron import restart_scheduler
 from ..dependencies import get_current_user
 from ..dynamic_config import config
 from ..logger import logger
-from ..minecraft import DockerMCManager
+from ..minecraft import docker_mc_manager
 from ..models import UserPublic
 from ..snapshots import (
-    ResticManager,
     ResticRestorePreviewAction,
     ResticSnapshot,
     ResticSnapshotWithSummary,
+    restic_manager,
 )
 from ..system.resources import get_disk_info
 
@@ -28,9 +27,6 @@ router = APIRouter(
     prefix="/snapshots",
     tags=["snapshots"],
 )
-
-mc_manager = DockerMCManager(settings.server_path)
-restart_scheduler = RestartScheduler(cron_manager)
 
 
 async def _check_backup_time_restriction():
@@ -91,9 +87,9 @@ async def _check_backup_time_restriction():
                 )
 
 
-def _get_restic_manager() -> ResticManager:
+def _get_restic_manager():
     """Get configured restic manager instance"""
-    if not settings.restic:
+    if not restic_manager:
         error_msg = (
             "Restic is not configured. Please add restic settings to config.toml"
         )
@@ -102,10 +98,7 @@ def _get_restic_manager() -> ResticManager:
             status_code=500,
             detail=error_msg,
         )
-    return ResticManager(
-        repository_path=settings.restic.repository_path,
-        password=settings.restic.password,
-    )
+    return restic_manager
 
 
 def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
@@ -124,11 +117,11 @@ def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
         return settings.server_path.resolve()
     elif server_id and not path:
         # Backup specific server directory
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
         return instance.get_project_path().resolve()
     elif server_id and path:
         # Backup specific path within server's data directory
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
         data_path = instance.get_data_path()
         target_path = data_path / path.lstrip("/")
         return target_path.resolve()

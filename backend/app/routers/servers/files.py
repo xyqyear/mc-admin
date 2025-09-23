@@ -23,18 +23,14 @@ from ...common.file_operations import (
     upload_file,
     upload_multiple_files,
 )
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager
+from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
     tags=["files"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 # File management endpoints
@@ -44,7 +40,7 @@ async def list_files(
 ):
     """List files and directories in the specified server path"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -69,7 +65,7 @@ async def get_file_content_endpoint(
 ):
     """Get content of a specific file"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -97,7 +93,7 @@ async def update_file_content_endpoint(
 ):
     """Update content of a specific file"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -122,7 +118,7 @@ async def download_file(
 ):
     """Download a specific file"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -162,7 +158,7 @@ async def upload_file_endpoint(
 ):
     """Upload a file to the specified server path"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -189,7 +185,7 @@ async def create_file_or_directory_endpoint(
 ):
     """Create a new file or directory"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -217,7 +213,7 @@ async def delete_file_or_directory_endpoint(
 ):
     """Delete a file or directory"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -244,7 +240,7 @@ async def rename_file_or_directory_endpoint(
 ):
     """Rename a file or directory"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -273,7 +269,7 @@ async def check_multi_file_upload(
 ):
     """Check for conflicts before multi-file upload"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -306,7 +302,7 @@ async def set_multi_file_upload_policy(
 ):
     """Set the overwrite policy for a multi-file upload session"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -336,7 +332,7 @@ async def upload_multiple_files_endpoint(
 ):
     """Upload multiple files using a prepared session"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():

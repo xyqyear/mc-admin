@@ -84,36 +84,28 @@ def mock_settings_and_auth(temp_dirs):
     server_path, archive_path = temp_dirs
 
     with (
-        patch("app.routers.servers.misc.settings") as mock_misc_settings,
-        patch("app.routers.servers.files.settings") as mock_files_settings,
-        patch("app.routers.servers.create.settings") as mock_create_settings,
         patch("app.routers.servers.populate.settings") as mock_populate_settings,
-        patch("app.routers.servers.operations.settings") as mock_operations_settings,
-        patch("app.routers.servers.compose.settings") as mock_compose_settings,
-        patch("app.routers.servers.players.settings") as mock_players_settings,
-        patch("app.routers.servers.resources.settings") as mock_resources_settings,
         patch("app.routers.archive.settings") as mock_archive_settings,
         patch("app.dependencies.settings") as mock_dep_settings,
         patch("app.utils.decompression.settings") as mock_decomp_settings,
-        patch("app.routers.servers.misc.mc_manager") as mock_mc_manager,
-        patch("app.routers.servers.files.mc_manager") as mock_files_manager,
-        patch("app.routers.servers.create.mc_manager") as mock_create_manager,
-        patch("app.routers.servers.populate.mc_manager") as mock_populate_manager,
-        patch("app.routers.servers.operations.mc_manager") as mock_operations_manager,
-        patch("app.routers.servers.compose.mc_manager") as mock_compose_manager,
-        patch("app.routers.servers.players.mc_manager") as mock_players_manager,
-        patch("app.routers.servers.resources.mc_manager") as mock_resources_manager,
+        patch("app.routers.servers.misc.docker_mc_manager") as mock_mc_manager,
+        patch("app.routers.servers.files.docker_mc_manager") as mock_files_manager,
+        patch("app.routers.servers.create.docker_mc_manager") as mock_create_manager,
+        patch(
+            "app.routers.servers.populate.docker_mc_manager"
+        ) as mock_populate_manager,
+        patch(
+            "app.routers.servers.operations.docker_mc_manager"
+        ) as mock_operations_manager,
+        patch("app.routers.servers.compose.docker_mc_manager") as mock_compose_manager,
+        patch("app.routers.servers.players.docker_mc_manager") as mock_players_manager,
+        patch(
+            "app.routers.servers.resources.docker_mc_manager"
+        ) as mock_resources_manager,
     ):
         # Configure all settings mocks
         for mock_settings_obj in [
-            mock_misc_settings,
-            mock_files_settings,
-            mock_create_settings,
             mock_populate_settings,
-            mock_operations_settings,
-            mock_compose_settings,
-            mock_players_settings,
-            mock_resources_settings,
             mock_archive_settings,
             mock_dep_settings,
             mock_decomp_settings,
@@ -375,7 +367,7 @@ services:
         create_test_minecraft_archive(archive_file_path)
 
         # Mock the server status to be RUNNING (not allowed)
-        with patch("app.routers.servers.populate.mc_manager") as mock_manager:
+        with patch("app.routers.servers.populate.docker_mc_manager") as mock_manager:
             from unittest.mock import AsyncMock
 
             from app.minecraft import MCServerStatus

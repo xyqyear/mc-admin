@@ -3,6 +3,7 @@ from pathlib import Path
 
 from aiofiles import os as aioos
 
+from ..config import settings
 from ..logger import logger
 from .compose import MCComposeFile
 from .docker.manager import DockerManager
@@ -87,3 +88,7 @@ class DockerMCManager:
 
     def get_instance(self, server_name: str) -> MCInstance:
         return MCInstance(self.servers_path, server_name)
+
+
+# Singleton instance
+docker_mc_manager = DockerMCManager(settings.server_path)

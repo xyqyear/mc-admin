@@ -1,18 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager, MCServerStatus
+from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
     tags=["server-compose"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 class ComposeConfig(BaseModel):
@@ -23,7 +19,7 @@ class ComposeConfig(BaseModel):
 async def get_server_compose(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get the Docker Compose configuration for a specific server"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -56,7 +52,7 @@ async def update_server_compose(
 ):
     """Update the Docker Compose configuration for a specific server"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():

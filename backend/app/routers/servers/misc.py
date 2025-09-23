@@ -3,9 +3,8 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager
+from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from .utils.server_list import ServerListItem, get_server_list_item
 
@@ -13,9 +12,6 @@ router = APIRouter(
     prefix="/servers",
     tags=["servers"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 # Pydantic models for API responses
@@ -39,7 +35,7 @@ async def get_servers(_: UserPublic = Depends(get_current_user)):
     """Get list of all servers with basic info only (no status or runtime data)"""
     try:
         # Get all server instances
-        instances = await mc_manager.get_all_instances()
+        instances = await docker_mc_manager.get_all_instances()
 
         if not instances:
             return []
@@ -64,7 +60,7 @@ async def get_servers(_: UserPublic = Depends(get_current_user)):
 async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get detailed information about a specific server"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists
         if not await instance.exists():
@@ -98,7 +94,7 @@ async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
 async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get current status of a specific server"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
         status = await instance.get_status()
 
         return ServerStatus(status=status.name)

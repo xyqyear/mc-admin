@@ -2,9 +2,8 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager
+from ...minecraft import docker_mc_manager
 from ...minecraft.compose import MCComposeFile
 from ...minecraft.docker.compose_file import ComposeFile
 from ...models import UserPublic
@@ -13,9 +12,6 @@ router = APIRouter(
     prefix="/servers",
     tags=["server-creation"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 class CreateServerRequest(BaseModel):
@@ -64,7 +60,7 @@ async def check_port_conflicts(game_port: int, rcon_port: int) -> list[str]:
 
     try:
         # Get all existing instances
-        instances = await mc_manager.get_all_instances()
+        instances = await docker_mc_manager.get_all_instances()
 
         for instance in instances:
             try:
@@ -113,7 +109,7 @@ async def create_server(
 ):
     """Create a new Minecraft server with the provided Docker Compose configuration"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server already exists
         if await instance.exists():

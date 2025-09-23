@@ -9,6 +9,7 @@ from datetime import time
 from typing import Optional, Set, Tuple
 
 from ..models import CronJobStatus
+from .instance import cron_manager
 from .manager import CronManager
 
 
@@ -288,3 +289,7 @@ class RestartScheduler:
             return True
 
         return False
+
+
+# Singleton instance
+restart_scheduler = RestartScheduler(cron_manager)

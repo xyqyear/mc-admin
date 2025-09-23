@@ -6,6 +6,7 @@ from .restic import (
     ResticSnapshot,
     ResticSnapshotSummary,
     ResticSnapshotWithSummary,
+    restic_manager,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "ResticSnapshot",
     "ResticSnapshotSummary",
     "ResticSnapshotWithSummary",
+    "restic_manager",
 ]

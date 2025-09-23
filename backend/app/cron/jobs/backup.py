@@ -7,8 +7,8 @@ from pydantic import Field, field_validator, model_validator
 
 from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
-from ...minecraft import DockerMCManager
-from ...snapshots import ResticManager
+from ...minecraft import docker_mc_manager
+from ...snapshots import restic_manager
 from ..types import ExecutionContext
 
 
@@ -98,15 +98,11 @@ class BackupJobParams(BaseConfigSchema):
         return v
 
 
-def _get_restic_manager() -> ResticManager:
+def _get_restic_manager():
     """Get configured restic manager instance"""
-    if not settings.restic:
+    if not restic_manager:
         raise RuntimeError("Restic未配置。请在config.toml中添加restic设置")
-
-    return ResticManager(
-        repository_path=settings.restic.repository_path,
-        password=settings.restic.password,
-    )
+    return restic_manager
 
 
 async def _send_uptimekuma_notification(
@@ -158,18 +154,16 @@ def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
         Absolute path to backup
     """
 
-    mc_manager = DockerMCManager(settings.server_path)
-
     if not server_id and not path:
         # Backup entire servers directory
         return settings.server_path.resolve()
     elif server_id and not path:
         # Backup specific server directory
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
         return instance.get_project_path().resolve()
     elif server_id and path:
         # Backup specific path within server's data directory
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
         data_path = instance.get_data_path()
         target_path = data_path / path.lstrip("/")
         return target_path.resolve()

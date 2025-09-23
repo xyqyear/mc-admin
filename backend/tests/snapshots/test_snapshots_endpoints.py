@@ -190,9 +190,9 @@ def mock_snapshot_dependencies_setup(
     mock_config.snapshots = mock_snapshots_config
 
     with (
-        patch("app.routers.snapshots.mc_manager") as mock_manager,
+        patch("app.routers.snapshots.docker_mc_manager") as mock_manager,
         patch("app.routers.snapshots.settings") as mock_settings,
-        patch("app.routers.servers.files.mc_manager") as mock_file_manager,
+        patch("app.routers.servers.files.docker_mc_manager") as mock_file_manager,
         patch("app.dependencies.settings") as mock_dep_settings,
         patch("app.routers.snapshots.config", mock_config),
         patch(

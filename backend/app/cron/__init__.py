@@ -9,7 +9,7 @@ full lifecycle management, persistence, and monitoring.
 from .instance import cron_manager
 from .manager import CronManager
 from .registry import CronRegistry, cron_registry
-from .restart_scheduler import RestartScheduler
+from .restart_scheduler import RestartScheduler, restart_scheduler
 from .types import (
     AsyncCronJobFunction,
     CronJobConfig,
@@ -24,6 +24,7 @@ __all__ = [
     "CronManager",
     "cron_manager",
     "RestartScheduler",
+    "restart_scheduler",
     "ExecutionContext",
     "CronJobConfig",
     "CronJobExecutionRecord",

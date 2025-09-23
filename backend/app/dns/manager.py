@@ -10,10 +10,9 @@ import hashlib
 import json
 from typing import Dict, List, Literal, NamedTuple
 
-from ..config import settings
 from ..dynamic_config import config
 from ..logger import logger
-from ..minecraft import DockerMCManager
+from ..minecraft import docker_mc_manager
 from .dns import DNSClient
 from .dnspod import DNSPodClient
 from .huawei import HuaweiDNSClient
@@ -58,7 +57,8 @@ class SimpleDNSManager:
     def __init__(self):
         self._dns_client: DNSClient | None = None
         self._mc_router_client: MCRouterClient | None = None
-        self._docker_manager: DockerMCManager | None = None
+        # Use singleton instance directly
+        self._docker_manager = docker_mc_manager
         self._update_lock = asyncio.Lock()
         self._last_config_hash: str | None = None
 
@@ -94,8 +94,7 @@ class SimpleDNSManager:
         # Initialize MC Router client
         self._mc_router_client = MCRouterClient(dns_config.mc_router_base_url)
 
-        # Initialize Docker manager
-        self._docker_manager = DockerMCManager(settings.server_path)
+        # Docker manager already initialized in __init__
 
         # Update configuration hash to current state
         self._last_config_hash = self._calculate_config_hash(dns_config)

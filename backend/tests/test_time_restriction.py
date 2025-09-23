@@ -4,7 +4,6 @@ Simple test script to verify the backup time restriction logic.
 Run this to test different time scenarios.
 """
 
-import asyncio
 from datetime import datetime
 from unittest.mock import MagicMock
 

@@ -138,7 +138,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -163,7 +163,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -187,7 +187,7 @@ class TestWebSocketConsole:
         instance.exists = mock_exists
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -209,7 +209,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -241,7 +241,7 @@ class TestWebSocketConsole:
         instance.send_command_stdin = mock_send_command_error
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -268,7 +268,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -295,7 +295,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -322,7 +322,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -351,7 +351,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -378,7 +378,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -416,7 +416,7 @@ class TestWebSocketConsole:
         instance.logs_path.write_text(rcon_log_content)
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -461,7 +461,7 @@ class TestWebSocketConsole:
         instance.logs_path.unlink()
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
@@ -492,7 +492,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.mc_manager") as mock_manager,
+            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
             patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance

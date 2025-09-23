@@ -26,7 +26,7 @@ from ..common.file_operations import (
 )
 from ..config import settings
 from ..dependencies import get_current_user
-from ..minecraft import DockerMCManager
+from ..minecraft import docker_mc_manager
 from ..minecraft.utils import exec_command
 from ..models import UserPublic
 from ..utils.compression import create_server_archive
@@ -270,9 +270,8 @@ async def create_server_archive_endpoint(
 ):
     """Create a compressed archive from server files"""
     try:
-        # Initialize manager and get server instance
-        manager = DockerMCManager(settings.server_path)
-        instance = manager.get_instance(request.server_id)
+        # Get server instance using singleton manager
+        instance = docker_mc_manager.get_instance(request.server_id)
 
         # Validate server exists
         if not await instance.exists():

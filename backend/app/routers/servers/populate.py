@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager, MCServerStatus
+from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
 from ...utils.decompression import extract_minecraft_server
 
@@ -11,9 +11,6 @@ router = APIRouter(
     prefix="/servers",
     tags=["server-populate"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 class PopulateServerRequest(BaseModel):
@@ -28,7 +25,7 @@ async def populate_server(
 ):
     """Populate server data directory from an archive file"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Get server status and validate it's in correct state
         status = await instance.get_status()

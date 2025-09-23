@@ -1,18 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...config import settings
 from ...dependencies import get_current_user
-from ...minecraft import DockerMCManager, MCServerStatus
+from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
 
 router = APIRouter(
     prefix="/servers",
     tags=["rcon"],
 )
-
-# Initialize the Docker MC Manager
-mc_manager = DockerMCManager(settings.server_path)
 
 
 class RconCommand(BaseModel):
@@ -25,7 +21,7 @@ async def send_rcon_command(
 ):
     """Send RCON command to a specific server"""
     try:
-        instance = mc_manager.get_instance(server_id)
+        instance = docker_mc_manager.get_instance(server_id)
 
         # Check if server exists and is healthy
         if not await instance.exists():

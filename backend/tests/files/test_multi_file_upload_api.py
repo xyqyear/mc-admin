@@ -44,7 +44,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful conflict checking."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -84,7 +84,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test conflict checking with non-existent server."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance that doesn't exist
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=False)
@@ -118,7 +118,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful policy setting."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -169,7 +169,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test setting policy with invalid session."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -195,7 +195,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful multi-file upload."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -270,7 +270,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test uploading with invalid session."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -296,7 +296,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test uploading to non-existent server."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance that doesn't exist
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=False)
@@ -322,7 +322,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test request validation with invalid file type."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -356,7 +356,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test request validation with missing required fields."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)
@@ -389,7 +389,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test policy validation for per_file mode without decisions."""
         with patch("app.config.settings.master_token", "test_master_token"):
-            with patch("app.routers.servers.files.mc_manager") as mock_manager:
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
                 # Setup mock instance
                 mock_instance = MagicMock()
                 mock_instance.exists = AsyncMock(return_value=True)

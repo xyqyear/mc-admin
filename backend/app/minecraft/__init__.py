@@ -9,10 +9,11 @@ from .instance import (
     MCServerInfo,
     MCServerStatus,
 )
-from .manager import DockerMCManager
+from .manager import DockerMCManager, docker_mc_manager
 
 __all__ = [
     "DockerMCManager",
+    "docker_mc_manager",
     "MCInstance",
     "MCPlayerMessage",
     "MCServerInfo",
