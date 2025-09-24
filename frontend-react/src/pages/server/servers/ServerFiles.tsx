@@ -4,10 +4,12 @@ import {
   Modal,
   Form,
   App,
-  Alert
+  Alert,
+  Button
 } from 'antd'
 import {
-  FolderOutlined
+  FolderOutlined,
+  SearchOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import PageHeader from '@/components/layout/PageHeader'
@@ -20,7 +22,8 @@ import {
   FileEditModal,
   FileDiffModal,
   CompressionConfirmModal,
-  CompressionResultModal
+  CompressionResultModal,
+  FileDeepSearchModal
 } from '@/components/modals/ServerFiles'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries'
@@ -53,6 +56,9 @@ const ServerFiles: React.FC = () => {
   const currentPath = searchParams.get('path') || '/'
   const searchQuery = searchParams.get('q') || ''
   const useRegex = searchParams.get('regex') === 'true'
+
+  // 内部状态：用于输入框显示的搜索词（实时更新，但不触发搜索）
+  const [inputSearchTerm, setInputSearchTerm] = useState(searchQuery)
 
   // File management hooks
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
@@ -117,6 +123,9 @@ const ServerFiles: React.FC = () => {
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
 
+  // Deep search modal state
+  const [isDeepSearchModalVisible, setIsDeepSearchModalVisible] = useState(false)
+
   // Search box ref for focusing
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
 
@@ -171,6 +180,11 @@ const ServerFiles: React.FC = () => {
   React.useEffect(() => {
     setCurrentPage(1)
   }, [currentPath])
+
+  // 同步URL中的搜索词到输入框状态
+  React.useEffect(() => {
+    setInputSearchTerm(searchQuery)
+  }, [searchQuery])
 
   // Keyboard shortcut handler for Ctrl+F to focus search
   React.useEffect(() => {
@@ -232,14 +246,21 @@ const ServerFiles: React.FC = () => {
 
   // Search handlers
   const handleSearchChange = (term: string) => {
-    updateSearchParams(term, useRegex)
+    // 只更新输入框状态，不立即触发搜索
+    setInputSearchTerm(term)
+  }
+
+  const handleSearch = (term: string, regex: boolean) => {
+    // 按回车键触发的搜索
+    updateSearchParams(term, regex)
   }
 
   const handleRegexChange = (regex: boolean) => {
-    updateSearchParams(searchQuery, regex)
+    updateSearchParams(inputSearchTerm, regex)
   }
 
   const handleSearchClear = () => {
+    setInputSearchTerm('')
     updateSearchParams('', false)
   }
 
@@ -451,6 +472,35 @@ const ServerFiles: React.FC = () => {
     setIsArchiveModalVisible(true)
   }
 
+  // Handle deep search navigation
+  const handleDeepSearchNavigate = (path: string, query?: string) => {
+    setIsDeepSearchModalVisible(false) // 隐藏高级搜索模态框
+
+    // 更新URL参数
+    const newSearchParams = new URLSearchParams(location.search)
+    if (path === '/') {
+      newSearchParams.delete('path')
+    } else {
+      newSearchParams.set('path', path)
+    }
+
+    if (query && query.trim()) {
+      newSearchParams.set('q', query)
+      newSearchParams.set('regex', 'false') // 从高级搜索导航过来的是普通搜索
+      // 同时更新输入框状态
+      setInputSearchTerm(query)
+    } else {
+      newSearchParams.delete('q')
+      newSearchParams.delete('regex')
+      setInputSearchTerm('')
+    }
+
+    const newSearch = newSearchParams.toString()
+    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
+    navigate(newUrl, { replace: false })
+    setSelectedFiles([]) // 清除选择的文件
+  }
+
   if (filesError) {
     return <div>加载文件列表失败: {filesError.message}</div>
   }
@@ -498,16 +548,27 @@ const ServerFiles: React.FC = () => {
               currentPath={currentPath}
               onNavigateToPath={handleNavigateToPath}
             />
-            <div className="flex-shrink-0 min-w-[300px] max-w-md">
-              <FileSearchBox
-                ref={searchBoxRef}
-                searchTerm={searchQuery}
-                useRegex={useRegex}
-                onSearchChange={handleSearchChange}
-                onRegexChange={handleRegexChange}
-                onClear={handleSearchClear}
-                placeholder="搜索当前文件夹..."
-              />
+            <div className="flex items-center gap-2">
+              <div className="flex-shrink-0 min-w-[300px] max-w-md">
+                <FileSearchBox
+                  ref={searchBoxRef}
+                  searchTerm={inputSearchTerm}
+                  useRegex={useRegex}
+                  onSearchChange={handleSearchChange}
+                  onRegexChange={handleRegexChange}
+                  onClear={handleSearchClear}
+                  onSearch={handleSearch}
+                  placeholder="按回车键搜索当前文件夹..."
+                />
+              </div>
+              <Button
+                type="default"
+                icon={<SearchOutlined />}
+                onClick={() => setIsDeepSearchModalVisible(true)}
+                title="高级搜索"
+              >
+                高级搜索
+              </Button>
             </div>
           </div>
 
@@ -645,6 +706,15 @@ const ServerFiles: React.FC = () => {
         message={compressionResult?.message || ''}
         onDownload={handleDownloadCompressed}
         downloadLoading={false}
+      />
+
+      {/* 高级搜索模态框 */}
+      <FileDeepSearchModal
+        open={isDeepSearchModalVisible}
+        onCancel={() => setIsDeepSearchModalVisible(false)}
+        serverId={id || ''}
+        currentPath={currentPath}
+        onNavigate={handleDeepSearchNavigate}
       />
 
     </div>

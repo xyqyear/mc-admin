@@ -383,6 +383,7 @@ async def search_server_files(
             search_path = base_path / path.lstrip("/")
             search_path_str = "/" + path.lstrip("/")
 
+        search_path = search_path.resolve()
         # Perform search
         results = await search_files(search_path, search_request)
 

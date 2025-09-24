@@ -8,6 +8,7 @@ interface FileSearchBoxProps {
   onSearchChange: (term: string) => void
   onRegexChange: (useRegex: boolean) => void
   onClear: () => void
+  onSearch?: (term: string, regex: boolean) => void // 新增：按回车键触发的搜索
   placeholder?: string
   className?: string
 }
@@ -22,6 +23,7 @@ const FileSearchBox = forwardRef<FileSearchBoxRef, FileSearchBoxProps>(({
   onSearchChange,
   onRegexChange,
   onClear,
+  onSearch,
   placeholder = "搜索文件名...",
   className = ""
 }, ref) => {
@@ -48,13 +50,17 @@ const FileSearchBox = forwardRef<FileSearchBoxRef, FileSearchBoxProps>(({
 
   // Handle keyboard events
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      // 按回车键触发搜索
+      onSearch?.(searchTerm, useRegex)
+    } else if (e.key === 'Escape') {
       e.preventDefault()
       handleClear()
       // Keep focus on input after clearing
       inputRef.current?.focus()
     }
-  }, [handleClear])
+  }, [handleClear, onSearch, searchTerm, useRegex])
 
   return (
     <div className={`flex items-center space-x-2 ${className}`}>

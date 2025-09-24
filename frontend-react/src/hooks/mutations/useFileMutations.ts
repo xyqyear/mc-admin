@@ -6,7 +6,8 @@ import { fileApi } from "@/hooks/api/fileApi";
 import type {
   MultiFileUploadRequest,
   OverwritePolicy,
-  MultiFileUploadResult
+  MultiFileUploadResult,
+  FileSearchRequest
 } from "@/hooks/api/fileApi";
 import { useDownloadManager } from "@/utils/downloadUtils";
 
@@ -195,6 +196,17 @@ export const useFileMutations = (serverId: string | undefined) => {
     );
   };
 
+  // 搜索文件
+  const useSearchFiles = () => {
+    return useMutation({
+      mutationFn: ({ path = "/", searchRequest }: { path?: string; searchRequest: FileSearchRequest }) =>
+        fileApi.searchFiles(serverId!, path, searchRequest),
+      onError: (error: any) => {
+        message.error(error.response?.data?.detail || "搜索失败");
+      },
+    });
+  };
+
   return {
     useUpdateFile,
     useUploadFile,
@@ -205,6 +217,7 @@ export const useFileMutations = (serverId: string | undefined) => {
     useCheckUploadConflicts,
     useSetUploadPolicy,
     useUploadMultipleFiles,
+    useSearchFiles,
     downloadFile,
   };
 };

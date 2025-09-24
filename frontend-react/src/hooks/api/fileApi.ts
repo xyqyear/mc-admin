@@ -6,6 +6,32 @@ import type {
 } from "@/types/Server";
 import { api } from "@/utils/api";
 
+// File search types
+export interface FileSearchRequest {
+  regex: string;
+  ignore_case?: boolean;
+  search_subfolders?: boolean;
+  min_size?: number;
+  max_size?: number;
+  newer_than?: string; // ISO datetime string
+  older_than?: string;  // ISO datetime string
+}
+
+export interface SearchFileItem {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size: number;
+  modified_at: string; // ISO datetime string
+}
+
+export interface FileSearchResponse {
+  query: FileSearchRequest;
+  results: SearchFileItem[];
+  total_count: number;
+  search_path: string;
+}
+
 // Multi-file upload types
 export interface FileStructureItem {
   path: string;
@@ -318,5 +344,19 @@ export const fileApi = {
     }
 
     return combinedResults;
+  },
+
+  // Search files
+  searchFiles: async (
+    serverId: string,
+    path: string = "/",
+    searchRequest: FileSearchRequest
+  ): Promise<FileSearchResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/search`,
+      searchRequest,
+      { params: { path } }
+    );
+    return response.data;
   },
 };
