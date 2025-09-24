@@ -484,3 +484,195 @@ class TestFileSearchAPI:
 
                 found_files = {result["name"] for result in data["results"]}
                 assert found_files == {"test_file.py", "config.yml"}
+
+    def test_search_files_subfolders_enabled(
+        self, test_client, auth_headers, server_id, temp_dir
+    ):
+        """Test API search with subfolders enabled."""
+        with patch("app.config.settings.master_token", "test_master_token"):
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
+                # Setup mock instance
+                mock_instance = MagicMock()
+                mock_instance.exists = AsyncMock(return_value=True)
+                mock_instance.get_data_path.return_value = temp_dir
+                mock_manager.get_instance.return_value = mock_instance
+
+                # Create test structure
+                (temp_dir / "root.txt").write_text("root file")
+
+                sub_dir = temp_dir / "subdir"
+                sub_dir.mkdir()
+                (sub_dir / "sub.txt").write_text("sub file")
+
+                deep_dir = sub_dir / "deep"
+                deep_dir.mkdir()
+                (deep_dir / "deep.txt").write_text("deep file")
+
+                # Search with subfolders enabled (explicit)
+                search_request = {"regex": r".*\.txt$", "search_subfolders": True}
+
+                response = test_client.post(
+                    f"/api/servers/{server_id}/files/search",
+                    json=search_request,
+                    headers=auth_headers,
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                # Verify query was stored correctly
+                assert data["query"]["search_subfolders"] is True
+
+                # Should find all 3 txt files
+                assert data["total_count"] == 3
+                found_files = {result["name"] for result in data["results"]}
+                assert found_files == {"root.txt", "sub.txt", "deep.txt"}
+
+    def test_search_files_subfolders_disabled(
+        self, test_client, auth_headers, server_id, temp_dir
+    ):
+        """Test API search with subfolders disabled."""
+        with patch("app.config.settings.master_token", "test_master_token"):
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
+                # Setup mock instance
+                mock_instance = MagicMock()
+                mock_instance.exists = AsyncMock(return_value=True)
+                mock_instance.get_data_path.return_value = temp_dir
+                mock_manager.get_instance.return_value = mock_instance
+
+                # Create test structure
+                (temp_dir / "root.txt").write_text("root file")
+
+                sub_dir = temp_dir / "subdir"
+                sub_dir.mkdir()
+                (sub_dir / "sub.txt").write_text("sub file")
+
+                deep_dir = sub_dir / "deep"
+                deep_dir.mkdir()
+                (deep_dir / "deep.txt").write_text("deep file")
+
+                # Search with subfolders disabled
+                search_request = {"regex": r".*\.txt$", "search_subfolders": False}
+
+                response = test_client.post(
+                    f"/api/servers/{server_id}/files/search",
+                    json=search_request,
+                    headers=auth_headers,
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                # Verify query was stored correctly
+                assert data["query"]["search_subfolders"] is False
+
+                # Should find only the root file (max-depth 1)
+                assert data["total_count"] == 1
+                assert data["results"][0]["name"] == "root.txt"
+                assert data["results"][0]["path"] == "/root.txt"
+
+    def test_search_files_subfolders_default_behavior(
+        self, test_client, auth_headers, server_id, temp_dir
+    ):
+        """Test that search_subfolders defaults to True in API."""
+        with patch("app.config.settings.master_token", "test_master_token"):
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
+                # Setup mock instance
+                mock_instance = MagicMock()
+                mock_instance.exists = AsyncMock(return_value=True)
+                mock_instance.get_data_path.return_value = temp_dir
+                mock_manager.get_instance.return_value = mock_instance
+
+                # Create test structure
+                (temp_dir / "root.txt").write_text("root file")
+
+                sub_dir = temp_dir / "subdir"
+                sub_dir.mkdir()
+                (sub_dir / "sub.txt").write_text("sub file")
+
+                # Search without specifying search_subfolders (should default to True)
+                search_request = {"regex": r".*\.txt$"}
+
+                response = test_client.post(
+                    f"/api/servers/{server_id}/files/search",
+                    json=search_request,
+                    headers=auth_headers,
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                # Verify default value
+                assert data["query"]["search_subfolders"] is True
+
+                # Should find both files (default behavior is to search subfolders)
+                assert data["total_count"] == 2
+                found_files = {result["name"] for result in data["results"]}
+                assert found_files == {"root.txt", "sub.txt"}
+
+    def test_search_files_subfolders_with_path_param(
+        self, test_client, auth_headers, server_id, temp_dir
+    ):
+        """Test subfolder search control combined with custom search path."""
+        with patch("app.config.settings.master_token", "test_master_token"):
+            with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
+                # Setup mock instance
+                mock_instance = MagicMock()
+                mock_instance.exists = AsyncMock(return_value=True)
+                mock_instance.get_data_path.return_value = temp_dir
+                mock_manager.get_instance.return_value = mock_instance
+
+                # Create nested structure
+                config_dir = temp_dir / "config"
+                config_dir.mkdir()
+                (config_dir / "server.properties").write_text("server-port=25565")
+
+                plugins_dir = config_dir / "plugins"
+                plugins_dir.mkdir()
+                (plugins_dir / "plugin.yml").write_text("name: TestPlugin")
+
+                # Search in config directory without subfolders
+                search_request = {"regex": r".*\.properties$", "search_subfolders": False}
+
+                response = test_client.post(
+                    f"/api/servers/{server_id}/files/search?path=/config",
+                    json=search_request,
+                    headers=auth_headers,
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["search_path"] == "/config"
+                assert data["total_count"] == 1
+                assert data["results"][0]["name"] == "server.properties"
+
+                # Now search with subfolders enabled - should still find only .properties files
+                search_request["search_subfolders"] = True
+
+                response = test_client.post(
+                    f"/api/servers/{server_id}/files/search?path=/config",
+                    json=search_request,
+                    headers=auth_headers,
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["total_count"] == 1  # Should still find only the .properties file
+                assert data["results"][0]["name"] == "server.properties"
+
+    def test_search_files_subfolders_invalid_value(
+        self, test_client, auth_headers, server_id
+    ):
+        """Test search with invalid search_subfolders value."""
+        with patch("app.config.settings.master_token", "test_master_token"):
+            # Invalid boolean value
+            invalid_request = {"regex": r".*", "search_subfolders": "not_a_boolean"}
+
+            response = test_client.post(
+                f"/api/servers/{server_id}/files/search",
+                json=invalid_request,
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 422  # Validation error
+            assert "detail" in response.json()

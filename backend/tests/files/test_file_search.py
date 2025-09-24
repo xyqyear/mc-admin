@@ -153,3 +153,105 @@ class TestFileSearch:
 
             assert len(results) == 0
             assert isinstance(results, list)
+
+    async def test_search_subfolders_enabled(self):
+        """Test search with subfolders enabled (default behavior)"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create test structure
+            (temp_path / "root.txt").write_text("root file")
+
+            # Create nested directory structure
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            (sub_dir / "sub.txt").write_text("sub file")
+
+            deep_dir = sub_dir / "deep"
+            deep_dir.mkdir()
+            (deep_dir / "deep.txt").write_text("deep file")
+
+            # Search with subfolders enabled (default)
+            search_request = FileSearchRequest(regex=r".*\.txt$", search_subfolders=True)
+            results = await search_files(temp_path, search_request)
+
+            # Should find all 3 txt files
+            assert len(results) == 3
+            found_files = {result.name for result in results}
+            assert found_files == {"root.txt", "sub.txt", "deep.txt"}
+
+    async def test_search_subfolders_disabled(self):
+        """Test search with subfolders disabled (max-depth 1)"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create test structure
+            (temp_path / "root.txt").write_text("root file")
+
+            # Create nested directory structure
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            (sub_dir / "sub.txt").write_text("sub file")
+
+            deep_dir = sub_dir / "deep"
+            deep_dir.mkdir()
+            (deep_dir / "deep.txt").write_text("deep file")
+
+            # Search with subfolders disabled
+            search_request = FileSearchRequest(regex=r".*\.txt$", search_subfolders=False)
+            results = await search_files(temp_path, search_request)
+
+            # Should find only the root file (max-depth 1)
+            assert len(results) == 1
+            assert results[0].name == "root.txt"
+            assert results[0].path == "/root.txt"
+
+    async def test_search_subfolders_default_behavior(self):
+        """Test that search_subfolders defaults to True"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create test structure
+            (temp_path / "root.txt").write_text("root file")
+
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            (sub_dir / "sub.txt").write_text("sub file")
+
+            # Search without specifying search_subfolders (should default to True)
+            search_request = FileSearchRequest(regex=r".*\.txt$")
+            results = await search_files(temp_path, search_request)
+
+            # Should find both files (default behavior is to search subfolders)
+            assert len(results) == 2
+            found_files = {result.name for result in results}
+            assert found_files == {"root.txt", "sub.txt"}
+
+    async def test_search_subfolders_with_directories(self):
+        """Test subfolder search control with directory matching"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create test structure with directories
+            (temp_path / "test_root").mkdir()
+
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            (sub_dir / "test_sub").mkdir()
+
+            deep_dir = sub_dir / "deep"
+            deep_dir.mkdir()
+            (deep_dir / "test_deep").mkdir()
+
+            # Search with subfolders enabled
+            search_request = FileSearchRequest(regex=r"test_.*", search_subfolders=True)
+            results = await search_files(temp_path, search_request)
+            assert len(results) == 3
+            found_dirs = {result.name for result in results}
+            assert found_dirs == {"test_root", "test_sub", "test_deep"}
+
+            # Search with subfolders disabled
+            search_request = FileSearchRequest(regex=r"test_.*", search_subfolders=False)
+            results = await search_files(temp_path, search_request)
+            assert len(results) == 1
+            assert results[0].name == "test_root"

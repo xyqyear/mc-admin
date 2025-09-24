@@ -140,6 +140,9 @@ class FileSearchRequest(BaseModel):
     ignore_case: bool = Field(
         default=True, description="Whether to ignore case in regex matching"
     )
+    search_subfolders: bool = Field(
+        default=True, description="Whether to search in subfolders"
+    )
     min_size: Optional[int] = Field(
         default=None, description="Minimum file size in bytes", ge=0
     )

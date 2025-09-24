@@ -24,6 +24,10 @@ async def _run_fd_command(search_request: FileSearchRequest, search_path: Path) 
     else:
         cmd.append("--case-sensitive")
 
+    # Subfolder search control
+    if not search_request.search_subfolders:
+        cmd.extend(["--max-depth", "1"])
+
     # Size filters
     if search_request.min_size is not None:
         cmd.extend(["--size", f"+{search_request.min_size}b"])
