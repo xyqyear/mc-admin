@@ -38,7 +38,7 @@ interface FileDeepSearchModalProps {
   onCancel: () => void
   serverId: string
   currentPath: string
-  onNavigate: (path: string, query?: string) => void
+  onNavigate: (path: string, query?: string, keepRegex?: boolean) => void
 }
 
 const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
@@ -134,7 +134,7 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
           // 确保路径拼接时有正确的斜杠
           absoluteFolderPath = currentPath + (selectedKey.startsWith('/') ? selectedKey : '/' + selectedKey)
         }
-        onNavigate(absoluteFolderPath, regex)
+        onNavigate(absoluteFolderPath, regex, true)
       }
 
       // 清空所有状态

@@ -473,7 +473,7 @@ const ServerFiles: React.FC = () => {
   }
 
   // Handle deep search navigation
-  const handleDeepSearchNavigate = (path: string, query?: string) => {
+  const handleDeepSearchNavigate = (path: string, query?: string, regex?: boolean) => {
     setIsDeepSearchModalVisible(false) // 隐藏高级搜索模态框
 
     // 更新URL参数
@@ -486,7 +486,13 @@ const ServerFiles: React.FC = () => {
 
     if (query && query.trim()) {
       newSearchParams.set('q', query)
-      newSearchParams.set('regex', 'false') // 从高级搜索导航过来的是普通搜索
+      if (regex) {
+        // 保持当前的regex设置，用于继续正则搜索
+        newSearchParams.set('regex', 'true')
+      } else {
+        // 从高级搜索导航过来的是普通搜索
+        newSearchParams.set('regex', 'false')
+      }
       // 同时更新输入框状态
       setInputSearchTerm(query)
     } else {
