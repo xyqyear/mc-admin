@@ -31,13 +31,17 @@ from .types import (
     FileContent,
     FileItem,
     FileListResponse,
+    FileSearchRequest,
+    FileSearchResponse,
     FileStructureItem,
+    FileType,
     MultiFileUploadRequest,
     MultiFileUploadResult,
     OverwriteConflict,
     OverwriteDecision,
     OverwritePolicy,
     RenameFileRequest,
+    SearchFileItem,
     UploadConflictResponse,
     UploadFileResult,
     UploadSession,
@@ -45,7 +49,7 @@ from .types import (
 
 # Utilities
 # Internal utilities for testing
-from .utils import _SESSION_TIMEOUT, _upload_sessions, get_upload_session
+from .utils import _SESSION_TIMEOUT, _upload_sessions, get_upload_session, search_files
 
 __all__ = [
     # Types
@@ -53,13 +57,17 @@ __all__ = [
     "FileContent",
     "FileItem",
     "FileListResponse",
+    "FileSearchRequest",
+    "FileSearchResponse",
     "FileStructureItem",
+    "FileType",
     "MultiFileUploadRequest",
     "MultiFileUploadResult",
     "OverwriteConflict",
     "OverwriteDecision",
     "OverwritePolicy",
     "RenameFileRequest",
+    "SearchFileItem",
     "UploadConflictResponse",
     "UploadFileResult",
     "UploadSession",
@@ -77,6 +85,7 @@ __all__ = [
     "upload_multiple_files",
     # Utilities
     "get_upload_session",
+    "search_files",
     # Internal utilities for testing
     "_SESSION_TIMEOUT",
     "_upload_sessions",

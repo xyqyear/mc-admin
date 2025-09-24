@@ -1,22 +1,34 @@
+"""
+Command execution utilities for running system commands and shell operations.
+"""
+
 import asyncio
 import os
 import shutil
 from pathlib import Path
 
-import psutil
 from asyncer import asyncify
-from psutil import NoSuchProcess, Process
-
-process_obj_cache = dict[int, Process]()
 
 
-async def async_rmtree(path: Path):
-    await asyncio.to_thread(shutil.rmtree, path)
+@asyncify
+def async_rmtree(path: Path):
+    """Asynchronously remove a directory tree."""
+    shutil.rmtree(path)
 
 
 async def run_shell_command(command: str, catch_output: bool = True) -> str:
     """
-    need to use catch_stderr=False for socat
+    Run shell command asynchronously.
+
+    Args:
+        command: Shell command to execute
+        catch_output: Whether to capture output (need to use catch_output=False for socat)
+
+    Returns:
+        Command output as string
+
+    Raises:
+        RuntimeError: If command fails
     """
     process = await asyncio.create_subprocess_shell(
         command,
@@ -43,6 +55,24 @@ async def exec_command(
     env: dict[str, str] = dict(),
     cwd: str | None = None,
 ) -> str:
+    """
+    Execute command with arguments asynchronously.
+
+    Args:
+        command: Command to execute
+        *args: Command arguments
+        uid: User ID to run command as
+        gid: Group ID to run command as
+        env: Environment variables
+        cwd: Working directory
+
+    Returns:
+        Command output as string
+
+    Raises:
+        RuntimeError: If command fails
+    """
+
     def demote():
         if uid is not None and gid is not None:
             os.setuid(uid)
@@ -69,31 +99,3 @@ async def exec_command(
             f"Failed to exec command: {command}\n{stderr.decode()}\n{stdout.decode()}"
         )
     return stdout.decode()
-
-
-@asyncify
-def get_process_memory_usage(pid: int) -> int:
-    """
-    Get the memory usage of a process by its PID
-    in bytes
-    """
-    try:
-        process = process_obj_cache.get(pid, psutil.Process(pid))
-        process_obj_cache[pid] = process
-        return process.memory_info().rss
-    except NoSuchProcess:
-        return 0
-
-
-@asyncify
-def get_process_cpu_usage(pid: int) -> float:
-    """
-    Get the CPU usage of a process by its PID
-    in percentage
-    """
-    try:
-        process = process_obj_cache.get(pid, psutil.Process(pid))
-        process_obj_cache[pid] = process
-        return process.cpu_percent(1)
-    except NoSuchProcess:
-        return 0.0

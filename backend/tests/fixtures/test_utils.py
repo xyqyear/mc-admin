@@ -3,7 +3,7 @@ from pathlib import Path
 import aiofiles.os as aioos
 import pytest_asyncio
 
-from app.minecraft.utils import async_rmtree, run_shell_command
+from app.utils.exec import async_rmtree, run_shell_command
 
 TEST_ROOT_PATH = Path("/tmp/test_temp_dir")
 

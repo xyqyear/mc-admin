@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from app.minecraft.utils import exec_command
 from app.snapshots import ResticManager
+from app.utils.exec import exec_command
 
 
 # Helper function to check if restic is available

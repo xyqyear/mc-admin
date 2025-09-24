@@ -10,6 +10,8 @@ import aiofiles.os as aioos
 import yaml
 
 from ..files.utils import _chown_async, get_uid_gid
+from ..utils.exec import async_rmtree, exec_command
+from ..utils.system import get_process_cpu_usage
 from .compose import MCComposeFile, ServerType
 from .docker.cgroup import (
     BlockIOStats,
@@ -20,7 +22,6 @@ from .docker.cgroup import (
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
 from .docker.network import NetworkStats, read_container_network_stats
-from .utils import async_rmtree, exec_command, get_process_cpu_usage
 
 PLAYER_MESSAGE_PATTERN = re.compile(
     r"\]: (?:\[Not Secure\] )?<(?P<player>.*?)> (?P<message>.*)"

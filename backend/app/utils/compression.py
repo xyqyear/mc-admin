@@ -3,7 +3,6 @@ Utility for compressing Minecraft server files and directories.
 """
 
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from aiofiles import os as aioos
@@ -12,7 +11,7 @@ from fastapi import HTTPException
 from app.minecraft.instance import MCInstance
 
 from ..config import settings
-from ..minecraft.utils import exec_command
+from .exec import exec_command
 
 
 def _sanitize_filename_part(part: str) -> str:

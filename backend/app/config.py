@@ -10,6 +10,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+# meta settings
 _CONFIG_PATH = os.getenv("MC_ADMIN_CONFIG", "config.toml")
 _ENV_PATH = os.getenv("MC_ADMIN_ENV", ".env")
 
@@ -43,6 +44,8 @@ class Settings(BaseSettings):
     static_path: Path = Field(default=Path("static"))
 
     cgroup_path: Path = Field(default=Path("/sys/fs/cgroup"))
+
+    fd_binary_path: Path = Field(default=Path("/usr/bin/fd"))
 
     database_url: str = Field(default="sqlite+aiosqlite:///./db.sqlite3")
     master_token: str

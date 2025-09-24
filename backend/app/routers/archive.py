@@ -27,9 +27,9 @@ from ..files import (
     upload_file,
 )
 from ..minecraft import docker_mc_manager
-from ..minecraft.utils import exec_command
 from ..models import UserPublic
 from ..utils.compression import create_server_archive
+from ..utils.exec import exec_command
 
 router = APIRouter(
     prefix="/archive",

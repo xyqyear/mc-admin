@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
+from app.minecraft import DockerMCManager
 
 
 def check_7z_available():
@@ -82,26 +83,21 @@ def temp_dirs():
 def mock_settings_and_auth(temp_dirs):
     """Mock settings and authentication."""
     server_path, archive_path = temp_dirs
+    real_mc_manager = DockerMCManager(server_path)
 
     with (
         patch("app.routers.servers.populate.settings") as mock_populate_settings,
         patch("app.routers.archive.settings") as mock_archive_settings,
         patch("app.dependencies.settings") as mock_dep_settings,
         patch("app.utils.decompression.settings") as mock_decomp_settings,
-        patch("app.routers.servers.misc.docker_mc_manager") as mock_mc_manager,
-        patch("app.routers.servers.files.docker_mc_manager") as mock_files_manager,
-        patch("app.routers.servers.create.docker_mc_manager") as mock_create_manager,
-        patch(
-            "app.routers.servers.populate.docker_mc_manager"
-        ) as mock_populate_manager,
-        patch(
-            "app.routers.servers.operations.docker_mc_manager"
-        ) as mock_operations_manager,
-        patch("app.routers.servers.compose.docker_mc_manager") as mock_compose_manager,
-        patch("app.routers.servers.players.docker_mc_manager") as mock_players_manager,
-        patch(
-            "app.routers.servers.resources.docker_mc_manager"
-        ) as mock_resources_manager,
+        patch("app.routers.servers.misc.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.files.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.create.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.operations.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.compose.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.players.docker_mc_manager", real_mc_manager),
+        patch("app.routers.servers.resources.docker_mc_manager", real_mc_manager),
     ):
         # Configure all settings mocks
         for mock_settings_obj in [
@@ -113,26 +109,6 @@ def mock_settings_and_auth(temp_dirs):
             mock_settings_obj.server_path = server_path
             mock_settings_obj.archive_path = archive_path
             mock_settings_obj.master_token = "test_master_token"
-
-        # Configure mc_managers to use our temporary directory
-        from app.minecraft import DockerMCManager
-
-        real_mc_manager = DockerMCManager(server_path)
-
-        # Mock all mc_managers
-        for manager_mock in [
-            mock_mc_manager,
-            mock_files_manager,
-            mock_create_manager,
-            mock_populate_manager,
-            mock_operations_manager,
-            mock_compose_manager,
-            mock_players_manager,
-            mock_resources_manager,
-        ]:
-            manager_mock.get_instance = real_mc_manager.get_instance
-            manager_mock.get_all_instances = real_mc_manager.get_all_instances
-            manager_mock.get_all_server_names = real_mc_manager.get_all_server_names
 
         yield server_path, archive_path
 

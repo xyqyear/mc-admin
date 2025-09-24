@@ -54,14 +54,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="8000" \
-    STATIC_PATH="/app/static"
+    STATIC_PATH="/app/static" \
+    FD_BINARY_PATH="/usr/bin/fd"
 
 RUN apk add --no-cache \
     docker \
     docker-cli-compose \
     p7zip \
     restic \
-    curl
+    curl \
+    fd
 
 WORKDIR /data
 

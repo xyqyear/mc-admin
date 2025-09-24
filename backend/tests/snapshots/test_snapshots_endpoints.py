@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
-from app.minecraft.utils import exec_command
+from app.utils.exec import exec_command
 
 
 # Helper function to check if restic is available

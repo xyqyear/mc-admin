@@ -13,7 +13,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from ..config import settings
-from ..minecraft.utils import exec_command
+from ..utils.exec import exec_command
 
 
 class ResticSnapshot(BaseModel):
@@ -482,5 +482,5 @@ restic_manager = None
 if settings.restic:
     restic_manager = ResticManager(
         repository_path=settings.restic.repository_path,
-        password=settings.restic.password
+        password=settings.restic.password,
     )

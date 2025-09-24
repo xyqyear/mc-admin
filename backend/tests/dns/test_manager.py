@@ -109,13 +109,11 @@ async def test_initialize_with_dnspod(dns_manager):
 
     with (
         patch("app.dns.manager.config") as config_mock,
-        patch("app.dns.manager.settings") as settings_mock,
+        patch("app.dns.manager.docker_mc_manager") as mc_manager_mock,
         patch("app.dns.manager.DNSPodClient") as dnspod_mock,
-        patch("app.dns.manager.MCRouterClient") as router_mock,
-        patch("app.dns.manager.DockerMCManager") as docker_mock,
     ):
         config_mock.dns = mock_config
-        settings_mock.server_path = "/path/to/servers"
+        mc_manager_mock.servers_path = "/path/to/servers"
 
         # Mock the DNS client
         mock_dns_client = AsyncMock()
@@ -155,13 +153,11 @@ async def test_initialize_with_huawei(dns_manager):
 
     with (
         patch("app.dns.manager.config") as config_mock,
-        patch("app.dns.manager.settings") as settings_mock,
+        patch("app.dns.manager.docker_mc_manager") as mc_manager_mock,
         patch("app.dns.manager.HuaweiDNSClient") as huawei_mock,
-        patch("app.dns.manager.MCRouterClient") as router_mock,
-        patch("app.dns.manager.DockerMCManager") as docker_mock,
     ):
         config_mock.dns = mock_config
-        settings_mock.server_path = "/path/to/servers"
+        mc_manager_mock.servers_path = "/path/to/servers"
 
         # Mock the DNS client
         mock_dns_client = AsyncMock()

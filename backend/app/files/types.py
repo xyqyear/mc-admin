@@ -2,9 +2,11 @@
 File operation type definitions and Pydantic models.
 """
 
+from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Basic file models
@@ -110,3 +112,52 @@ class MultiFileUploadResult(BaseModel):
 
     message: str
     results: Dict[str, UploadFileResult]  # Key is file path, value is result
+
+
+# File search models
+class FileType(str, Enum):
+    """File type enumeration for search results"""
+
+    FILE = "file"
+    DIRECTORY = "directory"
+    OTHER = "other"
+
+
+class SearchFileItem(BaseModel):
+    """File item with search-specific information"""
+
+    name: str
+    path: str  # Relative path from base
+    type: FileType
+    size: int
+    modified_at: datetime
+
+
+class FileSearchRequest(BaseModel):
+    """Request parameters for file search"""
+
+    regex: str = Field(..., description="Regular expression pattern to search for")
+    ignore_case: bool = Field(
+        default=True, description="Whether to ignore case in regex matching"
+    )
+    min_size: Optional[int] = Field(
+        default=None, description="Minimum file size in bytes", ge=0
+    )
+    max_size: Optional[int] = Field(
+        default=None, description="Maximum file size in bytes", ge=0
+    )
+    newer_than: Optional[datetime] = Field(
+        default=None, description="Find files newer than this date"
+    )
+    older_than: Optional[datetime] = Field(
+        default=None, description="Find files older than this date"
+    )
+
+
+class FileSearchResponse(BaseModel):
+    """Response containing search results"""
+
+    query: FileSearchRequest
+    results: List[SearchFileItem]
+    total_count: int
+    search_path: str

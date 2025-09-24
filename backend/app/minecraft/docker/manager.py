@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..utils import exec_command, run_shell_command
+from ...utils.exec import exec_command, run_shell_command
 
 
 class DockerPsParsed(BaseModel):

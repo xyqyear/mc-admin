@@ -9,6 +9,8 @@ from ...files import (
     CreateFileRequest,
     FileContent,
     FileListResponse,
+    FileSearchRequest,
+    FileSearchResponse,
     MultiFileUploadRequest,
     OverwritePolicy,
     RenameFileRequest,
@@ -19,6 +21,7 @@ from ...files import (
     get_file_content,
     get_file_items,
     rename_file_or_directory,
+    search_files,
     set_upload_policy,
     update_file_content,
     upload_file,
@@ -351,3 +354,46 @@ async def upload_multiple_files_endpoint(
         raise HTTPException(
             status_code=500, detail=f"Failed to upload multiple files: {str(e)}"
         )
+
+
+# File search endpoint
+@router.post("/{server_id}/files/search", response_model=FileSearchResponse)
+async def search_server_files(
+    server_id: str,
+    search_request: FileSearchRequest,
+    path: str = "/",
+    _: UserPublic = Depends(get_current_user),
+):
+    """Search for files in the specified server path using regex patterns"""
+    try:
+        instance = docker_mc_manager.get_instance(server_id)
+
+        # Check if server exists
+        if not await instance.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Server '{server_id}' not found"
+            )
+
+        # Get base path and construct search path
+        base_path = instance.get_data_path()
+        if path.strip() == "/" or not path.strip():
+            search_path = base_path
+            search_path_str = "/"
+        else:
+            search_path = base_path / path.lstrip("/")
+            search_path_str = "/" + path.lstrip("/")
+
+        # Perform search
+        results = await search_files(search_path, search_request)
+
+        return FileSearchResponse(
+            query=search_request,
+            results=results,
+            total_count=len(results),
+            search_path=search_path_str,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to search files: {str(e)}")

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..files.utils import get_uid_gid
-from ..minecraft.utils import async_rmtree, exec_command
+from .exec import async_rmtree, exec_command
 
 
 class DecompressionStepResult(BaseModel):
