@@ -4,7 +4,8 @@ from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from ...common.file_operations import (
+from ...dependencies import get_current_user
+from ...files import (
     CreateFileRequest,
     FileContent,
     FileListResponse,
@@ -23,7 +24,6 @@ from ...common.file_operations import (
     upload_file,
     upload_multiple_files,
 )
-from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 

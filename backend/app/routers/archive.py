@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from ..common.file_operations import (
+from ..config import settings
+from ..dependencies import get_current_user
+from ..files import (
     CreateFileRequest,
     FileContent,
     FileListResponse,
@@ -24,8 +26,6 @@ from ..common.file_operations import (
     update_file_content,
     upload_file,
 )
-from ..config import settings
-from ..dependencies import get_current_user
 from ..minecraft import docker_mc_manager
 from ..minecraft.utils import exec_command
 from ..models import UserPublic

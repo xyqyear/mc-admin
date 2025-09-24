@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException, UploadFile
 
-from app.common.file_operations import (
+from app.files import (
     CreateFileRequest,
     FileItem,
     FileListResponse,

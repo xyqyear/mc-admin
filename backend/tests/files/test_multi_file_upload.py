@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from app.common.file_operations import (
+from app.files import (
     FileStructureItem,
     MultiFileUploadRequest,
     OverwriteDecision,
@@ -563,7 +563,7 @@ class TestMultiFileUpload:
         base_path.mkdir(parents=True, exist_ok=True)
 
         # Manually create an expired session
-        from app.common.file_operations import _SESSION_TIMEOUT, _upload_sessions
+        from app.files import _SESSION_TIMEOUT, _upload_sessions
 
         session_id = "expired_session"
         expired_time = time.time() - _SESSION_TIMEOUT - 100  # Expired

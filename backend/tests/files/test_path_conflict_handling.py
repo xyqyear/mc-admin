@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app.common.file_operations import (
+from app.files import (
     FileStructureItem,
     MultiFileUploadRequest,
     OverwriteDecision,

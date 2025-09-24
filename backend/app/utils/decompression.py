@@ -9,8 +9,8 @@ from aiofiles import os as aioos
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from ..common.file_operations import get_uid_gid
 from ..config import settings
+from ..files.utils import get_uid_gid
 from ..minecraft.utils import async_rmtree, exec_command
 
 

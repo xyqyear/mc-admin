@@ -78,7 +78,7 @@ class TestArchiveCompression:
         with (
             patch("app.routers.archive.settings") as mock_settings,
             patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.archive.DockerMCManager") as mock_manager_class,
+            patch("app.routers.archive.docker_mc_manager") as mock_manager,
             patch("app.utils.compression.settings") as mock_compression_settings,
         ):
             # Configure settings
@@ -89,7 +89,6 @@ class TestArchiveCompression:
             mock_compression_settings.archive_path = archive_dir_setup
 
             # Configure manager
-            mock_manager = mock_manager_class.return_value
             mock_instance = mock_manager.get_instance.return_value
             mock_instance.get_project_path.return_value = server_setup
             mock_instance.get_data_path.return_value = server_setup / "data"
@@ -361,7 +360,7 @@ class TestArchiveCompression:
         with (
             patch("app.routers.archive.settings") as mock_settings,
             patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.archive.DockerMCManager") as mock_manager_class,
+            patch("app.routers.archive.docker_mc_manager") as mock_manager,
             patch("app.utils.compression.settings") as mock_compression_settings,
         ):
             mock_settings.archive_path = archive_dir
@@ -369,7 +368,6 @@ class TestArchiveCompression:
             mock_dep_settings.master_token = "test_master_token"
             mock_compression_settings.archive_path = archive_dir
 
-            mock_manager = mock_manager_class.return_value
             mock_instance = mock_manager.get_instance.return_value
             mock_instance.get_project_path.return_value = server_path
             mock_instance.get_data_path.return_value = server_path / "data"

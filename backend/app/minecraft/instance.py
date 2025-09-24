@@ -9,7 +9,7 @@ import aiofiles
 import aiofiles.os as aioos
 import yaml
 
-from ..common.file_operations import _chown_async, get_uid_gid
+from ..files.utils import _chown_async, get_uid_gid
 from .compose import MCComposeFile, ServerType
 from .docker.cgroup import (
     BlockIOStats,
