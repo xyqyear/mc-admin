@@ -26,6 +26,7 @@ from .multi_file import (
     set_upload_policy,
     upload_multiple_files,
 )
+from .search import search_files
 from .types import (
     CreateFileRequest,
     FileContent,
@@ -49,7 +50,7 @@ from .types import (
 
 # Utilities
 # Internal utilities for testing
-from .utils import _SESSION_TIMEOUT, _upload_sessions, get_upload_session, search_files
+from .utils import _SESSION_TIMEOUT, _upload_sessions, get_upload_session
 
 __all__ = [
     # Types

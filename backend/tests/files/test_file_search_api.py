@@ -388,7 +388,7 @@ class TestFileSearchAPI:
                 mock_manager.get_instance.return_value = mock_instance
 
                 # Mock fd command to return error for invalid regex
-                with patch("app.files.utils._run_fd_command") as mock_fd:
+                with patch("app.files.search._run_fd_command") as mock_fd:
                     mock_fd.side_effect = Exception("Invalid regular expression")
 
                     search_request = {"regex": r"[invalid regex("}
