@@ -32,6 +32,8 @@ import { usePageDragUpload } from '@/hooks/usePageDragUpload'
 import FileTable from '@/components/server/FileTable'
 import FileToolbar from '@/components/server/FileToolbar'
 import FileBreadcrumb from '@/components/server/FileBreadcrumb'
+import FileSearchBox, { FileSearchBoxRef } from '@/components/server/FileSearchBox'
+import { searchFiles } from '@/utils/fileSearchUtils'
 import type { FileItem } from '@/types/Server'
 
 const ServerFiles: React.FC = () => {
@@ -46,12 +48,24 @@ const ServerFiles: React.FC = () => {
   const { useServerFilesData } = useServerDetailQueries(id || "")
   const { serverInfo, hasServerInfo } = useServerFilesData()
 
-  // Get current path from URL search params
+  // Get current path and search params from URL
   const searchParams = new URLSearchParams(location.search)
   const currentPath = searchParams.get('path') || '/'
+  const searchQuery = searchParams.get('q') || ''
+  const useRegex = searchParams.get('regex') === 'true'
 
   // File management hooks
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
+
+  // Filter files based on search query
+  const filteredFileData = React.useMemo(() => {
+    if (!fileData?.items || !searchQuery.trim()) {
+      return fileData
+    }
+
+    const filteredItems = searchFiles(fileData.items, searchQuery, useRegex)
+    return { ...fileData, items: filteredItems }
+  }, [fileData, searchQuery, useRegex])
   const {
     useUpdateFile,
     useCreateFile,
@@ -102,6 +116,9 @@ const ServerFiles: React.FC = () => {
   const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
+
+  // Search box ref for focusing
+  const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
 
   // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
@@ -155,6 +172,25 @@ const ServerFiles: React.FC = () => {
     setCurrentPage(1)
   }, [currentPath])
 
+  // Keyboard shortcut handler for Ctrl+F to focus search
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Ctrl+F (Windows/Linux) or Cmd+F (Mac)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        searchBoxRef.current?.focus()
+      }
+    }
+
+    // Add event listener to document
+    document.addEventListener('keydown', handleKeyDown)
+
+    // Cleanup event listener on unmount
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
   // Update URL when path changes
   const updatePath = (newPath: string) => {
     const newSearchParams = new URLSearchParams(location.search)
@@ -163,10 +199,48 @@ const ServerFiles: React.FC = () => {
     } else {
       newSearchParams.set('path', newPath)
     }
+    // Clear search query when navigating to different path
+    newSearchParams.delete('q')
+    newSearchParams.delete('regex')
+
     const newSearch = newSearchParams.toString()
     const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
     navigate(newUrl, { replace: false })
     setSelectedFiles([]) // Clear selection when navigating
+  }
+
+  // Update URL with search parameters
+  const updateSearchParams = (query: string, regex: boolean) => {
+    const newSearchParams = new URLSearchParams(location.search)
+
+    if (query.trim()) {
+      newSearchParams.set('q', query)
+    } else {
+      newSearchParams.delete('q')
+    }
+
+    if (regex) {
+      newSearchParams.set('regex', 'true')
+    } else {
+      newSearchParams.delete('regex')
+    }
+
+    const newSearch = newSearchParams.toString()
+    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
+    navigate(newUrl, { replace: true }) // Use replace to avoid cluttering history
+  }
+
+  // Search handlers
+  const handleSearchChange = (term: string) => {
+    updateSearchParams(term, useRegex)
+  }
+
+  const handleRegexChange = (regex: boolean) => {
+    updateSearchParams(searchQuery, regex)
+  }
+
+  const handleSearchClear = () => {
+    updateSearchParams('', false)
   }
 
 
@@ -418,13 +492,27 @@ const ServerFiles: React.FC = () => {
 
       <Card>
         <div className="space-y-4">
-          <FileBreadcrumb
-            currentPath={currentPath}
-            onNavigateToPath={handleNavigateToPath}
-          />
+          {/* Breadcrumb and Search */}
+          <div className="flex items-center justify-between gap-4">
+            <FileBreadcrumb
+              currentPath={currentPath}
+              onNavigateToPath={handleNavigateToPath}
+            />
+            <div className="flex-shrink-0 min-w-[300px] max-w-md">
+              <FileSearchBox
+                ref={searchBoxRef}
+                searchTerm={searchQuery}
+                useRegex={useRegex}
+                onSearchChange={handleSearchChange}
+                onRegexChange={handleRegexChange}
+                onClear={handleSearchClear}
+                placeholder="搜索当前文件夹..."
+              />
+            </div>
+          </div>
 
           <FileTable
-            fileData={fileData}
+            fileData={filteredFileData}
             isLoadingFiles={isLoadingFiles}
             selectedFiles={selectedFiles}
             setSelectedFiles={setSelectedFiles}

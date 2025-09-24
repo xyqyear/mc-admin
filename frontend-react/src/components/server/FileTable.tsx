@@ -10,11 +10,16 @@ import { isFileEditable } from '@/config/fileEditingConfig'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import FileIcon from '@/components/files/FileIcon'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
+import HighlightedFileName from '@/components/server/HighlightedFileName'
 import type { FileItem } from '@/types/Server'
 import type { SortOrder, ColumnType } from 'antd/es/table/interface'
+import type { MatchResult } from '@/utils/fileSearchUtils'
+
+// Extended FileItem type for internal use with match results
+type FileItemWithMatch = FileItem & { matchResult?: MatchResult }
 
 interface FileTableProps {
-  fileData?: { items: FileItem[] }
+  fileData?: { items: FileItemWithMatch[] }
   isLoadingFiles: boolean
   selectedFiles: string[]
   setSelectedFiles: (files: string[]) => void
@@ -50,7 +55,7 @@ const FileTable: React.FC<FileTableProps> = ({
   onFileCompress,
   createArchiveMutation
 }) => {
-  const moreActions = (file: FileItem) => [
+  const moreActions = (file: FileItemWithMatch) => [
     {
       key: 'rename',
       label: '重命名',
@@ -58,12 +63,12 @@ const FileTable: React.FC<FileTableProps> = ({
     }
   ]
 
-  const columns: ColumnType<FileItem>[] = [
+  const columns: ColumnType<FileItemWithMatch>[] = [
     {
       title: '文件名',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a: FileItem, b: FileItem) => {
+      sorter: (a: FileItemWithMatch, b: FileItemWithMatch) => {
         // Custom sorting: directories first, then files, both alphabetically
         if (a.type !== b.type) {
           return a.type === 'directory' ? -1 : 1
@@ -72,7 +77,7 @@ const FileTable: React.FC<FileTableProps> = ({
       },
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       defaultSortOrder: 'ascend' as SortOrder,
-      render: (name: string, file: FileItem) => {
+      render: (name: string, file: FileItemWithMatch) => {
         const isEditable = isFileEditable(file.name)
         const isDirectory = file.type === 'directory'
 
@@ -86,7 +91,9 @@ const FileTable: React.FC<FileTableProps> = ({
                     undefined
               }
             >
-              <span
+              <HighlightedFileName
+                name={name}
+                matchResult={file.matchResult}
                 className={
                   isDirectory ? 'font-medium cursor-pointer hover:text-blue-600' :
                     isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
@@ -99,9 +106,7 @@ const FileTable: React.FC<FileTableProps> = ({
                     onFileEdit(file)
                   }
                 }}
-              >
-                {name}
-              </span>
+              />
             </Tooltip>
           </div>
         )
@@ -112,7 +117,7 @@ const FileTable: React.FC<FileTableProps> = ({
       dataIndex: 'size',
       key: 'size',
       width: 90,
-      sorter: (a: FileItem, b: FileItem) => a.size - b.size,
+      sorter: (a: FileItemWithMatch, b: FileItemWithMatch) => a.size - b.size,
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (size: number) => formatFileSize(size),
     },
@@ -121,7 +126,7 @@ const FileTable: React.FC<FileTableProps> = ({
       dataIndex: 'modified_at',
       key: 'modified_at',
       width: 150,
-      sorter: (a: FileItem, b: FileItem) => a.modified_at - b.modified_at,
+      sorter: (a: FileItemWithMatch, b: FileItemWithMatch) => a.modified_at - b.modified_at,
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (timestamp: number) => formatDate(timestamp),
     },
@@ -129,7 +134,7 @@ const FileTable: React.FC<FileTableProps> = ({
       title: '操作',
       key: 'actions',
       width: 200,
-      render: (_: any, file: FileItem) => (
+      render: (_: any, file: FileItemWithMatch) => (
         <Space size="small">
           <FileSnapshotActions file={file} serverId={serverId} />
 
