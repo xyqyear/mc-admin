@@ -5,11 +5,9 @@ import {
   Input,
   Checkbox,
   Button,
-  Space,
   InputNumber,
   Select,
   DatePicker,
-  Tree,
   Card,
   message,
   Spin,
@@ -17,17 +15,11 @@ import {
   Flex
 } from 'antd'
 import {
-  SearchOutlined,
-  ExpandOutlined,
-  CompressOutlined
+  SearchOutlined
 } from '@ant-design/icons'
-import type { DataNode } from 'antd/es/tree'
-import FileIcon from '@/components/files/FileIcon'
-import HighlightedFileName from '@/components/server/HighlightedFileName'
-import type { FileItem } from '@/types/Server'
 import type { FileSearchRequest, SearchFileItem } from '@/hooks/api/fileApi'
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
-import { matchRegex } from '@/utils/fileSearchUtils'
+import FileSearchResultTree from '@/components/server/FileSearchResultTree'
 
 const { RangePicker } = DatePicker
 const { Option } = Select
@@ -59,7 +51,6 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
   const [form] = Form.useForm()
   const [searchResults, setSearchResults] = useState<SearchFileItem[]>([])
   const [totalCount, setTotalCount] = useState(0)
-  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [currentRegex, setCurrentRegex] = useState<string>('')
   const searchInputRef = React.useRef<any>(null)
@@ -85,95 +76,6 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
     }
   }
 
-  // 格式化文件大小
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
-
-  // 将SearchFileItem转换为FileItem格式
-  const searchResultToFileItem = (result: SearchFileItem): FileItem => ({
-    name: result.name,
-    path: result.path,
-    type: result.type,
-    size: result.size,
-    modified_at: new Date(result.modified_at).getTime() / 1000
-  })
-
-  // 构建Tree数据结构
-  const buildTreeData = React.useCallback((results: SearchFileItem[]): DataNode[] => {
-    const nodeMap: Record<string, DataNode> = {}
-    const rootNodes: DataNode[] = []
-
-    results.forEach((result) => {
-      const pathParts = result.path.split('/').filter(part => part) // 过滤空字符串
-
-      let currentPath = ''
-      pathParts.forEach((part: string, partIndex: number) => {
-        const parentPath = currentPath
-        currentPath += (currentPath ? '/' : '') + part
-        const isLastPart = partIndex === pathParts.length - 1
-        // 确保key格式与searchResults中的path格式一致（以/开头）
-        const nodeKey = '/' + currentPath
-
-        if (!nodeMap[nodeKey]) {
-          const isFile = isLastPart && result.type === 'file'
-
-          // 为文件夹创建虚拟的SearchFileItem
-          const nodeItem: SearchFileItem = isLastPart ? result : {
-            name: part,
-            path: nodeKey, // 使用带斜杠前缀的格式
-            type: 'directory',
-            size: 0,
-            modified_at: new Date().toISOString()
-          }
-
-          // 生成高亮匹配结果
-          const matchResult = currentRegex ? matchRegex(part, currentRegex) : undefined
-
-          const node: DataNode = {
-            key: nodeKey, // 使用带斜杠前缀的格式
-            title: (
-              <div className="flex items-center">
-                <span style={{ marginRight: 8 }}>
-                  <FileIcon
-                    file={searchResultToFileItem(nodeItem)}
-                  />
-                </span>
-                <HighlightedFileName
-                  name={part}
-                  matchResult={matchResult}
-                />
-                {isFile && (
-                  <span style={{ color: '#999', fontSize: '12px', marginLeft: 8 }}>
-                    ({formatFileSize(result.size)})
-                  </span>
-                )}
-              </div>
-            ),
-            children: isLastPart ? undefined : [],
-            isLeaf: isLastPart
-          }
-
-          nodeMap[nodeKey] = node
-
-          // 添加到父节点或根节点
-          const parentKey = parentPath ? '/' + parentPath : ''
-          if (parentPath && nodeMap[parentKey]) {
-            nodeMap[parentKey].children = nodeMap[parentKey].children || []
-            nodeMap[parentKey].children!.push(node)
-          } else if (!parentPath) {
-            rootNodes.push(node)
-          }
-        }
-      })
-    })
-
-    return rootNodes
-  }, [currentRegex])
 
   // Handle tree node selection
   const handleTreeSelect = (selectedKeys: React.Key[]) => {
@@ -240,35 +142,9 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
     }
   }
 
-  // 获取所有Tree节点的keys
-  const getAllTreeKeys = (nodes: DataNode[]): React.Key[] => {
-    const keys: React.Key[] = []
-    const traverse = (nodeList: DataNode[]) => {
-      nodeList.forEach(node => {
-        keys.push(node.key)
-        if (node.children) {
-          traverse(node.children)
-        }
-      })
-    }
-    traverse(nodes)
-    return keys
-  }
-
-  // 展开所有节点
-  const handleExpandAll = () => {
-    const treeData = buildTreeData(searchResults)
-    setExpandedKeys(getAllTreeKeys(treeData))
-  }
-
-  // 收起所有节点
-  const handleCollapseAll = () => {
-    setExpandedKeys([])
-  }
 
   // 执行搜索
   const handleSearch = async () => {
-    console.log('Executing search...')
     try {
       await form.validateFields()
       const values = form.getFieldsValue()
@@ -309,13 +185,6 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
       setTotalCount(searchResponse.total_count)
       setSearchPerformed(true)
 
-      // 构建树数据并自动展开所有节点
-      if (searchResponse.results.length > 0) {
-        const newTreeData = buildTreeData(searchResponse.results)
-        const allKeys = getAllTreeKeys(newTreeData)
-        setExpandedKeys(allKeys)
-      }
-
       message.success(`找到 ${searchResponse.total_count} 个匹配结果`)
     } catch (error: any) {
       console.error('搜索失败:', error.response?.data?.detail || error.message || 'Unknown error')
@@ -328,7 +197,6 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
     form.resetFields()
     setSearchResults([])
     setTotalCount(0)
-    setExpandedKeys([])
     setSearchPerformed(false)
     setCurrentRegex('')
   }
@@ -340,7 +208,6 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
     onCancel()
   }
 
-  const treeData = React.useMemo(() => buildTreeData(searchResults), [buildTreeData, searchResults])
 
   return (
     <Modal
@@ -437,42 +304,16 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
           <Card
             title={`搜索结果 (${totalCount} 个文件)`}
             size="small"
-            extra={
-              treeData.length > 0 && (
-                <Space>
-                  <Button
-                    size="small"
-                    type="text"
-                    icon={<ExpandOutlined />}
-                    onClick={handleExpandAll}
-                  >
-                    展开所有
-                  </Button>
-                  <Button
-                    size="small"
-                    type="text"
-                    icon={<CompressOutlined />}
-                    onClick={handleCollapseAll}
-                  >
-                    收起所有
-                  </Button>
-                </Space>
-              )
-            }
           >
             {searchFilesMutation.isPending ? (
               <div className="flex justify-center py-8">
                 <Spin size="large" />
               </div>
-            ) : treeData.length > 0 ? (
-              <Tree
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                onExpand={setExpandedKeys}
+            ) : searchResults.length > 0 ? (
+              <FileSearchResultTree
+                searchResults={searchResults}
+                currentRegex={currentRegex}
                 onSelect={handleTreeSelect}
-                showIcon={false}
-                selectable={true}
-                style={{ maxHeight: '400px', overflowY: 'auto' }}
               />
             ) : searchPerformed ? (
               <Empty
