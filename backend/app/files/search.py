@@ -9,13 +9,14 @@ from typing import List
 from aiofiles import os as aioos
 from fastapi import HTTPException
 
+from ..config import settings
 from ..utils.exec import exec_command
 from .types import FileSearchRequest, FileType, SearchFileItem
 
 
 async def _run_fd_command(search_request: FileSearchRequest, search_path: Path) -> str:
     """Run fd command with search parameters and return output"""
-    cmd = ["fd", "--unrestricted", "--absolute-path"]
+    cmd = [str(settings.fd_binary_path), "--unrestricted", "--absolute-path"]
 
     # Case sensitivity
     if search_request.ignore_case:
