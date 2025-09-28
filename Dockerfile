@@ -63,7 +63,8 @@ RUN apk add --no-cache \
     p7zip \
     restic \
     curl \
-    fd
+    fd \
+    coreutils
 
 WORKDIR /data
 
