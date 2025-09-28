@@ -221,6 +221,15 @@ export const versionUpdates: VersionUpdate[] = [
       '快照回滚时间限制配置化，灵活控制备份策略'
     ]
   },
+  {
+    version: '0.4.1',
+    date: '2025-09-28',
+    title: '高级搜索修复',
+    description: '修复高级搜索在Docker部署环境下不可用问题',
+    fixes: [
+      '修复高级搜索在Docker部署环境下不可用问题'
+    ]
+  }
 ]
 
 export function compareVersions(a: string, b: string): number {
