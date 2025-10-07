@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import JSON, TEXT, DateTime, Integer, String
+from sqlalchemy import JSON, TEXT, DateTime, Index, Integer, String
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -153,3 +153,132 @@ class CronJobExecution(Base):
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
     status: Mapped[ExecutionStatus] = mapped_column(SQLAlchemyEnum(ExecutionStatus))
     messages_json: Mapped[str] = mapped_column(TEXT, default="[]")
+
+
+# Server Tracking System Models
+
+
+class ServerStatus(str, Enum):
+    """Server status enumeration."""
+
+    ACTIVE = "active"
+    REMOVED = "removed"
+
+
+class Server(Base):
+    """Server instance tracking table."""
+
+    __tablename__ = "server"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    server_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[ServerStatus] = mapped_column(
+        SQLAlchemyEnum(ServerStatus), default=ServerStatus.ACTIVE
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class SystemHeartbeat(Base):
+    """System heartbeat table for crash detection.
+
+    This table only contains one record that is updated on each heartbeat.
+    """
+
+    __tablename__ = "system_heartbeat"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    timestamp: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+# Player Management System Models
+
+
+class Player(Base):
+    """Player table for tracking all players."""
+
+    __tablename__ = "player"
+
+    player_db_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    current_name: Mapped[str] = mapped_column(String(16))
+    skin_data: Mapped[Optional[bytes]] = mapped_column()
+    avatar_data: Mapped[Optional[bytes]] = mapped_column()
+    last_seen: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
+    last_skin_update: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
+    created_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class PlayerSession(Base):
+    """Player gaming session records."""
+
+    __tablename__ = "player_session"
+
+    session_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    player_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    server_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    joined_at: Mapped[datetime] = mapped_column(TZDatetime())
+    left_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+
+
+class PlayerChatMessage(Base):
+    """Player chat messages."""
+
+    __tablename__ = "player_chat_message"
+
+    message_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    player_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    server_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    message_text: Mapped[str] = mapped_column(TEXT)
+    sent_at: Mapped[datetime] = mapped_column(TZDatetime())
+
+
+class PlayerAchievement(Base):
+    """Player achievements."""
+
+    __tablename__ = "player_achievement"
+    __table_args__ = (
+        Index(
+            "idx_player_achievement_unique",
+            "player_db_id",
+            "server_db_id",
+            "achievement_name",
+            unique=True,
+        ),
+    )
+
+    achievement_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    player_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    server_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    achievement_name: Mapped[str] = mapped_column(String(255))
+    earned_at: Mapped[datetime] = mapped_column(TZDatetime())
+
+
+class PlayerOnlineStatus(Base):
+    """Player online status per server."""
+
+    __tablename__ = "player_online_status"
+    __table_args__ = (
+        Index(
+            "idx_player_online_status_unique",
+            "player_db_id",
+            "server_db_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    player_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    server_db_id: Mapped[int] = mapped_column(Integer, index=True)
+    is_online: Mapped[bool] = mapped_column(default=False)
+    last_join: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
+    last_leave: Mapped[Optional[datetime]] = mapped_column(TZDatetime())

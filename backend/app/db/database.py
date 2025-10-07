@@ -25,8 +25,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-def get_async_session() -> AsyncSession:
-    """Get an async database session for use outside of FastAPI dependency injection."""
+def get_async_session():
+    """Get an async database session context manager for use outside of FastAPI dependency injection.
+
+    Usage:
+        async with get_async_session() as session:
+            # Use session here
+    """
     return AsyncSessionLocal()
 
 

@@ -12,6 +12,7 @@ from .cron import cron_manager
 from .db.database import init_db
 from .dynamic_config import config_manager
 from .logger import logger
+from .players import player_system_manager
 from .routers import admin, archive, auth, cron, dns, snapshots, system, user
 from .routers.config import router as config_router
 from .routers.servers import compose as server_compose
@@ -38,8 +39,14 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing cron management system...")
     await cron_manager.initialize()
 
+    logger.info("Starting player management system...")
+    await player_system_manager.start_monitoring()
+
     logger.info("Startup complete.")
     yield
+
+    logger.info("Stopping player management system...")
+    await player_system_manager.stop_monitoring()
 
     logger.info("Shutting down cron management system...")
     await cron_manager.shutdown()

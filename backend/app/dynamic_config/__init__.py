@@ -14,6 +14,8 @@ Usage:
 from typing import cast
 
 from .configs.dns import DNSManagerConfig
+from .configs.log_parser import LogParserConfig
+from .configs.players import PlayersConfig
 from .configs.snapshots import SnapshotsConfig
 from .manager import config_manager
 from .schemas import BaseConfigSchema
@@ -49,6 +51,14 @@ class ConfigProxy:
     def snapshots(self):
         return cast(SnapshotsConfig, self._manager.get_config("snapshots"))
 
+    @property
+    def log_parser(self):
+        return cast(LogParserConfig, self._manager.get_config("log_parser"))
+
+    @property
+    def players(self):
+        return cast(PlayersConfig, self._manager.get_config("players"))
+
     def __getattr__(self, module_name: str):
         """
         Get configuration instance for the specified module.
@@ -73,6 +83,8 @@ class ConfigProxy:
 # Register all configuration modules
 config_manager.register_config("dns", DNSManagerConfig)
 config_manager.register_config("snapshots", SnapshotsConfig)
+config_manager.register_config("log_parser", LogParserConfig)
+config_manager.register_config("players", PlayersConfig)
 
 # Global configuration proxy instance
 # This is the main interface that application code should import and use
@@ -86,4 +98,6 @@ __all__ = [
     "ConfigProxy",
     "DNSManagerConfig",
     "SnapshotsConfig",
+    "LogParserConfig",
+    "PlayersConfig",
 ]
