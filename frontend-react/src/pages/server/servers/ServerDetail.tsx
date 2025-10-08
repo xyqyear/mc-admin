@@ -13,7 +13,7 @@ import ServerStatsCard from '@/components/server/ServerStatsCard'
 import ServerDiskUsageCard from '@/components/server/ServerDiskUsageCard'
 import ServerResourcesCard from '@/components/server/ServerResourcesCard'
 import ServerIOStatsCard from '@/components/server/ServerIOStatsCard'
-import ServerPlayersCard from '@/components/server/ServerPlayersCard'
+import OnlinePlayersCard from '@/components/server/OnlinePlayersCard'
 import ServerRestartScheduleCard from '@/components/server/ServerRestartScheduleCard'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
@@ -202,9 +202,9 @@ const ServerDetail: React.FC = () => {
         hasIOStatsData={hasIOStatsData || false}
       />
 
-      {/* 在线玩家列表 */}
-      <ServerPlayersCard
-        players={players}
+      {/* 在线玩家列表 - 使用新的增强组件 */}
+      <OnlinePlayersCard
+        serverId={id}
         isHealthy={isHealthy || false}
       />
 

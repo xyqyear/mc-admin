@@ -1,4 +1,5 @@
 import { serverApi, type ServerDiskUsageResponse } from "@/hooks/api/serverApi";
+import { playerApi } from "@/hooks/api/playerApi";
 import { useServerQueries } from "@/hooks/queries/base/useServerQueries";
 import { useSnapshotQueries } from "@/hooks/queries/base/useSnapshotQueries";
 import { useSystemQueries } from "@/hooks/queries/base/useSystemQueries";
@@ -52,12 +53,13 @@ export const useOverviewData = () => {
     [serverStatuses]
   );
 
+  // 使用新的玩家API获取完整的在线玩家信息
   const playersQueries = useQueries({
     queries: healthyServerIds.map((id) => ({
-      queryKey: [...queryKeys.players.online(id)],
-      queryFn: () => serverApi.getServerPlayers(id),
-      refetchInterval: 5000, // 5秒刷新玩家数据
-      staleTime: 2000,
+      queryKey: queryKeys.players.serverOnline(id),
+      queryFn: () => playerApi.getServerOnlinePlayers(id),
+      refetchInterval: 10000, // 10秒刷新玩家数据(与新API的策略一致)
+      staleTime: 5000,
       retry: (failureCount: number, error: any) => {
         if (error?.response?.status === 409) return false;
         return failureCount < 2;
@@ -125,15 +127,16 @@ export const useOverviewData = () => {
       {
         cpu?: { cpuPercentage: number };
         memory?: { memoryUsageBytes: number };
-        players?: string[];
+        players?: string[]; // 保持兼容性,只存储玩家名称
         diskUsage?: ServerDiskUsageResponse;
       }
     > = {};
 
-    // 收集玩家数据
+    // 收集玩家数据 - 从新API的完整数据中提取玩家名称
     healthyServerIds.forEach((id, index) => {
       if (!data[id]) data[id] = {};
-      data[id].players = playersQueries[index]?.data || [];
+      const onlinePlayers = playersQueries[index]?.data || [];
+      data[id].players = onlinePlayers.map(player => player.current_name);
     });
 
     // 收集CPU数据

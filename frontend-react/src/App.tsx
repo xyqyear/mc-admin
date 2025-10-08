@@ -19,6 +19,7 @@ const ArchiveManagement = React.lazy(() => import('@/pages/ArchiveManagement'))
 const DynamicConfig = React.lazy(() => import('@/pages/DynamicConfig'))
 const CronManagement = React.lazy(() => import('@/pages/CronManagement'))
 const DnsManagement = React.lazy(() => import('@/pages/DnsManagement'))
+const PlayerManagement = React.lazy(() => import('@/pages/PlayerManagement'))
 const ServerNew = React.lazy(() => import('@/pages/server/ServerNew'))
 const ServerDetail = React.lazy(() => import('@/pages/server/servers/ServerDetail'))
 const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'))
@@ -91,6 +92,7 @@ function App() {
           <Route path="/config" element={<DynamicConfig />} />
           <Route path="/cron" element={<CronManagement />} />
           <Route path="/dns" element={<DnsManagement />} />
+          <Route path="/players" element={<PlayerManagement />} />
           <Route path="/server">
             <Route path="new" element={<ServerNew />} />
             <Route path=":id" element={<ServerDetail />} />

@@ -20,6 +20,7 @@ import {
   FileZipOutlined,
   ScheduleOutlined,
   GlobalOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
@@ -125,6 +126,11 @@ const AppSidebar: React.FC = () => {
         },
       ],
     }] : []),
+    {
+      title: '玩家管理',
+      icon: <TeamOutlined />,
+      path: '/players',
+    },
     {
       title: '快照管理',
       icon: <HistoryOutlined />,

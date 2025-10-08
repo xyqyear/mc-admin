@@ -138,9 +138,23 @@ export const queryKeys = {
       [...queryKeys.serverDiskUsage.all, "detail", id] as const,
   },
 
-  // 玩家相关 (仅健康状态时有效)
+  // 玩家相关
   players: {
     all: ["players"] as const,
+    list: (filters?: { online_only?: boolean; server_id?: string }) =>
+      [...queryKeys.players.all, "list", filters] as const,
+    detailByUUID: (uuid: string) => [...queryKeys.players.all, "detail", "uuid", uuid] as const,
+    detailByName: (name: string) => [...queryKeys.players.all, "detail", "name", name] as const,
+    serverOnline: (serverId: string) => [...queryKeys.players.all, "server", serverId, "online"] as const,
+    sessions: (playerDbId: number, params?: any) =>
+      [...queryKeys.players.all, playerDbId, "sessions", params] as const,
+    sessionStats: (playerDbId: number, period: string) =>
+      [...queryKeys.players.all, playerDbId, "session-stats", period] as const,
+    chat: (playerDbId: number, params?: any) =>
+      [...queryKeys.players.all, playerDbId, "chat", params] as const,
+    achievements: (playerDbId: number, serverId?: string) =>
+      [...queryKeys.players.all, playerDbId, "achievements", serverId] as const,
+    // Legacy compatibility
     online: (id: string) => [...queryKeys.players.all, "online", id] as const,
   },
 

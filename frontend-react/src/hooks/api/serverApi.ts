@@ -140,6 +140,7 @@ export const serverApi = {
   },
 
   // 获取单个服务器玩家列表 (仅在HEALTHY状态下可用)
+  // DEPRECATED: Use playerApi.getServerOnlinePlayers instead for full player info with avatars
   getServerPlayers: async (id: string): Promise<string[]> => {
     const res = await api.get<ServerPlayersResponse>(`/servers/${id}/players`);
     return res.data.onlinePlayers;
