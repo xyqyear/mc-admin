@@ -221,6 +221,11 @@ class PlayerSession(Base):
     """Player gaming session records."""
 
     __tablename__ = "player_session"
+    __table_args__ = (
+        # Composite indexes for efficient time-based queries
+        Index("idx_player_session_player_time", "player_db_id", "joined_at"),
+        Index("idx_player_session_server_time", "server_db_id", "joined_at"),
+    )
 
     session_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     player_db_id: Mapped[int] = mapped_column(Integer, index=True)
@@ -234,6 +239,11 @@ class PlayerChatMessage(Base):
     """Player chat messages."""
 
     __tablename__ = "player_chat_message"
+    __table_args__ = (
+        # Composite indexes for efficient time-based queries
+        Index("idx_player_chat_player_time", "player_db_id", "sent_at"),
+        Index("idx_player_chat_server_time", "server_db_id", "sent_at"),
+    )
 
     message_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     player_db_id: Mapped[int] = mapped_column(Integer, index=True)
@@ -254,6 +264,10 @@ class PlayerAchievement(Base):
             "achievement_name",
             unique=True,
         ),
+        # Time-based indexes for recent achievements queries
+        Index("idx_player_achievement_time", "earned_at"),
+        Index("idx_player_achievement_player_time", "player_db_id", "earned_at"),
+        Index("idx_player_achievement_server_time", "server_db_id", "earned_at"),
     )
 
     achievement_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -274,6 +288,8 @@ class PlayerOnlineStatus(Base):
             "server_db_id",
             unique=True,
         ),
+        # Index for quickly finding online players on a server
+        Index("idx_player_online_status_online", "is_online", "server_db_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

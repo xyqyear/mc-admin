@@ -15,6 +15,13 @@ from .logger import logger
 from .players import player_system_manager
 from .routers import admin, archive, auth, cron, dns, snapshots, system, user
 from .routers.config import router as config_router
+from .routers.players import (
+    achievements,
+    chat,
+    players,
+    sessions,
+    statistics,
+)
 from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
 from .routers.servers import create as server_create
@@ -74,6 +81,19 @@ api_app.include_router(archive.router)
 api_app.include_router(cron.router)
 api_app.include_router(dns.router)
 api_app.include_router(config_router)
+
+# Player management routers
+api_app.include_router(players.router)
+api_app.include_router(sessions.router)
+api_app.include_router(sessions.server_router)
+api_app.include_router(chat.router)
+api_app.include_router(chat.server_router)
+api_app.include_router(achievements.router)
+api_app.include_router(achievements.server_router)
+api_app.include_router(statistics.router)
+api_app.include_router(statistics.server_router)
+
+# Server routers
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
 api_app.include_router(server_players.router)
