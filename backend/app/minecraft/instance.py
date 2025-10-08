@@ -22,6 +22,7 @@ from .docker.cgroup import (
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
 from .docker.network import NetworkStats, read_container_network_stats
+from .properties import ServerProperties
 
 PLAYER_MESSAGE_PATTERN = re.compile(
     r"\]: (?:\[Not Secure\] )?<(?P<player>.*?)> (?P<message>.*)"
@@ -137,6 +138,15 @@ class MCInstance:
                 return path
 
         return None
+
+    def _get_server_properties_path(self) -> Path:
+        return self.get_data_path() / "server.properties"
+
+    async def get_server_properties(self) -> ServerProperties:
+        server_properties_path = self._get_server_properties_path()
+        async with aiofiles.open(server_properties_path) as f:
+            server_properties_content = await f.read()
+        return ServerProperties.from_server_properties(server_properties_content)
 
     def _verify_compose_yaml(self, compose_yaml: str) -> bool:
         """
