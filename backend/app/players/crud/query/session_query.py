@@ -35,13 +35,6 @@ class OnlinePlayerInfo(BaseModel):
     session_duration_seconds: int
 
 
-class DailyPlaytime(BaseModel):
-    """Daily playtime data."""
-
-    date: str
-    seconds: int
-
-
 class SessionStatsResponse(BaseModel):
     """Session statistics response."""
 
@@ -51,7 +44,6 @@ class SessionStatsResponse(BaseModel):
     longest_session_seconds: int
     sessions_by_server: Dict[str, int]
     playtime_by_server: Dict[str, int]
-    daily_playtime: List[DailyPlaytime]
 
 
 async def get_player_sessions(
@@ -265,37 +257,6 @@ async def get_player_session_stats(
         row.server_id: row[1] for row in playtime_by_server_result.all()
     }
 
-    # Get daily playtime (last 30 days or period)
-    days_to_show = 30
-    if period == "week":
-        days_to_show = 7
-    elif period == "year":
-        days_to_show = 365
-
-    daily_playtime = []
-    for i in range(days_to_show - 1, -1, -1):
-        day_start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=i)
-        day_end = day_start + timedelta(days=1)
-
-        day_playtime_result = await session.execute(
-            select(func.coalesce(func.sum(PlayerSession.duration_seconds), 0)).where(
-                PlayerSession.player_db_id == player_db_id,
-                PlayerSession.joined_at >= day_start,
-                PlayerSession.joined_at < day_end,
-                PlayerSession.duration_seconds != None,  # noqa: E711
-            )
-        )
-        day_playtime = day_playtime_result.scalar_one() or 0
-
-        daily_playtime.append(
-            DailyPlaytime(
-                date=day_start.strftime("%Y-%m-%d"),
-                seconds=day_playtime,
-            )
-        )
-
     return SessionStatsResponse(
         total_sessions=total_sessions,
         total_playtime_seconds=total_playtime,
@@ -303,5 +264,4 @@ async def get_player_session_stats(
         longest_session_seconds=longest_session,
         sessions_by_server=sessions_by_server,
         playtime_by_server=playtime_by_server,
-        daily_playtime=daily_playtime,
     )

@@ -47,11 +47,6 @@ export interface SessionInfo {
   is_active: boolean
 }
 
-export interface DailyPlaytime {
-  date: string
-  seconds: number
-}
-
 export interface SessionStatsResponse {
   total_sessions: number
   total_playtime_seconds: number
@@ -59,7 +54,6 @@ export interface SessionStatsResponse {
   longest_session_seconds: number
   sessions_by_server: Record<string, number>
   playtime_by_server: Record<string, number>
-  daily_playtime: DailyPlaytime[]
 }
 
 export interface ChatMessageInfo {
