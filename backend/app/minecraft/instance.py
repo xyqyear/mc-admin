@@ -567,8 +567,9 @@ class MCInstance:
         query_command = config.players.query.query_command.replace(
             "25565", str(server_properties.query_port)
         )
+        timeout = str(config.players.query.timeout)
 
-        result = await self._compose_manager.exec("mc", "bash", "-c", query_command)
+        result = await self._compose_manager.exec("mc", "timeout", timeout, "bash", "-c", query_command)
         result = result.strip()
         if not result:
             return []
