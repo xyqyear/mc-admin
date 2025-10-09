@@ -9,6 +9,7 @@ import aiofiles
 import aiofiles.os as aioos
 import yaml
 
+from ..dynamic_config import config
 from ..files.utils import _chown_async, get_uid_gid
 from ..utils.exec import async_rmtree, exec_command
 from ..utils.system import get_process_cpu_usage
@@ -546,7 +547,41 @@ class MCInstance:
             rcon_port=mc_compose.get_rcon_port(),
         )
 
-    async def list_players(self) -> list[str]:
+    async def list_players_query(self) -> list[str]:
+        """
+        List players using query protocol.
+
+        Returns:
+            List of player names
+
+        Raises:
+            Exception: If server.properties cannot be read, query is not enabled, or query fails
+        """
+        server_properties = await self.get_server_properties()
+
+        if not server_properties.enable_query:
+            raise RuntimeError("Query protocol is not enabled in server.properties")
+        if not server_properties.query_port:
+            raise RuntimeError("Query port is not configured in server.properties")
+
+        query_command = config.players.query.query_command.replace(
+            "25565", str(server_properties.query_port)
+        )
+
+        result = await self._compose_manager.exec("mc", "bash", "-c", query_command)
+        result = result.strip()
+        if not result:
+            return []
+
+        return [player.strip() for player in result.split("\n") if player.strip()]
+
+    async def _list_players_rcon(self) -> list[str]:
+        """
+        List players using RCON protocol.
+
+        Returns:
+            List of player names
+        """
         players = await self.send_command_rcon("list")
         if ":" not in players:
             return []
@@ -554,6 +589,23 @@ class MCInstance:
         return [
             player.strip() for player in players_str.split(",") if player.strip() != ""
         ]
+
+    async def list_players(self) -> list[str]:
+        """
+        List players. First tries query protocol if enabled, falls back to RCON.
+
+        Returns:
+            List of player names
+        """
+        # Try query protocol first
+        try:
+            return await self.list_players_query()
+        except Exception:
+            # If query fails for any reason, fall back to RCON
+            pass
+
+        # Fall back to RCON
+        return await self._list_players_rcon()
 
     async def send_command_rcon(self, command: str) -> str:
         """
