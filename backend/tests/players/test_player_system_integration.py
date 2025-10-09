@@ -29,7 +29,6 @@ from app.models import (
     Player,
     PlayerAchievement,
     PlayerChatMessage,
-    PlayerOnlineStatus,
     PlayerSession,
     Server,
     ServerStatus,
@@ -184,16 +183,17 @@ async def get_player(db, player_name: str):
         return result.scalar_one_or_none()
 
 
-async def get_online_status(db, player_db_id: int, server_db_id: int):
-    """Get player online status."""
+async def is_player_online(db, player_db_id: int, server_db_id: int) -> bool:
+    """Check if player is online (has open session)."""
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.player_db_id == player_db_id,
-                PlayerOnlineStatus.server_db_id == server_db_id,
+            select(PlayerSession).where(
+                PlayerSession.player_db_id == player_db_id,
+                PlayerSession.server_db_id == server_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none() is not None
 
 
 async def get_open_session(db, player_db_id: int, server_db_id: int):
@@ -262,9 +262,8 @@ async def test_normal_flow_uuid_join_leave(player_system):
     assert player.uuid == "abc123"
     assert player.current_name == "Steve"
 
-    status = await get_online_status(db, player.player_db_id, server_db_id)
-    assert status is not None
-    assert status.is_online is True
+    # Check player is online (has open session)
+    assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     session = await get_open_session(db, player.player_db_id, server_db_id)
     assert session is not None
@@ -275,8 +274,7 @@ async def test_normal_flow_uuid_join_leave(player_system):
     )
 
     # Verify player is offline
-    status = await get_online_status(db, player.player_db_id, server_db_id)
-    assert status.is_online is False
+    assert await is_player_online(db, player.player_db_id, server_db_id) is False
 
     session = await get_open_session(db, player.player_db_id, server_db_id)
     assert session is None
@@ -304,8 +302,7 @@ async def test_server_stopping_marks_all_offline(player_system):
     # Verify all online
     for name in ["Steve", "Alex", "Bob"]:
         player = await get_player(db, name)
-        status = await get_online_status(db, player.player_db_id, server_db_id)
-        assert status.is_online is True
+        assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     # Server stops
     await dispatcher.dispatch_server_stopping(ServerStoppingEvent(server_id="server1"))
@@ -313,8 +310,7 @@ async def test_server_stopping_marks_all_offline(player_system):
     # Verify all offline
     for name in ["Steve", "Alex", "Bob"]:
         player = await get_player(db, name)
-        status = await get_online_status(db, player.player_db_id, server_db_id)
-        assert status.is_online is False
+        assert await is_player_online(db, player.player_db_id, server_db_id) is False
 
 
 @pytest.mark.asyncio
@@ -338,8 +334,7 @@ async def test_missing_uuid_auto_fetch_from_mojang(player_system):
     assert player.uuid is not None  # Should have UUID from Mojang mock
     assert len(player.uuid) == 32  # MD5 hash length
 
-    status = await get_online_status(db, player.player_db_id, server_db_id)
-    assert status.is_online is True
+    assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
 
 # ============================================================================
@@ -671,20 +666,16 @@ async def test_multiple_servers_same_player(player_system):
     player = await get_player(db, "Steve")
 
     # Check online on both servers
-    status1 = await get_online_status(db, player.player_db_id, server1_id)
-    status2 = await get_online_status(db, player.player_db_id, server2_id)
-    assert status1.is_online is True
-    assert status2.is_online is True
+    assert await is_player_online(db, player.player_db_id, server1_id) is True
+    assert await is_player_online(db, player.player_db_id, server2_id) is True
 
     # Leave server1, should still be online on server2
     await dispatcher.dispatch_player_left(
         PlayerLeftEvent(server_id="server1", player_name="Steve")
     )
 
-    status1 = await get_online_status(db, player.player_db_id, server1_id)
-    status2 = await get_online_status(db, player.player_db_id, server2_id)
-    assert status1.is_online is False
-    assert status2.is_online is True
+    assert await is_player_online(db, player.player_db_id, server1_id) is False
+    assert await is_player_online(db, player.player_db_id, server2_id) is True
 
 
 @pytest.mark.asyncio
@@ -758,8 +749,7 @@ async def test_concurrent_players_on_same_server(player_system):
     # Verify all online
     for name in players:
         player = await get_player(db, name)
-        status = await get_online_status(db, player.player_db_id, server_db_id)
-        assert status.is_online is True
+        assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     # Some players leave
     for name in ["Steve", "Bob"]:
@@ -773,13 +763,11 @@ async def test_concurrent_players_on_same_server(player_system):
 
     for name in online_players:
         player = await get_player(db, name)
-        status = await get_online_status(db, player.player_db_id, server_db_id)
-        assert status.is_online is True
+        assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     for name in offline_players:
         player = await get_player(db, name)
-        status = await get_online_status(db, player.player_db_id, server_db_id)
-        assert status.is_online is False
+        assert await is_player_online(db, player.player_db_id, server_db_id) is False
 
 
 @pytest.mark.asyncio

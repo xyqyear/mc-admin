@@ -9,7 +9,7 @@ from ..dynamic_config import config
 from ..events.base import PlayerLeftEvent, SystemCrashDetectedEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import logger
-from .crud import get_online_players_grouped_by_server
+from .crud import get_online_players_with_names_grouped_by_server
 from .crud.heartbeat import get_heartbeat, upsert_heartbeat
 
 
@@ -106,8 +106,10 @@ class HeartbeatManager:
         try:
             logger.info("Starting crash recovery...")
 
-            # Get all online players grouped by server
-            players_by_server = await get_online_players_grouped_by_server(session)
+            # Get all online players grouped by server using CRUD function
+            players_by_server = await get_online_players_with_names_grouped_by_server(
+                session
+            )
 
             # Calculate total player count
             total_players = sum(len(players) for players in players_by_server.values())

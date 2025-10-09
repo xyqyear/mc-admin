@@ -11,7 +11,7 @@ from ..logger import logger
 from ..minecraft import DockerMCManager, MCServerStatus
 from ..server_tracker import ServerTracker
 from ..server_tracker.crud import get_active_servers_map
-from .crud import get_online_players_on_server
+from .crud import get_online_player_names_on_server
 
 
 class RCONValidator:
@@ -113,14 +113,13 @@ class RCONValidator:
                 logger.warning(f"Failed to get player list from {server_id}: {e}")
                 return
 
-            # Get online players from database
+            # Get online players from database using CRUD function
             async with get_async_session() as session:
                 try:
-                    db_online = await get_online_players_on_server(
+                    # Get online player names using CRUD function
+                    db_online_names = await get_online_player_names_on_server(
                         session, server_db_id
                     )
-
-                    db_online_names = {player.current_name for _, player in db_online}
 
                     # Find discrepancies
                     falsely_online = db_online_names - online_player_names

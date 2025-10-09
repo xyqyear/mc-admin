@@ -1,21 +1,15 @@
 """Session tracking for player game sessions."""
 
-from datetime import datetime
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from ..db.database import get_async_session
 from ..events.base import PlayerJoinedEvent, PlayerLeftEvent, ServerStoppingEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import logger
-from ..models import PlayerSession
 from ..server_tracker import crud as server_tracker_crud
 from .crud import (
-    create_session,
-    end_session,
-    get_all_open_sessions_on_server,
-    get_open_session,
+    end_all_open_sessions,
+    end_all_open_sessions_on_server,
     get_or_add_player_by_name,
+    get_or_create_session,
 )
 
 
@@ -38,29 +32,8 @@ class SessionTracker:
         self.event_dispatcher.on_player_left(self._handle_player_left)
         self.event_dispatcher.on_server_stopping(self._handle_server_stopping)
 
-    async def _end_player_session(
-        self,
-        session: AsyncSession,
-        player_session: PlayerSession,
-        end_timestamp: datetime,
-    ) -> None:
-        """End a player session.
-
-        This is a shared helper method used by both player leave and server stopping handlers.
-
-        Args:
-            session: Database session
-            player_session: The session object to end
-            end_timestamp: Timestamp when the session ended
-        """
-        # Calculate session duration
-        duration = int((end_timestamp - player_session.joined_at).total_seconds())
-
-        # End session
-        await end_session(session, player_session, end_timestamp, duration)
-
     async def _handle_player_joined(self, event: PlayerJoinedEvent) -> None:
-        """Handle player join event - create new session.
+        """Handle player join event - create new session or reuse existing open session.
 
         Args:
             event: Player join event
@@ -82,19 +55,24 @@ class SessionTracker:
                     )
                     return
 
-                # Create new session
-                await create_session(
+                # Get or create session (will reuse existing open session if exists)
+                player_session = await get_or_create_session(
                     session, player.player_db_id, server_db_id, event.timestamp
                 )
 
-                logger.debug(
-                    f"Created session for {event.player_name} on {event.server_id}"
-                )
+                if player_session.joined_at < event.timestamp:
+                    logger.debug(
+                        f"Reused existing session for {event.player_name} on {event.server_id}"
+                    )
+                else:
+                    logger.debug(
+                        f"Created new session for {event.player_name} on {event.server_id}"
+                    )
         except Exception as e:
             logger.error(f"Error in session join handler: {e}", exc_info=True)
 
     async def _handle_player_left(self, event: PlayerLeftEvent) -> None:
-        """Handle player leave event - end session and update playtime.
+        """Handle player leave event - end all open sessions.
 
         Args:
             event: Player leave event
@@ -116,32 +94,24 @@ class SessionTracker:
                     )
                     return
 
-                # Find open session
-                open_session = await get_open_session(
-                    session, player.player_db_id, server_db_id
+                # End all open sessions for this player on this server
+                count = await end_all_open_sessions(
+                    session, player.player_db_id, server_db_id, event.timestamp
                 )
 
-                if open_session:
-                    # End session using shared helper
-                    await self._end_player_session(
-                        session, open_session, event.timestamp
-                    )
-
-                    duration = int(
-                        (event.timestamp - open_session.joined_at).total_seconds()
-                    )
+                if count > 0:
                     logger.debug(
-                        f"Ended session for {event.player_name} on {event.server_id} ({duration}s)"
+                        f"Ended {count} session(s) for {event.player_name} on {event.server_id}"
                     )
                 else:
                     logger.warning(
-                        f"No open session found for {event.player_name} on {event.server_id}"
+                        f"No open sessions found for {event.player_name} on {event.server_id}"
                     )
         except Exception as e:
             logger.error(f"Error in session leave handler: {e}", exc_info=True)
 
     async def _handle_server_stopping(self, event: ServerStoppingEvent) -> None:
-        """Handle server stopping event - end all open sessions.
+        """Handle server stopping event - end all open sessions on the server.
 
         Args:
             event: Server stopping event
@@ -155,19 +125,13 @@ class SessionTracker:
                     logger.warning(f"Server not found in tracker: {event.server_id}")
                     return
 
-                # Find all open sessions for this server
-                open_sessions = await get_all_open_sessions_on_server(
-                    session, server_db_id
+                # End all open sessions on this server
+                count = await end_all_open_sessions_on_server(
+                    session, server_db_id, event.timestamp
                 )
 
-                # End each session using shared helper
-                for open_session in open_sessions:
-                    await self._end_player_session(
-                        session, open_session, event.timestamp
-                    )
-
                 logger.info(
-                    f"Ended {len(open_sessions)} sessions for server {event.server_id}"
+                    f"Ended {count} session(s) for server {event.server_id} (server stopping)"
                 )
         except Exception as e:
             logger.error(f"Error in server stopping handler: {e}", exc_info=True)

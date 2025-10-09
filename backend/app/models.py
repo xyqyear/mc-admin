@@ -225,6 +225,14 @@ class PlayerSession(Base):
         # Composite indexes for efficient time-based queries
         Index("idx_player_session_player_time", "player_db_id", "joined_at"),
         Index("idx_player_session_server_time", "server_db_id", "joined_at"),
+        # Indexes for efficient online player queries
+        Index("idx_player_session_server_online", "server_db_id", "left_at"),
+        Index(
+            "idx_player_session_player_server_online",
+            "player_db_id",
+            "server_db_id",
+            "left_at",
+        ),
     )
 
     session_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -277,24 +285,3 @@ class PlayerAchievement(Base):
     earned_at: Mapped[datetime] = mapped_column(TZDatetime())
 
 
-class PlayerOnlineStatus(Base):
-    """Player online status per server."""
-
-    __tablename__ = "player_online_status"
-    __table_args__ = (
-        Index(
-            "idx_player_online_status_unique",
-            "player_db_id",
-            "server_db_id",
-            unique=True,
-        ),
-        # Index for quickly finding online players on a server
-        Index("idx_player_online_status_online", "is_online", "server_db_id"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    player_db_id: Mapped[int] = mapped_column(Integer, index=True)
-    server_db_id: Mapped[int] = mapped_column(Integer, index=True)
-    is_online: Mapped[bool] = mapped_column(default=False)
-    last_join: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
-    last_leave: Mapped[Optional[datetime]] = mapped_column(TZDatetime())

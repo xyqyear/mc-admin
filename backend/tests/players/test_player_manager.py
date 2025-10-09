@@ -16,7 +16,7 @@ from app.events.base import (
     ServerStoppingEvent,
 )
 from app.events.dispatcher import EventDispatcher
-from app.models import Base, Player, PlayerOnlineStatus, Server, ServerStatus
+from app.models import Base, Player, PlayerSession, Server, ServerStatus
 from app.players.player_manager import PlayerManager
 
 
@@ -114,13 +114,17 @@ class TestPlayerManager:
         self, test_db_session, test_server, test_player
     ):
         """Test handling player join event for existing player."""
-        # Mock database session
-        with patch("app.players.player_manager.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
+        # Mock database sessions for both managers
+        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
+             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+            mock_pm_session.return_value.__aenter__.return_value = test_db_session
+            mock_st_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and player manager
+            # Create event dispatcher and both managers
             dispatcher = EventDispatcher()
             PlayerManager(dispatcher)
+            from app.players.session_tracker import SessionTracker
+            SessionTracker(dispatcher)
 
             # Create player joined event
             join_time = datetime.now(timezone.utc)
@@ -136,18 +140,18 @@ class TestPlayerManager:
             # Wait for async handlers
             await asyncio.sleep(0.2)
 
-            # Verify online status was created
+            # Verify session was created (online means left_at is None)
             result = await test_db_session.execute(
-                select(PlayerOnlineStatus).where(
-                    PlayerOnlineStatus.player_db_id == test_player.player_db_id,
-                    PlayerOnlineStatus.server_db_id == test_server.id,
+                select(PlayerSession).where(
+                    PlayerSession.player_db_id == test_player.player_db_id,
+                    PlayerSession.server_db_id == test_server.id,
+                    PlayerSession.left_at == None,
                 )
             )
-            status = result.scalar_one_or_none()
+            session = result.scalar_one_or_none()
 
-            assert status is not None
-            assert status.is_online is True
-            assert status.last_join == join_time
+            assert session is not None
+            assert session.joined_at == join_time
 
             # Verify last_seen was updated
             await test_db_session.refresh(test_player)
@@ -156,18 +160,22 @@ class TestPlayerManager:
     @pytest.mark.asyncio
     async def test_handle_player_joined_new_player(self, test_db_session, test_server):
         """Test handling player join event for new player (auto-creates player)."""
-        # Mock database session
-        with patch("app.players.player_manager.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
+        # Mock database sessions for both managers
+        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
+             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+            mock_pm_session.return_value.__aenter__.return_value = test_db_session
+            mock_st_session.return_value.__aenter__.return_value = test_db_session
 
             # Mock Mojang API
             with patch(
                 "app.players.crud.player.fetch_player_uuid_from_mojang",
                 return_value="new_player_uuid_111",
             ):
-                # Create event dispatcher and player manager
+                # Create event dispatcher and both managers
                 dispatcher = EventDispatcher()
                 PlayerManager(dispatcher)
+                from app.players.session_tracker import SessionTracker
+                SessionTracker(dispatcher)
 
                 # Create player joined event for new player
                 join_time = datetime.now(timezone.utc)
@@ -192,40 +200,48 @@ class TestPlayerManager:
                 assert player is not None
                 assert player.uuid == "new_player_uuid_111"
 
-                # Verify online status was created
+                # Verify session was created (online means left_at is None)
                 result = await test_db_session.execute(
-                    select(PlayerOnlineStatus).where(
-                        PlayerOnlineStatus.player_db_id == player.player_db_id,
-                        PlayerOnlineStatus.server_db_id == test_server.id,
+                    select(PlayerSession).where(
+                        PlayerSession.player_db_id == player.player_db_id,
+                        PlayerSession.server_db_id == test_server.id,
+                        PlayerSession.left_at == None,
                     )
                 )
-                status = result.scalar_one_or_none()
+                session = result.scalar_one_or_none()
 
-                assert status is not None
-                assert status.is_online is True
+                assert session is not None
 
     @pytest.mark.asyncio
     async def test_handle_player_left_existing_player(
         self, test_db_session, test_server, test_player
     ):
         """Test handling player leave event for existing player."""
-        # Create initial online status
-        online_status = PlayerOnlineStatus(
+        # Create initial open session (joined but not left)
+        join_time = datetime.now(timezone.utc)
+        player_session = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
-            is_online=True,
-            last_join=datetime.now(timezone.utc),
+            joined_at=join_time,
+            left_at=None,
+            duration_seconds=None,
         )
-        test_db_session.add(online_status)
+        test_db_session.add(player_session)
         await test_db_session.commit()
 
-        # Mock database session
-        with patch("app.players.player_manager.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
+        # Mock database sessions for both managers
+        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
+             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+            mock_pm_session.return_value.__aenter__.return_value = test_db_session
+            mock_st_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and player manager
+            # Create event dispatcher and both managers
             dispatcher = EventDispatcher()
             PlayerManager(dispatcher)
+
+            # Import session_tracker to register its handlers
+            from app.players.session_tracker import SessionTracker
+            SessionTracker(dispatcher)
 
             # Create player left event
             leave_time = datetime.now(timezone.utc)
@@ -242,10 +258,10 @@ class TestPlayerManager:
             # Wait for async handlers
             await asyncio.sleep(0.2)
 
-            # Verify online status was updated
-            await test_db_session.refresh(online_status)
-            assert online_status.is_online is False
-            assert online_status.last_leave == leave_time
+            # Verify session was ended (left_at is set)
+            await test_db_session.refresh(player_session)
+            assert player_session.left_at == leave_time
+            assert player_session.duration_seconds is not None
 
     @pytest.mark.asyncio
     async def test_handle_player_left_new_player(self, test_db_session, test_server):
@@ -291,7 +307,7 @@ class TestPlayerManager:
     async def test_handle_server_stopping(
         self, test_db_session, test_server, test_player
     ):
-        """Test handling server stopping event - marks all players offline."""
+        """Test handling server stopping event - ends all open sessions."""
         # Create multiple online players
         player2 = Player(
             player_db_id=2,
@@ -302,30 +318,36 @@ class TestPlayerManager:
         test_db_session.add(player2)
         await test_db_session.commit()
 
-        # Create online statuses
-        status1 = PlayerOnlineStatus(
+        # Create open sessions for both players
+        join_time = datetime.now(timezone.utc)
+        session1 = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
-            is_online=True,
-            last_join=datetime.now(timezone.utc),
+            joined_at=join_time,
+            left_at=None,
+            duration_seconds=None,
         )
-        status2 = PlayerOnlineStatus(
+        session2 = PlayerSession(
             player_db_id=player2.player_db_id,
             server_db_id=test_server.id,
-            is_online=True,
-            last_join=datetime.now(timezone.utc),
+            joined_at=join_time,
+            left_at=None,
+            duration_seconds=None,
         )
-        test_db_session.add(status1)
-        test_db_session.add(status2)
+        test_db_session.add(session1)
+        test_db_session.add(session2)
         await test_db_session.commit()
 
-        # Mock database session
-        with patch("app.players.player_manager.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
+        # Mock database sessions for both managers
+        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
+             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+            mock_pm_session.return_value.__aenter__.return_value = test_db_session
+            mock_st_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and player manager
+            # Create event dispatcher and session tracker (handles server stopping)
             dispatcher = EventDispatcher()
-            PlayerManager(dispatcher)
+            from app.players.session_tracker import SessionTracker
+            SessionTracker(dispatcher)
 
             # Create server stopping event
             stop_time = datetime.now(timezone.utc)
@@ -340,29 +362,33 @@ class TestPlayerManager:
             # Wait for async handlers
             await asyncio.sleep(0.2)
 
-            # Verify all players are offline
-            await test_db_session.refresh(status1)
-            await test_db_session.refresh(status2)
+            # Verify all sessions are ended
+            await test_db_session.refresh(session1)
+            await test_db_session.refresh(session2)
 
-            assert status1.is_online is False
-            assert status1.last_leave == stop_time
-            assert status2.is_online is False
-            assert status2.last_leave == stop_time
+            assert session1.left_at == stop_time
+            assert session1.duration_seconds is not None
+            assert session2.left_at == stop_time
+            assert session2.duration_seconds is not None
 
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
-        # Mock database session and server_tracker_crud to return None
-        with patch("app.players.player_manager.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
+        # Mock database sessions and server_tracker_crud to return None
+        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
+             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+            mock_pm_session.return_value.__aenter__.return_value = test_db_session
+            mock_st_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
-                "app.players.player_manager.server_tracker_crud.get_server_db_id",
+                "app.players.session_tracker.server_tracker_crud.get_server_db_id",
                 return_value=None,
             ):
-                # Create event dispatcher and player manager
+                # Create event dispatcher and both managers
                 dispatcher = EventDispatcher()
                 PlayerManager(dispatcher)
+                from app.players.session_tracker import SessionTracker
+                SessionTracker(dispatcher)
 
                 # Create player joined event
                 event = PlayerJoinedEvent(
@@ -377,11 +403,11 @@ class TestPlayerManager:
                 # Wait for async handlers
                 await asyncio.sleep(0.2)
 
-                # Verify no online status was created
-                result = await test_db_session.execute(select(PlayerOnlineStatus))
-                statuses = result.scalars().all()
+                # Verify no session was created
+                result = await test_db_session.execute(select(PlayerSession))
+                sessions = result.scalars().all()
 
-                assert len(statuses) == 0
+                assert len(sessions) == 0
 
     @pytest.mark.asyncio
     async def test_uuid_update_for_renamed_player(self, test_db_session):

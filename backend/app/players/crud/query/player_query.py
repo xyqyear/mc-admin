@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Player, PlayerOnlineStatus, PlayerSession, Server
+from ....models import Player, PlayerSession, Server
 from ....server_tracker.crud import get_server_db_id
 
 
@@ -89,19 +89,17 @@ async def get_all_players_summary(
         if server_db_id is None:
             return []
 
-    # Check online status
-    online_status_query = select(PlayerOnlineStatus).where(
-        PlayerOnlineStatus.is_online == True  # noqa: E712
+    # Check online status using player_session (left_at IS NULL means online)
+    online_status_query = select(PlayerSession.player_db_id).where(
+        PlayerSession.left_at == None  # noqa: E711
     )
     if server_db_id:
         online_status_query = online_status_query.where(
-            PlayerOnlineStatus.server_db_id == server_db_id
+            PlayerSession.server_db_id == server_db_id
         )
 
     online_status_result = await session.execute(online_status_query)
-    online_player_ids = {
-        status.player_db_id for status in online_status_result.scalars().all()
-    }
+    online_player_ids = {player_db_id for (player_db_id,) in online_status_result.all()}
 
     # Apply filters
     if online_only:
@@ -225,16 +223,16 @@ async def _build_player_detail(
     )
     total_achievements = achievements_result.scalar_one()
 
-    # Get current servers (where player is online)
-    online_status_result = await session.execute(
-        select(PlayerOnlineStatus, Server.server_id)
-        .join(Server, PlayerOnlineStatus.server_db_id == Server.id)
+    # Get current servers (where player is online) using player_session
+    online_sessions_result = await session.execute(
+        select(Server.server_id)
+        .join(PlayerSession, PlayerSession.server_db_id == Server.id)
         .where(
-            PlayerOnlineStatus.player_db_id == player.player_db_id,
-            PlayerOnlineStatus.is_online == True,  # noqa: E712
+            PlayerSession.player_db_id == player.player_db_id,
+            PlayerSession.left_at == None,  # noqa: E711
         )
     )
-    current_servers = [row.server_id for row in online_status_result.all()]
+    current_servers = [server_id for (server_id,) in online_sessions_result.all()]
 
     # Check if player is online
     is_online = len(current_servers) > 0

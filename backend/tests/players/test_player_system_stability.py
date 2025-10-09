@@ -24,7 +24,6 @@ from app.events.base import (
 )
 from app.models import (
     Player,
-    PlayerOnlineStatus,
     PlayerSession,
     Server,
     ServerStatus,
@@ -259,15 +258,16 @@ async def test_rapid_server_stop_events(player_system):
         ]
     )
 
-    # All players should be offline
+    # All players should be offline (all sessions should be ended)
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.server_db_id == server_db_id
+            select(PlayerSession).where(
+                PlayerSession.server_db_id == server_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
-        statuses = list(result.scalars().all())
-        assert all(not s.is_online for s in statuses)
+        open_sessions = list(result.scalars().all())
+        assert len(open_sessions) == 0
 
 
 @pytest.mark.asyncio
@@ -299,17 +299,17 @@ async def test_concurrent_multi_server_events(player_system):
         ]
     )
 
-    # Verify online on all servers
+    # Verify online on all servers (has open sessions on all servers)
     player = await get_player(db, "Steve")
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.player_db_id == player.player_db_id
+            select(PlayerSession).where(
+                PlayerSession.player_db_id == player.player_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
-        statuses = list(result.scalars().all())
-        assert len(statuses) == 3
-        assert all(s.is_online for s in statuses)
+        open_sessions = list(result.scalars().all())
+        assert len(open_sessions) == 3
 
 
 # ============================================================================
@@ -348,16 +348,16 @@ async def test_massive_player_count(player_system):
     ]
     await asyncio.gather(*join_tasks)
 
-    # Verify all online
+    # Verify all online (have open sessions)
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.server_db_id == server_db_id,
-                PlayerOnlineStatus.is_online == True,
+            select(PlayerSession).where(
+                PlayerSession.server_db_id == server_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
-        online = list(result.scalars().all())
-        assert len(online) == player_count
+        open_sessions = list(result.scalars().all())
+        assert len(open_sessions) == player_count
 
     # Half leave
     leave_tasks = [
@@ -368,16 +368,16 @@ async def test_massive_player_count(player_system):
     ]
     await asyncio.gather(*leave_tasks)
 
-    # Verify correct count
+    # Verify correct count (half still have open sessions)
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.server_db_id == server_db_id,
-                PlayerOnlineStatus.is_online == True,
+            select(PlayerSession).where(
+                PlayerSession.server_db_id == server_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
-        online = list(result.scalars().all())
-        assert len(online) == player_count // 2
+        open_sessions = list(result.scalars().all())
+        assert len(open_sessions) == player_count // 2
 
 
 @pytest.mark.asyncio
@@ -570,15 +570,15 @@ async def test_server_stop_with_no_players(player_system):
     # Server stops with no players
     await dispatcher.dispatch_server_stopping(ServerStoppingEvent(server_id="server1"))
 
-    # Should not crash
+    # Should not crash (no sessions should exist)
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.server_db_id == server_db_id
+            select(PlayerSession).where(
+                PlayerSession.server_db_id == server_db_id
             )
         )
-        statuses = list(result.scalars().all())
-        assert len(statuses) == 0
+        sessions = list(result.scalars().all())
+        assert len(sessions) == 0
 
 
 @pytest.mark.asyncio

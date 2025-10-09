@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Player, PlayerOnlineStatus, PlayerSession
+from ....models import Player, PlayerSession
 from ....server_tracker.crud import get_server_db_id
 
 
@@ -74,10 +74,10 @@ async def get_global_player_stats(session: AsyncSession) -> GlobalPlayerStats:
     )
     total_players = total_players_result.scalar_one()
 
-    # Online players
+    # Online players (players with open sessions)
     online_players_result = await session.execute(
-        select(func.count(func.distinct(PlayerOnlineStatus.player_db_id))).where(
-            PlayerOnlineStatus.is_online == True  # noqa: E712
+        select(func.count(func.distinct(PlayerSession.player_db_id))).where(
+            PlayerSession.left_at == None  # noqa: E711
         )
     )
     online_players = online_players_result.scalar_one()
@@ -163,57 +163,87 @@ async def get_activity_trend(
         interval_hours = 168  # week
 
     start_time = now - timedelta(days=days)
-    data_points = []
+    interval_delta = timedelta(hours=interval_hours)
 
-    # Generate data points
+    # Fetch all sessions in the time range (one query)
+    sessions_result = await session.execute(
+        select(
+            PlayerSession.player_db_id,
+            PlayerSession.joined_at,
+            PlayerSession.left_at,
+            PlayerSession.duration_seconds,
+        ).where(
+            # Get sessions that overlap with our time range
+            and_(
+                PlayerSession.joined_at < now,
+                # Include sessions that either haven't ended or ended after start_time
+                func.coalesce(PlayerSession.left_at, now) >= start_time,
+            )
+        )
+    )
+    all_sessions = sessions_result.all()
+
+    # Fetch all new players in the time range (one query)
+    new_players_result = await session.execute(
+        select(Player.player_db_id, Player.created_at).where(
+            and_(Player.created_at >= start_time, Player.created_at < now)
+        )
+    )
+    all_new_players = new_players_result.all()
+
+    # Build time intervals
+    intervals = []
     current_time = start_time
     while current_time <= now:
-        next_time = current_time + timedelta(hours=interval_hours)
+        intervals.append(current_time)
+        current_time += interval_delta
 
-        # Active players in this interval
-        active_players_result = await session.execute(
-            select(func.count(func.distinct(PlayerSession.player_db_id))).where(
-                and_(
-                    PlayerSession.joined_at >= current_time,
-                    PlayerSession.joined_at < next_time,
-                )
-            )
-        )
-        active_players = active_players_result.scalar_one()
+    # Process data in Python
+    data_points = []
+    for interval_start in intervals:
+        interval_end = interval_start + interval_delta
 
-        # New players in this interval
-        new_players_result = await session.execute(
-            select(func.count(Player.player_db_id)).where(
-                and_(
-                    Player.created_at >= current_time,
-                    Player.created_at < next_time,
-                )
-            )
-        )
-        new_players = new_players_result.scalar_one()
+        # Track active players (players who had a session during this interval)
+        active_player_ids = set()
 
-        # Total playtime in this interval
-        playtime_result = await session.execute(
-            select(func.coalesce(func.sum(PlayerSession.duration_seconds), 0)).where(
-                and_(
-                    PlayerSession.joined_at >= current_time,
-                    PlayerSession.joined_at < next_time,
-                    PlayerSession.duration_seconds != None,  # noqa: E711
-                )
-            )
+        # Calculate total playtime for this interval
+        total_playtime = 0
+
+        for row in all_sessions:
+            player_id, joined_at, left_at, _ = row
+
+            # Determine effective session end time
+            session_end = left_at if left_at is not None else now
+
+            # Check if session overlaps with this interval
+            if joined_at < interval_end and session_end >= interval_start:
+                # This player was active during this interval
+                active_player_ids.add(player_id)
+
+                # Calculate overlap duration
+                overlap_start = max(joined_at, interval_start)
+                overlap_end = min(session_end, interval_end)
+                overlap_seconds = int((overlap_end - overlap_start).total_seconds())
+
+                # Only count positive overlaps
+                if overlap_seconds > 0:
+                    total_playtime += overlap_seconds
+
+        # Count new players in this interval
+        new_players_count = sum(
+            1
+            for row in all_new_players
+            if interval_start <= row.created_at < interval_end
         )
-        total_playtime = playtime_result.scalar_one() or 0
 
         data_points.append(
             ActivityDataPoint(
-                timestamp=current_time,
-                active_players=active_players,
-                new_players=new_players,
+                timestamp=interval_start,
+                active_players=len(active_player_ids),
+                new_players=new_players_count,
                 total_playtime_seconds=total_playtime,
             )
         )
-
-        current_time = next_time
 
     return data_points
 

@@ -19,7 +19,7 @@ from app.db.database import Base
 from app.minecraft.instance import MCServerStatus
 from app.models import (
     Player,
-    PlayerOnlineStatus,
+    PlayerSession,
     Server,
     ServerStatus,
     SystemHeartbeat,
@@ -148,12 +148,12 @@ async def get_player(db, player_name: str):
 
 
 async def get_online_players(db, server_db_id: int):
-    """Get all online players on server."""
+    """Get all online players on server (players with open sessions)."""
     async with db() as session:
         result = await session.execute(
-            select(PlayerOnlineStatus).where(
-                PlayerOnlineStatus.server_db_id == server_db_id,
-                PlayerOnlineStatus.is_online == True,
+            select(PlayerSession).where(
+                PlayerSession.server_db_id == server_db_id,
+                PlayerSession.left_at.is_(None),
             )
         )
         return list(result.scalars().all())
@@ -186,15 +186,16 @@ async def create_heartbeat(db, timestamp: datetime):
 
 
 async def set_player_online(db, player_db_id: int, server_db_id: int):
-    """Manually set player online (for testing)."""
+    """Manually set player online (for testing) by creating open session."""
     async with db() as session:
-        status = PlayerOnlineStatus(
+        player_session = PlayerSession(
             player_db_id=player_db_id,
             server_db_id=server_db_id,
-            is_online=True,
-            last_join=datetime.now(timezone.utc),
+            joined_at=datetime.now(timezone.utc),
+            left_at=None,
+            duration_seconds=None,
         )
-        session.add(status)
+        session.add(player_session)
         await session.commit()
 
 
@@ -320,23 +321,23 @@ async def test_heartbeat_crash_detection(
         # Give a small delay for event handlers to complete
         await asyncio.sleep(0.1)
 
-        # Verify all players marked offline
+        # Verify all players marked offline (no open sessions)
         online = await get_online_players(db, server_db_id)
         assert len(online) == 0
 
-        # Verify they have last_leave timestamp at crash time
+        # Verify all sessions have been ended with left_at timestamp at crash time
         async with db() as session:
             result = await session.execute(
-                select(PlayerOnlineStatus).where(
-                    PlayerOnlineStatus.server_db_id == server_db_id
+                select(PlayerSession).where(
+                    PlayerSession.server_db_id == server_db_id
                 )
             )
-            statuses = list(result.scalars().all())
-            for status in statuses:
-                assert status.is_online is False
-                assert status.last_leave is not None
-                # Should be marked offline at stale heartbeat time
-                assert abs((status.last_leave - stale_time).total_seconds()) < 1
+            sessions = list(result.scalars().all())
+            for player_session in sessions:
+                assert player_session.left_at is not None
+                assert player_session.duration_seconds is not None
+                # Should be ended at stale heartbeat time
+                assert abs((player_session.left_at - stale_time).total_seconds()) < 1
 
         await heartbeat_manager.stop()
 
@@ -755,9 +756,9 @@ async def test_crash_recovery_triggers_rcon_validation(
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
         patch("app.db.database.get_async_session", db),
-        patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.rcon_validator.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
+        patch("app.players.session_tracker.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.rcon_validator.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),

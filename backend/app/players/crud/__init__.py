@@ -10,18 +10,13 @@ from .player import (
 )
 from .player_achievement import upsert_achievement
 from .player_chat import create_chat_message
-from .player_online_status import (
-    get_online_players_grouped_by_server,
-    get_online_players_on_server,
-    set_all_players_offline_on_server,
-    set_player_offline,
-    upsert_player_online_status,
-)
 from .player_session import (
-    create_session,
-    end_session,
+    end_all_open_sessions,
+    end_all_open_sessions_on_server,
     get_all_open_sessions_on_server,
-    get_open_session,
+    get_online_player_names_on_server,
+    get_online_players_with_names_grouped_by_server,
+    get_or_create_session,
 )
 
 __all__ = [
@@ -34,17 +29,13 @@ __all__ = [
     "get_or_add_player_by_name",
     "update_player_last_seen",
     "update_player_skin",
-    # Player Online Status
-    "upsert_player_online_status",
-    "set_player_offline",
-    "set_all_players_offline_on_server",
-    "get_online_players_on_server",
-    "get_online_players_grouped_by_server",
     # Player Session
-    "create_session",
-    "get_open_session",
-    "end_session",
+    "get_or_create_session",
+    "end_all_open_sessions",
     "get_all_open_sessions_on_server",
+    "end_all_open_sessions_on_server",
+    "get_online_players_with_names_grouped_by_server",
+    "get_online_player_names_on_server",
     # Player Chat
     "create_chat_message",
     # Player Achievement
