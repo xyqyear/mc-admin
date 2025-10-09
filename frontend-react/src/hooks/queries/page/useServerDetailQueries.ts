@@ -9,7 +9,6 @@ export const useServerDetailQueries = (serverId: string) => {
     useServerStatus,
     useServerCpuPercent,
     useServerMemory,
-    useServerPlayers,
     useServerIOStats,
     useServerDiskUsage,
     useComposeFile,
@@ -30,9 +29,6 @@ export const useServerDetailQueries = (serverId: string) => {
     // 内存使用量 (3秒刷新，RUNNING/STARTING/HEALTHY时可用)
     const memoryQuery = useServerMemory(serverId, statusQuery.data);
 
-    // 玩家列表 (5秒刷新，仅HEALTHY时可用)
-    const playersQuery = useServerPlayers(serverId, statusQuery.data);
-
     // I/O统计信息 (5秒刷新，RUNNING/STARTING/HEALTHY时可用)
     const iostatsQuery = useServerIOStats(serverId, statusQuery.data);
 
@@ -48,7 +44,6 @@ export const useServerDetailQueries = (serverId: string) => {
       statusQuery,
       cpuQuery,
       memoryQuery,
-      playersQuery,
       iostatsQuery,
       diskUsageQuery,
       restartScheduleQuery,
@@ -58,7 +53,6 @@ export const useServerDetailQueries = (serverId: string) => {
       status: statusQuery.data,
       cpu: cpuQuery.data,
       memory: memoryQuery.data,
-      players: playersQuery.data || [],
       iostats: iostatsQuery.data,
       diskUsage: diskUsageQuery.data,
       restartSchedule: restartScheduleQuery.data,
@@ -72,7 +66,6 @@ export const useServerDetailQueries = (serverId: string) => {
       hasServerInfo: !!configQuery.data,
       hasCpuData: !!cpuQuery.data,
       hasMemoryData: !!memoryQuery.data,
-      hasPlayersData: !!playersQuery.data?.length,
       hasIOStatsData: !!iostatsQuery.data,
       hasDiskUsageData: !!diskUsageQuery.data,
       hasRestartScheduleData: !!restartScheduleQuery.data,
@@ -90,7 +83,6 @@ export const useServerDetailQueries = (serverId: string) => {
           status: statusQuery.data,
           cpu: cpuQuery.data,
           memory: memoryQuery.data,
-          onlinePlayers: playersQuery.data || [],
           // 添加计算属性
           memoryUsagePercent:
             memoryQuery.data && configQuery.data

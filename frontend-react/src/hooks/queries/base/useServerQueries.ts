@@ -101,29 +101,6 @@ export const useServerQueries = () => {
     });
   };
 
-  // 单个服务器玩家列表 (仅在HEALTHY状态下可用)
-  const useServerPlayers = (
-    id: string,
-    status?: ServerStatus,
-    options?: Omit<UseQueryOptions<string[]>, 'queryKey' | 'queryFn'>
-  ) => {
-    const playersAvailable = status === "HEALTHY";
-
-    return useQuery({
-      queryKey: [...queryKeys.players.online(id)],
-      queryFn: () => serverApi.getServerPlayers(id),
-      enabled: !!id && playersAvailable,
-      refetchInterval: playersAvailable ? 5000 : false, // 5秒刷新玩家数据
-      staleTime: 2000, // 2秒 - 玩家数据需要较好实时性
-      retry: (failureCount, error: any) => {
-        // 如果服务器不健康，不要重试
-        if (error?.response?.status === 409) return false;
-        return failureCount < 2;
-      },
-      ...options,
-    });
-  };
-
   // 单个服务器I/O统计 (在RUNNING/STARTING/HEALTHY状态下可用)
   const useServerIOStats = (
     id: string,
@@ -213,7 +190,6 @@ export const useServerQueries = () => {
     useServerStatus, // 单个状态监控
     useServerCpuPercent, // 单个服务器CPU百分比 (分离后的接口)
     useServerMemory, // 单个服务器内存使用量 (分离后的接口)
-    useServerPlayers, // 单个服务器玩家列表
     useServerIOStats, // 单个服务器I/O统计信息 (磁盘I/O和网络I/O，不包含磁盘空间)
     useServerDiskUsage, // 单个服务器磁盘使用信息 (磁盘空间，始终可用)
     useComposeFile, // Compose文件内容

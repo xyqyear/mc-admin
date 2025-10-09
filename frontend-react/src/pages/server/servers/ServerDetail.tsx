@@ -9,7 +9,6 @@ import PageHeader from '@/components/layout/PageHeader'
 import ServerOperationButtons from '@/components/server/ServerOperationButtons'
 import ServerAddressCard from '@/components/server/ServerAddressCard'
 import ServerInfoCard from '@/components/server/ServerInfoCard'
-import ServerStatsCard from '@/components/server/ServerStatsCard'
 import ServerDiskUsageCard from '@/components/server/ServerDiskUsageCard'
 import ServerResourcesCard from '@/components/server/ServerResourcesCard'
 import ServerIOStatsCard from '@/components/server/ServerIOStatsCard'
@@ -35,7 +34,6 @@ const ServerDetail: React.FC = () => {
     status,
     cpu,
     memory,
-    players,
     iostats,
     diskUsage,
     restartSchedule,
@@ -146,12 +144,20 @@ const ServerDetail: React.FC = () => {
         }
       />
 
+      {/* 在线玩家列表 - 使用新的增强组件 */}
+      <OnlinePlayersCard
+        serverId={id}
+        isHealthy={isHealthy || false}
+      />
 
-      {/* 服务器状态统计 */}
-      <ServerStatsCard
+      {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
+      <ServerResourcesCard
+        cpuPercentage={cpu?.cpuPercentage}
+        memoryUsageBytes={memory?.memoryUsageBytes}
         serverInfo={serverInfo}
-        playersCount={players?.length || 0}
         isRunning={isRunning || false}
+        hasCpuData={hasCpuData || false}
+        hasMemoryData={hasMemoryData || false}
       />
 
       {/* 服务器地址和详情 */}
@@ -182,16 +188,6 @@ const ServerDetail: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 系统资源使用情况 - 仅在运行状态显示CPU和内存 */}
-      <ServerResourcesCard
-        cpuPercentage={cpu?.cpuPercentage}
-        memoryUsageBytes={memory?.memoryUsageBytes}
-        serverInfo={serverInfo}
-        isRunning={isRunning || false}
-        hasCpuData={hasCpuData || false}
-        hasMemoryData={hasMemoryData || false}
-      />
-
       {/* I/O统计 - 仅在运行状态且有I/O数据时显示 */}
       <ServerIOStatsCard
         diskReadBytes={iostats?.diskReadBytes}
@@ -200,12 +196,6 @@ const ServerDetail: React.FC = () => {
         networkSendBytes={iostats?.networkSendBytes}
         isRunning={isRunning || false}
         hasIOStatsData={hasIOStatsData || false}
-      />
-
-      {/* 在线玩家列表 - 使用新的增强组件 */}
-      <OnlinePlayersCard
-        serverId={id}
-        isHealthy={isHealthy || false}
       />
 
     </div>
