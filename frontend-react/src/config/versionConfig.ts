@@ -251,6 +251,15 @@ export const versionUpdates: VersionUpdate[] = [
       '优先使用 Query 协议获取玩家列表',
       '优化玩家在线状态检测逻辑',
     ]
+  },
+  {
+    version: '0.5.1',
+    date: '2025-10-10',
+    title: '玩家游戏时长计算修复',
+    description: '修复玩家总游戏时长统计，现在包含正在进行的游戏会话。',
+    fixes: [
+      '总游戏时长未包含未结束的在线会话',
+    ],
   }
 ]
 

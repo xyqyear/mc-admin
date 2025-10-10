@@ -5,11 +5,40 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Player, PlayerSession, Server
 from ....server_tracker.crud import get_server_db_id
+
+
+def _get_playtime_expression():
+    """Get SQLAlchemy expression for calculating total playtime.
+
+    Calculates playtime including ongoing sessions:
+    - For finished sessions: use duration_seconds directly
+    - For ongoing sessions (duration_seconds IS NULL): calculate from joined_at to now
+
+    Returns:
+        SQLAlchemy expression for total playtime in seconds
+    """
+    return func.coalesce(
+        func.sum(
+            func.coalesce(
+                PlayerSession.duration_seconds,
+                # Calculate seconds from joined_at to now for ongoing sessions
+                func.cast(
+                    (
+                        func.julianday(func.current_timestamp())
+                        - func.julianday(PlayerSession.joined_at)
+                    )
+                    * 86400,
+                    Integer,
+                ),
+            )
+        ),
+        0,
+    )
 
 
 class PlayerSummary(BaseModel):
@@ -58,7 +87,7 @@ async def get_all_players_summary(
     Returns:
         List of player summaries
     """
-    # Base query with total playtime aggregation
+    # Base query with total playtime aggregation (including ongoing sessions)
     query = (
         select(
             Player.player_db_id,
@@ -67,9 +96,7 @@ async def get_all_players_summary(
             Player.avatar_data,
             Player.last_seen,
             Player.created_at,
-            func.coalesce(func.sum(PlayerSession.duration_seconds), 0).label(
-                "total_playtime"
-            ),
+            _get_playtime_expression().label("total_playtime"),
         )
         .outerjoin(PlayerSession, Player.player_db_id == PlayerSession.player_db_id)
         .group_by(
@@ -191,9 +218,9 @@ async def _build_player_detail(
     """
     from ....models import PlayerAchievement, PlayerChatMessage
 
-    # Get total playtime
+    # Get total playtime including ongoing sessions
     playtime_result = await session.execute(
-        select(func.coalesce(func.sum(PlayerSession.duration_seconds), 0)).where(
+        select(_get_playtime_expression()).where(
             PlayerSession.player_db_id == player.player_db_id
         )
     )
