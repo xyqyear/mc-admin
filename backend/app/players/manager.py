@@ -4,6 +4,11 @@ from typing import Optional
 
 from ..config import settings
 from ..events import event_dispatcher
+from ..events.base import (
+    ServerCreatedEvent,
+    ServerRemovedEvent,
+    SystemCrashDetectedEvent,
+)
 from ..log_monitor import LogMonitor, LogParser
 from ..logger import logger
 from ..minecraft import DockerMCManager
@@ -132,7 +137,7 @@ class PlayerSystemManager:
 
         logger.info("Player monitoring system stopped")
 
-    async def _on_server_created(self, event) -> None:
+    async def _on_server_created(self, event: ServerCreatedEvent) -> None:
         """Handle server created event.
 
         Args:
@@ -141,7 +146,7 @@ class PlayerSystemManager:
         logger.info(f"Server created event received: {event.server_id}")
         await self._start_log_monitoring(event.server_id)
 
-    async def _on_server_removed(self, event) -> None:
+    async def _on_server_removed(self, event: ServerRemovedEvent) -> None:
         """Handle server removed event.
 
         Args:
@@ -151,7 +156,7 @@ class PlayerSystemManager:
         if self.log_monitor:
             await self.log_monitor.stop_watching(event.server_id)
 
-    async def _handle_system_crash(self, event) -> None:
+    async def _handle_system_crash(self, event: SystemCrashDetectedEvent) -> None:
         """Handle system crash detected event.
 
         Triggers player sync to sync actual player states.
