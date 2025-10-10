@@ -24,7 +24,7 @@ from app.models import (
     ServerStatus,
     SystemHeartbeat,
 )
-from app.players import HeartbeatManager, PlayerManager, RCONValidator, SessionTracker
+from app.players import HeartbeatManager, PlayerManager, PlayerSyncer, SessionTracker
 from app.players.skin_fetcher import SkinFetcher
 
 # ============================================================================
@@ -216,7 +216,7 @@ async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_co
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
@@ -295,7 +295,7 @@ async def test_heartbeat_crash_detection(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
@@ -328,9 +328,7 @@ async def test_heartbeat_crash_detection(
         # Verify all sessions have been ended with left_at timestamp at crash time
         async with db() as session:
             result = await session.execute(
-                select(PlayerSession).where(
-                    PlayerSession.server_db_id == server_db_id
-                )
+                select(PlayerSession).where(PlayerSession.server_db_id == server_db_id)
             )
             sessions = list(result.scalars().all())
             for player_session in sessions:
@@ -356,7 +354,7 @@ async def test_heartbeat_continuous_updates(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
@@ -400,7 +398,7 @@ async def test_heartbeat_continuous_updates(
 
 
 @pytest.mark.asyncio
-async def test_rcon_validator_corrects_false_positives(
+async def test_player_syncer_corrects_false_positives(
     test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test RCON validator corrects players marked online but not in RCON."""
@@ -450,13 +448,13 @@ async def test_rcon_validator_corrects_false_positives(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.players.chat_tracker.get_async_session", db),
         patch("app.players.skin_updater.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
-        patch("app.players.rcon_validator.config", mock_config),
+        patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -469,13 +467,13 @@ async def test_rcon_validator_corrects_false_positives(
         _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
         _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
 
-        rcon_validator = RCONValidator(
+        player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
             server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
-        await rcon_validator.start()
+        await player_syncer.start()
 
         # Wait for validation
         await asyncio.sleep(0.3)
@@ -496,7 +494,7 @@ async def test_rcon_validator_corrects_false_positives(
 
         assert online_names == {"Steve", "Alex"}
 
-        await rcon_validator.stop()
+        await player_syncer.stop()
 
     finally:
         for p in patches:
@@ -504,7 +502,7 @@ async def test_rcon_validator_corrects_false_positives(
 
 
 @pytest.mark.asyncio
-async def test_rcon_validator_corrects_false_negatives(
+async def test_player_syncer_corrects_false_negatives(
     test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test RCON validator corrects players in RCON but not marked online."""
@@ -549,13 +547,13 @@ async def test_rcon_validator_corrects_false_negatives(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.players.chat_tracker.get_async_session", db),
         patch("app.players.skin_updater.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
-        patch("app.players.rcon_validator.config", mock_config),
+        patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -567,13 +565,13 @@ async def test_rcon_validator_corrects_false_negatives(
         _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
         _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
 
-        rcon_validator = RCONValidator(
+        player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
             server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
-        await rcon_validator.start()
+        await player_syncer.start()
 
         # Wait for validation (need enough time for both players to be processed sequentially)
         # Each player takes ~0.2s for Mojang API call + processing time
@@ -588,7 +586,7 @@ async def test_rcon_validator_corrects_false_negatives(
         online = await get_online_players(db, server_db_id)
         assert len(online) == 2
 
-        await rcon_validator.stop()
+        await player_syncer.stop()
 
     finally:
         for p in patches:
@@ -596,7 +594,7 @@ async def test_rcon_validator_corrects_false_negatives(
 
 
 @pytest.mark.asyncio
-async def test_rcon_validator_skips_unhealthy_servers(
+async def test_player_syncer_skips_unhealthy_servers(
     test_database, clean_dispatcher, mock_config
 ):
     """Test RCON validator skips servers that are not healthy."""
@@ -617,29 +615,29 @@ async def test_rcon_validator_skips_unhealthy_servers(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
-        patch("app.players.rcon_validator.config", mock_config),
+        patch("app.players.player_syncer.config", mock_config),
     ]
 
     for p in patches:
         p.start()
 
     try:
-        rcon_validator = RCONValidator(
+        player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
             server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
-        await rcon_validator.start()
+        await player_syncer.start()
         await asyncio.sleep(0.3)
 
         # Should not crash, list_players should not be called
         mock_instance.list_players.assert_not_called()
 
-        await rcon_validator.stop()
+        await player_syncer.stop()
 
     finally:
         for p in patches:
@@ -647,7 +645,7 @@ async def test_rcon_validator_skips_unhealthy_servers(
 
 
 @pytest.mark.asyncio
-async def test_rcon_validator_handles_rcon_failure(
+async def test_player_syncer_handles_rcon_failure(
     test_database, clean_dispatcher, mock_config
 ):
     """Test RCON validator handles RCON command failures gracefully."""
@@ -666,27 +664,27 @@ async def test_rcon_validator_handles_rcon_failure(
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
-        patch("app.players.rcon_validator.config", mock_config),
+        patch("app.players.player_syncer.config", mock_config),
     ]
 
     for p in patches:
         p.start()
 
     try:
-        rcon_validator = RCONValidator(
+        player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
             server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
-        await rcon_validator.start()
+        await player_syncer.start()
         await asyncio.sleep(0.3)
 
         # Should not crash, just log warning
-        await rcon_validator.stop()
+        await player_syncer.stop()
 
     finally:
         for p in patches:
@@ -756,11 +754,11 @@ async def test_crash_recovery_triggers_rcon_validation(
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
         patch("app.db.database.get_async_session", db),
-        patch("app.players.rcon_validator.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.server_tracker.tracker.get_async_session", db),
-        patch("app.players.rcon_validator.config", mock_config),
+        patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -774,7 +772,7 @@ async def test_crash_recovery_triggers_rcon_validation(
         _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
 
         heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
-        rcon_validator = RCONValidator(
+        player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
             server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
@@ -791,7 +789,7 @@ async def test_crash_recovery_triggers_rcon_validation(
         assert len(online) == 0
 
         # Start RCON validator (triggered by crash event)
-        await rcon_validator.start()
+        await player_syncer.start()
 
         # Wait for RCON validation
         await asyncio.sleep(0.3)
@@ -808,7 +806,7 @@ async def test_crash_recovery_triggers_rcon_validation(
             assert online_player.current_name == "Steve"
 
         await heartbeat_manager.stop()
-        await rcon_validator.stop()
+        await player_syncer.stop()
 
     finally:
         for p in patches:

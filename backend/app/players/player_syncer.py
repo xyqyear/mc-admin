@@ -1,4 +1,4 @@
-"""RCON-based player status validation."""
+"""Player status synchronization using RCON."""
 
 import asyncio
 from typing import Optional, Set
@@ -14,8 +14,8 @@ from ..server_tracker.crud import get_active_servers_map
 from .crud import get_online_player_names_on_server
 
 
-class RCONValidator:
-    """Validates player online status using RCON queries."""
+class PlayerSyncer:
+    """Synchronizes player online status using RCON queries."""
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class RCONValidator:
         server_tracker: ServerTracker,
         event_dispatcher: EventDispatcher,
     ):
-        """Initialize RCON validator.
+        """Initialize player syncer.
 
         Args:
             mc_manager: Minecraft Docker manager
@@ -38,15 +38,15 @@ class RCONValidator:
         self._stop_flag = False
 
     async def start(self) -> None:
-        """Start RCON validator."""
-        logger.info("Starting RCON validator...")
+        """Start player syncer."""
+        logger.info("Starting player syncer...")
         self._stop_flag = False
         self._task = asyncio.create_task(self._validate_loop())
-        logger.info("RCON validator started")
+        logger.info("Player syncer started")
 
     async def stop(self) -> None:
-        """Stop RCON validator."""
-        logger.info("Stopping RCON validator...")
+        """Stop player syncer."""
+        logger.info("Stopping player syncer...")
         self._stop_flag = True
 
         if self._task:
@@ -56,7 +56,7 @@ class RCONValidator:
             except asyncio.CancelledError:
                 pass
 
-        logger.info("RCON validator stopped")
+        logger.info("Player syncer stopped")
 
     async def _validate_loop(self) -> None:
         """Validation loop."""

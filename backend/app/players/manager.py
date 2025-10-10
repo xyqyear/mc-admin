@@ -11,7 +11,7 @@ from ..server_tracker import ServerTracker
 from .chat_tracker import ChatTracker
 from .heartbeat import HeartbeatManager
 from .player_manager import PlayerManager
-from .rcon_validator import RCONValidator
+from .player_syncer import PlayerSyncer
 from .session_tracker import SessionTracker
 from .skin_fetcher import SkinFetcher
 from .skin_updater import PlayerSkinUpdater
@@ -56,7 +56,7 @@ class PlayerSystemManager:
 
         # System reliability
         self.heartbeat_manager = HeartbeatManager(event_dispatcher=event_dispatcher)
-        self.rcon_validator = RCONValidator(
+        self.player_syncer = PlayerSyncer(
             mc_manager=self.mc_manager,
             server_tracker=self.server_tracker,
             event_dispatcher=event_dispatcher,
@@ -109,7 +109,7 @@ class PlayerSystemManager:
             )
 
         # Start background tasks
-        await self.rcon_validator.start()
+        await self.player_syncer.start()
 
         logger.info("Player monitoring system started successfully")
 
@@ -118,7 +118,7 @@ class PlayerSystemManager:
         logger.info("Stopping player monitoring system...")
 
         # Stop background tasks
-        await self.rcon_validator.stop()
+        await self.player_syncer.stop()
 
         # Stop log monitoring
         if self.log_monitor:
@@ -154,17 +154,17 @@ class PlayerSystemManager:
     async def _handle_system_crash(self, event) -> None:
         """Handle system crash detected event.
 
-        Triggers RCON validation to sync actual player states.
+        Triggers player sync to sync actual player states.
 
         Args:
             event: System crash detected event
         """
         logger.info(
-            f"System crash event received - triggering RCON validation "
+            f"System crash event received - triggering player sync "
             f"(crash at {event.crash_timestamp}, {event.time_since_crash:.0f}s ago)"
         )
         # Trigger immediate validation of all servers
-        await self.rcon_validator._validate_all_servers()
+        await self.player_syncer._validate_all_servers()
 
     async def _start_log_monitoring(self, server_id: str) -> None:
         """Start log monitoring for a server.
