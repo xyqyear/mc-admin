@@ -46,7 +46,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("Initializing DNS and router manager module...")
     await simple_dns_manager.initialize()
-    await simple_dns_manager.update()
+    if simple_dns_manager.is_initialized:
+        await simple_dns_manager.update()
 
     logger.info("Initializing cron management system...")
     await cron_manager.initialize()
