@@ -103,7 +103,7 @@ class LogMonitor:
         # Initialize file pointer
         if await aioos.path.exists(log_path):
             # Start from current end of file
-            self._file_pointers[server_id] = log_path.stat().st_size
+            self._file_pointers[server_id] = await aioos.path.getsize(log_path)
             logger.info(
                 f"Starting log monitor for {server_id} at position {self._file_pointers[server_id]}"
             )
@@ -122,14 +122,11 @@ class LogMonitor:
                 if self._stop_flag:
                     break
 
-                # Check if our log file was modified
                 for change_type, changed_path in changes:
-                    # Only care about our specific log file
-                    if str(changed_path) != str(log_path):
-                        continue
-
                     if change_type == Change.deleted:
                         continue
+
+                    logger.debug(f"Log file {changed_path} changed for {server_id}")
 
                     # Handle file changes
                     await self._process_log_changes(server_id, log_path)
