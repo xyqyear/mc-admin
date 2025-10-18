@@ -243,6 +243,13 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     supportsValidation: false,
     description: "Plain Text",
   },
+
+  // Minecraft data formats
+  ".snbt": {
+    language: "snbt",
+    supportsValidation: false,
+    description: "SNBT (Stringified NBT)",
+  },
 };
 
 // ========================================================================================
@@ -269,6 +276,7 @@ export const EDITABLE_EXTENSIONS = new Set([
   ".config",
   ".env",
   ".md",
+  ".snbt",
 ]);
 
 // ========================================================================================
@@ -409,6 +417,20 @@ export function getLanguageEditorOptions(language: string): any {
         bracketPairColorization: {
           enabled: true,
         },
+      };
+
+    case "snbt":
+      return {
+        ...baseOptions,
+        formatOnType: false,
+        quickSuggestions: false,
+        tabSize: 2,
+        insertSpaces: true,
+        autoIndent: "full",
+        bracketPairColorization: {
+          enabled: true,
+        },
+        wordWrap: "on",
       };
 
     case "yaml":

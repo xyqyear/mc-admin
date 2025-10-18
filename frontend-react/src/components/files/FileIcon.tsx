@@ -221,6 +221,10 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'dat':
       return <ExperimentOutlined style={{ color: '#52c41a' }} />
 
+    // SNBT (Stringified NBT) - Minecraft data format
+    case 'snbt':
+      return <SettingOutlined style={{ color: '#722ed1' }} />
+
     default:
       // Check for specific filenames
       if (fileName === 'dockerfile' || fileName === 'containerfile') {

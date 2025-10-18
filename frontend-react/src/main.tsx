@@ -16,6 +16,7 @@ import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import YamlWorker from '@/yaml.worker.js?worker'
 import { loader } from '@monaco-editor/react'
+import { snbtLanguageDefinition, snbtLanguageConfiguration } from '@/config/snbtLanguage'
 
 self.MonacoEnvironment = {
   getWorker(_, label) {
@@ -43,6 +44,11 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco });
 loader.init();
+
+// Register SNBT language for Minecraft NBT files
+monaco.languages.register({ id: 'snbt' });
+monaco.languages.setMonarchTokensProvider('snbt', snbtLanguageDefinition);
+monaco.languages.setLanguageConfiguration('snbt', snbtLanguageConfiguration);
 
 // Create a query client with modern defaults and better error handling
 const queryClient = new QueryClient({
