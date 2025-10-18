@@ -10,6 +10,7 @@ from .audit import OperationAuditMiddleware
 from .config import settings
 from .cron import cron_manager
 from .db.database import init_db
+from .dns import simple_dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
 from .players import player_system_manager
@@ -39,6 +40,10 @@ from .routers.servers import restart_schedule as server_restart_schedule
 async def lifespan(app: FastAPI):
     logger.info("Starting up and initializing the database...")
     await init_db()
+
+    logger.info("Initializing DNS and router manager module...")
+    await simple_dns_manager.initialize()
+    await simple_dns_manager.update()
 
     logger.info("Initializing dynamic configuration system...")
     await config_manager.initialize_all_configs()
