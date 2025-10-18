@@ -41,12 +41,12 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up and initializing the database...")
     await init_db()
 
+    logger.info("Initializing dynamic configuration system...")
+    await config_manager.initialize_all_configs()
+
     logger.info("Initializing DNS and router manager module...")
     await simple_dns_manager.initialize()
     await simple_dns_manager.update()
-
-    logger.info("Initializing dynamic configuration system...")
-    await config_manager.initialize_all_configs()
 
     logger.info("Initializing cron management system...")
     await cron_manager.initialize()
