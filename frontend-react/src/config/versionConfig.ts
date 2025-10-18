@@ -260,6 +260,22 @@ export const versionUpdates: VersionUpdate[] = [
     fixes: [
       '总游戏时长未包含未结束的在线会话',
     ],
+  },
+  {
+    version: '0.5.6',
+    date: '2025-10-18',
+    title: 'SNBT 文件编辑和 DNS 修复',
+    description: '新增 SNBT 格式支持并修复 DNS 相关问题。',
+    features: [
+      'SNBT 文件编辑支持，提供语法高亮',
+      'SNBT 文件类型图标'
+    ],
+    fixes: [
+      'DNS 应用启动时未初始化导致连接问题',
+    ],
+    improvements: [
+      '简化日志修改检测逻辑'
+    ]
   }
 ]
 
