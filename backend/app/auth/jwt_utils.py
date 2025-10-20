@@ -2,20 +2,21 @@ from datetime import datetime, timedelta, timezone
 
 from joserfc import jwt
 from joserfc.jwk import OctKey
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from ..config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash((Argon2Hasher(),))
 key = OctKey.import_key(settings.jwt.secret_key)
 
 
 def verify_password(plain_password: str, hashed_password: str):
-    return pwd_context.verify(plain_password, hashed_password)
+    return password_hash.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str):
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 
 def get_token_expiry(expires_delta: timedelta | None = None) -> datetime:
