@@ -10,7 +10,7 @@ from app.dns.router import MCRouterClient
 
 
 class MockAsyncContext:
-    """Mock async context manager for aiohttp response"""
+    """Mock async context manager for httpx response"""
 
     def __init__(self, response):
         self._response = response
@@ -23,18 +23,18 @@ class MockAsyncContext:
 
 
 @pytest.fixture
-def mock_session():
-    """Mock aiohttp ClientSession"""
-    session = AsyncMock()
-    return session
+def mock_client():
+    """Mock httpx AsyncClient"""
+    client = AsyncMock()
+    return client
 
 
 @pytest.fixture
 def router_client():
-    """Create router client with mocked session"""
-    with patch("app.dns.router.aiohttp.ClientSession"):
+    """Create router client with mocked httpx client"""
+    with patch("app.dns.router.httpx.AsyncClient"):
         client = MCRouterClient("http://localhost:26666")
-        client._session = AsyncMock()
+        client._client = AsyncMock()
         return client
 
 
@@ -357,12 +357,12 @@ async def test_close(router_client):
     """Test closing the router client"""
     await router_client.close()
 
-    router_client._session.close.assert_called_once()
+    router_client._client.aclose.assert_called_once()
 
 
 def test_base_url_normalization():
     """Test that base URL is normalized with trailing slash"""
-    with patch("app.dns.router.aiohttp.ClientSession"):
+    with patch("app.dns.router.httpx.AsyncClient"):
         # Test URL without trailing slash
         client1 = MCRouterClient("http://localhost:26666")
         assert client1._base_url == "http://localhost:26666/"
@@ -373,14 +373,9 @@ def test_base_url_normalization():
 
 
 def test_timeout_configuration():
-    """Test that the session is configured with proper timeout"""
-    with (
-        patch("app.dns.router.aiohttp.ClientSession") as session_mock,
-        patch("app.dns.router.aiohttp.ClientTimeout") as timeout_mock,
-    ):
+    """Test that the client is configured with proper timeout"""
+    with patch("app.dns.router.httpx.AsyncClient") as client_mock:
         MCRouterClient("http://localhost:26666")
 
-        # Should create timeout with 10 seconds
-        timeout_mock.assert_called_once_with(total=10)
-        # Should pass timeout to session
-        session_mock.assert_called_once_with(timeout=timeout_mock.return_value)
+        # Should create AsyncClient with 10 seconds timeout
+        client_mock.assert_called_once_with(timeout=10.0)

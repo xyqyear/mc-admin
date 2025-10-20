@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-import aiohttp
+import httpx
 
 from ..logger import logger
 
@@ -36,7 +36,7 @@ class MCRouterClient:
     """
 
     def __init__(self, base_url: str) -> None:
-        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        self._client = httpx.AsyncClient(timeout=10.0)
 
         self._base_url = base_url
 
@@ -50,13 +50,13 @@ class MCRouterClient:
         headers: Optional[dict[str, str]] = None,
         json: Optional[RoutePoseDataT] = None,
     ) -> Optional[RoutesT]:
-        async with self._session.request(
+        response = await self._client.request(
             method,
             self._base_url + path,
             headers=headers,
             json=json,
-        ) as response:
-            response_str = await response.text()
+        )
+        response_str = response.text
 
         if response_str:
             return jsonlib.loads(response_str)
@@ -157,5 +157,5 @@ class MCRouterClient:
         }
 
     async def close(self):
-        """Clean up the session"""
-        await self._session.close()
+        """Clean up the client"""
+        await self._client.aclose()

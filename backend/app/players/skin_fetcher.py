@@ -6,7 +6,7 @@ import io
 import json
 from typing import Optional, Tuple
 
-import aiohttp
+import httpx
 from PIL import Image
 
 from ..dynamic_config import config
@@ -38,24 +38,23 @@ class SkinFetcher:
             # Format UUID (ensure no dashes)
             uuid_clean = uuid.replace("-", "")
 
-            async with aiohttp.ClientSession() as session:
+            request_timeout = config.players.skin_fetcher.request_timeout_seconds
+            async with httpx.AsyncClient(timeout=request_timeout) as client:
                 # Get player profile
                 url = self.session_server_url.format(uuid=uuid_clean)
-                request_timeout = config.players.skin_fetcher.request_timeout_seconds
-                async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=request_timeout)
-                ) as response:
-                    if response.status == 404:
-                        logger.warning(f"Player not found: {uuid_clean}")
-                        return None
-                    elif response.status == 429:
-                        logger.warning("Rate limited by Mojang API")
-                        return None
-                    elif response.status != 200:
-                        logger.error(f"Mojang API error: {response.status}")
-                        return None
+                response = await client.get(url)
 
-                    profile_data = await response.json()
+                if response.status_code == 404:
+                    logger.warning(f"Player not found: {uuid_clean}")
+                    return None
+                elif response.status_code == 429:
+                    logger.warning("Rate limited by Mojang API")
+                    return None
+                elif response.status_code != 200:
+                    logger.error(f"Mojang API error: {response.status_code}")
+                    return None
+
+                profile_data = response.json()
 
                 # Extract texture data
                 textures_base64 = None
@@ -79,15 +78,13 @@ class SkinFetcher:
                     return None
 
                 # Download skin
-                request_timeout = config.players.skin_fetcher.request_timeout_seconds
-                async with session.get(
-                    skin_url, timeout=aiohttp.ClientTimeout(total=request_timeout)
-                ) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to download skin: {response.status}")
-                        return None
+                response = await client.get(skin_url)
 
-                    skin_bytes = await response.read()
+                if response.status_code != 200:
+                    logger.error(f"Failed to download skin: {response.status_code}")
+                    return None
+
+                skin_bytes = response.content
 
                 # Extract avatar from skin
                 avatar_bytes = self._extract_avatar(skin_bytes)
@@ -98,7 +95,7 @@ class SkinFetcher:
 
                 return (skin_bytes, avatar_bytes)
 
-        except asyncio.TimeoutError:
+        except httpx.TimeoutException:
             logger.error(f"Timeout fetching skin for {uuid}")
             return None
         except Exception as e:
