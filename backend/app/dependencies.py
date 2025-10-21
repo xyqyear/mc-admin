@@ -5,7 +5,7 @@ from fastapi import Depends, Header, HTTPException, Query, WebSocketException, s
 from fastapi.security import OAuth2PasswordBearer
 from joserfc import jwt
 from joserfc.errors import BadSignatureError, DecodeError
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .auth.jwt_utils import key
 from .config import settings
@@ -24,12 +24,18 @@ class JwtClaims(BaseModel):
     exp: datetime  # expiration time
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+class TokenValidationError(Exception):
+    """Intermediate exception for token validation errors"""
+    pass
+
+
+def _validate_token_and_get_user(token: str) -> UserPublic:
+    """
+    Common token validation logic for both HTTP and WebSocket authentication.
+
+    Raises:
+        TokenValidationError: If token validation fails
+    """
     # Allow master token to act as a privileged SYSTEM user
     if token == settings.master_token:
         logger.info("Master token used; acting as SYSTEM user")
@@ -37,25 +43,42 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
 
     try:
         payload = jwt.decode(token, key, [settings.jwt.algorithm])
-        if payload.claims is not None:
-            # 使用 Pydantic 模型解析 JWT claims
-            jwt_claims = JwtClaims.model_validate(payload.claims)
+    except (BadSignatureError, DecodeError):
+        raise TokenValidationError("Could not decode jwt token")
+    except Exception as e:
+        raise TokenValidationError(f"Unexpected error decoding token: {e}")
 
-            # 检查过期时间
-            if jwt_claims.exp < datetime.now(timezone.utc):
-                raise credentials_exception
+    if payload.claims is None:
+        raise TokenValidationError("JWT token invalid: missing claims field")
 
-            return UserPublic(
-                id=jwt_claims.user_id,
-                username=jwt_claims.username,
-                role=UserRole(jwt_claims.role),
-                created_at=datetime.fromisoformat(jwt_claims.created_at),
-            )
+    try:
+        jwt_claims = JwtClaims.model_validate(payload.claims)
+    except ValidationError as e:
+        raise TokenValidationError(f"JWT token invalid: {e}")
 
-    except (BadSignatureError, DecodeError, ValueError):
-        raise credentials_exception
+    if jwt_claims.exp < datetime.now(timezone.utc):
+        raise TokenValidationError("Token expired")
 
-    raise credentials_exception
+    return UserPublic(
+        id=jwt_claims.user_id,
+        username=jwt_claims.username,
+        role=UserRole(jwt_claims.role),
+        created_at=datetime.fromisoformat(jwt_claims.created_at),
+    )
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
+    """
+    HTTP authentication dependency.
+    Validates JWT token from Authorization header.
+    """
+    try:
+        return _validate_token_and_get_user(token)
+    except TokenValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
 
 
 class RequireRole:
@@ -88,31 +111,10 @@ def get_websocket_user(token: Annotated[str | None, Query()] = None) -> UserPubl
     if token is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    # Allow master token to act as a privileged SYSTEM user
-    if token == settings.master_token:
-        logger.info("Master token used via WebSocket; acting as SYSTEM user")
-        return get_system_user()
-
     try:
-        payload = jwt.decode(token, key, [settings.jwt.algorithm])
-        if payload.claims is not None:
-            # 使用 Pydantic 模型解析 JWT claims
-            jwt_claims = JwtClaims.model_validate(payload.claims)
-
-            # 检查过期时间
-            if jwt_claims.exp < datetime.now(timezone.utc):
-                raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-
-            return UserPublic(
-                id=jwt_claims.user_id,
-                username=jwt_claims.username,
-                role=UserRole(jwt_claims.role),
-                created_at=datetime.fromisoformat(jwt_claims.created_at),
-            )
-    except (BadSignatureError, DecodeError, ValueError):
+        return _validate_token_and_get_user(token)
+    except TokenValidationError:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-
-    raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
 
 def get_system_user() -> UserPublic:
