@@ -105,7 +105,7 @@ class LogMonitor:
             # Start from current end of file
             self._file_pointers[server_id] = await aioos.path.getsize(log_path)
             logger.info(
-                f"Starting log monitor for {server_id} at position {self._file_pointers[server_id]}"
+                f"Log file found for {server_id}, size: {self._file_pointers[server_id]}"
             )
         else:
             self._file_pointers[server_id] = 0
@@ -113,22 +113,23 @@ class LogMonitor:
                 f"Log file not found for {server_id}, will start from beginning when created"
             )
 
-        while not self._stop_flag and not await aioos.path.exists(log_path):
-            # Wait for log file to be created
-            await asyncio.sleep(1)
-
         try:
-            async for changes in awatch(log_path, stop_event=None):
+            async for changes in awatch(log_path.parent, stop_event=None):
                 if self._stop_flag:
                     break
 
                 for change_type, changed_path in changes:
-                    if change_type == Change.deleted:
+                    if changed_path != str(log_path):
                         continue
 
-                    logger.debug(f"Log file {changed_path} changed for {server_id}")
+                    if change_type == Change.deleted:
+                        logger.info(f"Log file deleted for {server_id}")
+                        continue
 
-                    # Handle file changes
+                    if change_type == Change.added:
+                        logger.info(f"Log file created for {server_id}")
+                        self._file_pointers[server_id] = 0
+                    logger.debug(f"Processing log changes for {server_id}")
                     await self._process_log_changes(server_id, log_path)
 
         except asyncio.CancelledError:
@@ -165,10 +166,10 @@ class LogMonitor:
                 ) as f:
                     await f.seek(last_position)
                     new_content = await f.read()
-                    current_size = await f.tell()
+                    read_position = await f.tell()
 
                 # Update file pointer
-                self._file_pointers[server_id] = current_size
+                self._file_pointers[server_id] = read_position
 
                 # Process new lines
                 lines = new_content.splitlines()
