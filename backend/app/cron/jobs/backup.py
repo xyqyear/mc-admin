@@ -118,29 +118,28 @@ async def _send_uptimekuma_notification(
         msg: Message (OK for success, error message for failure)
         ping: Running time in seconds
     """
+    context.log(f"发送 Uptime Kuma 通知到: {uptimekuma_url}")
+
+    params = {
+        "status": "up" if ok else "down",
+        "msg": msg,
+        "ping": int(ping * 1000),
+    }
+
     try:
-        context.log(f"发送 Uptime Kuma 通知到: {uptimekuma_url}")
-
-        # Uptime Kuma push monitor parameters
-        params = {
-            "status": "up" if ok else "down",
-            "msg": msg,
-            "ping": int(ping * 1000),  # Convert to milliseconds
-        }
-
-        # Send GET request to Uptime Kuma using async httpx
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(uptimekuma_url, params=params)
-
-            if response.status_code == 200:
-                context.log(f"Uptime Kuma 通知发送成功 (状态码: {response.status_code})")
-            else:
-                context.log(f"Uptime Kuma 通知响应状态码非 200: {response.status_code}")
-
     except httpx.HTTPError as e:
         context.log(f"发送 Uptime Kuma 通知失败: {str(e)}")
+        return
     except Exception as e:
         context.log(f"Uptime Kuma 通知时发生未知错误: {str(e)}")
+        return
+
+    if response.status_code == 200:
+        context.log(f"Uptime Kuma 通知发送成功 (状态码: {response.status_code})")
+    else:
+        context.log(f"Uptime Kuma 通知响应状态码非 200: {response.status_code}")
 
 
 def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
