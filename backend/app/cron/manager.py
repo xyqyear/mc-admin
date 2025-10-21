@@ -645,23 +645,21 @@ class CronManager:
             active_cronjobs = result.scalars().all()
 
             for cronjob_row in active_cronjobs:
+                schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
+                if not schema_cls:
+                    continue
+
                 try:
-                    # Get schema class
-                    schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
-                    if not schema_cls:
-                        continue
-
-                    # Deserialize parameters
                     params = schema_cls.model_validate_json(cronjob_row.params_json)
-
-                    # Submit to scheduler
-                    await self._submit_cronjob_to_scheduler(
-                        cronjob_row.cronjob_id,
-                        cronjob_row.identifier,
-                        params,
-                        cronjob_row.cron,
-                        cronjob_row.second,
-                    )
                 except Exception as e:
                     # Log error but continue with other cron jobs
                     print(f"Failed to recover cron job {cronjob_row.cronjob_id}: {e}")
+                    continue
+
+                await self._submit_cronjob_to_scheduler(
+                    cronjob_row.cronjob_id,
+                    cronjob_row.identifier,
+                    params,
+                    cronjob_row.cron,
+                    cronjob_row.second,
+                )
