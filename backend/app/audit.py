@@ -90,53 +90,45 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
 
     async def _get_user_info(self, request: Request) -> Optional[Dict[str, Any]]:
         """获取当前用户信息"""
+        # 尝试从请求中获取Authorization头
+        auth_header = request.headers.get("authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return None
+        token = auth_header.split(" ")[1]
+
+        # 获取用户信息
         try:
-            # 尝试从请求中获取Authorization头
-            auth_header = request.headers.get("authorization")
-            if not auth_header or not auth_header.startswith("Bearer "):
-                return None
-
-            # 提取token
-            try:
-                token = auth_header.split(" ")[1]
-            except IndexError:
-                return None
-
             user = get_current_user(token)
-
-            return {
-                "user_id": user.id,
-                "username": user.username,
-                "role": user.role.value,
-            }
-
         except Exception:
             # 如果获取用户信息失败（包括认证失败），返回None，让日志记录继续
             return None
+
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "role": user.role.value,
+        }
 
     async def _read_request_body(self, request: Request) -> Optional[Dict[str, Any]]:
         """读取请求体"""
         if not settings.audit.log_request_body:
             return None
 
+        body_bytes = await request.body()
+
+        if not body_bytes:
+            return None
+
+        if len(body_bytes) > settings.audit.max_body_size:
+            return {"error": "Request body too large for logging"}
+
         try:
-            body_bytes = await request.body()
+            body_json = json.loads(body_bytes.decode("utf-8"))
+            return self._mask_sensitive_data(body_json)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # 如果不是JSON，记录为字符串形式
+            return {"raw_body": body_bytes.decode("utf-8", errors="replace")}
 
-            if not body_bytes:
-                return None
-
-            if len(body_bytes) > settings.audit.max_body_size:
-                return {"error": "Request body too large for logging"}
-
-            try:
-                body_json = json.loads(body_bytes.decode("utf-8"))
-                return self._mask_sensitive_data(body_json)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                # 如果不是JSON，记录为字符串形式
-                return {"raw_body": body_bytes.decode("utf-8", errors="replace")}
-
-        except Exception as e:
-            return {"error": f"Failed to read request body: {str(e)}"}
 
     def _get_client_ip(self, request: Request) -> Optional[str]:
         """获取客户端IP地址"""
