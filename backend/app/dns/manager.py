@@ -144,15 +144,56 @@ class SimpleDNSManager:
             )
             try:
                 await self.initialize()
-                self._last_config_hash = current_hash
-                logger.info(
-                    "DNS manager reinitialized successfully due to config change"
-                )
             except Exception as e:
                 logger.error(
                     f"Failed to reinitialize DNS manager after config change: {e}"
                 )
                 raise
+
+            self._last_config_hash = current_hash
+            logger.info("DNS manager reinitialized successfully due to config change")
+
+    async def _get_target_records_and_routes(self):
+        """
+        Get target DNS records and routes based on current server state and configuration.
+
+        Returns:
+            Tuple of (dns_records, routes, addresses, servers) or (None, None, None, None) if no data
+
+        Raises:
+            Exception: If there's an error getting server info or generating records
+        """
+        if self._dns_client is None:
+            raise RuntimeError("DNS manager not initialized. Call initialize() first.")
+
+        dns_config = config.dns
+
+        # Get current server information
+        server_info_list = await self._docker_manager.get_all_server_info()
+        servers = {info.name: info.game_port for info in server_info_list}
+
+        # Get addresses from configuration
+        addresses = self._get_addresses_from_config(dns_config.addresses)
+
+        if not addresses or not servers:
+            return None, None, None, None
+
+        # Generate target DNS records and routes
+        target_dns_records = self._generate_dns_records(
+            addresses,
+            list(servers.keys()),
+            dns_config.managed_sub_domain,
+            dns_config.dns_ttl,
+        )
+
+        target_routes = self._generate_routes(
+            addresses,
+            servers,
+            dns_config.managed_sub_domain,
+            self._dns_client.get_domain(),
+        )
+
+        return target_dns_records, target_routes, addresses, servers
 
     async def update(self):
         """
@@ -177,52 +218,35 @@ class SimpleDNSManager:
         async with self._update_lock:
             logger.info("Starting DNS update...")
 
-            dns_config = config.dns
+            # Get target records and routes
+            (
+                dns_records,
+                routes,
+                addresses,
+                servers,
+            ) = await self._get_target_records_and_routes()
+
+            if dns_records is None or routes is None:
+                logger.warning("No addresses or servers found, skipping DNS update")
+                return
+
+            logger.info(
+                f"Found {0 if not servers else len(servers)} servers and {0 if not addresses else len(addresses)} addresses"
+            )
 
             try:
-                # Get current server information
-                server_info_list = await self._docker_manager.get_all_server_info()
-                servers = {info.name: info.game_port for info in server_info_list}
-
-                # Get addresses from configuration
-                addresses = await self._get_addresses_from_config(dns_config.addresses)
-
-                if not addresses or not servers:
-                    logger.warning("No addresses or servers found, skipping DNS update")
-                    return
-
-                logger.info(
-                    f"Found {len(servers)} servers and {len(addresses)} addresses"
-                )
-
-                # Generate DNS records and routes
-                dns_records = self._generate_dns_records(
-                    addresses,
-                    list(servers.keys()),
-                    dns_config.managed_sub_domain,
-                    dns_config.dns_ttl,
-                )
-
-                routes = self._generate_routes(
-                    addresses,
-                    servers,
-                    dns_config.managed_sub_domain,
-                    self._dns_client.get_domain(),
-                )
-
                 # Update DNS and MC Router in parallel
                 await asyncio.gather(
                     self._update_dns_records(dns_records),
                     self._update_mc_router(routes),
                 )
-
-                logger.info("DNS update completed successfully")
-
             except Exception as e:
                 logger.error(f"Error during DNS update: {e}")
                 raise
 
-    async def _get_addresses_from_config(
+        logger.info("DNS update completed successfully")
+
+    def _get_addresses_from_config(
         self, addresses_config: list
     ) -> Dict[str, AddressInfo]:
         """Extract addresses from configuration"""
@@ -235,13 +259,6 @@ class SimpleDNSManager:
                     host=addr_config.value,
                     port=addr_config.port,
                 )
-            elif addr_config.type == "natmap":
-                # For natmap, we would need to query the natmap service
-                # For now, skip natmap addresses in the simplified implementation
-                logger.warning(
-                    f"Natmap address {addr_config.name} skipped - not implemented in simplified manager"
-                )
-                continue
 
         return addresses
 
@@ -363,7 +380,10 @@ class SimpleDNSManager:
         Returns a dictionary containing:
         - dns_diff: RecordDiff with DNS record differences
         - router_diff: Dict with router route differences
-        - errors: List of any errors encountered during diff calculation
+
+        Raises:
+            RuntimeError: If DNS manager is not initialized
+            Exception: If there's an error getting server info, generating records, or calculating diff
 
         This is useful for status checks and UI display of pending changes.
         """
@@ -375,81 +395,42 @@ class SimpleDNSManager:
             or not self._mc_router_client
             or not self._docker_manager
         ):
-            return {
-                "dns_diff": None,
-                "router_diff": None,
-                "errors": ["DNS manager not initialized"],
-            }
+            raise RuntimeError("DNS manager not initialized")
 
-        errors = []
-        dns_diff = None
-        router_diff = None
+        dns_config = config.dns
 
-        try:
-            dns_config = config.dns
+        # Get target records and routes (may raise exception)
+        (
+            target_dns_records,
+            target_routes,
+            _,
+            _,
+        ) = await self._get_target_records_and_routes()
 
-            # Get current server information
-            server_info_list = await self._docker_manager.get_all_server_info()
-            servers = {info.name: info.game_port for info in server_info_list}
+        if target_dns_records is None or target_routes is None:
+            raise ValueError("No addresses or servers found for diff calculation")
 
-            # Get addresses from configuration
-            addresses = await self._get_addresses_from_config(dns_config.addresses)
-
-            if not addresses or not servers:
-                return {
-                    "dns_diff": None,
-                    "router_diff": None,
-                    "errors": ["No addresses or servers found for diff calculation"],
-                }
-
-            # Generate target DNS records and routes
-            target_dns_records = self._generate_dns_records(
-                addresses,
-                list(servers.keys()),
-                dns_config.managed_sub_domain,
-                dns_config.dns_ttl,
+        # Calculate DNS diff
+        target_add_records = [
+            AddRecordT(
+                sub_domain=record.sub_domain,
+                value=record.value,
+                record_type=record.record_type,
+                ttl=record.ttl,
             )
+            for record in target_dns_records
+        ]
+        dns_diff = await self._dns_client.get_records_diff(
+            target_add_records, dns_config.managed_sub_domain
+        )
 
-            target_routes = self._generate_routes(
-                addresses,
-                servers,
-                dns_config.managed_sub_domain,
-                self._dns_client.get_domain(),
-            )
+        # Calculate Router diff
+        target_routes_dict = {
+            route.server_address: route.backend for route in target_routes
+        }
+        router_diff = await self._mc_router_client.get_routes_diff(target_routes_dict)
 
-            # Calculate DNS diff
-            try:
-                target_add_records = [
-                    AddRecordT(
-                        sub_domain=record.sub_domain,
-                        value=record.value,
-                        record_type=record.record_type,
-                        ttl=record.ttl,
-                    )
-                    for record in target_dns_records
-                ]
-
-                dns_diff = await self._dns_client.get_records_diff(
-                    target_add_records, dns_config.managed_sub_domain
-                )
-            except Exception as e:
-                errors.append(f"DNS diff calculation failed: {str(e)}")
-
-            # Calculate Router diff
-            try:
-                target_routes_dict = {
-                    route.server_address: route.backend for route in target_routes
-                }
-                router_diff = await self._mc_router_client.get_routes_diff(
-                    target_routes_dict
-                )
-            except Exception as e:
-                errors.append(f"Router diff calculation failed: {str(e)}")
-
-        except Exception as e:
-            errors.append(f"General diff calculation failed: {str(e)}")
-
-        return {"dns_diff": dns_diff, "router_diff": router_diff, "errors": errors}
+        return dns_diff, router_diff
 
     @property
     def is_initialized(self) -> bool:

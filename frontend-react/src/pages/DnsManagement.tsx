@@ -184,6 +184,33 @@ const DnsManagement: React.FC = () => {
     return <Tag icon={<CheckCircleOutlined />} color="success">状态正常</Tag>
   }
 
+  // Render errors from HTTP exceptions
+  const renderErrors = () => {
+    if (!statusError) {
+      return null
+    }
+
+    // Extract error message from the error object
+    // Type guard to check if error is an AxiosError with response
+    let errorMessage = '未知错误'
+    if (statusError && typeof statusError === 'object' && 'response' in statusError) {
+      const axiosError = statusError as any
+      errorMessage = axiosError.response?.data?.detail || axiosError.message || '未知错误'
+    } else if (statusError instanceof Error) {
+      errorMessage = statusError.message || '未知错误'
+    }
+
+    return (
+      <Alert
+        message="状态检查错误"
+        description={errorMessage}
+        type="error"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+    )
+  }
+
   // Render differences
   const renderDifferences = () => {
     if (!dnsStatus || !hasActualChanges(dnsStatus)) {
@@ -298,28 +325,6 @@ const DnsManagement: React.FC = () => {
     )
   }
 
-  // Render errors
-  const renderErrors = () => {
-    if (!dnsStatus?.errors || dnsStatus.errors.length === 0) {
-      return null
-    }
-
-    return (
-      <Alert
-        message="状态检查错误"
-        description={
-          <ul className="ml-4">
-            {dnsStatus.errors.map((error, index) => (
-              <li key={index}>{error}</li>
-            ))}
-          </ul>
-        }
-        type="error"
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
-    )
-  }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

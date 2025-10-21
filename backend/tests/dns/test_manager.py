@@ -2,7 +2,6 @@
 Tests for the simplified DNS manager
 """
 
-import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -403,7 +402,7 @@ def test_get_addresses_from_config():
 
     addresses_config = [mock_address1, mock_address2, mock_address3]
 
-    result = asyncio.run(dns_manager._get_addresses_from_config(addresses_config))
+    result = dns_manager._get_addresses_from_config(addresses_config)
 
     # Should have 2 addresses (natmap is skipped)
     assert len(result) == 2

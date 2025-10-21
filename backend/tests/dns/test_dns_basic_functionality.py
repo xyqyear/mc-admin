@@ -43,7 +43,7 @@ class TestDNSBasicFunctionality:
 
     @pytest.mark.asyncio
     async def test_dns_manager_get_current_diff_not_initialized(self):
-        """Test DNS manager get_current_diff when not initialized"""
+        """Test DNS manager get_current_diff when not initialized - should raise RuntimeError"""
         from app.dns.manager import SimpleDNSManager
 
         manager = SimpleDNSManager()
@@ -56,12 +56,9 @@ class TestDNSBasicFunctionality:
             with patch.object(
                 manager, "_ensure_up_to_date_config", new_callable=AsyncMock
             ):
-                result = await manager.get_current_diff()
-
-        assert result["dns_diff"] is None
-        assert result["router_diff"] is None
-        assert len(result["errors"]) == 1
-        assert "DNS manager not initialized" in result["errors"]
+                # Should raise RuntimeError when not initialized
+                with pytest.raises(RuntimeError, match="DNS manager not initialized"):
+                    await manager.get_current_diff()
 
     def test_record_diff_structure(self):
         """Test RecordDiff structure"""
@@ -86,13 +83,12 @@ class TestDNSBasicFunctionality:
         )
 
         status = DNSStatusResponse(
-            initialized=True, dns_diff=dns_diff, router_diff=router_diff, errors=[]
+            initialized=True, dns_diff=dns_diff, router_diff=router_diff
         )
 
         assert status.initialized is True
         assert status.dns_diff is not None
         assert status.router_diff is not None
-        assert len(status.errors) == 0
 
     def test_dns_enabled_model(self):
         """Test DNS enabled response model"""

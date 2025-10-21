@@ -22,7 +22,6 @@ export interface DNSStatusResponse {
   initialized: boolean
   dns_diff: DNSRecordDiff | null
   router_diff: RouterDiff | null
-  errors: string[]
 }
 
 export interface DNSEnabledResponse {
