@@ -276,6 +276,18 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '简化日志修改检测逻辑'
     ]
+  },
+  {
+    version: '0.6.2',
+    date: '2025-10-21',
+    title: '库升级和日志监控优化',
+    description: '后端库升级到最新版本，并改进日志文件监控可靠性。',
+    improvements: [
+      '使用 httpx 替换 aiohttp，提升异步请求性能',
+      '使用 pwdlib 替换 passlib，现代化密码处理',
+      '改进日志文件监控，更好地处理文件创建和删除事件',
+      '优化日志监控逻辑，监控父目录以提高可靠性'
+    ]
   }
 ]
 
