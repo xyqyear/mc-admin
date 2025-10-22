@@ -4,7 +4,6 @@ from .cgroup import (
     CGroupStats,
     MemoryStats,
     read_block_io_stats,
-    read_cgroup_stats,
     read_memory_stats,
 )
 from .compose_file import ComposeFile
@@ -28,7 +27,6 @@ __all__ = [
     "CGroupStats",
     "read_memory_stats",
     "read_block_io_stats",
-    "read_cgroup_stats",
     # Network monitoring
     "NetworkInterface",
     "NetworkStats",

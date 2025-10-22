@@ -200,22 +200,3 @@ async def read_block_io_stats(container_id: str) -> BlockIOStats:
         raise RuntimeError(
             f"Failed to read block I/O stats for container {container_id}: {e}"
         )
-
-
-async def read_cgroup_stats(container_id: str) -> CGroupStats:
-    """Read all available cgroup statistics for a Docker container."""
-    stats = CGroupStats(container_id=container_id)
-
-    try:
-        stats.memory = await read_memory_stats(container_id)
-    except Exception:
-        # Memory stats are optional if not available
-        pass
-
-    try:
-        stats.block_io = await read_block_io_stats(container_id)
-    except Exception:
-        # Block I/O stats are optional if not available
-        pass
-
-    return stats
