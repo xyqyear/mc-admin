@@ -518,7 +518,7 @@ class MCInstance:
         try:
             total_bytes = int(df_parts[1])  # 1B-blocks (total)
             available_bytes = int(df_parts[3])  # Available
-        except (ValueError, IndexError):
+        except ValueError:
             raise RuntimeError(f"Unable to parse df output numbers: {df_result}")
 
         return DiskSpaceInfo(
@@ -569,7 +569,9 @@ class MCInstance:
         )
         timeout = str(config.players.query.timeout)
 
-        result = await self._compose_manager.exec("mc", "timeout", timeout, "bash", "-c", query_command)
+        result = await self._compose_manager.exec(
+            "mc", "timeout", timeout, "bash", "-c", query_command
+        )
         result = result.strip()
         if not result:
             return []
