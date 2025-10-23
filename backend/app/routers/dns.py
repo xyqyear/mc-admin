@@ -84,6 +84,11 @@ async def _ensure_dns_manager_initialized() -> None:
     Raises:
         HTTPException: If initialization fails
     """
+    if not config.dns.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="DNS manager is disabled in configuration",
+        )
     if not simple_dns_manager.is_initialized:
         logger.warning("DNS manager not initialized, attempting to initialize...")
         try:
@@ -130,6 +135,7 @@ async def get_dns_status(
     Raises:
         HTTPException: If there's an error getting DNS status
     """
+    await _ensure_dns_manager_initialized()
     dns_diff, router_diff = await simple_dns_manager.get_current_diff()
 
     # Convert DNS diff to response format

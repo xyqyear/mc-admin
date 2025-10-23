@@ -37,11 +37,11 @@ const DnsManagement: React.FC = () => {
   const { message } = App.useApp()
 
   // Queries
-  const { data: dnsStatus, isLoading: statusLoading, error: statusError } = useDNSStatus()
   const { data: dnsEnabled, isLoading: enabledLoading } = useDNSEnabled()
 
-  // Only fetch DNS records and routes if DNS is enabled
+  // Only fetch DNS status, records and routes if DNS is enabled
   const isDNSEnabled = dnsEnabled?.enabled ?? false
+  const { data: dnsStatus, isLoading: statusLoading, error: statusError } = useDNSStatus(isDNSEnabled)
   const { data: dnsRecords, isLoading: recordsLoading, error: recordsError } = useDNSRecords(isDNSEnabled)
   const { data: routerRoutes, isLoading: routesLoading, error: routesError } = useRouterRoutes(isDNSEnabled)
 
