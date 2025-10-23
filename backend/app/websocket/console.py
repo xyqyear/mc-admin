@@ -12,6 +12,7 @@ import aiofiles.os as aioos
 from fastapi import WebSocket, WebSocketDisconnect
 from watchfiles import Change, awatch
 
+from ..logger import log_exception
 from ..minecraft import MCInstance
 
 
@@ -113,23 +114,21 @@ class ConsoleWebSocketHandler:
         """Send initial log content with RCON filtering."""
         await self._send_logs_with_message_type(log_path, "log")
 
+    @log_exception("Failed to send new logs over WebSocket")
     async def _send_new_logs(self):
         """Send new log content to WebSocket client with RCON filtering."""
-        try:
-            logs = await self.instance.get_logs_from_file(self.file_pointer)
-            if logs.content.strip():
-                # Apply RCON filtering to new content
-                content = logs.content
-                if self.filter_rcon:
-                    content = self.instance.filter_rcon_logs(content)
+        logs = await self.instance.get_logs_from_file(self.file_pointer)
+        if logs.content.strip():
+            # Apply RCON filtering to new content
+            content = logs.content
+            if self.filter_rcon:
+                content = self.instance.filter_rcon_logs(content)
 
-                # Only send if there's content after filtering
-                if content.strip():
-                    await self._send_dict({"type": "log", "content": content})
+            # Only send if there's content after filtering
+            if content.strip():
+                await self._send_dict({"type": "log", "content": content})
 
-                self.file_pointer = logs.pointer
-        except Exception:
-            pass
+            self.file_pointer = logs.pointer
 
     async def _handle_messages(self, server_id: str):
         """Handle incoming messages."""
@@ -215,11 +214,9 @@ class ConsoleWebSocketHandler:
             except Exception:
                 pass
 
+    @log_exception("Failed to send data over WebSocket")
     async def _send_dict(self, data: dict):
-        try:
-            await self.websocket.send_text(json.dumps(data))
-        except Exception:
-            pass
+        await self.websocket.send_text(json.dumps(data))
 
     def _cleanup(self):
         """Clean up resources."""

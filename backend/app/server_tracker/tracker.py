@@ -7,7 +7,7 @@ from typing import Optional
 from ..db.database import get_async_session
 from ..events.base import ServerCreatedEvent, ServerRemovedEvent
 from ..events.dispatcher import EventDispatcher
-from ..logger import logger
+from ..logger import log_exception, logger
 from ..minecraft import DockerMCManager
 from .crud import (
     create_server,
@@ -81,94 +81,62 @@ class ServerTracker:
     async def _sync_loop(self) -> None:
         """Sync loop for monitoring server status."""
         while not self._stop_flag:
-            try:
-                await self._sync_servers()
-            except Exception as e:
-                logger.error(f"Error in server sync loop: {e}", exc_info=True)
-
-            # Sleep for sync interval
+            await self._sync_servers()
             await asyncio.sleep(self.sync_interval)
 
+    @log_exception("Error syncing servers: ")
     async def _sync_servers(self) -> None:
         """Sync servers with Docker manager."""
-        try:
-            # Get current servers from file system
-            current_servers = set(await self.mc_manager.get_all_server_names())
+        # Get current servers from file system
+        current_servers = set(await self.mc_manager.get_all_server_names())
 
-            # Get servers from database
-            async with get_async_session() as session:
-                db_servers = await get_active_servers(session)
-                db_server_ids = {server.server_id for server in db_servers}
+        # Get servers from database
+        async with get_async_session() as session:
+            db_servers = await get_active_servers(session)
+            db_server_ids = {server.server_id for server in db_servers}
 
-            # Detect new servers (in file system but not in database)
-            new_servers = current_servers - db_server_ids
-            for server_id in new_servers:
-                await self._handle_server_created(server_id)
+        # Detect new servers (in file system but not in database)
+        new_servers = current_servers - db_server_ids
+        for server_id in new_servers:
+            await self._handle_server_created(server_id)
 
-            # Detect removed servers (in database but not in file system)
-            removed_servers = db_server_ids - current_servers
-            for server_id in removed_servers:
-                await self._handle_server_removed(server_id)
+        # Detect removed servers (in database but not in file system)
+        removed_servers = db_server_ids - current_servers
+        for server_id in removed_servers:
+            await self._handle_server_removed(server_id)
 
-        except Exception as e:
-            logger.error(f"Error syncing servers: {e}", exc_info=True)
-
+    @log_exception("Error handling server creation: ")
     async def _handle_server_created(self, server_id: str) -> None:
         """Handle server creation.
 
         Args:
             server_id: Server identifier
         """
-        try:
-            async with get_async_session() as session:
-                try:
-                    # Create server record in database
-                    server = await create_server(
-                        session, server_id, datetime.now(timezone.utc)
-                    )
+        async with get_async_session() as session:
+            # Create server record in database
+            server = await create_server(session, server_id, datetime.now(timezone.utc))
 
-                    logger.info(f"Server created: {server_id} (db_id={server.id})")
+            logger.info(f"Server created: {server_id} (db_id={server.id})")
 
-                    # Emit event
-                    await self.event_dispatcher.dispatch_server_created(
-                        ServerCreatedEvent(server_id=server_id)
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error creating server record for {server_id}: {e}",
-                        exc_info=True,
-                    )
-        except Exception as e:
-            logger.error(
-                f"Error handling server creation for {server_id}: {e}", exc_info=True
+            # Emit event
+            await self.event_dispatcher.dispatch_server_created(
+                ServerCreatedEvent(server_id=server_id)
             )
 
+    @log_exception("Error handling server removal: ")
     async def _handle_server_removed(self, server_id: str) -> None:
         """Handle server removal.
 
         Args:
             server_id: Server identifier
         """
-        try:
-            async with get_async_session() as session:
-                try:
-                    # Mark server as removed in database
-                    await mark_server_removed(
-                        session, server_id, datetime.now(timezone.utc)
-                    )
+        async with get_async_session() as session:
+            # Mark server as removed in database
+            await mark_server_removed(session, server_id, datetime.now(timezone.utc))
 
-                    logger.info(f"Server removed: {server_id}")
+            logger.info(f"Server removed: {server_id}")
 
-                    # Emit event
-                    await self.event_dispatcher.dispatch_server_removed(
-                        ServerRemovedEvent(server_id=server_id)
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error removing server record for {server_id}: {e}",
-                        exc_info=True,
-                    )
-        except Exception as e:
-            logger.error(
-                f"Error handling server removal for {server_id}: {e}", exc_info=True
+            # Emit event
+            await self.event_dispatcher.dispatch_server_removed(
+                ServerRemovedEvent(server_id=server_id)
             )

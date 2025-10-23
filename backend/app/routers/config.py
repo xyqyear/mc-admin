@@ -74,18 +74,9 @@ async def list_all_modules(_: UserPublic = Depends(get_current_user)):
     Returns:
         Dictionary containing information about all registered configuration modules
     """
-    try:
-        all_schema_info = config_manager.get_all_schema_info()
-        modules = {
-            name: ConfigModuleInfo(**info) for name, info in all_schema_info.items()
-        }
-        return ConfigModuleList(modules=modules)
-    except Exception as e:
-        logger.error(f"Failed to list configuration modules: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve configuration modules: {str(e)}",
-        )
+    all_schema_info = config_manager.get_all_schema_info()
+    modules = {name: ConfigModuleInfo(**info) for name, info in all_schema_info.items()}
+    return ConfigModuleList(modules=modules)
 
 
 @router.get("/modules/{module_name}", response_model=ConfigData)
@@ -105,22 +96,17 @@ async def get_module_config(
         config_instance = config_manager.get_config(module_name)
         schema_info = config_manager.get_schema_info(module_name)
 
-        return ConfigData(
-            module_name=module_name,
-            config_data=config_instance.model_dump(),
-            schema_version=schema_info["version"],
-        )
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuration module '{module_name}' not found",
         )
-    except Exception as e:
-        logger.error(f"Failed to get configuration for module '{module_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve configuration: {str(e)}",
-        )
+
+    return ConfigData(
+        module_name=module_name,
+        config_data=config_instance.model_dump(),
+        schema_version=schema_info["version"],
+    )
 
 
 @router.put("/modules/{module_name}", response_model=ConfigUpdateResponse)
@@ -143,20 +129,14 @@ async def update_module_config(
         updated_config = await config_manager.update_config(
             module_name, request.config_data
         )
-
-        return ConfigUpdateResponse(
-            success=True,
-            message=f"Configuration for module '{module_name}' updated successfully",
-            updated_config=updated_config.model_dump(),
-        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to update configuration for module '{module_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update configuration: {str(e)}",
-        )
+
+    return ConfigUpdateResponse(
+        success=True,
+        message=f"Configuration for module '{module_name}' updated successfully",
+        updated_config=updated_config.model_dump(),
+    )
 
 
 @router.get("/modules/{module_name}/schema", response_model=ConfigModuleInfo)
@@ -174,18 +154,13 @@ async def get_module_schema(
     """
     try:
         schema_info = config_manager.get_schema_info(module_name)
-        return ConfigModuleInfo(**schema_info)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuration module '{module_name}' not found",
         )
-    except Exception as e:
-        logger.error(f"Failed to get schema for module '{module_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve schema: {str(e)}",
-        )
+
+    return ConfigModuleInfo(**schema_info)
 
 
 @router.post("/modules/{module_name}/reset", response_model=ConfigUpdateResponse)
@@ -203,23 +178,16 @@ async def reset_module_config(
     """
     try:
         reset_config = await config_manager.reset_config(module_name)
-
-        return ConfigUpdateResponse(
-            success=True,
-            message=f"Configuration for module '{module_name}' reset to defaults",
-            updated_config=reset_config.model_dump(),
-        )
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuration module '{module_name}' not found",
         )
-    except Exception as e:
-        logger.error(f"Failed to reset configuration for module '{module_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to reset configuration: {str(e)}",
-        )
+    return ConfigUpdateResponse(
+        success=True,
+        message=f"Configuration for module '{module_name}' reset to defaults",
+        updated_config=reset_config.model_dump(),
+    )
 
 
 @router.get("/health", response_model=SuccessResponse)
@@ -230,20 +198,8 @@ async def config_health_check(_: UserPublic = Depends(get_current_user)):
     Returns:
         Health status of the configuration system
     """
-    try:
-        # Simple check to see if the config manager is initialized
-        config_manager.get_all_configs()
-        return SuccessResponse(
-            success=True, message="Dynamic configuration system is healthy"
-        )
-    except RuntimeError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Configuration system not initialized",
-        )
-    except Exception as e:
-        logger.error(f"Configuration system health check failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Configuration system health check failed",
-        )
+    # Simple check to see if the config manager is initialized
+    config_manager.get_all_configs()
+    return SuccessResponse(
+        success=True, message="Dynamic configuration system is healthy"
+    )

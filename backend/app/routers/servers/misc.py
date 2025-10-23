@@ -33,73 +33,51 @@ class ServerStatus(BaseModel):
 @router.get("/", response_model=list[ServerListItem])
 async def get_servers(_: UserPublic = Depends(get_current_user)):
     """Get list of all servers with basic info only (no status or runtime data)"""
-    try:
-        # Get all server instances
-        instances = await docker_mc_manager.get_all_instances()
+    # Get all server instances
+    instances = await docker_mc_manager.get_all_instances()
 
-        if not instances:
-            return []
+    if not instances:
+        return []
 
-        # Gather all server data concurrently
-        server_data_tasks = [get_server_list_item(instance) for instance in instances]
+    # Gather all server data concurrently
+    server_data_tasks = [get_server_list_item(instance) for instance in instances]
 
-        servers = await asyncio.gather(*server_data_tasks, return_exceptions=True)
+    servers = await asyncio.gather(*server_data_tasks, return_exceptions=True)
 
-        # Filter out any exceptions and return valid servers
-        valid_servers = [
-            server for server in servers if not isinstance(server, Exception)
-        ]
+    # Filter out any exceptions and return valid servers
+    valid_servers = [server for server in servers if not isinstance(server, Exception)]
 
-        return valid_servers
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get servers: {str(e)}")
+    return valid_servers
 
 
 @router.get("/{server_id}", response_model=ServerInfo)
 async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get detailed information about a specific server"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        # Get server info
-        server_info = await instance.get_server_info()
+    # Get server info
+    server_info = await instance.get_server_info()
 
-        return ServerInfo(
-            id=server_id,
-            name=server_info.name,
-            serverType=server_info.server_type,
-            gameVersion=server_info.game_version,
-            gamePort=server_info.game_port,
-            maxMemoryBytes=server_info.max_memory_bytes or 0,
-            rconPort=server_info.rcon_port,
-            javaVersion=server_info.java_version,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get server info: {str(e)}"
-        )
+    return ServerInfo(
+        id=server_id,
+        name=server_info.name,
+        serverType=server_info.server_type,
+        gameVersion=server_info.game_version,
+        gamePort=server_info.game_port,
+        maxMemoryBytes=server_info.max_memory_bytes or 0,
+        rconPort=server_info.rcon_port,
+        javaVersion=server_info.java_version,
+    )
 
 
 @router.get("/{server_id}/status", response_model=ServerStatus)
 async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get current status of a specific server"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
-        status = await instance.get_status()
+    instance = docker_mc_manager.get_instance(server_id)
+    status = await instance.get_status()
 
-        return ServerStatus(status=status.name)
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get server status: {str(e)}"
-        )
+    return ServerStatus(status=status.name)

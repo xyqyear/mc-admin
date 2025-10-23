@@ -90,21 +90,13 @@ def _chown_async(path: Path, uid: int, gid: int):
     os.chown(path, uid, gid)
 
 
-async def get_uid_gid(path: Path) -> tuple[int | None, int | None]:
+async def get_uid_gid(path: Path) -> tuple[int, int]:
     """Get the UID and GID of the specified path."""
-    try:
-        stat_info = await aioos.stat(path)
-        return stat_info.st_uid, stat_info.st_gid
-    except FileNotFoundError:
-        return None, None
+    stat_info = await aioos.stat(path)
+    return stat_info.st_uid, stat_info.st_gid
 
 
 async def set_file_ownership(file_path: Path, base_path: Path) -> None:
     """Set file ownership to match base directory ownership"""
     uid, gid = await get_uid_gid(base_path)
-    if uid is not None and gid is not None:
-        try:
-            await _chown_async(file_path, uid, gid)
-        except (OSError, PermissionError):
-            # Ignore ownership errors (common in containers)
-            pass
+    await _chown_async(file_path, uid, gid)

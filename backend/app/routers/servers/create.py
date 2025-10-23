@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...dependencies import get_current_user
+from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...minecraft.compose import MCComposeFile
 from ...minecraft.docker.compose_file import ComposeFile
@@ -31,19 +32,16 @@ def extract_ports_from_yaml(yaml_content: str) -> tuple[int, int]:
     Raises:
         ValueError: If YAML is invalid or doesn't contain required ports
     """
-    try:
-        # Parse YAML and create compose objects
-        compose_dict = yaml.safe_load(yaml_content)
-        compose_file = ComposeFile.from_dict(compose_dict)
-        mc_compose = MCComposeFile(compose_file)
+    # Parse YAML and create compose objects
+    compose_dict = yaml.safe_load(yaml_content)
+    compose_file = ComposeFile.from_dict(compose_dict)
+    mc_compose = MCComposeFile(compose_file)
 
-        # Extract ports using existing methods
-        game_port = mc_compose.get_game_port()
-        rcon_port = mc_compose.get_rcon_port()
+    # Extract ports using existing methods
+    game_port = mc_compose.get_game_port()
+    rcon_port = mc_compose.get_rcon_port()
 
-        return game_port, rcon_port
-    except Exception as e:
-        raise ValueError(f"Failed to extract ports from YAML: {str(e)}")
+    return game_port, rcon_port
 
 
 async def check_port_conflicts(game_port: int, rcon_port: int) -> list[str]:
@@ -58,45 +56,40 @@ async def check_port_conflicts(game_port: int, rcon_port: int) -> list[str]:
     """
     conflicts = []
 
-    try:
-        # Get all existing instances
-        instances = await docker_mc_manager.get_all_instances()
+    # Get all existing instances
+    instances = await docker_mc_manager.get_all_instances()
 
-        for instance in instances:
-            try:
-                # Get compose file path to check if server exists
-                compose_file_path = await instance.get_compose_file_path()
-                if compose_file_path is None:
-                    # Server doesn't have compose file yet, skip
-                    continue
+    for instance in instances:
+        # Get compose file path to check if server exists
+        compose_file_path = await instance.get_compose_file_path()
+        if compose_file_path is None:
+            # Server doesn't have compose file yet, skip
+            continue
 
-                # Parse compose file directly to get port information
-                compose_content = await instance.get_compose_file()
-                existing_game_port, existing_rcon_port = extract_ports_from_yaml(
-                    compose_content
-                )
+        try:
+            # Parse compose file directly to get port information
+            compose_content = await instance.get_compose_file()
+            existing_game_port, existing_rcon_port = extract_ports_from_yaml(
+                compose_content
+            )
+        except Exception:
+            logger.warning(
+                f"Failed to parse compose file for {instance.get_name()} while checking port conflicts"
+            )
+            # If we can't parse this server's ports, skip it
+            continue
 
-                # Check game port conflict
-                if existing_game_port == game_port:
-                    conflicts.append(
-                        f"Game port {game_port} is already used by server '{instance.get_name()}'"
-                    )
+        # Check game port conflict
+        if existing_game_port == game_port:
+            conflicts.append(
+                f"Game port {game_port} is already used by server '{instance.get_name()}'"
+            )
 
-                # Check RCON port conflict
-                if existing_rcon_port == rcon_port:
-                    conflicts.append(
-                        f"RCON port {rcon_port} is already used by server '{instance.get_name()}'"
-                    )
-
-            except Exception:
-                # If we can't parse this server's ports, skip it
-                continue
-
-    except Exception as e:
-        # If we can't get instances, that's a more serious error
-        raise HTTPException(
-            status_code=500, detail=f"Failed to check port conflicts: {str(e)}"
-        )
+        # Check RCON port conflict
+        if existing_rcon_port == rcon_port:
+            conflicts.append(
+                f"RCON port {rcon_port} is already used by server '{instance.get_name()}'"
+            )
 
     return conflicts
 
@@ -140,13 +133,7 @@ async def create_server(
             "rcon_port": rcon_port,
         }
 
-    except HTTPException:
-        raise
     except FileExistsError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create server: {str(e)}"
-        )

@@ -40,36 +40,33 @@ async def create_new_user(
     current_user: User = Depends(RequireRole(UserRole.OWNER)),
 ):
     """Create a new user. Only accessible by OWNER role."""
+    hashed_password = get_password_hash(user_data.password)
+
+    new_user = User(
+        username=user_data.username,
+        hashed_password=hashed_password,
+        role=user_data.role,
+    )
+
     try:
-        # Hash the password
-        hashed_password = get_password_hash(user_data.password)
-
-        # Create the user object
-        new_user = User(
-            username=user_data.username,
-            hashed_password=hashed_password,
-            role=user_data.role,
-        )
-
-        # Save to database
         created_user = await create_user(db, new_user)
-
-        if created_user.id is None:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create user",
-            )
-
-        return UserPublic(
-            id=created_user.id,
-            username=created_user.username,
-            role=created_user.role,
-            created_at=created_user.created_at,
-        )
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists"
         )
+
+    if created_user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user",
+        )
+
+    return UserPublic(
+        id=created_user.id,
+        username=created_user.username,
+        role=created_user.role,
+        created_at=created_user.created_at,
+    )
 
 
 @router.delete("/users/{user_id}")

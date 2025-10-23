@@ -120,35 +120,29 @@ async def list_cronjobs(
         identifier: Optional job type identifier to filter by
         status: List of job statuses to include (default: [active, paused])
     """
-    try:
-        # Pass filters directly to manager
-        cronjob_configs = await cron_manager.get_all_cronjobs(
-            identifier=identifier, status=status
-        )
+    # Pass filters directly to manager
+    cronjob_configs = await cron_manager.get_all_cronjobs(
+        identifier=identifier, status=status
+    )
 
-        result = []
-        for config in cronjob_configs:
-            result.append(
-                CronJobResponse(
-                    cronjob_id=config.cronjob_id,
-                    identifier=config.identifier,
-                    name=config.name,
-                    cron=config.cron,
-                    second=config.second,
-                    params=config.params.model_dump(),
-                    execution_count=config.execution_count,
-                    status=config.status.value,
-                    created_at=config.created_at,
-                    updated_at=config.updated_at,
-                )
+    result = []
+    for config in cronjob_configs:
+        result.append(
+            CronJobResponse(
+                cronjob_id=config.cronjob_id,
+                identifier=config.identifier,
+                name=config.name,
+                cron=config.cron,
+                second=config.second,
+                params=config.params.model_dump(),
+                execution_count=config.execution_count,
+                status=config.status.value,
+                created_at=config.created_at,
+                updated_at=config.updated_at,
             )
-
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list cron jobs: {str(e)}",
         )
+
+    return result
 
 
 @router.post("/", response_model=dict)
@@ -279,14 +273,8 @@ async def pause_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_use
 
     Pauses execution of a cron job until it is resumed.
     """
-    try:
-        await cron_manager.pause_cronjob(cronjob_id)
-        return {"message": "CronJob paused successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to pause cron job: {str(e)}",
-        )
+    await cron_manager.pause_cronjob(cronjob_id)
+    return {"message": "CronJob paused successfully"}
 
 
 @router.post("/{cronjob_id}/resume")
@@ -296,14 +284,8 @@ async def resume_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
 
     Resumes execution of a previously paused cron job.
     """
-    try:
-        await cron_manager.resume_cronjob(cronjob_id)
-        return {"message": "CronJob resumed successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to resume cron job: {str(e)}",
-        )
+    await cron_manager.resume_cronjob(cronjob_id)
+    return {"message": "CronJob resumed successfully"}
 
 
 @router.delete("/{cronjob_id}")
@@ -314,14 +296,8 @@ async def cancel_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     Cancels (soft deletes) a cron job. The cron job configuration and execution
     history are preserved but the cron job will no longer execute.
     """
-    try:
-        await cron_manager.cancel_cronjob(cronjob_id)
-        return {"message": "CronJob cancelled successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to cancel cron job: {str(e)}",
-        )
+    await cron_manager.cancel_cronjob(cronjob_id)
+    return {"message": "CronJob cancelled successfully"}
 
 
 @router.get("/{cronjob_id}/executions", response_model=List[CronJobExecutionResponse])
@@ -333,25 +309,19 @@ async def get_cronjob_executions(
 
     Returns the execution history for a specific cron job.
     """
-    try:
-        executions = await cron_manager.get_execution_history(cronjob_id, limit)
+    executions = await cron_manager.get_execution_history(cronjob_id, limit)
 
-        return [
-            CronJobExecutionResponse(
-                execution_id=ex.execution_id,
-                started_at=ex.started_at,
-                ended_at=ex.ended_at,
-                duration_ms=ex.duration_ms,
-                status=ex.status.value if hasattr(ex.status, "value") else ex.status,
-                messages=ex.messages,
-            )
-            for ex in executions
-        ]
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get cron job executions: {str(e)}",
+    return [
+        CronJobExecutionResponse(
+            execution_id=ex.execution_id,
+            started_at=ex.started_at,
+            ended_at=ex.ended_at,
+            duration_ms=ex.duration_ms,
+            status=ex.status.value if hasattr(ex.status, "value") else ex.status,
+            messages=ex.messages,
         )
+        for ex in executions
+    ]
 
 
 @router.get("/{cronjob_id}/next-run-time", response_model=CronJobNextRunTimeResponse)
@@ -369,11 +339,7 @@ async def get_cronjob_next_run_time(
     except ValueError as e:
         # Handle cases where job not found or not active
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get next run time: {str(e)}",
-        )
+
     if next_run_time is None:
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,

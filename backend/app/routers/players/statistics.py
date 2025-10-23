@@ -31,14 +31,7 @@ async def get_player_statistics_overview(
 
     Returns aggregated statistics for all players across all servers.
     """
-    try:
-        stats = await get_global_player_stats(db)
-        return stats
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get global player stats: {str(e)}",
-        )
+    return await get_global_player_stats(db)
 
 
 @router.get("/statistics/activity-trend", response_model=List[ActivityDataPoint])
@@ -53,14 +46,7 @@ async def get_player_activity_trend(
 
     Returns activity trend data points showing player activity over time.
     """
-    try:
-        trend = await get_activity_trend(db, period=period, interval=interval)
-        return trend
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get activity trend: {str(e)}",
-        )
+    return await get_activity_trend(db, period=period, interval=interval)
 
 
 # Server statistics endpoint (under /servers prefix)
@@ -78,18 +64,10 @@ async def get_server_player_statistics(
 
     Returns aggregated player statistics for the specified server.
     """
-    try:
-        stats = await get_server_player_stats(db, server_id=server_id)
-        if not stats:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND,
-                detail=f"Server '{server_id}' not found",
-            )
-        return stats
-    except HTTPException:
-        raise
-    except Exception as e:
+    stats = await get_server_player_stats(db, server_id=server_id)
+    if not stats:
         raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get server player stats: {str(e)}",
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Server '{server_id}' not found",
         )
+    return stats

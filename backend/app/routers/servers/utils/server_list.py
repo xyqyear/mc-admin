@@ -18,24 +18,18 @@ class ServerListItem(BaseModel):
 
 async def get_server_list_item(instance: MCInstance) -> ServerListItem:
     """Helper to get basic server info for a single instance"""
-    try:
-        server_id = instance.get_name()
+    server_id = instance.get_name()
 
-        # Get only basic server info
-        server_info = await instance.get_server_info()
+    # Get only basic server info
+    server_info = await instance.get_server_info()
 
-        return ServerListItem(
-            id=server_id,
-            name=server_info.name,
-            serverType=server_info.server_type,
-            gameVersion=server_info.game_version,
-            gamePort=server_info.game_port,
-            maxMemoryBytes=server_info.max_memory_bytes,
-            rconPort=server_info.rcon_port,
-            javaVersion=server_info.java_version,
-        )
-
-    except Exception as e:
-        raise RuntimeError(
-            f"Error getting server list item for {instance.get_name()}: {e}"
-        )
+    return ServerListItem(
+        id=server_id,
+        name=server_info.name,
+        serverType=server_info.server_type,
+        gameVersion=server_info.game_version,
+        gamePort=server_info.game_port,
+        maxMemoryBytes=server_info.max_memory_bytes,
+        rconPort=server_info.rcon_port,
+        javaVersion=server_info.java_version,
+    )

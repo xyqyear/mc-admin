@@ -1,7 +1,9 @@
+import traceback
 from contextlib import asynccontextmanager
 
 import aiofiles
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
@@ -111,6 +113,24 @@ api_app.include_router(server_console.router)
 api_app.include_router(server_rcon.router)
 api_app.include_router(server_files.router)
 api_app.include_router(server_restart_schedule.router)
+
+
+# Global exception handler for API app
+@api_app.exception_handler(Exception)
+async def api_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        logger.info(f"HTTP exception occurred: {exc.detail}")
+        return await http_exception_handler(request, exc)
+    else:
+        logger.error(
+            f"Unhandled exception: {exc}, url={request.url}, params={request.query_params} \n {traceback.format_exc(limit=-10)}"
+        )
+        exc = HTTPException(
+            status_code=500,
+            detail=f"request to {request.url} failed with error: {str(exc)}",
+        )
+        return await http_exception_handler(request, exc)
+
 
 app = FastAPI(lifespan=lifespan, title="MC Admin")
 app.mount("/api", api_app)

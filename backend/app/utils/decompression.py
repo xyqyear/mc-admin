@@ -68,13 +68,6 @@ async def extract_minecraft_server(
             "-ba",
             "-r",
         )
-        if "server.properties" not in output:
-            raise HTTPException(
-                status_code=400,
-                detail="压缩包中未找到server.properties文件",
-            )
-    except HTTPException:
-        raise
     except Exception as e:
         error_msg = str(e)
         if (
@@ -101,21 +94,26 @@ async def extract_minecraft_server(
                 detail="检查压缩包内容时发生错误",
             )
 
+    if "server.properties" not in output:
+        raise HTTPException(
+            status_code=400,
+            detail="压缩包中未找到server.properties文件",
+        )
+
     # Step 3: Extract archive to temporary directory
     temp_dir = f"{archive_path}.dir"
+    # Get server_path ownership for chown later
     try:
-        # Get server_path ownership for chown later
         server_uid, server_gid = await get_uid_gid(settings.server_path)
-        if server_uid is None or server_gid is None:
-            raise HTTPException(
-                status_code=500,
-                detail=f"路径不存在: {settings.server_path}",
-            )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail=f"路径不存在: {settings.server_path}",
+        )
 
+    try:
         # Extract archive
         await exec_command("7z", "x", archive_path, f"-o{temp_dir}")
-    except HTTPException:
-        raise
     except Exception as e:
         error_msg = str(e)
         if "Permission denied" in error_msg:
@@ -160,16 +158,6 @@ async def extract_minecraft_server(
         find_output = await exec_command(
             "find", temp_dir, "-name", "server.properties", "-print", "-quit"
         )
-        if not find_output.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="解压后找不到server.properties文件",
-            )
-
-        server_properties_path = Path(find_output.strip())
-        server_dir = server_properties_path.parent
-    except HTTPException:
-        raise
     except Exception as e:
         error_msg = str(e)
         if "Permission denied" in error_msg:
@@ -182,6 +170,13 @@ async def extract_minecraft_server(
                 status_code=500,
                 detail="搜索server.properties时发生错误",
             )
+    if not find_output.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="解压后找不到server.properties文件",
+        )
+    server_properties_path = Path(find_output.strip())
+    server_dir = server_properties_path.parent
 
     # Clean up existing data directory
     if await aioos.path.exists(target_path):

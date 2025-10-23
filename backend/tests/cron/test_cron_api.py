@@ -88,7 +88,7 @@ def client():
     # Mock settings to set up master token
     with patch("app.dependencies.settings") as mock_settings:
         mock_settings.master_token = "test_master_token"
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=False)
         yield client
 
 

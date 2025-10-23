@@ -20,7 +20,7 @@ class TestFileSearchAPI:
     @pytest.fixture
     def test_client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, raise_server_exceptions=False)
 
     @pytest.fixture
     def temp_dir(self):
@@ -400,7 +400,8 @@ class TestFileSearchAPI:
                     )
 
                     assert response.status_code == 500
-                    assert "Failed to search files" in response.json()["detail"]
+                    # Global exception handler now formats error messages differently
+                    assert "Invalid regular expression" in response.json()["detail"]
 
     def test_search_files_invalid_request_body(
         self, test_client, auth_headers, server_id

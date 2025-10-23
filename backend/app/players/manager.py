@@ -10,7 +10,7 @@ from ..events.base import (
     SystemCrashDetectedEvent,
 )
 from ..log_monitor import LogMonitor, LogParser
-from ..logger import logger
+from ..logger import log_exception, logger
 from ..minecraft import DockerMCManager
 from ..server_tracker import ServerTracker
 from .chat_tracker import ChatTracker
@@ -74,19 +74,8 @@ class PlayerSystemManager:
         """Start player monitoring system."""
         logger.info("Starting player monitoring system...")
 
-        # Initialize log parser (reads config dynamically for real-time updates)
-        try:
-            self.log_parser = LogParser()
-            logger.info(
-                "Log parser initialized with dynamic configuration (real-time updates enabled)"
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to initialize log parser from config: {e}", exc_info=True
-            )
-            raise
-
         # Initialize log monitor
+        self.log_parser = LogParser()
         self.log_monitor = LogMonitor(
             event_dispatcher=event_dispatcher,
             log_parser=self.log_parser,
@@ -103,15 +92,17 @@ class PlayerSystemManager:
         event_dispatcher.on_server_removed(self._on_server_removed)
 
         # Start log monitoring for existing servers
+        servers = []
         try:
             servers = await self.mc_manager.get_all_server_names()
-            for server_id in servers:
-                await self._start_log_monitoring(server_id)
         except Exception as e:
             logger.error(
                 f"Error starting log monitoring for existing servers: {e}",
                 exc_info=True,
             )
+
+        for server_id in servers:
+            await self._start_log_monitoring(server_id)
 
         # Start background tasks
         await self.player_syncer.start()
@@ -171,23 +162,19 @@ class PlayerSystemManager:
         # Trigger immediate validation of all servers
         await self.player_syncer._validate_all_servers()
 
+    @log_exception("Error starting log monitoring: ")
     async def _start_log_monitoring(self, server_id: str) -> None:
         """Start log monitoring for a server.
 
         Args:
             server_id: Server identifier
         """
-        try:
-            instance = self.mc_manager.get_instance(server_id)
-            log_path = instance.get_data_path() / "logs" / "latest.log"
+        instance = self.mc_manager.get_instance(server_id)
+        log_path = instance.get_data_path() / "logs" / "latest.log"
 
-            if self.log_monitor:
-                await self.log_monitor.watch_server(server_id, log_path)
-                logger.info(f"Started log monitoring for server {server_id}")
-        except Exception as e:
-            logger.error(
-                f"Error starting log monitoring for {server_id}: {e}", exc_info=True
-            )
+        if self.log_monitor:
+            await self.log_monitor.watch_server(server_id, log_path)
+            logger.info(f"Started log monitoring for server {server_id}")
 
 
 # Global player system manager instance

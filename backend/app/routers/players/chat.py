@@ -3,8 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi import status as http_status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
@@ -36,22 +35,16 @@ async def get_player_chat(
 
     Returns a list of chat messages sent by the specified player.
     """
-    try:
-        messages = await get_player_chat_messages(
-            db,
-            player_db_id=player_db_id,
-            limit=limit,
-            server_id=server_id,
-            search=search,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        return messages
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get player chat messages: {str(e)}",
-        )
+    messages = await get_player_chat_messages(
+        db,
+        player_db_id=player_db_id,
+        limit=limit,
+        server_id=server_id,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return messages
 
 
 # Server chat endpoint (under /servers prefix)
@@ -73,18 +66,12 @@ async def get_server_chat(
 
     Returns a list of chat messages from the specified server with player information.
     """
-    try:
-        messages = await get_server_chat_messages(
-            db,
-            server_id=server_id,
-            limit=limit,
-            search=search,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        return messages
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get server chat messages: {str(e)}",
-        )
+    messages = await get_server_chat_messages(
+        db,
+        server_id=server_id,
+        limit=limit,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return messages

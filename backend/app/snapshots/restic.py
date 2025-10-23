@@ -117,12 +117,13 @@ class ResticManager:
         for line in reversed(lines):
             try:
                 data = json.loads(line)
-                if data.get("message_type") == "summary":
-                    summary_data = data
-                    snapshot_id = data.get("snapshot_id")
-                    break
             except json.JSONDecodeError:
                 continue
+
+            if data.get("message_type") == "summary":
+                summary_data = data
+                snapshot_id = data.get("snapshot_id")
+                break
 
         if not summary_data or not snapshot_id:
             raise RuntimeError(
@@ -135,12 +136,13 @@ class ResticManager:
 
         try:
             snapshots_list = json.loads(snapshots_result)
-            if not snapshots_list or not isinstance(snapshots_list, list):
-                raise RuntimeError("Expected snapshots list from restic")
-
-            snapshot_info = snapshots_list[0]  # Should have exactly one snapshot
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Could not parse snapshot info JSON: {e}")
+
+        if not snapshots_list or not isinstance(snapshots_list, list):
+            raise RuntimeError("Expected snapshots list from restic")
+
+        snapshot_info = snapshots_list[0]  # Should have exactly one snapshot
 
         # Create summary object from backup summary data
         summary = ResticSnapshotSummary(
@@ -287,16 +289,17 @@ class ResticManager:
 
             try:
                 action_data = json.loads(line)
-                action = ResticRestorePreviewAction(
-                    message_type=action_data["message_type"],
-                    action=action_data.get("action"),
-                    item=action_data.get("item"),
-                    size=action_data.get("size"),
-                )
-                actions.append(action)
             except json.JSONDecodeError:
                 # Skip lines that aren't valid JSON
                 continue
+
+            action = ResticRestorePreviewAction(
+                message_type=action_data["message_type"],
+                action=action_data.get("action"),
+                item=action_data.get("item"),
+                size=action_data.get("size"),
+            )
+            actions.append(action)
 
         # Filter actions: include updated, deleted, and restored operations
         # Only exclude restored operations with zero size

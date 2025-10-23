@@ -137,26 +137,15 @@ async def create_server_archive(
             status_code=404, detail=f"Source path does not exist: {source_path}"
         )
 
+    # Create 7z archive
+    # Use parent directory as working directory and only specify the relative name
+    # This ensures the archive doesn't contain the full filesystem path
+    source_parent = source_path.parent
+    source_name = source_path.name
     try:
-        # Create 7z archive
-        # Use parent directory as working directory and only specify the relative name
-        # This ensures the archive doesn't contain the full filesystem path
-        source_parent = source_path.parent
-        source_name = source_path.name
-
-        # Use 7z for high compression ratio
         await exec_command(
             "7z", "a", "-t7z", str(archive_path), source_name, cwd=str(source_parent)
         )
-
-        # Verify archive was created
-        if not await aioos.path.exists(archive_path):
-            raise HTTPException(
-                status_code=500, detail="Archive was not created successfully"
-            )
-
-        return archive_filename
-
     except Exception as e:
         error_msg = str(e)
 
@@ -186,3 +175,11 @@ async def create_server_archive(
             raise HTTPException(
                 status_code=500, detail=f"Failed to create archive: {error_msg}"
             )
+
+    # Verify archive was created
+    if not await aioos.path.exists(archive_path):
+        raise HTTPException(
+            status_code=500, detail="Archive was not created successfully"
+        )
+
+    return archive_filename

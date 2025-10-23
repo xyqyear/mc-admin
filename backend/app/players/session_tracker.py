@@ -3,7 +3,7 @@
 from ..db.database import get_async_session
 from ..events.base import PlayerJoinedEvent, PlayerLeftEvent, ServerStoppingEvent
 from ..events.dispatcher import EventDispatcher
-from ..logger import logger
+from ..logger import log_exception, logger
 from ..server_tracker import crud as server_tracker_crud
 from .crud import (
     end_all_open_sessions,
@@ -32,106 +32,100 @@ class SessionTracker:
         self.event_dispatcher.on_player_left(self._handle_player_left)
         self.event_dispatcher.on_server_stopping(self._handle_server_stopping)
 
+    @log_exception("Error handling player joined event: ")
     async def _handle_player_joined(self, event: PlayerJoinedEvent) -> None:
         """Handle player join event - create new session or reuse existing open session.
 
         Args:
             event: Player join event
         """
-        try:
-            async with get_async_session() as session:
-                server_db_id = await server_tracker_crud.get_server_db_id(
-                    session, event.server_id
+        async with get_async_session() as session:
+            server_db_id = await server_tracker_crud.get_server_db_id(
+                session, event.server_id
+            )
+            if server_db_id is None:
+                logger.warning(f"Server not found in tracker: {event.server_id}")
+                return
+
+            # Get or add player by name
+            player = await get_or_add_player_by_name(session, event.player_name)
+            if player is None:
+                logger.warning(
+                    f"Player not found and could not be fetched: {event.player_name}"
                 )
-                if server_db_id is None:
-                    logger.warning(f"Server not found in tracker: {event.server_id}")
-                    return
+                return
 
-                # Get or add player by name
-                player = await get_or_add_player_by_name(session, event.player_name)
-                if player is None:
-                    logger.warning(
-                        f"Player not found and could not be fetched: {event.player_name}"
-                    )
-                    return
+            # Get or create session (will reuse existing open session if exists)
+            player_session = await get_or_create_session(
+                session, player.player_db_id, server_db_id, event.timestamp
+            )
 
-                # Get or create session (will reuse existing open session if exists)
-                player_session = await get_or_create_session(
-                    session, player.player_db_id, server_db_id, event.timestamp
+            if player_session.joined_at < event.timestamp:
+                logger.debug(
+                    f"Reused existing session for {event.player_name} on {event.server_id}"
+                )
+            else:
+                logger.debug(
+                    f"Created new session for {event.player_name} on {event.server_id}"
                 )
 
-                if player_session.joined_at < event.timestamp:
-                    logger.debug(
-                        f"Reused existing session for {event.player_name} on {event.server_id}"
-                    )
-                else:
-                    logger.debug(
-                        f"Created new session for {event.player_name} on {event.server_id}"
-                    )
-        except Exception as e:
-            logger.error(f"Error in session join handler: {e}", exc_info=True)
-
+    @log_exception("Error handling player left event: ")
     async def _handle_player_left(self, event: PlayerLeftEvent) -> None:
         """Handle player leave event - end all open sessions.
 
         Args:
             event: Player leave event
         """
-        try:
-            async with get_async_session() as session:
-                server_db_id = await server_tracker_crud.get_server_db_id(
-                    session, event.server_id
+        async with get_async_session() as session:
+            server_db_id = await server_tracker_crud.get_server_db_id(
+                session, event.server_id
+            )
+            if server_db_id is None:
+                logger.warning(f"Server not found in tracker: {event.server_id}")
+                return
+
+            # Get or add player by name
+            player = await get_or_add_player_by_name(session, event.player_name)
+            if player is None:
+                logger.warning(
+                    f"Player not found and could not be fetched: {event.player_name}"
                 )
-                if server_db_id is None:
-                    logger.warning(f"Server not found in tracker: {event.server_id}")
-                    return
+                return
 
-                # Get or add player by name
-                player = await get_or_add_player_by_name(session, event.player_name)
-                if player is None:
-                    logger.warning(
-                        f"Player not found and could not be fetched: {event.player_name}"
-                    )
-                    return
+            # End all open sessions for this player on this server
+            count = await end_all_open_sessions(
+                session, player.player_db_id, server_db_id, event.timestamp
+            )
 
-                # End all open sessions for this player on this server
-                count = await end_all_open_sessions(
-                    session, player.player_db_id, server_db_id, event.timestamp
+            if count > 0:
+                logger.debug(
+                    f"Ended {count} session(s) for {event.player_name} on {event.server_id}"
+                )
+            else:
+                logger.warning(
+                    f"No open sessions found for {event.player_name} on {event.server_id}"
                 )
 
-                if count > 0:
-                    logger.debug(
-                        f"Ended {count} session(s) for {event.player_name} on {event.server_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"No open sessions found for {event.player_name} on {event.server_id}"
-                    )
-        except Exception as e:
-            logger.error(f"Error in session leave handler: {e}", exc_info=True)
-
+    @log_exception("Error handling server stopping event: ")
     async def _handle_server_stopping(self, event: ServerStoppingEvent) -> None:
         """Handle server stopping event - end all open sessions on the server.
 
         Args:
             event: Server stopping event
         """
-        try:
-            async with get_async_session() as session:
-                server_db_id = await server_tracker_crud.get_server_db_id(
-                    session, event.server_id
-                )
-                if server_db_id is None:
-                    logger.warning(f"Server not found in tracker: {event.server_id}")
-                    return
+        async with get_async_session() as session:
+            server_db_id = await server_tracker_crud.get_server_db_id(
+                session, event.server_id
+            )
+            if server_db_id is None:
+                logger.warning(f"Server not found in tracker: {event.server_id}")
+                return
 
-                # End all open sessions on this server
-                count = await end_all_open_sessions_on_server(
-                    session, server_db_id, event.timestamp
-                )
+            # End all open sessions on this server
+            count = await end_all_open_sessions_on_server(
+                session, server_db_id, event.timestamp
+            )
 
-                logger.info(
-                    f"Ended {count} session(s) for server {event.server_id} (server stopping)"
-                )
-        except Exception as e:
-            logger.error(f"Error in server stopping handler: {e}", exc_info=True)
+            logger.info(
+                f"Ended {count} session(s) for server {event.server_id} (server stopping)"
+            )

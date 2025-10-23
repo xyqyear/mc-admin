@@ -93,3 +93,8 @@ async def get_cpu_percent_endpoint():
 async def get_health():
     """Simple healthcheck endpoint for Docker"""
     return HealthCheck(status="healthy")
+
+
+@router.get("/fail", response_model=HealthCheck)
+async def get_fail_health():
+    raise ValueError("Simulated failure for testing purposes")

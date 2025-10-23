@@ -353,16 +353,11 @@ async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user))
             detail=error_msg,
         )
 
-    try:
-        repository_path = Path(settings.restic.repository_path)
-        disk_info = await get_disk_info(repository_path)
+    repository_path = Path(settings.restic.repository_path)
+    disk_info = await get_disk_info(repository_path)
 
-        return BackupRepositoryUsage(
-            backupUsedGB=disk_info.used / 1024**3,
-            backupTotalGB=disk_info.total / 1024**3,
-            backupAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
-        )
-    except Exception as e:
-        error_msg = f"Failed to get repository usage: {str(e)}"
-        logger.error(f"Repository usage error: {error_msg}", exc_info=True)
-        raise HTTPException(status_code=500, detail=error_msg)
+    return BackupRepositoryUsage(
+        backupUsedGB=disk_info.used / 1024**3,
+        backupTotalGB=disk_info.total / 1024**3,
+        backupAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
+    )

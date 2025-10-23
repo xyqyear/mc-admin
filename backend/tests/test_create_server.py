@@ -153,7 +153,7 @@ def test_client_with_temp_path(temp_server_path):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
             with patch("app.routers.servers.create.docker_mc_manager", real_mc_manager):
-                client = TestClient(api_app)
+                client = TestClient(api_app, raise_server_exceptions=False)
                 yield client
 
 
@@ -367,9 +367,10 @@ class TestYAMLValidation:
             headers={"Authorization": "Bearer test-master-token"},
         )
 
-        assert response.status_code == 400
+        # YAML syntax errors are now caught by global exception handler and return 500
+        assert response.status_code == 500
         detail = response.json()["detail"]
-        assert "Failed to extract ports from YAML" in detail
+        assert "mapping values are not allowed here" in detail
 
     def test_create_server_invalid_image(self, test_client_with_temp_path):
         """Test creating server with wrong Docker image."""
@@ -435,6 +436,7 @@ class TestPortExtractionUtility:
 
     def test_extract_ports_invalid_yaml(self):
         """Test extracting ports from invalid YAML."""
+        from yaml.scanner import ScannerError
         from app.routers.servers.create import extract_ports_from_yaml
 
         with pytest.raises(ValueError) as exc_info:
@@ -445,9 +447,9 @@ class TestPortExtractionUtility:
             extract_ports_from_yaml(INVALID_YAML_MISSING_GAME_PORT)
         assert "Could not find game port" in str(exc_info.value)
 
-        with pytest.raises(ValueError) as exc_info:
+        # YAML syntax errors now raise yaml.scanner.ScannerError
+        with pytest.raises(ScannerError):
             extract_ports_from_yaml(INVALID_YAML_SYNTAX)
-        assert "Failed to extract ports from YAML" in str(exc_info.value)
 
         with pytest.raises(ValueError) as exc_info:
             extract_ports_from_yaml(INVALID_YAML_WRONG_IMAGE)

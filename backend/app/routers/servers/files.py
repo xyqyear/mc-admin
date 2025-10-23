@@ -42,24 +42,16 @@ async def list_files(
     server_id: str, path: str = "/", _: UserPublic = Depends(get_current_user)
 ):
     """List files and directories in the specified server path"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        items = await get_file_items(base_path, path)
+    base_path = instance.get_data_path()
+    items = await get_file_items(base_path, path)
 
-        return FileListResponse(items=items, current_path=path)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+    return FileListResponse(items=items, current_path=path)
 
 
 @router.get("/{server_id}/files/content")
@@ -67,24 +59,16 @@ async def get_file_content_endpoint(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Get content of a specific file"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        content = await get_file_content(base_path, path)
+    base_path = instance.get_data_path()
+    content = await get_file_content(base_path, path)
 
-        return FileContent(content=content)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+    return FileContent(content=content)
 
 
 @router.post("/{server_id}/files/content")
@@ -95,24 +79,16 @@ async def update_file_content_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Update content of a specific file"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        await update_file_content(base_path, path, file_content.content)
+    base_path = instance.get_data_path()
+    await update_file_content(base_path, path, file_content.content)
 
-        return {"message": "File updated successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update file: {str(e)}")
+    return {"message": "File updated successfully"}
 
 
 @router.get("/{server_id}/files/download")
@@ -120,36 +96,26 @@ async def download_file(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Download a specific file"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        file_path = base_path / path.lstrip("/")
+    base_path = instance.get_data_path()
+    file_path = base_path / path.lstrip("/")
 
-        if not await aioos.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
+    if not await aioos.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
 
-        if not await aioos.path.isfile(file_path):
-            raise HTTPException(status_code=400, detail="Path is not a file")
+    if not await aioos.path.isfile(file_path):
+        raise HTTPException(status_code=400, detail="Path is not a file")
 
-        return FileResponse(
-            path=str(file_path),
-            filename=file_path.name,
-            media_type="application/octet-stream",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to download file: {str(e)}"
-        )
+    return FileResponse(
+        path=str(file_path),
+        filename=file_path.name,
+        media_type="application/octet-stream",
+    )
 
 
 @router.post("/{server_id}/files/upload")
@@ -160,24 +126,16 @@ async def upload_file_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload a file to the specified server path"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        filename = await upload_file(base_path, path, file, allow_overwrite=False)
+    base_path = instance.get_data_path()
+    filename = await upload_file(base_path, path, file, allow_overwrite=False)
 
-        return {"message": f"File '{filename}' uploaded successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+    return {"message": f"File '{filename}' uploaded successfully"}
 
 
 @router.post("/{server_id}/files/create")
@@ -187,27 +145,16 @@ async def create_file_or_directory_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Create a new file or directory"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        message = await create_file_or_directory(base_path, create_request)
+    base_path = instance.get_data_path()
+    message = await create_file_or_directory(base_path, create_request)
 
-        return {"message": message}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create {'directory' if create_request.type == 'directory' else 'file'}: {str(e)}",
-        )
+    return {"message": message}
 
 
 @router.delete("/{server_id}/files")
@@ -215,24 +162,16 @@ async def delete_file_or_directory_endpoint(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Delete a file or directory"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        message = await delete_file_or_directory(base_path, path)
+    base_path = instance.get_data_path()
+    message = await delete_file_or_directory(base_path, path)
 
-        return {"message": message}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete: {str(e)}")
+    return {"message": message}
 
 
 @router.post("/{server_id}/files/rename")
@@ -242,24 +181,16 @@ async def rename_file_or_directory_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Rename a file or directory"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        message = await rename_file_or_directory(base_path, rename_request)
+    base_path = instance.get_data_path()
+    message = await rename_file_or_directory(base_path, rename_request)
 
-        return {"message": message}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to rename: {str(e)}")
+    return {"message": message}
 
 
 # Multi-file upload endpoints
@@ -271,28 +202,16 @@ async def check_multi_file_upload(
     _: UserPublic = Depends(get_current_user),
 ):
     """Check for conflicts before multi-file upload"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        conflict_response = await check_upload_conflicts(
-            base_path, path, upload_request
-        )
+    base_path = instance.get_data_path()
+    conflict_response = await check_upload_conflicts(base_path, path, upload_request)
 
-        return conflict_response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to check upload conflicts: {str(e)}"
-        )
+    return conflict_response
 
 
 @router.post("/{server_id}/files/upload/policy")
@@ -304,25 +223,15 @@ async def set_multi_file_upload_policy(
     _: UserPublic = Depends(get_current_user),
 ):
     """Set the overwrite policy for a multi-file upload session"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        await set_upload_policy(session_id, policy, reusable)
+    await set_upload_policy(session_id, policy, reusable)
 
-        return {"message": "Upload policy set successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to set upload policy: {str(e)}"
-        )
+    return {"message": "Upload policy set successfully"}
 
 
 @router.post("/{server_id}/files/upload/multiple")
@@ -334,26 +243,16 @@ async def upload_multiple_files_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload multiple files using a prepared session"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        base_path = instance.get_data_path()
-        results = await upload_multiple_files(base_path, session_id, path, files)
+    base_path = instance.get_data_path()
+    results = await upload_multiple_files(base_path, session_id, path, files)
 
-        return results
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to upload multiple files: {str(e)}"
-        )
+    return results
 
 
 # File search endpoint
@@ -365,36 +264,28 @@ async def search_server_files(
     _: UserPublic = Depends(get_current_user),
 ):
     """Search for files in the specified server path using regex patterns"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        # Get base path and construct search path
-        base_path = instance.get_data_path()
-        if path.strip() == "/" or not path.strip():
-            search_path = base_path
-            search_path_str = "/"
-        else:
-            search_path = base_path / path.lstrip("/")
-            search_path_str = "/" + path.lstrip("/")
+    # Get base path and construct search path
+    base_path = instance.get_data_path()
+    if path.strip() == "/" or not path.strip():
+        search_path = base_path
+        search_path_str = "/"
+    else:
+        search_path = base_path / path.lstrip("/")
+        search_path_str = "/" + path.lstrip("/")
 
-        search_path = search_path.resolve()
-        # Perform search
-        results = await search_files(search_path, search_request)
+    search_path = search_path.resolve()
+    # Perform search
+    results = await search_files(search_path, search_request)
 
-        return FileSearchResponse(
-            query=search_request,
-            results=results,
-            total_count=len(results),
-            search_path=search_path_str,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to search files: {str(e)}")
+    return FileSearchResponse(
+        query=search_request,
+        results=results,
+        total_count=len(results),
+        search_path=search_path_str,
+    )

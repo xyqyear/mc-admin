@@ -10,7 +10,7 @@ from ..events.base import (
     PlayerUuidDiscoveredEvent,
 )
 from ..events.dispatcher import EventDispatcher
-from ..logger import logger
+from ..logger import log_exception, logger
 from .crud import (
     get_or_add_player_by_name,
     update_player_last_seen,
@@ -37,67 +37,57 @@ class PlayerManager:
         self.event_dispatcher.on_player_joined(self._handle_player_joined)
         self.event_dispatcher.on_player_left(self._handle_player_left)
 
+    @log_exception("Error handling UUID discovery: ")
     async def _handle_uuid_discovered(self, event: PlayerUuidDiscoveredEvent) -> None:
         """Handle player UUID discovery event.
 
         Args:
             event: UUID discovery event
         """
-        try:
-            async with get_async_session() as session:
-                try:
-                    await upsert_player(session, event.uuid, event.player_name)
-                    logger.debug(
-                        f"Updated player UUID: {event.player_name} = {event.uuid}"
-                    )
-                except Exception as e:
-                    logger.error(f"Error handling UUID discovery: {e}", exc_info=True)
-        except Exception as e:
-            logger.error(f"Error in UUID discovery handler: {e}", exc_info=True)
+        async with get_async_session() as session:
+            await upsert_player(session, event.uuid, event.player_name)
+            logger.info(f"Updated player UUID: {event.player_name} = {event.uuid}")
 
+    @log_exception("Error handling player join: ")
     async def _handle_player_joined(self, event: PlayerJoinedEvent) -> None:
         """Handle player join event.
 
         Args:
             event: Player join event
         """
-        try:
-            async with get_async_session() as session:
-                # Get or add player by name
-                player = await get_or_add_player_by_name(session, event.player_name)
-                if player is None:
-                    logger.warning(
-                        f"Player not found and could not be fetched: {event.player_name}"
-                    )
-                    return
-
-                # Update last_seen
-                await update_player_last_seen(
-                    session, player.player_db_id, event.timestamp
+        async with get_async_session() as session:
+            # Get or add player by name
+            player = await get_or_add_player_by_name(session, event.player_name)
+            if player is None:
+                logger.warning(
+                    f"Player not found and could not be fetched: {event.player_name}"
                 )
+                return
 
-                logger.debug(f"Player joined: {event.player_name} on {event.server_id}")
+            # Update last_seen
+            await update_player_last_seen(session, player.player_db_id, event.timestamp)
 
-                # Store player info before session closes
-                player_db_id = player.player_db_id
-                player_uuid = player.uuid
-                player_name = player.current_name
+            logger.info(f"Player joined: {event.player_name} on {event.server_id}")
 
-            # Dispatch skin update event outside of database session
-            # This triggers skin update for every player join, not just new players
-            asyncio.create_task(
-                self.event_dispatcher.dispatch_player_skin_update_requested(
-                    PlayerSkinUpdateRequestedEvent(
-                        player_db_id=player_db_id,
-                        uuid=player_uuid,
-                        player_name=player_name,
-                    )
+            # Store player info before session closes
+            player_db_id = player.player_db_id
+            player_uuid = player.uuid
+            player_name = player.current_name
+
+        # Dispatch skin update event outside of database session
+        # This triggers skin update for every player join, not just new players
+        asyncio.create_task(
+            self.event_dispatcher.dispatch_player_skin_update_requested(
+                PlayerSkinUpdateRequestedEvent(
+                    player_db_id=player_db_id,
+                    uuid=player_uuid,
+                    player_name=player_name,
                 )
             )
-            logger.debug(f"Dispatched skin update request for {event.player_name}")
-        except Exception as e:
-            logger.error(f"Error in player join handler: {e}", exc_info=True)
+        )
+        logger.info(f"Dispatched skin update request for {event.player_name}")
 
+    @log_exception("Error handling player leave: ")
     async def _handle_player_left(self, event: PlayerLeftEvent) -> None:
         """Handle player leave event.
 
@@ -106,21 +96,16 @@ class PlayerManager:
         Args:
             event: Player leave event
         """
-        try:
-            async with get_async_session() as session:
-                # Get or add player by name
-                player = await get_or_add_player_by_name(session, event.player_name)
-                if player is None:
-                    logger.warning(
-                        f"Player not found and could not be fetched: {event.player_name}"
-                    )
-                    return
-
-                # Update last_seen
-                await update_player_last_seen(
-                    session, player.player_db_id, event.timestamp
+        async with get_async_session() as session:
+            # Get or add player by name
+            player = await get_or_add_player_by_name(session, event.player_name)
+            if player is None:
+                logger.warning(
+                    f"Player not found and could not be fetched: {event.player_name}"
                 )
+                return
 
-                logger.debug(f"Player left: {event.player_name} from {event.server_id}")
-        except Exception as e:
-            logger.error(f"Error in player leave handler: {e}", exc_info=True)
+            # Update last_seen
+            await update_player_last_seen(session, player.player_db_id, event.timestamp)
+
+            logger.info(f"Player left: {event.player_name} from {event.server_id}")

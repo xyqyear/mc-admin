@@ -2,8 +2,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi import status as http_status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
@@ -31,16 +30,10 @@ async def get_player_achievement_list(
 
     Returns a list of achievements earned by the specified player.
     """
-    try:
-        achievements = await get_player_achievements(
-            db, player_db_id=player_db_id, server_id=server_id
-        )
-        return achievements
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get player achievements: {str(e)}",
-        )
+    achievements = await get_player_achievements(
+        db, player_db_id=player_db_id, server_id=server_id
+    )
+    return achievements
 
 
 # Server achievement leaderboard endpoint (under /servers prefix)
@@ -61,13 +54,7 @@ async def get_achievement_leaderboard(
 
     Returns a leaderboard of players ranked by achievement count on the specified server.
     """
-    try:
-        leaderboard = await get_server_achievement_leaderboard(
-            db, server_id=server_id, limit=limit
-        )
-        return leaderboard
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get achievement leaderboard: {str(e)}",
-        )
+    leaderboard = await get_server_achievement_leaderboard(
+        db, server_id=server_id, limit=limit
+    )
+    return leaderboard

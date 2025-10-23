@@ -10,7 +10,6 @@ Tests cover:
 """
 
 import asyncio
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,14 +21,16 @@ class TestBasicExceptionLogging:
 
     @pytest.mark.asyncio
     async def test_sync_function_with_prefix(self, caplog):
-        """Test sync function logs exception with prefix."""
+        """Test sync function logs exception with prefix and returns None."""
 
         @log_exception("SyncOperation")
         def sync_func_with_error():
             raise ValueError("Test error from sync function")
 
-        with pytest.raises(ValueError, match="Test error from sync function"):
-            sync_func_with_error()
+        result = sync_func_with_error()
+
+        # Should return None instead of raising
+        assert result is None
 
         # Check log output
         assert "SyncOperation: ValueError: Test error from sync function" in caplog.text
@@ -37,15 +38,17 @@ class TestBasicExceptionLogging:
 
     @pytest.mark.asyncio
     async def test_async_function_with_prefix(self, caplog):
-        """Test async function logs exception with prefix."""
+        """Test async function logs exception with prefix and returns None."""
 
         @log_exception("AsyncOperation")
         async def async_func_with_error():
             await asyncio.sleep(0.01)
             raise ValueError("Test error from async function")
 
-        with pytest.raises(ValueError, match="Test error from async function"):
-            await async_func_with_error()
+        result = await async_func_with_error()
+
+        # Should return None instead of raising
+        assert result is None
 
         # Check log output
         assert (
@@ -55,14 +58,16 @@ class TestBasicExceptionLogging:
 
     @pytest.mark.asyncio
     async def test_function_without_prefix(self, caplog):
-        """Test function without prefix still logs exception."""
+        """Test function without prefix still logs exception and returns None."""
 
         @log_exception()
         def sync_func_no_prefix():
             raise RuntimeError("Error without prefix")
 
-        with pytest.raises(RuntimeError, match="Error without prefix"):
-            sync_func_no_prefix()
+        result = sync_func_no_prefix()
+
+        # Should return None instead of raising
+        assert result is None
 
         # Check log output - no prefix, just exception
         assert "RuntimeError: Error without prefix" in caplog.text
@@ -94,8 +99,10 @@ class TestParameterBinding:
         def add_numbers(a: int, b: int) -> int:
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            add_numbers(5, 3)
+        result = add_numbers(5, 3)
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should show parameter names, not args=
         assert "a=5" in caplog.text
@@ -110,8 +117,10 @@ class TestParameterBinding:
         def process_string(text: str, uppercase: bool = False) -> str:
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            process_string("Hello", uppercase=True)
+        result = process_string("Hello", uppercase=True)
+
+        # Should return None instead of raising
+        assert result is None
 
         assert "text='Hello'" in caplog.text
         assert "uppercase=True" in caplog.text
@@ -124,8 +133,10 @@ class TestParameterBinding:
         async def async_fetch(url: str, timeout: int = 30):
             raise RuntimeError("Test error")
 
-        with pytest.raises(RuntimeError):
-            await async_fetch("https://example.com")
+        result = await async_fetch("https://example.com")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should show default value
         assert "url='https://example.com'" in caplog.text
@@ -144,8 +155,10 @@ class TestParameterBinding:
                 raise KeyError("Test error")
 
         obj = TestClass("MyObject")
-        with pytest.raises(KeyError):
-            obj.process(12345)
+        result = obj.process(12345)
+
+        # Should return None instead of raising
+        assert result is None
 
         assert "item_id=12345" in caplog.text
         assert "self=" in caplog.text  # Self is shown
@@ -159,8 +172,10 @@ class TestParameterBinding:
         def process_data(items: list[int], config: dict[str, str]):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            process_data([1, 2, 3], {"key": "value"})
+        result = process_data([1, 2, 3], {"key": "value"})
+
+        # Should return None instead of raising
+        assert result is None
 
         assert "items=[1, 2, 3]" in caplog.text
         assert "config={'key': 'value'}" in caplog.text
@@ -177,8 +192,10 @@ class TestPrefixFormatting:
         def test_func(player_name: str, server_id: str):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            test_func("Steve", "server1")
+        result = test_func("Steve", "server1")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Prefix should be formatted
         assert "Player[Steve]:" in caplog.text
@@ -192,8 +209,10 @@ class TestPrefixFormatting:
         async def async_test_prefix(server_id: str, action: str):
             raise RuntimeError("Test error")
 
-        with pytest.raises(RuntimeError):
-            await async_test_prefix("lobby", "restart")
+        result = await async_test_prefix("lobby", "restart")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Both parameters in prefix
         assert "Server[lobby] Action[restart]:" in caplog.text
@@ -206,8 +225,10 @@ class TestPrefixFormatting:
         def test_static(value: int):
             raise KeyError("Test error")
 
-        with pytest.raises(KeyError):
-            test_static(42)
+        result = test_static(42)
+
+        # Should return None instead of raising
+        assert result is None
 
         assert "StaticPrefix:" in caplog.text
         assert "[42]" not in caplog.text  # Should not try to format
@@ -220,8 +241,10 @@ class TestPrefixFormatting:
         def test_missing(actual_param: str):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            test_missing("test_value")
+        result = test_missing("test_value")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should have warning about failed formatting
         assert "Failed to format prefix" in caplog.text
@@ -241,9 +264,11 @@ class TestBindingFailures:
         def test_func(param1: str):
             raise ValueError("Test error")
 
-        # This will fail at function call, but binding also fails
-        with pytest.raises(TypeError):
-            test_func("first", "second", "third")  # type: ignore
+        # The decorator catches the TypeError and returns None
+        result = test_func("first", "second", "third")  # type: ignore
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should have binding failure warning
         assert "Failed to bind arguments" in caplog.text
@@ -259,8 +284,11 @@ class TestBindingFailures:
         def complex_func(required: str, optional: int = 10):
             raise ValueError("Test error")
 
-        with pytest.raises(TypeError):
-            complex_func(1, 2, 3)  # type: ignore
+        # The decorator catches the TypeError and returns None
+        result = complex_func(1, 2, 3)  # type: ignore
+
+        # Should return None instead of raising
+        assert result is None
 
         # Warning should mention function name
         assert "complex_func" in caplog.text
@@ -331,8 +359,10 @@ class TestStackLevel:
         def failing_func():
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            failing_func()  # This line should appear in log
+        result = failing_func()  # This line should appear in log
+
+        # Should return None instead of raising
+        assert result is None
 
         # Log should reference test file, not the wrapper
         assert "test_log_exception_decorator.py" in caplog.text
@@ -347,8 +377,11 @@ class TestStackLevel:
         def func_with_binding_issue(param: str):
             raise ValueError("Test error")
 
-        with pytest.raises(TypeError):
-            func_with_binding_issue(1, 2, 3)  # type: ignore
+        # The decorator catches the TypeError and returns None
+        result = func_with_binding_issue(1, 2, 3)  # type: ignore
+
+        # Should return None instead of raising
+        assert result is None
 
         # Warning should show this test function location
         assert "test_binding_warning_shows_caller_location" in caplog.text
@@ -361,8 +394,10 @@ class TestStackLevel:
         def func_with_bad_prefix(actual: str):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            func_with_bad_prefix("value")
+        result = func_with_bad_prefix("value")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Warning should show test file location
         assert "test_log_exception_decorator.py" in caplog.text
@@ -383,8 +418,10 @@ class TestEdgeCases:
         def no_args_func():
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            no_args_func()
+        result = no_args_func()
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should not show empty brackets
         assert "NoArgs: ValueError" in caplog.text
@@ -397,8 +434,10 @@ class TestEdgeCases:
         def process_text(text: str):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            process_text("text\nwith\nnewlines")
+        result = process_text("text\nwith\nnewlines")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Should show escaped newlines, not actual newlines
         assert r"text\n" in caplog.text or "'text\\n" in caplog.text
@@ -411,8 +450,10 @@ class TestEdgeCases:
         def process_optional(value: str | None):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            process_optional(None)
+        result = process_optional(None)
+
+        # Should return None instead of raising
+        assert result is None
 
         assert "value=None" in caplog.text
 
@@ -424,8 +465,99 @@ class TestEdgeCases:
         def process_string(text: str):
             raise ValueError("Test error")
 
-        with pytest.raises(ValueError):
-            process_string("")
+        result = process_string("")
+
+        # Should return None instead of raising
+        assert result is None
 
         # Empty string should be visible with quotes
         assert "text=''" in caplog.text
+
+
+class TestDefaultReturnValue:
+    """Test custom default return values when exceptions occur."""
+
+    @pytest.mark.asyncio
+    async def test_custom_default_return_sync(self, caplog):
+        """Test sync function returns custom default value on exception."""
+
+        @log_exception("CustomDefault", default_return=42)
+        def sync_func_with_default():
+            raise ValueError("Test error")
+
+        result = sync_func_with_default()
+
+        # Should return custom default value
+        assert result == 42
+
+        # Check log output
+        assert "CustomDefault: ValueError: Test error" in caplog.text
+        assert "ERROR" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_custom_default_return_async(self, caplog):
+        """Test async function returns custom default value on exception."""
+
+        @log_exception("CustomDefaultAsync", default_return="fallback")
+        async def async_func_with_default() -> str:
+            await asyncio.sleep(0.01)
+            raise RuntimeError("Test error")
+
+        result = await async_func_with_default()
+
+        # Should return custom default value
+        assert result == "fallback"
+
+        # Check log output
+        assert "CustomDefaultAsync: RuntimeError: Test error" in caplog.text
+        assert "ERROR" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_default_return_none_explicit(self, caplog):
+        """Test explicit None as default return value."""
+
+        @log_exception("ExplicitNone", default_return=None)
+        def func_with_none():
+            raise ValueError("Test error")
+
+        result = func_with_none()
+
+        # Should return None
+        assert result is None
+
+        # Check log output
+        assert "ExplicitNone: ValueError: Test error" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_default_return_false(self, caplog):
+        """Test False as default return value."""
+
+        @log_exception("ReturnFalse", default_return=False)
+        def func_with_false():
+            raise ValueError("Test error")
+
+        result = func_with_false()
+
+        # Should return False (not None)
+        assert result is False
+        assert result is not None
+
+        # Check log output
+        assert "ReturnFalse: ValueError: Test error" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_default_return_empty_list(self, caplog):
+        """Test empty list as default return value."""
+
+        @log_exception("EmptyList", default_return=[])
+        def func_with_empty_list():
+            raise ValueError("Test error")
+
+        result = func_with_empty_list()
+
+        # Should return empty list
+        assert result == []
+        assert isinstance(result, list)
+
+        # Check log output
+        assert "EmptyList: ValueError: Test error" in caplog.text

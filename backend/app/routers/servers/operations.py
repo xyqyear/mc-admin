@@ -22,35 +22,27 @@ async def server_operation(
     _: UserPublic = Depends(get_current_user),
 ):
     """Perform operations on a server (start, stop, restart, up, down)"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        action = operation.action.lower()
+    action = operation.action.lower()
 
-        if action == "start":
-            await instance.start()
-        elif action == "stop":
-            await instance.stop()
-        elif action == "restart":
-            await instance.restart()
-        elif action == "up":
-            await instance.up()
-        elif action == "down":
-            await instance.down()
-        elif action == "remove":
-            await instance.remove()
-        else:
-            raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
+    if action == "start":
+        await instance.start()
+    elif action == "stop":
+        await instance.stop()
+    elif action == "restart":
+        await instance.restart()
+    elif action == "up":
+        await instance.up()
+    elif action == "down":
+        await instance.down()
+    elif action == "remove":
+        await instance.remove()
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
 
-        return {"message": f"Server '{server_id}' {action} operation completed"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+    return {"message": f"Server '{server_id}' {action} operation completed"}

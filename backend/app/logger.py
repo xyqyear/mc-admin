@@ -44,6 +44,7 @@ logger.addHandler(log_stream_handler)
 
 def log_exception[**P, R](
     prefix: str = "",
+    default_return: R | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to wrap a function with try-except and log exceptions.
@@ -131,7 +132,8 @@ def log_exception[**P, R](
                         exc_info=True,
                         stacklevel=2,
                     )
-                    raise
+                    # Do not re-raise - swallow the exception and return None
+                    return default_return  # type: ignore[return-value]
 
             return async_wrapper  # type: ignore[return-value]
 
@@ -149,7 +151,8 @@ def log_exception[**P, R](
                         exc_info=True,
                         stacklevel=2,
                     )
-                    raise
+                    # Do not re-raise - swallow the exception and return None
+                    return default_return  # type: ignore[return-value]
 
             return sync_wrapper  # type: ignore[return-value]
 

@@ -20,30 +20,20 @@ async def send_rcon_command(
     server_id: str, rcon_command: RconCommand, _: UserPublic = Depends(get_current_user)
 ):
     """Send RCON command to a specific server"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Check if server exists and is healthy
-        if not await instance.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Server '{server_id}' not found"
-            )
+    # Check if server exists and is healthy
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-        status = await instance.get_status()
-        if status != MCServerStatus.HEALTHY:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Server '{server_id}' must be healthy to send RCON commands (current status: {status})",
-            )
-
-        # Send RCON command
-        result = await instance.send_command_rcon(rcon_command.command)
-
-        return {"result": result, "command": rcon_command.command}
-
-    except HTTPException:
-        raise
-    except Exception as e:
+    status = await instance.get_status()
+    if status != MCServerStatus.HEALTHY:
         raise HTTPException(
-            status_code=500, detail=f"Failed to send RCON command: {str(e)}"
+            status_code=409,
+            detail=f"Server '{server_id}' must be healthy to send RCON commands (current status: {status})",
         )
+
+    # Send RCON command
+    result = await instance.send_command_rcon(rcon_command.command)
+
+    return {"result": result, "command": rcon_command.command}

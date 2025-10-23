@@ -3,8 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi import status as http_status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
@@ -37,21 +36,15 @@ async def get_player_session_list(
 
     Returns a list of gaming sessions for the specified player.
     """
-    try:
-        sessions = await get_player_sessions(
-            db,
-            player_db_id=player_db_id,
-            limit=limit,
-            server_id=server_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        return sessions
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get player sessions: {str(e)}",
-        )
+    sessions = await get_player_sessions(
+        db,
+        player_db_id=player_db_id,
+        limit=limit,
+        server_id=server_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return sessions
 
 
 @router.get("/{player_db_id}/sessions/stats", response_model=SessionStatsResponse)
@@ -66,16 +59,8 @@ async def get_player_session_statistics(
 
     Returns aggregated statistics about player's gaming sessions.
     """
-    try:
-        stats = await get_player_session_stats(
-            db, player_db_id=player_db_id, period=period
-        )
-        return stats
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get session stats: {str(e)}",
-        )
+    stats = await get_player_session_stats(db, player_db_id=player_db_id, period=period)
+    return stats
 
 
 # Server online players endpoint (under /servers prefix)
@@ -94,11 +79,5 @@ async def get_server_online_player_list(
     Returns a list of players currently online on the specified server
     with their session information.
     """
-    try:
-        online_players = await get_server_online_players(db, server_id=server_id)
-        return online_players
-    except Exception as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get online players: {str(e)}",
-        )
+    online_players = await get_server_online_players(db, server_id=server_id)
+    return online_players

@@ -87,7 +87,7 @@ class TestFileOperations:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(api_app)
+        return TestClient(api_app, raise_server_exceptions=False)
 
     @pytest.fixture
     def temp_dir(self):
@@ -263,7 +263,8 @@ class TestFileOperations:
                 )
 
                 assert response.status_code == 500
-                assert "Failed to update file" in response.json()["detail"]
+                # Global exception handler now formats error messages differently
+                assert "Write error" in response.json()["detail"]
 
     def test_download_file(self, client, mock_instance):
         """Test downloading a file."""

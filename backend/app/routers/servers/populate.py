@@ -24,34 +24,26 @@ async def populate_server(
     _: UserPublic = Depends(get_current_user),
 ):
     """Populate server data directory from an archive file"""
-    try:
-        instance = docker_mc_manager.get_instance(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
 
-        # Get server status and validate it's in correct state
-        status = await instance.get_status()
-        if status == MCServerStatus.REMOVED:
-            raise HTTPException(
-                status_code=404,
-                detail=f"服务器 '{server_id}' 不存在",
-            )
-        if status not in [MCServerStatus.EXISTS, MCServerStatus.CREATED]:
-            raise HTTPException(
-                status_code=409,
-                detail=f"服务器 '{server_id}' 必须处于 'exists' 或 'created' 状态才能覆盖文件 (当前状态: {status})",
-            )
-
-        # Get server data directory path
-        server_data_dir = instance.get_data_path()
-
-        # Extract server files
-        archive_path = settings.archive_path / populate_request.archive_filename.lstrip(
-            "/"
+    # Get server status and validate it's in correct state
+    status = await instance.get_status()
+    if status == MCServerStatus.REMOVED:
+        raise HTTPException(
+            status_code=404,
+            detail=f"服务器 '{server_id}' 不存在",
         )
-        await extract_minecraft_server(str(archive_path), str(server_data_dir))
+    if status not in [MCServerStatus.EXISTS, MCServerStatus.CREATED]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"服务器 '{server_id}' 必须处于 'exists' 或 'created' 状态才能覆盖文件 (当前状态: {status})",
+        )
 
-        return {"success": True, "message": "服务器填充完成"}
+    # Get server data directory path
+    server_data_dir = instance.get_data_path()
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"服务器文件覆盖失败: {str(e)}")
+    # Extract server files
+    archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
+    await extract_minecraft_server(str(archive_path), str(server_data_dir))
+
+    return {"success": True, "message": "服务器填充完成"}
