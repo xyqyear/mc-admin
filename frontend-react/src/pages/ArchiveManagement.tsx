@@ -34,7 +34,7 @@ import DragDropOverlay from '@/components/server/DragDropOverlay'
 import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
-import { formatFileSize, formatDate } from '@/utils/formatUtils'
+import { formatFileSize, formatDate, naturalCompare } from '@/utils/formatUtils'
 import { formatUtils } from '@/utils/serverUtils'
 import { detectFileLanguage, isFileEditable } from '@/config/fileEditingConfig'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
@@ -369,11 +369,11 @@ const ArchiveManagement: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => {
-        // Custom sorting: directories first, then files, both alphabetically
+        // Custom sorting: directories first, then files, both with natural sorting (9.txt before 10.txt)
         if (a.type !== b.type) {
           return a.type === 'directory' ? -1 : 1
         }
-        return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' })
+        return naturalCompare(a.name, b.name)
       },
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (name: string, file: ArchiveFileItem) => {

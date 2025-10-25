@@ -38,3 +38,28 @@ export function formatDateTime(timeString: string): string {
   });
 }
 
+/**
+ * Cached Intl.Collator instance for natural sorting
+ * Reusing the same instance improves performance significantly
+ */
+const naturalCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base'
+});
+
+/**
+ * Natural compare function for sorting strings with numbers
+ * Ensures that "9.txt" comes before "10.txt" instead of after it
+ * Uses a cached Collator instance for optimal performance
+ * @param a - First string to compare
+ * @param b - Second string to compare
+ * @returns Comparison result (-1, 0, or 1)
+ *
+ * @example
+ * ['1.txt', '10.txt', '2.txt'].sort(naturalCompare)
+ * // Returns: ['1.txt', '2.txt', '10.txt']
+ */
+export function naturalCompare(a: string, b: string): number {
+  return naturalCollator.compare(a, b);
+}
+

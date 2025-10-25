@@ -7,7 +7,7 @@ import {
   FileZipOutlined
 } from '@ant-design/icons'
 import { isFileEditable } from '@/config/fileEditingConfig'
-import { formatFileSize, formatDate } from '@/utils/formatUtils'
+import { formatFileSize, formatDate, naturalCompare } from '@/utils/formatUtils'
 import FileIcon from '@/components/files/FileIcon'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
 import HighlightedFileName from '@/components/server/HighlightedFileName'
@@ -69,11 +69,11 @@ const FileTable: React.FC<FileTableProps> = ({
       dataIndex: 'name',
       key: 'name',
       sorter: (a: FileItemWithMatch, b: FileItemWithMatch) => {
-        // Custom sorting: directories first, then files, both alphabetically
+        // Custom sorting: directories first, then files, both with natural sorting (9.txt before 10.txt)
         if (a.type !== b.type) {
           return a.type === 'directory' ? -1 : 1
         }
-        return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' })
+        return naturalCompare(a.name, b.name)
       },
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       defaultSortOrder: 'ascend' as SortOrder,
