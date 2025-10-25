@@ -184,7 +184,6 @@ def mock_snapshot_dependencies_setup(
 
     mock_snapshots_config = MagicMock()
     mock_snapshots_config.time_restriction = mock_time_restriction
-    mock_snapshots_config.restore_safety_max_age_seconds = 60
 
     mock_config = MagicMock()
     mock_config.snapshots = mock_snapshots_config
@@ -481,21 +480,32 @@ class TestSnapshotEndpoints:
             assert modified_props_response.status_code == 200
             assert modified_props_response.json()["content"] != original_props_content
 
-            # Create a snapshot for safety check
-            snapshot_response = client.post(
+            # Get snapshot count before restore
+            snapshots_before_restore = client.get(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                params={"server_id": server_id},
             )
-            assert snapshot_response.status_code == 200
+            snapshot_count_before = len(snapshots_before_restore.json()["snapshots"])
 
-            # Restore original snapshot
+            # Restore original snapshot (should automatically create a safety snapshot)
             restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
+            assert "safety_snapshot_id" in restore_response.json()
+            assert restore_response.json()["safety_snapshot_id"] is not None
+
+            # Verify a new safety snapshot was created
+            snapshots_after_restore = client.get(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
+            )
+            snapshot_count_after = len(snapshots_after_restore.json()["snapshots"])
+            assert snapshot_count_after == snapshot_count_before + 1
 
             # Verify restoration using files API
             restored_props_response = client.get(
@@ -616,43 +626,6 @@ class TestSnapshotEndpoints:
             assert plugins_snapshot_id != modified_snapshot_id
 
     @pytest.mark.asyncio
-    async def test_snapshot_safety_check_failure(
-        self, client, mock_instance, initialized_restic_repo
-    ):
-        """Test that restore fails without recent snapshot safety check."""
-        server_id, instance = mock_instance
-
-        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            # Create an old snapshot
-            snapshot_response = client.post(
-                "/snapshots",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
-            )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
-
-            # Wait to make snapshot "old" (beyond safety window)
-            time.sleep(
-                1.1
-            )  # Wait more than 1 second (safety check is 60 seconds by default, but we can mock this)
-
-            # Mock the safety check to fail
-            with patch(
-                "app.snapshots.restic.ResticManager.has_recent_snapshot",
-                return_value=False,
-            ):
-                # Attempt restore without recent snapshot
-                restore_response = client.post(
-                    "/snapshots/restore",
-                    headers={"Authorization": "Bearer test_master_token"},
-                    json={"snapshot_id": snapshot_id, "server_id": server_id},
-                )
-
-                assert restore_response.status_code == 400
-                assert "No recent snapshot found" in restore_response.json()["detail"]
-
-    @pytest.mark.asyncio
     async def test_snapshot_error_handling(
         self, client, mock_instance, initialized_restic_repo
     ):
@@ -660,18 +633,16 @@ class TestSnapshotEndpoints:
         server_id, instance = mock_instance
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            # Test restore with invalid snapshot ID (expect 400 due to safety check)
+            # Test restore with invalid snapshot ID
             invalid_restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
             )
-            assert invalid_restore_response.status_code in [400, 500]
+            assert invalid_restore_response.status_code == 500
             response_detail = invalid_restore_response.json()["detail"]
-            # Could fail either due to safety check (400) or invalid snapshot (500)
-            assert any(
-                text in response_detail
-                for text in ["No recent snapshot", "Failed to restore", "invalid"]
+            assert (
+                "Failed to restore" in response_detail or "invalid" in response_detail
             )
 
             # Test preview with invalid snapshot ID
@@ -772,19 +743,14 @@ class TestSnapshotEndpoints:
                 params={"path": "/bukkit.yml"},
             )
 
-            # Create safety snapshot and restore
-            client.post(
-                "/snapshots",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
-            )
-
+            # Restore (will automatically create safety snapshot)
             restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
+            assert "safety_snapshot_id" in restore_response.json()
 
             # Verify complete restoration using files API
             for file_path, expected_content in original_structure.items():
@@ -889,15 +855,8 @@ modified=true
             assert server_props_check.status_code == 200
             assert server_props_check.json()["content"] == server_props_modified_content
 
-            # Create safety snapshot for the restore operation
-            safety_snapshot_response = client.post(
-                "/snapshots",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
-            )
-            assert safety_snapshot_response.status_code == 200
-
             # Restore ONLY the plugins subdirectory to the original snapshot
+            # (will automatically create safety snapshot)
             restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
@@ -908,6 +867,7 @@ modified=true
                 },
             )
             assert restore_response.status_code == 200
+            assert "safety_snapshot_id" in restore_response.json()
 
             # Verify plugins subdirectory was restored to original state
             plugins_restored_check = client.get(
@@ -1115,19 +1075,14 @@ modified=true
             )
             assert modify_response.status_code == 200
 
-            # Create safety snapshot and restore
-            client.post(
-                "/snapshots",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
-            )
-
+            # Restore (will automatically create safety snapshot)
             restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
+            assert "safety_snapshot_id" in restore_response.json()
 
             # Verify restoration
             restored_props_response = client.get(
@@ -1158,6 +1113,91 @@ modified=true
             assert response.status_code == 200
             data = response.json()
             assert "Snapshot created successfully" in data["message"]
+
+    @pytest.mark.asyncio
+    async def test_delete_snapshot(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """Test deleting a specific snapshot by ID."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            # Create first snapshot
+            snapshot1_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert snapshot1_response.status_code == 200
+            snapshot1_id = snapshot1_response.json()["snapshot"]["id"]
+
+            # Modify a file to ensure the next snapshot will be different
+            time.sleep(0.2)
+            (instance.get_data_path() / "server.properties").write_text(
+                "# Modified config\nserver-port=25566"
+            )
+
+            # Create second snapshot
+            snapshot2_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert snapshot2_response.status_code == 200
+            snapshot2_id = snapshot2_response.json()["snapshot"]["id"]
+
+            # Verify both snapshots exist
+            list_response = client.get(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
+            )
+            assert list_response.status_code == 200
+            snapshots = list_response.json()["snapshots"]
+            assert len(snapshots) == 2
+            snapshot_ids = {s["id"] for s in snapshots}
+            assert snapshot1_id in snapshot_ids
+            assert snapshot2_id in snapshot_ids
+
+            # Delete first snapshot
+            delete_response = client.delete(
+                f"/snapshots/{snapshot1_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert delete_response.status_code == 200
+            assert "deleted successfully" in delete_response.json()["message"]
+
+            # Verify only second snapshot remains
+            list_after_delete = client.get(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"server_id": server_id},
+            )
+            assert list_after_delete.status_code == 200
+            remaining_snapshots = list_after_delete.json()["snapshots"]
+            assert len(remaining_snapshots) == 1
+            assert remaining_snapshots[0]["id"] == snapshot2_id
+
+    @pytest.mark.asyncio
+    async def test_delete_snapshot_unauthorized(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """Test deleting a snapshot without authorization."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            # Create a snapshot first
+            snapshot_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"server_id": server_id},
+            )
+            assert snapshot_response.status_code == 200
+            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+
+            # Try to delete without authorization
+            delete_response = client.delete(f"/snapshots/{snapshot_id}")
+            assert delete_response.status_code in [401, 422]
 
 
 if __name__ == "__main__":

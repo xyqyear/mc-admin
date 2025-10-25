@@ -6,7 +6,7 @@ The actual server path resolution happens in the endpoint functions.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -348,43 +348,34 @@ class ResticManager:
         args = self._add_password_args(args)
         await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
-    async def has_recent_snapshot(
+    async def forget_id(
         self,
-        target_path: Path,
-        max_age_seconds: int = 60,
+        snapshot_id: str,
+        prune: bool = True,
         uid: int | None = None,
         gid: int | None = None,
-    ) -> bool:
+    ) -> str:
         """
-        Check if there is a recent snapshot of the target path within the specified time
+        Remove a specific snapshot by ID
 
         Args:
-            target_path: Path to check for recent snapshots
-            max_age_seconds: Maximum age in seconds to consider "recent"
+            snapshot_id: Snapshot ID to remove
+            prune: Whether to run prune after forget (default: True)
             uid: User ID for command execution
             gid: Group ID for command execution
 
         Returns:
-            True if there is a recent snapshot, False otherwise
+            Command output
         """
-        snapshots = await self.list_snapshots(path_filter=target_path, uid=uid, gid=gid)
+        args = ["restic", "forget", snapshot_id]
 
-        if not snapshots:
-            return False
+        # Add prune option if enabled
+        if prune:
+            args.append("--prune")
 
-        now = datetime.now(timezone.utc)
-
-        for snapshot in snapshots:
-            # Convert snapshot time to UTC if it isn't already
-            snapshot_time = snapshot.time
-            if snapshot_time.tzinfo is None:
-                snapshot_time = snapshot_time.replace(tzinfo=timezone.utc)
-
-            age_seconds = (now - snapshot_time).total_seconds()
-            if age_seconds <= max_age_seconds:
-                return True
-
-        return False
+        args = self._add_password_args(args)
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        return result
 
     async def forget(
         self,
@@ -443,7 +434,7 @@ class ResticManager:
                 "At least one retention policy parameter must be specified"
             )
 
-        args = ["restic", "forget"]
+        args = ["restic", "forget", "--group-by", "''"]
 
         # Add retention policy arguments
         if keep_last is not None:

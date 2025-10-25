@@ -24,8 +24,3 @@ class SnapshotsConfig(BaseConfigSchema):
     time_restriction: Annotated[
         TimeRestrictionConfig, Field(description="快照创建时间限制配置")
     ] = TimeRestrictionConfig()
-
-    # 恢复安全检查配置
-    restore_safety_max_age_seconds: Annotated[
-        int, Field(description="恢复安全检查要求的最近快照最大年龄（秒）", ge=30, le=3600)
-    ] = 60

@@ -149,7 +149,6 @@ class RestoreRequest(BaseModel):
     snapshot_id: str
     server_id: Optional[str] = None
     path: Optional[str] = None
-    skip_safety_check: bool = False  # Optional parameter to skip safety check
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -282,29 +281,31 @@ async def preview_global_restore(
 async def restore_global_snapshot(
     request: RestoreRequest, _: UserPublic = Depends(get_current_user)
 ):
-    """Restore snapshot with optional safety checks"""
+    """Restore snapshot with automatic pre-restore backup"""
     try:
         target_path = _resolve_backup_path(request.server_id, request.path)
 
         restic_manager = _get_restic_manager()
 
-        # Conditional safety check: Only perform if skip_safety_check is False
-        if not request.skip_safety_check:
-            # Safety check: Ensure there's a recent snapshot (within configured time)
-            max_age_seconds = config.snapshots.restore_safety_max_age_seconds
-            has_recent = await restic_manager.has_recent_snapshot(
-                target_path=target_path, max_age_seconds=max_age_seconds
+        # Create a safety snapshot before restoring
+        logger.info(
+            f"Creating safety snapshot before restore (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})"
+        )
+        try:
+            safety_snapshot = await restic_manager.backup(target_path)
+            logger.info(
+                f"Safety snapshot created: {safety_snapshot.short_id} before restoring to {target_path}"
             )
-
-            if not has_recent:
-                error_msg = f"No recent snapshot found. Create a snapshot within {max_age_seconds} seconds before restoring to prevent data loss."
-                logger.warning(
-                    f"Restore blocked due to safety check: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})"
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail=error_msg,
-                )
+        except Exception as e:
+            error_msg = f"Failed to create safety snapshot before restore: {str(e)}"
+            logger.error(
+                f"Safety snapshot creation failed: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=error_msg,
+            )
 
         # Perform restore
         await restic_manager.restore(
@@ -316,11 +317,13 @@ async def restore_global_snapshot(
         success_msg = (
             f"Snapshot {request.snapshot_id} restored successfully to {target_path}"
         )
-        safety_note = " (safety check skipped)" if request.skip_safety_check else ""
         logger.info(
-            f"Restore completed: {success_msg}{safety_note} (server_id={request.server_id}, path={request.path})"
+            f"Restore completed: {success_msg} (safety_snapshot_id={safety_snapshot.short_id}, server_id={request.server_id}, path={request.path})"
         )
-        return {"message": success_msg}
+        return {
+            "message": success_msg,
+            "safety_snapshot_id": safety_snapshot.short_id,
+        }
 
     except HTTPException:
         raise
@@ -328,6 +331,30 @@ async def restore_global_snapshot(
         error_msg = f"Failed to restore snapshot: {str(e)}"
         logger.error(
             f"Restore error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+@router.delete("/{snapshot_id}")
+async def delete_snapshot(snapshot_id: str, _: UserPublic = Depends(get_current_user)):
+    """Delete a specific snapshot by ID"""
+    try:
+        restic_manager = _get_restic_manager()
+
+        # Delete the snapshot
+        await restic_manager.forget_id(snapshot_id=snapshot_id, prune=True)
+
+        success_msg = f"Snapshot {snapshot_id} deleted successfully"
+        logger.info(f"Snapshot deleted: {snapshot_id}")
+        return {"message": success_msg}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to delete snapshot: {str(e)}"
+        logger.error(
+            f"Snapshot deletion error: {error_msg} (snapshot_id={snapshot_id})",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=error_msg)

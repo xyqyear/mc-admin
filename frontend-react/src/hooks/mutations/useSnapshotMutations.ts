@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   snapshotApi,
   type CreateSnapshotResponse,
-  type RestoreSnapshotResponse
+  type RestoreSnapshotResponse,
+  type DeleteSnapshotResponse
 } from "@/hooks/api/snapshotApi";
 import { queryKeys } from "@/utils/api";
 import { message } from "antd";
@@ -81,10 +82,30 @@ export const useSnapshotMutations = () => {
     });
   };
 
+  // 删除快照
+  const useDeleteSnapshot = () => {
+    return useMutation({
+      mutationFn: snapshotApi.deleteSnapshot,
+      onSuccess: (data: DeleteSnapshotResponse) => {
+        message.success(data.message);
+
+        // 刷新所有快照相关查询
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.snapshots.all,
+        });
+      },
+      onError: (error: any) => {
+        const errorDetail = error?.message || "未知错误";
+        message.error(`快照删除失败: ${errorDetail}`);
+      },
+    });
+  };
+
   return {
     useCreateGlobalSnapshot,
     useCreateSnapshot,
     useRestoreSnapshot,
     usePreviewRestore,
+    useDeleteSnapshot,
   };
 };

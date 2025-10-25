@@ -7,6 +7,7 @@ import {
   Alert,
   Tag,
   Typography,
+  Popconfirm,
   type TableProps,
 } from 'antd';
 import {
@@ -14,19 +15,19 @@ import {
   ReloadOutlined,
   HistoryOutlined,
   CloudServerOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/snapshotApi';
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
 import { formatDateTime } from '@/utils/formatUtils';
-import { formatUtils } from '@/utils/serverUtils';
 
 const { Text } = Typography;
 
 const Snapshots: React.FC = () => {
   const { useGlobalSnapshots } = useSnapshotQueries();
-  const { useCreateGlobalSnapshot } = useSnapshotMutations();
+  const { useCreateGlobalSnapshot, useDeleteSnapshot } = useSnapshotMutations();
 
   // 分页状态管理
   const [pageSize, setPageSize] = useState(20);
@@ -41,9 +42,14 @@ const Snapshots: React.FC = () => {
   } = useGlobalSnapshots();
 
   const createSnapshotMutation = useCreateGlobalSnapshot();
+  const deleteSnapshotMutation = useDeleteSnapshot();
 
   const handleCreateSnapshot = () => {
     createSnapshotMutation.mutate();
+  };
+
+  const handleDeleteSnapshot = (snapshotId: string) => {
+    deleteSnapshotMutation.mutate(snapshotId);
   };
 
 
@@ -104,34 +110,36 @@ const Snapshots: React.FC = () => {
       ),
     },
     {
-      title: '统计信息',
-      key: 'summary',
-      width: 200,
-      render: (_: any, record: Snapshot) => {
-        if (!record.summary) {
-          return <Text type="secondary" className="text-xs">暂无统计</Text>;
-        }
-
-        const { summary } = record;
-        return (
-          <div className="space-y-1 text-xs">
+      title: '操作',
+      key: 'actions',
+      width: 100,
+      fixed: 'right',
+      render: (_: any, record: Snapshot) => (
+        <Popconfirm
+          title="删除快照"
+          description={
             <div>
-              <Text strong>文件:</Text> {summary.total_files_processed} 个
-            </div>
-            <div>
-              <Text strong>数据:</Text> {formatUtils.formatBytes(summary.total_bytes_processed)}
-            </div>
-            <div>
-              <Text strong>新增:</Text> {summary.files_new} 文件 / {summary.dirs_new} 目录
-            </div>
-            {summary.files_changed > 0 && (
-              <div>
-                <Text strong>变更:</Text> {summary.files_changed} 个
+              <div>确定要删除此快照吗？</div>
+              <div className="text-xs text-gray-500 mt-1">
+                快照ID: {record.short_id}
               </div>
-            )}
-          </div>
-        );
-      },
+            </div>
+          }
+          onConfirm={() => handleDeleteSnapshot(record.id)}
+          okText="确认删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+        >
+          <Button
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            loading={deleteSnapshotMutation.isPending}
+          >
+            删除
+          </Button>
+        </Popconfirm>
+      ),
     },
   ];
 

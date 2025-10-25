@@ -49,6 +49,11 @@ interface RestoreSnapshotRequest {
 
 interface RestoreSnapshotResponse {
   message: string;
+  safety_snapshot_id?: string;
+}
+
+interface DeleteSnapshotResponse {
+  message: string;
 }
 
 interface RestorePreviewRequest {
@@ -115,6 +120,12 @@ export const snapshotApi = {
     const res = await api.get<BackupRepositoryUsage>("/snapshots/repository-usage");
     return res.data;
   },
+
+  // 删除快照
+  deleteSnapshot: async (snapshotId: string): Promise<DeleteSnapshotResponse> => {
+    const res = await api.delete<DeleteSnapshotResponse>(`/snapshots/${snapshotId}`);
+    return res.data;
+  },
 };
 
 // Export types for use in other modules
@@ -127,5 +138,6 @@ export type {
   RestorePreviewRequest,
   RestorePreviewAction,
   RestorePreviewResponse,
-  BackupRepositoryUsage
+  BackupRepositoryUsage,
+  DeleteSnapshotResponse
 };
