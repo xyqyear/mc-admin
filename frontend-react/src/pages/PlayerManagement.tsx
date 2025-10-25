@@ -24,6 +24,7 @@ import { MCAvatar } from '@/components/players/MCAvatar';
 import { useAllPlayers } from '@/hooks/queries/base/usePlayerQueries';
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
 import type { PlayerSummary } from '@/hooks/api/playerApi';
+import { formatUUID } from '@/utils/formatUtils';
 
 const { Text } = Typography;
 
@@ -87,15 +88,6 @@ const PlayerManagement: React.FC = () => {
     return `${minutes}分钟`;
   };
 
-  // 格式化日期
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-  };
-
   const handleFiltersChange = (newFilters: typeof filters) => {
     setFilters(newFilters);
   };
@@ -129,8 +121,8 @@ const PlayerManagement: React.FC = () => {
             <div className="font-medium text-base truncate" title={record.current_name}>
               {record.current_name}
             </div>
-            <div className="text-xs text-gray-500 truncate" title={record.uuid}>
-              UUID: {record.uuid}
+            <div className="text-xs text-gray-500 truncate" title={formatUUID(record.uuid)}>
+              UUID: {formatUUID(record.uuid)}
             </div>
           </div>
         </div>
@@ -171,11 +163,11 @@ const PlayerManagement: React.FC = () => {
       title: '首次加入',
       dataIndex: 'first_seen',
       key: 'first_seen',
-      width: 150,
+      width: 180,
       render: (date: string) => (
         <Space>
           <CalendarOutlined />
-          <Text>{formatDate(date)}</Text>
+          <Text>{new Date(date).toLocaleString('zh-CN')}</Text>
         </Space>
       ),
       sorter: (a, b) => new Date(a.first_seen).getTime() - new Date(b.first_seen).getTime()
@@ -184,11 +176,12 @@ const PlayerManagement: React.FC = () => {
       title: '最后在线',
       dataIndex: 'last_seen',
       key: 'last_seen',
-      width: 150,
+      width: 180,
+      defaultSortOrder: 'descend', // 默认降序排列（最近见到的在前）
       render: (date: string | null) => (
         <Space>
           <CalendarOutlined />
-          <Text>{date ? formatDate(date) : '从未离线'}</Text>
+          <Text>{date ? new Date(date).toLocaleString('zh-CN') : '从未离线'}</Text>
         </Space>
       ),
       sorter: (a, b) => {

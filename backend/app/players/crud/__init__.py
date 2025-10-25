@@ -4,7 +4,6 @@ from .heartbeat import get_heartbeat, upsert_heartbeat
 from .player import (
     get_or_add_player_by_name,
     get_player_by_name,
-    update_player_last_seen,
     update_player_skin,
     upsert_player,
 )
@@ -27,7 +26,6 @@ __all__ = [
     "upsert_player",
     "get_player_by_name",
     "get_or_add_player_by_name",
-    "update_player_last_seen",
     "update_player_skin",
     # Player Session
     "get_or_create_session",

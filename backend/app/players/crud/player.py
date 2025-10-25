@@ -89,25 +89,6 @@ async def get_or_add_player_by_name(
     return player
 
 
-async def update_player_last_seen(
-    session: AsyncSession, player_db_id: int, timestamp: datetime
-) -> None:
-    """Update player last seen timestamp.
-
-    Args:
-        session: Database session
-        player_db_id: Player database ID
-        timestamp: Last seen timestamp
-    """
-    result = await session.execute(
-        select(Player).where(Player.player_db_id == player_db_id)
-    )
-    player = result.scalar_one_or_none()
-    if player:
-        player.last_seen = timestamp
-        await session.commit()
-
-
 async def update_player_skin(
     session: AsyncSession,
     player_db_id: int,

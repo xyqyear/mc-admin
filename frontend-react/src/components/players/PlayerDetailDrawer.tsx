@@ -41,6 +41,7 @@ import type {
 import { playerApi } from '@/hooks/api/playerApi';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import { MCAvatar } from '@/components/players/MCAvatar';
+import { formatUUID } from '@/utils/formatUtils';
 
 const { Text } = Typography;
 
@@ -289,7 +290,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
                             <Text strong className="text-lg">{player.current_name}</Text>
                           </Descriptions.Item>
                           <Descriptions.Item label="UUID">
-                            <Text copyable code>{player.uuid}</Text>
+                            <Text copyable code>{formatUUID(player.uuid)}</Text>
                           </Descriptions.Item>
                           <Descriptions.Item label="当前在线">
                             {player.current_servers.length > 0 ? (

@@ -300,6 +300,17 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '使用缓存的 Intl.Collator 实例优化排序性能'
     ]
+  },
+  {
+    version: '1.0.0',
+    date: '2025-10-25',
+    title: '最后在线时间和UUID显示优化',
+    description: '最后在线时间实时计算，UUID使用8-4-4-4-12格式显示。',
+    improvements: [
+      '前端 UUID 显示使用标准格式（8-4-4-4-12）',
+      '首次加入和最后在线显示完整日期时间，不再只显示日期',
+      '玩家列表默认按最后在线时间降序排序（最近见到的排在前面）'
+    ]
   }
 ]
 

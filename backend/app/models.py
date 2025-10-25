@@ -210,7 +210,6 @@ class Player(Base):
     current_name: Mapped[str] = mapped_column(String(16))
     skin_data: Mapped[Optional[bytes]] = mapped_column()
     avatar_data: Mapped[Optional[bytes]] = mapped_column()
-    last_seen: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
     last_skin_update: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
     created_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
@@ -233,6 +232,8 @@ class PlayerSession(Base):
             "server_db_id",
             "left_at",
         ),
+        # Index for efficient last_seen queries (online check and latest session)
+        Index("idx_player_session_player_left_at", "player_db_id", "left_at"),
     )
 
     session_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -283,5 +284,3 @@ class PlayerAchievement(Base):
     server_db_id: Mapped[int] = mapped_column(Integer, index=True)
     achievement_name: Mapped[str] = mapped_column(String(255))
     earned_at: Mapped[datetime] = mapped_column(TZDatetime())
-
-

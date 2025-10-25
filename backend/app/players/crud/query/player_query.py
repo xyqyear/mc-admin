@@ -1,11 +1,11 @@
 """Player query functions for API endpoints."""
 
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Player, PlayerSession, Server
@@ -39,6 +39,59 @@ def _get_playtime_expression():
         ),
         0,
     )
+
+
+def _get_last_seen_expression():
+    """Get SQLAlchemy expression for calculating last_seen timestamp.
+
+    Logic (for use in GROUP BY queries with PlayerSession joined):
+    - If player has any online session (left_at IS NULL): return current timestamp
+    - Otherwise: return MAX(left_at) from all sessions
+    - If no sessions: return NULL
+
+    Returns:
+        SQLAlchemy expression for last_seen timestamp
+    """
+    # Count online sessions (where left_at IS NULL)
+    online_count = func.count(case((PlayerSession.left_at == None, 1)))  # noqa: E711
+
+    # CASE: if online_count > 0, return current_timestamp, else return MAX(left_at)
+    return case(
+        (online_count > 0, func.current_timestamp()),
+        else_=func.max(PlayerSession.left_at),
+    )
+
+
+async def get_player_last_seen(
+    session: AsyncSession, player_db_id: int
+) -> Optional[datetime]:
+    """Get player's last seen timestamp.
+
+    Logic:
+    - If player is online (has session with left_at IS NULL): return current time
+    - If player is offline: return the left_at of the most recent session
+    - If player has no sessions: return None
+
+    Args:
+        session: Database session
+        player_db_id: Player database ID
+
+    Returns:
+        Last seen timestamp or None (always timezone-aware UTC)
+    """
+    # Use _get_last_seen_expression to calculate in a single query
+    result = await session.execute(
+        select(_get_last_seen_expression())
+        .select_from(PlayerSession)
+        .where(PlayerSession.player_db_id == player_db_id)
+    )
+    last_seen = result.scalar_one_or_none()
+
+    # Ensure timezone-aware datetime (SQLite current_timestamp returns naive UTC)
+    if last_seen is not None and last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+
+    return last_seen
 
 
 class PlayerSummary(BaseModel):
@@ -87,16 +140,16 @@ async def get_all_players_summary(
     Returns:
         List of player summaries
     """
-    # Base query with total playtime aggregation (including ongoing sessions)
+    # Base query with total playtime and last_seen aggregation (including ongoing sessions)
     query = (
         select(
             Player.player_db_id,
             Player.uuid,
             Player.current_name,
             Player.avatar_data,
-            Player.last_seen,
             Player.created_at,
             _get_playtime_expression().label("total_playtime"),
+            _get_last_seen_expression().label("last_seen"),
         )
         .outerjoin(PlayerSession, Player.player_db_id == PlayerSession.player_db_id)
         .group_by(
@@ -104,7 +157,6 @@ async def get_all_players_summary(
             Player.uuid,
             Player.current_name,
             Player.avatar_data,
-            Player.last_seen,
             Player.created_at,
         )
     )
@@ -146,6 +198,11 @@ async def get_all_players_summary(
             else None
         )
 
+        # Ensure last_seen is timezone-aware (SQLite current_timestamp returns naive UTC)
+        last_seen = row.last_seen
+        if last_seen is not None and last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+
         players.append(
             PlayerSummary(
                 player_db_id=row.player_db_id,
@@ -153,7 +210,7 @@ async def get_all_players_summary(
                 current_name=row.current_name,
                 avatar_base64=avatar_base64,
                 is_online=row.player_db_id in online_player_ids,
-                last_seen=row.last_seen,
+                last_seen=last_seen,
                 total_playtime_seconds=row.total_playtime,
                 first_seen=row.created_at,
             )
@@ -274,6 +331,9 @@ async def _build_player_detail(
         else None
     )
 
+    # Calculate last_seen dynamically
+    last_seen = await get_player_last_seen(session, player.player_db_id)
+
     return PlayerDetailResponse(
         player_db_id=player.player_db_id,
         uuid=player.uuid,
@@ -282,7 +342,7 @@ async def _build_player_detail(
         avatar_base64=avatar_base64,
         is_online=is_online,
         current_servers=current_servers,
-        last_seen=player.last_seen,
+        last_seen=last_seen,
         first_seen=player.created_at,
         total_playtime_seconds=total_playtime,
         total_sessions=total_sessions,

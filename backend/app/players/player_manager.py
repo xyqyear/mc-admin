@@ -13,7 +13,6 @@ from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
 from .crud import (
     get_or_add_player_by_name,
-    update_player_last_seen,
     upsert_player,
 )
 
@@ -64,9 +63,6 @@ class PlayerManager:
                 )
                 return
 
-            # Update last_seen
-            await update_player_last_seen(session, player.player_db_id, event.timestamp)
-
             logger.info(f"Player joined: {event.player_name} on {event.server_id}")
 
             # Store player info before session closes
@@ -91,8 +87,6 @@ class PlayerManager:
     async def _handle_player_left(self, event: PlayerLeftEvent) -> None:
         """Handle player leave event.
 
-        Update player's last_seen timestamp.
-
         Args:
             event: Player leave event
         """
@@ -104,8 +98,5 @@ class PlayerManager:
                     f"Player not found and could not be fetched: {event.player_name}"
                 )
                 return
-
-            # Update last_seen
-            await update_player_last_seen(session, player.player_db_id, event.timestamp)
 
             logger.info(f"Player left: {event.player_name} from {event.server_id}")

@@ -115,8 +115,10 @@ class TestPlayerManager:
     ):
         """Test handling player join event for existing player."""
         # Mock database sessions for both managers
-        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
-             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+        with (
+            patch("app.players.player_manager.get_async_session") as mock_pm_session,
+            patch("app.players.session_tracker.get_async_session") as mock_st_session,
+        ):
             mock_pm_session.return_value.__aenter__.return_value = test_db_session
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
@@ -124,6 +126,7 @@ class TestPlayerManager:
             dispatcher = EventDispatcher()
             PlayerManager(dispatcher)
             from app.players.session_tracker import SessionTracker
+
             SessionTracker(dispatcher)
 
             # Create player joined event
@@ -145,7 +148,7 @@ class TestPlayerManager:
                 select(PlayerSession).where(
                     PlayerSession.player_db_id == test_player.player_db_id,
                     PlayerSession.server_db_id == test_server.id,
-                    PlayerSession.left_at == None,
+                    PlayerSession.left_at == None,  # noqa: E711
                 )
             )
             session = result.scalar_one_or_none()
@@ -153,16 +156,14 @@ class TestPlayerManager:
             assert session is not None
             assert session.joined_at == join_time
 
-            # Verify last_seen was updated
-            await test_db_session.refresh(test_player)
-            assert test_player.last_seen == join_time
-
     @pytest.mark.asyncio
     async def test_handle_player_joined_new_player(self, test_db_session, test_server):
         """Test handling player join event for new player (auto-creates player)."""
         # Mock database sessions for both managers
-        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
-             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+        with (
+            patch("app.players.player_manager.get_async_session") as mock_pm_session,
+            patch("app.players.session_tracker.get_async_session") as mock_st_session,
+        ):
             mock_pm_session.return_value.__aenter__.return_value = test_db_session
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
@@ -175,6 +176,7 @@ class TestPlayerManager:
                 dispatcher = EventDispatcher()
                 PlayerManager(dispatcher)
                 from app.players.session_tracker import SessionTracker
+
                 SessionTracker(dispatcher)
 
                 # Create player joined event for new player
@@ -205,7 +207,7 @@ class TestPlayerManager:
                     select(PlayerSession).where(
                         PlayerSession.player_db_id == player.player_db_id,
                         PlayerSession.server_db_id == test_server.id,
-                        PlayerSession.left_at == None,
+                        PlayerSession.left_at == None,  # noqa: E711
                     )
                 )
                 session = result.scalar_one_or_none()
@@ -230,8 +232,10 @@ class TestPlayerManager:
         await test_db_session.commit()
 
         # Mock database sessions for both managers
-        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
-             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+        with (
+            patch("app.players.player_manager.get_async_session") as mock_pm_session,
+            patch("app.players.session_tracker.get_async_session") as mock_st_session,
+        ):
             mock_pm_session.return_value.__aenter__.return_value = test_db_session
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
@@ -241,6 +245,7 @@ class TestPlayerManager:
 
             # Import session_tracker to register its handlers
             from app.players.session_tracker import SessionTracker
+
             SessionTracker(dispatcher)
 
             # Create player left event
@@ -339,14 +344,17 @@ class TestPlayerManager:
         await test_db_session.commit()
 
         # Mock database sessions for both managers
-        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
-             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+        with (
+            patch("app.players.player_manager.get_async_session") as mock_pm_session,
+            patch("app.players.session_tracker.get_async_session") as mock_st_session,
+        ):
             mock_pm_session.return_value.__aenter__.return_value = test_db_session
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
             # Create event dispatcher and session tracker (handles server stopping)
             dispatcher = EventDispatcher()
             from app.players.session_tracker import SessionTracker
+
             SessionTracker(dispatcher)
 
             # Create server stopping event
@@ -375,8 +383,10 @@ class TestPlayerManager:
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
         # Mock database sessions and server_tracker_crud to return None
-        with patch("app.players.player_manager.get_async_session") as mock_pm_session, \
-             patch("app.players.session_tracker.get_async_session") as mock_st_session:
+        with (
+            patch("app.players.player_manager.get_async_session") as mock_pm_session,
+            patch("app.players.session_tracker.get_async_session") as mock_st_session,
+        ):
             mock_pm_session.return_value.__aenter__.return_value = test_db_session
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
@@ -388,6 +398,7 @@ class TestPlayerManager:
                 dispatcher = EventDispatcher()
                 PlayerManager(dispatcher)
                 from app.players.session_tracker import SessionTracker
+
                 SessionTracker(dispatcher)
 
                 # Create player joined event

@@ -63,3 +63,22 @@ export function naturalCompare(a: string, b: string): number {
   return naturalCollator.compare(a, b);
 }
 
+/**
+ * Format Minecraft player UUID to standard UUID format with dashes
+ * Converts 32-character hex string to standard 8-4-4-4-12 UUID format
+ * @param uuid - UUID string without dashes (32 characters)
+ * @returns Formatted UUID string with dashes
+ *
+ * @example
+ * formatUUID('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6')
+ * // Returns: 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6'
+ */
+export function formatUUID(uuid: string): string {
+  if (!uuid || uuid.length !== 32) {
+    return uuid; // Return as-is if invalid
+  }
+
+  // Format: 8-4-4-4-12
+  return `${uuid.substring(0, 8)}-${uuid.substring(8, 12)}-${uuid.substring(12, 16)}-${uuid.substring(16, 20)}-${uuid.substring(20, 32)}`;
+}
+

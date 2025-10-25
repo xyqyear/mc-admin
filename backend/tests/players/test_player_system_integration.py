@@ -348,7 +348,7 @@ async def test_session_duration_calculation(player_system):
     db = player_system["db"]
     dispatcher = player_system["dispatcher"]
 
-    server_db_id = await create_server(db, "server1")
+    await create_server(db, "server1")
 
     # Player joins
     join_time = datetime.now(timezone.utc)
@@ -684,7 +684,7 @@ async def test_rapid_join_leave_cycles(player_system):
     db = player_system["db"]
     dispatcher = player_system["dispatcher"]
 
-    server_db_id = await create_server(db, "server1")
+    await create_server(db, "server1")
 
     await dispatcher.dispatch_player_uuid_discovered(
         PlayerUuidDiscoveredEvent(
@@ -802,7 +802,9 @@ async def test_player_name_case_sensitivity(player_system):
 
 @pytest.mark.asyncio
 async def test_player_last_seen_update(player_system):
-    """Test player last_seen timestamp is updated on join."""
+    """Test player last_seen timestamp is calculated correctly from sessions."""
+    from app.players.crud.query.player_query import get_player_last_seen
+
     db = player_system["db"]
     dispatcher = player_system["dispatcher"]
 
@@ -820,21 +822,34 @@ async def test_player_last_seen_update(player_system):
     )
 
     player = await get_player(db, "Steve")
-    assert player.last_seen is not None
-    first_seen = player.last_seen
+    async with db() as session:
+        first_last_seen = await get_player_last_seen(session, player.player_db_id)
+    assert first_last_seen is not None
+    # Player is online, so last_seen should be very recent (close to now)
+    assert (datetime.now(timezone.utc) - first_last_seen).total_seconds() < 5
 
-    # Leave and rejoin later
+    # Leave
     await dispatcher.dispatch_player_left(
         PlayerLeftEvent(server_id="server1", player_name="Steve", timestamp=time1)
     )
 
+    # After leaving, last_seen should be the left_at time (time1)
+    async with db() as session:
+        second_last_seen = await get_player_last_seen(session, player.player_db_id)
+    assert second_last_seen is not None
+    assert abs((second_last_seen - time1).total_seconds()) < 1
+
+    # Rejoin later
     time2 = time1 + timedelta(hours=1)
     await dispatcher.dispatch_player_joined(
         PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=time2)
     )
 
-    player = await get_player(db, "Steve")
-    assert player.last_seen > first_seen
+    # Player is online again, last_seen should be current time
+    async with db() as session:
+        third_last_seen = await get_player_last_seen(session, player.player_db_id)
+    assert third_last_seen is not None
+    assert (datetime.now(timezone.utc) - third_last_seen).total_seconds() < 5
 
 
 @pytest.mark.asyncio
