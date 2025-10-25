@@ -434,7 +434,7 @@ class ResticManager:
                 "At least one retention policy parameter must be specified"
             )
 
-        args = ["restic", "forget", "--group-by", "''"]
+        args = ["restic", "forget", "--group-by", ""]
 
         # Add retention policy arguments
         if keep_last is not None:
