@@ -288,6 +288,18 @@ export const versionUpdates: VersionUpdate[] = [
       '改进日志文件监控，更好地处理文件创建和删除事件',
       '优化日志监控逻辑，监控父目录以提高可靠性'
     ]
+  },
+  {
+    version: '0.7.1',
+    date: '2025-10-25',
+    title: '文件排序优化',
+    description: '文件管理和压缩包管理界面实现自然排序，显著提升大量文件时的排序性能。',
+    features: [
+      '文件名和压缩包使用自然排序（9.txt 排在 10.txt 前面）'
+    ],
+    improvements: [
+      '使用缓存的 Intl.Collator 实例优化排序性能'
+    ]
   }
 ]
 
