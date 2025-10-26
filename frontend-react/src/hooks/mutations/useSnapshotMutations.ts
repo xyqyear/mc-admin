@@ -101,11 +101,23 @@ export const useSnapshotMutations = () => {
     });
   };
 
+  // 解锁仓库
+  const useUnlockRepository = () => {
+    return useMutation({
+      mutationFn: snapshotApi.unlockRepository,
+      onError: (error: any) => {
+        const errorDetail = error?.message || "未知错误";
+        message.error(`仓库解锁失败: ${errorDetail}`);
+      },
+    });
+  };
+
   return {
     useCreateGlobalSnapshot,
     useCreateSnapshot,
     useRestoreSnapshot,
     usePreviewRestore,
     useDeleteSnapshot,
+    useUnlockRepository,
   };
 };

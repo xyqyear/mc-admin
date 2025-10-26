@@ -470,6 +470,36 @@ class ResticManager:
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
         return result
 
+    async def list_locks(self, uid: int | None = None, gid: int | None = None) -> str:
+        """
+        List all locks in the repository
+
+        Args:
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            Command output with lock information
+        """
+        args = self._add_password_args(["restic", "list", "locks"])
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        return result
+
+    async def unlock(self, uid: int | None = None, gid: int | None = None) -> str:
+        """
+        Remove stale locks from the repository
+
+        Args:
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            Command output
+        """
+        args = self._add_password_args(["restic", "unlock"])
+        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        return result
+
 
 # Singleton instance - only create if restic settings are available
 restic_manager = None

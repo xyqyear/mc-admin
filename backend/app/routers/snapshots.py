@@ -388,3 +388,50 @@ async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user))
         backupTotalGB=disk_info.total / 1024**3,
         backupAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
     )
+
+
+# Lock management models
+class ListLocksResponse(BaseModel):
+    locks: str
+
+
+class UnlockResponse(BaseModel):
+    message: str
+    output: str
+
+
+@router.get("/locks", response_model=ListLocksResponse)
+async def list_locks(_: UserPublic = Depends(get_current_user)):
+    """List all locks in the repository"""
+    try:
+        restic_manager = _get_restic_manager()
+        locks_output = await restic_manager.list_locks()
+
+        logger.info("Listed locks in repository")
+        return ListLocksResponse(locks=locks_output)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to list locks: {str(e)}"
+        logger.error(f"Lock listing error: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+@router.post("/unlock", response_model=UnlockResponse)
+async def unlock_repository(_: UserPublic = Depends(get_current_user)):
+    """Remove stale locks from the repository"""
+    try:
+        restic_manager = _get_restic_manager()
+        unlock_output = await restic_manager.unlock()
+
+        success_msg = "Repository unlocked successfully"
+        logger.info("Repository unlocked")
+        return UnlockResponse(message=success_msg, output=unlock_output)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to unlock repository: {str(e)}"
+        logger.error(f"Unlock error: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=error_msg)

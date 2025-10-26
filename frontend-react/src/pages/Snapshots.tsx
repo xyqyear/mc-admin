@@ -8,6 +8,8 @@ import {
   Tag,
   Typography,
   Popconfirm,
+  Modal,
+  Space,
   type TableProps,
 } from 'antd';
 import {
@@ -16,9 +18,11 @@ import {
   HistoryOutlined,
   CloudServerOutlined,
   DeleteOutlined,
+  UnlockOutlined,
 } from '@ant-design/icons';
 import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/snapshotApi';
+import { snapshotApi } from '@/hooks/api/snapshotApi';
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
 import { formatDateTime } from '@/utils/formatUtils';
@@ -27,11 +31,17 @@ const { Text } = Typography;
 
 const Snapshots: React.FC = () => {
   const { useGlobalSnapshots } = useSnapshotQueries();
-  const { useCreateGlobalSnapshot, useDeleteSnapshot } = useSnapshotMutations();
+  const { useCreateGlobalSnapshot, useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations();
 
   // 分页状态管理
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // 解锁对话框状态
+  const [unlockModalVisible, setUnlockModalVisible] = useState(false);
+  const [locksInfo, setLocksInfo] = useState<string>('');
+  const [unlockOutput, setUnlockOutput] = useState<string>('');
+  const [isLoadingLocks, setIsLoadingLocks] = useState(false);
 
   const {
     data: snapshots = [],
@@ -43,6 +53,7 @@ const Snapshots: React.FC = () => {
 
   const createSnapshotMutation = useCreateGlobalSnapshot();
   const deleteSnapshotMutation = useDeleteSnapshot();
+  const unlockMutation = useUnlockRepository();
 
   const handleCreateSnapshot = () => {
     createSnapshotMutation.mutate();
@@ -50,6 +61,37 @@ const Snapshots: React.FC = () => {
 
   const handleDeleteSnapshot = (snapshotId: string) => {
     deleteSnapshotMutation.mutate(snapshotId);
+  };
+
+  const handleUnlockClick = async () => {
+    setIsLoadingLocks(true);
+    setUnlockOutput('');
+
+    try {
+      // 首先获取锁信息
+      const locksResult = await snapshotApi.listLocks();
+      setLocksInfo(locksResult.locks);
+      setUnlockModalVisible(true);
+    } catch (error: any) {
+      Modal.error({
+        title: '获取锁信息失败',
+        content: error?.message || '未知错误',
+      });
+    } finally {
+      setIsLoadingLocks(false);
+    }
+  };
+
+  const handleUnlock = () => {
+    unlockMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setUnlockOutput(data.output);
+        Modal.success({
+          title: '解锁成功',
+          content: data.message,
+        });
+      },
+    });
   };
 
 
@@ -151,6 +193,14 @@ const Snapshots: React.FC = () => {
         actions={
           <>
             <Button
+              danger
+              icon={<UnlockOutlined />}
+              onClick={handleUnlockClick}
+              loading={isLoadingLocks}
+            >
+              解锁仓库
+            </Button>
+            <Button
               icon={<ReloadOutlined />}
               onClick={() => refetch()}
               loading={isLoading}
@@ -244,6 +294,55 @@ const Snapshots: React.FC = () => {
           }}
         />
       </Card>
+
+      {/* 解锁仓库对话框 */}
+      <Modal
+        title="解锁 Restic 仓库"
+        open={unlockModalVisible}
+        onCancel={() => setUnlockModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setUnlockModalVisible(false)}>
+            取消
+          </Button>,
+          <Popconfirm
+            key="unlock"
+            title="确认解锁"
+            description="确定要解锁 Restic 仓库吗？这将移除所有陈旧的锁。"
+            onConfirm={handleUnlock}
+            okText="确认解锁"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              danger
+              type="primary"
+              loading={unlockMutation.isPending}
+              disabled={unlockOutput !== ''}
+            >
+              解锁
+            </Button>
+          </Popconfirm>,
+        ]}
+        width={700}
+      >
+        <Space direction="vertical" className="w-full" size="large">
+          <div>
+            <Text strong>当前锁信息：</Text>
+            <pre className="mt-2 p-3 bg-gray-100 rounded border border-gray-300 overflow-auto max-h-60">
+              {locksInfo || '无锁信息'}
+            </pre>
+          </div>
+
+          {unlockOutput && (
+            <div>
+              <Text strong className="text-green-600">解锁输出：</Text>
+              <pre className="mt-2 p-3 bg-green-50 rounded border border-green-300 overflow-auto max-h-60">
+                {unlockOutput}
+              </pre>
+            </div>
+          )}
+        </Space>
+      </Modal>
     </div>
   );
 };

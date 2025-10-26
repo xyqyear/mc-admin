@@ -56,6 +56,15 @@ interface DeleteSnapshotResponse {
   message: string;
 }
 
+interface ListLocksResponse {
+  locks: string;
+}
+
+interface UnlockResponse {
+  message: string;
+  output: string;
+}
+
 interface RestorePreviewRequest {
   snapshot_id: string;
   server_id?: string;
@@ -126,6 +135,18 @@ export const snapshotApi = {
     const res = await api.delete<DeleteSnapshotResponse>(`/snapshots/${snapshotId}`);
     return res.data;
   },
+
+  // 列出锁
+  listLocks: async (): Promise<ListLocksResponse> => {
+    const res = await api.get<ListLocksResponse>("/snapshots/locks");
+    return res.data;
+  },
+
+  // 解锁仓库
+  unlockRepository: async (): Promise<UnlockResponse> => {
+    const res = await api.post<UnlockResponse>("/snapshots/unlock");
+    return res.data;
+  },
 };
 
 // Export types for use in other modules
@@ -139,5 +160,7 @@ export type {
   RestorePreviewAction,
   RestorePreviewResponse,
   BackupRepositoryUsage,
-  DeleteSnapshotResponse
+  DeleteSnapshotResponse,
+  ListLocksResponse,
+  UnlockResponse
 };

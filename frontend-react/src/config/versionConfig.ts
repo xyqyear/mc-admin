@@ -321,6 +321,15 @@ export const versionUpdates: VersionUpdate[] = [
       '快照管理中添加删除快照功能',
       '快照回滚时自动创建当前状态的快照以防数据丢失，不再检查60s内是否有快照。'
     ]
+  },
+  {
+    version: '1.1.0',
+    date: '2025-10-26',
+    title: 'Restic 仓库解锁功能',
+    description: '新增 Restic 仓库解锁功能，可手动移除陈旧的锁。',
+    features: [
+      '快照管理页面新增解锁仓库按钮',
+    ]
   }
 ]
 

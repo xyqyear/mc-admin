@@ -456,3 +456,25 @@ class TestResticManagerIntegrated:
                     restore_path / test_dir.relative_to(Path("/")) / "large_file.txt"
                 )
                 assert restored_file.read_text() == large_content
+
+    @pytest.mark.asyncio
+    async def test_list_locks_no_locks(self, restic_manager):
+        """Test list_locks when no locks exist"""
+        manager = restic_manager
+
+        # List locks (should be empty or complete successfully)
+        locks_output = await manager.list_locks()
+
+        # Should return a string (even if empty)
+        assert isinstance(locks_output, str)
+
+    @pytest.mark.asyncio
+    async def test_unlock_no_locks(self, restic_manager):
+        """Test unlock when no locks exist"""
+        manager = restic_manager
+
+        # Unlock should complete successfully even with no locks
+        unlock_output = await manager.unlock()
+
+        # Should return a string
+        assert isinstance(unlock_output, str)
