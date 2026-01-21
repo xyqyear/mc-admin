@@ -1,3 +1,4 @@
+import re
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -7,7 +8,9 @@ from ..models import Base
 
 # Create async SQLAlchemy engine
 # For SQLite, we need to use aiosqlite driver
-async_database_url = settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
+async_database_url = re.sub(
+    r"^sqlite:///", "sqlite+aiosqlite:///", settings.database_url
+)
 engine = create_async_engine(async_database_url, echo=True)
 
 AsyncSessionLocal = async_sessionmaker(
