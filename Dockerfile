@@ -1,7 +1,4 @@
-ARG PYTHON_IMAGE_VERSION=3.13-alpine@sha256:9ba6d8cbebf0fb6546ae71f2a1c14f6ffd2fdab83af7fa5669734ef30ad48844
-ARG NODE_IMAGE_VERSION=22-alpine@sha256:d2166de198f26e17e5a442f537754dd616ab069c47cc57b889310a717e0abbf9
-
-FROM node:${NODE_IMAGE_VERSION} AS frontend-build
+FROM node:24-alpine AS frontend-build
 
 WORKDIR /frontend
 
@@ -11,43 +8,25 @@ RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY frontend-react/ ./
 RUN pnpm build
 
-FROM python:${PYTHON_IMAGE_VERSION} AS poetry-base
+FROM ghcr.io/astral-sh/uv:python3.13-alpine AS backend-venv
 
-ARG POETRY_VERSION=2.1.4
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ENV UV_LINK_MODE=copy \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
-
-RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    libffi-dev && \
-    pip install --no-cache-dir poetry==${POETRY_VERSION} && \
-    apk del \
-    gcc \
-    musl-dev \
-    libffi-dev
-
-FROM poetry-base AS app-env
-
-ENV POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_NO_INTERACTION=1
 
 WORKDIR /app
 
-COPY backend/poetry.lock backend/pyproject.toml /app/
-
 RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    libffi-dev && \
-    poetry install --no-interaction --no-cache --no-root --only main && \
-    apk del \
     gcc \
     musl-dev \
     libffi-dev
 
-FROM python:${PYTHON_IMAGE_VERSION} AS app
+COPY backend/pyproject.toml backend/uv.lock /app/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-install-project
+
+FROM python:3.13-alpine AS app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -69,7 +48,7 @@ RUN apk add --no-cache \
 WORKDIR /data
 
 COPY backend/ /app/
-COPY --from=app-env /app/.venv /app/.venv
+COPY --from=backend-venv /app/.venv /app/.venv
 COPY --from=frontend-build /frontend/dist /app/static
 
 RUN mkdir -p /data

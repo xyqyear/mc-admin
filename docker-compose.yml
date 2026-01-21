@@ -43,7 +43,7 @@ services:
       - CGROUP_PATH=/cgroup
 
       # Database configuration
-      - DATABASE_URL=sqlite:////data/db.sqlite3
+      - DATABASE_URL=sqlite+aiosqlite:////data/db.sqlite3
 
       # Audit configuration
       - AUDIT__ENABLED=true
