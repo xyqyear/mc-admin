@@ -58,4 +58,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/system/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--forwarded-allow-ips=\"*\"", "--log-level", "debug"]
+CMD ["uvicorn", "app.main:app", "--forwarded-allow-ips=*", "--log-level", "debug"]
