@@ -50,7 +50,7 @@ async def get_player_session_list(
 @router.get("/{player_db_id}/sessions/stats", response_model=SessionStatsResponse)
 async def get_player_session_statistics(
     player_db_id: int,
-    period: str = Query("all", regex="^(all|week|month|year)$"),
+    period: str = Query("all", pattern="^(all|week|month|year)$"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

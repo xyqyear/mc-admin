@@ -36,8 +36,8 @@ async def get_player_statistics_overview(
 
 @router.get("/statistics/activity-trend", response_model=List[ActivityDataPoint])
 async def get_player_activity_trend(
-    period: str = Query("week", regex="^(week|month|year)$"),
-    interval: str = Query("day", regex="^(hour|day|week)$"),
+    period: str = Query("week", pattern="^(week|month|year)$"),
+    interval: str = Query("day", pattern="^(hour|day|week)$"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
