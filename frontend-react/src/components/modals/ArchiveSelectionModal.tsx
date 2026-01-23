@@ -185,7 +185,6 @@ const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
             pageSizeOptions: ['10', '20', '50'],
             showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个文件`,
             simple: false,
-            size: "default",
             onChange: (page, size) => {
               setCurrentPage(page)
               if (size !== pageSize) {

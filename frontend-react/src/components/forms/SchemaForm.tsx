@@ -14,7 +14,7 @@ interface SchemaFormProps {
   showSubmitButton?: boolean
   submitButtonText?: string
   formKey?: number | string
-  liveValidate?: boolean
+  liveValidate?: 'onChange' | 'onBlur'
   showErrorList?: false | 'top' | 'bottom' | undefined
 }
 
@@ -28,7 +28,7 @@ const SchemaForm: React.FC<SchemaFormProps> = ({
   showSubmitButton = false,
   submitButtonText = '提交',
   formKey,
-  liveValidate = true,
+  liveValidate = 'onChange',
   showErrorList = false
 }) => {
   const handleFormChange = ({ formData: newFormData }: any) => {

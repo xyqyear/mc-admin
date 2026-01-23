@@ -268,7 +268,6 @@ const Snapshots: React.FC = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} 共 ${total} 个快照`,
             simple: false,
-            size: "default",
             onChange: (page, size) => {
               setCurrentPage(page);
               if (size !== pageSize) {
@@ -325,7 +324,7 @@ const Snapshots: React.FC = () => {
         ]}
         width={700}
       >
-        <Space direction="vertical" className="w-full" size="large">
+        <Space orientation="vertical" className="w-full" size="large">
           <div>
             <Text strong>当前锁信息：</Text>
             <pre className="mt-2 p-3 bg-gray-100 rounded border border-gray-300 overflow-auto max-h-60">

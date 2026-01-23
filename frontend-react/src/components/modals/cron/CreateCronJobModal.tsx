@@ -258,7 +258,7 @@ const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
               schema={selectedJobSchema.parameter_schema}
               formData={jobParams}
               onChange={handleParamsChange}
-              liveValidate
+              liveValidate="onChange"
               showErrorList={false}
             />
           </Card>

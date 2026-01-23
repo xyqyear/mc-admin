@@ -427,7 +427,7 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
                   })
                 }}
               >
-                <Space direction="vertical">
+                <Space orientation="vertical">
                   <Radio value="always_overwrite">总是覆盖所有冲突文件</Radio>
                   <Radio value="never_overwrite">跳过所有冲突文件</Radio>
                   <Radio value="per_file">为每个文件单独选择</Radio>

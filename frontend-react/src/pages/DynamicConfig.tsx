@@ -380,7 +380,7 @@ const DynamicConfig: React.FC = () => {
                       onChange={handleFormChange}
                       onSubmit={handleSubmitConfig}
                       onError={(errors) => console.log('Form validation errors:', errors)}
-                      liveValidate
+                      liveValidate="onChange"
                     >
                       <div />
                     </Form>

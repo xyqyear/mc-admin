@@ -53,7 +53,7 @@ const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
         <Divider />
 
         <div className="text-center">
-          <Space direction="vertical" size="middle" className="w-full">
+          <Space orientation="vertical" size="middle" className="w-full">
             <div className="text-gray-600">
               选择下一步操作：
             </div>

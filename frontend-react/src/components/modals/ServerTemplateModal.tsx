@@ -187,7 +187,6 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
               showQuickJumper: true,
               pageSizeOptions: ['10', '20', '50'],
               showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个服务器`,
-              size: "default",
             }}
             locale={{
               emptyText: serversLoading ? '加载中...' : '暂无服务器'

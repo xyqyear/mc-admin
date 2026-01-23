@@ -62,7 +62,7 @@ function App() {
   const { shouldShowModal, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
 
   // Global error handler
-  const handleError = (error: Error, errorInfo: ErrorInfo) => {
+  const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)
     notification.error({
       message: 'Application Error',

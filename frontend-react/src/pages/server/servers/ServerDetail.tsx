@@ -107,7 +107,7 @@ const ServerDetail: React.FC = () => {
             }
             type="error"
             action={
-              <Space direction="vertical">
+              <Space orientation="vertical">
                 <Button size="small" onClick={() => navigate('/overview')}>
                   返回总览
                 </Button>

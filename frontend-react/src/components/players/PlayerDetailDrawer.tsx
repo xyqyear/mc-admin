@@ -216,10 +216,10 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
         </Space>
       }
       placement="right"
-      width={800}
+      size={800}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
     >
       {playerLoading ? (
         <LoadingSpinner height="16rem" />
@@ -239,7 +239,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
                 </span>
               ),
               children: (
-                <Space direction="vertical" size="large" className="w-full">
+                <Space orientation="vertical" size="large" className="w-full">
                   {/* 玩家基本信息卡片 */}
                   <Card title="基本信息">
                     <div className="flex items-start space-x-6 mb-6">
