@@ -19,7 +19,7 @@ import {
   UndoOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons'
-import Form from '@rjsf/antd'
+import Form from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import { MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'

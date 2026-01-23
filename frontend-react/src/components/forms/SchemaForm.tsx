@@ -1,6 +1,6 @@
 import React from 'react'
 import { Button } from 'antd'
-import Form from '@rjsf/antd'
+import Form from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import { RJSFSchema } from '@rjsf/utils'
 
