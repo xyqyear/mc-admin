@@ -33,7 +33,7 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
     if (!isConfigured.current) {
       try {
         configureMonacoYaml(monaco, {
-          enableSchemaRequest: true,
+          enableSchemaRequest: false,
           hover: true,
           completion: true,
           validate: true,
