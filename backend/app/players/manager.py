@@ -176,6 +176,10 @@ class PlayerSystemManager:
             await self.log_monitor.watch_server(server_id, log_path)
             logger.info(f"Started log monitoring for server {server_id}")
 
+    async def sync_servers(self) -> None:
+        """Trigger immediate server sync to detect new/removed servers."""
+        await self.server_tracker.sync_now()
+
 
 # Global player system manager instance
 player_system_manager = PlayerSystemManager()

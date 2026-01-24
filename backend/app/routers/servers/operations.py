@@ -1,9 +1,12 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
+from ...players import player_system_manager
 
 router = APIRouter(
     prefix="/servers",
@@ -42,6 +45,7 @@ async def server_operation(
         await instance.down()
     elif action == "remove":
         await instance.remove()
+        asyncio.create_task(player_system_manager.sync_servers())
     else:
         raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
 

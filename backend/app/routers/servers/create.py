@@ -1,3 +1,5 @@
+import asyncio
+
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +10,7 @@ from ...minecraft import docker_mc_manager
 from ...minecraft.compose import MCComposeFile
 from ...minecraft.docker.compose_file import ComposeFile
 from ...models import UserPublic
+from ...players import player_system_manager
 
 router = APIRouter(
     prefix="/servers",
@@ -126,6 +129,9 @@ async def create_server(
 
         # Create the server using the MCInstance.create method
         await instance.create(create_request.yaml_content)
+
+        # Trigger immediate sync to start log monitoring
+        asyncio.create_task(player_system_manager.sync_servers())
 
         return {
             "message": f"Server '{server_id}' created successfully",

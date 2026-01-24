@@ -84,6 +84,10 @@ class ServerTracker:
             await self._sync_servers()
             await asyncio.sleep(self.sync_interval)
 
+    async def sync_now(self) -> None:
+        """Manually trigger server sync immediately."""
+        await self._sync_servers()
+
     @log_exception("Error syncing servers: ")
     async def _sync_servers(self) -> None:
         """Sync servers with Docker manager."""
