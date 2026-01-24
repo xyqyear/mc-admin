@@ -709,7 +709,7 @@ const ServerFiles: React.FC = () => {
           setCompressionResult(null)
         }}
         archiveFilename={compressionResult?.filename || ''}
-        title={compressionResult?.message || ''}
+        message={compressionResult?.message || ''}
         onDownload={handleDownloadCompressed}
         downloadLoading={false}
       />
