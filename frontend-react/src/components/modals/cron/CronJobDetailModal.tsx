@@ -170,7 +170,7 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
         <div className="space-y-4">
           {jobError && (
             <Alert
-              message="加载任务信息失败"
+              title="加载任务信息失败"
               description={jobError.message}
               type="error"
               showIcon
@@ -264,7 +264,7 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
         <div className="space-y-4">
           {executionsError && (
             <Alert
-              message="加载执行历史失败"
+              title="加载执行历史失败"
               description={executionsError.message}
               type="error"
               showIcon

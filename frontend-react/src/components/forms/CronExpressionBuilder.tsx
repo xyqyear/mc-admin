@@ -295,7 +295,7 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
       {/* 表达式预览 - 仅在可视化模式下显示 */}
       {mode === 'visual' && (
         <Alert
-          message="表达式预览"
+          title="表达式预览"
           description={
             <div className="space-y-2">
               <div>

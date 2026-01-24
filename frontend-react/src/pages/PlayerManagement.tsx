@@ -225,7 +225,7 @@ const PlayerManagement: React.FC = () => {
       {/* 错误提示 */}
       {error && (
         <Alert
-          message="加载玩家数据失败"
+          title="加载玩家数据失败"
           description={error.message || '发生未知错误'}
           type="error"
           showIcon

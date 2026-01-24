@@ -152,14 +152,14 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
       >
         <div className="space-y-4">
           <Alert
-            message={description}
+            title={description}
             type="info"
             showIcon
           />
 
           {servers && servers.length === 0 && !serversLoading && (
             <Alert
-              message="暂无可用服务器"
+              title="暂无可用服务器"
               description="没有找到可以作为模板的服务器。请先创建一个服务器后再使用模板功能。"
               type="warning"
               showIcon
@@ -195,7 +195,7 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
 
           {selectedServer && (
             <Alert
-              message={`已选择服务器: ${selectedServer.name}`}
+              title={`已选择服务器: ${selectedServer.name}`}
               description={`将使用该服务器的 Docker Compose 配置作为模板创建新服务器`}
               type="success"
               showIcon
@@ -237,7 +237,7 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
         <div className="space-y-4">
           {selectedServer && (
             <Alert
-              message={`服务器信息: ${selectedServer.name}`}
+              title={`服务器信息: ${selectedServer.name}`}
               description={`类型: ${selectedServer.serverType} | 游戏版本: ${selectedServer.gameVersion} | 端口: ${selectedServer.gamePort}`}
               type="info"
               showIcon
@@ -256,7 +256,7 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
             </div>
           ) : (
             <Alert
-              message="无法加载配置文件"
+              title="无法加载配置文件"
               description="该服务器的 Docker Compose 配置文件不存在或无法访问。"
               type="warning"
               showIcon

@@ -147,14 +147,14 @@ const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
     >
       <div className="space-y-4">
         <Alert
-          message={description}
+          title={description}
           type="info"
           showIcon
         />
 
         {archiveFiles.length === 0 && !isLoading && (
           <Alert
-            message="未找到压缩包文件"
+            title="未找到压缩包文件"
             description="没有找到可用的 .zip 或 .7z 压缩包文件。请先上传压缩包文件到归档管理。"
             type="warning"
             showIcon
@@ -204,7 +204,7 @@ const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
 
         {selectedFile && (
           <Alert
-            message={`已选择文件: ${selectedFile}`}
+            title={`已选择文件: ${selectedFile}`}
             type="success"
             showIcon
           />

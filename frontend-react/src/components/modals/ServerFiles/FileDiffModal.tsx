@@ -48,7 +48,7 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
     >
       <div className="space-y-4">
         <Alert
-          message="差异对比视图"
+          title="差异对比视图"
           description="左侧为文件原始内容，右侧为当前编辑的内容。高亮显示的是差异部分。"
           type="info"
           showIcon
@@ -59,7 +59,7 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
           return composeWarning && (
             <div className="mb-3">
               <Alert
-                message={composeWarning.title}
+                title={composeWarning.title}
                 description={
                   <div className="space-y-2">
                     <p>{composeWarning.message}</p>

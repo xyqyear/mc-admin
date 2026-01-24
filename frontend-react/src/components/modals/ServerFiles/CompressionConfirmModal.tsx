@@ -81,7 +81,7 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
     >
       <div className="space-y-4">
         <Alert
-          message="压缩包创建"
+          title="压缩包创建"
           description="确认要创建压缩包吗？压缩完成后会自动保存到压缩包管理中。"
           type="info"
           showIcon
@@ -98,7 +98,7 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
         </div>
 
         <Alert
-          message="注意事项"
+          title="注意事项"
           description="压缩过程可能需要一些时间，特别是在压缩整个服务器时。压缩完成后压缩包将出现在压缩包管理界面。"
           type="warning"
           showIcon
@@ -106,7 +106,7 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
 
         {confirmLoading && (
           <Alert
-            message="正在压缩中..."
+            title="正在压缩中..."
             description="压缩正在进行中，请不要关闭此窗口，否则无法收到压缩完成的提示。压缩可能需要几分钟时间，请耐心等待。"
             type="info"
             showIcon

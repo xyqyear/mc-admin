@@ -101,7 +101,7 @@ const Login: React.FC = () => {
                 <Form.Item>
                   <Alert
                     type="error"
-                    message={loginMutation.error?.message || '登录失败'}
+                    title={loginMutation.error?.message || '登录失败'}
                     showIcon
                   />
                 </Form.Item>
@@ -150,7 +150,7 @@ const Login: React.FC = () => {
 
               {codeError && !isConnecting && (
                 <Form.Item>
-                  <Alert type="error" message={codeError} showIcon />
+                  <Alert type="error" title={codeError} showIcon />
                 </Form.Item>
               )}
 

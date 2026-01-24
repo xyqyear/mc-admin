@@ -255,7 +255,7 @@ const CronManagement: React.FC = () => {
       {/* 任务列表加载错误提示 */}
       {cronJobsError && (
         <Alert
-          message="加载任务列表失败"
+          title="加载任务列表失败"
           description={cronJobsError.message || '发生未知错误'}
           type="error"
           showIcon

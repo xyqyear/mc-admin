@@ -391,7 +391,7 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
               </>
             ) : (
               <Alert
-                message="未选择文件"
+                title="未选择文件"
                 description="请关闭该窗口并使用拖拽的方式选择要上传的文件或文件夹"
                 type="info"
                 showIcon
@@ -404,7 +404,7 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
         return (
           <div className="space-y-4">
             <Alert
-              message="检测到文件冲突"
+              title="检测到文件冲突"
               description={`有 ${uploadState.conflicts.length} 个文件将会覆盖现有文件，请选择处理方式`}
               type="warning"
               icon={<WarningOutlined />}

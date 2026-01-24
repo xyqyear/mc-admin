@@ -146,7 +146,7 @@ const ServerNew: React.FC = () => {
       />
 
       <Alert
-        message="创建服务器说明"
+        title="创建服务器说明"
         description="创建新的 Minecraft 服务器。可以选择压缩包文件来填充服务器数据，或只使用 Docker Compose 配置创建空服务器。"
         type="info"
         showIcon
@@ -227,7 +227,7 @@ const ServerNew: React.FC = () => {
         >
           <div className="space-y-4">
             <Alert
-              message="配置说明"
+              title="配置说明"
               description="注意编辑container_name为mc-{服务器名}; 注意编辑服务器端口，不与现有冲突"
               type="info"
               showIcon
@@ -285,7 +285,7 @@ const ServerNew: React.FC = () => {
 
             {selectedArchiveFile && (
               <Alert
-                message="已选择压缩包文件"
+                title="已选择压缩包文件"
                 description={`压缩包 "${selectedArchiveFile}" 将在服务器创建后自动解压到服务器数据目录中。`}
                 type="success"
                 showIcon

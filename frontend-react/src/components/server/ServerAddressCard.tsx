@@ -67,7 +67,7 @@ export const ServerAddressCard: React.FC<ServerAddressCardProps> = ({ serverId, 
         }
       >
         <Alert
-          message="DNS管理未启用"
+          title="DNS管理未启用"
           description="请前往设置页面启用DNS管理功能以查看服务器地址"
           type="info"
           showIcon
@@ -90,7 +90,7 @@ export const ServerAddressCard: React.FC<ServerAddressCardProps> = ({ serverId, 
         }
       >
         <Alert
-          message="加载路由信息失败"
+          title="加载路由信息失败"
           description={String(error)}
           type="error"
           showIcon
@@ -113,7 +113,7 @@ export const ServerAddressCard: React.FC<ServerAddressCardProps> = ({ serverId, 
         }
       >
         <Alert
-          message="未找到服务器地址"
+          title="未找到服务器地址"
           description="没有找到与该服务器匹配的路由地址"
           type="info"
           showIcon

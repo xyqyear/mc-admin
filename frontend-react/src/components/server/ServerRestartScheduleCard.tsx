@@ -37,7 +37,7 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
         loading={isLoading}
       >
         <Alert
-          message="未配置重启计划"
+          title="未配置重启计划"
           description="此服务器尚未配置自动重启计划"
           type="info"
           showIcon

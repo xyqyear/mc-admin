@@ -192,7 +192,7 @@ const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
           <Alert
             type="warning"
             showIcon
-            message="重启时间冲突提醒"
+            title="重启时间冲突提醒"
             description={
               <div>
                 <p>为了避免数据丢失，请确保服务器重启时间不与备份任务时间重合。</p>
@@ -266,7 +266,7 @@ const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
 
         {!selectedJobType && (
           <Alert
-            message="请先选择任务类型"
+            title="请先选择任务类型"
             description="选择任务类型后，系统将显示该类型任务的参数配置表单。"
             type="info"
             showIcon

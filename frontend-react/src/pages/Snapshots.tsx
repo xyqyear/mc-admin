@@ -222,7 +222,7 @@ const Snapshots: React.FC = () => {
       {/* 错误提示 */}
       {isError && (
         <Alert
-          message="加载快照列表失败"
+          title="加载快照列表失败"
           description={(error as any)?.message || '发生未知错误'}
           type="error"
           showIcon

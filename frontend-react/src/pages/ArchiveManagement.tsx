@@ -577,7 +577,7 @@ const ArchiveManagement: React.FC = () => {
       >
         <div className="space-y-4">
           <Alert
-            message="文件编辑"
+            title="文件编辑"
             description="修改文件内容后点击保存。请谨慎编辑配置文件，错误的配置可能导致文件损坏。"
             type="warning"
             showIcon
@@ -697,7 +697,7 @@ const ArchiveManagement: React.FC = () => {
           </div>
 
           <Alert
-            message={
+            title={
               <div className="flex items-center justify-between">
                 <span>重要提醒</span>
                 <Button
@@ -759,7 +759,7 @@ const ArchiveManagement: React.FC = () => {
 
       {/* 压缩包管理说明 */}
       <Alert
-        message={
+        title={
           <div className="flex items-center justify-between">
             <span>压缩包管理说明</span>
             <Button

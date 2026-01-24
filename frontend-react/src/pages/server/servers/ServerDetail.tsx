@@ -55,7 +55,7 @@ const ServerDetail: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="参数错误"
+          title="参数错误"
           description="缺少服务器ID参数"
           type="error"
           action={
@@ -77,7 +77,7 @@ const ServerDetail: React.FC = () => {
       <div className="flex justify-center items-center min-h-64">
         <Card className="max-w-md">
           <Alert
-            message={isServerNotFound ? "服务器未找到" : "加载失败"}
+            title={isServerNotFound ? "服务器未找到" : "加载失败"}
             description={
               isServerNotFound ? (
                 <div className="space-y-3">

@@ -86,7 +86,7 @@ const FileEditModal: React.FC<FileEditModalProps> = ({
     >
       <div className="space-y-4">
         <Alert
-          message="文件编辑"
+          title="文件编辑"
           description="修改文件内容后点击保存。请谨慎编辑配置文件，错误的配置可能导致服务器无法启动。"
           type="warning"
           showIcon
@@ -101,7 +101,7 @@ const FileEditModal: React.FC<FileEditModalProps> = ({
                 {/* Compose override warning */}
                 {composeWarning && (
                   <Alert
-                    message={composeWarning.title}
+                    title={composeWarning.title}
                     description={
                       <div className="space-y-2">
                         <p>{composeWarning.message}</p>

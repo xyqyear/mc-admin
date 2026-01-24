@@ -202,7 +202,7 @@ const DnsManagement: React.FC = () => {
 
     return (
       <Alert
-        message="状态检查错误"
+        title="状态检查错误"
         description={errorMessage}
         type="error"
         showIcon
@@ -219,7 +219,7 @@ const DnsManagement: React.FC = () => {
 
     return (
       <Alert
-        message="检测到待同步的变更"
+        title="检测到待同步的变更"
         description={
           <div className="space-y-4">
             {dnsStatus.dns_diff && (
@@ -393,7 +393,7 @@ const DnsManagement: React.FC = () => {
                 <LoadingSpinner height="8rem" tip="加载DNS记录中..." />
               ) : !isDNSEnabled ? (
                 <Alert
-                  message="DNS管理未启用"
+                  title="DNS管理未启用"
                   description="请前往设置页面启用DNS管理功能"
                   type="info"
                   showIcon
@@ -405,7 +405,7 @@ const DnsManagement: React.FC = () => {
                 />
               ) : recordsError ? (
                 <Alert
-                  message="DNS记录加载失败"
+                  title="DNS记录加载失败"
                   description={String(recordsError)}
                   type="error"
                   showIcon
@@ -445,7 +445,7 @@ const DnsManagement: React.FC = () => {
                 <LoadingSpinner height="8rem" tip="加载路由信息中..." />
               ) : !isDNSEnabled ? (
                 <Alert
-                  message="DNS管理未启用"
+                  title="DNS管理未启用"
                   description="请前往设置页面启用DNS管理功能"
                   type="info"
                   showIcon
@@ -457,7 +457,7 @@ const DnsManagement: React.FC = () => {
                 />
               ) : routesError ? (
                 <Alert
-                  message="路由信息加载失败"
+                  title="路由信息加载失败"
                   description={String(routesError)}
                   type="error"
                   showIcon

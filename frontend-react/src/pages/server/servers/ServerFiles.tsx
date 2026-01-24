@@ -668,7 +668,7 @@ const ServerFiles: React.FC = () => {
 
       {/* 文件管理说明 */}
       <Alert
-        message="文件管理说明"
+        title="文件管理说明"
         description="您可以浏览、编辑和管理服务器文件。点击文件夹名称或文件夹图标可以进入目录。配置文件可以直接编辑，其他文件可以下载查看。上传的文件将保存到当前目录中。"
         type="info"
         showIcon
@@ -709,7 +709,7 @@ const ServerFiles: React.FC = () => {
           setCompressionResult(null)
         }}
         archiveFilename={compressionResult?.filename || ''}
-        message={compressionResult?.message || ''}
+        title={compressionResult?.message || ''}
         onDownload={handleDownloadCompressed}
         downloadLoading={false}
       />

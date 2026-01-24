@@ -42,7 +42,7 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
 
         {/* 重要提醒 */}
         <Alert
-          message="为什么要检查SHA256？"
+          title="为什么要检查SHA256？"
           description="SHA256校验可以确保文件在传输过程中没有损坏或被篡改，保证文件的完整性和安全性。"
           type="info"
           showIcon
@@ -52,7 +52,7 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
         {/* Windows 操作步骤 */}
         <Card size="small" title={<Text strong><WindowsOutlined /> Windows 系统操作步骤</Text>}>
           <Steps
-            direction="vertical"
+            orientation="vertical"
             size="small"
             items={[
               {
@@ -66,7 +66,7 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
                       选择 <Text code>复制文件地址</Text> 或 <Text code>复制为路径</Text>
                     </Paragraph>
                     <Alert
-                      message="提示"
+                      title="提示"
                       description="不同版本的Windows可能显示为&quot;复制文件地址&quot;或&quot;复制为路径&quot;，选择其中任意一个即可。"
                       type="info"
                       showIcon
@@ -117,7 +117,7 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
                       将显示的SHA256值与本系统中显示的SHA256值进行对比
                     </Paragraph>
                     <Alert
-                      message="验证结果"
+                      title="验证结果"
                       description={
                         <div>
                           <div><Text strong className="text-green-600">✓ 如果两个值完全相同</Text>：文件完整，可以安全使用</div>
@@ -159,7 +159,7 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
 
         {/* 其他操作系统提示 */}
         <Alert
-          message="其他操作系统"
+          title="其他操作系统"
           description={
             <div>
               <div><Text strong>macOS：</Text> 使用终端执行 <Text code>shasum -a 256 &quot;文件路径&quot;</Text></div>

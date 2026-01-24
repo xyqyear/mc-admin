@@ -128,7 +128,7 @@ const UserManagement: React.FC = () => {
   if (usersQuery.isError) {
     return (
       <Alert
-        message="加载用户数据失败"
+        title="加载用户数据失败"
         description={usersQuery.error?.message || '请检查网络连接或稍后重试'}
         type="error"
         showIcon

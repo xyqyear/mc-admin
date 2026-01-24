@@ -199,7 +199,7 @@ const DynamicConfig: React.FC = () => {
           )}
           {!hasChanges && (
             <Alert
-              message="没有检测到配置更改"
+              title="没有检测到配置更改"
               description="当前表单配置与服务器配置相同，提交后不会有任何变化。"
               type="info"
               showIcon
@@ -247,7 +247,7 @@ const DynamicConfig: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="加载失败"
+          title="加载失败"
           description="无法加载动态配置模块"
           type="error"
           showIcon
@@ -339,7 +339,7 @@ const DynamicConfig: React.FC = () => {
               {/* Error states */}
               {configError && (
                 <Alert
-                  message="配置加载失败"
+                  title="配置加载失败"
                   description="无法加载选定模块的配置数据"
                   type="error"
                   showIcon
@@ -349,7 +349,7 @@ const DynamicConfig: React.FC = () => {
 
               {schemaError && (
                 <Alert
-                  message="模式加载失败"
+                  title="模式加载失败"
                   description="无法加载选定模块的配置模式"
                   type="error"
                   showIcon
@@ -406,7 +406,7 @@ const DynamicConfig: React.FC = () => {
       >
         <div className="space-y-4">
           <Alert
-            message="差异对比视图"
+            title="差异对比视图"
             description="左侧为服务器当前配置，右侧为表单编辑的配置。高亮显示的是差异部分。"
             type="info"
             showIcon

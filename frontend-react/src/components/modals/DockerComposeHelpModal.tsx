@@ -45,7 +45,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
 
         {/* 重要提醒 */}
         <Alert
-          message="重要提醒"
+          title="重要提醒"
           description="请仔细阅读以下配置指南，确保服务器配置正确。错误的配置可能导致服务器无法启动或端口冲突。"
           type="warning"
           showIcon
@@ -55,7 +55,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
         {/* ServerCompose 页面特有警示 */}
         {page === 'ServerCompose' && (
           <Alert
-            message="配置更新警告"
+            title="配置更新警告"
             description="如果您在设置界面，请注意需要点击【提交并重建】按钮才能应用配置更改。提交并重建会重启服务器，会中断当前游戏。"
             type="error"
             showIcon
@@ -88,7 +88,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
         {/* 容器名称 */}
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 容器名称 (container_name)</Text>}>
           <Alert
-            message="必须格式"
+            title="必须格式"
             description={<Text><Text code>mc-{'{服务器名称}'}</Text></Text>}
             type="info"
             showIcon
@@ -122,7 +122,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
               <Text strong>MAX_MEMORY:</Text> 最大堆内存 (如: <Text code>4G</Text>, <Text code>8G</Text>)
               <br />
               <Alert
-                message="内存警告"
+                title="内存警告"
                 description="请在总览页面检查系统内存是否充足再启动服务器"
                 type="warning"
                 showIcon
@@ -202,7 +202,7 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
             </div>
           </div>
           <Alert
-            message="端口冲突检查"
+            title="端口冲突检查"
             description="请确保选择的外部端口不与系统中其他服务器或服务冲突"
             type="info"
             showIcon
@@ -214,13 +214,13 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 其他重要配置</Text>}>
           <div className="space-y-3">
             <Alert
-              message="卷挂载 (volumes)"
+              title="卷挂载 (volumes)"
               description={<Text>必须保持为 <Text code>./data:/data</Text>，请不要修改此配置</Text>}
               type="error"
               showIcon
             />
             <Alert
-              message="容器选项"
+              title="容器选项"
               description={<Text>以下选项请保持不变：<Text code>stdin_open: true</Text>、<Text code>tty: true</Text>、<Text code>restart: unless-stopped</Text></Text>}
               type="info"
               showIcon

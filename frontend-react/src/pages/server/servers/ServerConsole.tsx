@@ -130,7 +130,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
 
       {lastError && (
         <Alert
-          message="连接错误"
+          title="连接错误"
           description={lastError}
           type="error"
           showIcon
@@ -143,7 +143,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
 
       {serverStatus && !canConnectWebSocket && (
         <Alert
-          message="控制台不可用"
+          title="控制台不可用"
           description={
             <span>
               控制台仅在服务器状态不是 <ServerStateTag state="REMOVED" /> 或 <ServerStateTag state="EXISTS" /> 时可用。当前状态: <ServerStateTag state={serverStatus} />
@@ -220,7 +220,7 @@ const ServerConsole: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="参数错误"
+          title="参数错误"
           description="缺少服务器ID参数"
           type="error"
           action={
@@ -238,7 +238,7 @@ const ServerConsole: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="加载失败"
+          title="加载失败"
           description={`无法加载服务器 "${serverId}" 的信息`}
           type="error"
           action={

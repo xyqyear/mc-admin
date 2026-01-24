@@ -65,7 +65,7 @@ const ServerCompose: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="参数错误"
+          title="参数错误"
           description="缺少服务器ID参数"
           type="error"
           action={
@@ -84,7 +84,7 @@ const ServerCompose: React.FC = () => {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          message="加载失败"
+          title="加载失败"
           description={errorMessage}
           type="error"
           action={
@@ -156,7 +156,7 @@ const ServerCompose: React.FC = () => {
           )}
           {!hasChanges && (
             <Alert
-              message="没有检测到配置更改"
+              title="没有检测到配置更改"
               description="当前编辑的配置与服务器配置相同，重建后不会有任何变化。"
               type="info"
               showIcon
@@ -307,7 +307,7 @@ const ServerCompose: React.FC = () => {
       >
         <div className="space-y-4">
           <Alert
-            message="差异对比视图"
+            title="差异对比视图"
             description="左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。"
             type="info"
             showIcon
@@ -332,7 +332,7 @@ const ServerCompose: React.FC = () => {
 
       {/* 编辑说明 */}
       <Alert
-        message="编辑说明"
+        title="编辑说明"
         description="请直接编辑上方的 Docker Compose YAML 配置文件。需要点击提交并重建才能生效。"
         type="info"
         showIcon
