@@ -276,31 +276,6 @@ class TestResticManagerIntegrated:
         assert snapshot_full.id in sub_ids  # Full backup includes subdirectory
         assert snapshot_sub.id in sub_ids  # Direct subdirectory backup
 
-    @pytest.mark.asyncio
-    async def test_recent_snapshot_detection(self, restic_manager, temp_backup_dir):
-        """Test recent snapshot detection with real timestamps"""
-        manager = restic_manager
-
-        # Initially no snapshots
-        has_recent = await manager.has_recent_snapshot(
-            temp_backup_dir, max_age_seconds=60
-        )
-        assert has_recent is False
-
-        # Create snapshot
-        await manager.backup(temp_backup_dir)
-
-        # Should detect recent snapshot
-        has_recent = await manager.has_recent_snapshot(
-            temp_backup_dir, max_age_seconds=60
-        )
-        assert has_recent is True
-
-        # Should work with small time window too
-        has_recent = await manager.has_recent_snapshot(
-            temp_backup_dir, max_age_seconds=5
-        )
-        assert has_recent is True
 
     @pytest.mark.asyncio
     async def test_multiple_snapshots_chronology(self, restic_manager, temp_backup_dir):

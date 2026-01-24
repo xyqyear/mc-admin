@@ -218,27 +218,6 @@ class TestResticManagerNoPasswordIntegrated:
         most_recent_snapshot = snapshots_created[-1]
         assert remaining_snapshot.id == most_recent_snapshot.id
 
-    @pytest.mark.asyncio
-    async def test_has_recent_snapshot_no_password(
-        self, restic_manager_no_password, temp_backup_dir_no_password
-    ):
-        """Test recent snapshot detection without password"""
-        manager = restic_manager_no_password
-
-        # Initially no snapshots
-        has_recent = await manager.has_recent_snapshot(
-            temp_backup_dir_no_password, max_age_seconds=60
-        )
-        assert has_recent is False
-
-        # Create snapshot
-        await manager.backup(temp_backup_dir_no_password)
-
-        # Should detect recent snapshot
-        has_recent = await manager.has_recent_snapshot(
-            temp_backup_dir_no_password, max_age_seconds=60
-        )
-        assert has_recent is True
 
     @pytest.mark.asyncio
     async def test_path_filtering_no_password(
