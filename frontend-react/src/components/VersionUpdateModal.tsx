@@ -2,6 +2,7 @@ import React from 'react'
 import { Modal, Button, Typography, Timeline, Tag, Space, Divider } from 'antd'
 import { ClockCircleOutlined, CheckCircleOutlined, BugOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { compareVersions, versionUpdates } from '@/config/versionConfig'
+import { parseIssueReferences } from '@/utils/issueParser'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -47,7 +48,7 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
         <ul className="ml-6 mt-2">
           {items.map((item, index) => (
             <li key={index} className="mb-1">
-              <Text>{item}</Text>
+              <Text>{parseIssueReferences(item)}</Text>
             </li>
           ))}
         </ul>
@@ -103,10 +104,10 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
                       </Text>
                     </Space>
                     <Title level={5} className="mt-2 mb-2">
-                      {update.title}
+                      {parseIssueReferences(update.title)}
                     </Title>
                     <Paragraph className="text-gray-600">
-                      {update.description}
+                      {parseIssueReferences(update.description)}
                     </Paragraph>
                   </div>
 

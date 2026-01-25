@@ -1,3 +1,11 @@
+// GitHub 项目配置
+export const GITHUB_REPO = 'xyqyear/mc-admin'
+export const GITHUB_ISSUE_URL_TEMPLATE = `https://github.com/${GITHUB_REPO}/issues/{id}`
+
+export const getGithubIssueUrl = (issueId: number | string): string => {
+  return GITHUB_ISSUE_URL_TEMPLATE.replace('{id}', String(issueId))
+}
+
 interface VersionUpdate {
   version: string
   date: string
@@ -329,6 +337,28 @@ export const versionUpdates: VersionUpdate[] = [
     description: '新增 Restic 仓库解锁功能，可手动移除陈旧的锁。',
     features: [
       '快照管理页面新增解锁仓库按钮',
+    ]
+  },
+  {
+    version: '1.3.3',
+    date: '2026-01-25',
+    title: '前端框架升级和多项修复',
+    description: 'MC Admin 前端升级到 Ant Design v6，后端依赖管理迁移到 uv，并修复多个已知问题。',
+    features: [
+      '前端升级到 Ant Design v6（包括 antd、@ant-design/icons 和 rjsf） #105',
+      '玩家详情抽屉中的服务器名称过长则截断；标签可点击，支持快速跳转到服务器详情页 #112',
+      '前端更新日志显示对应的issue标签，点击可跳转到 GitHub #116',
+    ],
+    improvements: [
+      '后端依赖管理从 Poetry 迁移到 uv，提升依赖安装速度',
+    ],
+    fixes: [
+      '修复 Monaco 编辑器中的双重悬停提示',
+      '修复数据库 URL 替换逻辑',
+      '修复 Nginx 转发 IP 未显示在日志中的问题',
+      '修复服务器创建/删除时日志监控未立即触发的问题',
+      '移除已删除功能的相关测试代码',
+      'API 参数使用 pattern 替换已弃用的 regex #114',
     ]
   }
 ]
