@@ -52,8 +52,16 @@ def _get_last_seen_expression():
     Returns:
         SQLAlchemy expression for last_seen timestamp
     """
-    # Count online sessions (where left_at IS NULL)
-    online_count = func.count(case((PlayerSession.left_at == None, 1)))  # noqa: E711
+    # Count online sessions (where session exists AND left_at IS NULL)
+    # Must check session_id IS NOT NULL to distinguish from outerjoin NULL rows
+    online_count = func.count(
+        case(
+            (
+                (PlayerSession.session_id != None) & (PlayerSession.left_at == None),  # noqa: E711
+                1,
+            )
+        )
+    )
 
     # CASE: if online_count > 0, return current_timestamp, else return MAX(left_at)
     return case(

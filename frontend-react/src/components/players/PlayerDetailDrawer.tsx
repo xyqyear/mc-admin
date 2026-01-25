@@ -307,7 +307,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
                           <Descriptions.Item label="最后在线">
                             {player.last_seen
                               ? new Date(player.last_seen).toLocaleString('zh-CN')
-                              : '从未离线'}
+                              : '从未上线'}
                           </Descriptions.Item>
                         </Descriptions>
                       </div>

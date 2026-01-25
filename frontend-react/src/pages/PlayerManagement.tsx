@@ -181,7 +181,7 @@ const PlayerManagement: React.FC = () => {
       render: (date: string | null) => (
         <Space>
           <CalendarOutlined />
-          <Text>{date ? new Date(date).toLocaleString('zh-CN') : '从未离线'}</Text>
+          <Text>{date ? new Date(date).toLocaleString('zh-CN') : '从未上线'}</Text>
         </Space>
       ),
       sorter: (a, b) => {
