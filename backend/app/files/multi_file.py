@@ -20,6 +20,7 @@ from .types import (
 from .utils import (
     create_upload_session,
     get_upload_session,
+    makedirs_with_ownership,
     remove_upload_session,
     set_file_ownership,
     set_upload_session,
@@ -145,10 +146,8 @@ async def upload_multiple_files(
             # Ensure parent directory exists
             parent_dir = target_path.parent
             if not await aioos.path.exists(parent_dir):
-                await aioos.makedirs(parent_dir, exist_ok=True)
-
-                # Set ownership for created directory
-                await set_file_ownership(parent_dir, base_path)
+                # Create all intermediate directories with proper ownership
+                await makedirs_with_ownership(parent_dir, base_path)
 
             # Check if file exists and handle overwrite logic
             if await aioos.path.exists(target_path):

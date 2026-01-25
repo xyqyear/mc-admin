@@ -100,3 +100,30 @@ async def set_file_ownership(file_path: Path, base_path: Path) -> None:
     """Set file ownership to match base directory ownership"""
     uid, gid = await get_uid_gid(base_path)
     await _chown_async(file_path, uid, gid)
+
+
+async def makedirs_with_ownership(target_dir: Path, base_path: Path) -> None:
+    """Create directories and set ownership for all newly created directories.
+
+    This function finds the first existing ancestor, creates all needed directories,
+    and sets ownership on each newly created directory to match base_path.
+    """
+    # Find the first existing ancestor
+    dirs_to_create = []
+    current = target_dir
+    while not await aioos.path.exists(current):
+        dirs_to_create.append(current)
+        current = current.parent
+        # Safety check: don't go above base_path
+        if current == base_path or current == base_path.parent:
+            break
+
+    # Create directories from top to bottom and set ownership
+    if dirs_to_create:
+        # Reverse to create from top to bottom
+        dirs_to_create.reverse()
+        uid, gid = await get_uid_gid(base_path)
+
+        for dir_path in dirs_to_create:
+            await aioos.makedirs(dir_path, exist_ok=True)
+            await _chown_async(dir_path, uid, gid)

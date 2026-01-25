@@ -14,7 +14,12 @@ from .types import (
     FileItem,
     RenameFileRequest,
 )
-from .utils import _rmtree_async, _touch_async, set_file_ownership
+from .utils import (
+    _rmtree_async,
+    _touch_async,
+    makedirs_with_ownership,
+    set_file_ownership,
+)
 
 
 async def get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
@@ -108,8 +113,9 @@ async def upload_file(
     """Upload a file to the specified path."""
     target_dir = base_path / path.lstrip("/")
 
-    # Ensure target directory exists
-    await aioos.makedirs(target_dir, exist_ok=True)
+    # Ensure target directory exists with proper ownership
+    if not await aioos.path.exists(target_dir):
+        await makedirs_with_ownership(target_dir, base_path)
 
     if not await aioos.path.isdir(target_dir):
         raise HTTPException(status_code=400, detail="Target path is not a directory")
@@ -144,8 +150,9 @@ async def create_file_or_directory(
             detail=f"{'Directory' if create_request.type == 'directory' else 'File'} already exists",
         )
 
-    # Create parent directories if needed
-    await aioos.makedirs(target_path.parent, exist_ok=True)
+    # Create parent directories if needed with proper ownership
+    if not await aioos.path.exists(target_path.parent):
+        await makedirs_with_ownership(target_path.parent, base_path)
 
     if create_request.type == "directory":
         await aioos.mkdir(target_path)
