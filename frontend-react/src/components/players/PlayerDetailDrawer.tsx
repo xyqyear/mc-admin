@@ -22,7 +22,6 @@ import {
   MessageOutlined,
   TrophyOutlined,
   CalendarOutlined,
-  GlobalOutlined,
   ReloadOutlined
 } from '@ant-design/icons';
 import type { TableProps } from 'antd';
@@ -41,6 +40,7 @@ import type {
 import { playerApi } from '@/hooks/api/playerApi';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import { MCAvatar } from '@/components/players/MCAvatar';
+import { ServerNameTag } from '@/components/common/ServerNameTag';
 import { formatUUID } from '@/utils/formatUtils';
 
 const { Text } = Typography;
@@ -123,9 +123,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
       dataIndex: 'server_id',
       key: 'server_id',
       width: 150,
-      render: (serverId: string) => (
-        <Tag color="blue">{serverId}</Tag>
-      )
+      render: (serverId: string) => <ServerNameTag serverId={serverId} />
     },
     {
       title: '加入时间',
@@ -166,7 +164,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
       dataIndex: 'server_id',
       key: 'server_id',
       width: 120,
-      render: (serverId: string) => <Tag color="blue">{serverId}</Tag>
+      render: (serverId: string) => <ServerNameTag serverId={serverId} maxLength={15} />
     },
     {
       title: '消息内容',
@@ -189,7 +187,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
       dataIndex: 'server_id',
       key: 'server_id',
       width: 120,
-      render: (serverId: string) => <Tag color="blue">{serverId}</Tag>
+      render: (serverId: string) => <ServerNameTag serverId={serverId} maxLength={15} />
     },
     {
       title: '获得时间',
@@ -296,9 +294,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
                             {player.current_servers.length > 0 ? (
                               <Space wrap>
                                 {player.current_servers.map(serverId => (
-                                  <Tag key={serverId} color="success" icon={<GlobalOutlined />}>
-                                    {serverId}
-                                  </Tag>
+                                  <ServerNameTag key={serverId} serverId={serverId} />
                                 ))}
                               </Space>
                             ) : (
@@ -376,7 +372,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
                           <div className="mt-2 space-y-2">
                             {Object.entries(sessionStats.playtime_by_server).map(([serverId, seconds]) => (
                               <div key={serverId} className="flex justify-between items-center">
-                                <Tag color="blue">{serverId}</Tag>
+                                <ServerNameTag serverId={serverId} />
                                 <Text>{formatDuration(seconds)}</Text>
                               </div>
                             ))}
