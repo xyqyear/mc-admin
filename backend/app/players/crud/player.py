@@ -52,6 +52,21 @@ async def get_player_by_name(
     return result.scalar_one_or_none()
 
 
+async def get_all_player_names_with_ids(
+    session: AsyncSession,
+) -> list[tuple[str, int]]:
+    """Get all player names with their database IDs.
+
+    Args:
+        session: Database session
+
+    Returns:
+        List of (player_name, player_db_id) tuples
+    """
+    result = await session.execute(select(Player.current_name, Player.player_db_id))
+    return [(row[0], row[1]) for row in result.all()]
+
+
 async def get_or_add_player_by_name(
     session: AsyncSession,
     player_name: str,

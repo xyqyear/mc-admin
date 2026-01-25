@@ -5,7 +5,12 @@ from ..events.base import PlayerAchievementEvent, PlayerChatMessageEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
 from ..server_tracker.crud import get_server_db_id
-from .crud import create_chat_message, get_or_add_player_by_name, upsert_achievement
+from .crud import (
+    create_chat_message,
+    get_all_player_names_with_ids,
+    get_or_add_player_by_name,
+    upsert_achievement,
+)
 
 
 class ChatTracker:
@@ -73,23 +78,43 @@ class ChatTracker:
                 logger.warning(f"Server not found in tracker: {event.server_id}")
                 return
 
-            # Get or add player by name
-            player = await get_or_add_player_by_name(session, event.player_name)
-            if player is None:
+            # Get all player names and sort by length (longest first)
+            # This prevents shorter names from matching when they're part of longer names
+            all_players = await get_all_player_names_with_ids(session)
+            all_players_sorted = sorted(
+                all_players, key=lambda x: len(x[0]), reverse=True
+            )
+
+            # Try to find a player name in the achievement text
+            # Match from longest to shortest to avoid partial matches
+            matched_player_db_id = None
+            matched_player_name = None
+
+            for player_name, player_db_id in all_players_sorted:
+                if player_name in event.player_name:
+                    matched_player_db_id = player_db_id
+                    matched_player_name = player_name
+                    break
+
+            if matched_player_db_id is None:
                 logger.warning(
-                    f"Player not found and could not be fetched: {event.player_name}"
+                    f"No known player found in achievement text: '{event.player_name}'"
                 )
                 return
+
+            logger.debug(
+                f"Matched player '{matched_player_name}' in achievement text '{event.player_name}'"
+            )
 
             # Upsert achievement (avoid duplicates)
             await upsert_achievement(
                 session,
-                player.player_db_id,
+                matched_player_db_id,
                 server_db_id,
                 event.achievement_name,
                 event.timestamp,
             )
 
             logger.info(
-                f"Saved achievement '{event.achievement_name}' for {event.player_name} on {event.server_id}"
+                f"Saved achievement '{event.achievement_name}' for {matched_player_name} on {event.server_id}"
             )

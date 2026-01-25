@@ -62,7 +62,7 @@ class LogParserConfig(BaseConfigSchema):
         Field(
             description="正则表达式模式列表，用于解析玩家获得成就事件",
             default_factory=lambda: [
-                r"^(?!.*<).* (\S+) has made the advancement \[(.*)\]",
+                r"^(?!.*<).*\]: (.+) has made the advancement \[(.*)\]",
                 r"^(?!.*<).* (\S+) has just earned the achievement \[(.*)\]",
             ],
         ),

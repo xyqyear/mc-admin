@@ -223,54 +223,45 @@ class TestChatTracker:
             assert achievements[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
-    async def test_handle_achievement_new_player(self, test_db_session, test_server):
-        """Test handling achievement from new player (auto-creates player)."""
+    async def test_handle_achievement_unknown_player_skipped(
+        self, test_db_session, test_server
+    ):
+        """Test handling achievement from unknown player (should be skipped, not create player)."""
         # Mock database session
         with patch("app.players.chat_tracker.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Mock Mojang API
-            with patch(
-                "app.players.crud.player.fetch_player_uuid_from_mojang",
-                return_value="new_player_uuid_789",
-            ):
-                # Create event dispatcher and chat tracker
-                dispatcher = EventDispatcher()
-                ChatTracker(dispatcher)
+            # Create event dispatcher and chat tracker
+            dispatcher = EventDispatcher()
+            ChatTracker(dispatcher)
 
-                # Create achievement event for new player
-                event = PlayerAchievementEvent(
-                    server_id="test_server",
-                    player_name="AnotherPlayer",
-                    achievement_name="Kill Ender Dragon",
-                    timestamp=datetime.now(timezone.utc),
-                )
+            # Create achievement event for unknown player
+            event = PlayerAchievementEvent(
+                server_id="test_server",
+                player_name="UnknownPlayer",
+                achievement_name="Kill Ender Dragon",
+                timestamp=datetime.now(timezone.utc),
+            )
 
-                # Dispatch event
-                await dispatcher.dispatch_player_achievement(event)
+            # Dispatch event
+            await dispatcher.dispatch_player_achievement(event)
 
-                # Wait for async handlers
-                await asyncio.sleep(0.2)
+            # Wait for async handlers
+            await asyncio.sleep(0.2)
 
-                # Verify player was created
-                result = await test_db_session.execute(
-                    select(Player).where(Player.current_name == "AnotherPlayer")
-                )
-                player = result.scalar_one_or_none()
+            # Verify player was NOT created
+            result = await test_db_session.execute(
+                select(Player).where(Player.current_name == "UnknownPlayer")
+            )
+            player = result.scalar_one_or_none()
 
-                assert player is not None
-                assert player.uuid == "new_player_uuid_789"
+            assert player is None
 
-                # Verify achievement was saved
-                result = await test_db_session.execute(
-                    select(PlayerAchievement).where(
-                        PlayerAchievement.player_db_id == player.player_db_id
-                    )
-                )
-                achievements = result.scalars().all()
+            # Verify achievement was NOT saved
+            result = await test_db_session.execute(select(PlayerAchievement))
+            achievements = result.scalars().all()
 
-                assert len(achievements) == 1
-                assert achievements[0].achievement_name == "Kill Ender Dragon"
+            assert len(achievements) == 0
 
     @pytest.mark.asyncio
     async def test_duplicate_achievement_not_saved(
@@ -343,3 +334,116 @@ class TestChatTracker:
                 messages = result.scalars().all()
 
                 assert len(messages) == 0
+
+    @pytest.mark.asyncio
+    async def test_handle_achievement_with_title(self, test_db_session, test_server):
+        """Test handling achievement from player with title (e.g., 'PlayerName the Ugly')."""
+        # Create a test player
+        player = Player(
+            player_db_id=10,
+            uuid="test_uuid_with_title",
+            current_name="___Astesia",
+            created_at=datetime.now(timezone.utc),
+        )
+        test_db_session.add(player)
+        await test_db_session.commit()
+
+        # Mock database session
+        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = test_db_session
+
+            # Create event dispatcher and chat tracker
+            dispatcher = EventDispatcher()
+            ChatTracker(dispatcher)
+
+            # Create achievement event with title in player name
+            event = PlayerAchievementEvent(
+                server_id="test_server",
+                player_name="___Astesia the Ugly",  # Player name with title
+                achievement_name="Dragon Growth Hormone",
+                timestamp=datetime.now(timezone.utc),
+            )
+
+            # Dispatch event
+            await dispatcher.dispatch_player_achievement(event)
+
+            # Wait for async handlers
+            await asyncio.sleep(0.2)
+
+            # Verify achievement was saved for the correct player
+            result = await test_db_session.execute(
+                select(PlayerAchievement).where(
+                    PlayerAchievement.player_db_id == player.player_db_id
+                )
+            )
+            achievements = result.scalars().all()
+
+            assert len(achievements) == 1
+            assert achievements[0].achievement_name == "Dragon Growth Hormone"
+            assert achievements[0].player_db_id == player.player_db_id
+            assert achievements[0].server_db_id == test_server.id
+
+    @pytest.mark.asyncio
+    async def test_handle_achievement_longest_name_match_priority(
+        self, test_db_session, test_server
+    ):
+        """Test that longest player name is matched first to avoid partial matches."""
+        # Create two players where one name contains the other
+        short_player = Player(
+            player_db_id=20,
+            uuid="short_uuid",
+            current_name="Steve",
+            created_at=datetime.now(timezone.utc),
+        )
+        long_player = Player(
+            player_db_id=21,
+            uuid="long_uuid",
+            current_name="SteveTheGreat",
+            created_at=datetime.now(timezone.utc),
+        )
+        test_db_session.add(short_player)
+        test_db_session.add(long_player)
+        await test_db_session.commit()
+
+        # Mock database session
+        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = test_db_session
+
+            # Create event dispatcher and chat tracker
+            dispatcher = EventDispatcher()
+            ChatTracker(dispatcher)
+
+            # Create achievement event with the longer name
+            event = PlayerAchievementEvent(
+                server_id="test_server",
+                player_name="SteveTheGreat the Mighty",  # Contains both names
+                achievement_name="Epic Achievement",
+                timestamp=datetime.now(timezone.utc),
+            )
+
+            # Dispatch event
+            await dispatcher.dispatch_player_achievement(event)
+
+            # Wait for async handlers
+            await asyncio.sleep(0.2)
+
+            # Verify achievement was saved for the LONGER player name
+            result = await test_db_session.execute(
+                select(PlayerAchievement).where(
+                    PlayerAchievement.player_db_id == long_player.player_db_id
+                )
+            )
+            achievements = result.scalars().all()
+
+            assert len(achievements) == 1
+            assert achievements[0].achievement_name == "Epic Achievement"
+
+            # Verify no achievement for the shorter player name
+            result = await test_db_session.execute(
+                select(PlayerAchievement).where(
+                    PlayerAchievement.player_db_id == short_player.player_db_id
+                )
+            )
+            achievements = result.scalars().all()
+
+            assert len(achievements) == 0
