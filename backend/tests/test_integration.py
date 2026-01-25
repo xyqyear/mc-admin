@@ -1,13 +1,15 @@
 # pyright: reportUnusedImport=false
 import asyncio
 import random
+import re
+from dataclasses import dataclass
 
 import aiofiles.os as aioos
+import docker
 import pytest
 
 from app.minecraft import (
     DockerMCManager,
-    MCPlayerMessage,
     MCServerInfo,
 )
 from app.minecraft.compose import ServerType
@@ -19,6 +21,60 @@ from .fixtures.test_utils import (
     create_mc_server_compose_yaml,
     teardown,
 )
+
+# Pattern for parsing player messages from Minecraft logs
+PLAYER_MESSAGE_PATTERN = re.compile(
+    r"\]: (?:\[Not Secure\] )?<(?P<player>.*?)> (?P<message>.*)"
+)
+
+
+@dataclass
+class PlayerMessage:
+    """Player message parsed from logs."""
+
+    player: str
+    message: str
+
+
+async def get_player_messages_from_docker_logs(
+    instance, tail: int = 1000
+) -> list[PlayerMessage]:
+    """
+    Get player messages from Docker container logs using docker-py.
+
+    Args:
+        instance: MCInstance to get logs from
+        tail: Number of log lines to fetch
+
+    Returns:
+        List of PlayerMessage objects
+    """
+    container_id = await instance.get_container_id()
+
+    # Use docker-py to fetch logs
+    client = docker.APIClient(base_url="unix://var/run/docker.sock")
+    try:
+        logs_bytes = client.logs(
+            container_id,
+            stdout=True,
+            stderr=True,
+            tail=tail,
+        )
+        logs_content = logs_bytes.decode("utf-8", errors="replace")
+    finally:
+        client.close()
+
+    # Parse player messages from logs
+    messages = []
+    for match in PLAYER_MESSAGE_PATTERN.finditer(logs_content):
+        messages.append(
+            PlayerMessage(
+                player=match.group("player"),
+                message=match.group("message").strip(),
+            )
+        )
+
+    return messages
 
 
 @pytest.mark.asyncio
@@ -133,21 +189,17 @@ async def test_integration_with_docker(teardown: list[str]):
 
     print("client1 chat")
 
-    messages, pointer = await server1.get_player_messages_from_log()
-    assert messages == [MCPlayerMessage("client1", random_text1)]
+    messages = await get_player_messages_from_docker_logs(server1)
+    assert messages == [PlayerMessage("client1", random_text1)]
 
     print("server1 verify chat")
 
     await client1.chat(random_text2)
     await asyncio.sleep(1)
 
-    assert (await server1.get_player_messages_from_log())[0] == [
-        MCPlayerMessage("client1", random_text1),
-        MCPlayerMessage("client1", random_text2),
-    ]
-
-    assert (await server1.get_player_messages_from_log(pointer))[0] == [
-        MCPlayerMessage("client1", random_text2),
+    assert (await get_player_messages_from_docker_logs(server1)) == [
+        PlayerMessage("client1", random_text1),
+        PlayerMessage("client1", random_text2),
     ]
 
     print("server1 verify chat 2")
@@ -155,10 +207,10 @@ async def test_integration_with_docker(teardown: list[str]):
     await client2.chat(random_text3)
     await asyncio.sleep(1)
 
-    assert (await server1.get_player_messages_from_log())[0] == [
-        MCPlayerMessage("client1", random_text1),
-        MCPlayerMessage("client1", random_text2),
-        MCPlayerMessage("client2", random_text3),
+    assert (await get_player_messages_from_docker_logs(server1)) == [
+        PlayerMessage("client1", random_text1),
+        PlayerMessage("client1", random_text2),
+        PlayerMessage("client2", random_text3),
     ]
 
     print("server1 verify chat 3")

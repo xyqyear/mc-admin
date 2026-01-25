@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useXTerm } from 'react-xtermjs';
+import { ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
@@ -28,7 +29,7 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
   const currentCommandRef = useRef('');
 
   // XTerm 配置 - 使用useMemo来避免每次渲染重新创建
-  const terminalOptions = useMemo(() => ({
+  const terminalOptions: ITerminalOptions = useMemo(() => ({
     theme: {
       background: '#000000',
       foreground: '#ffffff',
@@ -39,6 +40,7 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     cursorBlink: true,
     convertEol: true,
     disableStdin: false,
+    scrollback: 10000,
   }), []);
 
   const terminalAddons = useMemo(() => [new FitAddon(), new WebLinksAddon()], []);
@@ -88,14 +90,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
         }
         break;
 
-      case 'logs_refreshed':
-        if (message.content !== undefined) {
-          terminalInstance.write(message.content);
-          // 重新写入当前命令
-          rewriteCurrentCommand();
-        }
-        break;
-
       case 'error':
         if (message.message) {
           terminalInstance.write(`\x1b[31mError: ${message.message}\x1b[0m\r\n`);
@@ -126,7 +120,7 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
         currentCommandRef.current = ''; // 直接操作 ref
       }
       if (terminalInstance) {
-        terminalInstance.write('\r\n');
+        terminalInstance.write('\r');
       }
       return;
     }

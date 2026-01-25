@@ -1,5 +1,4 @@
 import asyncio
-import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -25,9 +24,6 @@ from .docker.manager import ComposeManager
 from .docker.network import NetworkStats, read_container_network_stats
 from .properties import ServerProperties
 
-PLAYER_MESSAGE_PATTERN = re.compile(
-    r"\]: (?:\[Not Secure\] )?<(?P<player>.*?)> (?P<message>.*)"
-)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -40,12 +36,6 @@ class MCServerStatus(str, Enum):
     RUNNING = "RUNNING"  # Container is running but may not be healthy
     STARTING = "STARTING"  # Container is starting
     HEALTHY = "HEALTHY"  # Container is running and healthy
-
-
-@dataclass
-class LogType:
-    content: str
-    pointer: int
 
 
 @dataclass(frozen=True)
@@ -94,12 +84,6 @@ class DiskSpaceInfo:
         if self.total_bytes == 0:
             return 0.0
         return (self.used_bytes / self.total_bytes) * 100
-
-
-@dataclass
-class MCPlayerMessage:
-    player: str
-    message: str
 
 
 class MCInstance:
@@ -203,134 +187,6 @@ class MCInstance:
             )
 
         return mc_compose
-
-    async def _get_log_path(self) -> Path:
-        container_id = await self.get_container_id()
-        return Path(
-            f"/var/lib/docker/containers/{container_id}/{container_id}-json.log"
-        )
-
-    async def get_log_file_end_pointer(self) -> int:
-        log_path = await self._get_log_path()
-        async with aiofiles.open(log_path, mode="r", encoding="utf8") as f:
-            await f.seek(0, 2)
-            return await f.tell()
-
-    def _parse_docker_json_log_line(self, line: str) -> str:
-        """Parse a single Docker JSON log line and return the log content."""
-        try:
-            log_entry = json.loads(line.strip())
-            return log_entry.get("log", "")
-        except (json.JSONDecodeError, KeyError):
-            # If parsing fails, return the original line
-            return line
-
-    async def get_logs_from_file(self, start: int = 0) -> LogType:
-        """
-        if start is negative, it will read start bytes from the end of the file
-        if start is positive and no greater than the file size, it will read start bytes from the specified position
-        if start is greater than the file size, it will read from the beginning of the file
-        raises:
-            FileNotFoundError: if the log file does not exist
-        """
-        log_path = await self._get_log_path()
-        async with aiofiles.open(log_path, mode="r", encoding="utf8") as f:
-            await f.seek(0, 2)
-            file_size = await f.tell()
-            if start < 0:
-                start = file_size + start
-                if start < 0:
-                    start = 0
-            elif start > file_size:
-                start = 0
-            await f.seek(start)
-            raw_log = await f.read()
-
-            # Parse Docker JSON log format
-            parsed_lines = []
-            for line in raw_log.splitlines(keepends=True):
-                if line.strip():
-                    parsed_content = self._parse_docker_json_log_line(line)
-                    parsed_lines.append(parsed_content)
-
-            log = "".join(parsed_lines)
-            return LogType(content=log, pointer=await f.tell())
-
-    @staticmethod
-    def parse_player_messages_from_log(log: str) -> list[MCPlayerMessage]:
-        return [
-            MCPlayerMessage(
-                player=match.group("player"), message=match.group("message").strip()
-            )
-            for match in PLAYER_MESSAGE_PATTERN.finditer(log)
-        ]
-
-    async def get_player_messages_from_log(
-        self, start: int = 0
-    ) -> tuple[list[MCPlayerMessage], int]:
-        log = await self.get_logs_from_file(start)
-        return self.parse_player_messages_from_log(log.content), log.pointer
-
-    async def get_logs_from_docker(self, tail: int = 1000) -> str:
-        return await self._compose_manager.logs(tail)
-
-    @staticmethod
-    def filter_rcon_logs(content: str) -> str:
-        """
-        Filter out RCON-related log lines from log content.
-
-        Args:
-            content: Raw log content
-
-        Returns:
-            Log content with RCON lines removed (empty lines are also removed for cleaner output)
-        """
-        if not content:
-            return content
-
-        lines = content.split("\n")
-        filtered_lines = []
-
-        for line in lines:
-            # Filter out RCON Client and RCON Listener log lines
-            if "[RCON Client" not in line and "[RCON Listener" not in line:
-                filtered_lines.append(line)
-
-        # Join and then split again to remove any empty lines that result from filtering
-        result = "\n".join(filtered_lines)
-        # Remove any sequences of multiple newlines, keeping only single newlines
-        import re
-
-        result = re.sub(r"\n\s*\n", "\n", result)
-        return result
-
-    async def get_logs_from_file_filtered(
-        self, start: int = 0, filter_rcon: bool = True, max_chars: int = 1024 * 1024
-    ) -> LogType:
-        """
-        Get logs from file with optional RCON filtering and 1M character limit.
-
-        Args:
-            start: Starting position for reading logs
-            filter_rcon: Whether to filter out RCON-related logs
-            max_chars: Maximum number of characters to return
-
-        Returns:
-            LogType with filtered content, truncated to 1M characters if needed
-        """
-        # Get the raw logs first
-        raw_logs = await self.get_logs_from_file(start)
-        content = raw_logs.content
-
-        # Apply RCON filtering if requested
-        if filter_rcon:
-            content = self.filter_rcon_logs(content)
-
-        if len(content) > max_chars:
-            # Truncate from the end (keep the most recent logs)
-            content = content[-max_chars:]
-
-        return LogType(content=content, pointer=raw_logs.pointer)
 
     async def create(self, compose_yaml: str) -> None:
         """
@@ -620,17 +476,6 @@ class MCInstance:
             raise RuntimeError(f"Server {self._name} is not healthy")
         result = await self._compose_manager.exec("mc", "rcon-cli", command)
         return ANSI_ESCAPE_PATTERN.sub("", result).strip()
-
-    async def send_command_stdin(self, command: str):
-        """
-        this method will send a command to the server using mc-send-to-console
-        """
-        if not await self.running():
-            raise RuntimeError(f"Server {self._name} is not running")
-        uid, _ = await get_uid_gid(self.get_project_path())
-        await self._compose_manager.exec(
-            "--user", str(uid), "mc", "mc-send-to-console", command
-        )
 
     async def get_container_id(self) -> str:
         """Get the Docker container ID for the mc service."""

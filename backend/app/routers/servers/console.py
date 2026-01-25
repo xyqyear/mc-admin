@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket
 
 from ...dependencies import get_websocket_user
 from ...minecraft import docker_mc_manager
@@ -13,8 +13,11 @@ router = APIRouter(
 
 @router.websocket("/{server_id}/console")
 async def console_websocket(
-    websocket: WebSocket, server_id: str, _: UserPublic = Depends(get_websocket_user)
+    websocket: WebSocket,
+    server_id: str,
+    filter_rcon: bool = Query(default=True),
+    _: UserPublic = Depends(get_websocket_user),
 ):
     instance = docker_mc_manager.get_instance(server_id)
-    handler = ConsoleWebSocketHandler(websocket, instance)
+    handler = ConsoleWebSocketHandler(websocket, instance, filter_rcon=filter_rcon)
     await handler.handle_connection(server_id)

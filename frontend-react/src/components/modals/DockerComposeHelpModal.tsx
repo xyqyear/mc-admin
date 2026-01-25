@@ -129,11 +129,6 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
                 style={{ marginTop: 8, marginLeft: 0 }}
               />
             </div>
-            <div>
-              <Text strong>CREATE_CONSOLE_IN_PIPE:</Text> 控制台命令输入 (推荐: <Text code>true</Text>)
-              <br />
-              <Text type="secondary">设置为 true 才能在控制台界面发送指令给服务器</Text>
-            </div>
           </div>
 
           {/* 服务器类型 */}
@@ -255,7 +250,6 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
       ENABLE_COMMAND_BLOCK: true
       PREVENT_PROXY_CONNECTIONS: false
       ALLOW_FLIGHT: false
-      CREATE_CONSOLE_IN_PIPE: true
     ports:
       - 25517:25565
       - 25617:25575

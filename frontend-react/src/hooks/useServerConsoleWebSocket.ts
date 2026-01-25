@@ -4,10 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // WebSocket消息类型
 export interface WebSocketMessage {
-  type: "log" | "error" | "info" | "logs_refreshed";
+  type: "log" | "error" | "info";
   content?: string;
   message?: string;
-  filter_rcon?: boolean;
 }
 
 // WebSocket连接状态
@@ -30,7 +29,6 @@ export interface UseServerConsoleWebSocketReturn {
   disconnect: () => void;
   sendCommand: (command: string) => void;
   setFilterRcon: (enabled: boolean) => void;
-  requestLogRefresh: () => void;
   onMessage: (callback: (message: WebSocketMessage) => void) => void;
   removeMessageListener: (
     callback: (message: WebSocketMessage) => void,
@@ -62,10 +60,10 @@ export const useServerConsoleWebSocket = (
   const scheduleReconnectRef = useRef<() => void>();
 
   // 构建WebSocket URL
-  const buildWebSocketUrl = useCallback(() => {
+  const buildWebSocketUrl = useCallback((filterRconParam: boolean) => {
     if (!serverId || !token) return null;
     const baseUrl = getApiBaseUrl(true); // true for WebSocket
-    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}`;
+    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}&filter_rcon=${filterRconParam}`;
   }, [serverId, token]);
 
   // 断开WebSocket
@@ -129,24 +127,6 @@ export const useServerConsoleWebSocket = (
     [disconnect],
   );
 
-  // 发送过滤设置更新
-  const sendFilterUpdate = useCallback((newFilterRcon: boolean) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    try {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "set_filter",
-          filter_rcon: newFilterRcon,
-        }),
-      );
-    } catch (error) {
-      console.error("Failed to send filter update:", error);
-    }
-  }, []);
-
   // 连接WebSocket
   const connect = useCallback(() => {
     // 如果已经有连接在进行中或已连接，先断开
@@ -162,7 +142,7 @@ export const useServerConsoleWebSocket = (
       return;
     }
 
-    const wsUrl = buildWebSocketUrl();
+    const wsUrl = buildWebSocketUrl(filterRcon);
     if (!wsUrl) {
       console.error("Failed to build WebSocket URL");
       return;
@@ -226,6 +206,7 @@ export const useServerConsoleWebSocket = (
     canConnect,
     token,
     serverId,
+    filterRcon,
     buildWebSocketUrl,
     handleWebSocketMessage,
     disconnect,
@@ -277,35 +258,14 @@ export const useServerConsoleWebSocket = (
     }
   }, []);
 
-  // 请求刷新日志
-  const requestLogRefresh = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    try {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "refresh_logs",
-        }),
-      );
-    } catch (error) {
-      console.error("Failed to request log refresh:", error);
-    }
-  }, []);
-
-  // 设置过滤器
+  // 设置过滤器（会重新连接以获取正确过滤的历史日志）
   const setFilterRcon = useCallback(
     (enabled: boolean) => {
+      if (enabled === filterRcon) return; // 没有变化则不操作
       setFilterRconState(enabled);
-      sendFilterUpdate(enabled);
-
-      // 延迟请求刷新日志
-      setTimeout(() => {
-        requestLogRefresh();
-      }, 100);
+      // 重新连接会在 useEffect 中自动触发，因为 filterRcon 是 connect 的依赖
     },
-    [sendFilterUpdate, requestLogRefresh],
+    [filterRcon],
   );
 
   // 注册消息监听器
@@ -365,7 +325,6 @@ export const useServerConsoleWebSocket = (
     disconnect,
     sendCommand,
     setFilterRcon,
-    requestLogRefresh,
     onMessage,
     removeMessageListener,
   };

@@ -1,33 +1,49 @@
 """
 WebSocket console handler for Minecraft server management.
-Handles real-time log streaming and command execution.
+Handles real-time log streaming and command execution using docker-py APIs.
 """
 
 import asyncio
 import json
-from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-import aiofiles.os as aioos
+import docker
 from fastapi import WebSocket, WebSocketDisconnect
-from watchfiles import Change, awatch
 
 from ..logger import log_exception
 from ..minecraft import MCInstance
+
+# RCON log patterns to filter
+RCON_PATTERNS = ["[RCON Client", "[RCON Listener"]
+
+# Default number of history log lines to fetch
+HISTORY_LOG_LINES = 10000
+
+
+def filter_rcon_line(line: str) -> bool:
+    """Return True if line should be kept (not RCON-related)."""
+    return not any(pattern in line for pattern in RCON_PATTERNS)
+
+
+def filter_rcon_content(content: str) -> str:
+    """Filter RCON lines from multi-line content."""
+    lines = content.split("\n")
+    return "\n".join(line for line in lines if filter_rcon_line(line))
 
 
 class ConsoleWebSocketHandler:
     """Handler for a single WebSocket console connection to a Minecraft server."""
 
-    def __init__(self, websocket: WebSocket, instance: MCInstance):
+    def __init__(
+        self, websocket: WebSocket, instance: MCInstance, filter_rcon: bool = True
+    ):
         self.websocket = websocket
         self.instance = instance
-        self.file_pointer: int = 0
-        self.watchfiles_stop_event: Optional[asyncio.Event] = None
-        self.filter_rcon: bool = True  # Default to filtering RCON logs
-        self.loop = asyncio.get_event_loop()
-        self.file_watch_task: Optional[asyncio.Task] = None
-        self.file_size_watch_task: Optional[asyncio.Task] = None
+        self.filter_rcon: bool = filter_rcon
+        self._closed: bool = False
+        self._socket: Any = None
+        self._read_task: Optional[asyncio.Task] = None
+        self._docker_client: Optional[docker.APIClient] = None
 
     async def handle_connection(self, server_id: str):
         """Handle the WebSocket connection lifecycle."""
@@ -39,8 +55,13 @@ class ConsoleWebSocketHandler:
                 await self.websocket.close()
                 return
 
+            if not await self.instance.running():
+                await self._send_error(f"服务器 '{server_id}' 未运行")
+                await self.websocket.close()
+                return
+
             await self._initialize_connection()
-            await self._handle_messages(server_id)
+            await self._handle_messages()
         except WebSocketDisconnect:
             print(f"WebSocket disconnected for server {server_id}")
         except Exception as e:
@@ -49,88 +70,80 @@ class ConsoleWebSocketHandler:
             self._cleanup()
 
     async def _initialize_connection(self):
-        """Initialize connection with logs and file monitoring."""
-        log_path = await self.instance._get_log_path()
-        await self._send_initial_logs(log_path)
-        self.watchfiles_stop_event = asyncio.Event()
-        self.file_watch_task = asyncio.create_task(self._watch_log_file(log_path))
-        self.file_size_watch_task = asyncio.create_task(
-            self._watch_log_file_size(log_path)
+        """Initialize connection with Docker attach socket."""
+        self._docker_client = docker.APIClient(base_url="unix://var/run/docker.sock")
+        container_id = await self.instance.get_container_id()
+
+        await self._send_history_logs(container_id)
+
+        self._socket = self._docker_client.attach_socket(
+            container_id,
+            params={
+                "stdin": 1,
+                "stdout": 1,
+                "stderr": 1,
+                "stream": 1,
+            },
         )
+        self._socket._sock.setblocking(False)
 
-    async def _watch_log_file(self, log_path: Path):
-        """Watch log file for changes using awatch."""
-        log_dir = log_path.parent
+        self._read_task = asyncio.create_task(self._socket_read_loop())
 
-        async for changes in awatch(log_dir, stop_event=self.watchfiles_stop_event):
-            for change_type, file_path in changes:
-                if file_path == str(log_path) and change_type == Change.modified:
-                    await self._send_new_logs()
-                if file_path == str(log_dir) and change_type == Change.deleted:
-                    await self._send_not_found()
-
-    async def _watch_log_file_size(self, log_path: Path):
-        """Watch log file size periodically as a fallback."""
-        while True:
-            await asyncio.sleep(1)
-            if not await aioos.path.exists(log_path):
-                await self._send_not_found()
-            current_size = (await aioos.stat(log_path)).st_size
-            if current_size < self.file_pointer:
-                # File was truncated or rotated
-                self.file_pointer = 0
-                await self._send_new_logs()
-            elif current_size > self.file_pointer:
-                await self._send_new_logs()
-
-    async def _send_logs_with_message_type(
-        self,
-        log_path: Path,
-        message_type: str,
-        read_limit: int = 10 * 1024 * 1024,
-        return_limit: int = 1024 * 1024,
-    ):
-        """Send log content with RCON filtering and specified message type."""
-        if not await aioos.path.exists(log_path):
-            await self._send_not_found()
-            return
+    async def _send_history_logs(self, container_id: str):
+        """Fetch and send history logs from container."""
+        assert self._docker_client is not None  # Set in _initialize_connection
+        docker_client = self._docker_client  # Capture for lambda
         try:
-            file_size = (await aioos.stat(log_path)).st_size
-            start_position = -read_limit if file_size > read_limit else 0
-            logs = await self.instance.get_logs_from_file_filtered(
-                start_position, filter_rcon=self.filter_rcon, max_chars=return_limit
+            # Use run_in_executor since docker-py logs() is blocking
+            loop = asyncio.get_running_loop()
+            logs_bytes = await loop.run_in_executor(
+                None,
+                lambda: docker_client.logs(
+                    container_id,
+                    stdout=True,
+                    stderr=True,
+                    tail=HISTORY_LOG_LINES,
+                ),
             )
 
-            if logs.content.strip():
-                await self._send_dict({"type": message_type, "content": logs.content})
+            logs_content = logs_bytes.decode("utf-8", errors="replace")
+            if self.filter_rcon:
+                logs_content = filter_rcon_content(logs_content)
+
+            if logs_content.strip():
+                await self._send_dict({"type": "log", "content": logs_content})
             else:
                 await self._send_dict({"type": "info", "content": "暂无最近日志"})
-            self.file_pointer = logs.pointer
 
-        except FileNotFoundError:
-            await self._send_not_found()
+        except Exception as e:
+            await self._send_error(f"获取历史日志失败: {e}")
 
-    async def _send_initial_logs(self, log_path: Path):
-        """Send initial log content with RCON filtering."""
-        await self._send_logs_with_message_type(log_path, "log")
+    async def _socket_read_loop(self):
+        """Read from attach socket using asyncio's native methods."""
+        loop = asyncio.get_running_loop()
+        buffer = ""
 
-    @log_exception("Failed to send new logs over WebSocket")
-    async def _send_new_logs(self):
-        """Send new log content to WebSocket client with RCON filtering."""
-        logs = await self.instance.get_logs_from_file(self.file_pointer)
-        if logs.content.strip():
-            # Apply RCON filtering to new content
-            content = logs.content
-            if self.filter_rcon:
-                content = self.instance.filter_rcon_logs(content)
+        while not self._closed:
+            try:
+                data = await loop.sock_recv(self._socket._sock, 4096)
+                if not data:
+                    break
 
-            # Only send if there's content after filtering
-            if content.strip():
-                await self._send_dict({"type": "log", "content": content})
+                buffer += data.decode("utf-8", errors="replace")
 
-            self.file_pointer = logs.pointer
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    if not self.filter_rcon or filter_rcon_line(line):
+                        await self._send_dict({"type": "log", "content": line + "\n"})
 
-    async def _handle_messages(self, server_id: str):
+            except BlockingIOError:
+                await asyncio.sleep(0.01)
+            except Exception as e:
+                if not self._closed:
+                    await self._send_error(f"Stream error: {e}")
+                break
+
+    async def _handle_messages(self):
         """Handle incoming messages."""
         while True:
             message = await self.websocket.receive_text()
@@ -152,55 +165,32 @@ class ConsoleWebSocketHandler:
 
         if message_type == "command":
             await self._handle_command(data)
-        elif message_type == "set_filter":
-            await self._handle_filter_change(data)
-        elif message_type == "refresh_logs":
-            await self._handle_log_refresh(data)
+        else:
+            await self._send_dict(
+                {"type": "info", "message": f"未知消息类型: {message_type}"}
+            )
 
     async def _handle_command(self, data: dict):
-        """Handle command execution."""
+        """Send command to container via attach socket."""
         command = data.get("command", "").strip()
         if not command:
             return
 
+        if self._socket is None:
+            await self._send_dict({"type": "info", "message": "控制台连接未建立"})
+            return
+
         try:
-            await self.instance.send_command_stdin(command)
-        except RuntimeError as e:
-            error_message = str(e)
-            if "CREATE_CONSOLE_IN_PIPE" in error_message:
-                await self._send_dict(
-                    {
-                        "type": "info",
-                        "message": "发送指令需要在Compose文件中设置环境变量CREATE_CONSOLE_IN_PIPE=true",
-                    }
-                )
-            else:
-                await self._send_dict({"type": "info", "message": error_message})
+            loop = asyncio.get_running_loop()
+            await loop.sock_sendall(
+                self._socket._sock, (command + "\n").encode("utf-8")
+            )
         except Exception as e:
-            await self._send_dict({"type": "info", "message": str(e)})
-
-    async def _handle_filter_change(self, data: dict):
-        """Handle RCON filter toggle."""
-        filter_rcon = data.get("filter_rcon", True)
-        self.filter_rcon = bool(filter_rcon)
-
-        # Send confirmation message
-        await self._send_dict(
-            {"type": "filter_updated", "filter_rcon": self.filter_rcon}
-        )
-
-    async def _handle_log_refresh(self, _data: dict):
-        """Handle log refresh request with current filter settings."""
-        log_path = await self.instance._get_log_path()
-        await self._send_logs_with_message_type(log_path, "logs_refreshed")
+            await self._send_dict({"type": "info", "message": f"发送指令失败: {e}"})
 
     async def _send_error(self, message: str):
         """Send error message."""
         await self._send_dict({"type": "error", "message": message})
-
-    async def _send_not_found(self):
-        """Send not found message."""
-        await self._send_error("控制台日志未找到")
 
     async def _handle_connection_error(self, error: Exception):
         """Handle connection errors."""
@@ -220,9 +210,22 @@ class ConsoleWebSocketHandler:
 
     def _cleanup(self):
         """Clean up resources."""
-        if self.watchfiles_stop_event:
-            self.watchfiles_stop_event.set()
-        if self.file_watch_task:
-            self.file_watch_task.cancel()
-        if self.file_size_watch_task:
-            self.file_size_watch_task.cancel()
+        self._closed = True
+
+        if self._read_task:
+            self._read_task.cancel()
+            self._read_task = None
+
+        if self._socket:
+            try:
+                self._socket.close()
+            except Exception:
+                pass
+            self._socket = None
+
+        if self._docker_client:
+            try:
+                self._docker_client.close()
+            except Exception:
+                pass
+            self._docker_client = None
