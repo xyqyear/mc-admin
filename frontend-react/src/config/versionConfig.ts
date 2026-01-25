@@ -370,6 +370,15 @@ export const versionUpdates: VersionUpdate[] = [
       '修复带有 mod 称号的玩家（如 PlayerName the Gullible）成就无法正确记录的问题 #117 #118',
       '修复没有会话记录的玩家 last_seen 显示错误的问题 #115',
     ]
+  },
+  {
+    version: '1.3.5',
+    date: '2026-01-25',
+    title: '文件上传权限修复',
+    description: '修复多文件上传时中间目录权限设置不正确的问题。',
+    fixes: [
+      '修复上传文件到嵌套路径时，中间目录权限未正确设置导致 Minecraft 服务器容器无法访问的问题 #106',
+    ]
   }
 ]
 
