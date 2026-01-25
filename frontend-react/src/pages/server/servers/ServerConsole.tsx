@@ -196,6 +196,7 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         {/* 终端区域 */}
         <ServerTerminal
           ref={terminalRef}
+          serverId={serverId}
           onCommand={handleCommand}
           onReady={handleTerminalReady}
           className="h-full"
