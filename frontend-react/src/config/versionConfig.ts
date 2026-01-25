@@ -360,6 +360,16 @@ export const versionUpdates: VersionUpdate[] = [
       '移除已删除功能的相关测试代码',
       'API 参数使用 pattern 替换已弃用的 regex #114',
     ]
+  },
+  {
+    version: '1.3.4',
+    date: '2026-01-25',
+    title: '玩家成就匹配修复',
+    description: '修复玩家成就记录和最后在线时间显示的问题。',
+    fixes: [
+      '修复带有 mod 称号的玩家（如 PlayerName the Gullible）成就无法正确记录的问题 #117 #118',
+      '修复没有会话记录的玩家 last_seen 显示错误的问题 #115',
+    ]
   }
 ]
 
