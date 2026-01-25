@@ -379,6 +379,21 @@ export const versionUpdates: VersionUpdate[] = [
     fixes: [
       '修复上传文件到嵌套路径时，中间目录权限未正确设置导致 Minecraft 服务器容器无法访问的问题 #106',
     ]
+  },
+  {
+    version: '1.4.0',
+    date: '2026-01-25',
+    title: '控制台系统重构',
+    description: '控制台后端架构重构，使用 Docker 原生 API 实现更可靠的日志流式传输，并新增终端命令历史导航功能。',
+    features: [
+      '终端支持上下箭头键选择历史指令 #101'
+    ],
+    improvements: [
+      '使用 docker-py attach socket 替代基于文件的日志读取和基于mc-send-to-console的指令发送',
+    ],
+    fixes: [
+      '修复控制台日志重复显示的问题 #80'
+    ]
   }
 ]
 
