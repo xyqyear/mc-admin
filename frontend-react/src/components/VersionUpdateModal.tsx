@@ -91,8 +91,8 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
         {relevantUpdates.length > 0 ? (
           <Timeline
             items={relevantUpdates.map(update => ({
-              dot: <ClockCircleOutlined className="text-blue-500" />,
-              children: (
+              icon: <ClockCircleOutlined className="text-blue-500" />,
+              content: (
                 <div>
                   <div className="mb-3">
                     <Space>
