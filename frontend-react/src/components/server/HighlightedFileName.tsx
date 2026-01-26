@@ -8,29 +8,27 @@ interface HighlightedFileNameProps {
   onClick?: () => void
 }
 
-const HighlightedFileName: React.FC<HighlightedFileNameProps> = ({
-  name,
-  matchResult,
-  className = '',
-  onClick
-}) => {
-  // If there's no match result or highlighted text, just render the plain name
-  if (!matchResult?.highlightedText) {
+const HighlightedFileName = React.forwardRef<HTMLSpanElement, HighlightedFileNameProps>(
+  ({ name, matchResult, className = '', onClick }, ref) => {
+    if (!matchResult?.highlightedText) {
+      return (
+        <span ref={ref} className={className} onClick={onClick}>
+          {name}
+        </span>
+      )
+    }
+
     return (
-      <span className={className} onClick={onClick}>
-        {name}
-      </span>
+      <span
+        ref={ref}
+        className={className}
+        onClick={onClick}
+        dangerouslySetInnerHTML={{ __html: matchResult.highlightedText }}
+      />
     )
   }
+)
 
-  // Render highlighted text with dangerouslySetInnerHTML
-  return (
-    <span
-      className={className}
-      onClick={onClick}
-      dangerouslySetInnerHTML={{ __html: matchResult.highlightedText }}
-    />
-  )
-}
+HighlightedFileName.displayName = 'HighlightedFileName'
 
 export default HighlightedFileName
