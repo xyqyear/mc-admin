@@ -4,7 +4,7 @@ import {
   Card,
   Button,
   Alert,
-  message,
+  App,
   Modal
 } from 'antd'
 import {
@@ -26,6 +26,7 @@ import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 const ServerCompose: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { modal, message } = App.useApp()
 
   // 使用新的数据管理系统
   const { useServerComposeData } = useServerDetailQueries(id || '')
@@ -115,7 +116,7 @@ const ServerCompose: React.FC = () => {
 
     const hasChanges = rawYaml.trim() !== composeContent?.trim()
 
-    Modal.confirm({
+    modal.confirm({
       title: '提交并重建服务器',
       content: (
         <div className="space-y-4">
@@ -190,7 +191,7 @@ const ServerCompose: React.FC = () => {
   }
 
   const handleReset = () => {
-    Modal.confirm({
+    modal.confirm({
       title: '重新载入配置',
       content: '确定要重新载入配置吗？这将丢失当前编辑器中的更改，恢复到服务器的在线配置。',
       okText: '确认',
