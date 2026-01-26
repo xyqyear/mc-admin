@@ -251,7 +251,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     title={`预览${isServerMode ? '服务器' : ''}快照回滚 - ${snapshotId}`}
     open={open}
     onClose={onCancel}
-    width={800}
+    size={800}
     placement="right"
   >
     {loading ? (
