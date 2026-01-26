@@ -394,6 +394,20 @@ export const versionUpdates: VersionUpdate[] = [
     fixes: [
       '修复控制台日志重复显示的问题 #80'
     ]
+  },
+  {
+    version: '1.5.0',
+    date: '2026-01-26',
+    title: 'Compose 编辑器体验优化',
+    description: '服务器 Compose 配置编辑器新增配置项提示功能，并修复多项控制台警告。',
+    features: [
+      '增强服务器 Compose 设置的可用配置项提示（鼠标悬浮编辑器中的配置项时显示详细说明） #121'
+    ],
+    fixes: [
+      '修复 Monaco 编辑器切换时诊断信息重复显示的问题 #122',
+      '修复 Ant Design v6 相关的废弃 API 警告 #105',
+      '修复文件组件 ref 警告 #123'
+    ]
   }
 ]
 
