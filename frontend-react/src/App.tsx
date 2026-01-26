@@ -65,7 +65,7 @@ function App() {
   const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)
     notification.error({
-      message: 'Application Error',
+      title: 'Application Error',
       description: 'An unexpected error occurred. Please refresh the page.',
       duration: 0,
     })
