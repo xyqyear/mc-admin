@@ -1,0 +1,901 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "mc-server-compose-schema.json",
+  "type": "object",
+  "title": "MC Admin Docker Minecraft Server Compose Schema",
+  "description": "用于 MC Admin 的 Docker Minecraft Server Compose 文件配置。基于 itzg/minecraft-server 镜像。",
+  "required": ["services"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "deprecated": true,
+      "description": "已弃用，声明是为了向后兼容，但会被忽略。",
+      "markdownDescription": "已弃用，声明是为了向后兼容，但会被忽略。\n\n[Docker Compose 文档](https://docs.docker.com/reference/compose-file/version-and-name/)"
+    },
+    "name": {
+      "type": "string",
+      "description": "定义 Compose 项目名称。",
+      "markdownDescription": "定义 Compose 项目名称。\n\n[Docker Compose 文档](https://docs.docker.com/reference/compose-file/version-and-name/)"
+    },
+    "services": {
+      "type": "object",
+      "description": "服务定义。MC Admin 要求必须包含名为 'mc' 的服务。",
+      "required": ["mc"],
+      "properties": {
+        "mc": {
+          "$ref": "#/definitions/mc_service"
+        }
+      },
+      "additionalProperties": false
+    },
+    "volumes": {
+      "type": "object",
+      "description": "命名卷定义。",
+      "additionalProperties": {
+        "type": ["object", "null"]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "mc_service": {
+      "type": "object",
+      "description": "Minecraft 服务器服务配置。",
+      "required": [
+        "image",
+        "container_name",
+        "environment",
+        "ports",
+        "volumes",
+        "stdin_open",
+        "tty",
+        "restart"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "Docker 镜像名称。必须包含 itzg/minecraft-server，可以使用自定义仓库。",
+          "markdownDescription": "Docker 镜像名称。必须包含 `itzg/minecraft-server`，支持自定义仓库前缀。\n\n**格式**: `[registry/]itzg/minecraft-server[:tag]`\n\n**常用标签**:\n- `java8` - Java 8 (旧版本)\n- `java11` - Java 11 (1.17-1.20)\n- `java17` - Java 17 (1.18+)\n- `java21` - Java 21\n- `java21-graalvm` - Java 21 + GraalVM (推荐)\n- `java25-graalvm` - Java 25 + GraalVM (最新)\n\n[Java 版本文档](https://docker-minecraft-server.readthedocs.io/en/latest/versions/java/)",
+          "pattern": "^(.+/)?itzg/minecraft-server(:.+)?$",
+          "examples": [
+            "itzg/minecraft-server:java21-graalvm",
+            "itzg/minecraft-server:java17",
+            "example.com/itzg/minecraft-server:java21-graalvm"
+          ]
+        },
+        "container_name": {
+          "type": "string",
+          "description": "容器名称。必须以 'mc-' 开头，后跟服务器名称。",
+          "markdownDescription": "容器名称。**必须以 `mc-` 开头**，后跟服务器名称。\n\n**示例**:\n- `mc-vanilla` - 原版服务器\n- `mc-forge-1201` - Forge 1.20.1 服务器\n- `mc-fabric-server` - Fabric 服务器",
+          "pattern": "^mc-.+$",
+          "examples": ["mc-vanilla", "mc-forge", "mc-fabric-server"]
+        },
+        "cpus": {
+          "type": ["number", "string"],
+          "description": "CPU 限制。",
+          "markdownDescription": "CPU 核心数限制。\n\n**示例**: `4` 表示最多使用 4 个 CPU 核心。\n\n[Docker 资源限制文档](https://docs.docker.com/compose/compose-file/deploy/#resources)"
+        },
+        "mem_limit": {
+          "type": "string",
+          "description": "内存限制。",
+          "markdownDescription": "内存限制。\n\n**示例**: `8G`, `4096M`\n\n[Docker 资源限制文档](https://docs.docker.com/compose/compose-file/deploy/#resources)"
+        },
+        "environment": {
+          "$ref": "#/definitions/mc_environment"
+        },
+        "ports": {
+          "type": "array",
+          "description": "端口映射。必须包含游戏端口 (25565) 和 RCON 端口 (25575)。",
+          "markdownDescription": "端口映射配置。\n\n**必需端口**:\n- 游戏端口: `<host>:25565` (容器内部端口必须为 25565)\n- RCON 端口: `<host>:25575` (容器内部端口必须为 25575)\n\n**格式**: `[host_ip:]host_port:container_port[/protocol]`\n\n**示例**:\n- `25565:25565` - 游戏端口\n- `25575:25575` - RCON 端口\n- `24454:24454/udp` - Simple Voice Chat\n\n[Docker Compose 端口文档](https://docs.docker.com/compose/compose-file/05-services/#ports)",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(\\d{1,3}(\\.\\d{1,3}){3}:)?(\\d+(-\\d+)?:)?\\d+(-\\d+)?(/\\w+)?$"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "target": { "type": "integer" },
+                  "published": { "type": ["string", "integer"] },
+                  "protocol": { "type": "string", "enum": ["tcp", "udp"] },
+                  "host_ip": { "type": "string" }
+                }
+              }
+            ]
+          },
+          "contains": {
+            "anyOf": [
+              { "type": "string", "pattern": ":\\s*25565(/tcp)?$" },
+              { "type": "object", "properties": { "target": { "const": 25565 } } }
+            ]
+          },
+          "minItems": 2,
+          "examples": [
+            ["25565:25565", "25575:25575"],
+            ["25566:25565", "25666:25575"]
+          ]
+        },
+        "volumes": {
+          "type": "array",
+          "description": "卷挂载。必须包含 ./data:/data 用于数据持久化。",
+          "markdownDescription": "卷挂载配置。\n\n**必需挂载**:\n- `./data:/data` - Minecraft 服务器数据目录\n\n**格式**: `source:target[:options]`\n\n**示例**:\n- `./data:/data` - 数据目录\n- `/home/user/mods:/data/mods:ro` - 只读挂载 mods\n\n[Docker Compose 卷文档](https://docs.docker.com/compose/compose-file/05-services/#volumes)",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string" },
+                  "source": { "type": "string" },
+                  "target": { "type": "string" },
+                  "read_only": { "type": "boolean" }
+                }
+              }
+            ]
+          },
+          "contains": {
+            "anyOf": [
+              { "type": "string", "pattern": "^\\./data:/data" },
+              { "type": "object", "properties": { "target": { "const": "/data" } } }
+            ]
+          },
+          "examples": [
+            ["./data:/data"],
+            ["./data:/data", "/home/user/bluemap:/data/bluemap"]
+          ]
+        },
+        "stdin_open": {
+          "type": "boolean",
+          "enum": [true, "true", "TRUE"],
+          "description": "保持 STDIN 打开。必须设置为 true。",
+          "markdownDescription": "保持 STDIN 打开，用于控制台交互。**必须设置为 `true`**。\n\n[Docker Compose 文档](https://docs.docker.com/compose/compose-file/05-services/#stdin_open)"
+        },
+        "tty": {
+          "type": "boolean",
+          "enum": [true, "true", "TRUE"],
+          "description": "分配伪 TTY。必须设置为 true。",
+          "markdownDescription": "分配伪 TTY，用于控制台交互。**必须设置为 `true`**。\n\n[Docker Compose 文档](https://docs.docker.com/compose/compose-file/05-services/#tty)"
+        },
+        "restart": {
+          "type": "string",
+          "description": "重启策略。",
+          "markdownDescription": "容器重启策略。\n\n**可选值**:\n- `no` - 不自动重启\n- `always` - 总是重启\n- `on-failure` - 失败时重启\n- `unless-stopped` - 除非手动停止否则重启 (推荐)\n\n[Docker Compose 文档](https://docs.docker.com/compose/compose-file/05-services/#restart)",
+          "enum": ["no", "always", "on-failure", "unless-stopped"],
+          "default": "unless-stopped"
+        },
+        "networks": {
+          "type": ["array", "object"],
+          "description": "网络配置。"
+        },
+        "depends_on": {
+          "type": ["array", "object"],
+          "description": "服务依赖。"
+        },
+        "healthcheck": {
+          "type": "object",
+          "description": "健康检查配置。",
+          "markdownDescription": "健康检查配置。docker-minecraft-server 镜像内置了健康检查。\n\n[健康检查文档](https://docker-minecraft-server.readthedocs.io/en/latest/misc/healthcheck/)"
+        },
+        "labels": {
+          "type": ["object", "array"],
+          "description": "容器标签。"
+        },
+        "logging": {
+          "type": "object",
+          "description": "日志配置。"
+        },
+        "user": {
+          "type": "string",
+          "description": "运行用户。"
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "工作目录。"
+        },
+        "command": {
+          "type": ["string", "array"],
+          "description": "覆盖默认命令。"
+        },
+        "entrypoint": {
+          "type": ["string", "array"],
+          "description": "覆盖默认入口点。"
+        },
+        "extra_hosts": {
+          "type": ["array", "object"],
+          "description": "额外的 hosts 映射。"
+        },
+        "hostname": {
+          "type": "string",
+          "description": "容器主机名。"
+        },
+        "privileged": {
+          "type": "boolean",
+          "description": "特权模式。"
+        },
+        "cap_add": {
+          "type": "array",
+          "description": "添加 Linux capabilities。"
+        },
+        "cap_drop": {
+          "type": "array",
+          "description": "移除 Linux capabilities。"
+        },
+        "security_opt": {
+          "type": "array",
+          "description": "安全选项。"
+        },
+        "ulimits": {
+          "type": "object",
+          "description": "Ulimit 配置。"
+        },
+        "sysctls": {
+          "type": "object",
+          "description": "Sysctl 配置。"
+        },
+        "stop_grace_period": {
+          "type": "string",
+          "description": "停止宽限期。"
+        },
+        "stop_signal": {
+          "type": "string",
+          "description": "停止信号。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mc_environment": {
+      "type": "object",
+      "description": "Minecraft 服务器环境变量配置。",
+      "required": ["EULA", "VERSION", "TYPE", "TZ", "MAX_MEMORY", "ONLINE_MODE", "ENABLE_RCON", "RCON_PASSWORD", "PREVENT_PROXY_CONNECTIONS", "ENABLE_QUERY"],
+      "properties": {
+        "EULA": {
+          "type": ["boolean", "string"],
+          "description": "接受 Minecraft EULA。必须设置为 true。",
+          "markdownDescription": "接受 Minecraft 最终用户许可协议。**必须设置为 `true`**。\n\n通过设置此值为 `true`，您表示同意 [Minecraft EULA](https://www.minecraft.net/eula)。\n\n[文档](https://docker-minecraft-server.readthedocs.io/en/latest/)",
+          "enum": [true, "true", "TRUE"]
+        },
+        "VERSION": {
+          "type": "string",
+          "description": "Minecraft 版本。",
+          "markdownDescription": "Minecraft 服务器版本。\n\n**常用值**:\n- `LATEST` - 最新稳定版\n- `SNAPSHOT` - 最新快照版\n- `1.20.1`, `1.21.1` 等 - 指定版本\n\n[版本文档](https://docker-minecraft-server.readthedocs.io/en/latest/versions/minecraft/)",
+          "examples": ["1.20.1", "1.21.1", "LATEST", "SNAPSHOT"]
+        },
+        "TYPE": {
+          "type": "string",
+          "description": "服务器类型。",
+          "markdownDescription": "Minecraft 服务器类型。\n\n**可选值**:\n- `VANILLA` - 原版服务器\n- `PAPER` - Paper 服务器 (性能优化)\n- `SPIGOT` - Spigot 服务器\n- `BUKKIT` - Bukkit 服务器\n- `FORGE` - Forge 模组服务器\n- `NEOFORGE` - NeoForge 模组服务器\n- `FABRIC` - Fabric 模组服务器\n- `QUILT` - Quilt 模组服务器\n- `CUSTOM` - 自定义服务器\n\n[服务器类型文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/)",
+          "enum": [
+            "VANILLA",
+            "PAPER",
+            "SPIGOT",
+            "BUKKIT",
+            "FORGE",
+            "NEOFORGE",
+            "FABRIC",
+            "QUILT",
+            "CUSTOM",
+            "MAGMA",
+            "MOHIST",
+            "CATSERVER",
+            "PURPUR",
+            "PUFFERFISH",
+            "CANYON",
+            "SPONGEVANILLA",
+            "LIMBO",
+            "CRUCIBLE",
+            "FTBA",
+            "CURSEFORGE",
+            "AUTO_CURSEFORGE",
+            "MODRINTH"
+          ],
+          "default": "VANILLA"
+        },
+        "TZ": {
+          "type": "string",
+          "description": "时区设置。",
+          "markdownDescription": "容器时区设置。\n\n**常用值**:\n- `Asia/Shanghai` - 中国标准时间\n- `UTC` - 协调世界时\n- `America/New_York` - 美国东部时间\n\n[时区列表](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
+          "examples": ["Asia/Shanghai", "UTC", "America/New_York"],
+          "default": "Asia/Shanghai"
+        },
+        "INIT_MEMORY": {
+          "type": "string",
+          "description": "JVM 初始堆内存大小。",
+          "markdownDescription": "JVM 初始堆内存大小 (`-Xms`)。\n\n**格式**: 数字 + 单位 (K/M/G)\n\n**建议**: 设置为 `0G` 或与 `MAX_MEMORY` 相同的值。\n\n[内存配置文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)",
+          "pattern": "^\\d+[KMGkmg]?$",
+          "examples": ["0G", "2G", "4G"]
+        },
+        "MAX_MEMORY": {
+          "type": "string",
+          "description": "JVM 最大堆内存大小。",
+          "markdownDescription": "JVM 最大堆内存大小 (`-Xmx`)。\n\n**格式**: 数字 + 单位 (K/M/G)\n\n**建议**:\n- 原版/Paper: 4-8G\n- 轻量模组包: 6-10G\n- 大型模组包: 8-16G\n\n[内存配置文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)",
+          "pattern": "^\\d+[KMGkmg]?$",
+          "examples": ["4G", "6G", "8G", "10G"]
+        },
+        "MEMORY": {
+          "type": "string",
+          "description": "同时设置初始和最大堆内存。",
+          "markdownDescription": "同时设置 JVM 初始和最大堆内存（`-Xms` 和 `-Xmx` 使用相同值）。\n\n如果设置了 `INIT_MEMORY` 或 `MAX_MEMORY`，此值将被忽略。\n\n[内存配置文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)",
+          "pattern": "^\\d+[KMGkmg]?$"
+        },
+        "ONLINE_MODE": {
+          "type": ["boolean", "string"],
+          "description": "是否启用正版验证。",
+          "markdownDescription": "是否启用 Mojang 正版验证。\n\n- `true` - 启用正版验证 (推荐)\n- `false` - 禁用正版验证 (离线模式)\n\n**注意**: 禁用正版验证可能存在安全风险。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "MOTD": {
+          "type": "string",
+          "description": "服务器 MOTD (每日消息)。",
+          "markdownDescription": "服务器列表中显示的消息。\n\n支持格式代码 (`§` 符号) 和多行 (`\\n`)。\n\n**示例**:\n- `A Minecraft Server`\n- `§aWelcome!§r\\n§7Join us!`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "DIFFICULTY": {
+          "type": "string",
+          "description": "游戏难度。",
+          "markdownDescription": "游戏难度设置。\n\n**可选值**:\n- `peaceful` - 和平\n- `easy` - 简单\n- `normal` - 普通\n- `hard` - 困难\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "enum": ["peaceful", "easy", "normal", "hard"],
+          "default": "easy"
+        },
+        "MODE": {
+          "type": "string",
+          "description": "游戏模式。",
+          "markdownDescription": "默认游戏模式。\n\n**可选值**:\n- `survival` - 生存模式\n- `creative` - 创造模式\n- `adventure` - 冒险模式\n- `spectator` - 旁观者模式 (1.8+)\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "enum": ["survival", "creative", "adventure", "spectator"],
+          "default": "survival"
+        },
+        "LEVEL": {
+          "type": "string",
+          "description": "世界存档名称。",
+          "markdownDescription": "世界存档文件夹名称。\n\n默认值: `world`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": "world"
+        },
+        "LEVEL_TYPE": {
+          "type": "string",
+          "description": "世界生成类型。",
+          "markdownDescription": "世界生成类型。\n\n**常用值**:\n- `minecraft:normal` - 标准世界 (默认)\n- `minecraft:flat` - 超平坦\n- `minecraft:large_biomes` - 巨型生物群系\n- `minecraft:amplified` - 放大化\n- `minecraft:single_biome_surface` - 单一生物群系\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "examples": ["minecraft:normal", "minecraft:flat", "minecraft:large_biomes"]
+        },
+        "SEED": {
+          "type": ["string", "number"],
+          "description": "世界种子。",
+          "markdownDescription": "世界生成种子。\n\n可以是数字或字符串。负数需要用引号包裹。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "examples": ["12345", "-987654321", "my_seed_string"]
+        },
+        "GENERATE_STRUCTURES": {
+          "type": ["boolean", "string"],
+          "description": "是否生成结构。",
+          "markdownDescription": "是否生成村庄、神殿等结构。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "VIEW_DISTANCE": {
+          "type": ["integer", "string"],
+          "description": "视距 (区块数)。",
+          "markdownDescription": "服务器视距，单位为区块。\n\n**建议值**: 8-12\n\n较大的值会增加服务器负载。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 10
+        },
+        "SIMULATION_DISTANCE": {
+          "type": ["integer", "string"],
+          "description": "模拟距离 (区块数)。",
+          "markdownDescription": "实体模拟距离，单位为区块。\n\n**建议值**: 6-10\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "MAX_PLAYERS": {
+          "type": ["integer", "string"],
+          "description": "最大玩家数。",
+          "markdownDescription": "服务器最大玩家数量。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": 20
+        },
+        "SPAWN_PROTECTION": {
+          "type": ["integer", "string"],
+          "description": "出生点保护半径。",
+          "markdownDescription": "出生点保护半径（方块数）。设置为 `0` 禁用保护。\n\n只有 OP 可以在保护区域内修改方块。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "minimum": 0,
+          "default": 16
+        },
+        "ALLOW_FLIGHT": {
+          "type": ["boolean", "string"],
+          "description": "是否允许飞行。",
+          "markdownDescription": "是否允许玩家在生存模式下飞行。\n\n**注意**: 安装飞行模组时需要设置为 `true`。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": false
+        },
+        "ALLOW_NETHER": {
+          "type": ["boolean", "string"],
+          "description": "是否允许下界。",
+          "markdownDescription": "是否启用下界维度。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "ENABLE_COMMAND_BLOCK": {
+          "type": ["boolean", "string"],
+          "description": "是否启用命令方块。",
+          "markdownDescription": "是否启用命令方块。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": false
+        },
+        "HARDCORE": {
+          "type": ["boolean", "string"],
+          "description": "是否启用极限模式。",
+          "markdownDescription": "是否启用极限模式（死亡后被封禁）。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": false
+        },
+        "PVP": {
+          "type": ["boolean", "string"],
+          "description": "是否启用 PVP。",
+          "markdownDescription": "是否允许玩家互相攻击。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "FORCE_GAMEMODE": {
+          "type": ["boolean", "string"],
+          "description": "是否强制游戏模式。",
+          "markdownDescription": "玩家加入时是否强制设置为服务器默认游戏模式。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": false
+        },
+        "MAX_TICK_TIME": {
+          "type": ["integer", "string"],
+          "description": "最大 tick 时间 (毫秒)。",
+          "markdownDescription": "单个 tick 的最大时间（毫秒）。超过此时间服务器将崩溃。\n\n设置为 `-1` 禁用看门狗。\n\n**建议**: 模组服务器建议设置为 `-1`。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": 60000
+        },
+        "PAUSE_WHEN_EMPTY_SECONDS": {
+          "type": ["integer", "string"],
+          "description": "无玩家时暂停 (1.21.4+)。",
+          "markdownDescription": "无玩家在线时暂停服务器的等待时间（秒）。仅 1.21.4+ 可用。\n\n设置为 `-1` 禁用此功能。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "SYNC_CHUNK_WRITES": {
+          "type": ["boolean", "string"],
+          "description": "同步区块写入。",
+          "markdownDescription": "是否同步写入区块数据。\n\n设置为 `false` 可能提高性能，但增加数据损坏风险。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "PREVENT_PROXY_CONNECTIONS": {
+          "type": ["boolean", "string"],
+          "description": "是否阻止代理连接。",
+          "markdownDescription": "是否阻止通过代理/VPN 连接的玩家。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": false
+        },
+        "ENABLE_RCON": {
+          "type": ["boolean", "string"],
+          "enum": [true, "true", "TRUE"],
+          "description": "是否启用 RCON。",
+          "markdownDescription": "是否启用 RCON 远程控制。\n\n**MC Admin 需要启用 RCON** 以执行控制台命令。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "RCON_PASSWORD": {
+          "type": "string",
+          "description": "RCON 密码。",
+          "markdownDescription": "RCON 连接密码。\n\n如果未设置，将自动生成随机密码。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "RCON_PORT": {
+          "type": ["integer", "string"],
+          "description": "RCON 端口。",
+          "markdownDescription": "RCON 监听端口（容器内部）。\n\n默认值: `25575`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": 25575
+        },
+        "BROADCAST_RCON_TO_OPS": {
+          "type": ["boolean", "string"],
+          "description": "向 OP 广播 RCON 命令。",
+          "markdownDescription": "是否将 RCON 执行的命令广播给所有 OP。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": true
+        },
+        "ENABLE_QUERY": {
+          "type": ["boolean", "string"],
+          "enum": [true, "true", "TRUE"],
+          "description": "是否启用 Query 协议。",
+          "markdownDescription": "是否启用 GameSpy4 Query 协议。\n\n启用后可以通过 UDP 查询服务器信息。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "QUERY_PORT": {
+          "type": ["integer", "string"],
+          "description": "Query 端口。",
+          "markdownDescription": "Query 协议监听端口 (UDP)。\n\n默认值: `25565`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)",
+          "default": 25565
+        },
+        "ENABLE_WHITELIST": {
+          "type": ["boolean", "string"],
+          "description": "是否启用白名单。",
+          "markdownDescription": "是否启用服务器白名单。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "WHITE_LIST": {
+          "type": ["boolean", "string"],
+          "description": "白名单开关 (同 ENABLE_WHITELIST)。",
+          "markdownDescription": "是否启用服务器白名单。等同于 `ENABLE_WHITELIST`。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "WHITELIST": {
+          "type": "string",
+          "description": "白名单玩家列表。",
+          "markdownDescription": "白名单玩家列表，用逗号分隔用户名或 UUID。\n\n**示例**: `player1,player2,uuid-here`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "OPS": {
+          "type": "string",
+          "description": "OP 玩家列表。",
+          "markdownDescription": "OP 玩家列表，用逗号分隔用户名或 UUID。\n\n**示例**: `admin1,admin2`\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "ICON": {
+          "type": "string",
+          "description": "服务器图标。",
+          "markdownDescription": "服务器图标 URL 或容器内路径。\n\n图标必须是 64x64 PNG 格式。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "USE_AIKAR_FLAGS": {
+          "type": ["boolean", "string"],
+          "description": "使用 Aikar 的 JVM 标志。",
+          "markdownDescription": "使用 Aikar 的优化 JVM GC 标志。\n\n**推荐**: 对于大多数服务器启用此选项可以改善性能。\n\n[JVM 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)",
+          "default": false
+        },
+        "USE_MEOWICE_FLAGS": {
+          "type": ["boolean", "string"],
+          "description": "使用 MeowIce 的 JVM 标志。",
+          "markdownDescription": "使用 MeowIce 更新的 JVM 标志（支持 Java 17+）。\n\n[JVM 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)"
+        },
+        "JVM_OPTS": {
+          "type": "string",
+          "description": "自定义 JVM 选项。",
+          "markdownDescription": "自定义 JVM 选项（空格分隔）。\n\n**示例**: `-XX:+UseCompactObjectHeaders -XX:+AlwaysPreTouch`\n\n[JVM 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)"
+        },
+        "JVM_XX_OPTS": {
+          "type": "string",
+          "description": "自定义 JVM -XX 选项。",
+          "markdownDescription": "自定义 JVM `-XX` 选项（空格分隔）。\n\n这些选项会在 `-X` 选项之前添加。\n\n[JVM 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)"
+        },
+        "JVM_DD_OPTS": {
+          "type": "string",
+          "description": "JVM 系统属性。",
+          "markdownDescription": "JVM 系统属性，格式为 `name=value,name2=value2`。\n\n[JVM 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/variables/)"
+        },
+        "EXTRA_ARGS": {
+          "type": "string",
+          "description": "传递给服务器 jar 的额外参数。",
+          "markdownDescription": "传递给服务器 jar 文件的额外参数。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "GUI": {
+          "type": ["boolean", "string"],
+          "description": "是否启用 GUI。",
+          "markdownDescription": "是否启用服务器 GUI。\n\n在 Docker 环境中通常设置为 `false`。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)",
+          "default": false
+        },
+        "CREATE_CONSOLE_IN_PIPE": {
+          "type": ["boolean", "string"],
+          "description": "创建控制台输入管道。",
+          "markdownDescription": "创建控制台输入管道，用于通过 WebSocket 发送命令。\n\n**MC Admin 需要此选项** 以支持控制台功能。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "UID": {
+          "type": ["integer", "string"],
+          "description": "容器用户 ID。",
+          "markdownDescription": "容器进程运行的 Linux 用户 ID。\n\n默认值: `1000`\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "GID": {
+          "type": ["integer", "string"],
+          "description": "容器组 ID。",
+          "markdownDescription": "容器进程运行的 Linux 组 ID。\n\n默认值: `1000`\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "STOP_DURATION": {
+          "type": ["integer", "string"],
+          "description": "优雅停止等待时间 (秒)。",
+          "markdownDescription": "服务器优雅停止的等待时间（秒）。\n\n默认值: `60`\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "STOP_SERVER_ANNOUNCE_DELAY": {
+          "type": ["integer", "string"],
+          "description": "停止公告延迟 (秒)。",
+          "markdownDescription": "发送停止公告后等待的时间（秒）。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "SETUP_ONLY": {
+          "type": ["boolean", "string"],
+          "description": "仅设置文件，不启动服务器。",
+          "markdownDescription": "仅下载和设置文件，不启动服务器。\n\n用于预配置或测试。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "DEBUG": {
+          "type": ["boolean", "string"],
+          "description": "启用调试模式。",
+          "markdownDescription": "启用容器启动诊断信息。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "FORCE_REDOWNLOAD": {
+          "type": ["boolean", "string"],
+          "description": "强制重新下载。",
+          "markdownDescription": "强制重新下载服务器文件。\n\n用于修复损坏的文件。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "LOG_TIMESTAMP": {
+          "type": ["boolean", "string"],
+          "description": "日志添加时间戳。",
+          "markdownDescription": "在初始化日志中添加时间戳。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+        },
+        "RESOURCE_PACK": {
+          "type": "string",
+          "description": "资源包 URL。",
+          "markdownDescription": "自定义资源包下载 URL。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "RESOURCE_PACK_SHA1": {
+          "type": "string",
+          "description": "资源包 SHA1 校验和。",
+          "markdownDescription": "资源包的 SHA1 校验和，用于验证完整性。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "RESOURCE_PACK_ENFORCE": {
+          "type": ["boolean", "string"],
+          "description": "强制使用资源包。",
+          "markdownDescription": "是否强制客户端使用资源包。\n\n[Server Properties 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/)"
+        },
+        "ENABLE_AUTOPAUSE": {
+          "type": ["boolean", "string"],
+          "description": "启用自动暂停。",
+          "markdownDescription": "无玩家时自动暂停服务器。\n\n[Autopause 文档](https://docker-minecraft-server.readthedocs.io/en/latest/misc/autopause/)"
+        },
+        "AUTOPAUSE_TIMEOUT_EST": {
+          "type": ["integer", "string"],
+          "description": "自动暂停超时 (秒)。",
+          "markdownDescription": "最后一个玩家断开连接后暂停的等待时间（秒）。\n\n默认值: `3600`\n\n[Autopause 文档](https://docker-minecraft-server.readthedocs.io/en/latest/misc/autopause/)"
+        },
+        "ENABLE_AUTOSTOP": {
+          "type": ["boolean", "string"],
+          "description": "启用自动停止。",
+          "markdownDescription": "无玩家时自动停止服务器。\n\n[Autostop 文档](https://docker-minecraft-server.readthedocs.io/en/latest/misc/autostop/)"
+        },
+        "AUTOSTOP_TIMEOUT_EST": {
+          "type": ["integer", "string"],
+          "description": "自动停止超时 (秒)。",
+          "markdownDescription": "最后一个玩家断开连接后停止的等待时间（秒）。\n\n默认值: `3600`\n\n[Autostop 文档](https://docker-minecraft-server.readthedocs.io/en/latest/misc/autostop/)"
+        },
+        "RCON_CMDS_STARTUP": {
+          "type": "string",
+          "description": "启动时执行的 RCON 命令。",
+          "markdownDescription": "服务器启动后执行的 RCON 命令（分号分隔）。\n\n[Auto-execute 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/rcon/)"
+        },
+        "RCON_CMDS_ON_CONNECT": {
+          "type": "string",
+          "description": "玩家连接时执行的 RCON 命令。",
+          "markdownDescription": "玩家连接时执行的 RCON 命令。\n\n[Auto-execute 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/rcon/)"
+        },
+        "RCON_CMDS_ON_DISCONNECT": {
+          "type": "string",
+          "description": "玩家断开时执行的 RCON 命令。",
+          "markdownDescription": "玩家断开连接时执行的 RCON 命令。\n\n[Auto-execute 文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/rcon/)"
+        },
+        "FORGE_VERSION": {
+          "type": "string",
+          "description": "Forge 版本 (TYPE=FORGE 时使用)。",
+          "markdownDescription": "Forge 模组加载器版本。\n\n**可选值**:\n- `latest` - 最新版本\n- `recommended` - 推荐版本（默认）\n- 具体版本号，如 `47.3.29`\n\n**注意**: 仅当 `TYPE=FORGE` 时有效。\n\n[Forge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/forge/)",
+          "examples": ["47.3.29", "latest", "recommended"]
+        },
+        "FORGE_INSTALLER": {
+          "type": "string",
+          "description": "Forge 安装器路径。",
+          "markdownDescription": "预下载的 Forge 安装器路径（容器内）。\n\n[Forge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/forge/)"
+        },
+        "FORGE_INSTALLER_URL": {
+          "type": "string",
+          "description": "Forge 安装器下载 URL。",
+          "markdownDescription": "自定义 Forge 安装器下载 URL。\n\n[Forge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/forge/)"
+        },
+        "FORGE_FORCE_REINSTALL": {
+          "type": ["boolean", "string"],
+          "description": "强制重新安装 Forge。",
+          "markdownDescription": "强制重新安装 Forge。\n\n用于解决安装错误。\n\n[Forge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/forge/)"
+        },
+        "NEOFORGE_VERSION": {
+          "type": "string",
+          "description": "NeoForge 版本 (TYPE=NEOFORGE 时使用)。",
+          "markdownDescription": "NeoForge 模组加载器版本。\n\n**可选值**:\n- `latest` - 最新稳定版（默认）\n- `beta` - 最新测试版\n- 具体版本号，如 `21.1.209`\n\n**注意**: 仅当 `TYPE=NEOFORGE` 时有效。\n\n[NeoForge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/forge/)",
+          "examples": ["21.1.209", "latest", "beta"]
+        },
+        "FABRIC_LOADER_VERSION": {
+          "type": "string",
+          "description": "Fabric Loader 版本 (TYPE=FABRIC 时使用)。",
+          "markdownDescription": "Fabric 加载器版本。\n\n**默认**: 最新版本\n\n**注意**: 仅当 `TYPE=FABRIC` 时有效。\n\n[Fabric 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)",
+          "examples": ["0.13.1", "0.14.21"]
+        },
+        "FABRIC_LAUNCHER_VERSION": {
+          "type": "string",
+          "description": "Fabric Launcher 版本。",
+          "markdownDescription": "Fabric 启动器版本。\n\n**默认**: 最新版本\n\n[Fabric 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)",
+          "examples": ["0.10.2", "0.11.2"]
+        },
+        "FABRIC_LAUNCHER": {
+          "type": "string",
+          "description": "自定义 Fabric 启动器路径。",
+          "markdownDescription": "自定义 Fabric 启动器 jar 文件路径（相对于 `/data`）。\n\n[Fabric 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)"
+        },
+        "FABRIC_LAUNCHER_URL": {
+          "type": "string",
+          "description": "自定义 Fabric 启动器 URL。",
+          "markdownDescription": "自定义 Fabric 启动器下载 URL。\n\n[Fabric 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)"
+        },
+        "FABRIC_FORCE_REINSTALL": {
+          "type": ["boolean", "string"],
+          "description": "强制重新安装 Fabric。",
+          "markdownDescription": "强制重新安装 Fabric 启动器。\n\n[Fabric 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)"
+        },
+        "QUILT_LOADER_VERSION": {
+          "type": "string",
+          "description": "Quilt Loader 版本 (TYPE=QUILT 时使用)。",
+          "markdownDescription": "Quilt 加载器版本。\n\n**默认**: 最新版本\n\n**注意**: 仅当 `TYPE=QUILT` 时有效。\n\n[Quilt 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/quilt/)",
+          "examples": ["0.16.0", "0.17.1"]
+        },
+        "QUILT_INSTALLER_VERSION": {
+          "type": "string",
+          "description": "Quilt 安装器版本。",
+          "markdownDescription": "Quilt 安装器版本。\n\n**默认**: 最新版本\n\n[Quilt 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/quilt/)",
+          "examples": ["0.4.1", "0.5.0"]
+        },
+        "QUILT_LAUNCHER": {
+          "type": "string",
+          "description": "自定义 Quilt 启动器路径。",
+          "markdownDescription": "自定义 Quilt 启动器 jar 文件路径（相对于 `/data`）。\n\n[Quilt 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/quilt/)"
+        },
+        "QUILT_LAUNCHER_URL": {
+          "type": "string",
+          "description": "自定义 Quilt 启动器 URL。",
+          "markdownDescription": "自定义 Quilt 启动器下载 URL。\n\n[Quilt 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/quilt/)"
+        },
+        "PAPER_BUILD": {
+          "type": ["integer", "string"],
+          "description": "Paper 构建号 (TYPE=PAPER 时使用)。",
+          "markdownDescription": "Paper 特定构建号。\n\n**默认**: 最新构建\n\n**注意**: 仅当 `TYPE=PAPER` 时有效。\n\n[Paper 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/paper/)",
+          "examples": [140, "latest"]
+        },
+        "PAPER_CHANNEL": {
+          "type": "string",
+          "description": "Paper 发布渠道。",
+          "markdownDescription": "Paper 发布渠道。\n\n**可选值**:\n- `default` - 稳定版（默认）\n- `experimental` - 实验版\n\n**注意**: 1.21+ 版本可能需要设置为 `experimental`。\n\n[Paper 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/paper/)",
+          "enum": ["default", "experimental"]
+        },
+        "PAPER_DOWNLOAD_URL": {
+          "type": "string",
+          "description": "自定义 Paper 下载 URL。",
+          "markdownDescription": "自定义 Paper 服务端下载 URL。\n\n[Paper 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/paper/)"
+        },
+        "SPIGOT_DOWNLOAD_URL": {
+          "type": "string",
+          "description": "自定义 Spigot 下载 URL (TYPE=SPIGOT 时使用)。",
+          "markdownDescription": "自定义 Spigot 服务端下载 URL。\n\n[Spigot 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/bukkit-spigot/)"
+        },
+        "BUKKIT_DOWNLOAD_URL": {
+          "type": "string",
+          "description": "自定义 Bukkit 下载 URL (TYPE=BUKKIT 时使用)。",
+          "markdownDescription": "自定义 Bukkit 服务端下载 URL。\n\n[Bukkit 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/bukkit-spigot/)"
+        },
+        "BUILD_FROM_SOURCE": {
+          "type": ["boolean", "string"],
+          "description": "从源码构建 Spigot。",
+          "markdownDescription": "从源码构建 Spigot 服务端。\n\n[Spigot 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/bukkit-spigot/)"
+        },
+        "CUSTOM_SERVER": {
+          "type": "string",
+          "description": "自定义服务器 jar (TYPE=CUSTOM 时使用)。",
+          "markdownDescription": "自定义服务器 jar 文件的 URL 或容器内路径。\n\n**注意**: 仅当 `TYPE=CUSTOM` 时有效。\n\n[Custom 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/others/)"
+        },
+        "CUSTOM_JAR_EXEC": {
+          "type": "string",
+          "description": "自定义 jar 执行方式。",
+          "markdownDescription": "自定义 jar 执行格式。\n\n**示例**: `-cp <classpath> <classname>` 或 `-jar <jar file>`\n\n[Custom 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/others/)"
+        },
+        "SPIGET_RESOURCES": {
+          "type": "string",
+          "description": "Spiget 资源 ID 列表。",
+          "markdownDescription": "从 Spiget 自动下载的插件资源 ID（逗号分隔）。\n\n[Spiget 文档](https://docker-minecraft-server.readthedocs.io/en/latest/mods-and-plugins/spiget/)"
+        },
+        "MODRINTH_PROJECTS": {
+          "type": "string",
+          "description": "Modrinth 项目列表。",
+          "markdownDescription": "从 Modrinth 自动下载的模组/插件（逗号分隔）。\n\n格式: `project-slug` 或 `project-slug:version`\n\n[Modrinth 文档](https://docker-minecraft-server.readthedocs.io/en/latest/mods-and-plugins/modrinth/)"
+        },
+        "CF_API_KEY": {
+          "type": "string",
+          "description": "CurseForge API Key。",
+          "markdownDescription": "CurseForge (Eternal) API Key，用于下载模组包。\n\n[CurseForge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)"
+        },
+        "CF_PAGE_URL": {
+          "type": "string",
+          "description": "CurseForge 模组包页面 URL。",
+          "markdownDescription": "CurseForge 模组包页面或文件 URL。\n\n[CurseForge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)"
+        },
+        "CF_SLUG": {
+          "type": "string",
+          "description": "CurseForge 模组包 slug。",
+          "markdownDescription": "CurseForge 模组包的 slug 标识符。\n\n[CurseForge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)"
+        },
+        "CF_FILE_ID": {
+          "type": ["integer", "string"],
+          "description": "CurseForge 文件 ID。",
+          "markdownDescription": "CurseForge 特定文件的数字 ID。\n\n[CurseForge 文档](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)"
+        }
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"],
+        "description": "其他环境变量。参考 docker-minecraft-server 文档了解更多选项。",
+        "markdownDescription": "其他环境变量。\n\n参考 [docker-minecraft-server 完整变量列表](https://docker-minecraft-server.readthedocs.io/en/latest/variables/) 了解更多选项。\n\n参考 [Server Properties 映射](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/server-properties/) 了解服务器属性环境变量。"
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "FORGE" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "properties": {
+              "FORGE_VERSION": {
+                "description": "Forge 版本 (TYPE=FORGE 时推荐设置)。"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "NEOFORGE" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "properties": {
+              "NEOFORGE_VERSION": {
+                "description": "NeoForge 版本 (TYPE=NEOFORGE 时推荐设置)。"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "FABRIC" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "properties": {
+              "FABRIC_LOADER_VERSION": {
+                "description": "Fabric Loader 版本 (TYPE=FABRIC 时可选)。"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "QUILT" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "properties": {
+              "QUILT_LOADER_VERSION": {
+                "description": "Quilt Loader 版本 (TYPE=QUILT 时可选)。"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "PAPER" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "properties": {
+              "PAPER_BUILD": {
+                "description": "Paper 构建号 (TYPE=PAPER 时可选)。"
+              },
+              "PAPER_CHANNEL": {
+                "description": "Paper 发布渠道 (TYPE=PAPER 时可选)。"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "TYPE": { "const": "CUSTOM" }
+            },
+            "required": ["TYPE"]
+          },
+          "then": {
+            "required": ["CUSTOM_SERVER"],
+            "properties": {
+              "CUSTOM_SERVER": {
+                "description": "自定义服务器 jar (TYPE=CUSTOM 时必需)。"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

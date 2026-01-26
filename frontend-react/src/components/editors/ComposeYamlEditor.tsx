@@ -50,7 +50,7 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
         format: true,
         schemas: [
           {
-            uri: window.location.origin + '/static/compose-spec.json',
+            uri: window.location.origin + '/static/mc-server-compose-schema.json',
             fileMatch: ['*docker-compose*.yml', '*docker-compose*.yaml', '*compose*.yml', '*compose*.yaml', '*.yml', '*.yaml']
           }
         ]
