@@ -554,7 +554,7 @@
         "CREATE_CONSOLE_IN_PIPE": {
           "type": ["boolean", "string"],
           "description": "创建控制台输入管道。",
-          "markdownDescription": "创建控制台输入管道，用于通过 WebSocket 发送命令。\n\n**MC Admin 需要此选项** 以支持控制台功能。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/)"
+          "markdownDescription": "创建控制台输入管道，用于通过 mc-send-to-console 发送命令。\n\n[Misc 选项文档](https://docker-minecraft-server.readthedocs.io/en/latest/sending-commands/commands/#when-rcon-is-disabled)"
         },
         "UID": {
           "type": ["integer", "string"],
