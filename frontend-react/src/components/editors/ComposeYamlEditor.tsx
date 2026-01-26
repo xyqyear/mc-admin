@@ -1,6 +1,7 @@
-import React, { useRef } from 'react'
+import React, { useRef, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
+import { type IDisposable } from 'monaco-editor'
 
 export interface ComposeYamlEditorProps {
   value?: string
@@ -10,7 +11,7 @@ export interface ComposeYamlEditorProps {
   readOnly?: boolean
   theme?: 'vs-light' | 'vs-dark'
   className?: string
-  path?: string  // Add path prop for model URI
+  path?: string
 }
 
 const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
@@ -21,36 +22,43 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
   readOnly = false,
   theme = 'vs-light',
   className,
-  path = 'docker-compose.yml'  // Default to docker-compose.yml
+  path = 'docker-compose.yml'
 }) => {
   const editorRef = useRef<any>(null)
-  const isConfigured = useRef(false)
+  const yamlDisposableRef = useRef<IDisposable | null>(null)
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (yamlDisposableRef.current) {
+        yamlDisposableRef.current.dispose()
+        yamlDisposableRef.current = null
+        console.log('Disposed monaco-yaml resources')
+      }
+    }
+  }, [])
 
   const handleEditorMount = (editor: any, monaco: any) => {
     editorRef.current = editor
 
-    // Configure YAML support only once
-    if (!isConfigured.current) {
-      try {
-        configureMonacoYaml(monaco, {
-          enableSchemaRequest: true,
-          hover: true,
-          completion: true,
-          validate: true,
-          format: true,
-          schemas: [
-            {
-              uri: window.location.origin + '/static/compose-spec.json',
-              fileMatch: ['*docker-compose*.yml', '*docker-compose*.yaml', '*compose*.yml', '*compose*.yaml', '*.yml', '*.yaml']
-            }
-          ]
-        })
-        isConfigured.current = true
-        console.log('Monaco YAML configured successfully')
-      } catch (error) {
-        console.error('Failed to configure monaco-yaml:', error)
-        // Even if YAML configuration fails, the editor should still work with basic syntax highlighting
-      }
+    try {
+      yamlDisposableRef.current = configureMonacoYaml(monaco, {
+        enableSchemaRequest: true,
+        hover: true,
+        completion: true,
+        validate: true,
+        format: true,
+        schemas: [
+          {
+            uri: window.location.origin + '/static/compose-spec.json',
+            fileMatch: ['*docker-compose*.yml', '*docker-compose*.yaml', '*compose*.yml', '*compose*.yaml', '*.yml', '*.yaml']
+          }
+        ]
+      })
+      console.log('Monaco YAML configured successfully')
+    } catch (error) {
+      console.error('Failed to configure monaco-yaml:', error)
+      // Even if YAML configuration fails, the editor should still work with basic syntax highlighting
     }
 
     // Call user-provided onMount callback
