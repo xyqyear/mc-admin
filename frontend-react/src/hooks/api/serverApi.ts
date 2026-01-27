@@ -205,14 +205,6 @@ export const serverApi = {
     } as ComposeConfigRequest);
   },
 
-  // RCON命令API
-  sendRconCommand: async (id: string, command: string): Promise<string> => {
-    const res = await api.post<{ result: string }>(`/servers/${id}/rcon`, {
-      command,
-    });
-    return res.data.result;
-  },
-
   // 创建新服务器
   createServer: async (
     serverId: string,

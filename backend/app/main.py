@@ -33,7 +33,6 @@ from .routers.servers import misc as server_misc
 from .routers.servers import operations as server_operations
 from .routers.servers import players as server_players
 from .routers.servers import populate as server_populate
-from .routers.servers import rcon as server_rcon
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
 
@@ -110,7 +109,6 @@ api_app.include_router(server_operations.router)
 api_app.include_router(server_create.router)
 api_app.include_router(server_populate.router)
 api_app.include_router(server_console.router)
-api_app.include_router(server_rcon.router)
 api_app.include_router(server_files.router)
 api_app.include_router(server_restart_schedule.router)
 

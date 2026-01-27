@@ -87,33 +87,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // RCON命令执行
-  const useRconCommand = (serverId: string) => {
-    return useMutation({
-      mutationFn: async (command: string) => {
-        return serverApi.sendRconCommand(serverId, command);
-      },
-      onSuccess: (result, command) => {
-        message.success(`命令执行成功: ${command}`);
-        console.log("RCON结果:", result);
-
-        // 如果是可能影响玩家状态的命令，刷新玩家列表
-        if (
-          ["list", "kick", "ban", "op", "deop"].some((cmd) =>
-            command.startsWith(cmd)
-          )
-        ) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.players.online(serverId),
-          });
-        }
-      },
-      onError: (error: Error, command) => {
-        message.error(`命令执行失败: ${command} - ${error.message}`);
-      },
-    });
-  };
-
   // Compose文件更新
   const useUpdateCompose = (serverId: string) => {
     return useMutation({
@@ -269,7 +242,6 @@ export const useServerMutations = () => {
 
   return {
     useServerOperation,
-    useRconCommand,
     useUpdateCompose,
     usePopulateServer,
     useCreateServer,

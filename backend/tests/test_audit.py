@@ -92,7 +92,6 @@ def test_audit_patterns():
         # (method, path, should_audit) - 现在所有非GET请求都被审计
         ("POST", "/api/servers/test/operations", True),
         ("PUT", "/api/servers/test/compose", True),
-        ("POST", "/api/servers/test/rcon", True),
         ("DELETE", "/api/admin/users/123", True),
         ("POST", "/api/auth/register", True),
         ("POST", "/api/auth/token", True),  # 现在所有POST都被审计
