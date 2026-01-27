@@ -75,7 +75,8 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
             <div><Tag color="blue">java8</Tag> - Java 8 (适用于较老版本)</div>
             <div><Tag color="green">java11</Tag> - Java 11 (推荐用于 1.17-1.20)</div>
             <div><Tag color="orange">java17</Tag> - Java 17 (推荐用于 1.18+)</div>
-            <div><Tag color="red">java21-graalvm</Tag> - Java 21 (最新版本，性能最佳)</div>
+            <div><Tag color="red">java21</Tag> - Java 21 (推荐)</div>
+            <div><Tag color="red">java25</Tag> - Java 25 (推荐用于1.21.10+)</div>
           </div>
           <Paragraph>
             <LinkOutlined /> <Text strong>详细版本参考：</Text>{' '}
@@ -225,11 +226,11 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
 
         {/* 配置示例 */}
         <Card size="small" title={<Text strong><InfoCircleOutlined /> 配置示例</Text>}>
-          <Title level={5}>Fabric 1.20.1 服务器示例</Title>
+          <Title level={5}>Forge 1.20.1 服务器示例</Title>
           <pre className="bg-gray-50 p-4 rounded text-sm overflow-x-auto">
             {`services:
   mc:
-    image: itzg/minecraft-server:java21-graalvm
+    image: itzg/minecraft-server:java21
     container_name: mc-server1
     environment:
       EULA: true
@@ -244,12 +245,13 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
       ENABLE_RCON: true
       RCON_PASSWORD: password
       MODE: survival
-      VIEW_DISTANCE: 1
+      VIEW_DISTANCE: 8
       DIFFICULTY: hard
       USE_AIKAR_FLAGS: true
       ENABLE_COMMAND_BLOCK: true
       PREVENT_PROXY_CONNECTIONS: false
       ALLOW_FLIGHT: false
+      ENABLE_QUERY: true
     ports:
       - 25517:25565
       - 25617:25575

@@ -55,12 +55,12 @@
         "image": {
           "type": "string",
           "description": "Docker 镜像名称。必须包含 itzg/minecraft-server，可以使用自定义仓库。",
-          "markdownDescription": "Docker 镜像名称。必须包含 `itzg/minecraft-server`，支持自定义仓库前缀。\n\n**格式**: `[registry/]itzg/minecraft-server[:tag]`\n\n**常用标签**:\n- `java8` - Java 8 (旧版本)\n- `java11` - Java 11 (1.17-1.20)\n- `java17` - Java 17 (1.18+)\n- `java21` - Java 21\n- `java21-graalvm` - Java 21 + GraalVM (推荐)\n- `java25-graalvm` - Java 25 + GraalVM (最新)\n\n[Java 版本文档](https://docker-minecraft-server.readthedocs.io/en/latest/versions/java/)",
+          "markdownDescription": "Docker 镜像名称。必须包含 `itzg/minecraft-server`，支持自定义仓库前缀。\n\n**格式**: `[registry/]itzg/minecraft-server[:tag]`\n\n**常用标签**:\n- `java8` - Java 8 (旧版本)\n- `java11` - Java 11 (1.17-1.20)\n- `java17` - Java 17 (1.18+)\n- `java21` - Java 21 (推荐)\n- `java25` - Java 25 (推荐用于1.21.10+)\n\n[Java 版本文档](https://docker-minecraft-server.readthedocs.io/en/latest/versions/java/)",
           "pattern": "^(.+/)?itzg/minecraft-server(:.+)?$",
           "examples": [
-            "itzg/minecraft-server:java21-graalvm",
+            "itzg/minecraft-server:java21",
             "itzg/minecraft-server:java17",
-            "example.com/itzg/minecraft-server:java21-graalvm"
+            "example.com/itzg/minecraft-server:java21"
           ]
         },
         "container_name": {
