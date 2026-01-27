@@ -408,6 +408,18 @@ export const versionUpdates: VersionUpdate[] = [
       '修复 Ant Design v6 相关的废弃 API 警告 #105',
       '修复文件组件 ref 警告 #123'
     ]
+  },
+  {
+    version: '1.6.0',
+    date: '2026-01-27',
+    title: '完整的终端体验',
+    description: '控制台系统升级为真正的终端，直接与容器对接。从而支持命令历史、tab补全、指针移动等MC终端提供的功能。',
+    features: [
+      '控制台直接与容器终端对接，实现真正的终端交互 #124'
+    ],
+    improvements: [
+      '控制台信息提示从弹窗改为在页面头部显示'
+    ]
   }
 ]
 
