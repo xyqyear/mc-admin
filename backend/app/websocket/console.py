@@ -13,39 +13,23 @@ from fastapi import WebSocket, WebSocketDisconnect
 from ..logger import log_exception
 from ..minecraft import MCInstance
 
-# RCON log patterns to filter
-RCON_PATTERNS = ["[RCON Client", "[RCON Listener"]
-
 # Default number of history log lines to fetch
 HISTORY_LOG_LINES = 10000
-
-
-def filter_rcon_line(line: str) -> bool:
-    """Return True if line should be kept (not RCON-related)."""
-    return not any(pattern in line for pattern in RCON_PATTERNS)
-
-
-def filter_rcon_content(content: str) -> str:
-    """Filter RCON lines from multi-line content."""
-    lines = content.split("\n")
-    return "\n".join(line for line in lines if filter_rcon_line(line))
 
 
 class ConsoleWebSocketHandler:
     """Handler for a single WebSocket console connection to a Minecraft server."""
 
-    def __init__(
-        self, websocket: WebSocket, instance: MCInstance, filter_rcon: bool = True
-    ):
+    def __init__(self, websocket: WebSocket, instance: MCInstance):
         self.websocket = websocket
         self.instance = instance
-        self.filter_rcon: bool = filter_rcon
         self._closed: bool = False
         self._socket: Any = None
         self._read_task: Optional[asyncio.Task] = None
         self._docker_client: Optional[docker.APIClient] = None
+        self._container_id: Optional[str] = None
 
-    async def handle_connection(self, server_id: str):
+    async def handle_connection(self, server_id: str, cols: int, rows: int):
         """Handle the WebSocket connection lifecycle."""
         try:
             await self.websocket.accept()
@@ -60,7 +44,7 @@ class ConsoleWebSocketHandler:
                 await self.websocket.close()
                 return
 
-            await self._initialize_connection()
+            await self._initialize_connection(cols, rows)
             await self._handle_messages()
         except WebSocketDisconnect:
             print(f"WebSocket disconnected for server {server_id}")
@@ -69,15 +53,15 @@ class ConsoleWebSocketHandler:
         finally:
             self._cleanup()
 
-    async def _initialize_connection(self):
+    async def _initialize_connection(self, cols: int, rows: int):
         """Initialize connection with Docker attach socket."""
         self._docker_client = docker.APIClient(base_url="unix://var/run/docker.sock")
-        container_id = await self.instance.get_container_id()
+        self._container_id = await self.instance.get_container_id()
 
-        await self._send_history_logs(container_id)
+        await self._send_history_logs(self._container_id)
 
         self._socket = self._docker_client.attach_socket(
-            container_id,
+            self._container_id,
             params={
                 "stdin": 1,
                 "stdout": 1,
@@ -88,6 +72,11 @@ class ConsoleWebSocketHandler:
         self._socket._sock.setblocking(False)
 
         self._read_task = asyncio.create_task(self._socket_read_loop())
+
+        # Initial TTY resize like Docker CLI: send +1 size first, then actual size
+        if cols > 0 and rows > 0:
+            await self._resize_tty(cols + 1, rows + 1)
+            await self._resize_tty(cols, rows)
 
     async def _send_history_logs(self, container_id: str):
         """Fetch and send history logs from container."""
@@ -107,8 +96,6 @@ class ConsoleWebSocketHandler:
             )
 
             logs_content = logs_bytes.decode("utf-8", errors="replace")
-            if self.filter_rcon:
-                logs_content = filter_rcon_content(logs_content)
 
             if logs_content.strip():
                 await self._send_dict({"type": "log", "content": logs_content})
@@ -119,9 +106,8 @@ class ConsoleWebSocketHandler:
             await self._send_error(f"获取历史日志失败: {e}")
 
     async def _socket_read_loop(self):
-        """Read from attach socket using asyncio's native methods."""
+        """Read from attach socket and send data immediately for raw I/O."""
         loop = asyncio.get_running_loop()
-        buffer = ""
 
         while not self._closed:
             try:
@@ -129,12 +115,8 @@ class ConsoleWebSocketHandler:
                 if not data:
                     break
 
-                buffer += data.decode("utf-8", errors="replace")
-
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    if not self.filter_rcon or filter_rcon_line(line):
-                        await self._send_dict({"type": "log", "content": line + "\n"})
+                content = data.decode("utf-8", errors="replace")
+                await self._send_dict({"type": "log", "content": content})
 
             except BlockingIOError:
                 await asyncio.sleep(0.01)
@@ -163,17 +145,19 @@ class ConsoleWebSocketHandler:
 
         message_type = data.get("type")
 
-        if message_type == "command":
-            await self._handle_command(data)
+        if message_type == "input":
+            await self._handle_input(data)
+        elif message_type == "resize":
+            await self._handle_resize(data)
         else:
             await self._send_dict(
                 {"type": "info", "message": f"未知消息类型: {message_type}"}
             )
 
-    async def _handle_command(self, data: dict):
-        """Send command to container via attach socket."""
-        command = data.get("command", "").strip()
-        if not command:
+    async def _handle_input(self, data: dict):
+        """Send raw input to container via attach socket."""
+        raw_data = data.get("data", "")
+        if not raw_data:
             return
 
         if self._socket is None:
@@ -183,10 +167,38 @@ class ConsoleWebSocketHandler:
         try:
             loop = asyncio.get_running_loop()
             await loop.sock_sendall(
-                self._socket._sock, (command + "\n").encode("utf-8")
+                self._socket._sock, raw_data.encode("utf-8")
             )
         except Exception as e:
-            await self._send_dict({"type": "info", "message": f"发送指令失败: {e}"})
+            await self._send_dict({"type": "info", "message": f"发送输入失败: {e}"})
+
+    async def _handle_resize(self, data: dict):
+        """Resize container TTY to match client terminal size."""
+        height = data.get("height")
+        width = data.get("width")
+
+        if not isinstance(height, int) or not isinstance(width, int):
+            return
+        if height <= 0 or width <= 0:
+            return
+
+        await self._resize_tty(width, height)
+
+    async def _resize_tty(self, cols: int, rows: int):
+        """Send resize request to container TTY."""
+        if self._docker_client is None or self._container_id is None:
+            return
+
+        try:
+            docker_client = self._docker_client
+            container_id = self._container_id
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: docker_client.resize(container_id, rows, cols),
+            )
+        except Exception as e:
+            print(f"Failed to resize TTY: {e}")
 
     async def _send_error(self, message: str):
         """Send error message."""

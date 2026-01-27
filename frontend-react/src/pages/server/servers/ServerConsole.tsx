@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Switch, Button, Space, Alert, Typography, Spin } from 'antd';
+import { Card, Button, Space, Alert, Typography, Spin } from 'antd';
 import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined } from '@ant-design/icons';
 
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
@@ -34,19 +34,18 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
   }, [serverStatus]);
 
-  // WebSocket hook
+  // WebSocket hook - don't auto-connect, we'll connect manually after terminal is ready
   const {
     connectionState,
     lastError,
-    filterRcon,
-    sendCommand,
-    setFilterRcon,
+    sendInput,
+    sendResize,
     onMessage,
     connect,
     disconnect
-  } = useServerConsoleWebSocket(serverId, canConnectWebSocket);
+  } = useServerConsoleWebSocket(serverId, false);
 
-  // 终端准备就绪时设置消息监听器
+  // 终端准备就绪时设置消息监听器并连接
   const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
     // 注册消息监听器，将WebSocket消息传递给终端
     onMessage((message) => {
@@ -54,23 +53,34 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         terminal.onMessage(message);
       }
     });
-  }, [onMessage]);
 
-  // 处理终端命令
-  const handleCommand = useCallback((command: string) => {
-    sendCommand(command);
-  }, [sendCommand]);
+    // Connect with initial terminal size for Docker CLI-style TTY resize
+    if (canConnectWebSocket) {
+      const size = terminal.getSize();
+      if (size) {
+        connect(size.cols, size.rows);
+      }
+    }
+  }, [onMessage, canConnectWebSocket, connect]);
 
-  // 处理过滤开关变化
-  const handleFilterChange = useCallback((checked: boolean) => {
-    setFilterRcon(checked);
-  }, [setFilterRcon]);
+  // Handle terminal input
+  const handleSendInput = useCallback((data: string) => {
+    sendInput(data);
+  }, [sendInput]);
+
+  // Handle terminal resize - send to container
+  const handleTerminalResize = useCallback((cols: number, rows: number) => {
+    sendResize(cols, rows);
+  }, [sendResize]);
 
   // 手动重连
   const handleManualReconnect = useCallback(() => {
     disconnect();
     setTimeout(() => {
-      connect();
+      const size = terminalRef.current?.getSize();
+      if (size) {
+        connect(size.cols, size.rows);
+      }
     }, 100);
   }, [disconnect, connect]);
 
@@ -94,6 +104,13 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
       terminalRef.current.write('\x1b[33mRetrying connection...\x1b[0m\r\n');
     }
   }, [connectionState]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
 
   // 获取连接状态显示
   const getConnectionStatus = () => {
@@ -160,21 +177,12 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         classNames={{ body: "flex flex-col flex-1 !p-4" }}
         title={
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Text type="secondary">连接状态:</Text>
-                <Space size="small">
-                  {connectionStatus.icon}
-                  <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
-                </Space>
-              </div>
-              <Switch
-                checked={filterRcon}
-                onChange={handleFilterChange}
-                checkedChildren="过滤RCON"
-                unCheckedChildren="展示所有"
-                disabled={connectionState === 'CONNECTING'}
-              />
+            <div className="flex items-center space-x-2">
+              <Text type="secondary">连接状态:</Text>
+              <Space size="small">
+                {connectionStatus.icon}
+                <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
+              </Space>
             </div>
             <div className="flex items-center space-x-2">
               <Button
@@ -196,9 +204,9 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         {/* 终端区域 */}
         <ServerTerminal
           ref={terminalRef}
-          serverId={serverId}
-          onCommand={handleCommand}
+          onSendInput={handleSendInput}
           onReady={handleTerminalReady}
+          onResize={handleTerminalResize}
           className="h-full"
         />
       </Card>

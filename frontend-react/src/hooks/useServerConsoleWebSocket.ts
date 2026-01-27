@@ -24,11 +24,10 @@ const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避延迟
 export interface UseServerConsoleWebSocketReturn {
   connectionState: ConnectionState;
   lastError: string | null;
-  filterRcon: boolean;
-  connect: () => void;
+  connect: (cols: number, rows: number) => void;
   disconnect: () => void;
-  sendCommand: (command: string) => void;
-  setFilterRcon: (enabled: boolean) => void;
+  sendInput: (data: string) => void;
+  sendResize: (cols: number, rows: number) => void;
   onMessage: (callback: (message: WebSocketMessage) => void) => void;
   removeMessageListener: (
     callback: (message: WebSocketMessage) => void,
@@ -45,6 +44,7 @@ export const useServerConsoleWebSocket = (
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
+  const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const messageCallbacksRef = useRef<Set<(message: WebSocketMessage) => void>>(
     new Set(),
   );
@@ -52,19 +52,21 @@ export const useServerConsoleWebSocket = (
   // State
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("DISCONNECTED");
-  const [filterRcon, setFilterRconState] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
 
   // Use refs to break circular dependencies
-  const connectWebSocketRef = useRef<() => void>();
+  const connectWebSocketRef = useRef<(cols: number, rows: number) => void>();
   const scheduleReconnectRef = useRef<() => void>();
 
   // 构建WebSocket URL
-  const buildWebSocketUrl = useCallback((filterRconParam: boolean) => {
-    if (!serverId || !token) return null;
-    const baseUrl = getApiBaseUrl(true); // true for WebSocket
-    return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}&filter_rcon=${filterRconParam}`;
-  }, [serverId, token]);
+  const buildWebSocketUrl = useCallback(
+    (cols: number, rows: number) => {
+      if (!serverId || !token) return null;
+      const baseUrl = getApiBaseUrl(true); // true for WebSocket
+      return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
+    },
+    [serverId, token],
+  );
 
   // 断开WebSocket
   const disconnect = useCallback(() => {
@@ -128,94 +130,99 @@ export const useServerConsoleWebSocket = (
   );
 
   // 连接WebSocket
-  const connect = useCallback(() => {
-    // 如果已经有连接在进行中或已连接，先断开
-    if (
-      wsRef.current &&
-      (wsRef.current.readyState === WebSocket.CONNECTING ||
-        wsRef.current.readyState === WebSocket.OPEN)
-    ) {
-      disconnect();
-    }
+  const connect = useCallback(
+    (cols: number, rows: number) => {
+      // 如果已经有连接在进行中或已连接，先断开
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === WebSocket.CONNECTING ||
+          wsRef.current.readyState === WebSocket.OPEN)
+      ) {
+        disconnect();
+      }
 
-    if (!canConnect || !token || !serverId) {
-      return;
-    }
+      if (!token || !serverId) {
+        return;
+      }
 
-    const wsUrl = buildWebSocketUrl(filterRcon);
-    if (!wsUrl) {
-      console.error("Failed to build WebSocket URL");
-      return;
-    }
+      // Store size for reconnection
+      lastSizeRef.current = { cols, rows };
 
-    setConnectionState("CONNECTING");
-    setLastError(null);
+      const wsUrl = buildWebSocketUrl(cols, rows);
+      if (!wsUrl) {
+        console.error("Failed to build WebSocket URL");
+        return;
+      }
 
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws; // 立即设置引用
+      setConnectionState("CONNECTING");
+      setLastError(null);
 
-      ws.onopen = () => {
-        // 检查连接是否仍然有效
-        if (wsRef.current !== ws) {
-          ws.close();
-          return;
-        }
+      try {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws; // 立即设置引用
 
-        console.log("WebSocket connected");
-        setConnectionState("CONNECTED");
-        retryCountRef.current = 0;
-      };
-
-      ws.onmessage = handleWebSocketMessage;
-
-      ws.onclose = (event) => {
-        // 检查这是否是当前活动的连接
-        if (wsRef.current !== ws) {
-          return;
-        }
-
-        console.log("WebSocket disconnected:", event.code, event.reason);
-        wsRef.current = null;
-        setConnectionState("DISCONNECTED");
-
-        // 如果不是手动断开，尝试重连
-        if (event.code !== 1000 && event.code !== 1001) {
-          if (scheduleReconnectRef.current) {
-            scheduleReconnectRef.current();
+        ws.onopen = () => {
+          // 检查连接是否仍然有效
+          if (wsRef.current !== ws) {
+            ws.close();
+            return;
           }
-        }
-      };
 
-      ws.onerror = (error) => {
-        // 检查这是否是当前活动的连接
-        if (wsRef.current !== ws) {
-          return;
-        }
+          console.log("WebSocket connected");
+          setConnectionState("CONNECTED");
+          retryCountRef.current = 0;
+        };
 
-        console.error("WebSocket error:", error);
+        ws.onmessage = handleWebSocketMessage;
+
+        ws.onclose = (event) => {
+          // 检查这是否是当前活动的连接
+          if (wsRef.current !== ws) {
+            return;
+          }
+
+          console.log("WebSocket disconnected:", event.code, event.reason);
+          wsRef.current = null;
+          setConnectionState("DISCONNECTED");
+
+          // 如果不是手动断开，尝试重连
+          if (event.code !== 1000 && event.code !== 1001) {
+            if (scheduleReconnectRef.current) {
+              scheduleReconnectRef.current();
+            }
+          }
+        };
+
+        ws.onerror = (error) => {
+          // 检查这是否是当前活动的连接
+          if (wsRef.current !== ws) {
+            return;
+          }
+
+          console.error("WebSocket error:", error);
+          setConnectionState("ERROR");
+          setLastError("WebSocket connection error");
+        };
+      } catch (error) {
+        console.error("Failed to create WebSocket:", error);
         setConnectionState("ERROR");
-        setLastError("WebSocket connection error");
-      };
-    } catch (error) {
-      console.error("Failed to create WebSocket:", error);
-      setConnectionState("ERROR");
-      setLastError("Failed to create WebSocket connection");
-    }
-  }, [
-    canConnect,
-    token,
-    serverId,
-    filterRcon,
-    buildWebSocketUrl,
-    handleWebSocketMessage,
-    disconnect,
-  ]);
+        setLastError("Failed to create WebSocket connection");
+      }
+    },
+    [token, serverId, buildWebSocketUrl, handleWebSocketMessage, disconnect],
+  );
 
   const scheduleReconnect = useCallback(() => {
     if (retryCountRef.current >= MAX_RETRY_COUNT) {
       setConnectionState("ERROR");
       setLastError(`Maximum retry attempts (${MAX_RETRY_COUNT}) exceeded`);
+      return;
+    }
+
+    // Need stored size for reconnection
+    if (!lastSizeRef.current) {
+      setConnectionState("ERROR");
+      setLastError("Cannot reconnect: no terminal size available");
       return;
     }
 
@@ -225,9 +232,10 @@ export const useServerConsoleWebSocket = (
 
     setConnectionState("RETRYING");
 
+    const { cols, rows } = lastSizeRef.current;
     reconnectTimeoutRef.current = setTimeout(() => {
       if (connectWebSocketRef.current) {
-        connectWebSocketRef.current();
+        connectWebSocketRef.current(cols, rows);
       }
     }, delay);
   }, []);
@@ -236,12 +244,12 @@ export const useServerConsoleWebSocket = (
   connectWebSocketRef.current = connect;
   scheduleReconnectRef.current = scheduleReconnect;
 
-  // 发送命令
-  const sendCommand = useCallback((command: string) => {
+  // Send raw input data
+  const sendInput = useCallback((data: string) => {
     if (
       !wsRef.current ||
       wsRef.current.readyState !== WebSocket.OPEN ||
-      !command.trim()
+      !data
     ) {
       return;
     }
@@ -249,24 +257,38 @@ export const useServerConsoleWebSocket = (
     try {
       wsRef.current.send(
         JSON.stringify({
-          type: "command",
-          command: command.trim(),
+          type: "input",
+          data: data,
         }),
       );
     } catch (error) {
-      console.error("Failed to send command:", error);
+      console.error("Failed to send input:", error);
     }
   }, []);
 
-  // 设置过滤器（会重新连接以获取正确过滤的历史日志）
-  const setFilterRcon = useCallback(
-    (enabled: boolean) => {
-      if (enabled === filterRcon) return; // 没有变化则不操作
-      setFilterRconState(enabled);
-      // 重新连接会在 useEffect 中自动触发，因为 filterRcon 是 connect 的依赖
-    },
-    [filterRcon],
-  );
+  // Send resize command to adjust container TTY size
+  const sendResize = useCallback((cols: number, rows: number) => {
+    if (
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN ||
+      cols <= 0 ||
+      rows <= 0
+    ) {
+      return;
+    }
+
+    try {
+      wsRef.current.send(
+        JSON.stringify({
+          type: "resize",
+          width: cols,
+          height: rows,
+        }),
+      );
+    } catch (error) {
+      console.error("Failed to send resize:", error);
+    }
+  }, []);
 
   // 注册消息监听器
   const onMessage = useCallback(
@@ -284,29 +306,23 @@ export const useServerConsoleWebSocket = (
     [],
   );
 
-  // 管理WebSocket连接
+  // 管理WebSocket连接 - auto-connect using stored size if canConnect is true
   useEffect(() => {
-    let mounted = true;
-
-    if (canConnect) {
-      // 使用setTimeout避免在快速状态变化时立即重连
+    if (canConnect && lastSizeRef.current) {
+      const { cols, rows } = lastSizeRef.current;
       const timeoutId = setTimeout(() => {
-        if (mounted) {
-          connect();
-        }
+        connect(cols, rows);
       }, 100);
 
       return () => {
-        mounted = false;
         clearTimeout(timeoutId);
         disconnect();
       };
-    } else {
+    } else if (!canConnect) {
       disconnect();
     }
 
     return () => {
-      mounted = false;
       disconnect();
     };
   }, [canConnect, connect, disconnect]);
@@ -320,11 +336,10 @@ export const useServerConsoleWebSocket = (
   return {
     connectionState,
     lastError,
-    filterRcon,
     connect,
     disconnect,
-    sendCommand,
-    setFilterRcon,
+    sendInput,
+    sendResize,
     onMessage,
     removeMessageListener,
   };
