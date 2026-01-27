@@ -259,6 +259,7 @@ const ServerConsole: React.FC = () => {
         }
       >
         <ServerTerminal
+          key={serverId}
           ref={terminalRef}
           onSendInput={handleSendInput}
           onReady={handleTerminalReady}
