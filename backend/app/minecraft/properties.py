@@ -1,8 +1,8 @@
 """Minecraft server.properties parser and model."""
 
-from typing import Optional
+from typing import Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ServerProperties(BaseModel):
@@ -37,7 +37,7 @@ class ServerProperties(BaseModel):
     initial_disabled_packs: Optional[str] = Field(None, alias="initial-disabled-packs")
     initial_enabled_packs: Optional[str] = Field(None, alias="initial-enabled-packs")
     level_name: Optional[str] = Field(None, alias="level-name")
-    level_seed: Optional[str] = Field(None, alias="level-seed")
+    level_seed: Optional[Union[int, str]] = Field(None, alias="level-seed")
     level_type: Optional[str] = Field(None, alias="level-type")
     log_ips: Optional[bool] = Field(None, alias="log-ips")
     management_server_enabled: Optional[bool] = Field(None, alias="management-server-enabled")
@@ -79,6 +79,22 @@ class ServerProperties(BaseModel):
     use_native_transport: Optional[bool] = Field(None, alias="use-native-transport")
     view_distance: Optional[int] = Field(None, alias="view-distance")
     white_list: Optional[bool] = Field(None, alias="white-list")
+
+    @field_validator("difficulty", mode="before")
+    @classmethod
+    def convert_difficulty(cls, v):
+        if isinstance(v, int):
+            mapping = {0: "peaceful", 1: "easy", 2: "normal", 3: "hard"}
+            return mapping.get(v, str(v))
+        return v
+
+    @field_validator("gamemode", mode="before")
+    @classmethod
+    def convert_gamemode(cls, v):
+        if isinstance(v, int):
+            mapping = {0: "survival", 1: "creative", 2: "adventure", 3: "spectator"}
+            return mapping.get(v, str(v))
+        return v
 
     class Config:
         populate_by_name = True
