@@ -4,7 +4,7 @@ import { Card, Button, Space, Typography, Spin } from 'antd';
 import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
-import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket';
+import { useServerConsoleWebSocket, WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
 import PageHeader from '@/components/layout/PageHeader';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
 import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
@@ -47,6 +47,7 @@ const ServerConsole: React.FC = () => {
     sendInput,
     sendResize,
     onMessage,
+    removeMessageListener,
     connect,
     disconnect
   } = useServerConsoleWebSocket(serverId, false);
@@ -104,21 +105,28 @@ const ServerConsole: React.FC = () => {
     }
   }, [consoleStatus]);
 
-  // Terminal ready handler
+  // Terminal ready handler - only handles connection
   const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
-    onMessage((message) => {
-      if (terminal.onMessage) {
-        terminal.onMessage(message);
-      }
-    });
-
     if (canConnectWebSocket) {
       const size = terminal.getSize();
       if (size) {
         connect(size.cols, size.rows);
       }
     }
-  }, [onMessage, canConnectWebSocket, connect]);
+  }, [canConnectWebSocket, connect]);
+
+  // Handle message subscription with proper cleanup to prevent duplicate callbacks
+  useEffect(() => {
+    const handleMessage = (message: WebSocketMessage) => {
+      terminalRef.current?.onMessage?.(message);
+    };
+
+    onMessage(handleMessage);
+
+    return () => {
+      removeMessageListener(handleMessage);
+    };
+  }, [onMessage, removeMessageListener]);
 
   // Handle terminal input
   const handleSendInput = useCallback((data: string) => {
