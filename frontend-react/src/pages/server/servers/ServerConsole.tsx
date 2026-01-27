@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Space, Typography, Spin, App } from 'antd';
+import { Card, Button, Space, Typography, Spin } from 'antd';
 import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
@@ -26,8 +26,6 @@ const ServerConsole: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const serverId = id || '';
-  const { notification } = App.useApp();
-
   // Terminal ref
   const terminalRef = useRef<ServerTerminalRef>(null);
 
@@ -84,8 +82,8 @@ const ServerConsole: React.FC = () => {
     }
   }, [id, serverInfoLoading, serverInfoError, serverId, serverStatus, canConnectWebSocket, lastError, connectionState]);
 
-  // Get status display info
-  const getStatusDisplay = () => {
+  // Get status display info (memoized)
+  const statusDisplay = useMemo(() => {
     switch (consoleStatus.type) {
       case 'loading':
         return { text: '加载中...', color: 'secondary', icon: <LoadingOutlined /> };
@@ -104,9 +102,7 @@ const ServerConsole: React.FC = () => {
       default:
         return { text: '已断开', color: 'secondary', icon: <DisconnectOutlined /> };
     }
-  };
-
-  const statusDisplay = getStatusDisplay();
+  }, [consoleStatus]);
 
   // Terminal ready handler
   const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
@@ -137,12 +133,10 @@ const ServerConsole: React.FC = () => {
   // Manual reconnect
   const handleManualReconnect = useCallback(() => {
     disconnect();
-    setTimeout(() => {
-      const size = terminalRef.current?.getSize();
-      if (size) {
-        connect(size.cols, size.rows);
-      }
-    }, 100);
+    const size = terminalRef.current?.getSize();
+    if (size) {
+      connect(size.cols, size.rows);
+    }
   }, [disconnect, connect]);
 
   // Clear screen
@@ -172,28 +166,6 @@ const ServerConsole: React.FC = () => {
       disconnect();
     };
   }, [disconnect]);
-
-  // Show notification for connection errors
-  useEffect(() => {
-    if (lastError) {
-      notification.error({
-        message: '连接错误',
-        description: lastError,
-        duration: 5,
-      });
-    }
-  }, [lastError, notification]);
-
-  // Show notification when console is not available
-  useEffect(() => {
-    if (serverStatus && !canConnectWebSocket && !serverInfoLoading && !serverInfoError && id) {
-      notification.info({
-        message: '控制台不可用',
-        description: `控制台仅在服务器运行时可用。当前状态: ${serverStatus}`,
-        duration: 5,
-      });
-    }
-  }, [serverStatus, canConnectWebSocket, serverInfoLoading, serverInfoError, id, notification]);
 
   const canReconnect = consoleStatus.type !== 'loading' &&
                        consoleStatus.type !== 'error' &&
