@@ -1,40 +1,48 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Space, Alert, Typography, Spin } from 'antd';
-import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined } from '@ant-design/icons';
+import { Card, Button, Space, Typography, Spin, App } from 'antd';
+import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
 import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket';
 import PageHeader from '@/components/layout/PageHeader';
-import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
-import ServerStateTag from '@/components/overview/ServerStateTag';
 import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
-import { ServerInfo, ServerStatus } from '@/types/ServerInfo';
+import ServerStateTag from '@/components/overview/ServerStateTag';
 
 const { Text } = Typography;
 
-interface ServerConsoleInnerProps {
-  serverId: string;
-  serverInfo: ServerInfo;
-  serverStatus?: ServerStatus;
-}
+type ConsoleStatus =
+  | { type: 'loading' }
+  | { type: 'error'; message: string }
+  | { type: 'unavailable'; reason: React.ReactNode }
+  | { type: 'disconnected' }
+  | { type: 'connecting' }
+  | { type: 'connected' }
+  | { type: 'retrying' }
+  | { type: 'connection_error'; message: string };
 
-const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
-  serverId,
-  serverInfo,
-  serverStatus
-}) => {
-  // 终端引用
+const ServerConsole: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const serverId = id || '';
+  const { notification } = App.useApp();
+
+  // Terminal ref
   const terminalRef = useRef<ServerTerminalRef>(null);
 
-  // 检查服务器状态是否允许WebSocket连接
-  const canConnectWebSocket = useMemo(() => {
-    if (!serverStatus) return false;
-    return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
-  }, [serverStatus]);
+  // React Query hooks
+  const { useServerStatus, useServerInfo } = useServerQueries();
+  const { data: serverStatus } = useServerStatus(serverId);
+  const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
 
-  // WebSocket hook - don't auto-connect, we'll connect manually after terminal is ready
+  // Check if server status allows WebSocket connection
+  const canConnectWebSocket = useMemo(() => {
+    if (!serverStatus || !id || serverInfoLoading || serverInfoError) return false;
+    return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
+  }, [serverStatus, id, serverInfoLoading, serverInfoError]);
+
+  // WebSocket hook
   const {
     connectionState,
     lastError,
@@ -45,16 +53,69 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     disconnect
   } = useServerConsoleWebSocket(serverId, false);
 
-  // 终端准备就绪时设置消息监听器并连接
+  // Determine console status for header display
+  const consoleStatus: ConsoleStatus = useMemo(() => {
+    if (!id) {
+      return { type: 'error', message: '缺少服务器ID' };
+    }
+    if (serverInfoLoading) {
+      return { type: 'loading' };
+    }
+    if (serverInfoError) {
+      return { type: 'error', message: `无法加载服务器 "${serverId}"` };
+    }
+    if (serverStatus && !canConnectWebSocket) {
+      return { type: 'unavailable', reason: <ServerStateTag state={serverStatus} /> };
+    }
+    if (lastError) {
+      return { type: 'connection_error', message: lastError };
+    }
+    switch (connectionState) {
+      case 'CONNECTED':
+        return { type: 'connected' };
+      case 'CONNECTING':
+        return { type: 'connecting' };
+      case 'RETRYING':
+        return { type: 'retrying' };
+      case 'ERROR':
+        return { type: 'connection_error', message: '连接失败' };
+      default:
+        return { type: 'disconnected' };
+    }
+  }, [id, serverInfoLoading, serverInfoError, serverId, serverStatus, canConnectWebSocket, lastError, connectionState]);
+
+  // Get status display info
+  const getStatusDisplay = () => {
+    switch (consoleStatus.type) {
+      case 'loading':
+        return { text: '加载中...', color: 'secondary', icon: <LoadingOutlined /> };
+      case 'error':
+        return { text: consoleStatus.message, color: 'danger', icon: <ExclamationCircleOutlined /> };
+      case 'unavailable':
+        return { text: consoleStatus.reason, color: 'warning', icon: null };
+      case 'connected':
+        return { text: '已连接', color: 'success', icon: <LinkOutlined /> };
+      case 'connecting':
+        return { text: '连接中...', color: 'secondary', icon: <Spin size="small" /> };
+      case 'retrying':
+        return { text: '重试中...', color: 'warning', icon: <Spin size="small" /> };
+      case 'connection_error':
+        return { text: consoleStatus.message, color: 'danger', icon: <DisconnectOutlined /> };
+      default:
+        return { text: '已断开', color: 'secondary', icon: <DisconnectOutlined /> };
+    }
+  };
+
+  const statusDisplay = getStatusDisplay();
+
+  // Terminal ready handler
   const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
-    // 注册消息监听器，将WebSocket消息传递给终端
     onMessage((message) => {
       if (terminal.onMessage) {
         terminal.onMessage(message);
       }
     });
 
-    // Connect with initial terminal size for Docker CLI-style TTY resize
     if (canConnectWebSocket) {
       const size = terminal.getSize();
       if (size) {
@@ -68,12 +129,12 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     sendInput(data);
   }, [sendInput]);
 
-  // Handle terminal resize - send to container
+  // Handle terminal resize
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
     sendResize(cols, rows);
   }, [sendResize]);
 
-  // 手动重连
+  // Manual reconnect
   const handleManualReconnect = useCallback(() => {
     disconnect();
     setTimeout(() => {
@@ -84,24 +145,24 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     }, 100);
   }, [disconnect, connect]);
 
-  // 清屏
+  // Clear screen
   const handleClearScreen = useCallback(() => {
     if (terminalRef.current) {
       terminalRef.current.clear();
     }
   }, []);
 
-  // 连接成功时显示连接信息
+  // Connection state messages in terminal
   useEffect(() => {
     if (connectionState === 'CONNECTED' && terminalRef.current) {
       terminalRef.current.clear();
-      terminalRef.current.write('\x1b[32mConnected to server console\x1b[0m\r\n');
+      terminalRef.current.write('\x1b[32m已连接到服务器控制台\x1b[0m\r\n');
     } else if (connectionState === 'DISCONNECTED' && terminalRef.current) {
-      terminalRef.current.write('\x1b[33mDisconnected from server console\x1b[0m\r\n');
+      terminalRef.current.write('\x1b[33m已断开与服务器控制台的连接\x1b[0m\r\n');
     } else if (connectionState === 'ERROR' && terminalRef.current) {
-      terminalRef.current.write('\x1b[31mConnection error\x1b[0m\r\n');
+      terminalRef.current.write('\x1b[31m连接错误\x1b[0m\r\n');
     } else if (connectionState === 'RETRYING' && terminalRef.current) {
-      terminalRef.current.write('\x1b[33mRetrying connection...\x1b[0m\r\n');
+      terminalRef.current.write('\x1b[33m正在重试连接...\x1b[0m\r\n');
     }
   }, [connectionState]);
 
@@ -112,23 +173,31 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
     };
   }, [disconnect]);
 
-  // 获取连接状态显示
-  const getConnectionStatus = () => {
-    switch (connectionState) {
-      case 'CONNECTED':
-        return { text: '已连接', color: 'success', icon: <LinkOutlined /> };
-      case 'CONNECTING':
-        return { text: '正在连接...', color: 'processing', icon: <Spin size="small" /> };
-      case 'RETRYING':
-        return { text: '正在重试...', color: 'warning', icon: <Spin size="small" /> };
-      case 'ERROR':
-        return { text: '连接错误', color: 'error', icon: <DisconnectOutlined /> };
-      default:
-        return { text: '已断开连接', color: 'default', icon: <DisconnectOutlined /> };
+  // Show notification for connection errors
+  useEffect(() => {
+    if (lastError) {
+      notification.error({
+        message: '连接错误',
+        description: lastError,
+        duration: 5,
+      });
     }
-  };
+  }, [lastError, notification]);
 
-  const connectionStatus = getConnectionStatus();
+  // Show notification when console is not available
+  useEffect(() => {
+    if (serverStatus && !canConnectWebSocket && !serverInfoLoading && !serverInfoError && id) {
+      notification.info({
+        message: '控制台不可用',
+        description: `控制台仅在服务器运行时可用。当前状态: ${serverStatus}`,
+        duration: 5,
+      });
+    }
+  }, [serverStatus, canConnectWebSocket, serverInfoLoading, serverInfoError, id, notification]);
+
+  const canReconnect = consoleStatus.type !== 'loading' &&
+                       consoleStatus.type !== 'error' &&
+                       consoleStatus.type !== 'connecting';
 
   return (
     <div className="h-full flex flex-col space-y-4">
@@ -137,58 +206,46 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         icon={<CodeOutlined />}
         serverTag={serverInfo?.name}
         actions={
-          <ServerOperationButtons
-            serverId={serverId}
-            serverName={serverInfo?.name}
-            status={serverStatus}
-          />
+          serverInfo && (
+            <ServerOperationButtons
+              serverId={serverId}
+              serverName={serverInfo.name}
+              status={serverStatus}
+            />
+          )
         }
       />
 
-      {lastError && (
-        <Alert
-          title="连接错误"
-          description={lastError}
-          type="error"
-          showIcon
-          closable
-          onClose={() => {
-            // 可以在这里调用清除错误的函数，但目前WebSocket hook没有提供
-          }}
-        />
-      )}
-
-      {serverStatus && !canConnectWebSocket && (
-        <Alert
-          title="控制台不可用"
-          description={
-            <span>
-              控制台仅在服务器状态不是 <ServerStateTag state="REMOVED" /> 或 <ServerStateTag state="EXISTS" /> 时可用。当前状态: <ServerStateTag state={serverStatus} />
-            </span>
-          }
-          type="info"
-          showIcon
-        />
-      )}
-
-      {/* 控制台容器 */}
       <Card
         className="flex-1 min-h-0 flex flex-col"
         classNames={{ body: "flex flex-col flex-1 !p-4" }}
         title={
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center space-x-2">
-              <Text type="secondary">连接状态:</Text>
-              <Space size="small">
-                {connectionStatus.icon}
-                <Text type={connectionStatus.color as any}>{connectionStatus.text}</Text>
-              </Space>
+              <Text type="secondary">状态:</Text>
+              {consoleStatus.type === 'unavailable' ? (
+                statusDisplay.text
+              ) : (
+                <Space size="small">
+                  {statusDisplay.icon}
+                  <Text type={statusDisplay.color as any}>{statusDisplay.text}</Text>
+                </Space>
+              )}
+              {consoleStatus.type === 'error' && (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => navigate('/overview')}
+                >
+                  返回概览
+                </Button>
+              )}
             </div>
             <div className="flex items-center space-x-2">
               <Button
                 icon={<ReloadOutlined />}
                 onClick={handleManualReconnect}
-                disabled={connectionState === 'CONNECTING'}
+                disabled={!canReconnect}
                 type="primary"
                 size="small"
               >
@@ -201,7 +258,6 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
           </div>
         }
       >
-        {/* 终端区域 */}
         <ServerTerminal
           ref={terminalRef}
           onSendInput={handleSendInput}
@@ -211,68 +267,6 @@ const ServerConsoleInner: React.FC<ServerConsoleInnerProps> = ({
         />
       </Card>
     </div>
-  );
-};
-
-const ServerConsole: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const serverId = id!;
-
-  // React Query hooks for data loading and error checking
-  const { useServerStatus, useServerInfo } = useServerQueries();
-  const { data: serverStatus } = useServerStatus(serverId);
-  const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
-
-  // 如果没有服务器ID，返回错误
-  if (!id) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <Alert
-          title="参数错误"
-          description="缺少服务器ID参数"
-          type="error"
-          action={
-            <Button size="small" onClick={() => navigate('/overview')}>
-              返回概览
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
-  // 错误状态
-  if (serverInfoError) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <Alert
-          title="加载失败"
-          description={`无法加载服务器 "${serverId}" 的信息`}
-          type="error"
-          action={
-            <Button size="small" onClick={() => navigate('/overview')}>
-              返回概览
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
-  // 加载状态
-  if (serverInfoLoading || !serverInfo) {
-    return <LoadingSpinner height="16rem" tip="加载服务器信息中..." />;
-  }
-
-  // 所有数据就绪，渲染内层组件
-  return (
-    <ServerConsoleInner
-      key={serverId}
-      serverId={serverId}
-      serverInfo={serverInfo}
-      serverStatus={serverStatus}
-    />
   );
 };
 
