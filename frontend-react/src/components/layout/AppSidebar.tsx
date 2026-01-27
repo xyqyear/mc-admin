@@ -215,7 +215,7 @@ const AppSidebar: React.FC = () => {
         </div>
 
         {/* 菜单 */}
-        <div className="flex-1">
+        <div className="flex-1 overflow-y-auto">
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
