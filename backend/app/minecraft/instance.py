@@ -10,6 +10,7 @@ import yaml
 
 from ..dynamic_config import config
 from ..files.utils import _chown_async, get_uid_gid
+from ..logger import logger
 from ..utils.exec import async_rmtree, exec_command
 from ..utils.system import get_process_cpu_usage
 from .compose import MCComposeFile, ServerType
@@ -459,9 +460,8 @@ class MCInstance:
         # Try query protocol first
         try:
             return await self.list_players_query()
-        except Exception:
-            # If query fails for any reason, fall back to RCON
-            pass
+        except Exception as e:
+            logger.debug(f"Query protocol failed for server {self._name}: {e}")
 
         # Fall back to RCON
         return await self._list_players_rcon()
