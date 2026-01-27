@@ -247,7 +247,7 @@
     "mc_environment": {
       "type": "object",
       "description": "Minecraft 服务器环境变量配置。",
-      "required": ["EULA", "VERSION", "TYPE", "TZ", "MAX_MEMORY", "ONLINE_MODE", "ENABLE_RCON", "RCON_PASSWORD", "PREVENT_PROXY_CONNECTIONS", "ENABLE_QUERY"],
+      "required": ["EULA", "VERSION", "TYPE", "TZ", "MAX_MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "ENABLE_QUERY"],
       "properties": {
         "EULA": {
           "type": ["boolean", "string"],
