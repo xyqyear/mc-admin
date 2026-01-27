@@ -167,7 +167,8 @@ const ServerConsole: React.FC = () => {
     };
   }, [disconnect]);
 
-  const canReconnect = consoleStatus.type !== 'loading' &&
+  const canReconnect = canConnectWebSocket &&
+                       consoleStatus.type !== 'loading' &&
                        consoleStatus.type !== 'error' &&
                        consoleStatus.type !== 'connecting';
 
