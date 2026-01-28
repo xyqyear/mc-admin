@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Card,
@@ -33,7 +33,7 @@ const { Title, Text } = Typography
 const DynamicConfig: React.FC = () => {
   const { message, modal } = App.useApp()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selectedModule, setSelectedModule] = useState<string | null>(null)
+  const selectedModule = searchParams.get('module')
   const [formData, setFormData] = useState<any>({})
   const [isCompareVisible, setIsCompareVisible] = useState(false)
 
@@ -54,14 +54,6 @@ const DynamicConfig: React.FC = () => {
   const updateConfigMutation = useUpdateModuleConfig()
   const resetConfigMutation = useResetModuleConfig()
 
-  // Initialize selected module from URL params
-  useEffect(() => {
-    const moduleParam = searchParams.get('module')
-    if (moduleParam && moduleParam !== selectedModule) {
-      setSelectedModule(moduleParam)
-    }
-  }, [searchParams, selectedModule])
-
   // Update form data when config loads
   useEffect(() => {
     if (moduleConfig?.config_data) {
@@ -71,17 +63,8 @@ const DynamicConfig: React.FC = () => {
 
   // Handle module selection
   const handleModuleChange = (moduleName: string) => {
-    setSelectedModule(moduleName)
     setFormData({})
-
-    // Update URL params to reflect module selection
-    const newParams = new URLSearchParams(searchParams)
-    if (moduleName) {
-      newParams.set('module', moduleName)
-    } else {
-      newParams.delete('module')
-    }
-    setSearchParams(newParams)
+    setSearchParams({ module: moduleName })
   }
 
   // Handle form data change
