@@ -235,7 +235,7 @@ const ServerCompose: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full gap-4">
       <PageHeader
         title="设置"
         icon={<SettingOutlined />}
@@ -267,9 +267,14 @@ const ServerCompose: React.FC = () => {
       />
 
       <Card
+        className="flex-1 min-h-0 flex flex-col"
+        classNames={{ body: "flex flex-col flex-1 min-h-0 !p-0" }}
         title={
           <div className="flex items-center justify-between w-full">
-            <span>Docker Compose 配置</span>
+            <div className="flex items-center gap-3">
+              <span>Docker Compose 配置</span>
+              <span className="text-xs text-gray-400 font-normal">直接编辑配置文件，点击提交并重建生效</span>
+            </div>
             <Button
               size="small"
               icon={<QuestionCircleOutlined />}
@@ -283,7 +288,8 @@ const ServerCompose: React.FC = () => {
       >
         <ComposeYamlEditor
           key={editorKey}
-          height="600px"
+          className="h-full"
+          height="100%"
           value={rawYaml}
           onChange={handleYamlChange}
           onMount={(editor: any) => {
@@ -330,14 +336,6 @@ const ServerCompose: React.FC = () => {
           </div>
         </div>
       </Modal>
-
-      {/* 编辑说明 */}
-      <Alert
-        title="编辑说明"
-        description="请直接编辑上方的 Docker Compose YAML 配置文件。需要点击提交并重建才能生效。"
-        type="info"
-        showIcon
-      />
 
       {/* Docker Compose 帮助模态框 */}
       <DockerComposeHelpModal
