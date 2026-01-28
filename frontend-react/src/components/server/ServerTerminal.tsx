@@ -139,21 +139,21 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance]);
 
-  // Auto-resize terminal and notify parent of size changes
+  // Auto-resize terminal using ResizeObserver for container size changes
   useEffect(() => {
-    if (fitAddon && terminalInstance) {
+    if (fitAddon && terminalInstance && terminalRef.current) {
       setTimeout(() => fitAddon.fit(), 0);
 
-      const handleResize = () => {
+      const resizeObserver = new ResizeObserver(() => {
         fitAddon.fit();
-      };
+      });
 
-      window.addEventListener('resize', handleResize);
+      resizeObserver.observe(terminalRef.current);
       return () => {
-        window.removeEventListener('resize', handleResize);
+        resizeObserver.disconnect();
       };
     }
-  }, [fitAddon, terminalInstance]);
+  }, [fitAddon, terminalInstance, terminalRef]);
 
   // Listen for terminal resize events and notify parent
   useEffect(() => {
@@ -178,7 +178,7 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     <div
       ref={terminalRef as React.LegacyRef<HTMLDivElement>}
       className={className}
-      style={height ? { height } : undefined}
+      style={{ overflow: 'hidden', ...(height ? { height } : {}) }}
     />
   );
 });

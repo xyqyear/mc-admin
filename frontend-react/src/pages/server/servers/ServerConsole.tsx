@@ -181,7 +181,7 @@ const ServerConsole: React.FC = () => {
                        consoleStatus.type !== 'connecting';
 
   return (
-    <div className="h-full flex flex-col space-y-4">
+    <div className="h-full overflow-hidden flex flex-col space-y-4">
       <PageHeader
         title="控制台"
         icon={<CodeOutlined />}
@@ -199,7 +199,7 @@ const ServerConsole: React.FC = () => {
 
       <Card
         className="flex-1 min-h-0 flex flex-col"
-        classNames={{ body: "flex flex-col flex-1 !p-4" }}
+        classNames={{ body: "flex flex-col flex-1 min-h-0 !p-4" }}
         title={
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center space-x-2">
