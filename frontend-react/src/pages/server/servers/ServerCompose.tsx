@@ -273,7 +273,7 @@ const ServerCompose: React.FC = () => {
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
               <span>Docker Compose 配置</span>
-              <span className="text-xs text-gray-400 font-normal">直接编辑配置文件，点击提交并重建生效</span>
+              <span className="text-xs text-gray-400 font-normal">此处的修改在点击提交并重建后才会生效，退出该页面将丢失未保存的更改。</span>
             </div>
             <Button
               size="small"
