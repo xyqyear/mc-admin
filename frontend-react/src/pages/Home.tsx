@@ -2,12 +2,14 @@ import React from 'react'
 import { Card, Row, Col, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import {
-  DashboardOutlined,
   DatabaseOutlined,
   PlusOutlined,
+  TeamOutlined,
   CloudDownloadOutlined,
   FileZipOutlined,
-  MonitorOutlined
+  GlobalOutlined,
+  ClockCircleOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 
 const { Title, Paragraph } = Typography
@@ -17,11 +19,11 @@ const Home: React.FC = () => {
 
   const featureCards = [
     {
-      title: '服务器概览',
-      description: '查看所有 Minecraft 服务器的运行状态和资源使用情况',
-      icon: <DashboardOutlined style={{ fontSize: 32, color: '#1890ff' }} />,
+      title: '服务器管理',
+      description: '管理现有服务器，查看详细信息和性能指标',
+      icon: <DatabaseOutlined style={{ fontSize: 32, color: '#722ed1' }} />,
       path: '/overview',
-      color: '#1890ff'
+      color: '#722ed1'
     },
     {
       title: '创建服务器',
@@ -31,11 +33,11 @@ const Home: React.FC = () => {
       color: '#52c41a'
     },
     {
-      title: '服务器管理',
-      description: '管理现有服务器，查看详细信息和性能指标',
-      icon: <DatabaseOutlined style={{ fontSize: 32, color: '#722ed1' }} />,
-      path: '/overview',
-      color: '#722ed1'
+      title: '玩家管理',
+      description: '查看玩家信息、在线状态和游戏记录',
+      icon: <TeamOutlined style={{ fontSize: 32, color: '#13c2c2' }} />,
+      path: '/players',
+      color: '#13c2c2'
     },
     {
       title: '快照管理',
@@ -52,11 +54,25 @@ const Home: React.FC = () => {
       color: '#eb2f96'
     },
     {
-      title: '系统监控',
-      description: '实时监控系统资源使用情况和服务器性能',
-      icon: <MonitorOutlined style={{ fontSize: 32, color: '#13c2c2' }} />,
-      path: '/overview',
-      color: '#13c2c2'
+      title: 'DNS管理',
+      description: '管理域名解析记录，配置服务器地址映射',
+      icon: <GlobalOutlined style={{ fontSize: 32, color: '#2f54eb' }} />,
+      path: '/dns',
+      color: '#2f54eb'
+    },
+    {
+      title: '任务管理',
+      description: '配置定时任务，自动执行备份和重启等操作',
+      icon: <ClockCircleOutlined style={{ fontSize: 32, color: '#faad14' }} />,
+      path: '/cron',
+      color: '#faad14'
+    },
+    {
+      title: '动态配置',
+      description: '管理系统配置参数，自定义平台行为',
+      icon: <SettingOutlined style={{ fontSize: 32, color: '#595959' }} />,
+      path: '/config',
+      color: '#595959'
     }
   ]
 
@@ -78,7 +94,7 @@ const Home: React.FC = () => {
         <Title level={2} className="text-center !mb-8">核心功能</Title>
         <Row gutter={[24, 24]}>
           {featureCards.map((card, index) => (
-            <Col xs={24} sm={12} lg={8} key={index}>
+            <Col xs={24} sm={12} lg={6} key={index}>
               <Card
                 hoverable
                 className="h-full transition-all duration-300 hover:shadow-lg"
