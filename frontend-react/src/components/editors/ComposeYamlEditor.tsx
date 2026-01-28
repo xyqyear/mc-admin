@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
 import { type IDisposable } from 'monaco-editor'
@@ -12,6 +12,8 @@ export interface ComposeYamlEditorProps {
   theme?: 'vs-light' | 'vs-dark'
   className?: string
   path?: string
+  autoHeight?: boolean
+  minHeight?: number
 }
 
 const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
@@ -22,10 +24,13 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
   readOnly = false,
   theme = 'vs-light',
   className,
-  path = 'docker-compose.yml'
+  path = 'docker-compose.yml',
+  autoHeight = false,
+  minHeight = 300
 }) => {
   const editorRef = useRef<any>(null)
   const yamlDisposableRef = useRef<IDisposable | null>(null)
+  const [editorHeight, setEditorHeight] = useState<number>(minHeight)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -58,10 +63,18 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
       console.log('Monaco YAML configured successfully')
     } catch (error) {
       console.error('Failed to configure monaco-yaml:', error)
-      // Even if YAML configuration fails, the editor should still work with basic syntax highlighting
     }
 
-    // Call user-provided onMount callback
+    // Auto-height: listen to content size changes
+    if (autoHeight) {
+      const updateHeight = () => {
+        const contentHeight = editor.getContentHeight()
+        setEditorHeight(Math.max(contentHeight, minHeight))
+      }
+      updateHeight()
+      editor.onDidContentSizeChange(updateHeight)
+    }
+
     if (onMount) {
       onMount(editor)
     }
@@ -70,7 +83,7 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
   return (
     <div className={className}>
       <Editor
-        height={height}
+        height={autoHeight ? editorHeight : height}
         defaultLanguage="yaml"
         value={value}
         onChange={onChange}
@@ -104,7 +117,10 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
           guides: {
             indentation: true,
             bracketPairs: true
-          }
+          },
+          scrollbar: {
+            alwaysConsumeMouseWheel: !autoHeight
+          },
         }}
       />
     </div>

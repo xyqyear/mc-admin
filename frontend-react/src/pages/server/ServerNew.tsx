@@ -238,7 +238,8 @@ const ServerNew: React.FC = () => {
               rules={[{ required: true, message: '请输入 Docker Compose 配置' }]}
             >
               <ComposeYamlEditor
-                height="500px"
+                autoHeight
+                minHeight={300}
                 value={composeContent}
                 onChange={handleComposeContentChange}
                 onMount={(editor: any) => {
