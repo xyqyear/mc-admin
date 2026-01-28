@@ -62,7 +62,7 @@ const Home: React.FC = () => {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header Section */}
       <div className="text-center space-y-4">
         <Title level={1} className="!mb-0">

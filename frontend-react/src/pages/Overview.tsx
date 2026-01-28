@@ -375,7 +375,7 @@ const Overview: React.FC = () => {
   ]
 
   return (
-    <div className="h-full w-full flex flex-col space-y-4">
+    <div className="space-y-4">
       {/* 系统概览卡片 */}
       <div className="grid gap-3 sm:gap-4" style={{
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',

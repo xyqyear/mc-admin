@@ -224,7 +224,7 @@ const CronManagement: React.FC = () => {
   ]
 
   return (
-    <div className="h-full w-full flex flex-col space-y-4">
+    <div className="space-y-4">
       <PageHeader
         title="定时任务管理"
         icon={<ScheduleOutlined />}

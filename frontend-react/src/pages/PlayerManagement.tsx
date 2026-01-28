@@ -207,7 +207,7 @@ const PlayerManagement: React.FC = () => {
   ];
 
   return (
-    <div className="h-full w-full flex flex-col space-y-4">
+    <div className="space-y-4">
       <PageHeader
         title="玩家管理"
         icon={<TeamOutlined />}

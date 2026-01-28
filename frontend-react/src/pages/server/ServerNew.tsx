@@ -139,7 +139,7 @@ const ServerNew: React.FC = () => {
 
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="新建服务器"
         icon={<PlusOutlined />}

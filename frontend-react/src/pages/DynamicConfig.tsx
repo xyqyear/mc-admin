@@ -264,7 +264,7 @@ const DynamicConfig: React.FC = () => {
   const isConfigLoaded = moduleConfig && moduleSchema && !configLoading && !schemaLoading
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="space-y-4">
       <PageHeader
         title="动态配置管理"
         icon={<SettingOutlined />}
@@ -304,14 +304,12 @@ const DynamicConfig: React.FC = () => {
         }
       />
 
-      <div style={{ height: '1rem' }} />
-
       <Card
         title="选择配置模块"
-        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        className="flex-1 min-h-0 flex flex-col"
         styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="flex flex-col h-full">
           <Select
             placeholder="请选择一个配置模块"
             style={{ width: '100%', marginBottom: 16 }}
@@ -322,7 +320,7 @@ const DynamicConfig: React.FC = () => {
           />
 
           {selectedModule && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="flex-1 flex flex-col min-h-0">
               <Divider style={{ margin: '16px 0' }} />
 
               {/* Loading state for config/schema */}
@@ -359,8 +357,8 @@ const DynamicConfig: React.FC = () => {
 
               {/* Configuration form */}
               {isConfigLoaded && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                  <div style={{ marginBottom: 16 }}>
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="mb-4">
                     <Title level={4} style={{ margin: 0 }}>配置表单</Title>
                     <Text type="secondary">
                       模块: {moduleSchema.module_name} |
@@ -370,7 +368,7 @@ const DynamicConfig: React.FC = () => {
                   </div>
 
                   <Card
-                    style={{ flex: 1, minHeight: 0 }}
+                    className="flex-1 min-h-0"
                     styles={{ body: { height: '100%', overflow: 'auto' } }}
                   >
                     <Form

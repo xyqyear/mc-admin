@@ -186,7 +186,7 @@ const Snapshots: React.FC = () => {
   ];
 
   return (
-    <div className="h-full w-full flex flex-col space-y-4">
+    <div className="space-y-4">
       <PageHeader
         title="快照管理"
         icon={<HistoryOutlined />}

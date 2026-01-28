@@ -327,7 +327,7 @@ const DnsManagement: React.FC = () => {
 
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="space-y-4">
       <PageHeader
         title="DNS管理"
         icon={<GlobalOutlined />}
@@ -366,7 +366,7 @@ const DnsManagement: React.FC = () => {
         }
       />
 
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="flex-1 min-h-0 flex flex-col gap-4">
         {/* Status and differences */}
         <div>
           {renderErrors()}
@@ -374,8 +374,8 @@ const DnsManagement: React.FC = () => {
         </div>
 
         {/* DNS Records and Router Routes */}
-        <Row gutter={[16, 16]} style={{ flex: 1, minHeight: 0 }}>
-          <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column' }}>
+        <Row gutter={[16, 16]} className="flex-1 min-h-0">
+          <Col xs={24} lg={16} className="flex flex-col">
             <Card
               title={
                 <Space>
@@ -386,7 +386,7 @@ const DnsManagement: React.FC = () => {
                   )}
                 </Space>
               }
-              style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+              className="flex-1 flex flex-col"
               styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
             >
               {recordsLoading ? (
@@ -421,13 +421,13 @@ const DnsManagement: React.FC = () => {
                     showQuickJumper: true,
                     showTotal: (total) => `共 ${total} 条记录`,
                   }}
-                  scroll={{ y: 'calc(100vh - 285px)' }}
+                  scroll={{ x: 'auto' }}
                 />
               )}
             </Card>
           </Col>
 
-          <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column' }}>
+          <Col xs={24} lg={8} className="flex flex-col">
             <Card
               title={
                 <Space>
@@ -438,7 +438,7 @@ const DnsManagement: React.FC = () => {
                   )}
                 </Space>
               }
-              style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+              className="flex-1 flex flex-col"
               styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
             >
               {routesLoading ? (
@@ -472,7 +472,6 @@ const DnsManagement: React.FC = () => {
                     showQuickJumper: true,
                     showTotal: (total) => `共 ${total} 条路由`,
                   }}
-                  scroll={{ y: 'calc(100vh - 285px)' }}
                 />
               )}
             </Card>
