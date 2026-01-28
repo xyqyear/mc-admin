@@ -2,23 +2,23 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.12+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, and dynamic configuration management.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, and dynamic configuration management.
 
 ## Tech Stack
 
 **Core Backend:**
-- Python 3.12+ with Poetry package management
+- Python 3.13+ with uv package management
 - FastAPI + Uvicorn ASGI server with CORS middleware
 - SQLAlchemy 2.0 async + SQLite + aiosqlite
-- Alembic 1.16.5 for database migrations with autogenerate
+- Alembic for database migrations with autogenerate
 - Pydantic v2 + pydantic-settings (TOML + env variables)
 - joserfc for JWT + OAuth2 authentication
-- pwdlib for password hashing (modern replacement for passlib)
+- pwdlib for password hashing
 
 **Integrated Modules:**
 - **Minecraft Management** (app.minecraft): Docker Compose lifecycle, cgroup v2 monitoring
 - **Player System** (app.players): Event-driven player tracking, sessions, chat, achievements, skins
-- **Snapshot System** (app.snapshots): Restic backup integration
+- **Snapshot System** (app.snapshots): Restic backup integration with deletion and unlock
 - **DNS Management** (app.dns): DNSPod and Huawei Cloud DNS integration
 - **Cron System** (app.cron): APScheduler task scheduling with backup jobs
 - **Event System** (app.events): Centralized event dispatcher for cross-module communication
@@ -26,21 +26,22 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **File System** (app.files): Multi-file upload, search, conflict resolution
 - **Dynamic Config** (app.dynamic_config): Runtime configuration with schema migration
 - **Server Tracker** (app.server_tracker): Server lifecycle event monitoring
+- **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
 
 **Additional Libraries:**
 - psutil for system monitoring
-- httpx for async HTTP requests (replaces aiohttp)
+- httpx for async HTTP requests
 - Watchdog for file monitoring
 - APScheduler for task scheduling
 - aiofiles for async file I/O
 - PyYAML for Docker Compose parsing
+- docker-py for container management and console streaming
 
 ## Development Commands
 
 ### Environment Setup
 ```bash
-poetry install      # Install dependencies
-poetry shell        # Activate virtual environment
+uv sync         # Install dependencies
 ```
 
 ### Configuration
@@ -70,39 +71,39 @@ password = "your-restic-password"
 
 ```bash
 # Generate migration (automatic detection)
-poetry run alembic revision --autogenerate -m "Description"
+uv run alembic revision --autogenerate -m "Description"
 
 # Apply migrations
-poetry run alembic upgrade head
+uv run alembic upgrade head
 
 # Check status
-poetry run alembic current
+uv run alembic current
 
 # Rollback
-poetry run alembic downgrade -1
+uv run alembic downgrade -1
 ```
 
 **Important**: Only existing table schema changes need migrations. New tables are auto-created.
 
 ### Run Development Server
 ```bash
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 ```
 
 ### Testing
 **Development Testing** (fast, no Docker containers):
 ```bash
 # Safe tests only (no containers)
-poetry run pytest tests/ -v -k "not _with_docker and not integrated"
+uv run pytest tests/ -v -k "not _with_docker and not integrated"
 
 # Specific module tests
-poetry run pytest tests/players/ -v
-poetry run pytest tests/dns/ -v
-poetry run pytest tests/cron/ -v
-poetry run pytest tests/files/ -v
+uv run pytest tests/players/ -v
+uv run pytest tests/dns/ -v
+uv run pytest tests/cron/ -v
+uv run pytest tests/files/ -v
 
 # Snapshot tests
-poetry run pytest tests/snapshots/test_snapshots_basic.py -v
+uv run pytest tests/snapshots/test_snapshots_basic.py -v
 ```
 
 **DO NOT use black** for code formatting.
@@ -147,12 +148,11 @@ app/
 │       ├── resources.py    # Resource monitoring
 │       ├── players.py      # Online player list
 │       ├── files.py        # File management
-│       ├── console.py      # WebSocket console
-│       ├── rcon.py         # RCON commands
+│       ├── console.py      # WebSocket console endpoint
 │       ├── populate.py     # Archive population
 │       └── restart_schedule.py
 │
-├── players/                # **NEW** - Player tracking system
+├── players/                # Player tracking system
 │   ├── manager.py          # PlayerSystemManager (main coordinator)
 │   ├── player_manager.py   # Player CRUD and skin management
 │   ├── session_tracker.py  # Session records and online status
@@ -164,26 +164,26 @@ app/
 │   ├── mojang_api.py       # Mojang API client
 │   └── crud/               # Player database operations
 │
-├── events/                 # **NEW** - Event system
+├── events/                 # Event system
 │   ├── base.py             # BaseEvent and event definitions
 │   ├── dispatcher.py       # EventDispatcher (centralized)
 │   └── types.py            # EventType enum
 │
-├── log_monitor/            # **NEW** - Log monitoring
+├── log_monitor/            # Log monitoring
 │   ├── monitor.py          # LogMonitor (Watchdog-based)
 │   └── parser.py           # LogParser (regex-based parsing)
 │
-├── server_tracker/         # **NEW** - Server lifecycle tracking
+├── server_tracker/         # Server lifecycle tracking
 │   └── tracker.py          # ServerTracker for server events
 │
-├── files/                  # **ENHANCED** - File operations
-│   ├── base.py             # Basic file CRUD (was common/file_operations.py)
+├── files/                  # File operations
+│   ├── base.py             # Basic file CRUD
 │   ├── multi_file.py       # Multi-file upload with conflicts
 │   ├── search.py           # Deep file search
 │   ├── types.py            # File operation types
 │   └── utils.py            # Upload session management
 │
-├── dynamic_config/         # **ENHANCED** - Dynamic configuration
+├── dynamic_config/         # Dynamic configuration
 │   ├── manager.py          # ConfigManager with caching
 │   ├── schemas.py          # BaseConfigSchema
 │   ├── migration.py        # ConfigMigrator
@@ -211,7 +211,7 @@ app/
 │       ├── backup.py       # Backup job with Uptime Kuma
 │       └── restart.py      # Server restart job
 │
-├── minecraft/              # **INTEGRATED** - Minecraft Docker management
+├── minecraft/              # Minecraft Docker management
 │   ├── manager.py          # DockerMCManager
 │   ├── instance.py         # MCInstance (server lifecycle)
 │   ├── compose.py          # MCComposeFile
@@ -224,14 +224,14 @@ app/
 │       └── network.py      # Network stats
 │
 ├── snapshots/              # Restic backup integration
-│   └── restic.py           # ResticManager + models
+│   └── restic.py           # ResticManager
 │
 ├── utils/
 │   ├── compression.py      # 7z compression
 │   └── decompression.py    # Archive extraction
 │
 └── websocket/
-    └── console.py          # Console WebSocket streaming
+    └── console.py          # Console WebSocket with docker-py attach
 ```
 
 ## Key Integrated Systems
@@ -249,8 +249,8 @@ app/
 - **LogMonitor**: Real-time log file monitoring with Watchdog
 
 **Database Models:**
-- Player (UUID, name, first_seen, last_seen, skin data)
-- PlayerSession (join/leave events, playtime calculation)
+- Player (UUID, name, first_seen, skin data)
+- PlayerSession (join/leave events, playtime calculation, last_seen computed)
 - PlayerChat (messages with timestamps)
 - PlayerAchievement (achievement tracking)
 - ServerHeartbeat (crash detection)
@@ -292,6 +292,16 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 - Emits events for player actions and server events
 - Handles log rotation and file recreation
 - Crash detection through heartbeat monitoring
+
+### WebSocket Console System
+**Direct container terminal access** via docker-py:
+
+- Uses docker-py attach socket for bidirectional communication
+- Real-time log streaming from container stdout/stderr
+- Direct command input to container stdin
+- Supports terminal features (command history, tab completion via MC server)
+- Automatic reconnection handling
+- No file-based log reading or mc-send-to-console dependency
 
 ### File System
 **Enhanced file operations** with multi-file support:
@@ -352,9 +362,9 @@ if config.snapshots.time_restriction.enabled:
 **User**: `/api/user/` - profile management
 **Admin**: `/api/admin/` - user management (OWNER only)
 **System**: `/api/system/info` - system metrics
-**Servers**: `/api/servers/` - CRUD, status, operations, resources, players, console
+**Servers**: `/api/servers/` - CRUD, status, operations, resources, players, WebSocket console
 **Files**: `/api/servers/{id}/files/` - CRUD, upload, search, multi-upload
-**Snapshots**: `/api/snapshots/`, `/api/servers/{id}/snapshots/` - backup management
+**Snapshots**: `/api/snapshots/`, `/api/servers/{id}/snapshots/` - backup management, deletion, unlock
 **Archives**: `/api/archives/` - upload, list, delete, SHA256
 **Cron**: `/api/cron/` - job management, execution history
 **DNS**: `/api/dns/` - status, records, update, sync

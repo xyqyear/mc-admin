@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, and version update notifications.
+Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, version update notifications, and direct container terminal access.
 
 ## Tech Stack
 
@@ -13,22 +13,24 @@ Modern React 18 + TypeScript single-page application for MC Admin Minecraft serv
 - Dev server: port 3000 (typically already running)
 
 **UI & Styling:**
-- Ant Design 5 (v5.13.3) + @ant-design/icons + @ant-design/pro-components
+- Ant Design 6 (v6.2.1) + @ant-design/icons v6 + @rjsf/antd v6
 - Tailwind CSS 3 + PostCSS (preflight disabled for AntD compatibility)
 - Custom AntD theme with primary blue (#1677ff)
 - ESLint v9 with modern flat config
 
 **State & Data:**
-- Zustand v4.5.0 with localStorage persistence (token, sidebar, login preference, downloads)
-- TanStack React Query v5.85.5 (three-layer architecture)
+- Zustand v4.5.7 with localStorage persistence (token, sidebar, login preference, downloads)
+- TanStack React Query v5.89.0 (three-layer architecture)
 - Axios with interceptors and auto-token injection
 
 **Advanced Features:**
 - Monaco Editor v0.52.2 + monaco-yaml v5.4.0 for Docker Compose editing
+- Docker Compose schema with docker-minecraft-server specific hints
 - SNBT language support for Minecraft NBT files
 - React Router v6 with lazy loading and nested routes
 - react-error-boundary for graceful error handling
 - WebSocket integration for console streaming
+- xterm.js for terminal emulation with direct container attach
 
 ## Development Commands
 
@@ -55,7 +57,7 @@ src/
 ├── main.tsx                 # App bootstrap with React Query, AntD theme, Monaco workers
 ├── App.tsx                  # Routes, error boundaries, auth wrappers
 ├── yaml.worker.js           # Monaco YAML worker
-├── snbtLanguage.ts          # **NEW** - SNBT language definition for Monaco
+├── snbtLanguage.ts          # SNBT language definition for Monaco
 │
 ├── components/
 │   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, PageHeader, DownloadTaskContainer
@@ -63,9 +65,9 @@ src/
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
 │   ├── files/               # FileIcon, FileSnapshotActions
 │   │
-│   ├── server/              # **ENHANCED** - Server-specific components
+│   ├── server/              # Server-specific components
 │   │   ├── ServerOperationButtons.tsx   # Reusable operation buttons
-│   │   ├── ServerTerminal.tsx           # Terminal component
+│   │   ├── ServerTerminal.tsx           # Terminal component with xterm.js
 │   │   ├── ServerInfoCard.tsx           # Server details
 │   │   ├── ServerStatsCard.tsx          # Statistics
 │   │   ├── ServerPlayersCard.tsx        # Online players
@@ -74,16 +76,19 @@ src/
 │   │   ├── ServerResourcesCard.tsx      # CPU/memory monitoring
 │   │   ├── ServerAddressCard.tsx        # Server address display
 │   │   ├── ServerRestartScheduleCard.tsx # Restart schedule
-│   │   ├── OnlinePlayersCard.tsx        # **NEW** - Real-time online players
+│   │   ├── OnlinePlayersCard.tsx        # Real-time online players
 │   │   ├── FileBreadcrumb.tsx           # File navigation
 │   │   ├── DragDropOverlay.tsx          # Drag-and-drop overlay
 │   │   ├── FileTable.tsx                # File listing
 │   │   ├── FileToolbar.tsx              # File operations toolbar
-│   │   ├── FileSearchBox.tsx            # **NEW** - File search input
-│   │   ├── FileSearchResultTree.tsx     # **NEW** - Search results tree
-│   │   └── HighlightedFileName.tsx      # **NEW** - Search result highlighting
+│   │   ├── FileSearchBox.tsx            # File search input
+│   │   ├── FileSearchResultTree.tsx     # Search results tree
+│   │   └── HighlightedFileName.tsx      # Search result highlighting
 │   │
-│   ├── players/             # **NEW** - Player management components
+│   ├── common/              # Shared components
+│   │   └── ServerNameTag.tsx            # Clickable server name tags
+│   │
+│   ├── players/             # Player management components
 │   │   ├── PlayerFilters.tsx            # Player search and filters
 │   │   ├── PlayerDetailDrawer.tsx       # Player detail viewer with tabs
 │   │   ├── MCAvatar.tsx                 # Minecraft player avatar
@@ -100,25 +105,26 @@ src/
 │   ├── forms/               # Advanced form builders
 │   │   ├── CronExpressionBuilder.tsx    # Visual cron expression creation
 │   │   ├── CronFieldInput.tsx           # Cron field inputs
-│   │   └── SchemaForm.tsx               # Dynamic JSON schema forms
+│   │   ├── SchemaForm.tsx               # Dynamic JSON schema forms
+│   │   └── rjsfTheme.tsx                # RJSF custom theme for AntD v6
 │   │
 │   ├── debug/               # **DEV-ONLY** - Debug tools
 │   │   ├── DebugModal.tsx              # Debug information modal
 │   │   └── DebugTool.tsx               # Debug sidebar entry
 │   │
-│   ├── VersionUpdateModal.tsx          # Version update notifications
+│   ├── VersionUpdateModal.tsx          # Version update notifications with issue links
 │   │
 │   └── modals/              # Modal components
 │       ├── ServerFiles/     # File management modals
 │       │   ├── UploadModal.tsx                 # Single file upload
-│       │   ├── MultiFileUploadModal.tsx        # **NEW** - Multi-file/folder upload
-│       │   ├── FileUploadTree.tsx              # **NEW** - Upload tree display
-│       │   ├── ConflictTree.tsx                # **NEW** - Conflict resolution tree
+│       │   ├── MultiFileUploadModal.tsx        # Multi-file/folder upload
+│       │   ├── FileUploadTree.tsx              # Upload tree display
+│       │   ├── ConflictTree.tsx                # Conflict resolution tree
 │       │   ├── CreateModal.tsx                 # File/folder creation
 │       │   ├── RenameModal.tsx                 # File rename
 │       │   ├── FileEditModal.tsx               # File editing with Monaco
 │       │   ├── FileDiffModal.tsx               # File diff comparison
-│       │   ├── FileDeepSearchModal.tsx         # **NEW** - Deep file search
+│       │   ├── FileDeepSearchModal.tsx         # Deep file search
 │       │   ├── CompressionConfirmModal.tsx     # Compression confirmation
 │       │   ├── CompressionResultModal.tsx      # Compression result
 │       │   └── index.ts
@@ -135,16 +141,16 @@ src/
 ├── hooks/
 │   ├── api/                 # **Layer 1** - Raw API functions
 │   │   ├── authApi.ts
-│   │   ├── snapshotApi.ts
+│   │   ├── snapshotApi.ts   # Includes deletion and unlock APIs
 │   │   ├── systemApi.ts
-│   │   ├── fileApi.ts        # **ENHANCED** - Multi-file upload, deep search
+│   │   ├── fileApi.ts       # Multi-file upload, deep search
 │   │   ├── serverApi.ts
 │   │   ├── archiveApi.ts
 │   │   ├── cronApi.ts
 │   │   ├── dnsApi.ts
 │   │   ├── configApi.ts
 │   │   ├── userApi.ts
-│   │   └── playerApi.ts      # **NEW** - Player management API
+│   │   └── playerApi.ts     # Player management API
 │   │
 │   ├── queries/
 │   │   ├── base/            # **Layer 2** - Resource-focused query hooks
@@ -157,7 +163,7 @@ src/
 │   │   │   ├── useConfigQueries.ts
 │   │   │   ├── useSystemQueries.ts
 │   │   │   ├── useUserQueries.ts
-│   │   │   └── usePlayerQueries.ts   # **NEW** - Player data queries
+│   │   │   └── usePlayerQueries.ts   # Player data queries
 │   │   │
 │   │   └── page/            # **Layer 3** - Page-level compositions
 │   │       ├── useServerDetailQueries.ts
@@ -165,9 +171,9 @@ src/
 │   │
 │   ├── mutations/           # Mutation hooks
 │   │   ├── useAuthMutations.ts
-│   │   ├── useFileMutations.ts      # **ENHANCED** - Multi-file operations
+│   │   ├── useFileMutations.ts      # Multi-file operations
 │   │   ├── useServerMutations.ts
-│   │   ├── useSnapshotMutations.ts
+│   │   ├── useSnapshotMutations.ts  # Includes deletion and unlock
 │   │   ├── useArchiveMutations.ts
 │   │   ├── useCronMutations.ts
 │   │   ├── useDnsMutations.ts
@@ -175,7 +181,7 @@ src/
 │   │   └── useUserMutations.ts
 │   │
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code login
-│   ├── useServerConsoleWebSocket.ts # Console WebSocket
+│   ├── useServerConsoleWebSocket.ts # Console WebSocket with direct attach
 │   ├── usePageDragUpload.ts         # Drag-and-drop validation
 │   └── useVersionCheck.ts           # Version update detection
 │
@@ -183,28 +189,28 @@ src/
 │   ├── Overview.tsx         # Server dashboard
 │   ├── Login.tsx            # Dual authentication
 │   ├── Home.tsx             # Landing page
-│   ├── Snapshots.tsx        # Global snapshots
+│   ├── Snapshots.tsx        # Global snapshots with deletion and unlock
 │   ├── ArchiveManagement.tsx # Archive management
 │   ├── CronManagement.tsx    # Cron jobs
 │   ├── DnsManagement.tsx     # DNS records
 │   ├── DynamicConfig.tsx     # Dynamic configuration
-│   ├── PlayerManagement.tsx  # **NEW** - Player management
+│   ├── PlayerManagement.tsx  # Player management
 │   ├── admin/
 │   │   └── UserManagement.tsx
 │   └── server/
 │       ├── ServerNew.tsx    # Server creation
 │       └── servers/
 │           ├── ServerDetail.tsx    # Server overview
-│           ├── ServerFiles.tsx     # **ENHANCED** - File management with search
-│           ├── ServerCompose.tsx   # Docker Compose
-│           └── ServerConsole.tsx   # Real-time console
+│           ├── ServerFiles.tsx     # File management with search
+│           ├── ServerCompose.tsx   # Docker Compose with schema hints
+│           └── ServerConsole.tsx   # Real-time terminal with xterm.js
 │
 ├── stores/                  # Zustand stores
 │   ├── useTokenStore.ts           # JWT token
 │   ├── useSidebarStore.ts         # Navigation state
 │   ├── useLoginPreferenceStore.ts # Auth method preference
-│   └── useDownloadStore.ts        # **ENHANCED** - Download tasks
-│
+│   └── useDownloadStore.ts        # Download tasks
+
 ├── types/                   # TypeScript definitions
 │   ├── Server.ts
 │   ├── ServerInfo.ts
@@ -212,21 +218,26 @@ src/
 │   ├── MenuItem.ts
 │   ├── User.ts
 │   └── Dns.ts
-│
+
 ├── utils/                   # Utilities
 │   ├── api.ts               # Axios config, query keys, interceptors
 │   ├── serverUtils.ts       # Server state utilities
 │   ├── devLogger.ts         # Development logging
 │   ├── fileLanguageDetector.ts # File type detection
-│   ├── fileSearchUtils.ts   # **NEW** - File search utilities
-│   └── downloadUtils.ts     # Download management
-│
+│   ├── fileSearchUtils.ts   # File search utilities
+│   ├── formatUtils.ts       # UUID formatting, natural sorting
+│   ├── downloadUtils.ts     # Download management
+│   └── issueParser.tsx      # GitHub issue link parsing
+
 ├── config/
 │   ├── fileEditingConfig.ts # File editing configuration
-│   ├── versionConfig.ts     # Version management (current: v0.6.2)
-│   ├── snbtLanguage.ts      # **NEW** - SNBT language config for Monaco
+│   ├── versionConfig.ts     # Version management (current: v1.6.0)
+│   ├── snbtLanguage.ts      # SNBT language config for Monaco
 │   └── serverAddressConfig.ts # Server address mapping
-│
+
+├── public/static/
+│   └── mc-server-compose-schema.json # Docker Compose schema for docker-minecraft-server
+
 └── index.css                # Tailwind directives
 ```
 
@@ -336,9 +347,10 @@ export const useServerDetailQueries = (serverId: string) => {
 
 - Version comparison and update detection
 - Update modal with detailed changelog
+- GitHub issue link parsing for clickable references
 - "Remind later" functionality (1-hour delay)
 - localStorage persistence for last seen version
-- Current version: **v0.6.2** (log monitoring improvements)
+- Current version: **v1.6.0** (direct container terminal)
 
 ## State Management
 
@@ -380,21 +392,23 @@ All stores use `persist` middleware for localStorage sync.
 
 **Console Streaming** (`useServerConsoleWebSocket`):
 ```typescript
-const { messages, sendCommand, isConnected } = useServerConsoleWebSocket(serverId)
+const { isConnected, sendMessage } = useServerConsoleWebSocket(serverId, onMessage)
 ```
 
 Features:
-- Real-time log streaming
-- Command execution via RCON
-- Auto-reconnection
-- Message history management
+- Direct container attach via docker-py backend
+- xterm.js terminal emulation
+- Real-time bidirectional communication
+- Supports terminal features (command history, tab completion via MC server)
+- Auto-reconnection handling
+- Server-provided terminal features (history navigation, tab completion)
 
 ## Monaco Editor Integration
 
 **Setup:**
 - YAML worker: `yaml.worker.js`
 - SNBT language: `snbtLanguage.ts` (custom language definition)
-- Docker Compose schema validation
+- Docker Compose schema validation with docker-minecraft-server specific hints
 - Syntax highlighting for server files
 
 **File Type Support:**

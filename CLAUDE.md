@@ -5,19 +5,19 @@
 MC Admin is a comprehensive web-based platform for managing Minecraft servers using Docker containers. The system provides enterprise-grade server management with real-time monitoring, automated backups, player tracking, DNS management, and scheduled task automation.
 
 **Architecture:**
-- **Backend**: FastAPI + Python 3.12+ with SQLAlchemy 2.0 async, SQLite database, Alembic migrations
-- **Frontend**: React 18 + TypeScript + Ant Design 5 + TanStack Query v5
+- **Backend**: FastAPI + Python 3.13+ with SQLAlchemy 2.0 async, SQLite database, Alembic migrations
+- **Frontend**: React 18 + TypeScript + Ant Design 6 + TanStack Query v5
 - **Container Management**: Integrated Docker Compose management with lifecycle control
 - **Authentication**: Dual auth system (JWT + WebSocket login codes + Master token)
-- **Real-time**: WebSocket support for console streaming and live updates
-- **Package Management**: Poetry (backend) + pnpm (frontend)
+- **Real-time**: WebSocket support for console streaming and live updates via docker-py attach
+- **Package Management**: uv (backend) + pnpm (frontend)
 
 ## Core Capabilities
 
 **Server Management:**
 - Complete Minecraft server lifecycle (create, start, stop, monitor, delete)
 - Docker Compose configuration management with Monaco editor integration
-- Real-time console streaming with command execution via WebSocket
+- Real-time console streaming with direct container attach via WebSocket
 - Resource monitoring (CPU, memory, disk, network) via cgroup v2
 - Server templates for quick deployment
 - File management with Monaco editor, deep search, multi-file/folder drag-and-drop upload
@@ -25,6 +25,8 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 **Backup & Recovery:**
 - Enterprise-grade Restic-based snapshot system with global and server-specific backups
+- Snapshot deletion and repository unlock functionality
+- Automatic safety snapshot creation during restore operations
 - Archive management with compression/decompression (ZIP, TAR, TAR.GZ, 7z)
 - SHA256 verification for archive integrity
 - Server population from archives
@@ -33,7 +35,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 **Player Management:**
 - Real-time player tracking with event-driven architecture
-- Session records and online status monitoring via Query protocol and RCON
+- Session records and online status monitoring via Query protocol or RCON as fallback
 - Chat message tracking and achievement records
 - Player skin management with automatic updates via Mojang API
 - Crash recovery and data synchronization
@@ -72,7 +74,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 ## Development Environment
 
 **Prerequisites:**
-- Python 3.12+ with Poetry
+- Python 3.13+ with uv
 - Node.js 18+ with pnpm
 - Docker Engine + Docker Compose
 - Restic (automatically managed)
@@ -82,10 +84,10 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 Backend:
 ```bash
 cd backend
-poetry install
+uv sync         # Install dependencies
 # Configure config.toml (see backend/CLAUDE.md)
-poetry run alembic upgrade head  # Apply database migrations
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+uv run alembic upgrade head  # Apply database migrations
+uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 ```
 
 Frontend:
@@ -105,13 +107,14 @@ pnpm dev  # Runs on port 3000
 - psutil for system monitoring, cgroup v2 for container metrics
 - APScheduler for task scheduling with async support
 - Watchdog for file monitoring
-- httpx for async HTTP requests (replaces aiohttp)
-- pwdlib for password hashing (replaces passlib)
+- httpx for async HTTP requests
+- pwdlib for password hashing
 - aiofiles for async file operations
+- docker-py for container management and console streaming
 
 **Frontend:**
 - React 18 + TypeScript 5 + Vite 5
-- Ant Design 5 + @ant-design/icons + @ant-design/pro-components
+- Ant Design 6 + @ant-design/icons + @rjsf/antd v6
 - Tailwind CSS 3 (preflight disabled for AntD compatibility)
 - TanStack React Query v5 (three-layer architecture)
 - Zustand v4 for state management with persistence
@@ -119,6 +122,7 @@ pnpm dev  # Runs on port 3000
 - React Router v6 with lazy loading
 - Axios with interceptors and auto-retry
 - react-error-boundary for error handling
+- xterm.js for terminal emulation
 
 ## External Documentation
 
