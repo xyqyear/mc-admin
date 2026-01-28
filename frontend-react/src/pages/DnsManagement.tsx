@@ -421,7 +421,7 @@ const DnsManagement: React.FC = () => {
                     showQuickJumper: true,
                     showTotal: (total) => `共 ${total} 条记录`,
                   }}
-                  scroll={{ y: 300 }}
+                  scroll={{ y: 'calc(100vh - 285px)' }}
                 />
               )}
             </Card>
@@ -472,7 +472,7 @@ const DnsManagement: React.FC = () => {
                     showQuickJumper: true,
                     showTotal: (total) => `共 ${total} 条路由`,
                   }}
-                  scroll={{ y: 300 }}
+                  scroll={{ y: 'calc(100vh - 285px)' }}
                 />
               )}
             </Card>
