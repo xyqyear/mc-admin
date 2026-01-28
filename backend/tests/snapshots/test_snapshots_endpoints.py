@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
+from app.snapshots import ResticManager
 from app.utils.exec import exec_command
 
 
@@ -188,6 +189,12 @@ def mock_snapshot_dependencies_setup(
     mock_config = MagicMock()
     mock_config.snapshots = mock_snapshots_config
 
+    # Create a test ResticManager instance with the test repository
+    test_restic_manager = ResticManager(
+        repository_path=str(temp_restic_repo),
+        password=restic_password,
+    )
+
     with (
         patch("app.routers.snapshots.docker_mc_manager") as mock_manager,
         patch("app.routers.snapshots.settings") as mock_settings,
@@ -198,6 +205,8 @@ def mock_snapshot_dependencies_setup(
             "app.routers.snapshots.restart_scheduler.get_backup_minutes",
             return_value=set(),
         ),  # No backup jobs by default
+        # Mock the restic_manager singleton to use test repository
+        patch("app.routers.snapshots.restic_manager", test_restic_manager),
     ):
         # Mock settings for snapshots
         mock_settings.server_path = instance.base_path
