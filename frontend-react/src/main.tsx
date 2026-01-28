@@ -88,7 +88,7 @@ const theme = {
   },
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById('app-root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ConfigProvider theme={theme} locale={zhCN}>

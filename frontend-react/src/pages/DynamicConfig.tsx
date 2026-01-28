@@ -306,10 +306,8 @@ const DynamicConfig: React.FC = () => {
 
       <Card
         title="选择配置模块"
-        className="flex-1 min-h-0 flex flex-col"
-        styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
       >
-        <div className="flex flex-col h-full">
+        <div>
           <Select
             placeholder="请选择一个配置模块"
             style={{ width: '100%', marginBottom: 16 }}
@@ -320,7 +318,7 @@ const DynamicConfig: React.FC = () => {
           />
 
           {selectedModule && (
-            <div className="flex-1 flex flex-col min-h-0">
+            <div>
               <Divider style={{ margin: '16px 0' }} />
 
               {/* Loading state for config/schema */}
@@ -357,7 +355,7 @@ const DynamicConfig: React.FC = () => {
 
               {/* Configuration form */}
               {isConfigLoaded && (
-                <div className="flex-1 flex flex-col min-h-0">
+                <div>
                   <div className="mb-4">
                     <Title level={4} style={{ margin: 0 }}>配置表单</Title>
                     <Text type="secondary">
@@ -367,22 +365,17 @@ const DynamicConfig: React.FC = () => {
                     </Text>
                   </div>
 
-                  <Card
-                    className="flex-1 min-h-0"
-                    styles={{ body: { height: '100%', overflow: 'auto' } }}
+                  <Form
+                    schema={moduleSchema.json_schema as RJSFSchema}
+                    formData={formData}
+                    validator={validator}
+                    onChange={handleFormChange}
+                    onSubmit={handleSubmitConfig}
+                    onError={(errors) => console.log('Form validation errors:', errors)}
+                    liveValidate="onChange"
                   >
-                    <Form
-                      schema={moduleSchema.json_schema as RJSFSchema}
-                      formData={formData}
-                      validator={validator}
-                      onChange={handleFormChange}
-                      onSubmit={handleSubmitConfig}
-                      onError={(errors) => console.log('Form validation errors:', errors)}
-                      liveValidate="onChange"
-                    >
-                      <div />
-                    </Form>
-                  </Card>
+                    <div />
+                  </Form>
                 </div>
               )}
             </div>
