@@ -63,7 +63,7 @@ const TaskCenterPanel: React.FC = () => {
   ]
 
   return (
-    <div className="fixed bottom-20 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-24 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
       <Card
         className="shadow-lg"
         styles={{
@@ -73,12 +73,12 @@ const TaskCenterPanel: React.FC = () => {
         title={
           <div className="flex items-center justify-between">
             <Text strong>任务中心</Text>
-            <button
+            <div
               onClick={() => setOpen(false)}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              className="px-1 hover:bg-gray-100 rounded transition-colors"
             >
               <CloseOutlined className="text-gray-500" />
-            </button>
+            </div>
           </div>
         }
         style={{ width: 360 }}
