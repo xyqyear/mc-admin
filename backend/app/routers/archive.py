@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from ..background_tasks import TaskType, task_manager
 from ..config import settings
 from ..dependencies import get_current_user
 from ..files import (
@@ -28,7 +29,7 @@ from ..files import (
 )
 from ..minecraft import docker_mc_manager
 from ..models import UserPublic
-from ..utils.compression import create_server_archive
+from ..utils.compression import create_server_archive_stream
 from ..utils.exec import exec_command
 
 router = APIRouter(
@@ -48,8 +49,7 @@ class CreateArchiveRequest(BaseModel):
 
 
 class CreateArchiveResponse(BaseModel):
-    archive_filename: str
-    message: str
+    task_id: str
 
 
 def _get_archive_base_path() -> Path:
@@ -195,23 +195,18 @@ async def create_server_archive_endpoint(
     request: CreateArchiveRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    """Create a compressed archive from server files"""
-    # Get server instance using singleton manager
+    """Create a compressed archive from server files as a background task."""
     instance = docker_mc_manager.get_instance(request.server_id)
 
-    # Validate server exists
     if not await instance.exists():
         raise HTTPException(
             status_code=404, detail=f"Server '{request.server_id}' not found"
         )
 
-    # Validate path if provided
     if request.path is not None:
-        # Ensure path starts with /
         if not request.path.startswith("/"):
             request.path = "/" + request.path
 
-        # Validate that the target path exists
         data_dir = instance.get_data_path()
         if request.path != "/":
             target_path = data_dir / request.path.lstrip("/")
@@ -221,21 +216,20 @@ async def create_server_archive_endpoint(
                     detail=f"Path '{request.path}' not found in server data directory",
                 )
         elif not await aioos.path.exists(data_dir):
-            # If requesting root data directory, ensure it exists
             raise HTTPException(
                 status_code=404, detail="Server data directory not found"
             )
 
-    # Create archive
-    archive_filename = await create_server_archive(
-        instance=instance,
-        relative_path=request.path,
+    task_name = instance.get_name()
+    if request.path:
+        task_name += f"/{request.path.strip('/')}"
+
+    result = task_manager.submit(
+        task_type=TaskType.ARCHIVE_CREATE,
+        name=task_name,
+        task_generator=create_server_archive_stream(instance, request.path),
+        server_id=request.server_id,
+        cancellable=True,
     )
 
-    # Build response message
-    if request.path is None:
-        message = f"Successfully created archive '{archive_filename}' containing entire server '{request.server_id}'"
-    else:
-        message = f"Successfully created archive '{archive_filename}' containing '{request.path}' from server '{request.server_id}'"
-
-    return CreateArchiveResponse(archive_filename=archive_filename, message=message)
+    return CreateArchiveResponse(task_id=result.task_id)

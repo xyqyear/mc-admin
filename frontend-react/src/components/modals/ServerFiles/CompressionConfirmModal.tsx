@@ -1,13 +1,15 @@
 import React from 'react'
-import { Modal, Alert } from 'antd'
+import { Modal, Alert, Progress, App } from 'antd'
 import { FileZipOutlined, FolderOutlined, DatabaseOutlined } from '@ant-design/icons'
 import type { FileItem } from '@/types/Server'
+import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 
 interface CompressionConfirmModalProps {
   open: boolean
   onCancel: () => void
   onOk: () => void
   confirmLoading: boolean
+  task?: BackgroundTask | null
   selectedFile?: FileItem | null
   currentPath: string
   compressionType: 'file' | 'folder' | 'server'
@@ -19,11 +21,22 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
   onCancel,
   onOk,
   confirmLoading,
+  task,
   selectedFile,
   currentPath,
   compressionType,
   serverName = ''
 }) => {
+  const { message } = App.useApp()
+  const isTaskRunning = task && (task.status === 'running' || task.status === 'pending')
+
+  const handleClose = () => {
+    if (isTaskRunning) {
+      message.info('压缩进度可在右下角任务管理中查看')
+    }
+    onCancel()
+  }
+
   const getCompressionDescription = () => {
     switch (compressionType) {
       case 'file':
@@ -70,13 +83,14 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
       title="创建压缩包"
       open={open}
       onOk={onOk}
-      onCancel={confirmLoading ? undefined : onCancel}
+      onCancel={handleClose}
       confirmLoading={confirmLoading}
-      okText={confirmLoading ? "压缩中..." : "开始压缩"}
+      okText={confirmLoading || isTaskRunning ? "压缩中..." : "开始压缩"}
+      okButtonProps={{ disabled: !!isTaskRunning }}
       cancelText="取消"
-      cancelButtonProps={{ disabled: confirmLoading }}
-      closable={!confirmLoading}
-      maskClosable={!confirmLoading}
+      cancelButtonProps={{ disabled: confirmLoading && !isTaskRunning }}
+      closable={true}
+      maskClosable={false}
       width={500}
     >
       <div className="space-y-4">
@@ -104,10 +118,21 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
           showIcon
         />
 
-        {confirmLoading && (
+        {isTaskRunning && (
+          <div className="space-y-2">
+            <Progress
+              percent={task.progress ?? 0}
+              status="active"
+              format={(percent) => `${percent}%`}
+            />
+            <div className="text-gray-500 text-sm">{task.message || '正在压缩...'}</div>
+          </div>
+        )}
+
+        {(confirmLoading && !isTaskRunning) && (
           <Alert
-            title="正在压缩中..."
-            description="压缩正在进行中，请不要关闭此窗口，否则无法收到压缩完成的提示。压缩可能需要几分钟时间，请耐心等待。"
+            title="正在提交任务..."
+            description="正在提交压缩任务，请稍候。"
             type="info"
             showIcon
           />

@@ -96,6 +96,21 @@ const getStatusText = (status: BackgroundTask['status']): string => {
   }
 }
 
+const truncatePath = (path: string, maxLength: number = 20): string => {
+  if (path.length <= maxLength) return path
+  return '...' + path.slice(-(maxLength - 3))
+}
+
+const getTaskDisplayName = (task: BackgroundTask): string => {
+  if (task.taskType === 'archive_create' && task.name) {
+    return `压缩 ${truncatePath(task.name)}`
+  }
+  if (task.taskType === 'archive_extract' && task.name) {
+    return `解压 ${truncatePath(task.name)}`
+  }
+  return task.name || getTaskTypeName(task.taskType)
+}
+
 const getElapsedTime = (task: BackgroundTask): string => {
   const startTime = task.startedAt || task.createdAt
   const endTime = task.endedAt || Date.now()
@@ -180,13 +195,10 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
               </span>
               <Text
                 className="truncate text-xs font-medium"
-                style={{ maxWidth: '140px' }}
-                title={`${getTaskTypeName(task.taskType)}${task.name ? `: ${task.name}` : ''}${task.serverId ? ` - ${task.serverId}` : ''}`}
+                style={{ maxWidth: '180px' }}
+                title={task.name || getTaskTypeName(task.taskType)}
               >
-                {task.name || getTaskTypeName(task.taskType)}
-                {task.serverId && (
-                  <span className="text-gray-400 ml-1">- {task.serverId}</span>
-                )}
+                {getTaskDisplayName(task)}
               </Text>
             </div>
 

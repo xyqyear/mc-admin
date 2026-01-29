@@ -2,6 +2,8 @@
 Utility for compressing Minecraft server files and directories.
 """
 
+import re
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Optional
 
@@ -10,8 +12,9 @@ from fastapi import HTTPException
 
 from app.minecraft.instance import MCInstance
 
+from ..background_tasks.types import TaskProgress
 from ..config import settings
-from .exec import exec_command
+from .exec import exec_command_stream
 
 
 def _sanitize_filename_part(part: str) -> str:
@@ -91,95 +94,81 @@ def _generate_archive_filename(
     return filename
 
 
-async def create_server_archive(
+async def create_server_archive_stream(
     instance: MCInstance, relative_path: Optional[str] = None
-) -> str:
+) -> AsyncGenerator[TaskProgress, None]:
     """
-    Create a compressed archive of server files.
+    Create a compressed archive of server files, yielding progress updates.
 
     Args:
-        server_name: Name of the server
-        server_project_path: Path to the server's project directory
-        relative_path: Optional relative path within the server to compress (relative to data directory)
-                      If None, compresses the entire server directory
-                      If provided, should start with "/" and be relative to server_project_path/data
+        instance: MCInstance for the server
+        relative_path: Optional relative path within the server to compress
 
-    Returns:
-        Filename of the created archive
+    Yields:
+        TaskProgress with progress percentage and messages
 
     Raises:
         HTTPException: If archive creation fails
     """
-    # Ensure archive directory exists
     archive_base_path = settings.archive_path.resolve()
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
-    # Generate archive filename
     archive_filename = _generate_archive_filename(instance.get_name(), relative_path)
     archive_path = archive_base_path / archive_filename
 
-    # Determine source path
     if relative_path is None:
-        # Compress entire server directory
         source_path = instance.get_project_path()
     else:
         data_dir = instance.get_data_path()
         clean_relative_path = relative_path.lstrip("/")
-
         if clean_relative_path == "":
             source_path = data_dir
         else:
             source_path = data_dir / clean_relative_path
 
-    # Validate source path exists
     if not await aioos.path.exists(source_path):
         raise HTTPException(
             status_code=404, detail=f"Source path does not exist: {source_path}"
         )
 
-    # Create 7z archive
-    # Use parent directory as working directory and only specify the relative name
-    # This ensures the archive doesn't contain the full filesystem path
     source_parent = source_path.parent
     source_name = source_path.name
-    try:
-        await exec_command(
-            "7z", "a", "-t7z", str(archive_path), source_name, cwd=str(source_parent)
-        )
-    except Exception as e:
-        error_msg = str(e)
 
-        # Clean up partial archive if it exists
+    yield TaskProgress(progress=0, message="Starting compression...")
+
+    # Use custom delimiters for 7z progress output
+    # 7z uses \r and \x08 (backspace) to update progress on the same line
+    progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
+
+    try:
+        async for segment in exec_command_stream(
+            "7z",
+            "a",
+            "-t7z",
+            "-bsp1",
+            str(archive_path),
+            source_name,
+            cwd=str(source_parent),
+            delimiters=progress_delimiters,
+        ):
+            match = re.search(r"^\s*(\d+)%", segment)
+            if match:
+                progress = int(match.group(1))
+                yield TaskProgress(
+                    progress=progress, message=f"Compressing: {progress}%"
+                )
+
+        archive_size = (await aioos.stat(archive_path)).st_size
+
+        yield TaskProgress(
+            progress=100,
+            message="Compression complete",
+            result={"filename": archive_filename, "size": archive_size},
+        )
+    except Exception:
         if await aioos.path.exists(archive_path):
             try:
                 await aioos.remove(archive_path)
             except OSError:
-                pass  # Ignore cleanup errors
-
-        if "Permission denied" in error_msg:
-            raise HTTPException(
-                status_code=403, detail="Permission denied while creating archive"
-            )
-        elif "No space left on device" in error_msg:
-            raise HTTPException(
-                status_code=507, detail="Insufficient disk space to create archive"
-            )
-        elif (
-            "7z: command not found" in error_msg
-            or "No such file or directory" in error_msg
-        ):
-            raise HTTPException(
-                status_code=500, detail="7z command not available on system"
-            )
-        else:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to create archive: {error_msg}"
-            )
-
-    # Verify archive was created
-    if not await aioos.path.exists(archive_path):
-        raise HTTPException(
-            status_code=500, detail="Archive was not created successfully"
-        )
-
-    return archive_filename
+                pass
+        raise

@@ -1,20 +1,228 @@
 """
-Unit tests for archive compression endpoint.
-Tests the creation of compressed archives from server files using real file operations.
+Unit tests for archive compression functionality.
+Tests the creation of compressed archives from server files using background tasks.
 """
 
+import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.background_tasks import TaskType, task_manager
+from app.background_tasks.types import TaskStatus
 from app.main import api_app
+from app.utils.compression import (
+    _generate_archive_filename,
+    _sanitize_filename_part,
+    create_server_archive_stream,
+)
 
 
-class TestArchiveCompression:
-    """Test archive compression endpoint with real file operations."""
+class TestFilenameGeneration:
+    """Test filename generation and sanitization utilities."""
+
+    def test_sanitize_simple_string(self):
+        """Test sanitizing a simple string."""
+        assert _sanitize_filename_part("test") == "test"
+
+    def test_sanitize_string_with_spaces(self):
+        """Test sanitizing string with spaces."""
+        assert _sanitize_filename_part("test server") == "test_server"
+
+    def test_sanitize_string_with_special_chars(self):
+        """Test sanitizing string with special characters."""
+        assert _sanitize_filename_part("test:server*name") == "test_server_name"
+
+    def test_sanitize_string_with_slashes(self):
+        """Test sanitizing string with slashes."""
+        assert _sanitize_filename_part("test/server\\name") == "test_server_name"
+
+    def test_sanitize_empty_string(self):
+        """Test sanitizing empty string."""
+        assert _sanitize_filename_part("") == "unknown"
+
+    def test_sanitize_dots_only(self):
+        """Test sanitizing string with only dots."""
+        assert _sanitize_filename_part("...") == "unknown"
+
+    def test_generate_filename_server_only(self):
+        """Test generating filename with server name only."""
+        filename = _generate_archive_filename("test_server")
+        assert filename.startswith("test_server_")
+        assert filename.endswith(".7z")
+
+    def test_generate_filename_with_path(self):
+        """Test generating filename with relative path."""
+        filename = _generate_archive_filename("test_server", "/plugins/config")
+        assert "test_server" in filename
+        assert "plugins_config" in filename
+        assert filename.endswith(".7z")
+
+    def test_generate_filename_with_root_path(self):
+        """Test generating filename with root path."""
+        filename = _generate_archive_filename("test_server", "/")
+        assert "test_server" in filename
+        assert filename.endswith(".7z")
+
+    def test_generate_filename_sanitizes_server_name(self):
+        """Test that server name is sanitized in filename."""
+        filename = _generate_archive_filename("test server:2024")
+        assert "test_server_2024" in filename
+        assert " " not in filename
+        assert ":" not in filename
+
+
+class TestCreateServerArchiveStream:
+    """Test the create_server_archive_stream async generator."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """Create temporary directory for tests."""
+        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def mock_instance(self, temp_dir):
+        """Create mock MCInstance."""
+        server_path = temp_dir / "servers" / "test_server"
+        server_path.mkdir(parents=True)
+        data_dir = server_path / "data"
+        data_dir.mkdir()
+
+        # Create test files
+        (data_dir / "test.txt").write_text("test content")
+        (data_dir / "config.yml").write_text("key: value")
+
+        # Create subdirectory
+        plugins_dir = data_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "plugin.jar").write_bytes(b"\x00\x01\x02\x03" * 100)
+
+        instance = MagicMock()
+        instance.get_name.return_value = "test_server"
+        instance.get_project_path.return_value = server_path
+        instance.get_data_path.return_value = data_dir
+
+        return instance
+
+    @pytest.fixture
+    def archive_dir(self, temp_dir):
+        """Create archive directory."""
+        archive_path = temp_dir / "archives"
+        archive_path.mkdir()
+        return archive_path
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_progress_updates(self, mock_instance, archive_dir):
+        """Test that stream yields progress updates."""
+        import shutil
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            progress_updates = []
+            async for progress in create_server_archive_stream(mock_instance):
+                progress_updates.append(progress)
+
+            # Should have at least start and completion
+            assert len(progress_updates) >= 2
+
+            # First should be 0%
+            assert progress_updates[0].progress == 0
+            assert "Starting" in progress_updates[0].message
+
+            # Last should be 100% with result
+            assert progress_updates[-1].progress == 100
+            assert progress_updates[-1].result is not None
+            assert "filename" in progress_updates[-1].result
+
+    @pytest.mark.asyncio
+    async def test_stream_creates_archive_file(self, mock_instance, archive_dir):
+        """Test that stream creates the archive file."""
+        import shutil
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            result = None
+            async for progress in create_server_archive_stream(mock_instance):
+                if progress.result:
+                    result = progress.result
+
+            assert result is not None
+            archive_path = archive_dir / result["filename"]
+            assert archive_path.exists()
+            assert result["size"] > 0
+
+    @pytest.mark.asyncio
+    async def test_stream_with_relative_path(self, mock_instance, archive_dir):
+        """Test stream with relative path."""
+        import shutil
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            result = None
+            async for progress in create_server_archive_stream(
+                mock_instance, "/plugins"
+            ):
+                if progress.result:
+                    result = progress.result
+
+            assert result is not None
+            assert "plugins" in result["filename"]
+
+    @pytest.mark.asyncio
+    async def test_stream_nonexistent_path_raises(self, mock_instance, archive_dir):
+        """Test that nonexistent path raises HTTPException."""
+        from fastapi import HTTPException
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            with pytest.raises(HTTPException) as exc_info:
+                async for _ in create_server_archive_stream(
+                    mock_instance, "/nonexistent"
+                ):
+                    pass
+
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_stream_cleans_up_on_error(self, mock_instance, archive_dir):
+        """Test that partial archive is cleaned up on error."""
+        with (
+            patch("app.utils.compression.settings") as mock_settings,
+            patch("app.utils.compression.exec_command_stream") as mock_exec,
+        ):
+            mock_settings.archive_path = archive_dir
+
+            # Make exec_command_stream raise an error
+            async def failing_generator(*args, **kwargs):
+                yield "0%"
+                raise RuntimeError("Compression failed")
+
+            mock_exec.return_value = failing_generator()
+
+            with pytest.raises(RuntimeError):
+                async for _ in create_server_archive_stream(mock_instance):
+                    pass
+
+
+class TestArchiveCompressionEndpoint:
+    """Test archive compression API endpoint."""
 
     @pytest.fixture
     def client(self):
@@ -24,373 +232,363 @@ class TestArchiveCompression:
     @pytest.fixture
     def temp_dir(self):
         """Create temporary directory for tests."""
-        with tempfile.TemporaryDirectory(
-            prefix="mc_admin_compression_test_", dir="/tmp"
-        ) as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
             yield Path(temp_dir)
 
     @pytest.fixture
     def server_setup(self, temp_dir):
         """Create server directory structure for testing."""
-        # Create server directory
         server_path = temp_dir / "servers" / "test_server"
-        server_path.mkdir(parents=True, exist_ok=True)
-
-        # Create data directory with test files
+        server_path.mkdir(parents=True)
         data_dir = server_path / "data"
-        data_dir.mkdir(exist_ok=True)
-
-        # Create test files in root data directory
-        (data_dir / "server.properties").write_text(
-            "server-port=25565\nmotd=Test Server\nmax-players=20\n"
-        )
-        (data_dir / "whitelist.json").write_text(
-            '[{"uuid":"test-uuid","name":"testuser"}]'
-        )
-
-        # Create subdirectories with test files
-        plugins_dir = data_dir / "plugins"
-        plugins_dir.mkdir(exist_ok=True)
-        (plugins_dir / "plugin.jar").write_bytes(b"\x00\x01\x02\x03" * 100)
-        (plugins_dir / "config.yml").write_text(
-            "plugin:\n  enabled: true\n  debug: false\n"
-        )
-
-        worlds_dir = data_dir / "world"
-        worlds_dir.mkdir(exist_ok=True)
-        (worlds_dir / "level.dat").write_bytes(b"\x05\x06\x07\x08" * 200)
-        (worlds_dir / "region").mkdir(exist_ok=True)
-        (worlds_dir / "region" / "r.0.0.mca").write_bytes(b"\x09\x0a\x0b\x0c" * 300)
-
+        data_dir.mkdir()
+        (data_dir / "test.txt").write_text("test content")
         return server_path
 
     @pytest.fixture
-    def archive_dir_setup(self, temp_dir):
-        """Create archive directory for real testing."""
-        archive_path = temp_dir / "archives"
-        archive_path.mkdir(parents=True, exist_ok=True)
-        return archive_path
+    def mock_server_manager(self, server_setup, temp_dir):
+        """Setup mock server manager."""
+        archive_dir = temp_dir / "archives"
+        archive_dir.mkdir()
 
-    @pytest.fixture
-    def real_server_manager(self, server_setup, archive_dir_setup, temp_dir):
-        """Setup real server manager dependencies for testing."""
+        # Create a mock submit result
+        mock_submit_result = MagicMock()
+        mock_submit_result.task_id = "test-task-id-123"
 
         with (
             patch("app.routers.archive.settings") as mock_settings,
             patch("app.dependencies.settings") as mock_dep_settings,
             patch("app.routers.archive.docker_mc_manager") as mock_manager,
-            patch("app.utils.compression.settings") as mock_compression_settings,
+            patch("app.routers.archive.task_manager") as mock_task_manager,
         ):
-            # Configure settings
-            mock_settings.archive_path = archive_dir_setup
+            mock_settings.archive_path = archive_dir
             mock_settings.master_token = "test_master_token"
-            mock_settings.server_path = temp_dir / "servers"
             mock_dep_settings.master_token = "test_master_token"
-            mock_compression_settings.archive_path = archive_dir_setup
 
-            # Configure manager
             mock_instance = mock_manager.get_instance.return_value
             mock_instance.get_project_path.return_value = server_setup
             mock_instance.get_data_path.return_value = server_setup / "data"
+            mock_instance.get_name.return_value = "test_server"
 
-            # Configure dynamic server name based on get_instance parameter
-            def mock_get_instance(server_id):
-                mock_instance.get_name.return_value = server_id
-                return mock_instance
-
-            mock_manager.get_instance.side_effect = mock_get_instance
-
-            # Configure async exists method
             async def mock_exists():
                 return True
 
             mock_instance.exists = mock_exists
 
+            # Mock task_manager.submit to return immediately
+            mock_task_manager.submit.return_value = mock_submit_result
+
             yield {
-                "manager_mock": mock_manager,
-                "instance_mock": mock_instance,
-                "archive_dir": archive_dir_setup,
+                "archive_dir": archive_dir,
                 "server_path": server_setup,
+                "task_manager": mock_task_manager,
             }
 
-    def test_create_entire_server_archive_with_verification(
-        self, client, real_server_manager
-    ):
-        """Test creating archive of entire server and verify contents."""
+    def test_endpoint_returns_task_id(self, client, mock_server_manager):
+        """Test that endpoint returns task_id."""
         response = client.post(
             "/archive/compress",
             headers={"Authorization": "Bearer test_master_token"},
             json={"server_id": "test_server"},
         )
 
-        # The response should be successful even if 7z command fails
-        # We're testing the API structure and file operations logic
-        if response.status_code == 200:
-            data = response.json()
+        assert response.status_code == 200
+        data = response.json()
+        assert "task_id" in data
+        assert data["task_id"] == "test-task-id-123"
 
-            assert "archive_filename" in data
-            assert "message" in data
-            assert "test_server" in data["archive_filename"]
-            assert data["archive_filename"].endswith(".7z")
-            assert "entire server" in data["message"]
+        # Verify task_manager.submit was called
+        mock_server_manager["task_manager"].submit.assert_called_once()
 
-            # Note: Archive may not exist if 7z command is not available in test environment
-
-        elif response.status_code == 500:
-            # Expected if 7z command is not available
-            assert "7z command not available" in response.json().get("detail", "")
-        else:
-            # Unexpected error
-            pytest.fail(
-                f"Unexpected response: {response.status_code} - {response.json()}"
-            )
-
-    def test_create_server_subdirectory_archive_with_verification(
-        self, client, real_server_manager
-    ):
-        """Test creating archive of server subdirectory and verify contents."""
+    def test_endpoint_submits_correct_task_type(self, client, mock_server_manager):
+        """Test that endpoint submits correct task type."""
         response = client.post(
             "/archive/compress",
             headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server", "path": "/plugins"},
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            assert "archive_filename" in data
-            assert "plugins" in data["archive_filename"]
-            assert data["archive_filename"].endswith(".7z")
-            assert "/plugins" in data["message"]
-
-        elif response.status_code == 500:
-            # Expected if 7z command is not available
-            assert "7z command not available" in response.json().get("detail", "")
-        else:
-            pytest.fail(
-                f"Unexpected response: {response.status_code} - {response.json()}"
-            )
-
-    def test_create_server_root_data_archive(self, client, real_server_manager):
-        """Test creating archive of server root data directory."""
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server", "path": "/"},
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            assert "archive_filename" in data
-            assert "test_server" in data["archive_filename"]
-            assert data["archive_filename"].endswith(".7z")
-            assert "'/' from server" in data["message"]
-
-        elif response.status_code == 500:
-            assert "7z command not available" in response.json().get("detail", "")
-        else:
-            pytest.fail(
-                f"Unexpected response: {response.status_code} - {response.json()}"
-            )
-
-    def test_archive_file_content_verification(self, client, real_server_manager):
-        """Test archive creation and attempt to verify file contents if possible."""
-        # First, check if we have 7z available
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available for content verification test")
-
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server", "path": "/plugins"},
+            json={"server_id": "test_server"},
         )
 
         assert response.status_code == 200
-        data = response.json()
 
-        archive_path = real_server_manager["archive_dir"] / data["archive_filename"]
+        # Verify task type
+        call_kwargs = mock_server_manager["task_manager"].submit.call_args.kwargs
+        assert call_kwargs["task_type"] == TaskType.ARCHIVE_CREATE
+        assert call_kwargs["server_id"] == "test_server"
+        assert call_kwargs["cancellable"] is True
 
-        if archive_path.exists():
-            # Try to verify the archive by extracting it
-            with tempfile.TemporaryDirectory() as extract_dir:
-                import subprocess
-
-                result = subprocess.run(
-                    ["7z", "x", str(archive_path), f"-o{extract_dir}"],
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode == 0:
-                    extract_path = Path(extract_dir)
-
-                    # Verify extracted files exist in the plugins subdirectory
-                    assert (extract_path / "plugins" / "config.yml").exists()
-                    assert (extract_path / "plugins" / "plugin.jar").exists()
-
-                    # Verify file contents
-                    config_content = (
-                        extract_path / "plugins" / "config.yml"
-                    ).read_text()
-                    assert "enabled: true" in config_content
-                    assert "debug: false" in config_content
-
-                    plugin_data = (extract_path / "plugins" / "plugin.jar").read_bytes()
-                    assert plugin_data == b"\x00\x01\x02\x03" * 100
-
-    def test_create_server_archive_nonexistent_server(
-        self, client, real_server_manager, temp_dir
-    ):
-        """Test creating archive for nonexistent server."""
-        # Configure mock to return nonexistent server
-        instance_mock = real_server_manager["instance_mock"]
-        nonexistent_path = temp_dir / "servers" / "nonexistent_server"
-        instance_mock.get_project_path.return_value = nonexistent_path
-
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "nonexistent_server"},
-        )
-
-        assert response.status_code == 404
-        assert (
-            "not found" in response.json()["detail"]
-            or "does not exist" in response.json()["detail"]
-        )
-
-    def test_create_server_archive_nonexistent_path(self, client, real_server_manager):
-        """Test creating archive for nonexistent path within server."""
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server", "path": "/nonexistent_folder"},
-        )
-
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
-
-    def test_archive_filename_generation(
-        self, client, real_server_manager, server_setup
-    ):
-        """Test that archive filenames are properly generated and sanitized."""
-        # Create the required directory structure
-        special_dir = server_setup / "data" / "plugins" / "special_config"
-        special_dir.mkdir(parents=True, exist_ok=True)
-        (special_dir / "test.txt").write_text("test content")
-
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={
-                "server_id": "test server with spaces",
-                "path": "/plugins/special_config",
-            },
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            filename = data["archive_filename"]
-            assert "test_server_with_spaces" in filename
-            assert "plugins_special_config" in filename
-            assert filename.endswith(".7z")
-            # Ensure no filesystem-sensitive characters
-            assert ":" not in filename
-            assert " " not in filename
-
-        elif response.status_code == 500:
-            assert "7z command not available" in response.json().get("detail", "")
-        else:
-            pytest.fail(f"Unexpected response: {response.status_code}")
-
-    def test_unauthorized_access(self, client, real_server_manager):
-        """Test unauthorized access to compression endpoint."""
-        response = client.post("/archive/compress", json={"server_id": "test_server"})
-
-        # Should return 401 or 422 for missing authentication
-        assert response.status_code in [401, 422]
-
-    def test_compression_with_special_characters(self, client, real_server_manager):
-        """Test compression with special characters in server name and path."""
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "my-server:2024", "path": "/world/nether*dimension"},
-        )
-
-        # Expect 404 since the path doesn't exist in our test setup
-        assert response.status_code == 404
-
-    def test_compression_missing_server_id(self, client, real_server_manager):
-        """Test compression endpoint with missing server_id."""
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"path": "/plugins"},
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_compression_invalid_json(self, client, real_server_manager):
-        """Test compression endpoint with invalid JSON."""
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            data="invalid json",
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_compression_creates_archive_directory(self, client, temp_dir):
-        """Test that compression creates archive directory if it doesn't exist."""
-        server_path = temp_dir / "servers" / "test_server"
-        server_path.mkdir(parents=True)
-        data_dir = server_path / "data"
-        data_dir.mkdir()
-        (data_dir / "test.txt").write_text("test content")
-
-        archive_dir = temp_dir / "new_archives"
-        # Archive directory doesn't exist initially
-        assert not archive_dir.exists()
-
+    def test_endpoint_nonexistent_server(self, client, temp_dir):
+        """Test endpoint with nonexistent server."""
         with (
             patch("app.routers.archive.settings") as mock_settings,
             patch("app.dependencies.settings") as mock_dep_settings,
             patch("app.routers.archive.docker_mc_manager") as mock_manager,
-            patch("app.utils.compression.settings") as mock_compression_settings,
         ):
-            mock_settings.archive_path = archive_dir
             mock_settings.master_token = "test_master_token"
             mock_dep_settings.master_token = "test_master_token"
-            mock_compression_settings.archive_path = archive_dir
 
             mock_instance = mock_manager.get_instance.return_value
-            mock_instance.get_project_path.return_value = server_path
-            mock_instance.get_data_path.return_value = server_path / "data"
-            mock_instance.get_name.return_value = "test_server"
 
-            # Configure async exists method
             async def mock_exists():
-                return True
+                return False
 
             mock_instance.exists = mock_exists
 
             response = client.post(
                 "/archive/compress",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": "test_server"},
+                json={"server_id": "nonexistent"},
             )
 
-            # Directory should be created during the compression process
-            assert archive_dir.exists()
-            assert archive_dir.is_dir()
+            assert response.status_code == 404
 
-            # Response should either succeed or fail with 7z not available
-            assert response.status_code in [200, 500]
+    def test_endpoint_nonexistent_path(self, client, mock_server_manager):
+        """Test endpoint with nonexistent path."""
+        response = client.post(
+            "/archive/compress",
+            headers={"Authorization": "Bearer test_master_token"},
+            json={"server_id": "test_server", "path": "/nonexistent"},
+        )
+
+        assert response.status_code == 404
+
+    def test_endpoint_unauthorized(self, client, mock_server_manager):
+        """Test unauthorized access."""
+        response = client.post(
+            "/archive/compress",
+            json={"server_id": "test_server"},
+        )
+
+        assert response.status_code in [401, 422]
+
+    def test_endpoint_missing_server_id(self, client, mock_server_manager):
+        """Test missing server_id."""
+        response = client.post(
+            "/archive/compress",
+            headers={"Authorization": "Bearer test_master_token"},
+            json={},
+        )
+
+        assert response.status_code == 422
+
+
+class TestBackgroundTaskIntegration:
+    """Test compression with background task manager."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """Create temporary directory for tests."""
+        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def mock_instance(self, temp_dir):
+        """Create mock MCInstance with test files."""
+        server_path = temp_dir / "servers" / "test_server"
+        server_path.mkdir(parents=True)
+        data_dir = server_path / "data"
+        data_dir.mkdir()
+
+        # Create larger test files to see progress
+        for i in range(10):
+            (data_dir / f"file_{i}.bin").write_bytes(b"\x00" * 1024 * 100)
+
+        instance = MagicMock()
+        instance.get_name.return_value = "test_server"
+        instance.get_project_path.return_value = server_path
+        instance.get_data_path.return_value = data_dir
+
+        return instance
+
+    @pytest.fixture
+    def archive_dir(self, temp_dir):
+        """Create archive directory."""
+        archive_path = temp_dir / "archives"
+        archive_path.mkdir()
+        return archive_path
+
+    @pytest.mark.asyncio
+    async def test_task_manager_runs_compression(self, mock_instance, archive_dir):
+        """Test that task manager can run compression task."""
+        import shutil
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            result = task_manager.submit(
+                task_type=TaskType.ARCHIVE_CREATE,
+                name="test_server",
+                task_generator=create_server_archive_stream(mock_instance),
+                server_id="test_server",
+                cancellable=True,
+            )
+
+            # Wait for task to complete
+            task_result = await result.awaitable
+
+            assert task_result.success
+            assert task_result.data is not None
+            assert "filename" in task_result.data
+
+            # Verify task status
+            task = task_manager.get_task(result.task_id)
+            assert task is not None
+            assert task.status == TaskStatus.COMPLETED
+            assert task.progress == 100
+
+            # Clean up
+            task_manager.remove_task(result.task_id)
+
+    @pytest.mark.asyncio
+    async def test_task_cancellation(self, mock_instance, archive_dir):
+        """Test that compression task can be cancelled."""
+        import shutil
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            # Create larger files to ensure compression takes time
+            data_dir = mock_instance.get_data_path()
+            for i in range(50):
+                (data_dir / f"large_file_{i}.bin").write_bytes(b"\x00" * 1024 * 1024)
+
+            result = task_manager.submit(
+                task_type=TaskType.ARCHIVE_CREATE,
+                name="test_server",
+                task_generator=create_server_archive_stream(mock_instance),
+                server_id="test_server",
+                cancellable=True,
+            )
+
+            # Wait a bit then cancel
+            await asyncio.sleep(0.5)
+            cancelled = await task_manager.cancel(result.task_id)
+
+            # Wait for task to finish
+            task_result = await result.awaitable
+
+            task = task_manager.get_task(result.task_id)
+            assert task is not None
+            # Task should be cancelled (if it didn't complete too fast)
+            if cancelled:
+                assert task.status == TaskStatus.CANCELLED
+                assert not task_result.success
+            else:
+                # Task completed before cancellation
+                assert task.status == TaskStatus.COMPLETED
+
+            # Clean up
+            task_manager.remove_task(result.task_id)
+
+
+class TestRealTimeProgressTracking:
+    """Test that 7z progress is tracked in real-time, not buffered."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """Create temporary directory for tests."""
+        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def mock_instance_large(self, temp_dir):
+        """Create mock MCInstance with large test files to ensure measurable compression time."""
+        server_path = temp_dir / "servers" / "test_server"
+        server_path.mkdir(parents=True)
+        data_dir = server_path / "data"
+        data_dir.mkdir()
+
+        # Create 30 x 1MB files (30MB total) - enough to see progress updates
+        import os
+
+        for i in range(30):
+            (data_dir / f"file_{i}.bin").write_bytes(os.urandom(1024 * 1024))
+
+        instance = MagicMock()
+        instance.get_name.return_value = "test_server"
+        instance.get_project_path.return_value = server_path
+        instance.get_data_path.return_value = data_dir
+
+        return instance
+
+    @pytest.fixture
+    def archive_dir(self, temp_dir):
+        """Create archive directory."""
+        archive_path = temp_dir / "archives"
+        archive_path.mkdir()
+        return archive_path
+
+    @pytest.mark.asyncio
+    async def test_progress_updates_are_realtime(
+        self, mock_instance_large, archive_dir
+    ):
+        """
+        Test that progress updates arrive in real-time during compression.
+
+        This verifies that the delimiter-based reading fix works correctly:
+        - Progress updates should be spread over the compression duration
+        - Multiple intermediate progress values should be received
+        - Updates should not all arrive at once at the end
+        """
+        import shutil
+        import time
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+
+        with patch("app.utils.compression.settings") as mock_settings:
+            mock_settings.archive_path = archive_dir
+
+            progress_timestamps: list[tuple[float, float]] = []
+            start_time = time.time()
+
+            async for progress in create_server_archive_stream(mock_instance_large):
+                elapsed = time.time() - start_time
+                if progress.progress is not None:
+                    progress_timestamps.append((elapsed, progress.progress))
+
+            total_time = time.time() - start_time
+
+            # Verify we got multiple progress updates
+            assert len(progress_timestamps) >= 3, (
+                f"Expected at least 3 progress updates, got {len(progress_timestamps)}"
+            )
+
+            # Verify progress values span from low to high
+            progress_values = [p[1] for p in progress_timestamps]
+            assert min(progress_values) <= 10, (
+                f"Expected initial progress <= 10%, got min={min(progress_values)}%"
+            )
+            assert max(progress_values) >= 90, (
+                f"Expected final progress >= 90%, got max={max(progress_values)}%"
+            )
+
+            # Verify updates are spread over time (not all at once at the end)
+            # The time spread should be at least 50% of total compression time
+            first_update_time = progress_timestamps[0][0]
+            last_update_time = progress_timestamps[-1][0]
+            time_spread = last_update_time - first_update_time
+
+            # If compression took more than 1 second, updates should be spread
+            if total_time > 1.0:
+                assert time_spread > total_time * 0.3, (
+                    f"Progress updates not spread over time: "
+                    f"spread={time_spread:.2f}s, total={total_time:.2f}s"
+                )
+
+            # Print summary for debugging
+            print("\nProgress tracking summary:")
+            print(f"  Total updates: {len(progress_timestamps)}")
+            print(
+                f"  Progress range: {min(progress_values)}% - {max(progress_values)}%"
+            )
+            print(f"  Time spread: {time_spread:.2f}s / {total_time:.2f}s total")
+            print(f"  Sample updates: {progress_timestamps[:5]}...")
 
 
 if __name__ == "__main__":

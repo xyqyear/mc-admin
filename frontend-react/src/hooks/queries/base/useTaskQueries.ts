@@ -21,7 +21,17 @@ export const useTaskQueries = () => {
     return useQuery({
       queryKey: [...taskQueryKeys.all, params],
       queryFn: () => taskApi.getTasks(params),
-      staleTime: 5000, // 5 seconds
+      staleTime: 1000,
+      refetchOnMount: 'always',
+      refetchInterval: () => {
+        // Check active tasks cache to determine polling frequency
+        const activeTasksData = queryClient.getQueryData<BackgroundTask[]>(
+          taskQueryKeys.active()
+        )
+        const hasActiveFromCache = activeTasksData && activeTasksData.length > 0
+        // Poll every 1 second if there are active tasks, otherwise every 10 seconds
+        return hasActiveFromCache ? 1000 : 10000
+      },
     })
   }
 
@@ -31,11 +41,12 @@ export const useTaskQueries = () => {
       queryKey: taskQueryKeys.active(),
       queryFn: taskApi.getActiveTasks,
       refetchInterval: (query) => {
-        // Poll every 2 seconds if there are active tasks, otherwise 30 seconds
+        // Poll every 1 second if there are active tasks, otherwise 10 seconds
         const hasActive = query.state.data && query.state.data.length > 0
-        return hasActive ? 2000 : 30000
+        return hasActive ? 1000 : 10000
       },
       staleTime: 1000,
+      refetchOnMount: 'always',
     })
   }
 
@@ -47,7 +58,8 @@ export const useTaskQueries = () => {
       enabled: !!taskId,
       refetchInterval: (query) => {
         const task = query.state.data
-        if (!task) return false
+        // If no data yet, poll to get initial data
+        if (!task) return 2000
         // Poll every 2 seconds for running/pending tasks
         if (task.status === 'running' || task.status === 'pending') {
           return 2000

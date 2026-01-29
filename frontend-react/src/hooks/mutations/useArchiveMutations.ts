@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
 import { archiveApi, type CreateArchiveFileRequest, type RenameArchiveFileRequest, type UploadOptions, type CreateArchiveRequest } from '@/hooks/api/archiveApi'
+import { taskQueryKeys } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 import { useDownloadManager } from '@/utils/downloadUtils'
 
@@ -119,10 +120,10 @@ export const useArchiveMutations = () => {
     return useMutation({
       mutationFn: (request: CreateArchiveRequest) =>
         archiveApi.createArchive(request),
-      onSuccess: (data) => {
-        // Invalidate archive file list to show the new archive
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
-        message.success(data.message)
+      onSuccess: () => {
+        // Invalidate task queries to show the new task immediately
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+        // Note: archive file list will be invalidated when task completes (in ServerFiles.tsx)
       },
       onError: (error: any) => {
         message.error(`创建压缩包失败: ${error.message}`)

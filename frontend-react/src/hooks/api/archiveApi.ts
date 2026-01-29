@@ -49,8 +49,7 @@ export interface CreateArchiveRequest {
 }
 
 export interface CreateArchiveResponse {
-  archive_filename: string
-  message: string
+  task_id: string
 }
 
 export const archiveApi = {
@@ -157,5 +156,5 @@ export const archiveApi = {
 
   // Create archive from server files
   createArchive: (request: CreateArchiveRequest): Promise<CreateArchiveResponse> =>
-    api.post('/archive/compress', request, { timeout: 900000 }).then((res: any) => res.data), // 10 minutes timeout for compression
+    api.post('/archive/compress', request).then((res: any) => res.data),
 }

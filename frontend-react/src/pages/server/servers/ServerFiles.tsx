@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Card,
   Modal,
@@ -12,6 +12,7 @@ import {
   SearchOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
@@ -27,11 +28,13 @@ import {
 } from '@/components/modals/ServerFiles'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries'
+import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
+import { queryKeys } from '@/utils/api'
 import FileTable from '@/components/server/FileTable'
 import FileToolbar from '@/components/server/FileToolbar'
 import FileBreadcrumb from '@/components/server/FileBreadcrumb'
@@ -43,6 +46,7 @@ const ServerFiles: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const [createForm] = Form.useForm()
   const [renameForm] = Form.useForm()
   const { message } = App.useApp()
@@ -96,6 +100,9 @@ const ServerFiles: React.FC = () => {
   const { useCreateArchive, downloadFile: downloadArchiveFile } = useArchiveMutations()
   const createArchiveMutation = useCreateArchive()
 
+  // Task queries for compression progress
+  const { useTask } = useTaskQueries()
+
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
@@ -122,6 +129,10 @@ const ServerFiles: React.FC = () => {
   const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
+  const [compressionTaskId, setCompressionTaskId] = useState<string | null>(null)
+
+  // Task query for compression progress
+  const { data: compressionTask } = useTask(compressionTaskId || '')
 
   // Deep search modal state
   const [isDeepSearchModalVisible, setIsDeepSearchModalVisible] = useState(false)
@@ -185,6 +196,29 @@ const ServerFiles: React.FC = () => {
   React.useEffect(() => {
     setInputSearchTerm(searchQuery)
   }, [searchQuery])
+
+  // Watch for compression task completion
+  useEffect(() => {
+    if (!compressionTask || !compressionTaskId) return
+
+    if (compressionTask.status === 'completed' && compressionTask.result) {
+      setCompressionResult({
+        filename: compressionTask.result.filename as string,
+        message: 'Compression complete'
+      })
+      setIsCompressionConfirmModalVisible(false)
+      setIsCompressionResultModalVisible(true)
+      setCompressionTaskId(null)
+      // Invalidate archive file list to show the new archive
+      queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+    } else if (compressionTask.status === 'failed') {
+      message.error(`压缩失败: ${compressionTask.error}`)
+      setCompressionTaskId(null)
+    } else if (compressionTask.status === 'cancelled') {
+      message.info('压缩任务已取消')
+      setCompressionTaskId(null)
+    }
+  }, [compressionTask, compressionTaskId, message, queryClient])
 
   // Keyboard shortcut handler for Ctrl+F to focus search
   React.useEffect(() => {
@@ -435,14 +469,8 @@ const ServerFiles: React.FC = () => {
         path: compressionPath
       })
 
-      setCompressionResult({
-        filename: result.archive_filename,
-        message: result.message
-      })
-
-      setIsCompressionConfirmModalVisible(false)
-      setIsCompressionResultModalVisible(true)
-      setCompressionFile(null)
+      // Set task ID to start polling
+      setCompressionTaskId(result.task_id)
     } catch (error: any) {
       message.error(`压缩失败: ${error.message || '未知错误'}`)
     }
@@ -692,9 +720,11 @@ const ServerFiles: React.FC = () => {
         onCancel={() => {
           setIsCompressionConfirmModalVisible(false)
           setCompressionFile(null)
+          setCompressionTaskId(null)
         }}
         onOk={handleCompressionConfirm}
         confirmLoading={createArchiveMutation.isPending}
+        task={compressionTask}
         selectedFile={compressionFile}
         currentPath={currentPath}
         compressionType={compressionType}
