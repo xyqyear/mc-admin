@@ -16,7 +16,7 @@ from .dns import simple_dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
 from .players import player_system_manager
-from .routers import admin, archive, auth, cron, dns, snapshots, system, user
+from .routers import admin, archive, auth, cron, dns, snapshots, system, tasks, user
 from .routers.config import router as config_router
 from .routers.players import (
     achievements,
@@ -88,6 +88,7 @@ api_app.include_router(archive.router)
 api_app.include_router(cron.router)
 api_app.include_router(dns.router)
 api_app.include_router(config_router)
+api_app.include_router(tasks.router)
 
 # Player management routers
 api_app.include_router(players.router)

@@ -122,6 +122,12 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
         <Text strong>任务类型：</Text>
         <Text>{getTaskTypeName(task.taskType)}</Text>
       </div>
+      {task.name && (
+        <div>
+          <Text strong>名称：</Text>
+          <Text>{task.name}</Text>
+        </div>
+      )}
       {task.serverId && (
         <div>
           <Text strong>服务器：</Text>
@@ -175,9 +181,9 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
               <Text
                 className="truncate text-xs font-medium"
                 style={{ maxWidth: '140px' }}
-                title={`${getTaskTypeName(task.taskType)}${task.serverId ? ` - ${task.serverId}` : ''}`}
+                title={`${getTaskTypeName(task.taskType)}${task.name ? `: ${task.name}` : ''}${task.serverId ? ` - ${task.serverId}` : ''}`}
               >
-                {getTaskTypeName(task.taskType)}
+                {task.name || getTaskTypeName(task.taskType)}
                 {task.serverId && (
                   <span className="text-gray-400 ml-1">- {task.serverId}</span>
                 )}
@@ -186,13 +192,20 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
 
             {isActive && (
               <div className="mt-1">
-                <Progress
-                  percent={task.progress}
-                  size="small"
-                  strokeColor={task.status === 'pending' ? '#d9d9d9' : '#1677ff'}
-                  showInfo={false}
-                  className="mb-0.5"
-                />
+                {task.progress !== null ? (
+                  <Progress
+                    percent={task.progress}
+                    size="small"
+                    strokeColor={task.status === 'pending' ? '#d9d9d9' : '#1677ff'}
+                    showInfo={false}
+                    className="mb-0.5"
+                  />
+                ) : (
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <LoadingOutlined spin className="text-blue-500 text-xs" />
+                    <Text className="text-xs text-gray-400">处理中...</Text>
+                  </div>
+                )}
                 <Text className="text-xs text-gray-500 truncate block" title={task.message}>
                   {task.message || (task.status === 'pending' ? '等待执行...' : '处理中...')}
                 </Text>

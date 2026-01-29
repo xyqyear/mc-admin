@@ -15,10 +15,11 @@ export type BackgroundTaskType =
 export interface BackgroundTask {
   taskId: string
   taskType: BackgroundTaskType
+  name: string
   status: BackgroundTaskStatus
-  progress: number // 0-100
+  progress: number | null
   message: string
-  serverId?: string
+  serverId: string | null
   createdAt: number
   startedAt?: number
   endedAt?: number
