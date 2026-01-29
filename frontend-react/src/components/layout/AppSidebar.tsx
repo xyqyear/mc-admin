@@ -30,7 +30,6 @@ import { useTokenStore } from '@/stores/useTokenStore'
 import { UserRole } from '@/types/User'
 import ServerMenuIcon from '@/components/layout/ServerMenuIcon'
 import DebugTool from '@/components/debug/DebugTool'
-import DownloadTaskContainer from '@/components/layout/DownloadTaskContainer'
 
 const { Sider } = Layout
 
@@ -225,9 +224,6 @@ const AppSidebar: React.FC = () => {
             className="border-r-0"
           />
         </div>
-
-        {/* 下载任务容器 - 吸附在底部 */}
-        <DownloadTaskContainer />
 
         {/* 调试工具 - 固定在底部，只在开发环境显示 */}
         <div className="border-t border-gray-200">

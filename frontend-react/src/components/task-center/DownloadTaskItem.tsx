@@ -1,14 +1,13 @@
 import React from 'react'
-import { Card, Progress, Button, Typography, Space, Tooltip, Popover } from 'antd'
+import { Progress, Button, Typography, Tooltip, Popover } from 'antd'
 import {
   DownloadOutlined,
   CloseOutlined,
-  DeleteOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import { useDownloadTasks, useDownloadActions, type DownloadTask } from '@/stores/useDownloadStore'
+import { useDownloadActions, type DownloadTask } from '@/stores/useDownloadStore'
 import { formatFileSize } from '@/utils/formatUtils'
 
 const { Text } = Typography
@@ -84,10 +83,10 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   }
 
   const taskInfo = (
-    <div className="space-y-2">
+    <div className="space-y-2 min-w-48">
       <div>
         <Text strong>文件名：</Text>
-        <Text>{task.fileName}</Text>
+        <Text className="break-all">{task.fileName}</Text>
       </div>
       {task.serverId && (
         <div>
@@ -114,22 +113,24 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
       {task.error && (
         <div>
           <Text strong>错误：</Text>
-          <Text type="danger">{task.error}</Text>
+          <Text type="danger" className="break-all">{task.error}</Text>
         </div>
       )}
     </div>
   )
 
   return (
-    <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
-      {getStatusIcon()}
+    <div className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors">
+      <span className="flex-shrink-0 w-5 text-center">
+        {getStatusIcon()}
+      </span>
 
       <div className="flex-1 min-w-0">
-        <Popover content={taskInfo} title="下载详情" placement="right">
+        <Popover content={taskInfo} title="下载详情" placement="left">
           <div className="cursor-pointer">
             <Text
               className="block truncate text-xs font-medium"
-              style={{ maxWidth: '120px' }}
+              style={{ maxWidth: '160px' }}
               title={task.fileName}
             >
               {task.fileName}
@@ -142,7 +143,7 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
                   size="small"
                   strokeColor={getStatusColor()}
                   showInfo={false}
-                  className="mb-1"
+                  className="mb-0.5"
                 />
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>{getProgressInfo()}</span>
@@ -179,57 +180,4 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   )
 }
 
-const DownloadTaskContainer: React.FC = () => {
-  const allTasks = useDownloadTasks()
-  const { clearCompletedTasks } = useDownloadActions()
-
-  // 只显示正在下载的任务和最近完成/失败的任务
-  const visibleTasks = allTasks.filter(task =>
-    task.status === 'downloading' ||
-    (task.endTime && Date.now() - task.endTime < 5 * 60 * 1000) // 5分钟内完成的任务
-  )
-
-  // 如果没有可见任务，不显示容器
-  if (visibleTasks.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="border-t border-gray-200 bg-white">
-      <Card
-        size="small"
-        title={
-          <Space>
-            <DownloadOutlined />
-            <span className="text-sm">下载任务 ({visibleTasks.length})</span>
-          </Space>
-        }
-        extra={
-          <Space>
-            <Tooltip title="清除已完成的任务">
-              <Button
-                size="small"
-                type="text"
-                icon={<DeleteOutlined />}
-                onClick={clearCompletedTasks}
-              />
-            </Tooltip>
-          </Space>
-        }
-        className="mx-2 mb-2"
-        styles={{
-          header: { padding: '8px 12px', minHeight: 'auto' },
-          body: { padding: '0' },
-        }}
-      >
-        <div className="max-h-40 overflow-y-auto">
-          {visibleTasks.map(task => (
-            <DownloadTaskItem key={task.id} task={task} />
-          ))}
-        </div>
-      </Card>
-    </div>
-  )
-}
-
-export default DownloadTaskContainer
+export default DownloadTaskItem

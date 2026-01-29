@@ -1,6 +1,7 @@
 import React from 'react'
 import { Layout } from 'antd'
 import AppSidebar from '@/components/layout/AppSidebar'
+import { TaskCenterPanel, TaskCenterTrigger } from '@/components/task-center'
 
 const { Content } = Layout
 
@@ -19,6 +20,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </Content>
         </Layout>
       </Layout>
+      <TaskCenterPanel />
+      <TaskCenterTrigger />
     </Layout>
   )
 }
