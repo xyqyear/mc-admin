@@ -366,118 +366,114 @@ const DnsManagement: React.FC = () => {
         }
       />
 
-      <div className="flex-1 min-h-0 flex flex-col gap-4">
-        {/* Status and differences */}
-        <div>
-          {renderErrors()}
-          {renderDifferences()}
-        </div>
+      {/* Status and differences */}
+      {renderErrors()}
+      {renderDifferences()}
 
-        {/* DNS Records and Router Routes */}
-        <Row gutter={[16, 16]} className="flex-1 min-h-0">
-          <Col xs={24} lg={16} className="flex flex-col">
-            <Card
-              title={
-                <Space>
-                  <GlobalOutlined />
-                  <span>DNS记录</span>
-                  {dnsRecords && (
-                    <Tag color="blue">{dnsRecords.length} 条记录</Tag>
-                  )}
-                </Space>
-              }
-              className="flex-1 flex flex-col"
-              styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
-            >
-              {recordsLoading ? (
-                <LoadingSpinner height="8rem" tip="加载DNS记录中..." />
-              ) : !isDNSEnabled ? (
-                <Alert
-                  title="DNS管理未启用"
-                  description="请前往设置页面启用DNS管理功能"
-                  type="info"
-                  showIcon
-                  action={
-                    <Button size="small" onClick={handleGoToSettings}>
-                      前往设置
-                    </Button>
-                  }
-                />
-              ) : recordsError ? (
-                <Alert
-                  title="DNS记录加载失败"
-                  description={String(recordsError)}
-                  type="error"
-                  showIcon
-                />
-              ) : (
-                <Table
-                  columns={dnsRecordsColumns}
-                  dataSource={dnsRecords}
-                  rowKey="record_id"
-                  size="small"
-                  pagination={{
-                    showSizeChanger: true,
-                    showQuickJumper: true,
-                    showTotal: (total) => `共 ${total} 条记录`,
-                  }}
-                  scroll={{ x: 'auto' }}
-                />
-              )}
-            </Card>
-          </Col>
+      {/* DNS Records and Router Routes */}
+      <Row gutter={[16, 16]} className="flex-1 min-h-0">
+        <Col xs={24} lg={16} className="flex flex-col">
+          <Card
+            title={
+              <Space>
+                <GlobalOutlined />
+                <span>DNS记录</span>
+                {dnsRecords && (
+                  <Tag color="blue">{dnsRecords.length} 条记录</Tag>
+                )}
+              </Space>
+            }
+            className="flex-1 flex flex-col"
+            styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
+          >
+            {recordsLoading ? (
+              <LoadingSpinner height="8rem" tip="加载DNS记录中..." />
+            ) : !isDNSEnabled ? (
+              <Alert
+                title="DNS管理未启用"
+                description="请前往设置页面启用DNS管理功能"
+                type="info"
+                showIcon
+                action={
+                  <Button size="small" onClick={handleGoToSettings}>
+                    前往设置
+                  </Button>
+                }
+              />
+            ) : recordsError ? (
+              <Alert
+                title="DNS记录加载失败"
+                description={String(recordsError)}
+                type="error"
+                showIcon
+              />
+            ) : (
+              <Table
+                columns={dnsRecordsColumns}
+                dataSource={dnsRecords}
+                rowKey="record_id"
+                size="small"
+                pagination={{
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                }}
+                scroll={{ x: 'auto' }}
+              />
+            )}
+          </Card>
+        </Col>
 
-          <Col xs={24} lg={8} className="flex flex-col">
-            <Card
-              title={
-                <Space>
-                  <ShareAltOutlined />
-                  <span>MC Router路由</span>
-                  {routerRoutes && (
-                    <Tag color="green">{Object.keys(routerRoutes).length} 条路由</Tag>
-                  )}
-                </Space>
-              }
-              className="flex-1 flex flex-col"
-              styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
-            >
-              {routesLoading ? (
-                <LoadingSpinner height="8rem" tip="加载路由信息中..." />
-              ) : !isDNSEnabled ? (
-                <Alert
-                  title="DNS管理未启用"
-                  description="请前往设置页面启用DNS管理功能"
-                  type="info"
-                  showIcon
-                  action={
-                    <Button size="small" onClick={handleGoToSettings}>
-                      前往设置
-                    </Button>
-                  }
-                />
-              ) : routesError ? (
-                <Alert
-                  title="路由信息加载失败"
-                  description={String(routesError)}
-                  type="error"
-                  showIcon
-                />
-              ) : (
-                <Table
-                  columns={routerRoutesColumns}
-                  dataSource={routerRoutesData}
-                  size="small"
-                  pagination={{
-                    showSizeChanger: true,
-                    showQuickJumper: true,
-                    showTotal: (total) => `共 ${total} 条路由`,
-                  }}
-                />
-              )}
-            </Card>
-          </Col>
-        </Row>
-      </div>
+        <Col xs={24} lg={8} className="flex flex-col">
+          <Card
+            title={
+              <Space>
+                <ShareAltOutlined />
+                <span>MC Router路由</span>
+                {routerRoutes && (
+                  <Tag color="green">{Object.keys(routerRoutes).length} 条路由</Tag>
+                )}
+              </Space>
+            }
+            className="flex-1 flex flex-col"
+            styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
+          >
+            {routesLoading ? (
+              <LoadingSpinner height="8rem" tip="加载路由信息中..." />
+            ) : !isDNSEnabled ? (
+              <Alert
+                title="DNS管理未启用"
+                description="请前往设置页面启用DNS管理功能"
+                type="info"
+                showIcon
+                action={
+                  <Button size="small" onClick={handleGoToSettings}>
+                    前往设置
+                  </Button>
+                }
+              />
+            ) : routesError ? (
+              <Alert
+                title="路由信息加载失败"
+                description={String(routesError)}
+                type="error"
+                showIcon
+              />
+            ) : (
+              <Table
+                columns={routerRoutesColumns}
+                dataSource={routerRoutesData}
+                size="small"
+                pagination={{
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total) => `共 ${total} 条路由`,
+                }}
+              />
+            )}
+          </Card>
+        </Col>
+      </Row>
     </div>
   )
 }
