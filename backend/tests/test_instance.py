@@ -12,7 +12,7 @@ from .fixtures.test_utils import (
 
 
 @pytest.mark.asyncio
-async def test_minecraft_instance(teardown: list[str]):
+async def test_minecraft_instance(teardown: list[str]):  # noqa: F811
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
     server1 = docker_mc_manager.get_instance("testserver1")
     teardown.append("mc-testserver1")
@@ -22,10 +22,10 @@ async def test_minecraft_instance(teardown: list[str]):
     expected_info = MCServerInfo(
         name="testserver1",
         path=server1.get_project_path(),
-        java_version=21,
+        java_version=25,
         max_memory_bytes=524288000,  # 500M in bytes = 500 * 1024 * 1024
         server_type=ServerType.VANILLA,
-        game_version="1.20.4",
+        game_version="1.21.11",
         game_port=34544,
         rcon_port=34545,
     )
@@ -33,13 +33,13 @@ async def test_minecraft_instance(teardown: list[str]):
     mc_compose = await server1.get_compose_obj()
 
     assert mc_compose.get_server_name() == "testserver1"
-    assert mc_compose.get_game_version() == "1.20.4"
+    assert mc_compose.get_game_version() == "1.21.11"
     assert mc_compose.get_game_port() == 34544
     assert mc_compose.get_rcon_port() == 34545
 
 
 @pytest.mark.asyncio
-async def test_server_status_lifecycle_with_docker(teardown: list[str]):
+async def test_server_status_lifecycle_with_docker(teardown: list[str]):  # noqa: F811
     """Test the complete lifecycle of server status changes"""
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
     server = docker_mc_manager.get_instance("status-test-server")
@@ -124,7 +124,7 @@ async def test_server_status_lifecycle_with_docker(teardown: list[str]):
 
 
 @pytest.mark.asyncio
-async def test_get_disk_space_info_with_docker(teardown: list[str]):
+async def test_get_disk_space_info_with_docker(teardown: list[str]):  # noqa: F811
     """Test get_disk_space_info method"""
     docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
     server = docker_mc_manager.get_instance("disk-space-test")

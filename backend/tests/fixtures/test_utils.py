@@ -14,11 +14,11 @@ def create_mc_server_compose_yaml(
     """Create a YAML string for a Minecraft server compose configuration"""
     return f"""services:
   mc:
-    image: itzg/minecraft-server:java21-alpine
+    image: itzg/minecraft-server:java25
     container_name: mc-{server_name}
     environment:
       EULA: 'true'
-      VERSION: 1.20.4
+      VERSION: 1.21.11
       INIT_MEMORY: 0M
       MAX_MEMORY: 500M
       ONLINE_MODE: 'false'
