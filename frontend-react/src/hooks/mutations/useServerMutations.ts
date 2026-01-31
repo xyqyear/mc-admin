@@ -126,30 +126,11 @@ export const useServerMutations = () => {
     });
   };
 
-  // 服务器数据填充
+  // 服务器数据填充 (returns task_id for background task tracking)
   const usePopulateServer = () => {
     return useMutation({
       mutationFn: async ({ serverId, archiveFilename }: { serverId: string; archiveFilename: string }) => {
         return serverApi.populateServer(serverId, archiveFilename);
-      },
-      onSuccess: (data, { serverId }) => {
-        message.success(data.message || `服务器 ${serverId} 数据填充完成`);
-
-        // 延迟1秒后失效相关缓存
-        setTimeout(() => {
-          // 失效服务器信息缓存
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverInfos.detail(serverId),
-          });
-
-          // 失效磁盘使用情况缓存（数据填充会改变磁盘使用）
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverDiskUsage.detail(serverId),
-          });
-
-          // 失效服务器列表
-          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
-        }, 1000);
       },
       onError: (error: Error, { serverId }) => {
         message.error(`服务器 ${serverId} 数据填充失败: ${error.message}`);

@@ -63,8 +63,7 @@ interface PopulateServerRequest {
 }
 
 interface PopulateServerResponse {
-  success: boolean;
-  message: string;
+  task_id: string
 }
 
 interface RestartScheduleResponse {

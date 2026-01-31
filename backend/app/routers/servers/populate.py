@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ...background_tasks import task_manager
+from ...background_tasks.types import TaskType
 from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import MCServerStatus, docker_mc_manager
@@ -17,13 +19,17 @@ class PopulateServerRequest(BaseModel):
     archive_filename: str
 
 
-@router.post("/{server_id}/populate")
+class PopulateServerResponse(BaseModel):
+    task_id: str
+
+
+@router.post("/{server_id}/populate", response_model=PopulateServerResponse)
 async def populate_server(
     server_id: str,
     populate_request: PopulateServerRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    """Populate server data directory from an archive file"""
+    """Populate server data directory from an archive file (background task)"""
     instance = docker_mc_manager.get_instance(server_id)
 
     # Get server status and validate it's in correct state
@@ -42,8 +48,19 @@ async def populate_server(
     # Get server data directory path
     server_data_dir = instance.get_data_path()
 
-    # Extract server files
+    # Get archive path
     archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
-    await extract_minecraft_server(str(archive_path), str(server_data_dir))
 
-    return {"success": True, "message": "服务器填充完成"}
+    # Submit as background task
+    task_name = f"填充 {server_id}"
+    result = task_manager.submit(
+        task_type=TaskType.ARCHIVE_EXTRACT,
+        name=task_name,
+        task_generator=extract_minecraft_server(
+            str(archive_path), str(server_data_dir)
+        ),
+        server_id=server_id,
+        cancellable=False,  # Extraction shouldn't be cancelled mid-way
+    )
+
+    return PopulateServerResponse(task_id=result.task_id)

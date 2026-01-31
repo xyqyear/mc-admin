@@ -1,18 +1,30 @@
 """
 Integration tests for the populate server endpoint.
 Tests the full flow: create server -> upload archive -> populate server -> verify files.
+
+Tests handle the background task architecture:
+- Endpoint returns task_id immediately
+- Task progress is polled via /api/tasks/{task_id}
+- Task completion is verified through task status
+
+Note: For actual decompression testing, see test_decompression.py.
+The tests here focus on endpoint behavior and mocked task flows.
 """
 
+import asyncio
 import random
 import subprocess
 import tempfile
+import time
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
+from app.background_tasks import TaskType
 from app.main import api_app
 from app.minecraft import DockerMCManager
 
@@ -113,11 +125,76 @@ def mock_settings_and_auth(temp_dirs):
         yield server_path, archive_path
 
 
+def wait_for_task_completion(
+    client: TestClient, task_id: str, timeout: float = 30.0
+) -> dict:
+    """
+    Poll task status until completion or timeout (sync version for TestClient).
+
+    Note: This only works with tests that mock task execution.
+    For actual async task execution, use wait_for_task_completion_async.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        response = client.get(
+            f"/api/tasks/{task_id}",
+            headers={"Authorization": "Bearer test_master_token"},
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to get task status: {response.text}")
+
+        task_data = response.json()
+        status = task_data.get("status")
+
+        if status in ["completed", "failed", "cancelled"]:
+            return task_data
+
+        time.sleep(0.5)
+
+    raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
+
+
+async def wait_for_task_completion_async(
+    client: AsyncClient, task_id: str, timeout: float = 30.0
+) -> dict:
+    """
+    Poll task status until completion or timeout (async version).
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        response = await client.get(
+            f"/api/tasks/{task_id}",
+            headers={"Authorization": "Bearer test_master_token"},
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to get task status: {response.text}")
+
+        task_data = response.json()
+        status = task_data.get("status")
+
+        if status in ["completed", "failed", "cancelled"]:
+            return task_data
+
+        await asyncio.sleep(0.5)
+
+    raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
+
+
 @pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestPopulateServerIntegration:
     """Integration tests for populate server endpoint."""
 
-    def test_full_populate_server_flow(self, client, mock_settings_and_auth):
+    @pytest.fixture
+    async def async_client(self):
+        """Create async test client for background task tests."""
+        transport = ASGITransport(app=api_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+
+    @pytest.mark.asyncio
+    async def test_full_populate_server_flow(
+        self, async_client, mock_settings_and_auth
+    ):
         """Test complete flow: create server -> upload archive -> populate -> verify."""
         server_path, archive_path = mock_settings_and_auth
         server_id = f"test_server_{random.randint(1000, 9999)}"
@@ -144,7 +221,7 @@ services:
 """
 
         # Step 2: Create server using API
-        create_response = client.post(
+        create_response = await async_client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
@@ -169,8 +246,8 @@ services:
         assert archive_file_path.exists()
         assert archive_file_path.stat().st_size > 0
 
-        # Step 4: Populate server with archive
-        populate_response = client.post(
+        # Step 4: Populate server with archive (returns task_id)
+        populate_response = await async_client.post(
             f"/api/servers/{server_id}/populate",
             headers={"Authorization": "Bearer test_master_token"},
             json={"archive_filename": archive_filename},
@@ -180,13 +257,24 @@ services:
             f"Populate failed: {populate_response.text}"
         )
 
-        # Parse JSON response (no longer SSE)
+        # Parse JSON response - should contain task_id
         populate_data = populate_response.json()
-        assert populate_data["success"] is True
-        assert "服务器填充完成" in populate_data["message"]
+        assert "task_id" in populate_data, (
+            f"Expected task_id in response: {populate_data}"
+        )
+        task_id = populate_data["task_id"]
 
-        # Step 5: Verify files using files API
-        files_response = client.get(
+        # Step 5: Wait for task to complete
+        task_data = await wait_for_task_completion_async(async_client, task_id)
+
+        assert task_data["status"] == "completed", (
+            f"Task failed: {task_data.get('error')}"
+        )
+        assert task_data["progress"] == 100
+        assert "填充完成" in task_data.get("message", "")
+
+        # Step 6: Verify files using files API
+        files_response = await async_client.get(
             f"/api/servers/{server_id}/files",
             headers={"Authorization": "Bearer test_master_token"},
             params={"path": "/"},
@@ -217,8 +305,8 @@ services:
             f"Missing files: {missing_files}. Available: {item_names}"
         )
 
-        # Step 6: Verify specific file content
-        server_properties_response = client.get(
+        # Step 7: Verify specific file content
+        server_properties_response = await async_client.get(
             f"/api/servers/{server_id}/files/content",
             headers={"Authorization": "Bearer test_master_token"},
             params={"path": "/server.properties"},
@@ -234,8 +322,8 @@ services:
         assert "level-name=world" in properties_content
         assert "enable-rcon=true" in properties_content
 
-        # Step 7: Check subdirectories
-        world_files_response = client.get(
+        # Step 8: Check subdirectories
+        world_files_response = await async_client.get(
             f"/api/servers/{server_id}/files",
             headers={"Authorization": "Bearer test_master_token"},
             params={"path": "/world"},
@@ -247,13 +335,13 @@ services:
         assert "level.dat" in world_items
         assert "region" in world_items
 
-        # Step 8: Verify archive was cleaned up (should be deleted after extraction)
+        # Step 9: Verify archive was cleaned up (should be deleted after extraction)
         assert not archive_file_path.exists(), (
             "Archive file should be deleted after extraction"
         )
 
         print(
-            f"✅ Full populate integration test completed successfully for server '{server_id}'"
+            f"Full populate integration test completed successfully for server '{server_id}'"
         )
 
     def test_populate_nonexistent_server(self, client, mock_settings_and_auth):
@@ -269,7 +357,10 @@ services:
         assert response.status_code == 404
         assert "不存在" in response.json()["detail"]
 
-    def test_populate_nonexistent_archive(self, client, mock_settings_and_auth):
+    @pytest.mark.asyncio
+    async def test_populate_nonexistent_archive(
+        self, async_client, mock_settings_and_auth
+    ):
         """Test populate endpoint with nonexistent archive file."""
         _, _ = mock_settings_and_auth
         server_id = "test_server"
@@ -292,21 +383,28 @@ services:
     restart: unless-stopped
 """
 
-        client.post(
+        await async_client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
         )
 
         # Try to populate with nonexistent archive
-        response = client.post(
+        response = await async_client.post(
             f"/api/servers/{server_id}/populate",
             headers={"Authorization": "Bearer test_master_token"},
             json={"archive_filename": "nonexistent.zip"},
         )
 
-        assert response.status_code == 404
-        assert "压缩包不存在" in response.json()["detail"]
+        # Endpoint returns 200 with task_id, task will fail
+        assert response.status_code == 200
+        task_id = response.json()["task_id"]
+
+        # Wait for task to complete (should fail)
+        task_data = await wait_for_task_completion_async(async_client, task_id)
+
+        assert task_data["status"] == "failed"
+        assert "压缩包不存在" in task_data.get("error", "")
 
     def test_populate_server_wrong_status(self, client, mock_settings_and_auth):
         """Test populate endpoint with server in wrong status."""
@@ -361,7 +459,10 @@ services:
             assert response.status_code == 409
             assert "必须处于 'exists' 或 'created' 状态" in response.json()["detail"]
 
-    def test_populate_with_invalid_archive(self, client, mock_settings_and_auth):
+    @pytest.mark.asyncio
+    async def test_populate_with_invalid_archive(
+        self, async_client, mock_settings_and_auth
+    ):
         """Test populate endpoint with invalid archive (missing server.properties)."""
         _, archive_path = mock_settings_and_auth
         server_id = "test_server"
@@ -385,7 +486,7 @@ services:
     restart: unless-stopped
 """
 
-        client.post(
+        await async_client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
@@ -398,16 +499,21 @@ services:
             zf.writestr("random/data.txt", "random content")
 
         # Try to populate with invalid archive
-        response = client.post(
+        response = await async_client.post(
             f"/api/servers/{server_id}/populate",
             headers={"Authorization": "Bearer test_master_token"},
             json={"archive_filename": archive_filename},
         )
 
-        # Should return 400 for invalid archive (no server.properties)
-        assert response.status_code == 400
-        response_data = response.json()
-        assert "压缩包中未找到server.properties文件" in response_data["detail"]
+        # Endpoint returns 200 with task_id, task will fail
+        assert response.status_code == 200
+        task_id = response.json()["task_id"]
+
+        # Wait for task to complete (should fail)
+        task_data = await wait_for_task_completion_async(async_client, task_id)
+
+        assert task_data["status"] == "failed"
+        assert "压缩包中未找到server.properties文件" in task_data.get("error", "")
 
     def test_unauthorized_access(self, client, mock_settings_and_auth):
         """Test populate endpoint without authentication."""
@@ -418,6 +524,208 @@ services:
 
         # Should return 401 or 422 for missing authentication
         assert response.status_code in [401, 422]
+
+
+@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
+class TestPopulateProgressTracking:
+    """Test progress tracking during server population."""
+
+    @pytest.fixture
+    async def async_client(self):
+        """Create async test client for background task tests."""
+        transport = ASGITransport(app=api_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+
+    @pytest.mark.asyncio
+    async def test_progress_updates_during_populate(
+        self, async_client, mock_settings_and_auth
+    ):
+        """Test that task progress updates are tracked during populate."""
+        server_path, archive_path = mock_settings_and_auth
+        server_id = f"test_server_{random.randint(1000, 9999)}"
+        archive_filename = f"progress_test_{random.randint(1000, 9999)}.zip"
+
+        # Create server
+        compose_yaml = f"""version: '3.8'
+services:
+  mc:
+    image: itzg/minecraft-server:latest
+    container_name: mc-{server_id}
+    ports:
+      - "25565:25565"
+      - "25575:25575"
+    environment:
+      EULA: "TRUE"
+      VERSION: "1.20.1"
+      MEMORY: "2G"
+    volumes:
+      - ./data:/data
+"""
+
+        create_response = await async_client.post(
+            f"/api/servers/{server_id}",
+            headers={"Authorization": "Bearer test_master_token"},
+            json={"yaml_content": compose_yaml},
+        )
+        assert create_response.status_code == 200, (
+            f"Server creation failed: {create_response.json()}"
+        )
+
+        # Create archive
+        archive_file_path = archive_path / archive_filename
+        create_test_minecraft_archive(archive_file_path)
+
+        # Start populate
+        response = await async_client.post(
+            f"/api/servers/{server_id}/populate",
+            headers={"Authorization": "Bearer test_master_token"},
+            json={"archive_filename": archive_filename},
+        )
+
+        assert response.status_code == 200
+        task_id = response.json()["task_id"]
+
+        # Poll for progress updates
+        progress_values = []
+        messages = []
+        start_time = time.time()
+        timeout = 30.0
+
+        while time.time() - start_time < timeout:
+            task_response = await async_client.get(
+                f"/api/tasks/{task_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert task_response.status_code == 200
+
+            task_data = task_response.json()
+            progress = task_data.get("progress")
+            message = task_data.get("message")
+
+            if progress is not None and progress not in progress_values:
+                progress_values.append(progress)
+            if message and message not in messages:
+                messages.append(message)
+
+            if task_data["status"] in ["completed", "failed", "cancelled"]:
+                break
+
+            await asyncio.sleep(0.3)
+
+        # Verify progress tracking
+        assert len(progress_values) >= 1, "Expected at least one progress update"
+        assert 100 in progress_values, "Expected final progress of 100%"
+
+        # Verify we got expected step messages
+        assert any("填充完成" in m for m in messages), (
+            f"Expected completion message, got: {messages}"
+        )
+
+        print(f"\nProgress tracking: {progress_values}")
+        print(f"Messages: {messages}")
+
+
+class TestPopulateEndpointIsolated:
+    """Test populate endpoint with mocked dependencies for isolation."""
+
+    @pytest.fixture
+    def isolated_client(self):
+        """Create test client with mocked dependencies."""
+        return TestClient(api_app)
+
+    @pytest.fixture
+    def mock_task_manager_submit(self):
+        """Mock task_manager.submit to return immediately."""
+        mock_submit_result = MagicMock()
+        mock_submit_result.task_id = "mock-task-id-12345"
+
+        with patch("app.routers.servers.populate.task_manager") as mock_tm:
+            mock_tm.submit.return_value = mock_submit_result
+            yield mock_tm
+
+    def test_endpoint_returns_task_id(
+        self, isolated_client, mock_task_manager_submit, temp_dirs
+    ):
+        """Test that endpoint returns task_id from task manager."""
+        server_path, archive_path = temp_dirs
+        real_mc_manager = DockerMCManager(server_path)
+
+        with (
+            patch("app.routers.servers.populate.settings") as mock_settings,
+            patch("app.dependencies.settings") as mock_dep_settings,
+            patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
+        ):
+            mock_settings.server_path = server_path
+            mock_settings.archive_path = archive_path
+            mock_settings.master_token = "test_master_token"
+            mock_dep_settings.master_token = "test_master_token"
+
+            # Create server directory with proper compose file
+            server_dir = server_path / "test_server"
+            server_dir.mkdir(parents=True)
+            compose_content = """services:
+  mc:
+    image: itzg/minecraft-server:latest
+    container_name: mc-test_server
+    volumes:
+      - ./data:/data
+"""
+            (server_dir / "docker-compose.yml").write_text(compose_content)
+            (server_dir / "data").mkdir()
+
+            response = isolated_client.post(
+                "/api/servers/test_server/populate",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"archive_filename": "test.zip"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "task_id" in data
+            assert data["task_id"] == "mock-task-id-12345"
+
+    def test_endpoint_submits_correct_task_type(
+        self, isolated_client, mock_task_manager_submit, temp_dirs
+    ):
+        """Test that endpoint submits ARCHIVE_EXTRACT task type."""
+        server_path, archive_path = temp_dirs
+        real_mc_manager = DockerMCManager(server_path)
+
+        with (
+            patch("app.routers.servers.populate.settings") as mock_settings,
+            patch("app.dependencies.settings") as mock_dep_settings,
+            patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
+        ):
+            mock_settings.server_path = server_path
+            mock_settings.archive_path = archive_path
+            mock_settings.master_token = "test_master_token"
+            mock_dep_settings.master_token = "test_master_token"
+
+            # Create server directory with proper compose file
+            server_dir = server_path / "test_server"
+            server_dir.mkdir(parents=True)
+            compose_content = """services:
+  mc:
+    image: itzg/minecraft-server:latest
+    container_name: mc-test_server
+    volumes:
+      - ./data:/data
+"""
+            (server_dir / "docker-compose.yml").write_text(compose_content)
+            (server_dir / "data").mkdir()
+
+            isolated_client.post(
+                "/api/servers/test_server/populate",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"archive_filename": "test.zip"},
+            )
+
+            # Verify task type
+            call_kwargs = mock_task_manager_submit.submit.call_args.kwargs
+            assert call_kwargs["task_type"] == TaskType.ARCHIVE_EXTRACT
+            assert call_kwargs["server_id"] == "test_server"
+            assert call_kwargs["cancellable"] is False
 
 
 if __name__ == "__main__":

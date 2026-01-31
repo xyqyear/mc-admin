@@ -186,19 +186,17 @@ class TestCreateServerArchiveStream:
 
     @pytest.mark.asyncio
     async def test_stream_nonexistent_path_raises(self, mock_instance, archive_dir):
-        """Test that nonexistent path raises HTTPException."""
-        from fastapi import HTTPException
-
+        """Test that nonexistent path raises RuntimeError."""
         with patch("app.utils.compression.settings") as mock_settings:
             mock_settings.archive_path = archive_dir
 
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(RuntimeError) as exc_info:
                 async for _ in create_server_archive_stream(
                     mock_instance, "/nonexistent"
                 ):
                     pass
 
-            assert exc_info.value.status_code == 404
+            assert "Source path does not exist" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_stream_cleans_up_on_error(self, mock_instance, archive_dir):

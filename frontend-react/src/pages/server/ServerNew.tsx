@@ -22,6 +22,7 @@ import {
 import { ComposeYamlEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
+import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
 import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -44,6 +45,11 @@ const ServerNew: React.FC = () => {
 
   // Help modal state
   const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
+
+  // Populate progress state
+  const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
+  const [isPopulateProgressModalVisible, setIsPopulateProgressModalVisible] = useState(false)
+  const [createdServerId, setCreatedServerId] = useState<string | null>(null)
 
   // Restart schedule state
   const [enableRestartSchedule, setEnableRestartSchedule] = useState(true)
@@ -95,32 +101,54 @@ const ServerNew: React.FC = () => {
       }
 
       if (selectedArchiveFile) {
-        // 如果选择了压缩包，填充服务器数据
+        // 如果选择了压缩包，填充服务器数据 (背景任务)
         try {
-          await populateServerMutation.mutateAsync({
+          const result = await populateServerMutation.mutateAsync({
             serverId: values.serverName,
             archiveFilename: selectedArchiveFile,
           })
-          message.success(`服务器 "${values.serverName}" 创建并填充完成!`)
+          // 保存服务器ID，并显示进度弹窗
+          setCreatedServerId(values.serverName)
+          setPopulateTaskId(result.task_id)
+          setIsPopulateProgressModalVisible(true)
+          // 弹窗完成后会调用 handlePopulateComplete
         } catch (populateError: any) {
-          // 创建成功但填充失败，提示用户
+          // 创建成功但填充失败，提示用户并跳转
           message.warning(`服务器 "${values.serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
+          await triggerDNSUpdateAndNavigate()
         }
+      } else {
+        // 没有选择压缩包，直接更新DNS并跳转
+        await triggerDNSUpdateAndNavigate()
       }
-
-      // 服务器创建完成后，自动触发DNS更新
-      try {
-        await autoUpdateDNS.mutateAsync()
-      } catch (dnsError: any) {
-        // DNS更新失败不阻止页面跳转，错误已在mutation中处理
-        console.warn('DNS自动更新失败:', dnsError)
-      }
-
-      navigate('/overview')
     } catch (error: any) {
       // Errors are already handled by mutations
       console.error('创建服务器过程中出错:', error)
     }
+  }
+
+  const triggerDNSUpdateAndNavigate = async () => {
+    try {
+      await autoUpdateDNS.mutateAsync()
+    } catch (dnsError: any) {
+      // DNS更新失败不阻止页面跳转，错误已在mutation中处理
+      console.warn('DNS自动更新失败:', dnsError)
+    }
+    navigate('/overview')
+  }
+
+  const handlePopulateComplete = async () => {
+    setIsPopulateProgressModalVisible(false)
+    setPopulateTaskId(null)
+    message.success(`服务器 "${createdServerId}" 创建并填充完成!`)
+    await triggerDNSUpdateAndNavigate()
+  }
+
+  const handlePopulateClose = () => {
+    setIsPopulateProgressModalVisible(false)
+    setPopulateTaskId(null)
+    // 即使关闭弹窗，也跳转到概览页面
+    navigate('/overview')
   }
 
   const handleComposeContentChange = (value: string | undefined) => {
@@ -341,6 +369,15 @@ const ServerNew: React.FC = () => {
         onSelect={handleArchiveSelect}
         title="选择压缩包文件"
         description="选择要用于填充服务器数据的压缩包文件"
+      />
+
+      {/* 服务器填充进度弹窗 */}
+      <PopulateProgressModal
+        open={isPopulateProgressModalVisible}
+        taskId={populateTaskId}
+        serverId={createdServerId || ''}
+        onClose={handlePopulateClose}
+        onComplete={handlePopulateComplete}
       />
 
       {/* 服务器模板选择弹窗 */}

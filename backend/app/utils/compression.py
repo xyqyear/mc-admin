@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Optional
 
 from aiofiles import os as aioos
-from fastapi import HTTPException
 
 from app.minecraft.instance import MCInstance
 
@@ -127,9 +126,7 @@ async def create_server_archive_stream(
             source_path = data_dir / clean_relative_path
 
     if not await aioos.path.exists(source_path):
-        raise HTTPException(
-            status_code=404, detail=f"Source path does not exist: {source_path}"
-        )
+        raise RuntimeError(f"Source path does not exist: {source_path}")
 
     source_parent = source_path.parent
     source_name = source_path.name
