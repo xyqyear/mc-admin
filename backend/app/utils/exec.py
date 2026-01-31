@@ -17,37 +17,6 @@ def async_rmtree(path: Path):
     shutil.rmtree(path)
 
 
-async def run_shell_command(command: str, catch_output: bool = True) -> str:
-    """
-    Run shell command asynchronously.
-
-    Args:
-        command: Shell command to execute
-        catch_output: Whether to capture output (need to use catch_output=False for socat)
-
-    Returns:
-        Command output as string
-
-    Raises:
-        RuntimeError: If command fails
-    """
-    process = await asyncio.create_subprocess_shell(
-        command,
-        stdout=asyncio.subprocess.PIPE if catch_output else None,
-        stderr=asyncio.subprocess.PIPE if catch_output else None,
-    )
-
-    stdout, stderr = await process.communicate()
-    if stdout is None:  # type: ignore
-        stdout = b""
-    if stderr is None:  # type: ignore
-        stderr = b""
-
-    if process.returncode != 0:
-        raise RuntimeError(f"Failed to run shell command: {command}\n{stderr.decode()}")
-    return stdout.decode()
-
-
 async def exec_command(
     command: str,
     *args: str,

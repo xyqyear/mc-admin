@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...utils.exec import exec_command, run_shell_command
+from ...utils.exec import exec_command
 
 
 class DockerPsParsed(BaseModel):
@@ -74,18 +74,6 @@ class ComposeManager:
     async def exec(self, service_name: str, *args: str) -> str:
         return await self.run_compose_command("exec", service_name, *args)
 
-    async def send_to_stdin(self, service_name: str, text: str):
-        """
-        Deprecated, used in tests only.
-        """
-        # apparently, create_subprocess_shell is going to eat another escape
-        # and we don't need to escape < and >
-        text = text.replace("\\", "\\\\\\\\").replace('"', '\\"').replace("$", "\\$")
-        await run_shell_command(
-            f'echo "{text}" | socat "EXEC:docker compose --project-directory {self.project_path} attach {service_name},pty" STDIN',
-            catch_output=False,
-        )
-
     async def up_detached(self):
         await self.run_compose_command("up", "-d")
 
@@ -100,12 +88,6 @@ class ComposeManager:
 
     async def restart(self):
         await self.run_compose_command("restart")
-
-    async def pull(self):
-        await self.run_compose_command("pull")
-
-    async def logs(self, tail: int = 1000) -> str:
-        return await self.run_compose_command("logs", "--tail", str(tail))
 
     async def running(self) -> bool:
         try:

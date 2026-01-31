@@ -20,12 +20,12 @@ import pytest_asyncio
 
 from app.minecraft import DockerMCManager
 from app.minecraft.instance import MCInstance
+from app.utils.exec import exec_command
 
 from .fixtures.test_utils import (
     TEST_ROOT_PATH,
     async_rmtree,
     create_mc_server_compose_yaml,
-    run_shell_command,
 )
 
 
@@ -38,7 +38,7 @@ async def teardown_session():
     containers_to_remove = list[str]()
     yield containers_to_remove
     for container_name in containers_to_remove:
-        await run_shell_command(f"docker rm -f {container_name}")
+        await exec_command("docker", "rm", "-f", container_name)
     await async_rmtree(TEST_ROOT_PATH)
 
 
