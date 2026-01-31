@@ -5,6 +5,7 @@
 MC Admin is a comprehensive web-based platform for managing Minecraft servers using Docker containers. The system provides enterprise-grade server management with real-time monitoring, automated backups, player tracking, DNS management, and scheduled task automation.
 
 **Architecture:**
+
 - **Backend**: FastAPI + Python 3.13+ with SQLAlchemy 2.0 async, SQLite database, Alembic migrations
 - **Frontend**: React 18 + TypeScript + Ant Design 6 + TanStack Query v5
 - **Container Management**: Integrated Docker Compose management with lifecycle control
@@ -15,6 +16,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 ## Core Capabilities
 
 **Server Management:**
+
 - Complete Minecraft server lifecycle (create, start, stop, monitor, delete)
 - Docker Compose configuration management with Monaco editor integration
 - Real-time console streaming with direct container attach via WebSocket
@@ -24,6 +26,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - SNBT file editing with syntax highlighting
 
 **Backup & Recovery:**
+
 - Enterprise-grade Restic-based snapshot system with global and server-specific backups
 - Snapshot deletion and repository unlock functionality
 - Automatic safety snapshot creation during restore operations
@@ -34,6 +37,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Time-based snapshot restrictions to prevent conflicts
 
 **Player Management:**
+
 - Real-time player tracking with event-driven architecture
 - Session records and online status monitoring via Query protocol or RCON as fallback
 - Chat message tracking and achievement records
@@ -43,6 +47,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Integration with server overview for online player display
 
 **DNS & Network:**
+
 - Integrated DNS management with DNSPod and Huawei Cloud support
 - Automatic DNS record updates during server operations
 - Router configuration management for MC routing
@@ -50,6 +55,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - DNS status monitoring and change detection
 
 **Automation & Scheduling:**
+
 - APScheduler-based cron job system with visual expression builder
 - Automated backup jobs with Uptime Kuma notifications
 - Server restart scheduling with conflict detection
@@ -57,6 +63,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Database persistence with automatic recovery on startup
 
 **Monitoring & Logging:**
+
 - Real-time log monitoring and parsing with Watchdog
 - System-wide event dispatcher for cross-module communication
 - Operation audit system with structured JSON logging and rotation
@@ -65,6 +72,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Dynamic log parser configuration
 
 **Configuration & Tools:**
+
 - Dynamic configuration system with schema migration and web-based management
 - Download manager with progress tracking and cancellation support
 - Version update notifications with configurable reminders
@@ -74,6 +82,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 ## Development Environment
 
 **Prerequisites:**
+
 - Python 3.13+ with uv
 - Node.js 18+ with pnpm
 - Docker Engine + Docker Compose
@@ -82,6 +91,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 **Quick Start:**
 
 Backend:
+
 ```bash
 cd backend
 uv sync         # Install dependencies
@@ -91,6 +101,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 ```
 
 Frontend:
+
 ```bash
 cd frontend-react
 pnpm install
@@ -100,6 +111,7 @@ pnpm dev  # Runs on port 3000
 ## Tech Stack Summary
 
 **Backend:**
+
 - FastAPI + Uvicorn, SQLAlchemy 2.0 async + SQLite + aiosqlite
 - Alembic for database migrations (autogenerate support)
 - JWT (joserfc) + OAuth2 authentication
@@ -113,6 +125,7 @@ pnpm dev  # Runs on port 3000
 - docker-py for container management and console streaming
 
 **Frontend:**
+
 - React 18 + TypeScript 5 + Vite 5
 - Ant Design 6 + @ant-design/icons + @rjsf/antd v6
 - Tailwind CSS 3 (preflight disabled for AntD compatibility)
@@ -144,11 +157,13 @@ When making significant changes, update the appropriate CLAUDE.md files:
 3. **frontend-react/CLAUDE.md**: Update for frontend-specific changes (components, hooks, state management, UI patterns)
 
 **Before updating any CLAUDE.md:**
+
 1. Check git history: `git log --oneline --follow -- CLAUDE.md | head -5`
 2. Compare changes since last update: `git diff <last_commit>..HEAD --name-status`
 3. Review all changes to ensure complete documentation coverage
 
 **When writing CLAUDE.md updates:**
+
 1. Write complete, self-contained documentation (not incremental patches)
 2. Avoid temporal language like "Recent changes" or "New additions"
 3. Integrate information naturally into existing structure
@@ -156,6 +171,7 @@ When making significant changes, update the appropriate CLAUDE.md files:
 5. Reflect actual codebase state (what IS, not what WAS)
 
 **Examples of changes requiring updates:**
+
 - New major systems (player tracking, DNS management, file search, log monitoring, event system)
 - API endpoint additions or restructuring
 - Database schema changes and migrations
@@ -172,5 +188,6 @@ When making significant changes, update the appropriate CLAUDE.md files:
 These CLAUDE.md files are automatically loaded into Claude's context. Keep them accurate, concise, and focused on development-relevant information that reflects actual implementation.
 
 **Component-Specific Documentation:**
+
 - Detailed backend information: `backend/CLAUDE.md`
 - Detailed frontend information: `frontend-react/CLAUDE.md`

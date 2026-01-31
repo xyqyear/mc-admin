@@ -7,23 +7,27 @@ Modern React 18 + TypeScript single-page application for MC Admin Minecraft serv
 ## Tech Stack
 
 **Runtime & Build:**
+
 - Node.js 18+ with pnpm (pnpm-lock.yaml present)
 - React 18 + TypeScript 5 (strict mode)
 - Vite 5 with @vitejs/plugin-react, path alias `@` → `src/`
 - Dev server: port 3000 (typically already running)
 
 **UI & Styling:**
+
 - Ant Design 6 (v6.2.1) + @ant-design/icons v6 + @rjsf/antd v6
 - Tailwind CSS 3 + PostCSS (preflight disabled for AntD compatibility)
 - Custom AntD theme with primary blue (#1677ff)
 - ESLint v9 with modern flat config
 
 **State & Data:**
+
 - Zustand v4.5.7 with localStorage persistence (token, sidebar, login preference, downloads)
 - TanStack React Query v5.89.0 (three-layer architecture)
 - Axios with interceptors and auto-token injection
 
 **Advanced Features:**
+
 - Monaco Editor v0.52.2 + monaco-yaml v5.4.0 for Docker Compose editing
 - Docker Compose schema with docker-minecraft-server specific hints
 - SNBT language support for Minecraft NBT files
@@ -35,12 +39,14 @@ Modern React 18 + TypeScript single-page application for MC Admin Minecraft serv
 ## Development Commands
 
 ### Environment Setup
+
 ```bash
 pnpm install    # Install dependencies (preferred)
 # Alternative: npm install (fallback)
 ```
 
 ### Build & Quality
+
 ```bash
 pnpm dev        # Start dev server (port 3000)
 pnpm build      # TypeScript check + Vite bundle
@@ -52,7 +58,7 @@ pnpm preview    # Preview production build
 
 ## Project Structure
 
-```
+```text
 src/
 ├── main.tsx                 # App bootstrap with React Query, AntD theme, Monaco workers
 ├── App.tsx                  # Routes, error boundaries, auth wrappers
@@ -262,9 +268,9 @@ Raw Axios-based API functions with type safety. No caching, no side effects.
 ```typescript
 // Example: playerApi.ts
 export const fetchPlayers = async (serverId: string) => {
-  const response = await api.get(`/servers/${serverId}/players`)
-  return response.data
-}
+  const response = await api.get(`/servers/${serverId}/players`);
+  return response.data;
+};
 ```
 
 **Layer 2: Base Query Layer** (`hooks/queries/base/`)
@@ -274,11 +280,11 @@ Resource-focused React Query hooks with caching strategies.
 // Example: usePlayerQueries.ts
 export const usePlayerQueries = (serverId: string) => {
   return useQuery({
-    queryKey: ['players', serverId],
+    queryKey: ["players", serverId],
     queryFn: () => fetchPlayers(serverId),
     refetchInterval: 30000, // 30s for real-time updates
-  })
-}
+  });
+};
 ```
 
 **Layer 3: Page Query Layer** (`hooks/queries/page/`)
@@ -287,16 +293,17 @@ Composed queries for page-specific data requirements.
 ```typescript
 // Example: useServerDetailQueries.ts
 export const useServerDetailQueries = (serverId: string) => {
-  const { data: serverInfo } = useServerQueries(serverId)
-  const { data: players } = usePlayerQueries(serverId)
+  const { data: serverInfo } = useServerQueries(serverId);
+  const { data: players } = usePlayerQueries(serverId);
   // Compose multiple queries for the page
-  return { serverInfo, players }
-}
+  return { serverInfo, players };
+};
 ```
 
 ## Key Features
 
 ### Player Management System
+
 **Real-time player tracking** with comprehensive detail viewer:
 
 - Player list with search and filtering
@@ -309,12 +316,14 @@ export const useServerDetailQueries = (serverId: string) => {
 - Integration with server overview for online players
 
 **Components:**
+
 - `PlayerManagement.tsx`: Main player management page
 - `PlayerDetailDrawer.tsx`: Player detail viewer
 - `MCAvatar.tsx`: Minecraft skin avatar component
 - `OnlinePlayersCard.tsx`: Real-time online players in server overview
 
 ### File Management System
+
 **Enhanced file operations** with search and multi-file upload:
 
 - **Deep Search** (`FileDeepSearchModal.tsx`):
@@ -330,6 +339,7 @@ export const useServerDetailQueries = (serverId: string) => {
 - **Monaco Editor**: Integrated code editing with schema validation
 
 ### DNS Management
+
 **Multi-provider DNS** with automatic updates:
 
 - DNS record management page (`DnsManagement.tsx`)
@@ -339,6 +349,7 @@ export const useServerDetailQueries = (serverId: string) => {
 - Router configuration display
 
 ### Cron Job Management
+
 **Visual cron job system** with advanced features:
 
 - Cron expression builder with field-by-field input
@@ -348,6 +359,7 @@ export const useServerDetailQueries = (serverId: string) => {
 - Conflict detection warnings for restart-backup conflicts
 
 ### Download Manager
+
 **Progress tracking** for file downloads:
 
 - Download task container in sidebar
@@ -356,6 +368,7 @@ export const useServerDetailQueries = (serverId: string) => {
 - State management with Zustand
 
 ### Background Task Center
+
 **Unified task management UI** for long-running backend operations:
 
 - FloatButton trigger with active task badge count
@@ -366,22 +379,26 @@ export const useServerDetailQueries = (serverId: string) => {
 - Auto-completion detection with cache invalidation
 
 **Components:**
+
 - `TaskCenterTrigger.tsx`: FloatButton with badge
 - `TaskCenterPanel.tsx`: Popover panel with tabs
 - `BackgroundTaskList.tsx`: Task list with grouping
 - `BackgroundTaskItem.tsx`: Individual task display
 
 **Hooks:**
+
 - `useTaskQueries`: React Query hooks with smart polling
 - `taskApi`: Backend API functions
 
 **Stores:**
+
 - `useBackgroundTaskStore`: Task state (persisted)
 - `useTaskCenterStore`: Panel open/tab state
 
 See `.claude/background-tasks-guide.md` for implementation guide.
 
 ### Version Update System
+
 **Automatic version detection** with notifications:
 
 - Version comparison and update detection
@@ -396,21 +413,23 @@ See `.claude/background-tasks-guide.md` for implementation guide.
 ### Zustand Stores
 
 **useTokenStore**:
+
 ```typescript
 interface TokenStore {
-  token: string | null
-  setToken: (token: string | null) => void
-  clearToken: () => void
+  token: string | null;
+  setToken: (token: string | null) => void;
+  clearToken: () => void;
 }
 ```
 
 **useDownloadStore**:
+
 ```typescript
 interface DownloadStore {
-  tasks: DownloadTask[]
-  addTask: (task: DownloadTask) => void
-  updateTask: (id: string, updates: Partial<DownloadTask>) => void
-  removeTask: (id: string) => void
+  tasks: DownloadTask[];
+  addTask: (task: DownloadTask) => void;
+  updateTask: (id: string, updates: Partial<DownloadTask>) => void;
+  removeTask: (id: string) => void;
 }
 ```
 
@@ -419,10 +438,12 @@ All stores use `persist` middleware for localStorage sync.
 ## Authentication Flow
 
 **Dual Authentication:**
+
 1. **Password Login**: Traditional username/password flow
 2. **WebSocket Code Login**: QR code scanning with rotating codes
 
 **Implementation:**
+
 - `useCodeLoginWebsocket`: WebSocket hook for code flow
 - `useTokenStore`: Token persistence
 - `useLoginPreferenceStore`: User's preferred auth method
@@ -430,11 +451,16 @@ All stores use `persist` middleware for localStorage sync.
 ## WebSocket Integration
 
 **Console Streaming** (`useServerConsoleWebSocket`):
+
 ```typescript
-const { isConnected, sendMessage } = useServerConsoleWebSocket(serverId, onMessage)
+const { isConnected, sendMessage } = useServerConsoleWebSocket(
+  serverId,
+  onMessage,
+);
 ```
 
 Features:
+
 - Direct container attach via docker-py backend
 - xterm.js terminal emulation
 - Real-time bidirectional communication
@@ -445,12 +471,14 @@ Features:
 ## Monaco Editor Integration
 
 **Setup:**
+
 - YAML worker: `yaml.worker.js`
 - SNBT language: `snbtLanguage.ts` (custom language definition)
 - Docker Compose schema validation with docker-minecraft-server specific hints
 - Syntax highlighting for server files
 
 **File Type Support:**
+
 - YAML (Docker Compose with schema)
 - JSON, JavaScript, TypeScript
 - Python, Java, Shell scripts
@@ -460,12 +488,14 @@ Features:
 ## Caching Strategies
 
 **Query Refetch Intervals:**
+
 - **Real-time data** (players, online status): 30s
 - **Moderate updates** (resources, stats): 60s
 - **Slow changes** (snapshots, archives): 2min
 - **Static data** (server config): Manual refetch
 
 **Intelligent Invalidation:**
+
 - Mutations invalidate related queries automatically
 - Server operations trigger full data refresh
 - File operations invalidate file list queries
@@ -473,18 +503,21 @@ Features:
 ## Development Patterns
 
 **Component Organization:**
+
 - Modular components with barrel exports (`index.ts`)
 - Reusable UI components in `components/server/`
 - Modal components grouped by feature
 - Page-specific components in `pages/`
 
 **Type Safety:**
+
 - Strict TypeScript mode enabled
 - Pydantic-compatible type definitions
 - Discriminated unions for server status
 - Exhaustive type checking
 
 **Error Handling:**
+
 - react-error-boundary for component errors
 - Axios interceptors for API errors
 - Toast notifications for user feedback
@@ -493,6 +526,7 @@ Features:
 ## External Documentation
 
 Use Context7 MCP tool:
+
 - React: `/facebook/react`
 - Ant Design: `/ant-design/ant-design`
 - TanStack Query: `/tanstack/query`
@@ -517,6 +551,7 @@ When adding features:
 9. **Update this CLAUDE.md** with new patterns and components
 
 **Important Guidelines:**
+
 - Write complete documentation, not incremental patches
 - Reflect actual implementation, not planned features
 - Ensure consistency with main `CLAUDE.md` and `backend/CLAUDE.md`

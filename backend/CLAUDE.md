@@ -7,6 +7,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 ## Tech Stack
 
 **Core Backend:**
+
 - Python 3.13+ with uv package management
 - FastAPI + Uvicorn ASGI server with CORS middleware
 - SQLAlchemy 2.0 async + SQLite + aiosqlite
@@ -16,6 +17,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - pwdlib for password hashing
 
 **Integrated Modules:**
+
 - **Minecraft Management** (app.minecraft): Docker Compose lifecycle, cgroup v2 monitoring
 - **Player System** (app.players): Event-driven player tracking, sessions, chat, achievements, skins
 - **Snapshot System** (app.snapshots): Restic backup integration with deletion and unlock
@@ -30,6 +32,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Background Tasks** (app.background_tasks): Async task manager for long-running operations
 
 **Additional Libraries:**
+
 - psutil for system monitoring
 - httpx for async HTTP requests
 - Watchdog for file monitoring
@@ -41,12 +44,15 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 ## Development Commands
 
 ### Environment Setup
+
 ```bash
 uv sync         # Install dependencies
 ```
 
 ### Configuration
+
 Required settings in `config.toml`:
+
 ```toml
 database_url = "sqlite+aiosqlite:///./db.sqlite3"
 master_token = "your-master-token"
@@ -68,6 +74,7 @@ password = "your-restic-password"
 ```
 
 ### Database Migrations
+
 **CRITICAL**: Schema changes require Alembic migrations.
 
 ```bash
@@ -87,12 +94,15 @@ uv run alembic downgrade -1
 **Important**: Only existing table schema changes need migrations. New tables are auto-created.
 
 ### Run Development Server
+
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 ```
 
 ### Testing
+
 **Development Testing** (fast, no Docker containers):
+
 ```bash
 # Safe tests only (no containers)
 uv run pytest tests/ -v -k "not _with_docker and not integrated"
@@ -111,7 +121,7 @@ uv run pytest tests/snapshots/test_snapshots_basic.py -v
 
 ## Project Structure
 
-```
+```text
 app/
 ├── main.py                 # App entrypoint, CORS, middleware, router mounting
 ├── config.py               # Settings with TOML + env support
@@ -245,6 +255,7 @@ app/
 ## Key Integrated Systems
 
 ### Player Management System
+
 **Event-driven architecture** for comprehensive player tracking:
 
 - **PlayerSystemManager**: Main coordinator integrating all subsystems
@@ -257,6 +268,7 @@ app/
 - **LogMonitor**: Real-time log file monitoring with Watchdog
 
 **Database Models:**
+
 - Player (UUID, name, first_seen, skin data)
 - PlayerSession (join/leave events, playtime calculation, last_seen computed)
 - PlayerChat (messages with timestamps)
@@ -264,6 +276,7 @@ app/
 - ServerHeartbeat (crash detection)
 
 **Integration:**
+
 ```python
 from app.players import player_system_manager
 
@@ -273,6 +286,7 @@ from app.players import player_system_manager
 ```
 
 ### Event System
+
 **Centralized event dispatcher** for cross-module communication:
 
 ```python
@@ -288,11 +302,13 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 ```
 
 **Event Types:**
+
 - Player events (join, leave, chat, achievement)
 - Server events (created, removed)
 - System events (crash detected)
 
 ### Log Monitoring System
+
 **Real-time log parsing** with Watchdog file monitoring:
 
 - Monitors `logs/latest.log` in server directories
@@ -302,6 +318,7 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 - Crash detection through heartbeat monitoring
 
 ### WebSocket Console System
+
 **Direct container terminal access** via docker-py:
 
 - Uses docker-py attach socket for bidirectional communication
@@ -312,6 +329,7 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 - No file-based log reading or mc-send-to-console dependency
 
 ### File System
+
 **Enhanced file operations** with multi-file support:
 
 - **Deep search**: Recursive file search with regex, size, time filters
@@ -321,6 +339,7 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 - **SNBT support**: Minecraft NBT file editing
 
 ### DNS Management
+
 **Multi-provider DNS** with automatic updates:
 
 - DNSPod and Huawei Cloud DNS integration
@@ -329,6 +348,7 @@ await event_dispatcher.emit(PlayerJoinedEvent(...))
 - DNS status monitoring and change detection
 
 ### Dynamic Configuration
+
 **Schema-based runtime configuration**:
 
 ```python
@@ -340,6 +360,7 @@ if config.snapshots.time_restriction.enabled:
 ```
 
 **Features:**
+
 - Pydantic schema validation
 - Automatic migration on schema changes
 - Memory caching with DB sync
@@ -347,6 +368,7 @@ if config.snapshots.time_restriction.enabled:
 - JSON schema generation for frontend forms
 
 ### Background Task System
+
 **In-memory async task manager** for long-running operations:
 
 - Singleton `BackgroundTaskManager` with submit/cancel/query API
@@ -378,17 +400,20 @@ See `.claude/background-tasks-guide.md` for detailed implementation guide.
 ## Authentication & Authorization
 
 **JWT Authentication:**
+
 - OAuth2 password flow
 - 30-day token expiry (configurable)
 - Master token fallback for system operations
 - pwdlib for modern password hashing
 
 **WebSocket Login Flow:**
+
 - Rotating 8-digit codes (60s TTL)
 - Verification via `/api/auth/verifyCode` with master token
 - Returns JWT for session management
 
 **Role-Based Access:**
+
 - ADMIN: Standard user access
 - OWNER: Full admin capabilities including user management
 - Use `RequireRole(UserRole.OWNER)` dependency
@@ -411,6 +436,7 @@ See `.claude/background-tasks-guide.md` for detailed implementation guide.
 ## Database Patterns
 
 **Async SQLAlchemy 2.0:**
+
 ```python
 from app.db.database import get_db
 
@@ -426,18 +452,21 @@ async def get_user(db: AsyncSession = Depends(get_db)):
 ## Testing Guidelines
 
 **Safe Tests** (no Docker containers):
+
 - All tests in `tests/players/`, `tests/dns/`, `tests/cron/`, `tests/files/`
 - Background task tests in `tests/background_tasks/`
 - Snapshot basic tests, archive tests, config tests
 - Use these for rapid development iteration
 
 **Docker Tests** (slow):
+
 - `tests/test_monitoring.py` (all functions end with `_with_docker`)
 - `tests/test_integration.py`
 - Run sparingly with `--timeout=600`
 
 **Test Structure:**
-```
+
+```text
 tests/
 ├── players/           # Player system tests
 ├── files/             # File operation tests (search, multi-upload)
@@ -463,6 +492,7 @@ tests/
 ## External Documentation
 
 Use Context7 MCP tool:
+
 - FastAPI: `/tiangolo/fastapi`
 - SQLAlchemy: `/websites/sqlalchemy-en-20`
 - Pydantic: `/pydantic/pydantic`
@@ -483,6 +513,7 @@ When adding features:
 7. **Update this CLAUDE.md** with new patterns and integration points
 
 **Important Guidelines:**
+
 - Write complete documentation, not incremental patches
 - Reflect actual implementation, not planned features
 - Ensure consistency with main `CLAUDE.md` and `frontend-react/CLAUDE.md`
