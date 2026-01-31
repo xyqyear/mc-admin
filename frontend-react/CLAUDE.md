@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, version update notifications, and direct container terminal access.
+Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, background task center for long-running operations, version update notifications, and direct container terminal access.
 
 ## Tech Stack
 
@@ -60,10 +60,19 @@ src/
 ├── snbtLanguage.ts          # SNBT language definition for Monaco
 │
 ├── components/
-│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, PageHeader, DownloadTaskContainer
+│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, PageHeader
 │   ├── overview/            # ServerStateTag, MetricCard components
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
 │   ├── files/               # FileIcon, FileSnapshotActions
+│   │
+│   ├── task-center/         # Background task UI
+│   │   ├── TaskCenterTrigger.tsx       # FloatButton with badge
+│   │   ├── TaskCenterPanel.tsx         # Popover panel with tabs
+│   │   ├── BackgroundTaskList.tsx      # List of background tasks
+│   │   ├── BackgroundTaskItem.tsx      # Individual task item
+│   │   ├── DownloadTaskList.tsx        # Download tasks tab
+│   │   ├── DownloadTaskItem.tsx        # Individual download item
+│   │   └── index.ts
 │   │
 │   ├── server/              # Server-specific components
 │   │   ├── ServerOperationButtons.tsx   # Reusable operation buttons
@@ -150,7 +159,8 @@ src/
 │   │   ├── dnsApi.ts
 │   │   ├── configApi.ts
 │   │   ├── userApi.ts
-│   │   └── playerApi.ts     # Player management API
+│   │   ├── playerApi.ts     # Player management API
+│   │   └── taskApi.ts       # Background task API
 │   │
 │   ├── queries/
 │   │   ├── base/            # **Layer 2** - Resource-focused query hooks
@@ -163,7 +173,8 @@ src/
 │   │   │   ├── useConfigQueries.ts
 │   │   │   ├── useSystemQueries.ts
 │   │   │   ├── useUserQueries.ts
-│   │   │   └── usePlayerQueries.ts   # Player data queries
+│   │   │   ├── usePlayerQueries.ts   # Player data queries
+│   │   │   └── useTaskQueries.ts     # Background task queries with polling
 │   │   │
 │   │   └── page/            # **Layer 3** - Page-level compositions
 │   │       ├── useServerDetailQueries.ts
@@ -209,7 +220,9 @@ src/
 │   ├── useTokenStore.ts           # JWT token
 │   ├── useSidebarStore.ts         # Navigation state
 │   ├── useLoginPreferenceStore.ts # Auth method preference
-│   └── useDownloadStore.ts        # Download tasks
+│   ├── useDownloadStore.ts        # Download tasks
+│   ├── useBackgroundTaskStore.ts  # Background task state
+│   └── useTaskCenterStore.ts      # Task center panel state
 
 ├── types/                   # TypeScript definitions
 │   ├── Server.ts
@@ -341,6 +354,32 @@ export const useServerDetailQueries = (serverId: string) => {
 - Real-time progress display with speed and ETA
 - Download cancellation support
 - State management with Zustand
+
+### Background Task Center
+**Unified task management UI** for long-running backend operations:
+
+- FloatButton trigger with active task badge count
+- Panel with tabs: Background Tasks + Downloads
+- Real-time polling (1s when active, 10s otherwise)
+- Task cancellation and removal
+- Progress display with percentage and messages
+- Auto-completion detection with cache invalidation
+
+**Components:**
+- `TaskCenterTrigger.tsx`: FloatButton with badge
+- `TaskCenterPanel.tsx`: Popover panel with tabs
+- `BackgroundTaskList.tsx`: Task list with grouping
+- `BackgroundTaskItem.tsx`: Individual task display
+
+**Hooks:**
+- `useTaskQueries`: React Query hooks with smart polling
+- `taskApi`: Backend API functions
+
+**Stores:**
+- `useBackgroundTaskStore`: Task state (persisted)
+- `useTaskCenterStore`: Panel open/tab state
+
+See `.claude/background-tasks-guide.md` for implementation guide.
 
 ### Version Update System
 **Automatic version detection** with notifications:

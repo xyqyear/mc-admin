@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, and dynamic configuration management.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, dynamic configuration management, and background task system for long-running operations.
 
 ## Tech Stack
 
@@ -27,6 +27,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Dynamic Config** (app.dynamic_config): Runtime configuration with schema migration
 - **Server Tracker** (app.server_tracker): Server lifecycle event monitoring
 - **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
+- **Background Tasks** (app.background_tasks): Async task manager for long-running operations
 
 **Additional Libraries:**
 - psutil for system monitoring
@@ -141,6 +142,7 @@ app/
 │   ├── cron.py             # Cron job management
 │   ├── config.py           # Dynamic configuration
 │   ├── dns.py              # DNS management
+│   ├── tasks.py            # Background task queries and actions
 │   └── servers/
 │       ├── compose.py      # Docker Compose config
 │       ├── create.py       # Server creation
@@ -227,8 +229,14 @@ app/
 │   └── restic.py           # ResticManager
 │
 ├── utils/
-│   ├── compression.py      # 7z compression
-│   └── decompression.py    # Archive extraction
+│   ├── compression.py      # 7z compression (async generator for background tasks)
+│   └── decompression.py    # Archive extraction (async generator for background tasks)
+│
+├── background_tasks/       # Background task system
+│   ├── __init__.py         # Exports: task_manager, TaskProgress, TaskType, etc.
+│   ├── manager.py          # BackgroundTaskManager singleton
+│   ├── models.py           # BackgroundTask Pydantic model
+│   └── types.py            # TaskType, TaskStatus, TaskProgress, TaskResult
 │
 └── websocket/
     └── console.py          # Console WebSocket with docker-py attach
@@ -338,6 +346,35 @@ if config.snapshots.time_restriction.enabled:
 - Web-based management interface
 - JSON schema generation for frontend forms
 
+### Background Task System
+**In-memory async task manager** for long-running operations:
+
+- Singleton `BackgroundTaskManager` with submit/cancel/query API
+- Tasks are async generators yielding `TaskProgress` (progress, message, result)
+- Supports cancellation, error handling, and result data
+- REST API at `/api/tasks/` for listing, polling, cancelling, and cleanup
+- Used by archive compression, server population (extraction)
+
+```python
+from app.background_tasks import task_manager, TaskType, TaskProgress
+
+async def my_operation() -> AsyncGenerator[TaskProgress, None]:
+    yield TaskProgress(progress=0, message="Starting...")
+    # ... do work ...
+    yield TaskProgress(progress=100, message="Done", result={"key": "value"})
+
+result = task_manager.submit(
+    task_type=TaskType.ARCHIVE_CREATE,
+    name="Display Name",
+    task_generator=my_operation(),
+    server_id="survival",
+    cancellable=True,
+)
+# result.task_id returned to frontend for polling
+```
+
+See `.claude/background-tasks-guide.md` for detailed implementation guide.
+
 ## Authentication & Authorization
 
 **JWT Authentication:**
@@ -365,7 +402,8 @@ if config.snapshots.time_restriction.enabled:
 **Servers**: `/api/servers/` - CRUD, status, operations, resources, players, WebSocket console
 **Files**: `/api/servers/{id}/files/` - CRUD, upload, search, multi-upload
 **Snapshots**: `/api/snapshots/`, `/api/servers/{id}/snapshots/` - backup management, deletion, unlock
-**Archives**: `/api/archives/` - upload, list, delete, SHA256
+**Archives**: `/api/archives/` - upload, list, delete, SHA256, compress (background task)
+**Tasks**: `/api/tasks/` - background task listing, polling, cancel, delete, clear
 **Cron**: `/api/cron/` - job management, execution history
 **DNS**: `/api/dns/` - status, records, update, sync
 **Config**: `/api/config/` - modules, schemas, update
@@ -389,6 +427,7 @@ async def get_user(db: AsyncSession = Depends(get_db)):
 
 **Safe Tests** (no Docker containers):
 - All tests in `tests/players/`, `tests/dns/`, `tests/cron/`, `tests/files/`
+- Background task tests in `tests/background_tasks/`
 - Snapshot basic tests, archive tests, config tests
 - Use these for rapid development iteration
 
@@ -407,6 +446,7 @@ tests/
 ├── snapshots/         # Snapshot tests
 ├── dynamic_config/    # Config system tests
 ├── server_tracker/    # Server tracker tests
+├── background_tasks/  # Background task manager tests
 └── fixtures/          # Test utilities
 ```
 
