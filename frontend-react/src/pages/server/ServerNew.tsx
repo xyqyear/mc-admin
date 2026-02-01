@@ -276,6 +276,10 @@ const ServerNew: React.FC = () => {
 
   const isLoading = createServerMutation.isPending || populateServerMutation.isPending || createRestartScheduleMutation.isPending
 
+  // Validate template form data against schema
+  const isTemplateFormValid = !!selectedTemplateId && !!templateSchema?.json_schema &&
+    validator.isValid(templateSchema.json_schema as RJSFSchema, templateFormData, templateSchema.json_schema as RJSFSchema)
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -513,9 +517,11 @@ const ServerNew: React.FC = () => {
             <br />
             <Text type="secondary">
               {creationMode === 'template'
-                ? selectedTemplateId
-                  ? `将使用模板创建服务器`
-                  : '请先选择一个模板'
+                ? isTemplateFormValid
+                  ? '将使用模板创建服务器'
+                  : selectedTemplateId
+                    ? '请填写所有必填参数'
+                    : '请先选择一个模板'
                 : composeContent
                   ? '将使用自定义 Docker Compose 配置创建服务器'
                   : '请先输入 Docker Compose 配置'
@@ -531,7 +537,7 @@ const ServerNew: React.FC = () => {
               onClick={handleCreate}
               disabled={
                 creationMode === 'template'
-                  ? !selectedTemplateId
+                  ? !isTemplateFormValid
                   : !composeContent
               }
             >
