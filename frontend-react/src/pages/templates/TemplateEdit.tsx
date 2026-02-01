@@ -96,12 +96,12 @@ const variablesSchema: RJSFSchema = {
                 title: "默认值",
               },
               max_length: {
-                type: "integer",
+                type: ["integer", "null"],
                 title: "最大长度",
                 minimum: 1,
               },
               pattern: {
-                type: "string",
+                type: ["string", "null"],
                 title: "正则模式",
                 description: "用于验证输入的正则表达式",
               },
@@ -115,11 +115,11 @@ const variablesSchema: RJSFSchema = {
                 title: "默认值",
               },
               min_value: {
-                type: "integer",
+                type: ["integer", "null"],
                 title: "最小值",
               },
               max_value: {
-                type: "integer",
+                type: ["integer", "null"],
                 title: "最大值",
               },
             },
@@ -132,11 +132,11 @@ const variablesSchema: RJSFSchema = {
                 title: "默认值",
               },
               min_value: {
-                type: "number",
+                type: ["number", "null"],
                 title: "最小值",
               },
               max_value: {
-                type: "number",
+                type: ["number", "null"],
                 title: "最大值",
               },
             },
