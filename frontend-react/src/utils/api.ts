@@ -249,6 +249,17 @@ export const queryKeys = {
     records: () => [...queryKeys.dns.all, "records"] as const,
     routes: () => [...queryKeys.dns.all, "routes"] as const,
   },
+
+  // 模板管理
+  templates: {
+    all: ["templates"] as const,
+    list: () => [...queryKeys.templates.all, "list"] as const,
+    detail: (id: number) => [...queryKeys.templates.all, "detail", id] as const,
+    schema: (id: number) => [...queryKeys.templates.all, "schema", id] as const,
+    availablePorts: () => [...queryKeys.templates.all, "available-ports"] as const,
+    serverConfig: (serverId: string) => [...queryKeys.templates.all, "server-config", serverId] as const,
+    serverConfigPreview: (serverId: string) => [...queryKeys.templates.all, "server-config-preview", serverId] as const,
+  },
 } as const;
 
 export default api;

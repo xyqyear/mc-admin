@@ -55,7 +55,9 @@ interface ComposeConfigRequest {
 }
 
 interface CreateServerRequest {
-  yaml_content: string;
+  yaml_content?: string;
+  template_id?: number;
+  variable_values?: Record<string, unknown>;
 }
 
 interface PopulateServerRequest {

@@ -141,8 +141,22 @@ export const useServerMutations = () => {
   // 创建新服务器
   const useCreateServer = () => {
     return useMutation({
-      mutationFn: async ({ serverId, yamlContent }: { serverId: string; yamlContent: string }) => {
-        return serverApi.createServer(serverId, { yaml_content: yamlContent });
+      mutationFn: async ({
+        serverId,
+        yamlContent,
+        templateId,
+        variableValues,
+      }: {
+        serverId: string;
+        yamlContent?: string;
+        templateId?: number;
+        variableValues?: Record<string, unknown>;
+      }) => {
+        return serverApi.createServer(serverId, {
+          yaml_content: yamlContent,
+          template_id: templateId,
+          variable_values: variableValues,
+        });
       },
       onSuccess: (_, { serverId }) => {
         message.success(`服务器 "${serverId}" 创建成功!`);

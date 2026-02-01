@@ -26,6 +26,8 @@ const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'
 const ServerCompose = React.lazy(() => import('@/pages/server/servers/ServerCompose'))
 const ServerConsole = React.lazy(() => import('@/pages/server/servers/ServerConsole'))
 const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
+const TemplateList = React.lazy(() => import('@/pages/templates/TemplateList'))
+const TemplateEdit = React.lazy(() => import('@/pages/templates/TemplateEdit'))
 
 
 
@@ -102,6 +104,11 @@ function App() {
           </Route>
           <Route path="/admin">
             <Route path="users" element={<UserManagement />} />
+          </Route>
+          <Route path="/templates">
+            <Route index element={<TemplateList />} />
+            <Route path="new" element={<TemplateEdit />} />
+            <Route path=":id/edit" element={<TemplateEdit />} />
           </Route>
         </Route>
 

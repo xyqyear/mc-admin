@@ -175,6 +175,28 @@ class Server(Base):
     status: Mapped[ServerStatus] = mapped_column(
         SQLAlchemyEnum(ServerStatus), default=ServerStatus.ACTIVE
     )
+    # Template support fields
+    template_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    template_snapshot_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    variable_values_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ServerTemplate(Base):
+    """Server template table for template-based server creation."""
+
+    __tablename__ = "server_template"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    yaml_template: Mapped[str] = mapped_column(TEXT)
+    variables_json: Mapped[str] = mapped_column(TEXT, default="[]")
     created_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )

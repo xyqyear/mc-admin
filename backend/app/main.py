@@ -16,7 +16,18 @@ from .dns import simple_dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
 from .players import player_system_manager
-from .routers import admin, archive, auth, cron, dns, snapshots, system, tasks, user
+from .routers import (
+    admin,
+    archive,
+    auth,
+    cron,
+    dns,
+    snapshots,
+    system,
+    tasks,
+    templates,
+    user,
+)
 from .routers.config import router as config_router
 from .routers.players import (
     achievements,
@@ -35,6 +46,7 @@ from .routers.servers import players as server_players
 from .routers.servers import populate as server_populate
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
+from .routers.servers import template_config as server_template_config
 
 
 @asynccontextmanager
@@ -89,6 +101,7 @@ api_app.include_router(cron.router)
 api_app.include_router(dns.router)
 api_app.include_router(config_router)
 api_app.include_router(tasks.router)
+api_app.include_router(templates.router)
 
 # Player management routers
 api_app.include_router(players.router)
@@ -112,6 +125,7 @@ api_app.include_router(server_populate.router)
 api_app.include_router(server_console.router)
 api_app.include_router(server_files.router)
 api_app.include_router(server_restart_schedule.router)
+api_app.include_router(server_template_config.router)
 
 
 # Global exception handler for API app
@@ -158,4 +172,4 @@ templates = Jinja2Templates(directory=settings.static_path.resolve())
 
 @app.get("/{full_path:path}")
 async def serve_spa(request: Request, full_path: str):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})  # type: ignore

@@ -1,11 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react'
 import {
   Card,
   Button,
   Alert,
   App,
-  Modal
+  Modal,
 } from 'antd'
 import {
   ReloadOutlined,
@@ -13,20 +12,35 @@ import {
   CloudServerOutlined,
   DiffOutlined,
   SettingOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  EyeOutlined,
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
+import { ComposeYamlEditor, MonacoDiffEditor, SimpleEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
+import { useServerTemplatePreview, useServerTemplateConfig } from '@/hooks/queries/base/useTemplateQueries'
+import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
+import RjsfForm from '@/components/forms/rjsfTheme'
+import validator from '@rjsf/validator-ajv8'
+import type { RJSFSchema, UiSchema } from '@rjsf/utils'
 
 const ServerCompose: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { modal, message } = App.useApp()
+
+  // Check if server is template-based
+  const { data: templatePreview, isLoading: previewLoading } = useServerTemplatePreview(id || null)
+  const isTemplateBased = templatePreview?.is_template_based ?? false
+
+  // Template config for template-based servers
+  const { data: templateConfig, isLoading: templateConfigLoading, refetch: refetchTemplateConfig } = useServerTemplateConfig(
+    isTemplateBased ? id || null : null
+  )
 
   // 使用新的数据管理系统
   const { useServerComposeData } = useServerDetailQueries(id || '')
@@ -42,16 +56,40 @@ const ServerCompose: React.FC = () => {
     composeQuery
   } = useServerComposeData()
 
-
   // Compose更新mutation
   const updateComposeMutation = useUpdateCompose(id || '')
+
+  // Template mutations
+  const { useUpdateServerTemplateConfig, usePreviewRenderedYaml } = useTemplateMutations()
+  const updateTemplateConfigMutation = useUpdateServerTemplateConfig()
+  const previewMutation = usePreviewRenderedYaml()
 
   // 本地状态
   const [rawYaml, setRawYaml] = useState('')
   const [isCompareVisible, setIsCompareVisible] = useState(false)
   const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
-  const [editorKey, setEditorKey] = useState(0) // 用于强制重新渲染编辑器
+  const [editorKey, setEditorKey] = useState(0)
   const editorRef = useRef<any>(null)
+
+  // Template form state
+  const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
+  const [previewYaml, setPreviewYaml] = useState<string | null>(null)
+  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
+
+  // UI Schema to make 'name' field read-only in edit mode
+  const templateUiSchema: UiSchema = {
+    name: {
+      "ui:disabled": true,
+      "ui:help": "服务器名称不可修改",
+    },
+  }
+
+  // Initialize template form data
+  useEffect(() => {
+    if (templateConfig?.variable_values) {
+      setTemplateFormData(templateConfig.variable_values)
+    }
+  }, [templateConfig])
 
   // 当 composeFile 数据加载完成时，初始化编辑器内容
   useEffect(() => {
@@ -60,13 +98,12 @@ const ServerCompose: React.FC = () => {
     }
   }, [composeContent, id])
 
-
   // 如果没有服务器ID，返回错误
   if (!id) {
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          title="参数错误"
+          message="参数错误"
           description="缺少服务器ID参数"
           type="error"
           action={
@@ -79,13 +116,18 @@ const ServerCompose: React.FC = () => {
     )
   }
 
+  // 加载状态
+  if (previewLoading || serverLoading || composeQuery.isLoading || !serverInfo) {
+    return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
+  }
+
   // 错误状态
   if (serverError || composeQuery.isError) {
     const errorMessage = (serverErrorMessage as any)?.message || `无法加载服务器 "${id}" 的配置信息`
     return (
       <div className="flex justify-center items-center min-h-64">
         <Alert
-          title="加载失败"
+          message="加载失败"
           description={errorMessage}
           type="error"
           action={
@@ -98,17 +140,75 @@ const ServerCompose: React.FC = () => {
     )
   }
 
-  // 加载状态
-  if (serverLoading || composeQuery.isLoading || !serverInfo || !composeContent) {
-    return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
+  // Template form change handler
+  const handleTemplateFormChange = (data: { formData?: Record<string, unknown> }) => {
+    if (data.formData) {
+      setTemplateFormData(data.formData)
+    }
   }
 
+  // Preview YAML for template mode
+  const handlePreviewYaml = async () => {
+    if (!templateConfig?.template_id || !templateFormData) return
 
+    try {
+      const yaml = await previewMutation.mutateAsync({
+        id: templateConfig.template_id,
+        variableValues: templateFormData,
+      })
+      setPreviewYaml(yaml)
+      setIsPreviewModalVisible(true)
+    } catch (error) {
+      // Error handled by mutation
+    }
+  }
 
-  // 提交并重建服务器
+  // Submit template config
+  const handleSubmitTemplateConfig = async () => {
+    modal.confirm({
+      title: '提交并重建服务器',
+      content: '确定要提交配置并重建服务器吗？这将下线当前服务器并使用新配置重新创建。',
+      okText: '确认重建',
+      okType: 'danger',
+      cancelText: '取消',
+      icon: <ExclamationCircleOutlined />,
+      onOk: async () => {
+        try {
+          await updateTemplateConfigMutation.mutateAsync({
+            serverId: id!,
+            variableValues: templateFormData,
+          })
+          message.info('服务器重建需要几分钟时间，请稍候')
+          await refetchTemplateConfig()
+          await composeQuery.refetch()
+        } catch (error: any) {
+          // Error handled by mutation
+        }
+      }
+    })
+  }
+
+  // Reset template form
+  const handleResetTemplateForm = () => {
+    modal.confirm({
+      title: '重新载入配置',
+      content: '确定要重新载入配置吗？这将丢失当前表单中的更改。',
+      okText: '确认',
+      cancelText: '取消',
+      icon: <ExclamationCircleOutlined />,
+      onOk: async () => {
+        await refetchTemplateConfig()
+        if (templateConfig?.variable_values) {
+          setTemplateFormData(templateConfig.variable_values)
+        }
+        message.info('配置已重新载入')
+      }
+    })
+  }
+
+  // 提交并重建服务器 (traditional mode)
   const handleSubmitAndRebuild = async () => {
     try {
-      // 强制重新获取最新的服务器配置，确保diff对比是准确的
       await composeQuery.refetch()
     } catch {
       message.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
@@ -157,7 +257,7 @@ const ServerCompose: React.FC = () => {
           )}
           {!hasChanges && (
             <Alert
-              title="没有检测到配置更改"
+              message="没有检测到配置更改"
               description="当前编辑的配置与服务器配置相同，重建后不会有任何变化。"
               type="info"
               showIcon
@@ -173,16 +273,10 @@ const ServerCompose: React.FC = () => {
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
         try {
-          // 调用 API 提交配置并重建服务器
           await updateComposeMutation.mutateAsync(rawYaml)
           message.info('服务器重建需要几分钟时间，请稍候')
-
-          // 重新获取最新配置，这会触发组件重新渲染和一致性检查
           await composeQuery.refetch()
-
-          // 强制重新渲染编辑器
           setEditorKey(prev => prev + 1)
-
         } catch (error: any) {
           message.error(`配置提交失败: ${error.message}`)
         }
@@ -198,20 +292,14 @@ const ServerCompose: React.FC = () => {
       cancelText: '取消',
       icon: <ExclamationCircleOutlined />,
       onOk: () => {
-        // 重新载入到服务器的原始配置
         const originalConfig = composeContent || ''
         setRawYaml(originalConfig)
-
-        // 强制重新渲染编辑器
         setEditorKey(prev => prev + 1)
-
-        // 延迟更新编辑器内容，确保重新渲染完成
         setTimeout(() => {
           if (editorRef.current) {
             editorRef.current.setValue(originalConfig)
           }
         }, 100)
-
         message.info('配置已重新载入到服务器在线状态')
       }
     })
@@ -219,7 +307,6 @@ const ServerCompose: React.FC = () => {
 
   const handleCompare = async () => {
     try {
-      // 强制重新获取最新的服务器配置
       await composeQuery.refetch()
       setIsCompareVisible(true)
     } catch {
@@ -234,6 +321,95 @@ const ServerCompose: React.FC = () => {
     }
   }
 
+  // Render template-based editing
+  if (isTemplateBased) {
+    if (templateConfigLoading || !templateConfig) {
+      return <LoadingSpinner height="16rem" tip="加载模板配置中..." />
+    }
+
+    return (
+      <div className="flex flex-col h-full gap-4">
+        <PageHeader
+          title="设置"
+          icon={<SettingOutlined />}
+          serverTag={serverInfo.name}
+          actions={
+            <>
+              <Button
+                icon={<EyeOutlined />}
+                onClick={handlePreviewYaml}
+                loading={previewMutation.isPending}
+              >
+                预览 YAML
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleResetTemplateForm}
+              >
+                重新载入
+              </Button>
+              <Button
+                type="primary"
+                danger
+                icon={<CloudServerOutlined />}
+                onClick={handleSubmitTemplateConfig}
+                loading={updateTemplateConfigMutation.isPending}
+              >
+                提交并重建
+              </Button>
+            </>
+          }
+        />
+
+        <Alert
+          message="模板模式"
+          description={`此服务器使用模板 "${templateConfig.template_name}" 创建，请通过下方表单修改配置。`}
+          type="info"
+          showIcon
+        />
+
+        <Card
+          className="flex-1"
+          title="配置参数"
+        >
+          <RjsfForm
+            schema={templateConfig.json_schema as RJSFSchema}
+            uiSchema={templateUiSchema}
+            formData={templateFormData}
+            validator={validator}
+            onChange={handleTemplateFormChange}
+            liveValidate
+          >
+            <div /> {/* Hide default submit button */}
+          </RjsfForm>
+        </Card>
+
+        {/* Preview YAML Modal */}
+        <Modal
+          title="预览生成的 YAML"
+          open={isPreviewModalVisible}
+          onCancel={() => setIsPreviewModalVisible(false)}
+          width={1000}
+          footer={[
+            <Button key="close" onClick={() => setIsPreviewModalVisible(false)}>
+              关闭
+            </Button>
+          ]}
+        >
+          {previewYaml && (
+            <SimpleEditor
+              value={previewYaml}
+              language="yaml"
+              height="60vh"
+              options={{ readOnly: true }}
+            />
+          )}
+        </Modal>
+      </div>
+    )
+  }
+
+  // Render traditional YAML editing
   return (
     <div className="flex flex-col h-full gap-4">
       <PageHeader
@@ -314,7 +490,7 @@ const ServerCompose: React.FC = () => {
       >
         <div className="space-y-4">
           <Alert
-            title="差异对比视图"
+            message="差异对比视图"
             description="左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。"
             type="info"
             showIcon
