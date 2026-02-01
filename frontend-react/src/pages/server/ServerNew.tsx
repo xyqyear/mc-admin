@@ -21,7 +21,7 @@ import {
   PlusOutlined,
   CopyOutlined,
   QuestionCircleOutlined,
-  FileTextOutlined,
+  SnippetsOutlined,
   CodeOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
@@ -300,7 +300,7 @@ const ServerNew: React.FC = () => {
               key: 'template',
               label: (
                 <span>
-                  <FileTextOutlined /> 模板模式
+                  <SnippetsOutlined /> 模板模式
                 </span>
               ),
               children: (

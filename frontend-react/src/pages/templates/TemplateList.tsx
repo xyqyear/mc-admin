@@ -13,7 +13,7 @@ import {
 import {
   PlusOutlined,
   ReloadOutlined,
-  FileTextOutlined,
+  SnippetsOutlined,
   EditOutlined,
   DeleteOutlined,
   CopyOutlined,
@@ -135,7 +135,7 @@ const TemplateList: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="服务器模板" icon={<FileTextOutlined />} />
+      <PageHeader title="服务器模板" icon={<SnippetsOutlined />} />
 
       <Card>
         <div className="flex justify-between items-center mb-4">
