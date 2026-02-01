@@ -8,7 +8,7 @@ export interface IntVariableDefinition {
   name: string;
   display_name: string;
   description?: string;
-  default: number;
+  default?: number;
   min_value?: number;
   max_value?: number;
 }
@@ -18,7 +18,7 @@ export interface FloatVariableDefinition {
   name: string;
   display_name: string;
   description?: string;
-  default: number;
+  default?: number;
   min_value?: number;
   max_value?: number;
 }
@@ -28,7 +28,7 @@ export interface StringVariableDefinition {
   name: string;
   display_name: string;
   description?: string;
-  default: string;
+  default?: string;
   max_length?: number;
   pattern?: string;
 }
@@ -38,7 +38,7 @@ export interface EnumVariableDefinition {
   name: string;
   display_name: string;
   description?: string;
-  default: string;
+  default?: string;
   options: string[];
 }
 
@@ -47,7 +47,7 @@ export interface BoolVariableDefinition {
   name: string;
   display_name: string;
   description?: string;
-  default: boolean;
+  default?: boolean;
 }
 
 export type VariableDefinition =

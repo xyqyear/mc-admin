@@ -163,11 +163,12 @@ class TemplateManager:
         Returns:
             JSON Schema property dictionary
         """
-        base = {
+        base: dict[str, Any] = {
             "title": var.display_name,
             "description": var.description or "",
-            "default": var.default,
         }
+        if var.default is not None:
+            base["default"] = var.default
 
         if isinstance(var, IntVariableDefinition):
             schema = {**base, "type": "integer"}
@@ -289,6 +290,7 @@ class TemplateManager:
 
         # Add user variable defaults
         for var in user_variables:
-            defaults[var.name] = var.default
+            if var.default is not None:
+                defaults[var.name] = var.default
 
         return defaults

@@ -80,7 +80,7 @@ const variablesSchema: RJSFSchema = {
         description: "在表单中显示的名称",
       },
       description: {
-        type: "string",
+        type: ["string", "null"],
         title: "描述",
         description: "变量的详细说明（可选）",
       },
@@ -92,9 +92,8 @@ const variablesSchema: RJSFSchema = {
             properties: {
               type: { enum: ["string"] },
               default: {
-                type: "string",
+                type: ["string", "null"],
                 title: "默认值",
-                default: "",
               },
               max_length: {
                 type: "integer",
@@ -112,9 +111,8 @@ const variablesSchema: RJSFSchema = {
             properties: {
               type: { enum: ["int"] },
               default: {
-                type: "integer",
+                type: ["integer", "null"],
                 title: "默认值",
-                default: 0,
               },
               min_value: {
                 type: "integer",
@@ -130,9 +128,8 @@ const variablesSchema: RJSFSchema = {
             properties: {
               type: { enum: ["float"] },
               default: {
-                type: "number",
+                type: ["number", "null"],
                 title: "默认值",
-                default: 0,
               },
               min_value: {
                 type: "number",
@@ -148,9 +145,9 @@ const variablesSchema: RJSFSchema = {
             properties: {
               type: { enum: ["enum"] },
               default: {
-                type: "string",
+                type: ["string", "null"],
                 title: "默认值",
-                description: "必须是选项之一",
+                description: "必须是选项之一（可选）",
               },
               options: {
                 type: "array",
@@ -168,9 +165,8 @@ const variablesSchema: RJSFSchema = {
             properties: {
               type: { enum: ["bool"] },
               default: {
-                type: "boolean",
+                type: ["boolean", "null"],
                 title: "默认值",
-                default: false,
               },
             },
           },
@@ -351,7 +347,11 @@ const TemplateEdit: React.FC = () => {
       }
 
       // Convert form variables to API format
-      const apiVariables: VariableDefinition[] = variables
+      // Helper: conditionally include default field
+      const includeDefault = (value: unknown) =>
+        value !== undefined && value !== null ? { default: value } : {};
+
+      const apiVariables = variables
         .filter((v) => v.name && v.display_name) // Filter out incomplete entries
         .map((v) => {
           const base = {
@@ -365,7 +365,7 @@ const TemplateEdit: React.FC = () => {
               return {
                 ...base,
                 type: "int" as const,
-                default: typeof v.default === "number" ? v.default : 0,
+                ...includeDefault(v.default),
                 min_value: v.min_value,
                 max_value: v.max_value,
               };
@@ -373,7 +373,7 @@ const TemplateEdit: React.FC = () => {
               return {
                 ...base,
                 type: "float" as const,
-                default: typeof v.default === "number" ? v.default : 0,
+                ...includeDefault(v.default),
                 min_value: v.min_value,
                 max_value: v.max_value,
               };
@@ -381,7 +381,7 @@ const TemplateEdit: React.FC = () => {
               return {
                 ...base,
                 type: "string" as const,
-                default: String(v.default ?? ""),
+                ...includeDefault(v.default),
                 max_length: v.max_length,
                 pattern: v.pattern,
               };
@@ -389,17 +389,17 @@ const TemplateEdit: React.FC = () => {
               return {
                 ...base,
                 type: "enum" as const,
-                default: String(v.default ?? ""),
+                ...includeDefault(v.default),
                 options: v.options || [],
               };
             case "bool":
               return {
                 ...base,
                 type: "bool" as const,
-                default: Boolean(v.default),
+                ...includeDefault(v.default),
               };
           }
-        });
+        }) as VariableDefinition[];
 
       if (isEditMode && id) {
         const request: TemplateUpdateRequest = {

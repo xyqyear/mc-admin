@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
 
 class VariableType(str, Enum):
@@ -25,7 +25,7 @@ class IntVariableDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
-    default: int
+    default: Optional[int] = None
     min_value: Optional[int] = None
     max_value: Optional[int] = None
 
@@ -37,7 +37,7 @@ class FloatVariableDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
-    default: float
+    default: Optional[float] = None
     min_value: Optional[float] = None
     max_value: Optional[float] = None
 
@@ -49,7 +49,7 @@ class StringVariableDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
-    default: str = ""
+    default: Optional[str] = None
     max_length: Optional[int] = None
     pattern: Optional[str] = None
 
@@ -61,8 +61,17 @@ class EnumVariableDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
-    default: str
+    default: Optional[str] = None
     options: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_default_in_options(self) -> "EnumVariableDefinition":
+        """Validate that default value is one of the options."""
+        if self.default is not None and self.default not in self.options:
+            raise ValueError(
+                f"默认值 '{self.default}' 必须是选项列表中的一个: {self.options}"
+            )
+        return self
 
 
 class BoolVariableDefinition(BaseModel):
@@ -72,7 +81,7 @@ class BoolVariableDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
-    default: bool = False
+    default: Optional[bool] = None
 
 
 VariableDefinition = Annotated[
