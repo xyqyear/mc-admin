@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import aiofiles
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
@@ -143,6 +145,22 @@ async def api_exception_handler(request: Request, exc: Exception):
             detail=f"request to {request.url} failed with error: {str(exc)}",
         )
         return await http_exception_handler(request, exc)
+
+
+# Custom validation error handler to return simple {"detail": str} format
+@api_app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    messages = []
+    for error in errors:
+        loc = ".".join(str(x) for x in error["loc"] if x != "body")
+        msg = error["msg"]
+        if loc:
+            messages.append(f"{loc}: {msg}")
+        else:
+            messages.append(msg)
+    detail = "; ".join(messages) if messages else "请求参数验证失败"
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 app = FastAPI(lifespan=lifespan, title="MC Admin")
