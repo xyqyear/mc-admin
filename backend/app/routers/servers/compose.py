@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...background_tasks import TaskType, task_manager
+from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
-from ...servers import rebuild_server_task
+from ...servers import get_active_server_by_id, rebuild_server_task
 
 router = APIRouter(
     prefix="/servers",
@@ -46,6 +48,7 @@ async def get_server_compose(server_id: str, _: UserPublic = Depends(get_current
 async def update_server_compose(
     server_id: str,
     compose_config: ComposeConfig,
+    db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(get_current_user),
 ):
     """Update the Docker Compose configuration for a specific server.
@@ -56,6 +59,14 @@ async def update_server_compose(
 
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"服务器 '{server_id}' 不存在")
+
+    # Check if server is template-created
+    server = await get_active_server_by_id(db, server_id)
+    if server and server.template_id:
+        raise HTTPException(
+            status_code=400,
+            detail="该服务器是使用模板创建的，请使用模板配置接口进行修改",
+        )
 
     result = task_manager.submit(
         task_type=TaskType.SERVER_REBUILD,
