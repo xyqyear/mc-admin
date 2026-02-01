@@ -23,10 +23,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.background_tasks import TaskType
+from app.db.database import get_db
 from app.main import api_app
 from app.minecraft import DockerMCManager
+from app.models import Base
 
 
 def check_7z_available():
@@ -76,9 +79,41 @@ teleport-safety: true
 
 
 @pytest.fixture
-def client():
-    """Create test client."""
-    return TestClient(api_app)
+async def test_db():
+    """Create a test database for testing."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+
+    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    engine = create_async_engine(database_url, echo=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    TestSessionLocal = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+
+    yield TestSessionLocal
+
+    await engine.dispose()
+    Path(temp_db.name).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def client(test_db):
+    """Create test client with test database."""
+    async def override_get_db():
+        async with test_db() as session:
+            yield session
+
+    api_app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(api_app)
+    api_app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -92,10 +127,17 @@ def temp_dirs():
 
 
 @pytest.fixture
-def mock_settings_and_auth(temp_dirs):
-    """Mock settings and authentication."""
+def mock_settings_and_auth(temp_dirs, test_db):
+    """Mock settings, authentication, and database."""
     server_path, archive_path = temp_dirs
     real_mc_manager = DockerMCManager(server_path)
+
+    # Override database dependency
+    async def override_get_db():
+        async with test_db() as session:
+            yield session
+
+    api_app.dependency_overrides[get_db] = override_get_db
 
     with (
         patch("app.routers.servers.populate.settings") as mock_populate_settings,
@@ -123,6 +165,9 @@ def mock_settings_and_auth(temp_dirs):
             mock_settings_obj.master_token = "test_master_token"
 
         yield server_path, archive_path
+
+    # Cleanup dependency override
+    api_app.dependency_overrides.clear()
 
 
 def wait_for_task_completion(
@@ -630,9 +675,15 @@ class TestPopulateEndpointIsolated:
     """Test populate endpoint with mocked dependencies for isolation."""
 
     @pytest.fixture
-    def isolated_client(self):
-        """Create test client with mocked dependencies."""
-        return TestClient(api_app)
+    def isolated_client(self, test_db):
+        """Create test client with mocked dependencies and test database."""
+        async def override_get_db():
+            async with test_db() as session:
+                yield session
+
+        api_app.dependency_overrides[get_db] = override_get_db
+        yield TestClient(api_app)
+        api_app.dependency_overrides.clear()
 
     @pytest.fixture
     def mock_task_manager_submit(self):
