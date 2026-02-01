@@ -172,6 +172,12 @@ export const templateApi = {
     return res.data;
   },
 
+  // Get system reserved variables
+  getSystemVariables: async (): Promise<VariableDefinition[]> => {
+    const res = await api.get<VariableDefinition[]>("/templates/system-variables");
+    return res.data;
+  },
+
   // Preview rendered YAML
   previewRenderedYaml: async (
     id: number,

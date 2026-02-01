@@ -257,6 +257,7 @@ export const queryKeys = {
     detail: (id: number) => [...queryKeys.templates.all, "detail", id] as const,
     schema: (id: number) => [...queryKeys.templates.all, "schema", id] as const,
     availablePorts: () => [...queryKeys.templates.all, "available-ports"] as const,
+    systemVariables: () => [...queryKeys.templates.all, "system-variables"] as const,
     serverConfig: (serverId: string) => [...queryKeys.templates.all, "server-config", serverId] as const,
     serverConfigPreview: (serverId: string) => [...queryKeys.templates.all, "server-config-preview", serverId] as const,
   },

@@ -4,14 +4,14 @@ import re
 from typing import Any
 
 from .models import (
-    SYSTEM_RESERVED_VARIABLES,
-    SYSTEM_VARIABLE_NAMES,
     BoolVariableDefinition,
     EnumVariableDefinition,
     FloatVariableDefinition,
     IntVariableDefinition,
     StringVariableDefinition,
     VariableDefinition,
+    get_system_reserved_variables,
+    get_system_variable_names,
 )
 
 
@@ -61,7 +61,8 @@ class TemplateManager:
         user_var_names = {v.name for v in user_variables}
 
         # Check for user variables that conflict with system variables
-        conflicts = user_var_names & SYSTEM_VARIABLE_NAMES
+        system_var_names = get_system_variable_names()
+        conflicts = user_var_names & system_var_names
         if conflicts:
             errors.append(f"用户变量与系统保留变量冲突: {', '.join(sorted(conflicts))}")
 
@@ -77,7 +78,7 @@ class TemplateManager:
                 errors.append(f"用户变量名重复: {', '.join(sorted(duplicates))}")
 
         # Build set of all defined variables (system + user)
-        defined_vars = SYSTEM_VARIABLE_NAMES | user_var_names
+        defined_vars = system_var_names | user_var_names
 
         # Check for undefined variables in YAML
         undefined = yaml_vars - defined_vars
@@ -133,7 +134,7 @@ class TemplateManager:
         required = []
 
         # Add system variables first (fixed order)
-        for var in SYSTEM_RESERVED_VARIABLES:
+        for var in get_system_reserved_variables():
             prop_schema = cls._variable_to_json_schema(var)
             properties[var.name] = prop_schema
             required.append(var.name)
@@ -225,7 +226,7 @@ class TemplateManager:
             | StringVariableDefinition
             | EnumVariableDefinition
             | BoolVariableDefinition
-        ] = list(SYSTEM_RESERVED_VARIABLES) + list(user_variables)
+        ] = list(get_system_reserved_variables()) + list(user_variables)
 
         for var in all_vars:
             if var.name not in values:
@@ -285,7 +286,7 @@ class TemplateManager:
         defaults = {}
 
         # Add system variable defaults
-        for var in SYSTEM_RESERVED_VARIABLES:
+        for var in get_system_reserved_variables():
             defaults[var.name] = var.default
 
         # Add user variable defaults

@@ -103,63 +103,85 @@ def cast_variables_json(variables_json: str) -> list[VariableDefinition]:
     return adapter.validate_python(raw_list)
 
 
-# System reserved variables - fixed schema, always present in every template
-SYSTEM_RESERVED_VARIABLES: list[
-    IntVariableDefinition
-    | FloatVariableDefinition
-    | StringVariableDefinition
-    | EnumVariableDefinition
-    | BoolVariableDefinition
-] = [
-    StringVariableDefinition(
-        type="string",
-        name="name",
-        display_name="服务器名称",
-        description="服务器名称，用于 container_name (mc-{name})",
-        max_length=20,
-        pattern="^[a-z0-9-_]+$",
-    ),
-    EnumVariableDefinition(
-        type="enum",
-        name="java_version",
-        display_name="Java 版本",
-        description="服务器使用的 Java 版本",
-        options=["8", "11", "17", "21", "25"],
-    ),
-    StringVariableDefinition(
-        type="string",
-        name="game_version",
-        display_name="游戏版本",
-        description="Minecraft 游戏版本",
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="max_memory",
-        display_name="最大内存 (GB)",
-        description="服务器最大内存分配，单位为 GB",
-        default=6,
-        min_value=1,
-        max_value=16,
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="game_port",
-        display_name="游戏端口",
-        description="Minecraft 服务器端口",
-        min_value=1024,
-        max_value=65535,
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="rcon_port",
-        display_name="RCON 端口",
-        description="RCON 管理端口",
-        min_value=1024,
-        max_value=65535,
-    ),
-]
+def get_system_reserved_variables() -> list[VariableDefinition]:
+    """Get system reserved variables from dynamic config.
 
-SYSTEM_VARIABLE_NAMES = {v.name for v in SYSTEM_RESERVED_VARIABLES}
+    Returns:
+        List of VariableDefinition objects for system reserved variables.
+    """
+    from ..dynamic_config import config
+
+    result: list[VariableDefinition] = []
+    for var_config in config.templates.system_variables:
+        if var_config.type == "int":
+            result.append(
+                IntVariableDefinition(
+                    type="int",
+                    name=var_config.name,
+                    display_name=var_config.display_name,
+                    description=var_config.description,
+                    default=var_config.default,
+                    min_value=var_config.min_value,
+                    max_value=var_config.max_value,
+                )
+            )
+        elif var_config.type == "float":
+            result.append(
+                FloatVariableDefinition(
+                    type="float",
+                    name=var_config.name,
+                    display_name=var_config.display_name,
+                    description=var_config.description,
+                    default=var_config.default,
+                    min_value=var_config.min_value,
+                    max_value=var_config.max_value,
+                )
+            )
+        elif var_config.type == "string":
+            result.append(
+                StringVariableDefinition(
+                    type="string",
+                    name=var_config.name,
+                    display_name=var_config.display_name,
+                    description=var_config.description,
+                    default=var_config.default,
+                    max_length=var_config.max_length,
+                    pattern=var_config.pattern,
+                )
+            )
+        elif var_config.type == "enum":
+            result.append(
+                EnumVariableDefinition(
+                    type="enum",
+                    name=var_config.name,
+                    display_name=var_config.display_name,
+                    description=var_config.description,
+                    default=var_config.default,
+                    options=var_config.options,
+                )
+            )
+        elif var_config.type == "bool":
+            result.append(
+                BoolVariableDefinition(
+                    type="bool",
+                    name=var_config.name,
+                    display_name=var_config.display_name,
+                    description=var_config.description,
+                    default=var_config.default,
+                )
+            )
+    return result
+
+
+def get_system_variable_names() -> set[str]:
+    """Get set of system reserved variable names.
+
+    Returns:
+        Set of variable names that are reserved by the system.
+    """
+    from ..dynamic_config import config
+
+    return {v.name for v in config.templates.system_variables}
 
 
 # Request/Response models for API

@@ -15,7 +15,6 @@ from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
 from ..models import ServerTemplate, UserPublic
 from ..templates import (
-    SYSTEM_RESERVED_VARIABLES,
     AvailablePortsResponse,
     TemplateCreateRequest,
     TemplateListItem,
@@ -26,6 +25,7 @@ from ..templates import (
     TemplateUpdateRequest,
     VariableDefinition,
     cast_variables_json,
+    get_system_reserved_variables,
 )
 from ..templates.manager import TemplateManager
 
@@ -57,11 +57,19 @@ async def list_templates(
             name=t.name,
             description=t.description,
             variable_count=len(json.loads(t.variables_json))
-            + len(SYSTEM_RESERVED_VARIABLES),
+            + len(get_system_reserved_variables()),
             created_at=t.created_at,
         )
         for t in templates
     ]
+
+
+@router.get("/system-variables", response_model=list[VariableDefinition])
+async def get_system_variables(
+    _: UserPublic = Depends(get_current_user),
+):
+    """Get system reserved variable definitions."""
+    return get_system_reserved_variables()
 
 
 @router.get("/ports/available", response_model=AvailablePortsResponse)
@@ -132,7 +140,7 @@ async def get_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=user_variables,
-        system_variables=SYSTEM_RESERVED_VARIABLES,
+        system_variables=get_system_reserved_variables(),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -196,7 +204,7 @@ async def create_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=variables,
-        system_variables=SYSTEM_RESERVED_VARIABLES,
+        system_variables=get_system_reserved_variables(),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -265,7 +273,7 @@ async def update_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=cast_variables_json(template.variables_json),
-        system_variables=SYSTEM_RESERVED_VARIABLES,
+        system_variables=get_system_reserved_variables(),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
