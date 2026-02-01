@@ -361,25 +361,6 @@ const ServerNew: React.FC = () => {
                       )}
                     </Card>
                   )}
-
-                  {/* Restart Schedule */}
-                  <Card title="自动重启计划" size="small">
-                    <div className="flex items-center space-x-3">
-                      <Switch
-                        checked={enableRestartSchedule}
-                        onChange={setEnableRestartSchedule}
-                        size="default"
-                      />
-                      <span className={enableRestartSchedule ? 'text-green-600' : 'text-gray-500'}>
-                        {enableRestartSchedule ? '已启用' : '已禁用'}
-                      </span>
-                    </div>
-                    {enableRestartSchedule && (
-                      <div className="text-sm text-gray-500 mt-2">
-                        系统将自动选择与现有备份任务不冲突的时间创建重启计划
-                      </div>
-                    )}
-                  </Card>
                 </div>
               ),
             },
@@ -408,19 +389,6 @@ const ServerNew: React.FC = () => {
                       ]}
                     >
                       <Input placeholder="例如: vanilla-survival" size="large" />
-                    </Form.Item>
-
-                    <Form.Item label="自动重启计划">
-                      <div className="flex items-center space-x-3">
-                        <Switch
-                          checked={enableRestartSchedule}
-                          onChange={setEnableRestartSchedule}
-                          size="default"
-                        />
-                        <span className={enableRestartSchedule ? 'text-green-600' : 'text-gray-500'}>
-                          {enableRestartSchedule ? '已启用' : '已禁用'}
-                        </span>
-                      </div>
                     </Form.Item>
                   </Card>
 
@@ -477,6 +445,25 @@ const ServerNew: React.FC = () => {
             },
           ]}
         />
+      </Card>
+
+      {/* Restart Schedule */}
+      <Card title="自动重启计划">
+        <div className="flex items-center space-x-3">
+          <Switch
+            checked={enableRestartSchedule}
+            onChange={setEnableRestartSchedule}
+            size="default"
+          />
+          <span className={enableRestartSchedule ? 'text-green-600' : 'text-gray-500'}>
+            {enableRestartSchedule ? '已启用' : '已禁用'}
+          </span>
+        </div>
+        {enableRestartSchedule && (
+          <div className="text-sm text-gray-500 mt-2">
+            系统将自动选择与现有备份任务不冲突的时间创建重启计划
+          </div>
+        )}
       </Card>
 
       {/* Archive Selection */}
