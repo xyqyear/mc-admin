@@ -54,18 +54,6 @@ export const useAvailablePorts = (enabled: boolean = true) => {
 };
 
 /**
- * Hook to get system reserved variables
- */
-export const useSystemVariables = () => {
-  return useQuery({
-    queryKey: queryKeys.templates.systemVariables(),
-    queryFn: templateApi.getSystemVariables,
-    staleTime: 10 * 60 * 1000, // 10 minutes - rarely changes
-    refetchOnWindowFocus: false,
-  });
-};
-
-/**
  * Hook to check if a server is template-based
  */
 export const useServerTemplatePreview = (serverId: string | null) => {

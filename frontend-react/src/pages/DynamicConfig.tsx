@@ -356,7 +356,6 @@ const DynamicConfig: React.FC = () => {
                     onSubmit={handleSubmitConfig}
                     onError={(errors) => console.log('Form validation errors:', errors)}
                     liveValidate="onChange"
-                    showErrorList={false}
                   >
                     <div />
                   </Form>

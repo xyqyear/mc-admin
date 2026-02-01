@@ -21,7 +21,7 @@ import ThemedForm from "@/components/forms/rjsfTheme";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/layout/LoadingSpinner";
 import { ComposeYamlEditor } from "@/components/editors";
-import { useTemplate, useSystemVariables } from "@/hooks/queries/base/useTemplateQueries";
+import { useTemplate } from "@/hooks/queries/base/useTemplateQueries";
 import { useTemplateMutations } from "@/hooks/mutations/useTemplateMutations";
 import type {
   VariableDefinition,
@@ -30,6 +30,16 @@ import type {
 } from "@/hooks/api/templateApi";
 
 const { TextArea } = Input;
+
+// System reserved variable names
+const SYSTEM_VARIABLE_NAMES = [
+  "name",
+  "java_version",
+  "game_version",
+  "max_memory",
+  "game_port",
+  "rcon_port",
+];
 
 // Extract variables from YAML template
 const extractVariablesFromYaml = (yaml: string): string[] => {
@@ -225,15 +235,6 @@ const TemplateEdit: React.FC = () => {
   // Load template data
   const { data: template, isLoading } = useTemplate(templateId);
 
-  // Load system variables
-  const { data: systemVariables = [], isLoading: isLoadingSystemVars } = useSystemVariables();
-
-  // Compute system variable names from fetched data
-  const systemVariableNames = useMemo(
-    () => systemVariables.map((v) => v.name),
-    [systemVariables]
-  );
-
   // Mutations
   const { useCreateTemplate, useUpdateTemplate } = useTemplateMutations();
   const createMutation = useCreateTemplate();
@@ -283,7 +284,7 @@ const TemplateEdit: React.FC = () => {
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
     const definedVars = new Set([
-      ...systemVariableNames,
+      ...SYSTEM_VARIABLE_NAMES,
       ...variables.map((v) => v.name).filter(Boolean),
     ]);
 
@@ -294,7 +295,7 @@ const TemplateEdit: React.FC = () => {
     }
 
     // Check for missing system variables in YAML
-    const missingSystemVars = systemVariableNames.filter(
+    const missingSystemVars = SYSTEM_VARIABLE_NAMES.filter(
       (v) => !yamlVariables.includes(v)
     );
     if (missingSystemVars.length > 0) {
@@ -314,7 +315,7 @@ const TemplateEdit: React.FC = () => {
 
     // Check for conflicts with system variables
     const conflicts = variables.filter((v) =>
-      systemVariableNames.includes(v.name)
+      SYSTEM_VARIABLE_NAMES.includes(v.name)
     );
     if (conflicts.length > 0) {
       errors.push(
@@ -323,7 +324,7 @@ const TemplateEdit: React.FC = () => {
     }
 
     return errors;
-  }, [yamlVariables, variables, systemVariableNames]);
+  }, [yamlVariables, variables]);
 
   // Handle variables form change
   const handleVariablesChange = (data: { formData?: VariableFormData[] }) => {
@@ -424,7 +425,7 @@ const TemplateEdit: React.FC = () => {
     }
   };
 
-  if ((isLoading && templateId) || isLoadingSystemVars) {
+  if (isLoading && templateId) {
     return <LoadingSpinner />;
   }
 
@@ -473,7 +474,7 @@ const TemplateEdit: React.FC = () => {
                       message="使用 {变量名} 格式定义占位符"
                       description={
                         <div>
-                          <p>系统保留变量: {systemVariableNames.join(", ")}</p>
+                          <p>系统保留变量: {SYSTEM_VARIABLE_NAMES.join(", ")}</p>
                           <p>
                             当前 YAML 中使用的变量:{" "}
                             {yamlVariables.length > 0

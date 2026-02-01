@@ -2,6 +2,8 @@
 
 from .manager import TemplateManager
 from .models import (
+    SYSTEM_RESERVED_VARIABLES,
+    SYSTEM_VARIABLE_NAMES,
     AvailablePortsResponse,
     BoolVariableDefinition,
     EnumVariableDefinition,
@@ -18,8 +20,6 @@ from .models import (
     VariableDefinition,
     VariableType,
     cast_variables_json,
-    get_system_reserved_variables,
-    get_system_variable_names,
 )
 
 __all__ = [
@@ -31,8 +31,8 @@ __all__ = [
     "EnumVariableDefinition",
     "BoolVariableDefinition",
     "VariableDefinition",
-    "get_system_reserved_variables",
-    "get_system_variable_names",
+    "SYSTEM_RESERVED_VARIABLES",
+    "SYSTEM_VARIABLE_NAMES",
     "TemplateCreateRequest",
     "TemplateUpdateRequest",
     "TemplateResponse",
