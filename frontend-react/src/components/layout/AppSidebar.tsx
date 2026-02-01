@@ -21,6 +21,7 @@ import {
   ScheduleOutlined,
   GlobalOutlined,
   TeamOutlined,
+  SnippetsOutlined,
 } from '@ant-design/icons'
 import type { MenuItem } from '@/types/MenuItem'
 import { useSidebarStore } from '@/stores/useSidebarStore'
@@ -112,6 +113,11 @@ const AppSidebar: React.FC = () => {
           path: '/server/new',
         },
       ],
+    },
+    {
+      title: '服务器模板',
+      icon: <SnippetsOutlined />,
+      path: '/templates',
     },
     // 只有OWNER角色才能看到超管菜单
     ...(isOwner ? [{
