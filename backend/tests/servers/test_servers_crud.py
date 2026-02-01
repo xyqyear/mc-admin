@@ -1,12 +1,12 @@
 """
-Unit tests for ServerTracker CRUD operations.
+Unit tests for Server CRUD operations.
 
-Tests database operations for server tracking.
+Tests database operations for server records.
 """
 
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db.database import Base
 from app.models import Server, ServerStatus
-from app.server_tracker.crud import (
-    create_server,
+from app.servers.crud import (
+    create_server_record,
     get_active_servers,
     get_active_servers_map,
     get_server_by_id,
@@ -55,25 +55,56 @@ async def test_database():
     Path(db_path).unlink(missing_ok=True)
 
 
+async def _create_server_directly(
+    session: AsyncSession,
+    server_id: str,
+    status: ServerStatus = ServerStatus.ACTIVE,
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
+) -> Server:
+    """Helper to create server directly for testing (bypasses duplicate check)."""
+    now = datetime.now(timezone.utc)
+    server = Server(
+        server_id=server_id,
+        status=status,
+        created_at=created_at or now,
+        updated_at=updated_at or now,
+    )
+    session.add(server)
+    await session.commit()
+    await session.refresh(server)
+    return server
+
+
 # ============================================================================
 # Tests
 # ============================================================================
 
 
 @pytest.mark.asyncio
-async def test_create_server(test_database):
+async def test_create_server_record(test_database):
     """Test creating a server record."""
     db = test_database
 
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        server = await create_server(session, "test_server", now)
+        server = await create_server_record(session, "test_server")
 
         assert server.server_id == "test_server"
         assert server.status == ServerStatus.ACTIVE
-        assert server.created_at == now
-        assert server.updated_at == now
         assert server.id > 0
+
+
+@pytest.mark.asyncio
+async def test_create_server_record_duplicate_fails(test_database):
+    """Test that creating duplicate active server fails."""
+    db = test_database
+
+    async with db() as session:
+        await create_server_record(session, "test_server")
+
+    async with db() as session:
+        with pytest.raises(ValueError, match="已存在"):
+            await create_server_record(session, "test_server")
 
 
 @pytest.mark.asyncio
@@ -83,20 +114,16 @@ async def test_get_active_servers(test_database):
 
     # Create active servers
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        await create_server(session, "server1", now)
-        await create_server(session, "server2", now)
+        await create_server_record(session, "server1")
+
+    async with db() as session:
+        await create_server_record(session, "server2")
 
     # Create removed server
     async with db() as session:
-        server = Server(
-            server_id="removed_server",
-            status=ServerStatus.REMOVED,
-            created_at=now,
-            updated_at=now,
+        await _create_server_directly(
+            session, "removed_server", status=ServerStatus.REMOVED
         )
-        session.add(server)
-        await session.commit()
 
     # Get active servers
     async with db() as session:
@@ -114,11 +141,10 @@ async def test_get_active_servers_map(test_database):
 
     # Create servers
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        server1 = await create_server(session, "server1", now)
+        server1 = await create_server_record(session, "server1")
 
     async with db() as session:
-        server2 = await create_server(session, "server2", now)
+        server2 = await create_server_record(session, "server2")
 
     # Get map
     async with db() as session:
@@ -136,8 +162,7 @@ async def test_get_server_by_id(test_database):
 
     # Create server
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        await create_server(session, "test_server", now)
+        await create_server_record(session, "test_server")
 
     # Get server
     async with db() as session:
@@ -160,8 +185,7 @@ async def test_get_server_db_id(test_database):
 
     # Create server
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        created_server = await create_server(session, "test_server", now)
+        created_server = await create_server_record(session, "test_server")
 
     # Get DB ID
     async with db() as session:
@@ -183,8 +207,7 @@ async def test_mark_server_removed(test_database):
 
     # Create server
     async with db() as session:
-        now = datetime.now(timezone.utc)
-        await create_server(session, "test_server", now)
+        await create_server_record(session, "test_server")
 
     # Mark as removed
     async with db() as session:
@@ -209,14 +232,13 @@ async def test_mark_server_removed_only_active(test_database):
 
     # Create already removed server
     async with db() as session:
-        server = Server(
-            server_id="already_removed",
+        await _create_server_directly(
+            session,
+            "already_removed",
             status=ServerStatus.REMOVED,
             created_at=now,
             updated_at=now,
         )
-        session.add(server)
-        await session.commit()
 
     # Try to mark as removed again
     async with db() as session:
@@ -237,17 +259,15 @@ async def test_multiple_server_operations(test_database):
     """Test multiple operations on servers."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
-
     # Create multiple servers
     async with db() as session:
-        await create_server(session, "server1", now)
+        await create_server_record(session, "server1")
 
     async with db() as session:
-        await create_server(session, "server2", now)
+        await create_server_record(session, "server2")
 
     async with db() as session:
-        await create_server(session, "server3", now)
+        await create_server_record(session, "server3")
 
     # Get all active
     async with db() as session:
@@ -298,34 +318,21 @@ async def test_get_server_by_id_prefers_active_over_removed(test_database):
     """Test that ACTIVE server is preferred over REMOVED when both exist."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Create first server (will be marked as REMOVED)
     async with db() as session:
-        server1 = Server(
-            server_id="test_server",
+        await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.REMOVED,
             created_at=now - timedelta(hours=2),
             updated_at=now - timedelta(hours=1),
         )
-        session.add(server1)
-        await session.commit()
-        await session.refresh(server1)
-        _first_id = server1.id
 
-    # Create second server (ACTIVE, newer)
+    # Create second server (ACTIVE) - no active exists, so create_server_record works
     async with db() as session:
-        server2 = Server(
-            server_id="test_server",
-            status=ServerStatus.ACTIVE,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(server2)
-        await session.commit()
-        await session.refresh(server2)
+        server2 = await create_server_record(session, "test_server")
         second_id = server2.id
 
     # Should return the ACTIVE server (server2)
@@ -342,34 +349,27 @@ async def test_get_server_by_id_multiple_active_returns_newest(test_database):
     """Test that when multiple ACTIVE servers exist, the newest one is returned."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Create older ACTIVE server
     async with db() as session:
-        server1 = Server(
-            server_id="test_server",
+        await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.ACTIVE,
             created_at=now - timedelta(hours=1),
             updated_at=now - timedelta(hours=1),
         )
-        session.add(server1)
-        await session.commit()
-        await session.refresh(server1)
-        _first_id = server1.id
 
     # Create newer ACTIVE server
     async with db() as session:
-        server2 = Server(
-            server_id="test_server",
+        server2 = await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.ACTIVE,
             created_at=now,
             updated_at=now,
         )
-        session.add(server2)
-        await session.commit()
-        await session.refresh(server2)
         second_id = server2.id
 
     # Should return the newer ACTIVE server (server2)
@@ -386,34 +386,27 @@ async def test_get_server_by_id_only_removed_returns_newest(test_database):
     """Test that when only REMOVED servers exist, the newest one is returned."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Create older REMOVED server
     async with db() as session:
-        server1 = Server(
-            server_id="test_server",
+        await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.REMOVED,
             created_at=now - timedelta(hours=2),
             updated_at=now - timedelta(hours=1),
         )
-        session.add(server1)
-        await session.commit()
-        await session.refresh(server1)
-        _first_id = server1.id
 
     # Create newer REMOVED server
     async with db() as session:
-        server2 = Server(
-            server_id="test_server",
+        server2 = await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.REMOVED,
             created_at=now,
             updated_at=now,
         )
-        session.add(server2)
-        await session.commit()
-        await session.refresh(server2)
         second_id = server2.id
 
     # Should return the newer REMOVED server (server2)
@@ -430,21 +423,17 @@ async def test_get_server_by_id_race_condition_scenario(test_database):
     """Test race condition scenario: server marked REMOVED but player events still processing."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Create and then mark server as REMOVED (simulating server shutdown)
     async with db() as session:
-        server = Server(
-            server_id="test_server",
-            status=ServerStatus.REMOVED,  # Already marked as removed
+        server = await _create_server_directly(
+            session,
+            "test_server",
+            status=ServerStatus.REMOVED,
             created_at=now - timedelta(minutes=5),
             updated_at=now - timedelta(seconds=1),
         )
-        session.add(server)
-        await session.commit()
-        await session.refresh(server)
         server_id_value = server.id
 
     # Player events (like PlayerLeftEvent, ServerStoppingEvent) should still find the server
@@ -461,34 +450,21 @@ async def test_get_server_db_id_with_multiple_servers(test_database):
     """Test get_server_db_id returns correct ID when multiple servers exist."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Create old REMOVED server
     async with db() as session:
-        server1 = Server(
-            server_id="test_server",
+        await _create_server_directly(
+            session,
+            "test_server",
             status=ServerStatus.REMOVED,
             created_at=now - timedelta(hours=1),
             updated_at=now - timedelta(minutes=30),
         )
-        session.add(server1)
-        await session.commit()
-        await session.refresh(server1)
-        _first_id = server1.id
 
-    # Create new ACTIVE server
+    # Create new ACTIVE server - no active exists, so create_server_record works
     async with db() as session:
-        server2 = Server(
-            server_id="test_server",
-            status=ServerStatus.ACTIVE,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(server2)
-        await session.commit()
-        await session.refresh(server2)
+        server2 = await create_server_record(session, "test_server")
         second_id = server2.id
 
     # Should return the database ID of the ACTIVE server (server2)
@@ -503,13 +479,17 @@ async def test_server_recreate_lifecycle(test_database):
     """Test complete server lifecycle: create -> remove -> recreate."""
     db = test_database
 
-    from datetime import timedelta
-
     now = datetime.now(timezone.utc)
 
     # Step 1: Create first server
     async with db() as session:
-        server1 = await create_server(session, "test_server", now - timedelta(hours=2))
+        server1 = await _create_server_directly(
+            session,
+            "test_server",
+            status=ServerStatus.ACTIVE,
+            created_at=now - timedelta(hours=2),
+            updated_at=now - timedelta(hours=2),
+        )
         first_db_id = server1.id
         assert server1.status == ServerStatus.ACTIVE
 
@@ -525,8 +505,9 @@ async def test_server_recreate_lifecycle(test_database):
     assert result.status == ServerStatus.REMOVED
 
     # Step 3: Create second server with same server_id (recreate scenario)
+    # Now that the first is REMOVED, create_server_record should succeed
     async with db() as session:
-        server2 = await create_server(session, "test_server", now)
+        server2 = await create_server_record(session, "test_server")
         second_db_id = server2.id
         assert second_db_id != first_db_id  # Different database ID
         assert server2.status == ServerStatus.ACTIVE

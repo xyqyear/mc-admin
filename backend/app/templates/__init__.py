@@ -4,6 +4,7 @@ from .manager import TemplateManager
 from .models import (
     SYSTEM_RESERVED_VARIABLES,
     SYSTEM_VARIABLE_NAMES,
+    AvailablePortsResponse,
     BoolVariableDefinition,
     EnumVariableDefinition,
     FloatVariableDefinition,
@@ -11,11 +12,14 @@ from .models import (
     StringVariableDefinition,
     TemplateCreateRequest,
     TemplateListItem,
+    TemplatePreviewRequest,
+    TemplatePreviewResponse,
     TemplateResponse,
     TemplateSchemaResponse,
     TemplateUpdateRequest,
     VariableDefinition,
     VariableType,
+    cast_variables_json,
 )
 
 __all__ = [
@@ -34,4 +38,8 @@ __all__ = [
     "TemplateResponse",
     "TemplateListItem",
     "TemplateSchemaResponse",
+    "AvailablePortsResponse",
+    "TemplatePreviewRequest",
+    "TemplatePreviewResponse",
+    "cast_variables_json",
 ]

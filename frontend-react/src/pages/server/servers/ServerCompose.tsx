@@ -20,6 +20,7 @@ import { ComposeYamlEditor, MonacoDiffEditor, SimpleEditor } from '@/components/
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
+import RebuildProgressModal from '@/components/modals/RebuildProgressModal'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useServerTemplatePreview, useServerTemplateConfig } from '@/hooks/queries/base/useTemplateQueries'
@@ -75,6 +76,10 @@ const ServerCompose: React.FC = () => {
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
   const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
+
+  // Rebuild task tracking state
+  const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
+  const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
 
   // UI Schema to make 'name' field read-only in edit mode
   const templateUiSchema: UiSchema = {
@@ -151,16 +156,12 @@ const ServerCompose: React.FC = () => {
   const handlePreviewYaml = async () => {
     if (!templateConfig?.template_id || !templateFormData) return
 
-    try {
-      const yaml = await previewMutation.mutateAsync({
-        id: templateConfig.template_id,
-        variableValues: templateFormData,
-      })
-      setPreviewYaml(yaml)
-      setIsPreviewModalVisible(true)
-    } catch (error) {
-      // Error handled by mutation
-    }
+    const yaml = await previewMutation.mutateAsync({
+      id: templateConfig.template_id,
+      variableValues: templateFormData,
+    })
+    setPreviewYaml(yaml)
+    setIsPreviewModalVisible(true)
   }
 
   // Submit template config
@@ -173,17 +174,12 @@ const ServerCompose: React.FC = () => {
       cancelText: '取消',
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
-        try {
-          await updateTemplateConfigMutation.mutateAsync({
-            serverId: id!,
-            variableValues: templateFormData,
-          })
-          message.info('服务器重建需要几分钟时间，请稍候')
-          await refetchTemplateConfig()
-          await composeQuery.refetch()
-        } catch (error: any) {
-          // Error handled by mutation
-        }
+        const result = await updateTemplateConfigMutation.mutateAsync({
+          serverId: id!,
+          variableValues: templateFormData,
+        })
+        setRebuildTaskId(result.task_id)
+        setIsRebuildModalVisible(true)
       }
     })
   }
@@ -273,10 +269,9 @@ const ServerCompose: React.FC = () => {
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
         try {
-          await updateComposeMutation.mutateAsync(rawYaml)
-          message.info('服务器重建需要几分钟时间，请稍候')
-          await composeQuery.refetch()
-          setEditorKey(prev => prev + 1)
+          const result = await updateComposeMutation.mutateAsync(rawYaml)
+          setRebuildTaskId(result.task_id)
+          setIsRebuildModalVisible(true)
         } catch (error: any) {
           message.error(`配置提交失败: ${error.message}`)
         }
@@ -378,6 +373,7 @@ const ServerCompose: React.FC = () => {
             formData={templateFormData}
             validator={validator}
             onChange={handleTemplateFormChange}
+            showErrorList={false}
             liveValidate
           >
             <div /> {/* Hide default submit button */}
@@ -405,6 +401,23 @@ const ServerCompose: React.FC = () => {
             />
           )}
         </Modal>
+
+        {/* Rebuild Progress Modal */}
+        <RebuildProgressModal
+          open={isRebuildModalVisible}
+          taskId={rebuildTaskId}
+          serverId={id}
+          onClose={() => {
+            setIsRebuildModalVisible(false)
+            setRebuildTaskId(null)
+          }}
+          onComplete={() => {
+            setIsRebuildModalVisible(false)
+            setRebuildTaskId(null)
+            refetchTemplateConfig()
+            composeQuery.refetch()
+          }}
+        />
       </div>
     )
   }
@@ -518,6 +531,23 @@ const ServerCompose: React.FC = () => {
         open={isHelpModalVisible}
         onCancel={() => setIsHelpModalVisible(false)}
         page="ServerCompose"
+      />
+
+      {/* Rebuild Progress Modal */}
+      <RebuildProgressModal
+        open={isRebuildModalVisible}
+        taskId={rebuildTaskId}
+        serverId={id}
+        onClose={() => {
+          setIsRebuildModalVisible(false)
+          setRebuildTaskId(null)
+        }}
+        onComplete={() => {
+          setIsRebuildModalVisible(false)
+          setRebuildTaskId(null)
+          composeQuery.refetch()
+          setEditorKey(prev => prev + 1)
+        }}
       />
     </div>
   )

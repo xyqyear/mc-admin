@@ -7,11 +7,7 @@ from pydantic import BaseModel
 class TaskType(str, Enum):
     ARCHIVE_CREATE = "archive_create"
     ARCHIVE_EXTRACT = "archive_extract"
-    SNAPSHOT_CREATE = "snapshot_create"
-    SNAPSHOT_RESTORE = "snapshot_restore"
-    SERVER_START = "server_start"
-    SERVER_STOP = "server_stop"
-    SERVER_RESTART = "server_restart"
+    SERVER_REBUILD = "server_rebuild"
 
 
 class TaskStatus(str, Enum):

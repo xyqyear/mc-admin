@@ -16,8 +16,6 @@ from .base import (
     PlayerLeftEvent,
     PlayerSkinUpdateRequestedEvent,
     PlayerUuidDiscoveredEvent,
-    ServerCreatedEvent,
-    ServerRemovedEvent,
     ServerStoppingEvent,
     SystemCrashDetectedEvent,
 )
@@ -45,17 +43,6 @@ class EventDispatcher:
         }
 
     # Registration methods - one per event type for type safety
-
-    def on_server_created(self, handler: EventHandler[ServerCreatedEvent]) -> None:
-        """Register handler for server created events.
-
-        Handler can be sync or async function.
-        """
-        self._handlers[EventType.SERVER_CREATED].append(handler)
-
-    def on_server_removed(self, handler: EventHandler[ServerRemovedEvent]) -> None:
-        """Register handler for server removed events."""
-        self._handlers[EventType.SERVER_REMOVED].append(handler)
 
     def on_player_uuid_discovered(
         self, handler: EventHandler[PlayerUuidDiscoveredEvent]
@@ -100,14 +87,6 @@ class EventDispatcher:
         self._handlers[EventType.SYSTEM_CRASH_DETECTED].append(handler)
 
     # Dispatch methods - one per event type for type safety
-
-    async def dispatch_server_created(self, event: ServerCreatedEvent) -> None:
-        """Dispatch server created event."""
-        await self._dispatch_event(event)
-
-    async def dispatch_server_removed(self, event: ServerRemovedEvent) -> None:
-        """Dispatch server removed event."""
-        await self._dispatch_event(event)
 
     async def dispatch_player_uuid_discovered(
         self, event: PlayerUuidDiscoveredEvent

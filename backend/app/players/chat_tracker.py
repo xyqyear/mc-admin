@@ -4,7 +4,7 @@ from ..db.database import get_async_session
 from ..events.base import PlayerAchievementEvent, PlayerChatMessageEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
-from ..server_tracker.crud import get_server_db_id
+from ..servers.crud import get_server_db_id
 from .crud import (
     create_chat_message,
     get_all_player_names_with_ids,

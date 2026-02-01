@@ -14,8 +14,7 @@ from ..minecraft import docker_mc_manager
 from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
 from ..models import ServerTemplate, UserPublic
-from ..templates.manager import TemplateManager
-from ..templates.models import (
+from ..templates import (
     SYSTEM_RESERVED_VARIABLES,
     AvailablePortsResponse,
     TemplateCreateRequest,
@@ -26,24 +25,14 @@ from ..templates.models import (
     TemplateSchemaResponse,
     TemplateUpdateRequest,
     VariableDefinition,
+    cast_variables_json,
 )
+from ..templates.manager import TemplateManager
 
 router = APIRouter(
     prefix="/templates",
     tags=["templates"],
 )
-
-
-def _parse_variables_json(
-    variables_json: str,
-) -> list[VariableDefinition]:
-    """Parse variables JSON string to list of VariableDefinition."""
-    raw_list = json.loads(variables_json)
-    # Use Pydantic to validate and parse each variable
-    from pydantic import TypeAdapter
-
-    adapter = TypeAdapter(list[VariableDefinition])
-    return adapter.validate_python(raw_list)
 
 
 def _serialize_variables(variables: list[VariableDefinition]) -> str:
@@ -135,7 +124,7 @@ async def get_template(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = _parse_variables_json(template.variables_json)
+    user_variables = cast_variables_json(template.variables_json)
 
     return TemplateResponse(
         id=template.id,
@@ -174,12 +163,12 @@ async def create_template(
         if not yaml_template:
             yaml_template = source.yaml_template
         if not variables:
-            variables = _parse_variables_json(source.variables_json)
+            variables = cast_variables_json(source.variables_json)
 
     # Validate template
     errors = TemplateManager.validate_template(yaml_template, variables)
     if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors})
+        raise HTTPException(status_code=400, detail=errors)
 
     # Check name uniqueness
     result = await db.execute(
@@ -251,13 +240,13 @@ async def update_template(
     variables = (
         list(request.variables)
         if request.variables is not None
-        else _parse_variables_json(template.variables_json)
+        else cast_variables_json(template.variables_json)
     )
 
     # Validate template
     errors = TemplateManager.validate_template(yaml_template, variables)
     if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors})
+        raise HTTPException(status_code=400, detail=errors)
 
     if request.yaml_template is not None:
         template.yaml_template = request.yaml_template
@@ -275,7 +264,7 @@ async def update_template(
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variables=_parse_variables_json(template.variables_json),
+        variables=cast_variables_json(template.variables_json),
         system_variables=SYSTEM_RESERVED_VARIABLES,
         created_at=template.created_at,
         updated_at=template.updated_at,
@@ -316,7 +305,7 @@ async def get_template_schema(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = _parse_variables_json(template.variables_json)
+    user_variables = cast_variables_json(template.variables_json)
     json_schema = TemplateManager.generate_json_schema(user_variables)
 
     return TemplateSchemaResponse(
@@ -342,14 +331,14 @@ async def preview_rendered_yaml(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = _parse_variables_json(template.variables_json)
+    user_variables = cast_variables_json(template.variables_json)
 
     # Validate values
     errors = TemplateManager.validate_variable_values(
         user_variables, request.variable_values
     )
     if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors})
+        raise HTTPException(status_code=400, detail=errors)
 
     # Render YAML
     try:

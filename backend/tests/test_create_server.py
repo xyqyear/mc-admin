@@ -9,8 +9,11 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.database import get_db
 from app.main import api_app
+from app.models import Base
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -143,18 +146,70 @@ def temp_server_path():
 
 
 @pytest.fixture
-def test_client_with_temp_path(temp_server_path):
-    """Create TestClient with temporary server path."""
+async def test_db():
+    """Create a test database for testing."""
+    # Create temporary database file
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+
+    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    engine = create_async_engine(database_url, echo=False)
+
+    # Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    TestSessionLocal = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+
+    yield TestSessionLocal
+
+    # Cleanup
+    await engine.dispose()
+    Path(temp_db.name).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def test_client_with_temp_path(temp_server_path, test_db):
+    """Create TestClient with temporary server path and test database."""
+    from unittest.mock import AsyncMock
+
     from app.minecraft import DockerMCManager
+
+    # Override get_db dependency to use test database
+    async def override_get_db():
+        async with test_db() as session:
+            yield session
+
+    api_app.dependency_overrides[get_db] = override_get_db
 
     # Patch settings and create real mc_manager with temp path
     with patch("app.config.settings.server_path", temp_server_path):
         with patch("app.config.settings.master_token", "test-master-token"):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
+            # Patch docker_mc_manager in both create.py and port_utils.py
             with patch("app.routers.servers.create.docker_mc_manager", real_mc_manager):
-                client = TestClient(api_app, raise_server_exceptions=False)
-                yield client
+                with patch("app.servers.port_utils.docker_mc_manager", real_mc_manager):
+                    with patch(
+                        "app.servers.port_utils.get_system_used_ports",
+                        return_value=set(),
+                    ):
+                        # Mock player_system_manager.start_server_monitoring to avoid log monitor issues
+                        with patch(
+                            "app.routers.servers.create.player_system_manager.start_server_monitoring",
+                            new_callable=AsyncMock,
+                        ):
+                            client = TestClient(api_app, raise_server_exceptions=False)
+                            yield client
+
+    # Clean up dependency override
+    api_app.dependency_overrides.pop(get_db, None)
 
 
 def generate_yaml(
@@ -181,7 +236,7 @@ class TestCreateServerSuccess:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "Server 'test-server' created successfully"
+        assert data["message"] == "服务器 'test-server' 创建成功"
         assert data["game_port"] == 25565
         assert data["rcon_port"] == 25575
 
@@ -206,7 +261,7 @@ class TestCreateServerSuccess:
 
         assert response2.status_code == 200
         data = response2.json()
-        assert data["message"] == "Server 'server-unique-2' created successfully"
+        assert data["message"] == "服务器 'server-unique-2' 创建成功"
         assert data["game_port"] == 25566
         assert data["rcon_port"] == 25576
 
@@ -235,7 +290,7 @@ class TestPortConflictDetection:
 
         assert response2.status_code == 409
         detail = response2.json()["detail"]
-        assert "Port conflicts detected" in detail
+        assert "端口冲突" in detail
         assert "Game port 25565 is already used by server 'server1'" in detail
         assert "RCON port 25575 is already used by server 'server1'" in detail
 
@@ -260,7 +315,7 @@ class TestPortConflictDetection:
 
         assert response2.status_code == 409
         detail = response2.json()["detail"]
-        assert "Port conflicts detected" in detail
+        assert "端口冲突" in detail
         assert "Game port 25565 is already used by server 'server-base'" in detail
         # Should not mention RCON port
         assert "RCON port" not in detail or "RCON port 25576" not in detail
@@ -286,7 +341,7 @@ class TestPortConflictDetection:
 
         assert response2.status_code == 409
         detail = response2.json()["detail"]
-        assert "Port conflicts detected" in detail
+        assert "端口冲突" in detail
         assert "RCON port 25575 is already used by server 'server-rcon-base'" in detail
         # Should not mention game port conflict
         assert "Game port 25566" not in detail
@@ -316,7 +371,7 @@ class TestDuplicateServerNames:
         )
 
         assert response2.status_code == 409
-        assert "already exists" in response2.json()["detail"]
+        assert "已存在" in response2.json()["detail"]
 
 
 class TestYAMLValidation:
@@ -437,6 +492,7 @@ class TestPortExtractionUtility:
     def test_extract_ports_invalid_yaml(self):
         """Test extracting ports from invalid YAML."""
         from yaml.scanner import ScannerError
+
         from app.routers.servers.create import extract_ports_from_yaml
 
         with pytest.raises(ValueError) as exc_info:

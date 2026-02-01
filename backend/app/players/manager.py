@@ -4,15 +4,10 @@ from typing import Optional
 
 from ..config import settings
 from ..events import event_dispatcher
-from ..events.base import (
-    ServerCreatedEvent,
-    ServerRemovedEvent,
-    SystemCrashDetectedEvent,
-)
+from ..events.base import SystemCrashDetectedEvent
 from ..log_monitor import LogMonitor, LogParser
 from ..logger import log_exception, logger
 from ..minecraft import DockerMCManager
-from ..server_tracker import ServerTracker
 from .chat_tracker import ChatTracker
 from .heartbeat import HeartbeatManager
 from .player_manager import PlayerManager
@@ -29,12 +24,6 @@ class PlayerSystemManager:
         """Initialize player system manager."""
         # Core dependencies
         self.mc_manager = DockerMCManager(settings.server_path)
-
-        # Server tracker
-        self.server_tracker = ServerTracker(
-            mc_manager=self.mc_manager,
-            event_dispatcher=event_dispatcher,
-        )
 
         # Log parser and monitor (will be initialized in start_monitoring)
         self.log_parser: Optional[LogParser] = None
@@ -63,7 +52,6 @@ class PlayerSystemManager:
         self.heartbeat_manager = HeartbeatManager(event_dispatcher=event_dispatcher)
         self.player_syncer = PlayerSyncer(
             mc_manager=self.mc_manager,
-            server_tracker=self.server_tracker,
             event_dispatcher=event_dispatcher,
         )
 
@@ -81,15 +69,8 @@ class PlayerSystemManager:
             log_parser=self.log_parser,
         )
 
-        # Start server tracker
-        await self.server_tracker.start_tracking()
-
         # Start heartbeat (includes crash detection)
         await self.heartbeat_manager.start()
-
-        # Register handlers for server lifecycle events
-        event_dispatcher.on_server_created(self._on_server_created)
-        event_dispatcher.on_server_removed(self._on_server_removed)
 
         # Start log monitoring for existing servers
         servers = []
@@ -123,29 +104,7 @@ class PlayerSystemManager:
         # Stop heartbeat
         await self.heartbeat_manager.stop()
 
-        # Stop server tracker
-        await self.server_tracker.stop_tracking()
-
         logger.info("Player monitoring system stopped")
-
-    async def _on_server_created(self, event: ServerCreatedEvent) -> None:
-        """Handle server created event.
-
-        Args:
-            event: Server created event
-        """
-        logger.info(f"Server created event received: {event.server_id}")
-        await self._start_log_monitoring(event.server_id)
-
-    async def _on_server_removed(self, event: ServerRemovedEvent) -> None:
-        """Handle server removed event.
-
-        Args:
-            event: Server removed event
-        """
-        logger.info(f"Server removed event received: {event.server_id}")
-        if self.log_monitor:
-            await self.log_monitor.stop_watching(event.server_id)
 
     async def _handle_system_crash(self, event: SystemCrashDetectedEvent) -> None:
         """Handle system crash detected event.
@@ -176,9 +135,27 @@ class PlayerSystemManager:
             await self.log_monitor.watch_server(server_id, log_path)
             logger.info(f"Started log monitoring for server {server_id}")
 
-    async def sync_servers(self) -> None:
-        """Trigger immediate server sync to detect new/removed servers."""
-        await self.server_tracker.sync_now()
+    async def start_server_monitoring(self, server_id: str) -> None:
+        """Start log monitoring for a newly created server.
+
+        Called by the create endpoint after server creation.
+
+        Args:
+            server_id: Server identifier
+        """
+        await self._start_log_monitoring(server_id)
+
+    async def stop_server_monitoring(self, server_id: str) -> None:
+        """Stop log monitoring for a removed server.
+
+        Called by the remove endpoint before server removal.
+
+        Args:
+            server_id: Server identifier
+        """
+        if self.log_monitor:
+            await self.log_monitor.stop_watching(server_id)
+            logger.info(f"Stopped log monitoring for server {server_id}")
 
 
 # Global player system manager instance

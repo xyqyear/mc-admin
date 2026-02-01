@@ -230,7 +230,7 @@ services:
         assert create_response.status_code == 200, (
             f"Server creation failed: {create_response.json()}"
         )
-        assert "created successfully" in create_response.json()["message"]
+        assert "创建成功" in create_response.json()["message"]
 
         # Verify server exists on filesystem
         server_dir = server_path / server_id

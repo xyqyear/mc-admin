@@ -55,27 +55,6 @@ class TestBasicTaskSubmission:
         assert result.awaitable is not None
         assert isinstance(result.task, BackgroundTask)
 
-    async def test_submit_task_creates_task_with_correct_fields(self, task_manager):
-        """Test that submitted task has correct initial fields."""
-
-        async def simple_task():
-            yield TaskProgress(progress=100, message="Done")
-
-        result = task_manager.submit(
-            task_type=TaskType.SNAPSHOT_CREATE,
-            name="backup_snapshot",
-            task_generator=simple_task(),
-            server_id="creative",
-            cancellable=False,
-        )
-
-        task = result.task
-        assert task.task_type == TaskType.SNAPSHOT_CREATE
-        assert task.name == "backup_snapshot"
-        assert task.server_id == "creative"
-        assert task.cancellable is False
-        assert task.created_at is not None
-
     async def test_submit_global_task_without_server_id(self, task_manager):
         """Test submitting a global task (server_id=None)."""
 
@@ -174,11 +153,11 @@ class TestTaskProgressUpdates:
         """Test that tasks without progress keep progress as None."""
 
         async def no_progress_task():
-            yield TaskProgress(message="Starting server...")
-            yield TaskProgress(message="Server started!")
+            yield TaskProgress(message="Rebuilding server...")
+            yield TaskProgress(message="Server rebuilt!")
 
         result = task_manager.submit(
-            task_type=TaskType.SERVER_START,
+            task_type=TaskType.SERVER_REBUILD,
             name="survival",
             task_generator=no_progress_task(),
         )
@@ -299,7 +278,7 @@ class TestTaskCancellation:
             yield TaskProgress(message="Done")
 
         result = task_manager.submit(
-            task_type=TaskType.SERVER_START,
+            task_type=TaskType.ARCHIVE_CREATE,
             name="survival",
             task_generator=non_cancellable_task(),
             cancellable=False,
@@ -413,7 +392,7 @@ class TestTaskQueries:
             task_generator=simple_task(),
         )
         task_manager.submit(
-            task_type=TaskType.SNAPSHOT_CREATE,
+            task_type=TaskType.SERVER_REBUILD,
             name="task2",
             task_generator=simple_task(),
         )
@@ -642,11 +621,7 @@ class TestTaskTypes:
         [
             TaskType.ARCHIVE_CREATE,
             TaskType.ARCHIVE_EXTRACT,
-            TaskType.SNAPSHOT_CREATE,
-            TaskType.SNAPSHOT_RESTORE,
-            TaskType.SERVER_START,
-            TaskType.SERVER_STOP,
-            TaskType.SERVER_RESTART,
+            TaskType.SERVER_REBUILD,
         ],
     )
     async def test_all_task_types_work(self, task_manager, task_type):

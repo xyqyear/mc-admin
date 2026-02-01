@@ -382,7 +382,7 @@ class TestPlayerManager:
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
-        # Mock database sessions and server_tracker_crud to return None
+        # Mock database sessions and server_crud to return None
         with (
             patch("app.players.player_manager.get_async_session") as mock_pm_session,
             patch("app.players.session_tracker.get_async_session") as mock_st_session,
@@ -391,7 +391,7 @@ class TestPlayerManager:
             mock_st_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
-                "app.players.session_tracker.server_tracker_crud.get_server_db_id",
+                "app.players.session_tracker.server_crud.get_server_db_id",
                 return_value=None,
             ):
                 # Create event dispatcher and both managers

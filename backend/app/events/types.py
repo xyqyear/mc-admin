@@ -7,10 +7,8 @@ class EventType(str, Enum):
     """All event types in the system."""
 
     # Server lifecycle events
-    SERVER_CREATED = "server.created"
     SERVER_STARTED = "server.started"
     SERVER_STOPPED = "server.stopped"
-    SERVER_REMOVED = "server.removed"
 
     # Player events from logs
     PLAYER_UUID_DISCOVERED = "player.uuid_discovered"

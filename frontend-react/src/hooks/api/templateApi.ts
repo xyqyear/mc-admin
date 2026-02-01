@@ -118,6 +118,10 @@ export interface TemplateConfigResponse {
   snapshot_time: string;
 }
 
+export interface TemplateConfigUpdateResponse {
+  task_id: string;
+}
+
 export interface TemplateConfigPreviewResponse {
   is_template_based: boolean;
   template_id: number | null;
@@ -200,12 +204,12 @@ export const templateApi = {
     return res.data;
   },
 
-  // Update template config for a template-created server
+  // Update template config for a template-created server (returns task_id for tracking rebuild progress)
   updateServerTemplateConfig: async (
     serverId: string,
     variableValues: Record<string, unknown>
-  ): Promise<{ message: string; rendered_yaml: string }> => {
-    const res = await api.put<{ message: string; rendered_yaml: string }>(
+  ): Promise<TemplateConfigUpdateResponse> => {
+    const res = await api.put<TemplateConfigUpdateResponse>(
       `/servers/${serverId}/template-config`,
       { variable_values: variableValues }
     );

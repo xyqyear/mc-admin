@@ -303,7 +303,7 @@ class TestChatTracker:
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
-        # Mock database session and server_tracker_crud to return None
+        # Mock database session and server_crud to return None
         with patch("app.players.chat_tracker.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 

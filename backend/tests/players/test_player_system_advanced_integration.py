@@ -218,7 +218,6 @@ async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_co
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
     ]
 
@@ -298,7 +297,6 @@ async def test_heartbeat_crash_detection(
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
     ]
 
@@ -356,7 +354,6 @@ async def test_heartbeat_continuous_updates(
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
     ]
 
@@ -434,9 +431,6 @@ async def test_player_syncer_corrects_false_positives(
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
-    # Mock ServerTracker
-    mock_server_tracker = MagicMock()
-
     # Track player left events
     left_players = []
 
@@ -453,7 +447,6 @@ async def test_player_syncer_corrects_false_positives(
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.players.chat_tracker.get_async_session", db),
         patch("app.players.skin_updater.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
@@ -469,7 +462,6 @@ async def test_player_syncer_corrects_false_positives(
 
         player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
-            server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
@@ -534,7 +526,6 @@ async def test_player_syncer_corrects_false_negatives(
 
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
-    mock_server_tracker = MagicMock()
 
     # Track player joined events
     joined_players = []
@@ -552,7 +543,6 @@ async def test_player_syncer_corrects_false_negatives(
         patch("app.players.session_tracker.get_async_session", db),
         patch("app.players.chat_tracker.get_async_session", db),
         patch("app.players.skin_updater.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
@@ -567,7 +557,6 @@ async def test_player_syncer_corrects_false_negatives(
 
         player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
-            server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
@@ -610,14 +599,12 @@ async def test_player_syncer_skips_unhealthy_servers(
 
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
-    mock_server_tracker = MagicMock()
 
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.player_syncer.config", mock_config),
     ]
 
@@ -627,7 +614,6 @@ async def test_player_syncer_skips_unhealthy_servers(
     try:
         player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
-            server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
@@ -659,14 +645,12 @@ async def test_player_syncer_handles_rcon_failure(
 
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
-    mock_server_tracker = MagicMock()
 
     patches = [
         patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.player_syncer.config", mock_config),
     ]
 
@@ -676,7 +660,6 @@ async def test_player_syncer_handles_rcon_failure(
     try:
         player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
-            server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 
@@ -735,7 +718,6 @@ async def test_crash_recovery_triggers_rcon_validation(
 
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
-    mock_server_tracker = MagicMock()
 
     # Track events
     crash_detected = asyncio.Event()
@@ -757,7 +739,6 @@ async def test_crash_recovery_triggers_rcon_validation(
         patch("app.players.player_syncer.get_async_session", db),
         patch("app.players.player_manager.get_async_session", db),
         patch("app.players.session_tracker.get_async_session", db),
-        patch("app.server_tracker.tracker.get_async_session", db),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
@@ -774,7 +755,6 @@ async def test_crash_recovery_triggers_rcon_validation(
         heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
         player_syncer = PlayerSyncer(
             mc_manager=mock_mc_manager,
-            server_tracker=mock_server_tracker,
             event_dispatcher=clean_dispatcher,
         )
 

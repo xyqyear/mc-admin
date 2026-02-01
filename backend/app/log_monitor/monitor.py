@@ -113,6 +113,12 @@ class LogMonitor:
                 f"Log file not found for {server_id}, will start from beginning when created"
             )
 
+        # wait for the log file to be created
+        while not await aioos.path.exists(log_path):
+            if self._stop_flag:
+                return
+            await asyncio.sleep(1)
+
         try:
             async for changes in awatch(log_path.parent, stop_event=None):
                 if self._stop_flag:

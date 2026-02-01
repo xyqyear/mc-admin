@@ -54,6 +54,10 @@ interface ComposeConfigRequest {
   yaml_content: string;
 }
 
+interface ComposeUpdateResponse {
+  task_id: string;
+}
+
 interface CreateServerRequest {
   yaml_content?: string;
   template_id?: number;
@@ -199,11 +203,12 @@ export const serverApi = {
     return res.data.yaml_content;
   },
 
-  // 更新Compose文件
-  updateComposeFile: async (id: string, yamlContent: string): Promise<void> => {
-    await api.post(`/servers/${id}/compose`, {
+  // 更新Compose文件 (returns task_id for tracking rebuild progress)
+  updateComposeFile: async (id: string, yamlContent: string): Promise<ComposeUpdateResponse> => {
+    const res = await api.post<ComposeUpdateResponse>(`/servers/${id}/compose`, {
       yaml_content: yamlContent,
     } as ComposeConfigRequest);
+    return res.data;
   },
 
   // 创建新服务器
@@ -300,6 +305,7 @@ export const serverApi = {
 
 // Export types for use in other modules
 export type {
+  ComposeUpdateResponse,
   CreateServerRequest,
   PopulateServerRequest,
   PopulateServerResponse,

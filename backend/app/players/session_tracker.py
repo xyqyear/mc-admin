@@ -4,7 +4,7 @@ from ..db.database import get_async_session
 from ..events.base import PlayerJoinedEvent, PlayerLeftEvent, ServerStoppingEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
-from ..server_tracker import crud as server_tracker_crud
+from ..servers import crud as server_crud
 from .crud import (
     end_all_open_sessions,
     end_all_open_sessions_on_server,
@@ -40,9 +40,7 @@ class SessionTracker:
             event: Player join event
         """
         async with get_async_session() as session:
-            server_db_id = await server_tracker_crud.get_server_db_id(
-                session, event.server_id
-            )
+            server_db_id = await server_crud.get_server_db_id(session, event.server_id)
             if server_db_id is None:
                 logger.warning(f"Server not found in tracker: {event.server_id}")
                 return
@@ -77,9 +75,7 @@ class SessionTracker:
             event: Player leave event
         """
         async with get_async_session() as session:
-            server_db_id = await server_tracker_crud.get_server_db_id(
-                session, event.server_id
-            )
+            server_db_id = await server_crud.get_server_db_id(session, event.server_id)
             if server_db_id is None:
                 logger.warning(f"Server not found in tracker: {event.server_id}")
                 return
@@ -114,9 +110,7 @@ class SessionTracker:
             event: Server stopping event
         """
         async with get_async_session() as session:
-            server_db_id = await server_tracker_crud.get_server_db_id(
-                session, event.server_id
-            )
+            server_db_id = await server_crud.get_server_db_id(session, event.server_id)
             if server_db_id is None:
                 logger.warning(f"Server not found in tracker: {event.server_id}")
                 return

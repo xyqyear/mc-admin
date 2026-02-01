@@ -125,7 +125,6 @@ async def player_system(
         patch("app.players.player_manager.get_async_session", test_database),
         patch("app.players.session_tracker.get_async_session", test_database),
         patch("app.players.chat_tracker.get_async_session", test_database),
-        patch("app.server_tracker.tracker.get_async_session", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]

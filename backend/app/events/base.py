@@ -14,21 +14,6 @@ class BaseEvent(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-# Server lifecycle events
-class ServerCreatedEvent(BaseEvent):
-    """Fired when a new server is created."""
-
-    event_type: EventType = EventType.SERVER_CREATED
-    server_id: str = Field(..., description="Server identifier")
-
-
-class ServerRemovedEvent(BaseEvent):
-    """Fired when a server is removed."""
-
-    event_type: EventType = EventType.SERVER_REMOVED
-    server_id: str = Field(..., description="Server identifier")
-
-
 # Player events from logs
 class PlayerUuidDiscoveredEvent(BaseEvent):
     """Fired when player UUID is discovered from logs."""

@@ -1,12 +1,15 @@
-import asyncio
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...players import player_system_manager
+from ...servers.crud import mark_server_removed
 
 router = APIRouter(
     prefix="/servers",
@@ -22,6 +25,7 @@ class ServerOperation(BaseModel):
 async def server_operation(
     server_id: str,
     operation: ServerOperation,
+    db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(get_current_user),
 ):
     """Perform operations on a server (start, stop, restart, up, down)"""
@@ -44,8 +48,12 @@ async def server_operation(
     elif action == "down":
         await instance.down()
     elif action == "remove":
+        # Stop log monitoring before removal
+        await player_system_manager.stop_server_monitoring(server_id)
+        # Mark server as removed in database
+        await mark_server_removed(db, server_id, datetime.now(timezone.utc))
+        # Remove the server files
         await instance.remove()
-        asyncio.create_task(player_system_manager.sync_servers())
     else:
         raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
 

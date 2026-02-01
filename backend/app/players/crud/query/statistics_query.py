@@ -9,7 +9,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Player, PlayerSession
-from ....server_tracker.crud import get_server_db_id
+from ....servers.crud import get_server_db_id
 
 
 class GlobalPlayerStats(BaseModel):

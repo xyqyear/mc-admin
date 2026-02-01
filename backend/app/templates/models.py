@@ -1,10 +1,11 @@
 """Pydantic models for template variable definitions."""
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
 
 class VariableType(str, Enum):
@@ -84,6 +85,13 @@ VariableDefinition = Annotated[
     ],
     Field(discriminator="type"),
 ]
+
+
+def cast_variables_json(variables_json: str) -> list[VariableDefinition]:
+    """Parse variables JSON string to list of VariableDefinition."""
+    raw_list = json.loads(variables_json)
+    adapter = TypeAdapter(list[VariableDefinition])
+    return adapter.validate_python(raw_list)
 
 
 # System reserved variables - fixed schema, always present in every template

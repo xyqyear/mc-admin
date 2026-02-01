@@ -9,8 +9,7 @@ from ..events.base import PlayerJoinedEvent, PlayerLeftEvent
 from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
 from ..minecraft import DockerMCManager, MCServerStatus
-from ..server_tracker import ServerTracker
-from ..server_tracker.crud import get_active_servers_map
+from ..servers.crud import get_active_servers_map
 from .crud import get_online_player_names_on_server
 
 
@@ -20,18 +19,15 @@ class PlayerSyncer:
     def __init__(
         self,
         mc_manager: DockerMCManager,
-        server_tracker: ServerTracker,
         event_dispatcher: EventDispatcher,
     ):
         """Initialize player syncer.
 
         Args:
             mc_manager: Minecraft Docker manager
-            server_tracker: Server tracker for getting active servers
             event_dispatcher: Event dispatcher for player status changes
         """
         self.mc_manager = mc_manager
-        self.server_tracker = server_tracker
         self.event_dispatcher = event_dispatcher
 
         self._task: Optional[asyncio.Task] = None
