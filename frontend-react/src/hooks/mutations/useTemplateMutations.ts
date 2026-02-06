@@ -6,6 +6,7 @@ import {
   TemplateCreateRequest,
   TemplateUpdateRequest,
   VariableDefinition,
+  ExtractVariablesResponse,
 } from "@/hooks/api/templateApi";
 
 export const useTemplateMutations = () => {
@@ -154,6 +155,65 @@ export const useTemplateMutations = () => {
     });
   };
 
+  // Convert to direct mode
+  const useConvertToDirectMode = () => {
+    return useMutation({
+      mutationFn: (serverId: string) => templateApi.convertToDirectMode(serverId),
+      onSuccess: (_, serverId) => {
+        message.success("已转换为直接编辑模式");
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.templates.serverConfigPreview(serverId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.templates.serverConfig(serverId),
+        });
+      },
+      onError: (error: any) => {
+        const detail = error.response?.data?.detail;
+        message.error(`转换失败: ${detail || error.message}`);
+      },
+    });
+  };
+
+  // Extract variables from compose
+  const useExtractVariables = () => {
+    return useMutation<
+      ExtractVariablesResponse,
+      any,
+      { serverId: string; templateId: number }
+    >({
+      mutationFn: ({ serverId, templateId }) =>
+        templateApi.extractVariables(serverId, templateId),
+      onError: (error: any) => {
+        const detail = error.response?.data?.detail;
+        message.error(`提取变量失败: ${detail || error.message}`);
+      },
+    });
+  };
+
+  // Convert to template mode
+  const useConvertToTemplateMode = () => {
+    return useMutation({
+      mutationFn: ({
+        serverId,
+        templateId,
+        variableValues,
+      }: {
+        serverId: string;
+        templateId: number;
+        variableValues: Record<string, unknown>;
+      }) => templateApi.convertToTemplateMode(serverId, templateId, variableValues),
+      onError: (error: any) => {
+        const detail = error.response?.data?.detail;
+        if (Array.isArray(detail)) {
+          message.error(`转换失败: ${detail.join(", ")}`);
+        } else {
+          message.error(`转换失败: ${detail || error.message}`);
+        }
+      },
+    });
+  };
+
   return {
     useCreateTemplate,
     useUpdateTemplate,
@@ -161,5 +221,8 @@ export const useTemplateMutations = () => {
     usePreviewRenderedYaml,
     useUpdateServerTemplateConfig,
     useUpdateDefaultVariables,
+    useConvertToDirectMode,
+    useExtractVariables,
+    useConvertToTemplateMode,
   };
 };

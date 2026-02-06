@@ -272,3 +272,142 @@ class TemplateManager:
                 defaults[var.name] = var.default
 
         return defaults
+
+    @classmethod
+    def extract_variables_from_compose(
+        cls,
+        yaml_template: str,
+        compose_yaml: str,
+        variable_definitions: list[VariableDefinition],
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Extract variable values from compose file by matching against template.
+
+        Algorithm:
+        1. For each line in template containing {variable} placeholders
+        2. Convert that line to a regex pattern (escape special chars, replace {var} with capture group)
+        3. Search all lines in compose file for matches
+        4. Extract captured values and convert to appropriate types
+
+        Args:
+            yaml_template: YAML template string with {variable} placeholders
+            compose_yaml: Actual compose YAML to extract values from
+            variable_definitions: List of variable definitions for type conversion
+
+        Returns:
+            Tuple of (extracted_values dict, warnings list)
+        """
+        extracted: dict[str, Any] = {}
+        warnings: list[str] = []
+
+        # Build variable name to definition map
+        var_def_map = {v.name: v for v in variable_definitions}
+
+        # Get all variable names from template
+        template_vars = cls.extract_variables_from_yaml(yaml_template)
+
+        # Process each line in template that contains variables
+        template_lines = yaml_template.splitlines()
+        compose_lines = compose_yaml.splitlines()
+
+        for template_line in template_lines:
+            line_vars = cls.VARIABLE_PATTERN.findall(template_line)
+            if not line_vars:
+                continue
+
+            # Build regex pattern for this line
+            pattern = cls._template_line_to_regex(template_line, line_vars)
+            if not pattern:
+                continue
+
+            # Search in compose lines
+            for compose_line in compose_lines:
+                match = re.match(pattern, compose_line)
+                if match:
+                    # Extract values from named groups
+                    for var_name in line_vars:
+                        if var_name in match.groupdict():
+                            raw_value = match.group(var_name)
+                            if var_name not in extracted:
+                                # Convert to typed value
+                                if var_name in var_def_map:
+                                    typed_value, warning = cls._convert_to_typed_value(
+                                        raw_value, var_def_map[var_name]
+                                    )
+                                    extracted[var_name] = typed_value
+                                    if warning:
+                                        warnings.append(warning)
+                                else:
+                                    extracted[var_name] = raw_value
+                    break
+
+        # Check for missing variables and use defaults
+        for var_name in template_vars:
+            if var_name not in extracted:
+                if var_name in var_def_map and var_def_map[var_name].default is not None:
+                    extracted[var_name] = var_def_map[var_name].default
+                    warnings.append(f"变量 '{var_name}' 未能从 compose 文件中提取，使用默认值")
+                else:
+                    warnings.append(f"变量 '{var_name}' 未能从 compose 文件中提取，且无默认值")
+
+        return extracted, warnings
+
+    @classmethod
+    def _template_line_to_regex(cls, line: str, variables: list[str]) -> str | None:
+        """Convert a template line to a regex pattern with named capture groups.
+
+        Args:
+            line: Template line containing {variable} placeholders
+            variables: List of variable names in this line
+
+        Returns:
+            Regex pattern string, or None if conversion fails
+        """
+        # Escape special regex characters in the line
+        pattern = re.escape(line.strip())
+
+        # Track which variables we've seen for backreferences
+        seen_vars: set[str] = set()
+
+        for var in variables:
+            escaped_placeholder = re.escape(f"{{{var}}}")
+            if var not in seen_vars:
+                # First occurrence: use named capture group
+                pattern = pattern.replace(escaped_placeholder, f"(?P<{var}>.+?)", 1)
+                seen_vars.add(var)
+            else:
+                # Subsequent occurrences: use backreference
+                pattern = pattern.replace(escaped_placeholder, f"(?P={var})")
+
+        return f"^\\s*{pattern}\\s*$"
+
+    @classmethod
+    def _convert_to_typed_value(
+        cls,
+        raw: str,
+        var_def: VariableDefinition,
+    ) -> tuple[Any, str | None]:
+        """Convert raw string value to typed value based on variable definition.
+
+        Args:
+            raw: Raw string value extracted from compose
+            var_def: Variable definition for type information
+
+        Returns:
+            Tuple of (converted_value, warning_message or None)
+        """
+        try:
+            if isinstance(var_def, IntVariableDefinition):
+                return int(raw), None
+            elif isinstance(var_def, FloatVariableDefinition):
+                return float(raw), None
+            elif isinstance(var_def, BoolVariableDefinition):
+                return raw.lower() in ("true", "1", "yes"), None
+            elif isinstance(var_def, EnumVariableDefinition):
+                if raw in var_def.options:
+                    return raw, None
+                else:
+                    return raw, f"变量 '{var_def.name}' 的值 '{raw}' 不在选项列表中"
+            else:  # StringVariableDefinition
+                return raw, None
+        except (ValueError, TypeError) as e:
+            return raw, f"变量 '{var_def.name}' 类型转换失败: {e}"

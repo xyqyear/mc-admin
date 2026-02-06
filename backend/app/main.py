@@ -49,6 +49,7 @@ from .routers.servers import populate as server_populate
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
 from .routers.servers import template_config as server_template_config
+from .routers.servers import template_migration as server_template_migration
 
 
 @asynccontextmanager
@@ -128,6 +129,7 @@ api_app.include_router(server_console.router)
 api_app.include_router(server_files.router)
 api_app.include_router(server_restart_schedule.router)
 api_app.include_router(server_template_config.router)
+api_app.include_router(server_template_migration.router)
 
 
 # Global exception handler for API app

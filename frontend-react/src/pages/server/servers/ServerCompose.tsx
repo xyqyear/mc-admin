@@ -14,6 +14,7 @@ import {
   SettingOutlined,
   QuestionCircleOutlined,
   EyeOutlined,
+  SwapOutlined,
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor, SimpleEditor } from '@/components/editors'
@@ -21,6 +22,7 @@ import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
 import RebuildProgressModal from '@/components/modals/RebuildProgressModal'
+import ConvertModeModal from '@/components/modals/ConvertModeModal'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useServerTemplatePreview, useServerTemplateConfig } from '@/hooks/queries/base/useTemplateQueries'
@@ -80,6 +82,9 @@ const ServerCompose: React.FC = () => {
   // Rebuild task tracking state
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
   const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
+
+  // Convert mode modal state
+  const [isConvertModalVisible, setIsConvertModalVisible] = useState(false)
 
   // UI Schema to make 'name' field read-only in edit mode
   const templateUiSchema: UiSchema = {
@@ -316,6 +321,11 @@ const ServerCompose: React.FC = () => {
     }
   }
 
+  const handleConvertModeSuccess = () => {
+    composeQuery.refetch()
+    refetchTemplateConfig()
+  }
+
   // Render template-based editing
   if (isTemplateBased) {
     if (templateConfigLoading || !templateConfig) {
@@ -330,6 +340,12 @@ const ServerCompose: React.FC = () => {
           serverTag={serverInfo.name}
           actions={
             <>
+              <Button
+                icon={<SwapOutlined />}
+                onClick={() => setIsConvertModalVisible(true)}
+              >
+                转换为直接编辑
+              </Button>
               <Button
                 icon={<EyeOutlined />}
                 onClick={handlePreviewYaml}
@@ -418,6 +434,15 @@ const ServerCompose: React.FC = () => {
             composeQuery.refetch()
           }}
         />
+
+        {/* Convert Mode Modal */}
+        <ConvertModeModal
+          open={isConvertModalVisible}
+          serverId={id}
+          currentMode="template"
+          onClose={() => setIsConvertModalVisible(false)}
+          onSuccess={handleConvertModeSuccess}
+        />
       </div>
     )
   }
@@ -431,6 +456,12 @@ const ServerCompose: React.FC = () => {
         serverTag={serverInfo.name}
         actions={
           <>
+            <Button
+              icon={<SwapOutlined />}
+              onClick={() => setIsConvertModalVisible(true)}
+            >
+              转换为模板模式
+            </Button>
             <Button
               icon={<DiffOutlined />}
               onClick={handleCompare}
@@ -548,6 +579,15 @@ const ServerCompose: React.FC = () => {
           composeQuery.refetch()
           setEditorKey(prev => prev + 1)
         }}
+      />
+
+      {/* Convert Mode Modal */}
+      <ConvertModeModal
+        open={isConvertModalVisible}
+        serverId={id}
+        currentMode="direct"
+        onClose={() => setIsConvertModalVisible(false)}
+        onSuccess={handleConvertModeSuccess}
       />
     </div>
   )

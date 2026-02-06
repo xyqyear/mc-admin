@@ -130,6 +130,24 @@ export interface DefaultVariablesResponse {
   variable_definitions: VariableDefinition[];
 }
 
+// Response types for mode conversion
+export interface ConvertToDirectResponse {
+  success: boolean;
+}
+
+export interface ExtractVariablesResponse {
+  extracted_values: Record<string, unknown>;
+  warnings: string[];
+  json_schema: Record<string, unknown>;
+  variable_definitions: VariableDefinition[];
+  current_compose: string;
+  rendered_compose: string;
+}
+
+export interface ConvertToTemplateResponse {
+  task_id: string;
+}
+
 export const templateApi = {
   // List all templates
   getTemplates: async (): Promise<TemplateListItem[]> => {
@@ -234,6 +252,41 @@ export const templateApi = {
     const res = await api.put<DefaultVariablesResponse>(
       "/templates/default-variables",
       { variable_definitions: variables }
+    );
+    return res.data;
+  },
+
+  // Convert server to direct editing mode
+  convertToDirectMode: async (
+    serverId: string
+  ): Promise<ConvertToDirectResponse> => {
+    const res = await api.post<ConvertToDirectResponse>(
+      `/servers/${serverId}/convert-to-direct`
+    );
+    return res.data;
+  },
+
+  // Extract variables from compose file using a template
+  extractVariables: async (
+    serverId: string,
+    templateId: number
+  ): Promise<ExtractVariablesResponse> => {
+    const res = await api.post<ExtractVariablesResponse>(
+      `/servers/${serverId}/extract-variables`,
+      { template_id: templateId }
+    );
+    return res.data;
+  },
+
+  // Convert server to template mode
+  convertToTemplateMode: async (
+    serverId: string,
+    templateId: number,
+    variableValues: Record<string, unknown>
+  ): Promise<ConvertToTemplateResponse> => {
+    const res = await api.post<ConvertToTemplateResponse>(
+      `/servers/${serverId}/convert-to-template`,
+      { template_id: templateId, variable_values: variableValues }
     );
     return res.data;
   },
