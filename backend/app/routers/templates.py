@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,6 @@ from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
 from ..models import ServerTemplate, UserPublic
 from ..templates import (
-    SYSTEM_RESERVED_VARIABLES,
     AvailablePortsResponse,
     TemplateCreateRequest,
     TemplateListItem,
@@ -26,6 +26,9 @@ from ..templates import (
     TemplateUpdateRequest,
     VariableDefinition,
     cast_variables_json,
+    get_default_variables,
+    serialize_variables,
+    update_default_variables,
 )
 from ..templates.manager import TemplateManager
 
@@ -33,11 +36,6 @@ router = APIRouter(
     prefix="/templates",
     tags=["templates"],
 )
-
-
-def _serialize_variables(variables: list[VariableDefinition]) -> str:
-    """Serialize list of VariableDefinition to JSON string."""
-    return json.dumps([v.model_dump() for v in variables])
 
 
 @router.get("/", response_model=list[TemplateListItem])
@@ -56,8 +54,7 @@ async def list_templates(
             id=t.id,
             name=t.name,
             description=t.description,
-            variable_count=len(json.loads(t.variables_json))
-            + len(SYSTEM_RESERVED_VARIABLES),
+            variable_count=len(json.loads(t.variables_json)),
             created_at=t.created_at,
         )
         for t in templates
@@ -109,6 +106,58 @@ async def get_available_ports(
     )
 
 
+class DefaultVariablesResponse(BaseModel):
+    """Response model for default variables."""
+
+    variables: list[VariableDefinition]
+
+
+class DefaultVariablesUpdateRequest(BaseModel):
+    """Request model for updating default variables."""
+
+    variables: list[VariableDefinition]
+
+
+@router.get("/default-variables", response_model=DefaultVariablesResponse)
+async def get_default_variables_endpoint(
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    """Get default variable configuration.
+
+    Returns the list of default variables that are pre-filled when creating new templates.
+    """
+    variables = await get_default_variables(db)
+    return DefaultVariablesResponse(variables=variables)
+
+
+@router.put("/default-variables", response_model=DefaultVariablesResponse)
+async def update_default_variables_endpoint(
+    request: DefaultVariablesUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    """Update default variable configuration.
+
+    Updates the list of default variables that are pre-filled when creating new templates.
+    """
+    # Validate for duplicate names
+    var_names = [v.name for v in request.variables]
+    if len(var_names) != len(set(var_names)):
+        seen = set()
+        duplicates = set()
+        for name in var_names:
+            if name in seen:
+                duplicates.add(name)
+            seen.add(name)
+        raise HTTPException(
+            status_code=400, detail=f"变量名重复: {', '.join(sorted(duplicates))}"
+        )
+
+    variables = await update_default_variables(db, request.variables)
+    return DefaultVariablesResponse(variables=variables)
+
+
 @router.get("/{template_id}", response_model=TemplateResponse)
 async def get_template(
     template_id: int,
@@ -132,7 +181,6 @@ async def get_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=user_variables,
-        system_variables=SYSTEM_RESERVED_VARIABLES,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -181,7 +229,7 @@ async def create_template(
         name=request.name,
         description=request.description,
         yaml_template=yaml_template,
-        variables_json=_serialize_variables(variables),
+        variables_json=serialize_variables(variables),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -196,7 +244,6 @@ async def create_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=variables,
-        system_variables=SYSTEM_RESERVED_VARIABLES,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -252,7 +299,7 @@ async def update_template(
         template.yaml_template = request.yaml_template
 
     if request.variables is not None:
-        template.variables_json = _serialize_variables(request.variables)
+        template.variables_json = serialize_variables(request.variables)
 
     template.updated_at = datetime.now(timezone.utc)
 
@@ -265,7 +312,6 @@ async def update_template(
         description=template.description,
         yaml_template=template.yaml_template,
         variables=cast_variables_json(template.variables_json),
-        system_variables=SYSTEM_RESERVED_VARIABLES,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )

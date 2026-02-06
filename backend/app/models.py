@@ -306,3 +306,22 @@ class PlayerAchievement(Base):
     server_db_id: Mapped[int] = mapped_column(Integer, index=True)
     achievement_name: Mapped[str] = mapped_column(String(255))
     earned_at: Mapped[datetime] = mapped_column(TZDatetime())
+
+
+# Default Variable Configuration
+
+
+class DefaultVariableConfig(Base):
+    """Default variable configuration for template creation.
+
+    Stores default variables that are pre-filled when creating new templates.
+    Only one row exists in this table.
+    """
+
+    __tablename__ = "default_variable_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    variables_json: Mapped[str] = mapped_column(TEXT, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )

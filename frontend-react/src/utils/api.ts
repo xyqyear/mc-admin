@@ -259,6 +259,7 @@ export const queryKeys = {
     availablePorts: () => [...queryKeys.templates.all, "available-ports"] as const,
     serverConfig: (serverId: string) => [...queryKeys.templates.all, "server-config", serverId] as const,
     serverConfigPreview: (serverId: string) => [...queryKeys.templates.all, "server-config-preview", serverId] as const,
+    defaultVariables: () => [...queryKeys.templates.all, "default-variables"] as const,
   },
 } as const;
 

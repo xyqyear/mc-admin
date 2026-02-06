@@ -5,6 +5,7 @@ import {
   templateApi,
   TemplateCreateRequest,
   TemplateUpdateRequest,
+  VariableDefinition,
 } from "@/hooks/api/templateApi";
 
 export const useTemplateMutations = () => {
@@ -135,11 +136,30 @@ export const useTemplateMutations = () => {
     });
   };
 
+  // Update default variables
+  const useUpdateDefaultVariables = () => {
+    return useMutation({
+      mutationFn: (variables: VariableDefinition[]) =>
+        templateApi.updateDefaultVariables(variables),
+      onSuccess: () => {
+        message.success("默认变量配置已更新");
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.templates.defaultVariables(),
+        });
+      },
+      onError: (error: any) => {
+        const detail = error.response?.data?.detail;
+        message.error(`更新失败: ${detail || error.message}`);
+      },
+    });
+  };
+
   return {
     useCreateTemplate,
     useUpdateTemplate,
     useDeleteTemplate,
     usePreviewRenderedYaml,
     useUpdateServerTemplateConfig,
+    useUpdateDefaultVariables,
   };
 };

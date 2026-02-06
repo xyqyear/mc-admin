@@ -28,6 +28,7 @@ const ServerConsole = React.lazy(() => import('@/pages/server/servers/ServerCons
 const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
 const TemplateList = React.lazy(() => import('@/pages/templates/TemplateList'))
 const TemplateEdit = React.lazy(() => import('@/pages/templates/TemplateEdit'))
+const DefaultVariables = React.lazy(() => import('@/pages/templates/DefaultVariables'))
 
 
 
@@ -108,6 +109,7 @@ function App() {
           <Route path="/templates">
             <Route index element={<TemplateList />} />
             <Route path="new" element={<TemplateEdit />} />
+            <Route path="default-variables" element={<DefaultVariables />} />
             <Route path=":id/edit" element={<TemplateEdit />} />
           </Route>
         </Route>

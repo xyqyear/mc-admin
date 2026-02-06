@@ -1,9 +1,8 @@
 """Server template module for template-based server creation."""
 
+from .default_variables import get_default_variables, update_default_variables
 from .manager import TemplateManager
 from .models import (
-    SYSTEM_RESERVED_VARIABLES,
-    SYSTEM_VARIABLE_NAMES,
     AvailablePortsResponse,
     BoolVariableDefinition,
     EnumVariableDefinition,
@@ -20,6 +19,7 @@ from .models import (
     VariableDefinition,
     VariableType,
     cast_variables_json,
+    serialize_variables,
 )
 
 __all__ = [
@@ -31,8 +31,6 @@ __all__ = [
     "EnumVariableDefinition",
     "BoolVariableDefinition",
     "VariableDefinition",
-    "SYSTEM_RESERVED_VARIABLES",
-    "SYSTEM_VARIABLE_NAMES",
     "TemplateCreateRequest",
     "TemplateUpdateRequest",
     "TemplateResponse",
@@ -42,4 +40,7 @@ __all__ = [
     "TemplatePreviewRequest",
     "TemplatePreviewResponse",
     "cast_variables_json",
+    "serialize_variables",
+    "get_default_variables",
+    "update_default_variables",
 ]

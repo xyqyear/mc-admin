@@ -78,3 +78,15 @@ export const useServerTemplateConfig = (serverId: string | null) => {
     refetchOnWindowFocus: false,
   });
 };
+
+/**
+ * Hook to get default variables configuration
+ */
+export const useDefaultVariables = () => {
+  return useQuery({
+    queryKey: queryKeys.templates.defaultVariables(),
+    queryFn: templateApi.getDefaultVariables,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
+};

@@ -17,7 +17,6 @@ from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
 from ...templates import (
-    SYSTEM_RESERVED_VARIABLES,
     VariableDefinition,
     cast_variables_json,
 )
@@ -37,7 +36,6 @@ class TemplateConfigResponse(BaseModel):
     template_name: str
     yaml_template: str
     variables: list[VariableDefinition]
-    system_variables: list[VariableDefinition]
     variable_values: dict[str, Any]
     json_schema: dict
     snapshot_time: str
@@ -94,7 +92,6 @@ async def get_template_config(
         template_name=template_snapshot["template_name"],
         yaml_template=template_snapshot["yaml_template"],
         variables=user_variables,
-        system_variables=SYSTEM_RESERVED_VARIABLES,
         variable_values=variable_values,
         json_schema=json_schema,
         snapshot_time=template_snapshot["snapshot_time"],

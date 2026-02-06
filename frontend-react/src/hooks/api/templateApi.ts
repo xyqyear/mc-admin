@@ -72,7 +72,6 @@ export interface Template {
   description?: string;
   yaml_template: string;
   variables: VariableDefinition[];
-  system_variables: VariableDefinition[];
   created_at: string;
   updated_at: string;
 }
@@ -112,7 +111,6 @@ export interface TemplateConfigResponse {
   template_name: string;
   yaml_template: string;
   variables: VariableDefinition[];
-  system_variables: VariableDefinition[];
   variable_values: Record<string, unknown>;
   json_schema: Record<string, unknown>;
   snapshot_time: string;
@@ -125,6 +123,11 @@ export interface TemplateConfigUpdateResponse {
 export interface TemplateConfigPreviewResponse {
   is_template_based: boolean;
   template_id: number | null;
+}
+
+// Default variables types
+export interface DefaultVariablesResponse {
+  variables: VariableDefinition[];
 }
 
 export const templateApi = {
@@ -212,6 +215,25 @@ export const templateApi = {
     const res = await api.put<TemplateConfigUpdateResponse>(
       `/servers/${serverId}/template-config`,
       { variable_values: variableValues }
+    );
+    return res.data;
+  },
+
+  // Get default variables configuration
+  getDefaultVariables: async (): Promise<DefaultVariablesResponse> => {
+    const res = await api.get<DefaultVariablesResponse>(
+      "/templates/default-variables"
+    );
+    return res.data;
+  },
+
+  // Update default variables configuration
+  updateDefaultVariables: async (
+    variables: VariableDefinition[]
+  ): Promise<DefaultVariablesResponse> => {
+    const res = await api.put<DefaultVariablesResponse>(
+      "/templates/default-variables",
+      { variables }
     );
     return res.data;
   },

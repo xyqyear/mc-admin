@@ -17,6 +17,7 @@ import {
   EditOutlined,
   DeleteOutlined,
   CopyOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import PageHeader from "@/components/layout/PageHeader";
@@ -146,6 +147,12 @@ const TemplateList: React.FC = () => {
               onClick={handleCreate}
             >
               新建模板
+            </Button>
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => navigate("/templates/default-variables")}
+            >
+              默认变量配置
             </Button>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
               刷新

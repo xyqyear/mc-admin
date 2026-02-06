@@ -4,8 +4,6 @@ import re
 from typing import Any
 
 from .models import (
-    SYSTEM_RESERVED_VARIABLES,
-    SYSTEM_VARIABLE_NAMES,
     BoolVariableDefinition,
     EnumVariableDefinition,
     FloatVariableDefinition,
@@ -42,8 +40,8 @@ class TemplateManager:
         """Validate template consistency.
 
         Checks that:
-        1. User variables don't conflict with system reserved variables
-        2. All variables used in YAML are defined (system or user)
+        1. No duplicate variable names
+        2. YAML variables and user variables match exactly (bidirectional)
 
         Args:
             yaml_template: YAML template string
@@ -60,11 +58,6 @@ class TemplateManager:
         # Build set of user variable names
         user_var_names = {v.name for v in user_variables}
 
-        # Check for user variables that conflict with system variables
-        conflicts = user_var_names & SYSTEM_VARIABLE_NAMES
-        if conflicts:
-            errors.append(f"用户变量与系统保留变量冲突: {', '.join(sorted(conflicts))}")
-
         # Check for duplicate user variable names
         if len(user_var_names) != len(user_variables):
             seen = set()
@@ -76,13 +69,18 @@ class TemplateManager:
             if duplicates:
                 errors.append(f"用户变量名重复: {', '.join(sorted(duplicates))}")
 
-        # Build set of all defined variables (system + user)
-        defined_vars = SYSTEM_VARIABLE_NAMES | user_var_names
-
-        # Check for undefined variables in YAML
-        undefined = yaml_vars - defined_vars
+        # Bidirectional matching: YAML vars must match user vars exactly
+        # Variables in YAML but not defined
+        undefined = yaml_vars - user_var_names
         if undefined:
             errors.append(f"YAML 中使用了未定义的变量: {', '.join(sorted(undefined))}")
+
+        # Variables defined but not used in YAML
+        unused = user_var_names - yaml_vars
+        if unused:
+            errors.append(
+                f"已定义但未在 YAML 中使用的变量: {', '.join(sorted(unused))}"
+            )
 
         return errors
 
@@ -120,9 +118,6 @@ class TemplateManager:
     ) -> dict:
         """Generate JSON Schema for rjsf from template variables.
 
-        System variables are always included with fixed schema.
-        User variables are added dynamically.
-
         Args:
             user_variables: List of user-defined variable definitions
 
@@ -131,12 +126,6 @@ class TemplateManager:
         """
         properties = {}
         required = []
-
-        # Add system variables first (fixed order)
-        for var in SYSTEM_RESERVED_VARIABLES:
-            prop_schema = cls._variable_to_json_schema(var)
-            properties[var.name] = prop_schema
-            required.append(var.name)
 
         # Add user variables
         for var in user_variables:
@@ -219,15 +208,8 @@ class TemplateManager:
             List of error messages. Empty list means valid.
         """
         errors = []
-        all_vars: list[
-            IntVariableDefinition
-            | FloatVariableDefinition
-            | StringVariableDefinition
-            | EnumVariableDefinition
-            | BoolVariableDefinition
-        ] = list(SYSTEM_RESERVED_VARIABLES) + list(user_variables)
 
-        for var in all_vars:
+        for var in user_variables:
             if var.name not in values:
                 errors.append(f"缺少必需的变量: {var.name}")
                 continue
@@ -274,7 +256,7 @@ class TemplateManager:
         cls,
         user_variables: list[VariableDefinition],
     ) -> dict[str, Any]:
-        """Get default values for all variables (system + user).
+        """Get default values for all variables.
 
         Args:
             user_variables: List of user-defined variable definitions
@@ -283,10 +265,6 @@ class TemplateManager:
             Dictionary mapping variable names to their default values
         """
         defaults = {}
-
-        # Add system variable defaults
-        for var in SYSTEM_RESERVED_VARIABLES:
-            defaults[var.name] = var.default
 
         # Add user variable defaults
         for var in user_variables:

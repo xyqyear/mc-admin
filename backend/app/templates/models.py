@@ -95,71 +95,19 @@ VariableDefinition = Annotated[
     Field(discriminator="type"),
 ]
 
+# Shared TypeAdapter for list[VariableDefinition] serialization/deserialization
+_variable_list_adapter = TypeAdapter(list[VariableDefinition])
+
 
 def cast_variables_json(variables_json: str) -> list[VariableDefinition]:
     """Parse variables JSON string to list of VariableDefinition."""
     raw_list = json.loads(variables_json)
-    adapter = TypeAdapter(list[VariableDefinition])
-    return adapter.validate_python(raw_list)
+    return _variable_list_adapter.validate_python(raw_list)
 
 
-# System reserved variables - fixed schema, always present in every template
-SYSTEM_RESERVED_VARIABLES: list[
-    IntVariableDefinition
-    | FloatVariableDefinition
-    | StringVariableDefinition
-    | EnumVariableDefinition
-    | BoolVariableDefinition
-] = [
-    StringVariableDefinition(
-        type="string",
-        name="name",
-        display_name="服务器名称",
-        description="服务器名称，用于 container_name (mc-{name})",
-        max_length=20,
-        pattern="^[a-z0-9-_]+$",
-    ),
-    EnumVariableDefinition(
-        type="enum",
-        name="java_version",
-        display_name="Java 版本",
-        description="服务器使用的 Java 版本",
-        options=["8", "11", "17", "21", "25"],
-    ),
-    StringVariableDefinition(
-        type="string",
-        name="game_version",
-        display_name="游戏版本",
-        description="Minecraft 游戏版本",
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="max_memory",
-        display_name="最大内存 (GB)",
-        description="服务器最大内存分配，单位为 GB",
-        default=6,
-        min_value=1,
-        max_value=16,
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="game_port",
-        display_name="游戏端口",
-        description="Minecraft 服务器端口",
-        min_value=1024,
-        max_value=65535,
-    ),
-    IntVariableDefinition(
-        type="int",
-        name="rcon_port",
-        display_name="RCON 端口",
-        description="RCON 管理端口",
-        min_value=1024,
-        max_value=65535,
-    ),
-]
-
-SYSTEM_VARIABLE_NAMES = {v.name for v in SYSTEM_RESERVED_VARIABLES}
+def serialize_variables(variables: list[VariableDefinition]) -> str:
+    """Serialize list of VariableDefinition to JSON string."""
+    return _variable_list_adapter.dump_json(variables).decode()
 
 
 # Request/Response models for API
@@ -192,7 +140,6 @@ class TemplateResponse(BaseModel):
     description: Optional[str]
     yaml_template: str
     variables: list[VariableDefinition]
-    system_variables: list[VariableDefinition]
     created_at: datetime
     updated_at: datetime
 
