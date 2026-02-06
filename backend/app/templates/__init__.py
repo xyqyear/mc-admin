@@ -1,6 +1,15 @@
 """Server template module for template-based server creation."""
 
-from .default_variables import get_default_variables, update_default_variables
+from .crud import (
+    check_name_exists,
+    create_template,
+    delete_template,
+    get_all_templates,
+    get_template_by_id,
+    get_template_by_name,
+    save_template,
+)
+from .default_variables_crud import get_default_variables, update_default_variables
 from .manager import TemplateManager
 from .models import (
     AvailablePortsResponse,
@@ -23,7 +32,19 @@ from .models import (
 )
 
 __all__ = [
+    # CRUD operations
+    "get_all_templates",
+    "get_template_by_id",
+    "get_template_by_name",
+    "check_name_exists",
+    "create_template",
+    "save_template",
+    "delete_template",
+    "get_default_variables",
+    "update_default_variables",
+    # Manager
     "TemplateManager",
+    # Models
     "VariableType",
     "IntVariableDefinition",
     "FloatVariableDefinition",
@@ -41,6 +62,4 @@ __all__ = [
     "TemplatePreviewResponse",
     "deserialize_variable_definitions_json",
     "serialize_variable_definitions",
-    "get_default_variables",
-    "update_default_variables",
 ]

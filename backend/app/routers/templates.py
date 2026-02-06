@@ -2,12 +2,10 @@
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
@@ -15,7 +13,7 @@ from ..dependencies import get_current_user
 from ..minecraft import docker_mc_manager
 from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
-from ..models import ServerTemplate, UserPublic
+from ..models import UserPublic
 from ..templates import (
     AvailablePortsResponse,
     TemplateCreateRequest,
@@ -26,11 +24,17 @@ from ..templates import (
     TemplateSchemaResponse,
     TemplateUpdateRequest,
     VariableDefinition,
+    check_name_exists,
     deserialize_variable_definitions_json,
+    get_all_templates,
     get_default_variables,
+    get_template_by_id,
+    save_template,
     serialize_variable_definitions,
     update_default_variables,
 )
+from ..templates import create_template as create_template_crud
+from ..templates import delete_template as delete_template_crud
 from ..templates.manager import TemplateManager
 
 router = APIRouter(
@@ -45,10 +49,7 @@ async def list_templates(
     _: UserPublic = Depends(get_current_user),
 ):
     """List all templates."""
-    result = await db.execute(
-        select(ServerTemplate).order_by(ServerTemplate.created_at.desc())
-    )
-    templates = result.scalars().all()
+    templates = await get_all_templates(db)
 
     return [
         TemplateListItem(
@@ -150,7 +151,9 @@ async def update_default_variables_endpoint(
             status_code=400, detail=f"变量名重复: {', '.join(sorted(duplicates))}"
         )
 
-    variable_definitions = await update_default_variables(db, request.variable_definitions)
+    variable_definitions = await update_default_variables(
+        db, request.variable_definitions
+    )
     return DefaultVariablesResponse(variable_definitions=variable_definitions)
 
 
@@ -161,15 +164,14 @@ async def get_template(
     _: UserPublic = Depends(get_current_user),
 ):
     """Get template details."""
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.id == template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
+    user_variables = deserialize_variable_definitions_json(
+        template.variable_definitions_json
+    )
 
     return TemplateResponse(
         id=template.id,
@@ -194,12 +196,7 @@ async def create_template(
 
     # Handle copy from existing template
     if request.copy_from_template_id:
-        result = await db.execute(
-            select(ServerTemplate).where(
-                ServerTemplate.id == request.copy_from_template_id
-            )
-        )
-        source = result.scalar_one_or_none()
+        source = await get_template_by_id(db, request.copy_from_template_id)
         if not source:
             raise HTTPException(status_code=404, detail="源模板不存在")
 
@@ -207,7 +204,9 @@ async def create_template(
         if not yaml_template:
             yaml_template = source.yaml_template
         if not variable_definitions:
-            variable_definitions = deserialize_variable_definitions_json(source.variable_definitions_json)
+            variable_definitions = deserialize_variable_definitions_json(
+                source.variable_definitions_json
+            )
 
     # Validate template
     errors = TemplateManager.validate_template(yaml_template, variable_definitions)
@@ -215,24 +214,16 @@ async def create_template(
         raise HTTPException(status_code=400, detail=errors)
 
     # Check name uniqueness
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.name == request.name)
-    )
-    if result.scalar_one_or_none():
+    if await check_name_exists(db, request.name):
         raise HTTPException(status_code=409, detail="模板名称已存在")
 
-    template = ServerTemplate(
+    template = await create_template_crud(
+        db,
         name=request.name,
         description=request.description,
         yaml_template=yaml_template,
-        variable_definitions_json=serialize_variable_definitions(variable_definitions),
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        variable_definitions=variable_definitions,
     )
-
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
 
     return TemplateResponse(
         id=template.id,
@@ -253,28 +244,15 @@ async def update_template(
     _: UserPublic = Depends(get_current_user),
 ):
     """Update an existing template."""
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.id == template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    # Update fields
+    # Check name uniqueness if name is being updated
     if request.name is not None:
-        # Check name uniqueness
-        existing = await db.execute(
-            select(ServerTemplate).where(
-                ServerTemplate.name == request.name, ServerTemplate.id != template_id
-            )
-        )
-        if existing.scalar_one_or_none():
+        if await check_name_exists(db, request.name, exclude_id=template_id):
             raise HTTPException(status_code=409, detail="模板名称已存在")
-        template.name = request.name
-
-    if request.description is not None:
-        template.description = request.description
 
     # Get current values for validation
     yaml_template = (
@@ -291,23 +269,29 @@ async def update_template(
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
+    # Update template fields
+    if request.name is not None:
+        template.name = request.name
+    if request.description is not None:
+        template.description = request.description
     if request.yaml_template is not None:
         template.yaml_template = request.yaml_template
-
     if request.variable_definitions is not None:
-        template.variable_definitions_json = serialize_variable_definitions(request.variable_definitions)
+        template.variable_definitions_json = serialize_variable_definitions(
+            list(request.variable_definitions)
+        )
 
-    template.updated_at = datetime.now(timezone.utc)
-
-    await db.commit()
-    await db.refresh(template)
+    # Save updates
+    await save_template(db, template)
 
     return TemplateResponse(
         id=template.id,
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variable_definitions=deserialize_variable_definitions_json(template.variable_definitions_json),
+        variable_definitions=deserialize_variable_definitions_json(
+            template.variable_definitions_json
+        ),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -320,16 +304,12 @@ async def delete_template(
     _: UserPublic = Depends(get_current_user),
 ):
     """Delete a template."""
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.id == template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    await db.delete(template)
-    await db.commit()
+    await delete_template_crud(db, template)
 
 
 @router.get("/{template_id}/schema", response_model=TemplateSchemaResponse)
@@ -339,15 +319,14 @@ async def get_template_schema(
     _: UserPublic = Depends(get_current_user),
 ):
     """Get JSON Schema for template variables (for rjsf form rendering)."""
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.id == template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
+    user_variables = deserialize_variable_definitions_json(
+        template.variable_definitions_json
+    )
     json_schema = TemplateManager.generate_json_schema(user_variables)
 
     return TemplateSchemaResponse(
@@ -365,15 +344,14 @@ async def preview_rendered_yaml(
     _: UserPublic = Depends(get_current_user),
 ):
     """Preview rendered YAML without creating server."""
-    result = await db.execute(
-        select(ServerTemplate).where(ServerTemplate.id == template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
+    user_variables = deserialize_variable_definitions_json(
+        template.variable_definitions_json
+    )
 
     # Validate values
     errors = TemplateManager.validate_variable_values(
