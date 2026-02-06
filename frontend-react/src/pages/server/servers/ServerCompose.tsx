@@ -13,11 +13,10 @@ import {
   DiffOutlined,
   SettingOutlined,
   QuestionCircleOutlined,
-  EyeOutlined,
   SwapOutlined,
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ComposeYamlEditor, MonacoDiffEditor, SimpleEditor } from '@/components/editors'
+import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
@@ -77,7 +76,8 @@ const ServerCompose: React.FC = () => {
   // Template form state
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
-  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
+  const [isTemplateDiffVisible, setIsTemplateDiffVisible] = useState(false)
+  const [templateDiffLoading, setTemplateDiffLoading] = useState(false)
 
   // Rebuild task tracking state
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
@@ -157,16 +157,24 @@ const ServerCompose: React.FC = () => {
     }
   }
 
-  // Preview YAML for template mode
-  const handlePreviewYaml = async () => {
+  // Show diff for template mode
+  const handleTemplateDiff = async () => {
     if (!templateConfig?.template_id || !templateFormData) return
 
-    const yaml = await previewMutation.mutateAsync({
-      id: templateConfig.template_id,
-      variableValues: templateFormData,
-    })
-    setPreviewYaml(yaml)
-    setIsPreviewModalVisible(true)
+    setTemplateDiffLoading(true)
+    try {
+      // Refetch current compose content
+      await composeQuery.refetch()
+      // Get preview YAML
+      const yaml = await previewMutation.mutateAsync({
+        id: templateConfig.template_id,
+        variableValues: templateFormData,
+      })
+      setPreviewYaml(yaml)
+      setIsTemplateDiffVisible(true)
+    } finally {
+      setTemplateDiffLoading(false)
+    }
   }
 
   // Submit template config
@@ -347,11 +355,11 @@ const ServerCompose: React.FC = () => {
                 转换为直接编辑
               </Button>
               <Button
-                icon={<EyeOutlined />}
-                onClick={handlePreviewYaml}
-                loading={previewMutation.isPending}
+                icon={<DiffOutlined />}
+                onClick={handleTemplateDiff}
+                loading={templateDiffLoading}
               >
-                预览 YAML
+                差异对比
               </Button>
               <Button
                 icon={<ReloadOutlined />}
@@ -396,26 +404,38 @@ const ServerCompose: React.FC = () => {
           </RjsfForm>
         </Card>
 
-        {/* Preview YAML Modal */}
+        {/* Template Diff Modal */}
         <Modal
-          title="预览生成的 YAML"
-          open={isPreviewModalVisible}
-          onCancel={() => setIsPreviewModalVisible(false)}
-          width={1000}
+          title="配置差异对比"
+          open={isTemplateDiffVisible}
+          onCancel={() => setIsTemplateDiffVisible(false)}
+          width={1400}
           footer={[
-            <Button key="close" onClick={() => setIsPreviewModalVisible(false)}>
+            <Button key="close" onClick={() => setIsTemplateDiffVisible(false)}>
               关闭
             </Button>
           ]}
         >
-          {previewYaml && (
-            <SimpleEditor
-              value={previewYaml}
-              language="yaml"
-              height="60vh"
-              options={{ readOnly: true }}
+          <div className="space-y-4">
+            <Alert
+              message="差异对比视图"
+              description="左侧为服务器当前配置，右侧为根据当前表单参数渲染的配置。高亮显示的是差异部分。"
+              type="info"
+              showIcon
             />
-          )}
+            <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
+              <MonacoDiffEditor
+                key={`template-diff-${composeContent?.length || 0}-${previewYaml?.length || 0}`}
+                height="600px"
+                language="yaml"
+                original={composeContent || ''}
+                modified={previewYaml || ''}
+                originalTitle="服务器当前配置"
+                modifiedTitle="表单渲染配置"
+                theme="vs-light"
+              />
+            </div>
+          </div>
         </Modal>
 
         {/* Rebuild Progress Modal */}
