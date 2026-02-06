@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Card,
   Form,
-  Input,
   Button,
   Typography,
   Alert,
@@ -12,30 +11,21 @@ import {
   message,
   Divider,
   Tabs,
-  Select,
-  Empty,
 } from 'antd'
 import {
   FileZipOutlined,
   PlayCircleOutlined,
   PlusOutlined,
-  CopyOutlined,
-  QuestionCircleOutlined,
   SnippetsOutlined,
   CodeOutlined,
-  EyeOutlined,
 } from '@ant-design/icons'
-import { ComposeYamlEditor, SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
-import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
-import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
+import { TemplateCreationMode, TraditionalCreationMode } from '@/components/server/ServerNew'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
-import { useTemplates, useTemplateSchema, useAvailablePorts } from '@/hooks/queries/base/useTemplateQueries'
-import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
-import RjsfForm from '@/components/forms/rjsfTheme'
+import { useTemplateSchema, useAvailablePorts } from '@/hooks/queries/base/useTemplateQueries'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 
@@ -46,26 +36,20 @@ type CreationMode = 'traditional' | 'template'
 const ServerNew: React.FC = () => {
   const navigate = useNavigate()
   const [form] = Form.useForm()
-  const [composeContent, setComposeContent] = useState('')
 
   // Creation mode state
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
 
-  // Template mode state
+  // Template mode state (managed by parent for validation and creation)
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
-  const [previewYaml, setPreviewYaml] = useState<string | null>(null)
-  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
+
+  // Traditional mode state
+  const [composeContent, setComposeContent] = useState('')
 
   // Archive selection state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
   const [selectedArchiveFile, setSelectedArchiveFile] = useState<string | null>(null)
-
-  // Template selection state (for traditional mode - copy from existing server)
-  const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
-
-  // Help modal state
-  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
 
   // Populate progress state
   const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
@@ -75,9 +59,8 @@ const ServerNew: React.FC = () => {
   // Restart schedule state
   const [enableRestartSchedule, setEnableRestartSchedule] = useState(true)
 
-  // Queries
-  const { data: templates = [], isLoading: templatesLoading } = useTemplates()
-  const { data: templateSchema, isLoading: schemaLoading } = useTemplateSchema(selectedTemplateId)
+  // Queries for template validation
+  const { data: templateSchema } = useTemplateSchema(selectedTemplateId)
   const { data: availablePorts } = useAvailablePorts(creationMode === 'template')
 
   // Mutations
@@ -86,8 +69,6 @@ const ServerNew: React.FC = () => {
   const populateServerMutation = usePopulateServer()
   const createRestartScheduleMutation = useCreateOrUpdateRestartSchedule()
   const autoUpdateDNS = useAutoUpdateDNS()
-  const { usePreviewRenderedYaml } = useTemplateMutations()
-  const previewMutation = usePreviewRenderedYaml()
 
   // Initialize template form data with defaults when schema loads
   useEffect(() => {
@@ -113,6 +94,11 @@ const ServerNew: React.FC = () => {
     }
   }, [templateSchema, availablePorts])
 
+  // Sync compose content with form
+  useEffect(() => {
+    form.setFieldsValue({ composeContent: composeContent })
+  }, [form, composeContent])
+
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)
     setIsArchiveModalVisible(false)
@@ -124,28 +110,13 @@ const ServerNew: React.FC = () => {
     message.info('已移除压缩包选择')
   }
 
-  const handleTemplateSelect = (templateContent: string) => {
-    setComposeContent(templateContent)
-    setIsTemplateModalVisible(false)
-    form.setFieldsValue({ composeContent: templateContent })
-    message.success('已应用服务器模板配置')
-  }
-
-  const handleTemplateFormChange = (data: { formData?: Record<string, unknown> }) => {
-    if (data.formData) {
-      setTemplateFormData(data.formData)
+  const triggerDNSUpdateAndNavigate = async () => {
+    try {
+      await autoUpdateDNS.mutateAsync()
+    } catch (dnsError: any) {
+      console.warn('DNS自动更新失败:', dnsError)
     }
-  }
-
-  const handlePreviewYaml = async () => {
-    if (!selectedTemplateId || !templateFormData) return
-
-    const yaml = await previewMutation.mutateAsync({
-      id: selectedTemplateId,
-      variableValues: templateFormData,
-    })
-    setPreviewYaml(yaml)
-    setIsPreviewModalVisible(true)
+    navigate('/overview')
   }
 
   const handleCreate = async () => {
@@ -239,15 +210,6 @@ const ServerNew: React.FC = () => {
     }
   }
 
-  const triggerDNSUpdateAndNavigate = async () => {
-    try {
-      await autoUpdateDNS.mutateAsync()
-    } catch (dnsError: any) {
-      console.warn('DNS自动更新失败:', dnsError)
-    }
-    navigate('/overview')
-  }
-
   const handlePopulateComplete = async () => {
     setIsPopulateProgressModalVisible(false)
     setPopulateTaskId(null)
@@ -260,19 +222,6 @@ const ServerNew: React.FC = () => {
     setPopulateTaskId(null)
     navigate('/overview')
   }
-
-  const handleComposeContentChange = (value: string | undefined) => {
-    if (value !== undefined) {
-      setComposeContent(value)
-      form.setFieldsValue({ composeContent: value })
-    }
-  }
-
-  useEffect(() => {
-    form.setFieldsValue({ composeContent: composeContent })
-  }, [form, composeContent])
-
-  const editorRef = useRef<any>(null)
 
   const isLoading = createServerMutation.isPending || populateServerMutation.isPending || createRestartScheduleMutation.isPending
 
@@ -308,64 +257,12 @@ const ServerNew: React.FC = () => {
                 </span>
               ),
               children: (
-                <div className="space-y-4">
-                  {/* Template Selection */}
-                  <Card title="选择模板" size="small">
-                    <Select
-                      placeholder="选择一个服务器模板"
-                      style={{ width: '100%' }}
-                      value={selectedTemplateId}
-                      onChange={setSelectedTemplateId}
-                      loading={templatesLoading}
-                      options={templates.map((t) => ({
-                        value: t.id,
-                        label: `${t.name}${t.description ? ` - ${t.description}` : ''}`,
-                      }))}
-                      notFoundContent={
-                        <Empty
-                          description="暂无模板"
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        >
-                          <Button type="link" onClick={() => navigate('/templates/new')}>
-                            创建模板
-                          </Button>
-                        </Empty>
-                      }
-                    />
-                  </Card>
-
-                  {/* Template Form */}
-                  {selectedTemplateId && templateSchema && (
-                    <Card
-                      title="配置参数"
-                      size="small"
-                      extra={
-                        <Button
-                          icon={<EyeOutlined />}
-                          onClick={handlePreviewYaml}
-                          loading={previewMutation.isPending}
-                        >
-                          预览 YAML
-                        </Button>
-                      }
-                    >
-                      {schemaLoading ? (
-                        <div className="text-center py-4">加载中...</div>
-                      ) : (
-                        <RjsfForm
-                          schema={templateSchema.json_schema as RJSFSchema}
-                          formData={templateFormData}
-                          validator={validator}
-                          onChange={handleTemplateFormChange}
-                          showErrorList={false}
-                          liveValidate
-                        >
-                          <div /> {/* Hide default submit button */}
-                        </RjsfForm>
-                      )}
-                    </Card>
-                  )}
-                </div>
+                <TemplateCreationMode
+                  selectedTemplateId={selectedTemplateId}
+                  setSelectedTemplateId={setSelectedTemplateId}
+                  templateFormData={templateFormData}
+                  setTemplateFormData={setTemplateFormData}
+                />
               ),
             },
             {
@@ -376,75 +273,11 @@ const ServerNew: React.FC = () => {
                 </span>
               ),
               children: (
-                <Form
+                <TraditionalCreationMode
                   form={form}
-                  layout="vertical"
-                  initialValues={{ composeContent: '' }}
-                >
-                  {/* Server Name */}
-                  <Card title="服务器基本信息" size="small" className="mb-4">
-                    <Form.Item
-                      name="serverName"
-                      label="服务器名称"
-                      rules={[
-                        { required: true, message: '请输入服务器名称' },
-                        { pattern: /^[a-zA-Z0-9-_]+$/, message: '服务器名称只能包含字母、数字、连字符和下划线' },
-                        { min: 1, max: 50, message: '服务器名称长度应在1-50个字符之间' }
-                      ]}
-                    >
-                      <Input placeholder="例如: vanilla-survival" size="large" />
-                    </Form.Item>
-                  </Card>
-
-                  {/* Compose Editor */}
-                  <Card
-                    title="Docker Compose 配置"
-                    size="small"
-                    extra={
-                      <Space>
-                        <Button
-                          icon={<QuestionCircleOutlined />}
-                          onClick={() => setIsHelpModalVisible(true)}
-                          type="default"
-                        >
-                          配置帮助
-                        </Button>
-                        <Button
-                          icon={<CopyOutlined />}
-                          onClick={() => setIsTemplateModalVisible(true)}
-                          type="dashed"
-                        >
-                          从现有服务器复制
-                        </Button>
-                      </Space>
-                    }
-                  >
-                    <Alert
-                      message="配置说明"
-                      description="注意编辑container_name为mc-{服务器名}; 注意编辑服务器端口，不与现有冲突"
-                      type="info"
-                      showIcon
-                      className="mb-4"
-                    />
-
-                    <Form.Item
-                      name="composeContent"
-                      rules={[{ required: true, message: '请输入 Docker Compose 配置' }]}
-                    >
-                      <ComposeYamlEditor
-                        autoHeight
-                        minHeight={300}
-                        value={composeContent}
-                        onChange={handleComposeContentChange}
-                        onMount={(editor: any) => {
-                          editorRef.current = editor
-                        }}
-                        theme="vs-light"
-                        path="docker-compose.yml"
-                      />
-                    </Form.Item>
-                  </Card>
-                </Form>
+                  composeContent={composeContent}
+                  setComposeContent={setComposeContent}
+                />
               ),
             },
           ]}
@@ -553,7 +386,7 @@ const ServerNew: React.FC = () => {
         </div>
       </Card>
 
-      {/* Modals */}
+      {/* Shared Modals */}
       <ArchiveSelectionModal
         open={isArchiveModalVisible}
         onCancel={() => setIsArchiveModalVisible(false)}
@@ -569,44 +402,6 @@ const ServerNew: React.FC = () => {
         onClose={handlePopulateClose}
         onComplete={handlePopulateComplete}
       />
-
-      <ServerTemplateModal
-        open={isTemplateModalVisible}
-        onCancel={() => setIsTemplateModalVisible(false)}
-        onSelect={handleTemplateSelect}
-        title="选择服务器模板"
-        description="选择现有服务器作为模板，使用其 Docker Compose 配置创建新服务器"
-        selectButtonText="使用模板"
-      />
-
-      <DockerComposeHelpModal
-        open={isHelpModalVisible}
-        onCancel={() => setIsHelpModalVisible(false)}
-      />
-
-      {/* Preview YAML Modal */}
-      {previewYaml && (
-        <div
-          className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isPreviewModalVisible ? '' : 'hidden'}`}
-          onClick={() => setIsPreviewModalVisible(false)}
-        >
-          <div
-            className="bg-white rounded-lg p-4 w-3/4 max-h-[80vh] overflow-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <Text strong>预览生成的 YAML</Text>
-              <Button onClick={() => setIsPreviewModalVisible(false)}>关闭</Button>
-            </div>
-            <SimpleEditor
-              value={previewYaml}
-              language="yaml"
-              height="60vh"
-              options={{ readOnly: true }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
