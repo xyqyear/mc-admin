@@ -128,7 +128,7 @@ def create_template(client) -> int:
         json={
             "name": "config-test-template",
             "yaml_template": YAML_TEMPLATE,
-            "variables": [
+            "variable_definitions": [
                 {"type": "string", "name": "name", "display_name": "Name"},
                 {"type": "int", "name": "game_port", "display_name": "Game Port"},
                 {"type": "int", "name": "rcon_port", "display_name": "RCON Port"},

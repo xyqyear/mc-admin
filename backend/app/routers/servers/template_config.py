@@ -18,7 +18,7 @@ from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
 from ...templates import (
     VariableDefinition,
-    cast_variables_json,
+    deserialize_variable_definitions_json,
 )
 from ...templates.manager import TemplateManager
 
@@ -35,7 +35,7 @@ class TemplateConfigResponse(BaseModel):
     template_id: int
     template_name: str
     yaml_template: str
-    variables: list[VariableDefinition]
+    variable_definitions: list[VariableDefinition]
     variable_values: dict[str, Any]
     json_schema: dict
     snapshot_time: str
@@ -81,7 +81,7 @@ async def get_template_config(
     variable_values = json.loads(server.variable_values_json or "{}")
 
     # Parse user variables from snapshot
-    user_variables = cast_variables_json(json.dumps(template_snapshot["variables"]))
+    user_variables = deserialize_variable_definitions_json(json.dumps(template_snapshot["variable_definitions"]))
 
     # Generate JSON Schema
     json_schema = TemplateManager.generate_json_schema(user_variables)
@@ -91,7 +91,7 @@ async def get_template_config(
         template_id=template_snapshot["template_id"],
         template_name=template_snapshot["template_name"],
         yaml_template=template_snapshot["yaml_template"],
-        variables=user_variables,
+        variable_definitions=user_variables,
         variable_values=variable_values,
         json_schema=json_schema,
         snapshot_time=template_snapshot["snapshot_time"],
@@ -122,7 +122,7 @@ async def update_template_config(
 
     # Parse template snapshot
     template_snapshot = json.loads(server.template_snapshot_json)
-    user_variables = cast_variables_json(json.dumps(template_snapshot["variables"]))
+    user_variables = deserialize_variable_definitions_json(json.dumps(template_snapshot["variable_definitions"]))
 
     # Validate variable values
     errors = TemplateManager.validate_variable_values(

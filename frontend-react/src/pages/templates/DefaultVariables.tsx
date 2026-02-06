@@ -30,9 +30,9 @@ const DefaultVariables: React.FC = () => {
 
   // Initialize form with loaded data
   useEffect(() => {
-    if (defaultVariablesData?.variables) {
-      originalVariablesRef.current = defaultVariablesData.variables;
-      setVariables(convertToFormData(defaultVariablesData.variables));
+    if (defaultVariablesData?.variable_definitions) {
+      originalVariablesRef.current = defaultVariablesData.variable_definitions;
+      setVariables(convertToFormData(defaultVariablesData.variable_definitions));
     }
   }, [defaultVariablesData]);
 
@@ -52,8 +52,8 @@ const DefaultVariables: React.FC = () => {
   const handleCompare = async () => {
     try {
       const result = await refetch();
-      if (result.data?.variables) {
-        originalVariablesRef.current = result.data.variables;
+      if (result.data?.variable_definitions) {
+        originalVariablesRef.current = result.data.variable_definitions;
       }
       setIsCompareVisible(true);
     } catch {

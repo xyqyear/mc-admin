@@ -19,7 +19,7 @@ from ...servers import (
     create_server_record,
     extract_ports_from_yaml,
 )
-from ...templates import cast_variables_json
+from ...templates import deserialize_variable_definitions_json
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -88,7 +88,7 @@ async def create_server(
             if not template:
                 raise HTTPException(status_code=404, detail="模板不存在")
 
-            user_variables = cast_variables_json(template.variables_json)
+            user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
 
             # Validate variable values
             errors = TemplateManager.validate_variable_values(
@@ -110,7 +110,7 @@ async def create_server(
                 "template_id": template.id,
                 "template_name": template.name,
                 "yaml_template": template.yaml_template,
-                "variables": json.loads(template.variables_json),
+                "variable_definitions": json.loads(template.variable_definitions_json),
                 "snapshot_time": datetime.now(timezone.utc).isoformat(),
             }
             variable_values = create_request.variable_values

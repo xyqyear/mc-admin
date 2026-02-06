@@ -1,6 +1,7 @@
 """Template management API router."""
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 
 import yaml
@@ -25,9 +26,9 @@ from ..templates import (
     TemplateSchemaResponse,
     TemplateUpdateRequest,
     VariableDefinition,
-    cast_variables_json,
+    deserialize_variable_definitions_json,
     get_default_variables,
-    serialize_variables,
+    serialize_variable_definitions,
     update_default_variables,
 )
 from ..templates.manager import TemplateManager
@@ -54,7 +55,7 @@ async def list_templates(
             id=t.id,
             name=t.name,
             description=t.description,
-            variable_count=len(json.loads(t.variables_json)),
+            variable_count=len(json.loads(t.variable_definitions_json)),
             created_at=t.created_at,
         )
         for t in templates
@@ -109,13 +110,13 @@ async def get_available_ports(
 class DefaultVariablesResponse(BaseModel):
     """Response model for default variables."""
 
-    variables: list[VariableDefinition]
+    variable_definitions: list[VariableDefinition]
 
 
 class DefaultVariablesUpdateRequest(BaseModel):
     """Request model for updating default variables."""
 
-    variables: list[VariableDefinition]
+    variable_definitions: list[VariableDefinition]
 
 
 @router.get("/default-variables", response_model=DefaultVariablesResponse)
@@ -127,8 +128,8 @@ async def get_default_variables_endpoint(
 
     Returns the list of default variables that are pre-filled when creating new templates.
     """
-    variables = await get_default_variables(db)
-    return DefaultVariablesResponse(variables=variables)
+    variable_definitions = await get_default_variables(db)
+    return DefaultVariablesResponse(variable_definitions=variable_definitions)
 
 
 @router.put("/default-variables", response_model=DefaultVariablesResponse)
@@ -142,20 +143,15 @@ async def update_default_variables_endpoint(
     Updates the list of default variables that are pre-filled when creating new templates.
     """
     # Validate for duplicate names
-    var_names = [v.name for v in request.variables]
-    if len(var_names) != len(set(var_names)):
-        seen = set()
-        duplicates = set()
-        for name in var_names:
-            if name in seen:
-                duplicates.add(name)
-            seen.add(name)
+    var_names = [v.name for v in request.variable_definitions]
+    duplicates = [name for name, count in Counter(var_names).items() if count > 1]
+    if duplicates:
         raise HTTPException(
             status_code=400, detail=f"变量名重复: {', '.join(sorted(duplicates))}"
         )
 
-    variables = await update_default_variables(db, request.variables)
-    return DefaultVariablesResponse(variables=variables)
+    variable_definitions = await update_default_variables(db, request.variable_definitions)
+    return DefaultVariablesResponse(variable_definitions=variable_definitions)
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
@@ -173,14 +169,14 @@ async def get_template(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = cast_variables_json(template.variables_json)
+    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
 
     return TemplateResponse(
         id=template.id,
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variables=user_variables,
+        variable_definitions=user_variables,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -194,7 +190,7 @@ async def create_template(
 ):
     """Create a new template."""
     yaml_template = request.yaml_template
-    variables = list(request.variables)
+    variable_definitions = list(request.variable_definitions)
 
     # Handle copy from existing template
     if request.copy_from_template_id:
@@ -210,11 +206,11 @@ async def create_template(
         # Use source template's content if not provided
         if not yaml_template:
             yaml_template = source.yaml_template
-        if not variables:
-            variables = cast_variables_json(source.variables_json)
+        if not variable_definitions:
+            variable_definitions = deserialize_variable_definitions_json(source.variable_definitions_json)
 
     # Validate template
-    errors = TemplateManager.validate_template(yaml_template, variables)
+    errors = TemplateManager.validate_template(yaml_template, variable_definitions)
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
@@ -229,7 +225,7 @@ async def create_template(
         name=request.name,
         description=request.description,
         yaml_template=yaml_template,
-        variables_json=serialize_variables(variables),
+        variable_definitions_json=serialize_variable_definitions(variable_definitions),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -243,7 +239,7 @@ async def create_template(
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variables=variables,
+        variable_definitions=variable_definitions,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -284,22 +280,22 @@ async def update_template(
     yaml_template = (
         request.yaml_template if request.yaml_template else template.yaml_template
     )
-    variables = (
-        list(request.variables)
-        if request.variables is not None
-        else cast_variables_json(template.variables_json)
+    variable_definitions = (
+        list(request.variable_definitions)
+        if request.variable_definitions is not None
+        else deserialize_variable_definitions_json(template.variable_definitions_json)
     )
 
     # Validate template
-    errors = TemplateManager.validate_template(yaml_template, variables)
+    errors = TemplateManager.validate_template(yaml_template, variable_definitions)
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
     if request.yaml_template is not None:
         template.yaml_template = request.yaml_template
 
-    if request.variables is not None:
-        template.variables_json = serialize_variables(request.variables)
+    if request.variable_definitions is not None:
+        template.variable_definitions_json = serialize_variable_definitions(request.variable_definitions)
 
     template.updated_at = datetime.now(timezone.utc)
 
@@ -311,7 +307,7 @@ async def update_template(
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variables=cast_variables_json(template.variables_json),
+        variable_definitions=deserialize_variable_definitions_json(template.variable_definitions_json),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -351,7 +347,7 @@ async def get_template_schema(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = cast_variables_json(template.variables_json)
+    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
     json_schema = TemplateManager.generate_json_schema(user_variables)
 
     return TemplateSchemaResponse(
@@ -377,7 +373,7 @@ async def preview_rendered_yaml(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = cast_variables_json(template.variables_json)
+    user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
 
     # Validate values
     errors = TemplateManager.validate_variable_values(

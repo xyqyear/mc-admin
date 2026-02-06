@@ -11,8 +11,8 @@ from .models import (
     IntVariableDefinition,
     StringVariableDefinition,
     VariableDefinition,
-    cast_variables_json,
-    serialize_variables,
+    deserialize_variable_definitions_json,
+    serialize_variable_definitions,
 )
 
 # Default variables that are pre-filled when creating new templates
@@ -77,7 +77,7 @@ async def _ensure_default_config(db: AsyncSession) -> DefaultVariableConfig:
     if not config:
         config = DefaultVariableConfig(
             id=1,
-            variables_json=serialize_variables(DEFAULT_VARIABLES),
+            variable_definitions_json=serialize_variable_definitions(DEFAULT_VARIABLES),
             updated_at=datetime.now(timezone.utc),
         )
         db.add(config)
@@ -100,7 +100,7 @@ async def get_default_variables(db: AsyncSession) -> list[VariableDefinition]:
         List of variable definitions
     """
     config = await _ensure_default_config(db)
-    return cast_variables_json(config.variables_json)
+    return deserialize_variable_definitions_json(config.variable_definitions_json)
 
 
 async def update_default_variables(
@@ -123,15 +123,15 @@ async def update_default_variables(
     )
     config = result.scalar_one_or_none()
 
-    variables_json = serialize_variables(variables)
+    variable_definitions_json = serialize_variable_definitions(variables)
 
     if config:
-        config.variables_json = variables_json
+        config.variable_definitions_json = variable_definitions_json
         config.updated_at = datetime.now(timezone.utc)
     else:
         config = DefaultVariableConfig(
             id=1,
-            variables_json=variables_json,
+            variable_definitions_json=variable_definitions_json,
             updated_at=datetime.now(timezone.utc),
         )
         db.add(config)
@@ -139,4 +139,4 @@ async def update_default_variables(
     await db.commit()
     await db.refresh(config)
 
-    return cast_variables_json(config.variables_json)
+    return deserialize_variable_definitions_json(config.variable_definitions_json)

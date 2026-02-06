@@ -79,7 +79,7 @@ class TestCreateTemplate:
                 "name": "test-template",
                 "description": "Test template",
                 "yaml_template": YAML_TEMPLATE,
-                "variables": [
+                "variable_definitions": [
                     {"type": "string", "name": "name", "display_name": "Name"},
                     {"type": "int", "name": "game_port", "display_name": "Game Port"},
                     {"type": "int", "name": "rcon_port", "display_name": "RCON Port"},
@@ -91,7 +91,7 @@ class TestCreateTemplate:
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "test-template"
-        assert len(data["variables"]) == 4
+        assert len(data["variable_definitions"]) == 4
 
     def test_create_template_validation_failure(self, test_client):
         """Test template creation fails with mismatched variables."""
@@ -100,7 +100,7 @@ class TestCreateTemplate:
             json={
                 "name": "invalid-template",
                 "yaml_template": YAML_TEMPLATE,
-                "variables": [
+                "variable_definitions": [
                     {"type": "string", "name": "name", "display_name": "Name"},
                 ],
             },
@@ -113,7 +113,7 @@ class TestCreateTemplate:
         payload = {
             "name": "duplicate-name",
             "yaml_template": "test: {var}",
-            "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+            "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
         }
         test_client.post("/api/templates/", json=payload, headers=auth_headers())
         response = test_client.post(
@@ -130,7 +130,7 @@ class TestCreateTemplate:
             json={
                 "name": "source-template",
                 "yaml_template": "test: {var}",
-                "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
             },
             headers=auth_headers(),
         )
@@ -162,7 +162,7 @@ class TestGetTemplate:
             json={
                 "name": "list-test",
                 "yaml_template": "test: {var}",
-                "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
             },
             headers=auth_headers(),
         )
@@ -177,7 +177,7 @@ class TestGetTemplate:
             json={
                 "name": "detail-test",
                 "yaml_template": "test: {var}",
-                "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
             },
             headers=auth_headers(),
         )
@@ -205,7 +205,7 @@ class TestUpdateTemplate:
             json={
                 "name": "update-test",
                 "yaml_template": "test: {var}",
-                "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
             },
             headers=auth_headers(),
         )
@@ -230,7 +230,7 @@ class TestDeleteTemplate:
             json={
                 "name": "delete-test",
                 "yaml_template": "test: {var}",
-                "variables": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
             },
             headers=auth_headers(),
         )
@@ -252,7 +252,7 @@ class TestTemplateSchema:
             json={
                 "name": "schema-test",
                 "yaml_template": "port: {port}",
-                "variables": [
+                "variable_definitions": [
                     {
                         "type": "int",
                         "name": "port",
@@ -283,7 +283,7 @@ class TestTemplatePreview:
             json={
                 "name": "preview-test",
                 "yaml_template": "name: {name}\nport: {port}",
-                "variables": [
+                "variable_definitions": [
                     {"type": "string", "name": "name", "display_name": "Name"},
                     {"type": "int", "name": "port", "display_name": "Port"},
                 ],
@@ -307,7 +307,7 @@ class TestTemplatePreview:
             json={
                 "name": "preview-fail-test",
                 "yaml_template": "port: {port}",
-                "variables": [
+                "variable_definitions": [
                     {
                         "type": "int",
                         "name": "port",

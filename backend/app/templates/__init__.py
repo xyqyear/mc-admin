@@ -18,8 +18,8 @@ from .models import (
     TemplateUpdateRequest,
     VariableDefinition,
     VariableType,
-    cast_variables_json,
-    serialize_variables,
+    deserialize_variable_definitions_json,
+    serialize_variable_definitions,
 )
 
 __all__ = [
@@ -39,8 +39,8 @@ __all__ = [
     "AvailablePortsResponse",
     "TemplatePreviewRequest",
     "TemplatePreviewResponse",
-    "cast_variables_json",
-    "serialize_variables",
+    "deserialize_variable_definitions_json",
+    "serialize_variable_definitions",
     "get_default_variables",
     "update_default_variables",
 ]

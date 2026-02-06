@@ -1,6 +1,5 @@
 """Pydantic models for template variable definitions."""
 
-import json
 from datetime import datetime
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
@@ -99,15 +98,18 @@ VariableDefinition = Annotated[
 _variable_list_adapter = TypeAdapter(list[VariableDefinition])
 
 
-def cast_variables_json(variables_json: str) -> list[VariableDefinition]:
-    """Parse variables JSON string to list of VariableDefinition."""
-    raw_list = json.loads(variables_json)
-    return _variable_list_adapter.validate_python(raw_list)
+def deserialize_variable_definitions_json(
+    variable_definitions_json: str,
+) -> list[VariableDefinition]:
+    """Parse variable definitions JSON string to list of VariableDefinition."""
+    return _variable_list_adapter.validate_json(variable_definitions_json)
 
 
-def serialize_variables(variables: list[VariableDefinition]) -> str:
+def serialize_variable_definitions(
+    variable_definitions: list[VariableDefinition],
+) -> str:
     """Serialize list of VariableDefinition to JSON string."""
-    return _variable_list_adapter.dump_json(variables).decode()
+    return _variable_list_adapter.dump_json(variable_definitions).decode()
 
 
 # Request/Response models for API
@@ -119,7 +121,7 @@ class TemplateCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
     yaml_template: str = Field(min_length=1)
-    variables: list[VariableDefinition] = Field(default_factory=list)
+    variable_definitions: list[VariableDefinition] = Field(default_factory=list)
     copy_from_template_id: Optional[int] = None
 
 
@@ -129,7 +131,7 @@ class TemplateUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     description: Optional[str] = None
     yaml_template: Optional[str] = Field(default=None, min_length=1)
-    variables: Optional[list[VariableDefinition]] = None
+    variable_definitions: Optional[list[VariableDefinition]] = None
 
 
 class TemplateResponse(BaseModel):
@@ -139,7 +141,7 @@ class TemplateResponse(BaseModel):
     name: str
     description: Optional[str]
     yaml_template: str
-    variables: list[VariableDefinition]
+    variable_definitions: list[VariableDefinition]
     created_at: datetime
     updated_at: datetime
 

@@ -64,8 +64,8 @@ class TestGetDefaultVariables:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "variables" in data
-        assert isinstance(data["variables"], list)
+        assert "variable_definitions" in data
+        assert isinstance(data["variable_definitions"], list)
 
 
 class TestUpdateDefaultVariables:
@@ -76,7 +76,7 @@ class TestUpdateDefaultVariables:
         response = test_client.put(
             "/api/templates/default-variables",
             json={
-                "variables": [
+                "variable_definitions": [
                     {"type": "string", "name": "custom_var", "display_name": "Custom"},
                     {"type": "int", "name": "port", "display_name": "Port"},
                 ]
@@ -84,14 +84,14 @@ class TestUpdateDefaultVariables:
             headers=auth_headers(),
         )
         assert response.status_code == 200
-        assert len(response.json()["variables"]) == 2
+        assert len(response.json()["variable_definitions"]) == 2
 
     def test_update_duplicate_names_rejected(self, test_client):
         """Test updating with duplicate names fails."""
         response = test_client.put(
             "/api/templates/default-variables",
             json={
-                "variables": [
+                "variable_definitions": [
                     {"type": "string", "name": "dup", "display_name": "Dup 1"},
                     {"type": "int", "name": "dup", "display_name": "Dup 2"},
                 ]

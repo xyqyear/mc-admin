@@ -196,7 +196,7 @@ class ServerTemplate(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
     yaml_template: Mapped[str] = mapped_column(TEXT)
-    variables_json: Mapped[str] = mapped_column(TEXT, default="[]")
+    variable_definitions_json: Mapped[str] = mapped_column(TEXT, default="[]")
     created_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
@@ -321,7 +321,7 @@ class DefaultVariableConfig(Base):
     __tablename__ = "default_variable_config"
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    variables_json: Mapped[str] = mapped_column(TEXT, default="[]")
+    variable_definitions_json: Mapped[str] = mapped_column(TEXT, default="[]")
     updated_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )

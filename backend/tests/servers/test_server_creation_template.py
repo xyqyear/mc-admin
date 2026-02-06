@@ -101,7 +101,7 @@ def create_template(client) -> int:
         json={
             "name": "test-template",
             "yaml_template": YAML_TEMPLATE,
-            "variables": [
+            "variable_definitions": [
                 {
                     "type": "string",
                     "name": "name",

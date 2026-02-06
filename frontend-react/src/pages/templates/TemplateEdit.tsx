@@ -92,7 +92,7 @@ const TemplateEdit: React.FC = () => {
         });
         // Store original values for comparison
         originalYamlRef.current = template.yaml_template;
-        originalVariablesRef.current = template.variables;
+        originalVariablesRef.current = template.variable_definitions;
       } else if (copyFromId) {
         // Copy mode - don't copy name
         form.setFieldsValue({
@@ -102,15 +102,15 @@ const TemplateEdit: React.FC = () => {
       }
       setYamlContent(template.yaml_template);
       // Convert API variables to form data format
-      setVariables(convertToFormData(template.variables));
+      setVariables(convertToFormData(template.variable_definitions));
       setDefaultsLoaded(true);
     }
   }, [template, isEditMode, copyFromId, form]);
 
   // Pre-fill default variables for new templates (not copy mode)
   useEffect(() => {
-    if (isNewTemplate && defaultVariablesData?.variables && !defaultsLoaded) {
-      setVariables(convertToFormData(defaultVariablesData.variables));
+    if (isNewTemplate && defaultVariablesData?.variable_definitions && !defaultsLoaded) {
+      setVariables(convertToFormData(defaultVariablesData.variable_definitions));
       setDefaultsLoaded(true);
     }
   }, [isNewTemplate, defaultVariablesData, defaultsLoaded]);
@@ -167,7 +167,7 @@ const TemplateEdit: React.FC = () => {
       const result = await refetchTemplate();
       if (result.data) {
         originalYamlRef.current = result.data.yaml_template;
-        originalVariablesRef.current = result.data.variables;
+        originalVariablesRef.current = result.data.variable_definitions;
       }
       setIsCompareVisible(true);
     } catch {
@@ -202,7 +202,7 @@ const TemplateEdit: React.FC = () => {
           name: values.name,
           description: values.description || undefined,
           yaml_template: yamlContent,
-          variables: apiVariables,
+          variable_definitions: apiVariables,
         };
         await updateMutation.mutateAsync({ id: parseInt(id, 10), request });
         navigate("/templates");
@@ -211,7 +211,7 @@ const TemplateEdit: React.FC = () => {
           name: values.name,
           description: values.description || undefined,
           yaml_template: yamlContent,
-          variables: apiVariables,
+          variable_definitions: apiVariables,
         };
         await createMutation.mutateAsync(request);
         navigate("/templates");
