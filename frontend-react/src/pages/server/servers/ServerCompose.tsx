@@ -15,7 +15,7 @@ import {
   QuestionCircleOutlined,
   SwapOutlined,
 } from '@ant-design/icons'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
@@ -382,7 +382,11 @@ const ServerCompose: React.FC = () => {
 
         <Alert
           message="模板模式"
-          description={`此服务器使用模板 "${templateConfig.template_name}" 创建，请通过下方表单修改配置。`}
+          description={
+            <>
+              此服务器使用模板 &quot;<Link to={`/templates/${templateConfig.template_id}/edit`}>{templateConfig.template_name}</Link>&quot; 创建，请通过下方表单修改配置。
+            </>
+          }
           type="info"
           showIcon
         />
