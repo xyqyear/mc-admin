@@ -43,7 +43,7 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
       message.error(`填充失败: ${task.error}`)
       onClose()
     }
-  }, [task?.status, task?.error, serverId, message, queryClient, onComplete, onClose])
+  }, [task, task?.status, task?.error, serverId, message, queryClient, onComplete, onClose])
 
   const getProgressStatus = () => {
     if (!task) return 'normal'
