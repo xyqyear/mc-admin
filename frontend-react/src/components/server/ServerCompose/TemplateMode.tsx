@@ -6,6 +6,7 @@ import {
   CloudServerOutlined,
   DiffOutlined,
   SwapOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -24,6 +25,9 @@ interface TemplateConfig {
   template_name: string
   variable_values: Record<string, unknown>
   json_schema: object
+  snapshot_time: string
+  has_template_update: boolean
+  template_deleted: boolean
 }
 
 interface ServerInfo {
@@ -71,6 +75,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
   const [isTemplateDiffVisible, setIsTemplateDiffVisible] = useState(false)
   const [templateDiffLoading, setTemplateDiffLoading] = useState(false)
+  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false)
 
   const templateUiSchema: UiSchema = {
     name: {
@@ -152,6 +157,16 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
         serverTag={serverInfo.name}
         actions={
           <>
+            {templateConfig.has_template_update && !templateConfig.template_deleted && (
+              <Button
+                type="primary"
+                ghost
+                icon={<SyncOutlined />}
+                onClick={() => setIsUpdateModalVisible(true)}
+              >
+                模板有更新
+              </Button>
+            )}
             <Button
               icon={<SwapOutlined />}
               onClick={() => setIsConvertModalVisible(true)}
@@ -187,11 +202,17 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
       <Alert
         title="模板模式"
         description={
-          <>
-            此服务器使用模板 &quot;<Link to={`/templates/${templateConfig.template_id}/edit`}>{templateConfig.template_name}</Link>&quot; 创建，请通过下方表单修改配置。
-          </>
+          templateConfig.template_deleted ? (
+            <>
+              此服务器使用模板 &quot;{templateConfig.template_name}&quot; 创建，但该模板已被删除。请通过下方表单修改配置，或转换为直接编辑模式。
+            </>
+          ) : (
+            <>
+              此服务器使用模板 &quot;<Link to={`/templates/${templateConfig.template_id}/edit`}>{templateConfig.template_name}</Link>&quot; 创建，请通过下方表单修改配置。
+            </>
+          )
         }
-        type="info"
+        type={templateConfig.template_deleted ? "warning" : "info"}
         showIcon
       />
 
@@ -240,6 +261,15 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
         serverId={serverId}
         currentMode="template"
         onClose={() => setIsConvertModalVisible(false)}
+        onSuccess={onConvertModeSuccess}
+      />
+
+      <ConvertModeModal
+        open={isUpdateModalVisible}
+        serverId={serverId}
+        currentMode="update"
+        initialTemplateId={templateConfig.template_id}
+        onClose={() => setIsUpdateModalVisible(false)}
         onSuccess={onConvertModeSuccess}
       />
     </div>

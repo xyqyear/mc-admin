@@ -14,13 +14,13 @@ from ...db.database import get_async_session, get_db
 from ...dependencies import get_current_user
 from ...logger import logger
 from ...minecraft import docker_mc_manager
-from ...models import ServerTemplate as TemplateModel
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
 from ...templates import (
     TemplateSnapshot,
     VariableDefinition,
     deserialize_variable_definitions_json,
+    get_template_by_id,
 )
 from ...templates.manager import TemplateManager
 
@@ -118,16 +118,8 @@ async def extract_variables(
     if not server:
         raise HTTPException(status_code=404, detail="服务器不存在")
 
-    if server.template_id:
-        raise HTTPException(status_code=400, detail="该服务器已经是模板模式")
-
     # Get the template
-    from sqlalchemy import select
-
-    result = await db.execute(
-        select(TemplateModel).where(TemplateModel.id == request.template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, request.template_id)
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
@@ -190,16 +182,8 @@ async def convert_to_template_mode(
     if not server:
         raise HTTPException(status_code=404, detail="服务器不存在")
 
-    if server.template_id:
-        raise HTTPException(status_code=400, detail="该服务器已经是模板模式")
-
     # Get the template
-    from sqlalchemy import select
-
-    result = await db.execute(
-        select(TemplateModel).where(TemplateModel.id == request.template_id)
-    )
-    template = result.scalar_one_or_none()
+    template = await get_template_by_id(db, request.template_id)
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 

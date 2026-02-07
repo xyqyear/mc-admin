@@ -114,6 +114,8 @@ export interface TemplateConfigResponse {
   variable_values: Record<string, unknown>;
   json_schema: Record<string, unknown>;
   snapshot_time: string;
+  has_template_update: boolean;
+  template_deleted: boolean;
 }
 
 export interface TemplateConfigUpdateResponse {

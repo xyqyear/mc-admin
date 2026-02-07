@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Steps, Select, Alert, Button, Space, Spin } from 'antd'
-import { ExclamationCircleOutlined, SwapOutlined } from '@ant-design/icons'
+import { ExclamationCircleOutlined, SwapOutlined, SyncOutlined } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { MonacoDiffEditor } from '@/components/editors'
 import RjsfForm from '@/components/forms/rjsfTheme'
@@ -15,7 +15,8 @@ import RebuildProgressModal from './RebuildProgressModal'
 interface ConvertModeModalProps {
   open: boolean
   serverId: string
-  currentMode: 'template' | 'direct'
+  currentMode: 'template' | 'direct' | 'update'
+  initialTemplateId?: number
   onClose: () => void
   onSuccess: () => void
 }
@@ -24,6 +25,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   open,
   serverId,
   currentMode,
+  initialTemplateId,
   onClose,
   onSuccess,
 }) => {
@@ -52,12 +54,12 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   useEffect(() => {
     if (open) {
       setCurrentStep(0)
-      setSelectedTemplateId(null)
+      setSelectedTemplateId(currentMode === 'update' && initialTemplateId ? initialTemplateId : null)
       setExtractResult(null)
       setFormData({})
       setPreviewYaml('')
     }
-  }, [open])
+  }, [open, currentMode, initialTemplateId])
 
   // Update form data when extract result changes
   useEffect(() => {
@@ -119,6 +121,9 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     onClose()
   }
 
+  const isUpdateMode = currentMode === 'update'
+  const isWizardMode = currentMode === 'direct' || currentMode === 'update'
+
   // Template -> Direct: Simple confirmation
   if (currentMode === 'template') {
     return (
@@ -144,7 +149,8 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     )
   }
 
-  // Direct -> Template: Multi-step wizard
+  // Direct -> Template / Update: Multi-step wizard
+  if (!isWizardMode) return null
   const steps = [
     { title: '选择模板' },
     { title: '调整变量' },
@@ -161,8 +167,11 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       return (
         <div className="space-y-4">
           <Alert
-            title="选择目标模板"
-            description="系统将尝试从当前 Compose 文件中提取变量值。"
+            title={isUpdateMode ? "检查模板更新" : "选择目标模板"}
+            description={isUpdateMode
+              ? "系统将从当前配置中提取变量值，并与最新模板进行匹配。"
+              : "系统将尝试从当前 Compose 文件中提取变量值。"
+            }
             type="info"
             showIcon
           />
@@ -172,6 +181,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
             loading={templatesLoading}
             value={selectedTemplateId}
             onChange={setSelectedTemplateId}
+            disabled={isUpdateMode}
             options={templates?.map(t => ({ label: t.name, value: t.id }))}
           />
         </div>
@@ -268,7 +278,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
               onClick={handleConvertToTemplate}
               loading={convertToTemplateMutation.isPending}
             >
-              确认并重建
+              {isUpdateMode ? '确认更新并重建' : '确认并重建'}
             </Button>
           </>
         )}
@@ -279,7 +289,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   return (
     <>
       <Modal
-        title={<><SwapOutlined /> 转换为模板模式</>}
+        title={isUpdateMode ? <><SyncOutlined /> 更新模板配置</> : <><SwapOutlined /> 转换为模板模式</>}
         open={open}
         onCancel={onClose}
         width={getModalWidth()}

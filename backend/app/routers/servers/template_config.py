@@ -16,7 +16,7 @@ from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
-from ...templates import TemplateSnapshot, VariableDefinition
+from ...templates import TemplateSnapshot, VariableDefinition, get_template_by_id
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -36,6 +36,8 @@ class TemplateConfigResponse(BaseModel):
     variable_values: dict[str, Any]
     json_schema: dict
     snapshot_time: str
+    has_template_update: bool = False
+    template_deleted: bool = False
 
 
 class TemplateConfigUpdateRequest(BaseModel):
@@ -80,6 +82,19 @@ async def get_template_config(
     # Generate JSON Schema
     json_schema = TemplateManager.generate_json_schema(snapshot.variable_definitions)
 
+    # Check if live template has been updated since snapshot
+    has_template_update = False
+    template_deleted = False
+
+    live_template = await get_template_by_id(db, snapshot.template_id)
+
+    if live_template is None:
+        template_deleted = True
+    else:
+        snapshot_time = datetime.fromisoformat(snapshot.snapshot_time)
+        if live_template.updated_at > snapshot_time:
+            has_template_update = True
+
     return TemplateConfigResponse(
         server_id=server_id,
         template_id=snapshot.template_id,
@@ -89,6 +104,8 @@ async def get_template_config(
         variable_values=variable_values,
         json_schema=json_schema,
         snapshot_time=snapshot.snapshot_time,
+        has_template_update=has_template_update,
+        template_deleted=template_deleted,
     )
 
 

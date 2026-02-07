@@ -55,6 +55,10 @@ export const useTemplateMutations = () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.schema(id),
         });
+        // Invalidate all server template configs so has_template_update is refreshed
+        queryClient.invalidateQueries({
+          queryKey: [...queryKeys.templates.all, "server-config"],
+        });
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
@@ -75,6 +79,10 @@ export const useTemplateMutations = () => {
         message.success("模板删除成功");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.list(),
+        });
+        // Invalidate all server template configs so template_deleted is refreshed
+        queryClient.invalidateQueries({
+          queryKey: [...queryKeys.templates.all, "server-config"],
         });
       },
       onError: (error: any) => {

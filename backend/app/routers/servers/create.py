@@ -6,20 +6,23 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
-from ...models import ServerTemplate, UserPublic
+from ...models import UserPublic
 from ...players import player_system_manager
 from ...servers import (
     check_port_conflicts,
     create_server_record,
     extract_ports_from_yaml,
 )
-from ...templates import TemplateSnapshot, deserialize_variable_definitions_json
+from ...templates import (
+    TemplateSnapshot,
+    deserialize_variable_definitions_json,
+    get_template_by_id,
+)
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -79,12 +82,8 @@ async def create_server(
                 )
 
             # Load template
-            result = await db.execute(
-                select(ServerTemplate).where(
-                    ServerTemplate.id == create_request.template_id
-                )
-            )
-            template = result.scalar_one_or_none()
+            assert create_request.template_id is not None
+            template = await get_template_by_id(db, create_request.template_id)
             if not template:
                 raise HTTPException(status_code=404, detail="模板不存在")
 
