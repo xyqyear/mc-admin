@@ -162,7 +162,6 @@ export const queryKeys = {
   compose: {
     all: ["compose"] as const,
     detail: (id: string) => [...queryKeys.compose.all, "detail", id] as const,
-    file: (id: string) => [...queryKeys.compose.all, "file", id] as const,
   },
 
   // 文件管理

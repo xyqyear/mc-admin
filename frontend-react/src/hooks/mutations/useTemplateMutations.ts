@@ -128,7 +128,7 @@ export const useTemplateMutations = () => {
           queryKey: queryKeys.templates.serverConfig(serverId),
         });
         queryClient.invalidateQueries({
-          queryKey: queryKeys.compose.file(serverId),
+          queryKey: queryKeys.compose.detail(serverId),
         });
         queryClient.invalidateQueries({
           queryKey: queryKeys.serverInfos.detail(serverId),
