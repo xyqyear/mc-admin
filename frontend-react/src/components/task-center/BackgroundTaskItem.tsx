@@ -2,10 +2,8 @@ import React from 'react'
 import { Progress, Button, Typography, Tooltip, Popover } from 'antd'
 import {
   FileZipOutlined,
-  CameraOutlined,
-  PlayCircleOutlined,
+  BuildOutlined,
   StopOutlined,
-  ReloadOutlined,
   CloseOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
@@ -27,15 +25,8 @@ const getTaskTypeIcon = (taskType: BackgroundTaskType) => {
     case 'archive_create':
     case 'archive_extract':
       return <FileZipOutlined />
-    case 'snapshot_create':
-    case 'snapshot_restore':
-      return <CameraOutlined />
-    case 'server_start':
-      return <PlayCircleOutlined />
-    case 'server_stop':
-      return <StopOutlined />
-    case 'server_restart':
-      return <ReloadOutlined />
+    case 'server_rebuild':
+      return <BuildOutlined />
     default:
       return <LoadingOutlined />
   }
@@ -47,16 +38,8 @@ const getTaskTypeName = (taskType: BackgroundTaskType): string => {
       return '创建压缩包'
     case 'archive_extract':
       return '解压文件'
-    case 'snapshot_create':
-      return '创建快照'
-    case 'snapshot_restore':
-      return '恢复快照'
-    case 'server_start':
-      return '启动服务器'
-    case 'server_stop':
-      return '停止服务器'
-    case 'server_restart':
-      return '重启服务器'
+    case 'server_rebuild':
+      return '重建服务器'
     default:
       return '未知任务'
   }

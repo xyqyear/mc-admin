@@ -6,11 +6,7 @@ export type BackgroundTaskStatus = 'pending' | 'running' | 'completed' | 'failed
 export type BackgroundTaskType =
   | 'archive_create'
   | 'archive_extract'
-  | 'snapshot_create'
-  | 'snapshot_restore'
-  | 'server_start'
-  | 'server_stop'
-  | 'server_restart'
+  | 'server_rebuild'
 
 export interface BackgroundTask {
   taskId: string
