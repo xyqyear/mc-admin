@@ -10,6 +10,14 @@ export const useArchiveMutations = () => {
   const queryClient = useQueryClient()
   const { executeDownload } = useDownloadManager()
 
+  const getParentPath = (path: string) => {
+    if (!path || path === '/') return '/'
+    const normalized = path.endsWith('/') ? path.slice(0, -1) : path
+    const lastSlashIndex = normalized.lastIndexOf('/')
+    if (lastSlashIndex <= 0) return '/'
+    return normalized.slice(0, lastSlashIndex)
+  }
+
   // Upload file
   const useUploadFile = () => {
     return useMutation({
@@ -58,8 +66,8 @@ export const useArchiveMutations = () => {
     return useMutation({
       mutationFn: (path: string) => archiveApi.deleteArchiveItem(path),
       onSuccess: (_, path) => {
-        // Invalidate the root path files list
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+        // Invalidate the parent path files list
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
         // Invalidate SHA256 cache for the deleted file
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
         message.success('删除成功')
@@ -76,8 +84,10 @@ export const useArchiveMutations = () => {
       mutationFn: (request: RenameArchiveFileRequest) =>
         archiveApi.renameArchiveItem(request),
       onSuccess: (_, request) => {
-        // Invalidate the root path files list
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
+        // Invalidate the parent path files list
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.archive.files(getParentPath(request.old_path))
+        })
         // Invalidate SHA256 cache for the old path
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(request.old_path) })
         message.success('重命名成功')
@@ -94,6 +104,8 @@ export const useArchiveMutations = () => {
       mutationFn: ({ path, content }: { path: string; content: string }) =>
         archiveApi.updateArchiveFileContent(path, content),
       onSuccess: (_, { path }) => {
+        // Invalidate the parent path files list so metadata is refreshed.
+        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.content(path) })
         // Invalidate SHA256 cache for the updated file
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })

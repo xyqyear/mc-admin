@@ -27,10 +27,11 @@ export const useOverviewData = () => {
 
   // 使用稳定的服务器ID列表
   const serverIds = useMemo(() => serversData.map((s) => s.id), [serversData]);
+  const sortedServerIds = useMemo(() => [...serverIds].sort(), [serverIds]);
 
   // 批量获取所有服务器状态 - 使用单个查询避免动态hooks
   const statusesQuery = useQuery({
-    queryKey: ["serverStatuses", "batch", serverIds.sort()],
+    queryKey: ["serverStatuses", "batch", sortedServerIds],
     queryFn: () => serverApi.getAllServerStatuses(serverIds),
     enabled: serverIds.length > 0,
     refetchInterval: 5000, // 5秒刷新状态

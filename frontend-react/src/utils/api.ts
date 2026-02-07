@@ -112,7 +112,6 @@ export const queryKeys = {
   // 服务器配置 (相对静态，长缓存)
   serverInfos: {
     all: ["serverInfos"] as const,
-    lists: () => [...queryKeys.serverInfos.all, "list"] as const,
     detail: (id: string) =>
       [...queryKeys.serverInfos.all, "detail", id] as const,
   },
@@ -177,14 +176,9 @@ export const queryKeys = {
     users: () => [...queryKeys.admin.all, "users"] as const,
   },
 
-  // 兼容现有代码
+  // 服务器列表
   all: ["api"] as const,
   servers: () => [...queryKeys.all, "servers"] as const,
-  server: (id: string) => [...queryKeys.servers(), id] as const,
-  serverPlayers: (id: string) => [...queryKeys.server(id), "players"] as const,
-  serverFiles: (id: string) => [...queryKeys.server(id), "files"] as const,
-  overview: () => [...queryKeys.all, "overview"] as const,
-  backups: () => [...queryKeys.all, "backups"] as const,
 
   // 快照管理
   snapshots: {

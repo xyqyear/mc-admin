@@ -34,6 +34,8 @@ export const useFileMutations = (serverId: string | undefined) => {
         queryClient.invalidateQueries({
           queryKey: [...queryKeys.files.content(serverId || "", variables.path)],
         });
+        // Invalidate file list caches so metadata (size/mtime) is refreshed.
+        invalidateFileList();
       },
       onError: (error: any) => {
         message.error(error.response?.data?.detail || "更新文件失败");
