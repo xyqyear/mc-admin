@@ -68,59 +68,7 @@ const DefaultVariables: React.FC = () => {
       return;
     }
 
-    // Convert form variables to API format
-    const includeDefault = (value: unknown) =>
-      value !== undefined && value !== null ? { default: value } : {};
-
-    const apiVariables = variables
-      .filter((v) => v.name && v.display_name)
-      .map((v) => {
-        const base = {
-          name: v.name,
-          display_name: v.display_name,
-          description: v.description,
-        };
-
-        switch (v.type) {
-          case "int":
-            return {
-              ...base,
-              type: "int" as const,
-              ...includeDefault(v.default),
-              min_value: v.min_value,
-              max_value: v.max_value,
-            };
-          case "float":
-            return {
-              ...base,
-              type: "float" as const,
-              ...includeDefault(v.default),
-              min_value: v.min_value,
-              max_value: v.max_value,
-            };
-          case "string":
-            return {
-              ...base,
-              type: "string" as const,
-              ...includeDefault(v.default),
-              max_length: v.max_length,
-              pattern: v.pattern,
-            };
-          case "enum":
-            return {
-              ...base,
-              type: "enum" as const,
-              ...includeDefault(v.default),
-              options: v.options || [],
-            };
-          case "bool":
-            return {
-              ...base,
-              type: "bool" as const,
-              ...includeDefault(v.default),
-            };
-        }
-      }) as VariableDefinition[];
+    const apiVariables = convertToApiFormat(variables);
 
     await updateMutation.mutateAsync(apiVariables);
   };
@@ -155,7 +103,7 @@ const DefaultVariables: React.FC = () => {
           <Alert
             type="error"
             showIcon
-            message="验证错误"
+            title="验证错误"
             description={
               <ul className="list-disc pl-4">
                 {duplicateErrors.map((error, index) => (
@@ -207,7 +155,7 @@ const DefaultVariables: React.FC = () => {
           <Alert
             type="info"
             showIcon
-            message="差异对比视图"
+            title="差异对比视图"
             description="左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。"
           />
           <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
