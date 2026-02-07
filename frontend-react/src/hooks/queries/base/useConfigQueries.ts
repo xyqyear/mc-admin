@@ -39,15 +39,3 @@ export const useModuleSchema = (moduleName: string | null) => {
     refetchOnWindowFocus: false,
   })
 }
-
-/**
- * Hook for configuration health check
- */
-export const useConfigHealth = () => {
-  return useQuery({
-    queryKey: queryKeys.config.health(),
-    queryFn: configApi.configHealthCheck,
-    staleTime: 30 * 1000, // 30 seconds
-    refetchOnWindowFocus: false,
-  })
-}

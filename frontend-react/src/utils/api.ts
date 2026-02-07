@@ -203,7 +203,6 @@ export const queryKeys = {
     modules: () => [...queryKeys.config.all, "modules"] as const,
     moduleConfig: (moduleName: string) => [...queryKeys.config.all, "module", moduleName] as const,
     moduleSchema: (moduleName: string) => [...queryKeys.config.all, "schema", moduleName] as const,
-    health: () => [...queryKeys.config.all, "health"] as const,
   },
 
   // Cron 任务管理

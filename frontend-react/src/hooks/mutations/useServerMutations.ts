@@ -44,21 +44,13 @@ export const useServerMutations = () => {
             queryKey: queryKeys.serverInfos.detail(serverId),
           });
           queryClient.invalidateQueries({
-            queryKey: queryKeys.serverStatuses.detail(serverId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverRuntimes.detail(serverId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.players.serverOnline(serverId),
-          });
-
-          // 失效服务器列表和聚合运行态数据，确保整体状态更新
-          queryClient.invalidateQueries({
             queryKey: queryKeys.serverStatuses.all,
           });
           queryClient.invalidateQueries({
             queryKey: queryKeys.serverRuntimes.all,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.players.serverOnline(serverId),
           });
 
           // 失效系统信息，因为服务器状态变化可能影响系统资源使用
