@@ -38,6 +38,7 @@ export const useCronMutations = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
+        queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
       },
       onError: (error: any) => {
         message.error(`更新任务失败: ${error.response?.data?.detail || error.message}`)
@@ -55,6 +56,7 @@ export const useCronMutations = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
+        queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
       },
       onError: (error: any) => {
         message.error(`暂停任务失败: ${error.response?.data?.detail || error.message}`)
@@ -72,6 +74,7 @@ export const useCronMutations = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
+        queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
       },
       onError: (error: any) => {
         message.error(`恢复任务失败: ${error.response?.data?.detail || error.message}`)
@@ -89,6 +92,7 @@ export const useCronMutations = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
+        queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
       },
       onError: (error: any) => {
         message.error(`取消任务失败: ${error.response?.data?.detail || error.message}`)
