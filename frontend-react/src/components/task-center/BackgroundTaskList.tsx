@@ -2,13 +2,15 @@ import React from 'react'
 import { Empty, Button, Typography, Divider } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
+import { useTaskMutations } from '@/hooks/mutations/useTaskMutations'
 import BackgroundTaskItem from './BackgroundTaskItem'
 import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 
 const { Text } = Typography
 
 const BackgroundTaskList: React.FC = () => {
-  const { useTasks, useCancelTask, useDeleteTask, useClearCompletedTasks } = useTaskQueries()
+  const { useTasks } = useTaskQueries()
+  const { useCancelTask, useDeleteTask, useClearCompletedTasks } = useTaskMutations()
   const { data, isLoading } = useTasks()
   const cancelTask = useCancelTask()
   const deleteTask = useDeleteTask()

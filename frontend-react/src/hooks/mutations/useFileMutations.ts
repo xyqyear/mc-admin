@@ -19,7 +19,7 @@ export const useFileMutations = (serverId: string | undefined) => {
   const invalidateFileList = () => {
     // Invalidate all file-related queries for this server
     queryClient.invalidateQueries({
-      queryKey: [...queryKeys.files.all, serverId || ""],
+      queryKey: queryKeys.files.lists(serverId || ""),
     });
   };
 

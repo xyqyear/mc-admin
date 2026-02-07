@@ -32,9 +32,6 @@ import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/utils/api'
-import { serverApi } from '@/hooks/api/serverApi'
 
 const Overview: React.FC = () => {
   const navigate = useNavigate()
@@ -57,26 +54,10 @@ const Overview: React.FC = () => {
     refetch
   } = useOverviewData()
 
-  const { useServerOperation } = useServerMutations()
+  const { useServerOperation, useDeleteRestartSchedule } = useServerMutations()
   const serverOperationMutation = useServerOperation()
+  const deleteRestartScheduleMutation = useDeleteRestartSchedule({ silent: true })
   const autoUpdateDNS = useAutoUpdateDNS()
-  const queryClient = useQueryClient()
-
-  // 页面级别的删除重启计划mutation（不显示重复消息）
-  const deleteRestartScheduleMutation = useMutation({
-    mutationFn: async (serverId: string) => {
-      return serverApi.deleteRestartSchedule(serverId)
-    },
-    onSuccess: (_, serverId) => {
-      // 只失效缓存，不显示消息（消息在页面级别处理）
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.restartSchedule.detail(serverId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.cron.all,
-      })
-    },
-  })
 
   const { showConfirm } = useServerOperationConfirm()
 

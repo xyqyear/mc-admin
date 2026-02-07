@@ -20,7 +20,7 @@ export const useSystemQueries = () => {
     options?: UseQueryOptions<{ cpuPercentage: number }>
   ) => {
     return useQuery({
-      queryKey: [...queryKeys.system.info(), "cpu"],
+      queryKey: queryKeys.system.cpuPercent(),
       queryFn: systemApi.getSystemCpuPercent,
       refetchInterval: 3000, // 3秒刷新CPU百分比（比其他系统信息慢）
       staleTime: 3000, // 3秒

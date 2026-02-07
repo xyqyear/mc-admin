@@ -61,7 +61,7 @@ export const useServerQueries = () => {
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
 
     return useQuery({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "cpu"],
+      queryKey: queryKeys.serverRuntimes.cpu(id),
       queryFn: () => serverApi.getServerCpuPercent(id),
       enabled: !!id && resourcesAvailable,
       refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新CPU数据
@@ -87,7 +87,7 @@ export const useServerQueries = () => {
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
 
     return useQuery({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "memory"],
+      queryKey: queryKeys.serverRuntimes.memory(id),
       queryFn: () => serverApi.getServerMemory(id),
       enabled: !!id && resourcesAvailable,
       refetchInterval: resourcesAvailable ? 3000 : false, // 3秒刷新内存数据（较快）
@@ -111,7 +111,7 @@ export const useServerQueries = () => {
       status && ["RUNNING", "STARTING", "HEALTHY"].includes(status);
 
     return useQuery({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "iostats"],
+      queryKey: queryKeys.serverRuntimes.ioStats(id),
       queryFn: () => serverApi.getServerIOStats(id),
       enabled: !!id && iostatsAvailable,
       refetchInterval: iostatsAvailable ? 5000 : false, // 5秒刷新I/O数据
@@ -131,7 +131,7 @@ export const useServerQueries = () => {
     options?: Omit<UseQueryOptions<ServerDiskUsageResponse>, 'queryKey' | 'queryFn'>
   ) => {
     return useQuery({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
+      queryKey: queryKeys.serverRuntimes.disk(id),
       queryFn: () => serverApi.getServerDiskUsage(id),
       enabled: !!id,
       refetchInterval: 30000, // 30秒刷新磁盘数据，频率较低

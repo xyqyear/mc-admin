@@ -2,7 +2,8 @@ import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 import {
   snapshotApi,
   type Snapshot,
-  type BackupRepositoryUsage
+  type BackupRepositoryUsage,
+  type ListLocksResponse,
 } from "@/hooks/api/snapshotApi";
 import { queryKeys } from "@/utils/api";
 
@@ -54,10 +55,25 @@ export const useSnapshotQueries = () => {
     });
   };
 
+  // Snapshot locks info (manual query by default)
+  const useSnapshotLocks = (
+    enabled: boolean = false,
+    options?: UseQueryOptions<ListLocksResponse>
+  ) => {
+    return useQuery({
+      queryKey: queryKeys.snapshots.locks(),
+      queryFn: snapshotApi.listLocks,
+      enabled,
+      staleTime: 0,
+      refetchInterval: false,
+      ...options,
+    });
+  };
+
   return {
     useGlobalSnapshots,
     useSnapshotsForPath,
     useBackupRepositoryUsage, // 备份仓库使用情况 (快照模块的独立接口)
+    useSnapshotLocks,
   };
 };
-

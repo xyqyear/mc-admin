@@ -174,13 +174,16 @@ export const useServerMutations = () => {
   };
 
   // 删除重启计划
-  const useDeleteRestartSchedule = () => {
+  const useDeleteRestartSchedule = (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     return useMutation({
       mutationFn: async (serverId: string) => {
         return serverApi.deleteRestartSchedule(serverId);
       },
       onSuccess: (_, serverId) => {
-        message.success(`服务器 "${serverId}" 重启计划已删除`);
+        if (!silent) {
+          message.success(`服务器 "${serverId}" 重启计划已删除`);
+        }
 
         // 失效重启计划相关查询
         queryClient.invalidateQueries({
@@ -193,7 +196,9 @@ export const useServerMutations = () => {
         });
       },
       onError: (error: Error, serverId) => {
-        message.error(`删除服务器 "${serverId}" 重启计划失败: ${error.message}`);
+        if (!silent) {
+          message.error(`删除服务器 "${serverId}" 重启计划失败: ${error.message}`);
+        }
       },
     });
   };

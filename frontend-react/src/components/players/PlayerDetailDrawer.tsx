@@ -37,7 +37,7 @@ import type {
   ChatMessageInfo,
   AchievementInfo
 } from '@/hooks/api/playerApi';
-import { playerApi } from '@/hooks/api/playerApi';
+import { usePlayerMutations } from '@/hooks/mutations/usePlayerMutations';
 import LoadingSpinner from '@/components/layout/LoadingSpinner';
 import { MCAvatar } from '@/components/players/MCAvatar';
 import { ServerNameTag } from '@/components/common/ServerNameTag';
@@ -58,6 +58,8 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshingSkin, setRefreshingSkin] = useState(false);
+  const { useRefreshPlayerSkin } = usePlayerMutations()
+  const refreshPlayerSkinMutation = useRefreshPlayerSkin()
 
   // 获取玩家详情
   const { data: player, isLoading: playerLoading } = usePlayerByUUID(uuid);
@@ -107,7 +109,7 @@ export const PlayerDetailDrawer: React.FC<PlayerDetailDrawerProps> = ({
 
     setRefreshingSkin(true);
     try {
-      await playerApi.refreshPlayerSkin(player.player_db_id);
+      await refreshPlayerSkinMutation.mutateAsync(player.player_db_id);
       message.success('皮肤刷新请求已发送，请稍后查看');
     } catch (error: any) {
       message.error(`刷新失败: ${error.message || '未知错误'}`);

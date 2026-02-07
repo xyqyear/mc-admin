@@ -31,7 +31,7 @@ export const useOverviewData = () => {
 
   // 批量获取所有服务器状态 - 使用单个查询避免动态hooks
   const statusesQuery = useQuery({
-    queryKey: ["serverStatuses", "batch", sortedServerIds],
+    queryKey: queryKeys.serverStatuses.batch(sortedServerIds),
     queryFn: () => serverApi.getAllServerStatuses(serverIds),
     enabled: serverIds.length > 0,
     refetchInterval: 5000, // 5秒刷新状态
@@ -82,7 +82,7 @@ export const useOverviewData = () => {
   // 获取运行中服务器的CPU数据
   const cpuQueries = useQueries({
     queries: runningServerIds.map((id) => ({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "cpu"],
+      queryKey: queryKeys.serverRuntimes.cpu(id),
       queryFn: () => serverApi.getServerCpuPercent(id),
       refetchInterval: 5000, // 5秒刷新CPU数据（较慢）
       staleTime: 2000,
@@ -96,7 +96,7 @@ export const useOverviewData = () => {
   // 获取运行中服务器的内存数据
   const memoryQueries = useQueries({
     queries: runningServerIds.map((id) => ({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "memory"],
+      queryKey: queryKeys.serverRuntimes.memory(id),
       queryFn: () => serverApi.getServerMemory(id),
       refetchInterval: 3000, // 3秒刷新内存数据（较快）
       staleTime: 1000,
@@ -110,7 +110,7 @@ export const useOverviewData = () => {
   // 获取所有服务器的磁盘使用情况
   const diskUsageQueries = useQueries({
     queries: serverIds.map((id) => ({
-      queryKey: [...queryKeys.serverRuntimes.detail(id), "disk"],
+      queryKey: queryKeys.serverRuntimes.disk(id),
       queryFn: () => serverApi.getServerDiskUsage(id),
       refetchInterval: 30000, // 30秒刷新磁盘数据
       staleTime: 15000,

@@ -106,6 +106,7 @@ export const queryKeys = {
   system: {
     all: ["system"] as const,
     info: () => [...queryKeys.system.all, "info"] as const,
+    cpuPercent: () => [...queryKeys.system.info(), "cpu"] as const,
     diskUsage: () => [...queryKeys.system.all, "disk-usage"] as const,
   },
 
@@ -121,6 +122,13 @@ export const queryKeys = {
     all: ["serverRuntimes"] as const,
     detail: (id: string) =>
       [...queryKeys.serverRuntimes.all, "detail", id] as const,
+    cpu: (id: string) => [...queryKeys.serverRuntimes.detail(id), "cpu"] as const,
+    memory: (id: string) =>
+      [...queryKeys.serverRuntimes.detail(id), "memory"] as const,
+    ioStats: (id: string) =>
+      [...queryKeys.serverRuntimes.detail(id), "iostats"] as const,
+    disk: (id: string) =>
+      [...queryKeys.serverRuntimes.detail(id), "disk"] as const,
   },
 
   // 服务器状态 (中等频率更新)
@@ -128,6 +136,8 @@ export const queryKeys = {
     all: ["serverStatuses"] as const,
     detail: (id: string) =>
       [...queryKeys.serverStatuses.all, "detail", id] as const,
+    batch: (ids: readonly string[]) =>
+      [...queryKeys.serverStatuses.all, "batch", ids] as const,
   },
 
   // 玩家相关
@@ -185,6 +195,7 @@ export const queryKeys = {
     all: ["snapshots"] as const,
     global: () => [...queryKeys.snapshots.all, "global"] as const,
     repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
+    locks: () => [...queryKeys.snapshots.all, "locks"] as const,
     forPath: (serverId: string, path: string) =>
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
@@ -238,6 +249,7 @@ export const queryKeys = {
     detail: (id: number) => [...queryKeys.templates.all, "detail", id] as const,
     schema: (id: number) => [...queryKeys.templates.all, "schema", id] as const,
     availablePorts: () => [...queryKeys.templates.all, "available-ports"] as const,
+    serverConfigs: () => [...queryKeys.templates.all, "server-config"] as const,
     serverConfig: (serverId: string) => [...queryKeys.templates.all, "server-config", serverId] as const,
     serverConfigPreview: (serverId: string) => [...queryKeys.templates.all, "server-config-preview", serverId] as const,
     defaultVariables: () => [...queryKeys.templates.all, "default-variables"] as const,

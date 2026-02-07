@@ -22,7 +22,6 @@ import {
 } from '@ant-design/icons';
 import PageHeader from '@/components/layout/PageHeader';
 import type { Snapshot } from '@/hooks/api/snapshotApi';
-import { snapshotApi } from '@/hooks/api/snapshotApi';
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
 import { formatDateTime } from '@/utils/formatUtils';
@@ -30,7 +29,7 @@ import { formatDateTime } from '@/utils/formatUtils';
 const { Text } = Typography;
 
 const Snapshots: React.FC = () => {
-  const { useGlobalSnapshots } = useSnapshotQueries();
+  const { useGlobalSnapshots, useSnapshotLocks } = useSnapshotQueries();
   const { useCreateGlobalSnapshot, useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations();
 
   // 分页状态管理
@@ -50,6 +49,7 @@ const Snapshots: React.FC = () => {
     error,
     refetch,
   } = useGlobalSnapshots();
+  const { refetch: refetchSnapshotLocks } = useSnapshotLocks(false);
 
   const createSnapshotMutation = useCreateGlobalSnapshot();
   const deleteSnapshotMutation = useDeleteSnapshot();
@@ -69,8 +69,11 @@ const Snapshots: React.FC = () => {
 
     try {
       // 首先获取锁信息
-      const locksResult = await snapshotApi.listLocks();
-      setLocksInfo(locksResult.locks);
+      const { data } = await refetchSnapshotLocks();
+      if (!data) {
+        throw new Error('未获取到锁信息');
+      }
+      setLocksInfo(data.locks);
       setUnlockModalVisible(true);
     } catch (error: any) {
       Modal.error({

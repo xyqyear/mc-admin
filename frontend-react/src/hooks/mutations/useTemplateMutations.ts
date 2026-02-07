@@ -8,6 +8,7 @@ import {
   TemplateUpdateRequest,
   VariableDefinition,
   ExtractVariablesResponse,
+  CheckConversionResponse,
 } from "@/hooks/api/templateApi";
 
 export const useTemplateMutations = () => {
@@ -58,7 +59,7 @@ export const useTemplateMutations = () => {
         });
         // Invalidate all server template configs so has_template_update is refreshed
         queryClient.invalidateQueries({
-          queryKey: [...queryKeys.templates.all, "server-config"],
+          queryKey: queryKeys.templates.serverConfigs(),
         });
       },
       onError: (error: any) => {
@@ -83,7 +84,7 @@ export const useTemplateMutations = () => {
         });
         // Invalidate all server template configs so template_deleted is refreshed
         queryClient.invalidateQueries({
-          queryKey: [...queryKeys.templates.all, "server-config"],
+          queryKey: queryKeys.templates.serverConfigs(),
         });
       },
       onError: (error: any) => {
@@ -109,6 +110,22 @@ export const useTemplateMutations = () => {
         } else {
           message.error(`预览失败: ${detail || error.message}`);
         }
+      },
+    });
+  };
+
+  // Check whether template conversion requires rebuild
+  const useCheckConversion = () => {
+    return useMutation<
+      CheckConversionResponse,
+      any,
+      { serverId: string; templateId: number; variableValues: Record<string, unknown> }
+    >({
+      mutationFn: ({ serverId, templateId, variableValues }) =>
+        templateApi.checkConversion(serverId, templateId, variableValues),
+      onError: (error: any) => {
+        const detail = error.response?.data?.detail;
+        message.error(`检查失败: ${detail || error.message}`);
       },
     });
   };
@@ -225,6 +242,7 @@ export const useTemplateMutations = () => {
     useUpdateTemplate,
     useDeleteTemplate,
     usePreviewRenderedYaml,
+    useCheckConversion,
     useUpdateServerTemplateConfig,
     useUpdateDefaultVariables,
     useConvertToDirectMode,

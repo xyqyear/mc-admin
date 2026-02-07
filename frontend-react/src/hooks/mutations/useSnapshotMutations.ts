@@ -105,6 +105,11 @@ export const useSnapshotMutations = () => {
   const useUnlockRepository = () => {
     return useMutation({
       mutationFn: snapshotApi.unlockRepository,
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.snapshots.locks(),
+        });
+      },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
         message.error(`仓库解锁失败: ${errorDetail}`);

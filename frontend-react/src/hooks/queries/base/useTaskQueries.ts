@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { taskApi } from '@/hooks/api/taskApi'
 import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 
@@ -70,42 +70,9 @@ export const useTaskQueries = () => {
     })
   }
 
-  // Cancel task mutation
-  const useCancelTask = () => {
-    return useMutation({
-      mutationFn: taskApi.cancelTask,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
-  // Delete task mutation
-  const useDeleteTask = () => {
-    return useMutation({
-      mutationFn: taskApi.deleteTask,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
-  // Clear completed tasks mutation
-  const useClearCompletedTasks = () => {
-    return useMutation({
-      mutationFn: taskApi.clearCompletedTasks,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
   return {
     useTasks,
     useActiveTasks,
     useTask,
-    useCancelTask,
-    useDeleteTask,
-    useClearCompletedTasks,
   }
 }

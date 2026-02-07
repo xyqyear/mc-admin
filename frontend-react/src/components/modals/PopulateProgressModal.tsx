@@ -35,7 +35,7 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
         queryKey: queryKeys.serverInfos.detail(serverId),
       })
       queryClient.invalidateQueries({
-        queryKey: [...queryKeys.serverRuntimes.detail(serverId), 'disk'],
+        queryKey: queryKeys.serverRuntimes.disk(serverId),
       })
       queryClient.invalidateQueries({
         queryKey: queryKeys.files.lists(serverId),

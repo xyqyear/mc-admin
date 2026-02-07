@@ -8,7 +8,7 @@ import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 import { useTemplates } from '@/hooks/queries/base/useTemplateQueries'
 import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
-import { templateApi, ExtractVariablesResponse } from '@/hooks/api/templateApi'
+import type { ExtractVariablesResponse } from '@/hooks/api/templateApi'
 import { queryKeys } from '@/utils/api'
 import RebuildProgressModal from './RebuildProgressModal'
 
@@ -45,11 +45,15 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     useConvertToDirectMode,
     useExtractVariables,
     useConvertToTemplateMode,
+    usePreviewRenderedYaml,
+    useCheckConversion,
   } = useTemplateMutations()
 
   const convertToDirectMutation = useConvertToDirectMode()
   const extractVariablesMutation = useExtractVariables()
   const convertToTemplateMutation = useConvertToTemplateMode()
+  const previewRenderedYamlMutation = usePreviewRenderedYaml()
+  const checkConversionMutation = useCheckConversion()
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -92,12 +96,21 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     try {
       // Fetch preview and check rebuild in parallel
       const [rendered, checkResult] = await Promise.all([
-        templateApi.previewRenderedYaml(selectedTemplateId, formData),
-        templateApi.checkConversion(serverId, selectedTemplateId, formData),
+        previewRenderedYamlMutation.mutateAsync({
+          id: selectedTemplateId,
+          variableValues: formData,
+        }),
+        checkConversionMutation.mutateAsync({
+          serverId,
+          templateId: selectedTemplateId,
+          variableValues: formData,
+        }),
       ])
       setPreviewYaml(rendered)
       setRequiresRebuild(checkResult.requires_rebuild)
       setCurrentStep(2)
+    } catch {
+      // Errors are handled in mutation hooks
     } finally {
       setPreviewLoading(false)
     }
