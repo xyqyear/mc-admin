@@ -157,59 +157,6 @@ class TestArchiveOperations:
             data = response.json()
             assert data["items"] == []
 
-    def test_get_archive_file_content(self, client, archive_setup):
-        """Test getting archive file content."""
-        archive_path = archive_setup
-
-        with mock_archive_operations_setup(archive_path):
-            response = client.get(
-                "/archive/content?path=/config.yml",
-                headers={"Authorization": "Bearer test_master_token"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-
-            assert "content" in data
-            assert "server:" in data["content"]
-            assert "port: 25565" in data["content"]
-            assert "motd: 'Test Server'" in data["content"]
-
-    def test_get_archive_file_content_nonexistent(self, client, archive_setup):
-        """Test getting content of nonexistent archive file."""
-        archive_path = archive_setup
-
-        with mock_archive_operations_setup(archive_path):
-            response = client.get(
-                "/archive/content?path=/nonexistent.txt",
-                headers={"Authorization": "Bearer test_master_token"},
-            )
-
-            assert response.status_code == 404
-            assert "File not found" in response.json()["detail"]
-
-    def test_update_archive_file_content(self, client, archive_setup):
-        """Test updating archive file content."""
-        archive_path = archive_setup
-
-        with mock_archive_operations_setup(archive_path):
-            new_content = (
-                "# Updated config\nserver:\n  port: 25566\n  motd: 'Updated Server'\n"
-            )
-
-            response = client.post(
-                "/archive/content?path=/config.yml",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"content": new_content},
-            )
-
-            assert response.status_code == 200
-            assert "updated successfully" in response.json()["message"]
-
-            # Verify content was actually updated
-            file_path = archive_path / "config.yml"
-            assert file_path.read_text() == new_content
-
     def test_download_archive_file(self, client, archive_setup):
         """Test downloading an archive file."""
         archive_path = archive_setup

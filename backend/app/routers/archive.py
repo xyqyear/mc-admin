@@ -16,15 +16,12 @@ from ..config import settings
 from ..dependencies import get_current_user
 from ..files import (
     CreateFileRequest,
-    FileContent,
     FileListResponse,
     RenameFileRequest,
     create_file_or_directory,
     delete_file_or_directory,
-    get_file_content,
     get_file_items,
     rename_file_or_directory,
-    update_file_content,
     upload_file,
 )
 from ..minecraft import docker_mc_manager
@@ -69,30 +66,6 @@ async def list_archive_files(
     items = await get_file_items(base_path, path)
 
     return FileListResponse(items=items, current_path=path)
-
-
-@router.get("/content")
-async def get_archive_file_content(
-    path: str, _: UserPublic = Depends(get_current_user)
-):
-    """Get content of a specific archive file"""
-    base_path = _get_archive_base_path()
-    content = await get_file_content(base_path, path)
-
-    return FileContent(content=content)
-
-
-@router.post("/content")
-async def update_archive_file_content(
-    path: str,
-    file_content: FileContent,
-    _: UserPublic = Depends(get_current_user),
-):
-    """Update content of a specific archive file"""
-    base_path = _get_archive_base_path()
-    await update_file_content(base_path, path, file_content.content)
-
-    return {"message": "Archive file updated successfully"}
 
 
 @router.get("/download")

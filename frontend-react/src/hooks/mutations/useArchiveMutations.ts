@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { App } from 'antd'
-import { archiveApi, type CreateArchiveFileRequest, type RenameArchiveFileRequest, type UploadOptions, type CreateArchiveRequest } from '@/hooks/api/archiveApi'
+import { archiveApi, type CreateArchiveFileRequest, type CreateArchiveRequest, type RenameArchiveFileRequest, type UploadOptions } from '@/hooks/api/archiveApi'
 import { taskQueryKeys } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 import { useDownloadManager } from '@/utils/downloadUtils'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { App } from 'antd'
 
 export const useArchiveMutations = () => {
   const { message } = App.useApp()
@@ -98,25 +98,6 @@ export const useArchiveMutations = () => {
     })
   }
 
-  // Update file content
-  const useUpdateFileContent = () => {
-    return useMutation({
-      mutationFn: ({ path, content }: { path: string; content: string }) =>
-        archiveApi.updateArchiveFileContent(path, content),
-      onSuccess: (_, { path }) => {
-        // Invalidate the parent path files list so metadata is refreshed.
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.content(path) })
-        // Invalidate SHA256 cache for the updated file
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
-        message.success('文件更新成功')
-      },
-      onError: (error: any) => {
-        message.error(`更新失败: ${error.message}`)
-      }
-    })
-  }
-
   // Download file helper with progress tracking
   const downloadFile = async (path: string, filename: string) => {
     await executeDownload(
@@ -149,7 +130,6 @@ export const useArchiveMutations = () => {
     useCreateItem,
     useDeleteItem,
     useRenameItem,
-    useUpdateFileContent,
     useCreateArchive,
     downloadFile,
   }

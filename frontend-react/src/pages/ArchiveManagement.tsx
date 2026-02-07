@@ -28,7 +28,6 @@ import {
   SafetyCertificateOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons'
-import { SimpleEditor } from '@/components/editors'
 import PageHeader from '@/components/layout/PageHeader'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
 import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
@@ -36,7 +35,6 @@ import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { formatFileSize, formatDate, naturalCompare } from '@/utils/formatUtils'
 import { formatUtils } from '@/utils/serverUtils'
-import { detectFileLanguage, isFileEditable } from '@/config/fileEditingConfig'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
 import type { ColumnType, SortOrder } from 'antd/es/table/interface'
@@ -46,12 +44,11 @@ const ArchiveManagement: React.FC = () => {
   const [renameForm] = Form.useForm()
 
   // Archive management hooks
-  const { useArchiveFileList, useArchiveFileContent, useArchiveSHA256 } = useArchiveQueries()
+  const { useArchiveFileList, useArchiveSHA256 } = useArchiveQueries()
   const {
     useUploadFile,
     useDeleteItem,
     useRenameItem,
-    useUpdateFileContent,
     downloadFile,
   } = useArchiveMutations()
 
@@ -63,16 +60,12 @@ const ArchiveManagement: React.FC = () => {
   const uploadFileMutation = useUploadFile()
   const deleteItemMutation = useDeleteItem()
   const renameItemMutation = useRenameItem()
-  const updateFileMutation = useUpdateFileContent()
 
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false)
   const [isRenameModalVisible, setIsRenameModalVisible] = useState(false)
   const [isUploadModalVisible, setIsUploadModalVisible] = useState(false)
-  const [editingFile, setEditingFile] = useState<ArchiveFileItem | null>(null)
   const [renamingFile, setRenamingFile] = useState<ArchiveFileItem | null>(null)
-  const [fileContent, setFileContent] = useState('')
   const [uploadFileList, setUploadFileList] = useState<any[]>([])
   const [allowOverwrite, setAllowOverwrite] = useState(false)
   const [pageSize, setPageSize] = useState(20)
@@ -114,18 +107,6 @@ const ArchiveManagement: React.FC = () => {
   // SHA256 query
   const sha256Query = useArchiveSHA256(sha256Path, !!sha256Path)
 
-  // Get file content for editing
-  const { data: fileContentData } = useArchiveFileContent(
-    editingFile?.path || null
-  )
-
-  // Update file content when data changes
-  React.useEffect(() => {
-    if (fileContentData?.content !== undefined) {
-      setFileContent(fileContentData.content)
-    }
-  }, [fileContentData])
-
   // Handle file operations
   const handleDownload = async (file: ArchiveFileItem) => {
     await downloadFile(file.path, file.name)
@@ -134,30 +115,6 @@ const ArchiveManagement: React.FC = () => {
   const handleDelete = async (file: ArchiveFileItem) => {
     try {
       await deleteItemMutation.mutateAsync(file.path)
-    } catch {
-      // Error is handled by mutation
-    }
-  }
-
-  const handleEdit = (file: ArchiveFileItem) => {
-    if (!isFileEditable(file.name)) {
-      message.warning('此文件类型不支持编辑')
-      return
-    }
-    setEditingFile(file)
-    setIsEditModalVisible(true)
-  }
-
-  const handleSaveFile = async () => {
-    if (!editingFile) return
-
-    try {
-      await updateFileMutation.mutateAsync({
-        path: editingFile.path,
-        content: fileContent,
-      })
-      setIsEditModalVisible(false)
-      setEditingFile(null)
     } catch {
       // Error is handled by mutation
     }
@@ -377,7 +334,6 @@ const ArchiveManagement: React.FC = () => {
       },
       sortDirections: ['ascend', 'descend'] as SortOrder[],
       render: (name: string, file: ArchiveFileItem) => {
-        const isEditable = isFileEditable(file.name)
         const isDirectory = file.type === 'directory'
 
         return (
@@ -387,21 +343,7 @@ const ArchiveManagement: React.FC = () => {
             ) : (
               <FileOutlined style={{ color: '#52c41a' }} />
             )}
-            <Tooltip title={isEditable ? '点击编辑文件' : undefined}>
-              <span
-                className={
-                  isEditable ? 'font-medium cursor-pointer text-blue-600 hover:text-blue-800' :
-                    'font-medium'
-                }
-                onClick={() => {
-                  if (isEditable) {
-                    handleEdit(file)
-                  }
-                }}
-              >
-                {name}
-              </span>
-            </Tooltip>
+            <span className="font-medium">{name}</span>
           </div>
         )
       },
@@ -560,39 +502,6 @@ const ArchiveManagement: React.FC = () => {
           />
         </div>
       </Card>
-
-      {/* 文件编辑模态框 */}
-      <Modal
-        title={`编辑文件: ${editingFile?.name}`}
-        open={isEditModalVisible}
-        onOk={handleSaveFile}
-        onCancel={() => {
-          setIsEditModalVisible(false)
-          setEditingFile(null)
-        }}
-        width={800}
-        okText="保存"
-        cancelText="取消"
-        confirmLoading={updateFileMutation.isPending}
-      >
-        <div className="space-y-4">
-          <Alert
-            title="文件编辑"
-            description="修改文件内容后点击保存。请谨慎编辑配置文件，错误的配置可能导致文件损坏。"
-            type="warning"
-            showIcon
-          />
-          <div style={{ height: '500px' }}>
-            <SimpleEditor
-              height="500px"
-              language={editingFile ? detectFileLanguage(editingFile.name).language : 'text'}
-              value={fileContent}
-              onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
-              theme="vs-light"
-            />
-          </div>
-        </div>
-      </Modal>
 
       {/* 重命名模态框 */}
       <Modal

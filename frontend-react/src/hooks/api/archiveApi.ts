@@ -14,10 +14,6 @@ export interface ArchiveFileListResponse {
   current_path: string
 }
 
-export interface ArchiveFileContent {
-  content: string
-}
-
 export interface CreateArchiveFileRequest {
   name: string
   type: 'file' | 'directory'
@@ -56,14 +52,6 @@ export const archiveApi = {
   // List archive files
   getArchiveFiles: (path: string = '/'): Promise<ArchiveFileListResponse> =>
     api.get('/archive', { params: { path } }).then((res: any) => res.data),
-
-  // Get file content
-  getArchiveFileContent: (path: string): Promise<ArchiveFileContent> =>
-    api.get('/archive/content', { params: { path } }).then((res: any) => res.data),
-
-  // Update file content
-  updateArchiveFileContent: (path: string, content: string) =>
-    api.post('/archive/content', { content }, { params: { path } }).then((res: any) => res.data),
 
   // Download file with progress tracking and cancellation support
   downloadArchiveFileWithProgress: async (
