@@ -132,7 +132,6 @@ class TemplateCreateRequest(BaseModel):
     description: Optional[str] = None
     yaml_template: str = Field(min_length=1)
     variable_definitions: list[VariableDefinition] = Field(default_factory=list)
-    copy_from_template_id: Optional[int] = None
 
 
 class TemplateUpdateRequest(BaseModel):

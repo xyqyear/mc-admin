@@ -94,7 +94,6 @@ export interface TemplateCreateRequest {
   description?: string;
   yaml_template: string;
   variable_definitions: VariableDefinition[];
-  copy_from_template_id?: number;
 }
 
 export interface TemplateUpdateRequest {

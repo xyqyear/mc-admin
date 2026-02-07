@@ -122,36 +122,6 @@ class TestCreateTemplate:
         assert response.status_code == 409
         assert "已存在" in response.json()["detail"]
 
-    def test_copy_template(self, test_client):
-        """Test copying from existing template."""
-        # Create source template
-        create_resp = test_client.post(
-            "/api/templates/",
-            json={
-                "name": "source-template",
-                "yaml_template": "test: {var}",
-                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
-            },
-            headers=auth_headers(),
-        )
-        source_id = create_resp.json()["id"]
-
-        # Copy template - yaml_template is required by Pydantic but overridden by source
-        response = test_client.post(
-            "/api/templates/",
-            json={
-                "name": "copied-template",
-                "yaml_template": "placeholder: {var}",
-                "copy_from_template_id": source_id,
-            },
-            headers=auth_headers(),
-        )
-        assert response.status_code == 201
-        # When copy_from_template_id is provided, source yaml is used only if yaml_template is empty
-        # Since we provided yaml_template, it uses our provided value
-        assert response.json()["yaml_template"] == "placeholder: {var}"
-
-
 class TestGetTemplate:
     """Test template retrieval endpoints."""
 

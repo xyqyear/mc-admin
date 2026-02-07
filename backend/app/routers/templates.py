@@ -1,6 +1,5 @@
 """Template management API router."""
 
-import json
 from collections import Counter
 
 import yaml
@@ -56,7 +55,9 @@ async def list_templates(
             id=t.id,
             name=t.name,
             description=t.description,
-            variable_count=len(json.loads(t.variable_definitions_json)),
+            variable_count=len(
+                deserialize_variable_definitions_json(t.variable_definitions_json)
+            ),
             created_at=t.created_at,
         )
         for t in templates
@@ -191,25 +192,10 @@ async def create_template(
     _: UserPublic = Depends(get_current_user),
 ):
     """Create a new template."""
-    yaml_template = request.yaml_template
-    variable_definitions = list(request.variable_definitions)
-
-    # Handle copy from existing template
-    if request.copy_from_template_id:
-        source = await get_template_by_id(db, request.copy_from_template_id)
-        if not source:
-            raise HTTPException(status_code=404, detail="源模板不存在")
-
-        # Use source template's content if not provided
-        if not yaml_template:
-            yaml_template = source.yaml_template
-        if not variable_definitions:
-            variable_definitions = deserialize_variable_definitions_json(
-                source.variable_definitions_json
-            )
-
     # Validate template
-    errors = TemplateManager.validate_template(yaml_template, variable_definitions)
+    errors = TemplateManager.validate_template(
+        request.yaml_template, request.variable_definitions
+    )
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
@@ -221,8 +207,8 @@ async def create_template(
         db,
         name=request.name,
         description=request.description,
-        yaml_template=yaml_template,
-        variable_definitions=variable_definitions,
+        yaml_template=request.yaml_template,
+        variable_definitions=request.variable_definitions,
     )
 
     return TemplateResponse(
@@ -230,7 +216,7 @@ async def create_template(
         name=template.name,
         description=template.description,
         yaml_template=template.yaml_template,
-        variable_definitions=variable_definitions,
+        variable_definitions=request.variable_definitions,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -259,7 +245,7 @@ async def update_template(
         request.yaml_template if request.yaml_template else template.yaml_template
     )
     variable_definitions = (
-        list(request.variable_definitions)
+        request.variable_definitions
         if request.variable_definitions is not None
         else deserialize_variable_definitions_json(template.variable_definitions_json)
     )
@@ -278,7 +264,7 @@ async def update_template(
         template.yaml_template = request.yaml_template
     if request.variable_definitions is not None:
         template.variable_definitions_json = serialize_variable_definitions(
-            list(request.variable_definitions)
+            request.variable_definitions
         )
 
     # Save updates
