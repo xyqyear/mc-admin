@@ -1,4 +1,5 @@
 import { serverApi } from "@/hooks/api/serverApi";
+import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { message } from "antd";
@@ -83,6 +84,7 @@ export const useServerMutations = () => {
       },
       onSuccess: () => {
         message.success(`服务器 ${serverId} compose 配置更新成功`);
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: Error) => {
         message.error(`compose 配置更新失败: ${error.message}`);
@@ -95,6 +97,9 @@ export const useServerMutations = () => {
     return useMutation({
       mutationFn: async ({ serverId, archiveFilename }: { serverId: string; archiveFilename: string }) => {
         return serverApi.populateServer(serverId, archiveFilename);
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: Error, { serverId }) => {
         message.error(`服务器 ${serverId} 数据填充失败: ${error.message}`);

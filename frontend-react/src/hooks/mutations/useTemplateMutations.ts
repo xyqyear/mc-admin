@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { message } from "antd";
 import { queryKeys } from "@/utils/api";
+import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
 import {
   templateApi,
   TemplateCreateRequest,
@@ -124,6 +125,7 @@ export const useTemplateMutations = () => {
       }) => templateApi.updateServerTemplateConfig(serverId, variableValues),
       onSuccess: () => {
         message.success("配置更新成功");
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
@@ -202,6 +204,11 @@ export const useTemplateMutations = () => {
         templateId: number;
         variableValues: Record<string, unknown>;
       }) => templateApi.convertToTemplateMode(serverId, templateId, variableValues),
+      onSuccess: (data) => {
+        if (data.task_id) {
+          queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
+        }
+      },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (Array.isArray(detail)) {
