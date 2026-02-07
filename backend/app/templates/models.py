@@ -94,6 +94,16 @@ VariableDefinition = Annotated[
     Field(discriminator="type"),
 ]
 
+class TemplateSnapshot(BaseModel):
+    """Snapshot of a template's state, stored in Server.template_snapshot_json."""
+
+    template_id: int
+    template_name: str
+    yaml_template: str
+    variable_definitions: list[VariableDefinition]
+    snapshot_time: str
+
+
 # Shared TypeAdapter for list[VariableDefinition] serialization/deserialization
 _variable_list_adapter = TypeAdapter(list[VariableDefinition])
 

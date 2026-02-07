@@ -24,6 +24,7 @@ from .models import (
     TemplatePreviewResponse,
     TemplateResponse,
     TemplateSchemaResponse,
+    TemplateSnapshot,
     TemplateUpdateRequest,
     VariableDefinition,
     VariableType,
@@ -60,6 +61,7 @@ __all__ = [
     "AvailablePortsResponse",
     "TemplatePreviewRequest",
     "TemplatePreviewResponse",
+    "TemplateSnapshot",
     "deserialize_variable_definitions_json",
     "serialize_variable_definitions",
 ]

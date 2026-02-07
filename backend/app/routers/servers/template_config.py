@@ -16,10 +16,7 @@ from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
-from ...templates import (
-    VariableDefinition,
-    deserialize_variable_definitions_json,
-)
+from ...templates import TemplateSnapshot, VariableDefinition
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -77,24 +74,21 @@ async def get_template_config(
         raise HTTPException(status_code=400, detail="该服务器不是使用模板创建的")
 
     # Parse template snapshot
-    template_snapshot = json.loads(server.template_snapshot_json)
+    snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
     variable_values = json.loads(server.variable_values_json or "{}")
 
-    # Parse user variables from snapshot
-    user_variables = deserialize_variable_definitions_json(json.dumps(template_snapshot["variable_definitions"]))
-
     # Generate JSON Schema
-    json_schema = TemplateManager.generate_json_schema(user_variables)
+    json_schema = TemplateManager.generate_json_schema(snapshot.variable_definitions)
 
     return TemplateConfigResponse(
         server_id=server_id,
-        template_id=template_snapshot["template_id"],
-        template_name=template_snapshot["template_name"],
-        yaml_template=template_snapshot["yaml_template"],
-        variable_definitions=user_variables,
+        template_id=snapshot.template_id,
+        template_name=snapshot.template_name,
+        yaml_template=snapshot.yaml_template,
+        variable_definitions=snapshot.variable_definitions,
         variable_values=variable_values,
         json_schema=json_schema,
-        snapshot_time=template_snapshot["snapshot_time"],
+        snapshot_time=snapshot.snapshot_time,
     )
 
 
@@ -121,12 +115,11 @@ async def update_template_config(
         raise HTTPException(status_code=400, detail="该服务器不是使用模板创建的")
 
     # Parse template snapshot
-    template_snapshot = json.loads(server.template_snapshot_json)
-    user_variables = deserialize_variable_definitions_json(json.dumps(template_snapshot["variable_definitions"]))
+    snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
 
     # Validate variable values
     errors = TemplateManager.validate_variable_values(
-        user_variables, request.variable_values
+        snapshot.variable_definitions, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)
@@ -134,7 +127,7 @@ async def update_template_config(
     # Render YAML
     try:
         rendered_yaml = TemplateManager.render_yaml(
-            template_snapshot["yaml_template"], request.variable_values
+            snapshot.yaml_template, request.variable_values
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -19,7 +19,7 @@ from ...servers import (
     create_server_record,
     extract_ports_from_yaml,
 )
-from ...templates import deserialize_variable_definitions_json
+from ...templates import TemplateSnapshot, deserialize_variable_definitions_json
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -106,13 +106,13 @@ async def create_server(
                 raise HTTPException(status_code=400, detail=str(e))
 
             # Store template snapshot for future editing
-            template_snapshot = {
-                "template_id": template.id,
-                "template_name": template.name,
-                "yaml_template": template.yaml_template,
-                "variable_definitions": json.loads(template.variable_definitions_json),
-                "snapshot_time": datetime.now(timezone.utc).isoformat(),
-            }
+            template_snapshot = TemplateSnapshot(
+                template_id=template.id,
+                template_name=template.name,
+                yaml_template=template.yaml_template,
+                variable_definitions=deserialize_variable_definitions_json(template.variable_definitions_json),
+                snapshot_time=datetime.now(timezone.utc).isoformat(),
+            )
             variable_values = create_request.variable_values
 
         instance = docker_mc_manager.get_instance(server_id)
@@ -144,7 +144,7 @@ async def create_server(
             server_id,
             template_id=create_request.template_id if template_snapshot else None,
             template_snapshot_json=(
-                json.dumps(template_snapshot) if template_snapshot else None
+                template_snapshot.model_dump_json() if template_snapshot else None
             ),
             variable_values_json=(
                 json.dumps(variable_values) if variable_values else None

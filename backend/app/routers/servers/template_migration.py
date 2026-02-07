@@ -18,9 +18,9 @@ from ...models import ServerTemplate as TemplateModel
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
 from ...templates import (
+    TemplateSnapshot,
     VariableDefinition,
     deserialize_variable_definitions_json,
-    serialize_variable_definitions,
 )
 from ...templates.manager import TemplateManager
 
@@ -251,18 +251,16 @@ async def convert_to_template_mode(
                 return
 
             # Create template snapshot
-            template_snapshot = {
-                "template_id": template.id,
-                "template_name": template.name,
-                "yaml_template": template.yaml_template,
-                "variable_definitions": json.loads(
-                    serialize_variable_definitions(variable_definitions)
-                ),
-                "snapshot_time": datetime.now(timezone.utc).isoformat(),
-            }
+            snapshot = TemplateSnapshot(
+                template_id=template.id,
+                template_name=template.name,
+                yaml_template=template.yaml_template,
+                variable_definitions=variable_definitions,
+                snapshot_time=datetime.now(timezone.utc).isoformat(),
+            )
 
             server.template_id = template.id
-            server.template_snapshot_json = json.dumps(template_snapshot)
+            server.template_snapshot_json = snapshot.model_dump_json()
             server.variable_values_json = json.dumps(request.variable_values)
             server.updated_at = datetime.now(timezone.utc)
             await session.commit()
