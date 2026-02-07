@@ -19,6 +19,7 @@ from ...servers import get_active_server_by_id, rebuild_server_task
 from ...templates import (
     TemplateSnapshot,
     VariableDefinition,
+    are_yaml_semantically_equal,
     deserialize_variable_definitions_json,
     get_template_by_id,
 )
@@ -63,7 +64,21 @@ class ConvertToTemplateRequest(BaseModel):
 class ConvertToTemplateResponse(BaseModel):
     """Response model for converting to template mode."""
 
-    task_id: str
+    task_id: str | None = None
+    skipped_rebuild: bool = False
+
+
+class CheckConversionRequest(BaseModel):
+    """Request model for checking if conversion requires rebuild."""
+
+    template_id: int
+    variable_values: dict[str, Any]
+
+
+class CheckConversionResponse(BaseModel):
+    """Response model for conversion rebuild check."""
+
+    requires_rebuild: bool
 
 
 @router.post(
@@ -164,6 +179,61 @@ async def extract_variables(
 
 
 @router.post(
+    "/{server_id}/check-conversion",
+    response_model=CheckConversionResponse,
+)
+async def check_conversion(
+    server_id: str,
+    request: CheckConversionRequest,
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    """Check if converting to template mode requires a rebuild.
+
+    Compares the rendered template YAML with the current compose file
+    to determine if they are semantically identical.
+    """
+    server = await get_active_server_by_id(db, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="服务器不存在")
+
+    # Get the template
+    template = await get_template_by_id(db, request.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    # Parse variable definitions
+    variable_definitions = deserialize_variable_definitions_json(
+        template.variable_definitions_json
+    )
+
+    # Validate variable values
+    errors = TemplateManager.validate_variable_values(
+        variable_definitions, request.variable_values
+    )
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
+
+    # Render YAML
+    try:
+        rendered_yaml = TemplateManager.render_yaml(
+            template.yaml_template, request.variable_values
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    instance = docker_mc_manager.get_instance(server_id)
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail="服务器目录不存在")
+
+    # Check if rendered YAML is semantically identical to current compose
+    current_compose = await instance.get_compose_file()
+    is_same = are_yaml_semantically_equal(current_compose, rendered_yaml)
+
+    return CheckConversionResponse(requires_rebuild=not is_same)
+
+
+@router.post(
     "/{server_id}/convert-to-template",
     response_model=ConvertToTemplateResponse,
 )
@@ -211,6 +281,31 @@ async def convert_to_template_mode(
     if not await instance.exists():
         raise HTTPException(status_code=404, detail="服务器目录不存在")
 
+    # Check if rendered YAML is semantically identical to current compose
+    current_compose = await instance.get_compose_file()
+    is_same = are_yaml_semantically_equal(current_compose, rendered_yaml)
+
+    if is_same:
+        # No rebuild needed - update DB directly
+        snapshot = TemplateSnapshot(
+            template_id=template.id,
+            template_name=template.name,
+            yaml_template=template.yaml_template,
+            variable_definitions=variable_definitions,
+            snapshot_time=datetime.now(timezone.utc).isoformat(),
+        )
+
+        server.template_id = template.id
+        server.template_snapshot_json = snapshot.model_dump_json()
+        server.variable_values_json = json.dumps(request.variable_values)
+        server.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+
+        logger.info(
+            f"Server {server_id} converted to template mode (no rebuild needed)"
+        )
+        return ConvertToTemplateResponse(task_id=None, skipped_rebuild=True)
+
     # Submit rebuild task
     task_result = task_manager.submit(
         task_type=TaskType.SERVER_REBUILD,
@@ -253,4 +348,4 @@ async def convert_to_template_mode(
 
     asyncio.create_task(update_template_fields_after_rebuild())
 
-    return ConvertToTemplateResponse(task_id=task_result.task_id)
+    return ConvertToTemplateResponse(task_id=task_result.task_id, skipped_rebuild=False)

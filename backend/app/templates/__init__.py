@@ -31,6 +31,7 @@ from .models import (
     deserialize_variable_definitions_json,
     serialize_variable_definitions,
 )
+from .yaml_utils import are_yaml_semantically_equal
 
 __all__ = [
     # CRUD operations
@@ -64,4 +65,6 @@ __all__ = [
     "TemplateSnapshot",
     "deserialize_variable_definitions_json",
     "serialize_variable_definitions",
+    # Utilities
+    "are_yaml_semantically_equal",
 ]

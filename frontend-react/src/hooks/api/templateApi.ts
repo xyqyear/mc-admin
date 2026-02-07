@@ -147,7 +147,17 @@ export interface ExtractVariablesResponse {
 }
 
 export interface ConvertToTemplateResponse {
-  task_id: string;
+  task_id: string | null;
+  skipped_rebuild: boolean;
+}
+
+export interface CheckConversionRequest {
+  template_id: number;
+  variable_values: Record<string, unknown>;
+}
+
+export interface CheckConversionResponse {
+  requires_rebuild: boolean;
 }
 
 export const templateApi = {
@@ -288,6 +298,19 @@ export const templateApi = {
   ): Promise<ConvertToTemplateResponse> => {
     const res = await api.post<ConvertToTemplateResponse>(
       `/servers/${serverId}/convert-to-template`,
+      { template_id: templateId, variable_values: variableValues }
+    );
+    return res.data;
+  },
+
+  // Check if conversion requires rebuild
+  checkConversion: async (
+    serverId: string,
+    templateId: number,
+    variableValues: Record<string, unknown>
+  ): Promise<CheckConversionResponse> => {
+    const res = await api.post<CheckConversionResponse>(
+      `/servers/${serverId}/check-conversion`,
       { template_id: templateId, variable_values: variableValues }
     );
     return res.data;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Modal, Steps, Select, Alert, Button, Space, Spin } from 'antd'
+import { Modal, Steps, Select, Alert, Button, Space, Spin, message } from 'antd'
 import { ExclamationCircleOutlined, SwapOutlined, SyncOutlined } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { MonacoDiffEditor } from '@/components/editors'
@@ -37,6 +37,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
   const [previewYaml, setPreviewYaml] = useState<string>('')
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [requiresRebuild, setRequiresRebuild] = useState<boolean | null>(null)
 
   const { data: templates, isLoading: templatesLoading } = useTemplates()
   const queryClient = useQueryClient()
@@ -58,6 +59,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       setExtractResult(null)
       setFormData({})
       setPreviewYaml('')
+      setRequiresRebuild(null)
     }
   }, [open, currentMode, initialTemplateId])
 
@@ -88,8 +90,13 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     if (!selectedTemplateId) return
     setPreviewLoading(true)
     try {
-      const rendered = await templateApi.previewRenderedYaml(selectedTemplateId, formData)
+      // Fetch preview and check rebuild in parallel
+      const [rendered, checkResult] = await Promise.all([
+        templateApi.previewRenderedYaml(selectedTemplateId, formData),
+        templateApi.checkConversion(serverId, selectedTemplateId, formData),
+      ])
       setPreviewYaml(rendered)
+      setRequiresRebuild(checkResult.requires_rebuild)
       setCurrentStep(2)
     } finally {
       setPreviewLoading(false)
@@ -103,8 +110,20 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       templateId: selectedTemplateId,
       variableValues: formData,
     })
-    setRebuildTaskId(result.task_id)
-    setIsRebuildModalVisible(true)
+
+    if (result.skipped_rebuild) {
+      // No rebuild needed — close modal directly and call onSuccess
+      message.success('配置已更新')
+      // Invalidate queries and close
+      queryClient.invalidateQueries({ queryKey: queryKeys.templates.serverConfigPreview(serverId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.templates.serverConfig(serverId) })
+      onSuccess()
+      onClose()
+    } else {
+      // Rebuild needed — show rebuild progress modal
+      setRebuildTaskId(result.task_id!)
+      setIsRebuildModalVisible(true)
+    }
   }
 
   const handleRebuildComplete = () => {
@@ -222,8 +241,14 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
         <div className="space-y-4">
           <Alert
             title="确认配置差异"
-            description="请检查当前配置与模板渲染结果的差异，确认无误后点击「确认并重建」。"
-            type="info"
+            description={
+              requiresRebuild === null
+                ? "正在检查配置差异..."
+                : requiresRebuild
+                ? "检测到配置差异，确认后将重建服务器。"
+                : "配置无变化，确认后将直接更新模板关联，不会重建服务器。"
+            }
+            type={requiresRebuild === null ? "info" : requiresRebuild ? "warning" : "success"}
             showIcon
           />
           <div className="border rounded overflow-hidden" style={{ height: 500 }}>
@@ -274,11 +299,16 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
             <Button onClick={() => setCurrentStep(1)}>上一步</Button>
             <Button
               type="primary"
-              danger
+              danger={requiresRebuild === true}
               onClick={handleConvertToTemplate}
               loading={convertToTemplateMutation.isPending}
+              disabled={requiresRebuild === null}
             >
-              {isUpdateMode ? '确认更新并重建' : '确认并重建'}
+              {requiresRebuild === null
+                ? "检查中..."
+                : requiresRebuild
+                ? (isUpdateMode ? '确认更新并重建' : '确认并重建')
+                : "确认"}
             </Button>
           </>
         )}
