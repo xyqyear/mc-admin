@@ -485,20 +485,45 @@ Features:
 - Properties files
 - **SNBT** (Minecraft NBT format)
 
-## Caching Strategies
+## Caching & Query Management
 
-**Query Refetch Intervals:**
+**Core Responsibility Split:**
 
-- **Real-time data** (players, online status): 30s
-- **Moderate updates** (resources, stats): 60s
-- **Slow changes** (snapshots, archives): 2min
-- **Static data** (server config): Manual refetch
+- **API layer** (`hooks/api/`): transport only (Axios calls, typing, upload/download progress). No cache logic.
+- **Query layer** (`hooks/queries/base/`, `hooks/queries/page/`): server-state reads, polling, stale-time strategy, and cache ownership.
+- **Mutation layer** (`hooks/mutations/`): all write/command operations plus cache invalidation on success.
 
-**Intelligent Invalidation:**
+**When to Use Which:**
 
-- Mutations invalidate related queries automatically
-- Server operations trigger full data refresh
-- File operations invalidate file list queries
+- Use **`useQuery` / `useQueries`** for reusable server state shared by pages/components.
+- Use **`useMutation`** for create/update/delete/operation endpoints (including command-style APIs like start/stop/restart).
+- Use **direct API calls** only for one-off, flow-local requests that should not be globally cached (for example modal-only preview/check calls) or stream/progress operations (download/upload).
+
+**Query Key Rules (Mandatory):**
+
+- Always use key factories from `utils/api.ts` (`queryKeys.*`), never inline string literals.
+- Keep key hierarchy stable: `all` -> `list/detail/sub-resource`.
+- Query hooks and invalidation must reference the same factory path.
+- Prefer prefix invalidation via stable parents (for example `queryKeys.snapshots.all`) when affected fanout is broad.
+
+**Invalidation Rules:**
+
+- **Single-resource update**: invalidate that resource detail key.
+- **List membership / aggregate changed**: invalidate related list and summary keys.
+- **Cross-domain side effects**: also invalidate dependent domains (examples: DNS, restart schedule, players, snapshot repository usage).
+- Prefer `invalidateQueries` for normal flows; use `refetchQueries` only for explicit user-triggered "refresh now" actions.
+
+**Task-Driven Operations (Important):**
+
+- For async backend tasks (rebuild/populate/template conversion), do not immediately invalidate business queries after task submission.
+- Submit mutation -> invalidate task queries (`taskQueryKeys`) -> poll task detail.
+- After task reaches `completed`, invalidate affected business keys in one place (progress modal completion handler).
+
+**Volatility-Based Defaults:**
+
+- **Fast-changing** (status/runtime/online players): short stale time + polling (seconds-level).
+- **Moderate-changing** (disk usage, task lists): medium polling window.
+- **Slow/static** (template schema, module schema, compose metadata): long stale time, mostly manual refresh/invalidation on mutation.
 
 ## Development Patterns
 
