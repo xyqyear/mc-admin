@@ -189,6 +189,45 @@ class TestTemplateServerCreation:
         assert response.status_code == 400
         assert "variable_values" in response.json()["detail"]
 
+    def test_empty_variable_values_with_static_template(self, test_client):
+        """Test creation succeeds with empty variable_values for a no-variable template."""
+        static_yaml = """
+version: '3.8'
+services:
+  mc:
+    image: itzg/minecraft-server:latest
+    container_name: mc-static-server
+    ports:
+      - "25570:25565"
+      - "25580:25575"
+    environment:
+      EULA: "TRUE"
+      VERSION: "1.20.1"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+"""
+        response = test_client.post(
+            "/api/templates/",
+            json={
+                "name": "static-template",
+                "yaml_template": static_yaml,
+                "variable_definitions": [],
+            },
+            headers=auth_headers(),
+        )
+        static_template_id = response.json()["id"]
+
+        response = test_client.post(
+            "/api/servers/static-server",
+            json={
+                "template_id": static_template_id,
+                "variable_values": {},
+            },
+            headers=auth_headers(),
+        )
+        assert response.status_code == 200
+
     def test_mutual_exclusion(self, test_client):
         """Test creation fails with both yaml_content and template_id."""
         response = test_client.post(

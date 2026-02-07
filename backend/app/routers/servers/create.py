@@ -76,7 +76,7 @@ async def create_server(
 
         if yaml_content is None:
             # Template mode
-            if not create_request.variable_values:
+            if create_request.variable_values is None:
                 raise HTTPException(
                     status_code=400, detail="使用模板模式时必须提供 variable_values"
                 )
