@@ -28,13 +28,9 @@ export const useFileMutations = (serverId: string | undefined) => {
     return useMutation({
       mutationFn: ({ path, content }: { path: string; content: string }) =>
         fileApi.updateFileContent(serverId!, path, content),
-      onSuccess: (_, variables) => {
+      onSuccess: () => {
         message.success("文件更新成功");
-        // Invalidate file content cache
-        queryClient.invalidateQueries({
-          queryKey: [...queryKeys.files.content(serverId || "", variables.path)],
-        });
-        // Invalidate file list caches so metadata (size/mtime) is refreshed.
+        // Invalidate all file caches for this server, including list and content.
         invalidateFileList();
       },
       onError: (error: any) => {

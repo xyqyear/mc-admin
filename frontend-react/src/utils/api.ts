@@ -222,7 +222,6 @@ export const queryKeys = {
   restartSchedule: {
     all: ["restartSchedule"] as const,
     detail: (serverId: string) => [...queryKeys.restartSchedule.all, "detail", serverId] as const,
-    suggestions: (serverId: string) => [...queryKeys.restartSchedule.all, "suggestions", serverId] as const,
   },
 
   // DNS 管理
