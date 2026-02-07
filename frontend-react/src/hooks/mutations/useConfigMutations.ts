@@ -45,6 +45,13 @@ export const useUpdateModuleConfig = () => {
         queryKey: queryKeys.config.modules()
       })
 
+      if (variables.moduleName === 'dns') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
+      }
+
       // Execute post-update action if available for this module
       const postUpdateAction = MODULE_POST_UPDATE_ACTIONS[variables.moduleName]
       if (postUpdateAction) {
@@ -76,6 +83,13 @@ export const useResetModuleConfig = () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.config.modules()
       })
+
+      if (moduleName === 'dns') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
+      }
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.detail || error.message || '配置重置失败'

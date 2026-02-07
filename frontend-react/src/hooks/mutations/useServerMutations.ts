@@ -50,20 +50,16 @@ export const useServerMutations = () => {
             queryKey: queryKeys.serverRuntimes.detail(serverId),
           });
           queryClient.invalidateQueries({
-            queryKey: queryKeys.players.online(serverId),
+            queryKey: queryKeys.players.serverOnline(serverId),
           });
 
-          // 失效服务器列表和概览数据，确保整体状态更新
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverInfos.lists(),
-          });
+          // 失效服务器列表和聚合运行态数据，确保整体状态更新
           queryClient.invalidateQueries({
             queryKey: queryKeys.serverStatuses.all,
           });
           queryClient.invalidateQueries({
             queryKey: queryKeys.serverRuntimes.all,
           });
-          queryClient.invalidateQueries({ queryKey: queryKeys.overview() });
 
           // 失效系统信息，因为服务器状态变化可能影响系统资源使用
           queryClient.invalidateQueries({ queryKey: queryKeys.system.info() });
@@ -95,30 +91,6 @@ export const useServerMutations = () => {
       },
       onSuccess: () => {
         message.success(`服务器 ${serverId} compose 配置更新成功`);
-
-        // 延迟1秒后失效相关缓存
-        setTimeout(() => {
-          // 失效compose文件缓存
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.compose.detail(serverId),
-          });
-
-          // 失效服务器信息缓存（compose配置变化可能影响服务器信息）
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverInfos.detail(serverId),
-          });
-
-          // 失效状态和运行时数据（服务器可能重启）
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverStatuses.detail(serverId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverRuntimes.detail(serverId),
-          });
-
-          // 失效服务器列表
-          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
-        }, 1000);
       },
       onError: (error: Error) => {
         message.error(`compose 配置更新失败: ${error.message}`);
@@ -165,12 +137,6 @@ export const useServerMutations = () => {
         setTimeout(() => {
           // 失效服务器列表
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverInfos.lists(),
-          });
-
-          // 失效概览数据
-          queryClient.invalidateQueries({ queryKey: queryKeys.overview() });
         }, 1000);
       },
       onError: (error: Error, { serverId }) => {

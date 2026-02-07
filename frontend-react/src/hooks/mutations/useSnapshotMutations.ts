@@ -18,9 +18,9 @@ export const useSnapshotMutations = () => {
       onSuccess: (data: CreateSnapshotResponse) => {
         message.success(`快照创建成功: ${data.snapshot.short_id}`);
 
-        // 刷新快照列表
+        // 刷新所有快照相关查询（包含仓库占用）
         queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.global(),
+          queryKey: queryKeys.snapshots.all,
         });
       },
       onError: (error: any) => {

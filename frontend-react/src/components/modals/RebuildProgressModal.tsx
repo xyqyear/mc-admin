@@ -30,7 +30,7 @@ const RebuildProgressModal: React.FC<RebuildProgressModalProps> = ({
 
     if (task.status === 'completed') {
       message.success('服务器配置更新完成')
-      // Invalidate server-related queries
+      // Invalidate server-related queries after rebuild completion
       queryClient.invalidateQueries({
         queryKey: queryKeys.serverInfos.detail(serverId),
       })
@@ -39,6 +39,15 @@ const RebuildProgressModal: React.FC<RebuildProgressModalProps> = ({
       })
       queryClient.invalidateQueries({
         queryKey: queryKeys.serverStatuses.detail(serverId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.serverRuntimes.detail(serverId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.servers(),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.players.serverOnline(serverId),
       })
       onComplete()
     } else if (task.status === 'failed') {

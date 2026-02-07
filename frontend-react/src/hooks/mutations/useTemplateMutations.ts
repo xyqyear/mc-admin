@@ -122,17 +122,8 @@ export const useTemplateMutations = () => {
         serverId: string;
         variableValues: Record<string, unknown>;
       }) => templateApi.updateServerTemplateConfig(serverId, variableValues),
-      onSuccess: (_, { serverId }) => {
+      onSuccess: () => {
         message.success("配置更新成功");
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.templates.serverConfig(serverId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.compose.detail(serverId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.serverInfos.detail(serverId),
-        });
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
