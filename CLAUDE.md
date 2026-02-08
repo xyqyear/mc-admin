@@ -21,7 +21,8 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Docker Compose configuration management with Monaco editor integration
 - Real-time console streaming with direct container attach via WebSocket
 - Resource monitoring (CPU, memory, disk, network) via cgroup v2
-- Server templates for quick deployment
+- Template system for reusable server configurations with typed variables
+- Bidirectional conversion between template mode and direct editing mode
 - File management with Monaco editor, deep search, multi-file/folder drag-and-drop upload
 - SNBT file editing with syntax highlighting
 

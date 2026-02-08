@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, background task center for long-running operations, version update notifications, and direct container terminal access.
+Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, background task center for long-running operations, server template system with typed variable forms and mode conversion, version update notifications, and direct container terminal access.
 
 ## Tech Stack
 
@@ -98,7 +98,13 @@ src/
 │   │   ├── FileToolbar.tsx              # File operations toolbar
 │   │   ├── FileSearchBox.tsx            # File search input
 │   │   ├── FileSearchResultTree.tsx     # Search results tree
-│   │   └── HighlightedFileName.tsx      # Search result highlighting
+│   │   ├── HighlightedFileName.tsx      # Search result highlighting
+│   │   ├── ServerNew/                   # Server creation sub-components
+│   │   │   ├── TemplateCreationMode.tsx # Template-based server creation
+│   │   │   └── TraditionalCreationMode.tsx # Traditional YAML creation
+│   │   └── ServerCompose/               # Server compose editing sub-components
+│   │       ├── TemplateMode.tsx         # Template variable form editing
+│   │       └── DirectMode.tsx           # Direct YAML editing
 │   │
 │   ├── common/              # Shared components
 │   │   └── ServerNameTag.tsx            # Clickable server name tags
@@ -127,6 +133,11 @@ src/
 │   │   ├── DebugModal.tsx              # Debug information modal
 │   │   └── DebugTool.tsx               # Debug sidebar entry
 │   │
+│   ├── templates/             # Template management components
+│   │   ├── VariableDefinitionForm.tsx  # Variable definition editor
+│   │   ├── variableUtils.ts           # Variable form data conversion
+│   │   └── index.ts
+│   │
 │   ├── VersionUpdateModal.tsx          # Version update notifications with issue links
 │   │
 │   └── modals/              # Modal components
@@ -149,9 +160,14 @@ src/
 │       │   └── index.ts
 │       ├── ArchiveSelectionModal.tsx    # Archive selection
 │       ├── PopulateProgressModal.tsx    # Server population progress
+│       ├── RebuildProgressModal.tsx     # Server rebuild progress (template updates)
+│       ├── ConvertModeModal.tsx         # Template ↔ direct mode conversion wizard
 │       ├── DockerComposeHelpModal.tsx   # Docker Compose help
 │       ├── SHA256HelpModal.tsx          # SHA256 help
-│       └── ServerTemplateModal.tsx      # Server template selection
+│       ├── ServerOperationConfirmModal.tsx # Server operation confirmation
+│       ├── ServerTemplateModal.tsx      # Existing server compose selection
+│       └── ServerCompose/
+│           └── ComposeDiffModal.tsx     # YAML diff viewer (Monaco diff editor)
 │
 ├── hooks/
 │   ├── api/                 # **Layer 1** - Raw API functions
@@ -166,7 +182,8 @@ src/
 │   │   ├── configApi.ts
 │   │   ├── userApi.ts
 │   │   ├── playerApi.ts     # Player management API
-│   │   └── taskApi.ts       # Background task API
+│   │   ├── taskApi.ts       # Background task API
+│   │   └── templateApi.ts   # Template CRUD, config, conversion, preview
 │   │
 │   ├── queries/
 │   │   ├── base/            # **Layer 2** - Resource-focused query hooks
@@ -180,7 +197,8 @@ src/
 │   │   │   ├── useSystemQueries.ts
 │   │   │   ├── useUserQueries.ts
 │   │   │   ├── usePlayerQueries.ts   # Player data queries
-│   │   │   └── useTaskQueries.ts     # Background task queries with polling
+│   │   │   ├── useTaskQueries.ts     # Background task queries with polling
+│   │   │   └── useTemplateQueries.ts # Template list, detail, schema, config, ports
 │   │   │
 │   │   └── page/            # **Layer 3** - Page-level compositions
 │   │       ├── useServerDetailQueries.ts
@@ -195,7 +213,10 @@ src/
 │   │   ├── useCronMutations.ts
 │   │   ├── useDnsMutations.ts
 │   │   ├── useConfigMutations.ts
-│   │   └── useUserMutations.ts
+│   │   ├── useUserMutations.ts
+│   │   ├── usePlayerMutations.ts
+│   │   ├── useTaskMutations.ts
+│   │   └── useTemplateMutations.ts  # Template CRUD, config update, mode conversion
 │   │
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code login
 │   ├── useServerConsoleWebSocket.ts # Console WebSocket with direct attach
@@ -214,12 +235,16 @@ src/
 │   ├── PlayerManagement.tsx  # Player management
 │   ├── admin/
 │   │   └── UserManagement.tsx
+│   ├── templates/
+│   │   ├── TemplateList.tsx   # Template list with create/edit/copy/delete
+│   │   ├── TemplateEdit.tsx   # Template editor (create/edit/copy-from modes)
+│   │   └── DefaultVariables.tsx # Default variable configuration
 │   └── server/
-│       ├── ServerNew.tsx    # Server creation
+│       ├── ServerNew.tsx    # Server creation (template + traditional modes)
 │       └── servers/
 │           ├── ServerDetail.tsx    # Server overview
 │           ├── ServerFiles.tsx     # File management with search
-│           ├── ServerCompose.tsx   # Docker Compose with schema hints
+│           ├── ServerCompose.tsx   # Compose editing (auto-detects template/direct mode)
 │           └── ServerConsole.tsx   # Real-time terminal with xterm.js
 │
 ├── stores/                  # Zustand stores
@@ -250,7 +275,7 @@ src/
 
 ├── config/
 │   ├── fileEditingConfig.ts # File editing configuration
-│   ├── versionConfig.ts     # Version management (current: v1.6.0)
+│   ├── versionConfig.ts     # Version management (current: v2.0.0)
 │   ├── snbtLanguage.ts      # SNBT language config for Monaco
 │   └── serverAddressConfig.ts # Server address mapping
 
@@ -397,6 +422,36 @@ export const useServerDetailQueries = (serverId: string) => {
 
 See `.claude/background-tasks-guide.md` for implementation guide.
 
+### Server Template System
+
+**Template-based server creation and management:**
+
+The server creation page (`ServerNew.tsx`) supports two modes — **template mode** (select a template, fill variable form, auto-render YAML) and **traditional mode** (paste/edit Docker Compose YAML directly). The compose editing page (`ServerCompose.tsx`) auto-detects the server's mode and renders either `TemplateMode` or `DirectMode` accordingly.
+
+**Template Management Pages:**
+
+- `TemplateList.tsx`: Template table with create, edit, copy, delete actions
+- `TemplateEdit.tsx`: Full template editor with YAML editor tab, variable definition form tab, and diff preview. Supports create/edit/copy-from modes.
+- `DefaultVariables.tsx`: Configure default variables pre-filled when creating new templates
+
+**Mode Conversion:**
+
+`ConvertModeModal.tsx` is a multi-step wizard supporting:
+
+- **Template → Direct**: One-step confirmation, no rebuild needed
+- **Direct → Template**: 3-step flow (select template → extract/adjust variables → preview diff and confirm)
+- **Template Update**: Apply template updates to an existing template-based server
+
+The wizard uses `useExtractVariables` to infer variable values from the current compose by matching it against the template pattern, `useCheckConversion` to determine if a rebuild is needed, and `RebuildProgressModal` to track rebuild progress.
+
+**Key Components:**
+
+- `TemplateCreationMode` / `TraditionalCreationMode`: Server creation sub-pages
+- `TemplateMode` / `DirectMode`: Compose editing sub-pages
+- `ComposeDiffModal`: Monaco diff editor for YAML comparison
+- `VariableDefinitionForm`: Visual editor for template variable definitions
+- `SchemaForm` (rjsf): Renders variable input forms from JSON Schema generated by backend
+
 ### Version Update System
 
 **Automatic version detection** with notifications:
@@ -406,7 +461,6 @@ See `.claude/background-tasks-guide.md` for implementation guide.
 - GitHub issue link parsing for clickable references
 - "Remind later" functionality (1-hour delay)
 - localStorage persistence for last seen version
-- Current version: **v1.6.0** (direct container terminal)
 
 ## State Management
 

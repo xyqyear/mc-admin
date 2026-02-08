@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, dynamic configuration management, and background task system for long-running operations.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, dynamic configuration management, template-based server creation with typed variables, and background task system for long-running operations.
 
 ## Tech Stack
 
@@ -28,6 +28,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **File System** (app.files): Multi-file upload, search, conflict resolution
 - **Dynamic Config** (app.dynamic_config): Runtime configuration with schema migration
 - **Server Tracker** (app.server_tracker): Server lifecycle event monitoring
+- **Template System** (app.templates): Template-based server creation with typed variables
 - **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
 - **Background Tasks** (app.background_tasks): Async task manager for long-running operations
 
@@ -152,17 +153,20 @@ app/
 │   ├── cron.py             # Cron job management
 │   ├── config.py           # Dynamic configuration
 │   ├── dns.py              # DNS management
+│   ├── templates.py        # Template CRUD, schema, preview, default variables
 │   ├── tasks.py            # Background task queries and actions
 │   └── servers/
 │       ├── compose.py      # Docker Compose config
-│       ├── create.py       # Server creation
+│       ├── create.py       # Server creation (template + traditional modes)
 │       ├── operations.py   # Start/stop/restart
 │       ├── resources.py    # Resource monitoring
 │       ├── players.py      # Online player list
 │       ├── files.py        # File management
 │       ├── console.py      # WebSocket console endpoint
 │       ├── populate.py     # Archive population
-│       └── restart_schedule.py
+│       ├── restart_schedule.py
+│       ├── template_config.py     # Template config read/update for existing servers
+│       └── template_migration.py  # Mode conversion (template ↔ direct)
 │
 ├── players/                # Player tracking system
 │   ├── manager.py          # PlayerSystemManager (main coordinator)
@@ -204,6 +208,14 @@ app/
 │       ├── snapshots.py
 │       ├── players.py
 │       └── log_parser.py
+│
+├── templates/              # Server template system
+│   ├── __init__.py         # Public API exports
+│   ├── models.py           # VariableDefinition (discriminated union), TemplateSnapshot, API models
+│   ├── manager.py          # TemplateManager: validation, rendering, schema generation
+│   ├── crud.py             # Template CRUD operations
+│   ├── default_variables_crud.py  # Default variable config (singleton)
+│   └── yaml_utils.py       # Semantic YAML comparison
 │
 ├── dns/                    # DNS management
 │   ├── manager.py          # DNSManager
@@ -397,6 +409,52 @@ result = task_manager.submit(
 
 See `.claude/background-tasks-guide.md` for detailed implementation guide.
 
+### Server Template System
+
+**Template-based server creation** with typed variable definitions and snapshot isolation:
+
+Server templates define reusable Docker Compose configurations with `{variable}` placeholders. Each variable has a typed definition (int, float, string, enum, bool) with validation constraints (min/max, pattern, options). When a server is created from a template, a **TemplateSnapshot** captures the template state at that moment, so the server operates independently even if the template is later modified or deleted.
+
+**Two Server Editing Modes:**
+
+- **Template mode**: Server is bound to a template. Users edit variable values through a form, and YAML is rendered automatically. Template updates are detected and can be applied with one-click.
+- **Direct mode**: Server compose is edited directly with Monaco editor. No template association.
+
+Servers can convert between modes at any time. Converting from direct to template mode uses variable extraction — the system matches the current compose against a template to infer variable values. If the rendered YAML differs from the current compose, a rebuild is triggered; otherwise the conversion is metadata-only.
+
+**Key Design Patterns:**
+
+- **Bidirectional validation**: Template YAML variables must match variable definitions exactly (no undefined or unused variables)
+- **Snapshot isolation**: `Server.template_snapshot_json` stores an immutable copy of the template used at creation time
+- **Semantic YAML comparison**: `are_yaml_semantically_equal()` compares parsed YAML structures, ignoring formatting differences
+- **Background rebuild**: Template config updates submit a `SERVER_REBUILD` background task; database is updated only after rebuild succeeds
+
+**Usage:**
+
+```python
+from app.templates import TemplateManager, VariableDefinition
+
+# Validate template consistency
+errors = TemplateManager.validate_template(yaml_template, variable_definitions)
+
+# Render YAML with variable values
+rendered = TemplateManager.render_yaml(yaml_template, {"name": "survival", "max_memory": 8})
+
+# Generate JSON Schema for frontend form (rjsf)
+schema = TemplateManager.generate_json_schema(variable_definitions)
+
+# Extract variables from existing compose (for mode conversion)
+values, warnings = TemplateManager.extract_variables_from_compose(
+    yaml_template, compose_yaml, variable_definitions
+)
+```
+
+**Database Models:**
+
+- ServerTemplate (name, yaml_template, variable_definitions_json)
+- DefaultVariableConfig (singleton, stores default variables pre-filled when creating templates)
+- Server fields: template_id, template_snapshot_json, variable_values_json
+
 ## Authentication & Authorization
 
 **JWT Authentication:**
@@ -432,6 +490,9 @@ See `.claude/background-tasks-guide.md` for detailed implementation guide.
 **Cron**: `/api/cron/` - job management, execution history
 **DNS**: `/api/dns/` - status, records, update, sync
 **Config**: `/api/config/` - modules, schemas, update
+**Templates**: `/api/templates/` - CRUD, schema, preview, default variables, available ports
+**Server Template Config**: `/api/servers/{id}/template-config` - read/update template config
+**Server Template Migration**: `/api/servers/{id}/convert-to-direct`, `convert-to-template`, `extract-variables`, `check-conversion`
 
 ## Database Patterns
 
@@ -445,7 +506,7 @@ async def get_user(db: AsyncSession = Depends(get_db)):
     return result.scalar_one_or_none()
 ```
 
-**Models**: User, Player, PlayerSession, PlayerChat, PlayerAchievement, CronJob, CronJobExecution, DynamicConfig, ServerHeartbeat
+**Models**: User, Server, ServerTemplate, DefaultVariableConfig, Player, PlayerSession, PlayerChat, PlayerAchievement, CronJob, CronJobExecution, DynamicConfig, ServerHeartbeat
 
 **Migrations**: Use Alembic for schema changes (only needed for existing table modifications, not new tables)
 
@@ -476,6 +537,8 @@ tests/
 ├── dynamic_config/    # Config system tests
 ├── server_tracker/    # Server tracker tests
 ├── background_tasks/  # Background task manager tests
+├── templates/         # Template manager, API, default variables, YAML utils tests
+├── servers/           # Server creation (template mode), template config tests
 └── fixtures/          # Test utilities
 ```
 
@@ -488,6 +551,14 @@ tests/
 - Masks sensitive fields (password, token, secret, key)
 - Structured JSON with rotation
 - Configured via `[audit]` settings
+
+## Error Handling
+
+**Custom RequestValidationError handler** returns simplified error format:
+
+- Pydantic validation errors are transformed from FastAPI's verbose array format into a single `{"detail": "field: message; field2: message2"}` string
+- Consistent with the `{"detail": ...}` format used by HTTPException responses
+- Defined in `app/main.py` as an exception handler on the API sub-app
 
 ## External Documentation
 
