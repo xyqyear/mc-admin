@@ -55,8 +55,9 @@ class TestValidateTemplate:
             StringVariableDefinition(name="name", display_name="Name"),
             IntVariableDefinition(name="port", display_name="Port"),
         ]
-        errors = TemplateManager.validate_template(yaml, variables)
-        assert errors == []
+        result = TemplateManager.validate_template(yaml, variables)
+        assert result.errors == []
+        assert result.warnings == []
 
     def test_validate_undefined_variable(self):
         """Test validation fails for undefined variables in YAML."""
@@ -64,22 +65,23 @@ class TestValidateTemplate:
         variables = [
             StringVariableDefinition(name="name", display_name="Name"),
         ]
-        errors = TemplateManager.validate_template(yaml, variables)
-        assert len(errors) == 1
-        assert "YAML 中使用了未定义的变量" in errors[0]
-        assert "undefined_var" in errors[0]
+        result = TemplateManager.validate_template(yaml, variables)
+        assert len(result.errors) == 1
+        assert "YAML 中使用了未定义的变量" in result.errors[0]
+        assert "undefined_var" in result.errors[0]
 
     def test_validate_unused_variable(self):
-        """Test validation fails for defined but unused variables."""
+        """Test unused variables produce warning, not error."""
         yaml = "container_name: mc-{name}"
         variables = [
             StringVariableDefinition(name="name", display_name="Name"),
             IntVariableDefinition(name="unused", display_name="Unused"),
         ]
-        errors = TemplateManager.validate_template(yaml, variables)
-        assert len(errors) == 1
-        assert "已定义但未在 YAML 中使用的变量" in errors[0]
-        assert "unused" in errors[0]
+        result = TemplateManager.validate_template(yaml, variables)
+        assert result.errors == []
+        assert len(result.warnings) == 1
+        assert "已定义但未在 YAML 中使用的变量" in result.warnings[0]
+        assert "unused" in result.warnings[0]
 
     def test_validate_duplicate_variable_names(self):
         """Test validation fails for duplicate variable names."""
@@ -88,8 +90,8 @@ class TestValidateTemplate:
             StringVariableDefinition(name="name", display_name="Name 1"),
             StringVariableDefinition(name="name", display_name="Name 2"),
         ]
-        errors = TemplateManager.validate_template(yaml, variables)
-        assert any("用户变量名重复" in e for e in errors)
+        result = TemplateManager.validate_template(yaml, variables)
+        assert any("用户变量名重复" in e for e in result.errors)
 
 
 class TestRenderYaml:

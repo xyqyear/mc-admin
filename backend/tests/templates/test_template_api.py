@@ -94,7 +94,7 @@ class TestCreateTemplate:
         assert len(data["variable_definitions"]) == 4
 
     def test_create_template_validation_failure(self, test_client):
-        """Test template creation fails with mismatched variables."""
+        """Test template creation fails with undefined variables (error)."""
         response = test_client.post(
             "/api/templates/",
             json={
@@ -107,6 +107,25 @@ class TestCreateTemplate:
             headers=auth_headers(),
         )
         assert response.status_code == 400
+
+    def test_create_template_with_unused_variables(self, test_client):
+        """Test template creation succeeds with unused variables (warning only)."""
+        response = test_client.post(
+            "/api/templates/",
+            json={
+                "name": "unused-vars-template",
+                "yaml_template": "name: {name}",
+                "variable_definitions": [
+                    {"type": "string", "name": "name", "display_name": "Name"},
+                    {"type": "int", "name": "unused_port", "display_name": "Unused Port"},
+                ],
+            },
+            headers=auth_headers(),
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "unused-vars-template"
+        assert len(data["variable_definitions"]) == 2
 
     def test_create_template_duplicate_name(self, test_client):
         """Test template creation fails with duplicate name."""

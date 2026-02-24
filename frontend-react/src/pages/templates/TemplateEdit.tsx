@@ -16,6 +16,7 @@ import {
   ArrowLeftOutlined,
   FileTextOutlined,
   DiffOutlined,
+  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/layout/LoadingSpinner";
@@ -122,27 +123,28 @@ const TemplateEdit: React.FC = () => {
   );
 
   // Validation: check for bidirectional matching between YAML and variables
-  const validationErrors = useMemo(() => {
+  const validation = useMemo(() => {
     const errors: string[] = [];
+    const warnings: string[] = [];
     const definedVars = new Set(
       variables.map((v) => v.name).filter(Boolean)
     );
 
-    // Check for undefined variables in YAML (YAML has vars not in definitions)
+    // Check for undefined variables in YAML (YAML has vars not in definitions) → error
     const undefinedVars = yamlVariables.filter((v) => !definedVars.has(v));
     if (undefinedVars.length > 0) {
       errors.push(`YAML 中使用了未定义的变量: ${undefinedVars.join(", ")}`);
     }
 
-    // Check for unused variables (defined but not in YAML)
+    // Check for unused variables (defined but not in YAML) → warning
     const unusedVars = [...definedVars].filter(
       (v) => !yamlVariables.includes(v)
     );
     if (unusedVars.length > 0) {
-      errors.push(`已定义但未在 YAML 中使用的变量: ${unusedVars.join(", ")}`);
+      warnings.push(`已定义但未在 YAML 中使用的变量: ${unusedVars.join(", ")}`);
     }
 
-    // Check for duplicate variable names
+    // Check for duplicate variable names → error
     const varNames = variables.map((v) => v.name).filter(Boolean);
     const duplicates = varNames.filter(
       (name, index) => varNames.indexOf(name) !== index
@@ -151,7 +153,7 @@ const TemplateEdit: React.FC = () => {
       errors.push(`变量名重复: ${[...new Set(duplicates)].join(", ")}`);
     }
 
-    return errors;
+    return { errors, warnings };
   }, [yamlVariables, variables]);
 
   // Handle variables form change
@@ -189,32 +191,53 @@ const TemplateEdit: React.FC = () => {
         return;
       }
 
-      if (validationErrors.length > 0) {
+      if (validation.errors.length > 0) {
         message.error("请先修复验证错误");
         return;
       }
 
-      // Use the shared conversion function
-      const apiVariables = convertToApiFormat(variables);
+      const doSave = async () => {
+        // Use the shared conversion function
+        const apiVariables = convertToApiFormat(variables);
 
-      if (isEditMode && id) {
-        const request: TemplateUpdateRequest = {
-          name: values.name,
-          description: values.description || undefined,
-          yaml_template: yamlContent,
-          variable_definitions: apiVariables,
-        };
-        await updateMutation.mutateAsync({ id: parseInt(id, 10), request });
-        navigate("/templates");
+        if (isEditMode && id) {
+          const request: TemplateUpdateRequest = {
+            name: values.name,
+            description: values.description || undefined,
+            yaml_template: yamlContent,
+            variable_definitions: apiVariables,
+          };
+          await updateMutation.mutateAsync({ id: parseInt(id, 10), request });
+          navigate("/templates");
+        } else {
+          const request: TemplateCreateRequest = {
+            name: values.name,
+            description: values.description || undefined,
+            yaml_template: yamlContent,
+            variable_definitions: apiVariables,
+          };
+          await createMutation.mutateAsync(request);
+          navigate("/templates");
+        }
+      };
+
+      if (validation.warnings.length > 0) {
+        Modal.confirm({
+          title: "存在未使用的变量",
+          icon: <ExclamationCircleOutlined />,
+          content: (
+            <ul className="list-disc pl-4 mt-2">
+              {validation.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          ),
+          okText: "仍然保存",
+          cancelText: "取消",
+          onOk: doSave,
+        });
       } else {
-        const request: TemplateCreateRequest = {
-          name: values.name,
-          description: values.description || undefined,
-          yaml_template: yamlContent,
-          variable_definitions: apiVariables,
-        };
-        await createMutation.mutateAsync(request);
-        navigate("/templates");
+        await doSave();
       }
     } catch (error) {
       console.error("Save failed:", error);
@@ -306,7 +329,7 @@ const TemplateEdit: React.FC = () => {
                       type="info"
                       showIcon
                       message="定义模板变量"
-                      description="在此定义模板中使用的所有变量。YAML 中的变量必须与此处定义的变量一一对应。"
+                      description="在此定义模板中使用的所有变量。YAML 模板中引用的变量必须在此处都有定义。"
                     />
 
                     <VariableDefinitionForm
@@ -321,15 +344,31 @@ const TemplateEdit: React.FC = () => {
           />
         </Card>
 
-        {validationErrors.length > 0 && (
+        {validation.errors.length > 0 && (
           <Alert
             type="error"
             showIcon
             message="验证错误"
             description={
               <ul className="list-disc pl-4">
-                {validationErrors.map((error, index) => (
+                {validation.errors.map((error, index) => (
                   <li key={index}>{error}</li>
+                ))}
+              </ul>
+            }
+            className="mb-4"
+          />
+        )}
+
+        {validation.warnings.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message="验证警告"
+            description={
+              <ul className="list-disc pl-4">
+                {validation.warnings.map((warning, index) => (
+                  <li key={index}>{warning}</li>
                 ))}
               </ul>
             }
@@ -356,7 +395,7 @@ const TemplateEdit: React.FC = () => {
                 icon={<SaveOutlined />}
                 onClick={handleSave}
                 loading={createMutation.isPending || updateMutation.isPending}
-                disabled={validationErrors.length > 0}
+                disabled={validation.errors.length > 0}
               >
                 {isEditMode ? "保存" : "创建"}
               </Button>

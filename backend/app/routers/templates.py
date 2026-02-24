@@ -193,11 +193,11 @@ async def create_template(
 ):
     """Create a new template."""
     # Validate template
-    errors = TemplateManager.validate_template(
+    result = TemplateManager.validate_template(
         request.yaml_template, request.variable_definitions
     )
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
+    if result.errors:
+        raise HTTPException(status_code=400, detail=result.errors)
 
     # Check name uniqueness
     if await check_name_exists(db, request.name):
@@ -251,9 +251,9 @@ async def update_template(
     )
 
     # Validate template
-    errors = TemplateManager.validate_template(yaml_template, variable_definitions)
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
+    result = TemplateManager.validate_template(yaml_template, variable_definitions)
+    if result.errors:
+        raise HTTPException(status_code=400, detail=result.errors)
 
     # Update template fields
     if request.name is not None:

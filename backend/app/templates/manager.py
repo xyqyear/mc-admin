@@ -1,6 +1,7 @@
 """Template engine for variable parsing, validation, and replacement."""
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from .models import (
@@ -9,6 +10,7 @@ from .models import (
     FloatVariableDefinition,
     IntVariableDefinition,
     StringVariableDefinition,
+    TemplateValidationResult,
     VariableDefinition,
 )
 
@@ -35,22 +37,24 @@ class TemplateManager:
     def validate_template(
         cls,
         yaml_template: str,
-        user_variables: list[VariableDefinition],
-    ) -> list[str]:
+        user_variables: Sequence[VariableDefinition],
+    ) -> TemplateValidationResult:
         """Validate template consistency.
 
         Checks that:
-        1. No duplicate variable names
-        2. YAML variables and user variables match exactly (bidirectional)
+        1. No duplicate variable names → error
+        2. YAML uses undefined variables → error
+        3. Defined variables not used in YAML → warning
 
         Args:
             yaml_template: YAML template string
             user_variables: List of user-defined variable definitions
 
         Returns:
-            List of error messages. Empty list means valid.
+            TemplateValidationResult with errors and warnings.
         """
         errors = []
+        warnings = []
 
         # Extract variables from YAML
         yaml_vars = cls.extract_variables_from_yaml(yaml_template)
@@ -69,20 +73,19 @@ class TemplateManager:
             if duplicates:
                 errors.append(f"用户变量名重复: {', '.join(sorted(duplicates))}")
 
-        # Bidirectional matching: YAML vars must match user vars exactly
-        # Variables in YAML but not defined
+        # Variables in YAML but not defined → error
         undefined = yaml_vars - user_var_names
         if undefined:
             errors.append(f"YAML 中使用了未定义的变量: {', '.join(sorted(undefined))}")
 
-        # Variables defined but not used in YAML
+        # Variables defined but not used in YAML → warning
         unused = user_var_names - yaml_vars
         if unused:
-            errors.append(
+            warnings.append(
                 f"已定义但未在 YAML 中使用的变量: {', '.join(sorted(unused))}"
             )
 
-        return errors
+        return TemplateValidationResult(errors=errors, warnings=warnings)
 
     @classmethod
     def render_yaml(
@@ -114,7 +117,7 @@ class TemplateManager:
     @classmethod
     def generate_json_schema(
         cls,
-        user_variables: list[VariableDefinition],
+        user_variables: Sequence[VariableDefinition],
     ) -> dict:
         """Generate JSON Schema for rjsf from template variables.
 
@@ -195,7 +198,7 @@ class TemplateManager:
     @classmethod
     def validate_variable_values(
         cls,
-        user_variables: list[VariableDefinition],
+        user_variables: Sequence[VariableDefinition],
         values: dict[str, Any],
     ) -> list[str]:
         """Validate variable values against their definitions.
@@ -254,7 +257,7 @@ class TemplateManager:
     @classmethod
     def get_default_values(
         cls,
-        user_variables: list[VariableDefinition],
+        user_variables: Sequence[VariableDefinition],
     ) -> dict[str, Any]:
         """Get default values for all variables.
 
@@ -278,7 +281,7 @@ class TemplateManager:
         cls,
         yaml_template: str,
         compose_yaml: str,
-        variable_definitions: list[VariableDefinition],
+        variable_definitions: Sequence[VariableDefinition],
     ) -> tuple[dict[str, Any], list[str]]:
         """Extract variable values from compose file by matching against template.
 
