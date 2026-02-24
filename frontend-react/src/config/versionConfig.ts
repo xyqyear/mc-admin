@@ -445,6 +445,15 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '全面优化前端 Query 缓存失效逻辑，移除无用的查询键',
     ]
+  },
+  {
+    version: '2.0.2',
+    date: '2026-02-24',
+    title: '模板变量校验优化',
+    description: '模板中已定义但未使用的变量不再阻止保存，改为警告提示并允许用户确认后继续。',
+    improvements: [
+      '模板编辑页中已定义但未使用的变量从错误降级为警告，不再阻止保存 #137'
+    ]
   }
 ]
 
