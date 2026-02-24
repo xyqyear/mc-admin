@@ -193,11 +193,11 @@ async def create_template(
 ):
     """Create a new template."""
     # Validate template
-    result = TemplateManager.validate_template(
+    errors = TemplateManager.validate_template(
         request.yaml_template, request.variable_definitions
     )
-    if result.errors:
-        raise HTTPException(status_code=400, detail=result.errors)
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
 
     # Check name uniqueness
     if await check_name_exists(db, request.name):
@@ -251,9 +251,9 @@ async def update_template(
     )
 
     # Validate template
-    result = TemplateManager.validate_template(yaml_template, variable_definitions)
-    if result.errors:
-        raise HTTPException(status_code=400, detail=result.errors)
+    errors = TemplateManager.validate_template(yaml_template, variable_definitions)
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
 
     # Update template fields
     if request.name is not None:
@@ -313,10 +313,7 @@ async def get_template_schema(
     user_variables = deserialize_variable_definitions_json(
         template.variable_definitions_json
     )
-    yaml_variables = TemplateManager.filter_yaml_variables(
-        template.yaml_template, user_variables
-    )
-    json_schema = TemplateManager.generate_json_schema(yaml_variables)
+    json_schema = TemplateManager.generate_json_schema(user_variables)
 
     return TemplateSchemaResponse(
         template_id=template.id,
@@ -341,13 +338,10 @@ async def preview_rendered_yaml(
     user_variables = deserialize_variable_definitions_json(
         template.variable_definitions_json
     )
-    yaml_variables = TemplateManager.filter_yaml_variables(
-        template.yaml_template, user_variables
-    )
 
     # Validate values
     errors = TemplateManager.validate_variable_values(
-        yaml_variables, request.variable_values
+        user_variables, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)

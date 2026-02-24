@@ -150,20 +150,15 @@ async def extract_variables(
         template.variable_definitions_json
     )
 
-    # Filter to only variables actually used in YAML
-    yaml_variables = TemplateManager.filter_yaml_variables(
-        template.yaml_template, variable_definitions
-    )
-
     # Extract variables from compose
     extracted_values, warnings = TemplateManager.extract_variables_from_compose(
         template.yaml_template,
         current_compose,
-        yaml_variables,
+        variable_definitions,
     )
 
     # Generate JSON schema
-    json_schema = TemplateManager.generate_json_schema(yaml_variables)
+    json_schema = TemplateManager.generate_json_schema(variable_definitions)
 
     # Render compose with extracted values for preview
     try:
@@ -177,7 +172,7 @@ async def extract_variables(
         extracted_values=extracted_values,
         warnings=warnings,
         json_schema=json_schema,
-        variable_definitions=yaml_variables,
+        variable_definitions=variable_definitions,
         current_compose=current_compose,
         rendered_compose=rendered_compose,
     )
@@ -212,14 +207,9 @@ async def check_conversion(
         template.variable_definitions_json
     )
 
-    # Filter to only variables actually used in YAML
-    yaml_variables = TemplateManager.filter_yaml_variables(
-        template.yaml_template, variable_definitions
-    )
-
     # Validate variable values
     errors = TemplateManager.validate_variable_values(
-        yaml_variables, request.variable_values
+        variable_definitions, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)
@@ -272,14 +262,9 @@ async def convert_to_template_mode(
         template.variable_definitions_json
     )
 
-    # Filter to only variables actually used in YAML
-    yaml_variables = TemplateManager.filter_yaml_variables(
-        template.yaml_template, variable_definitions
-    )
-
     # Validate variable values
     errors = TemplateManager.validate_variable_values(
-        yaml_variables, request.variable_values
+        variable_definitions, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)
@@ -306,7 +291,7 @@ async def convert_to_template_mode(
             template_id=template.id,
             template_name=template.name,
             yaml_template=template.yaml_template,
-            variable_definitions=yaml_variables,
+            variable_definitions=variable_definitions,
             snapshot_time=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -349,7 +334,7 @@ async def convert_to_template_mode(
                 template_id=template.id,
                 template_name=template.name,
                 yaml_template=template.yaml_template,
-                variable_definitions=yaml_variables,
+                variable_definitions=variable_definitions,
                 snapshot_time=datetime.now(timezone.utc).isoformat(),
             )
 

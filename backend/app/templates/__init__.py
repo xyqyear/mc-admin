@@ -26,7 +26,6 @@ from .models import (
     TemplateSchemaResponse,
     TemplateSnapshot,
     TemplateUpdateRequest,
-    TemplateValidationResult,
     VariableDefinition,
     VariableType,
     deserialize_variable_definitions_json,
@@ -64,7 +63,6 @@ __all__ = [
     "TemplatePreviewRequest",
     "TemplatePreviewResponse",
     "TemplateSnapshot",
-    "TemplateValidationResult",
     "deserialize_variable_definitions_json",
     "serialize_variable_definitions",
     # Utilities

@@ -83,7 +83,11 @@ class TestCreateTemplate:
                     {"type": "string", "name": "name", "display_name": "Name"},
                     {"type": "int", "name": "game_port", "display_name": "Game Port"},
                     {"type": "int", "name": "rcon_port", "display_name": "RCON Port"},
-                    {"type": "string", "name": "game_version", "display_name": "Version"},
+                    {
+                        "type": "string",
+                        "name": "game_version",
+                        "display_name": "Version",
+                    },
                 ],
             },
             headers=auth_headers(),
@@ -109,7 +113,7 @@ class TestCreateTemplate:
         assert response.status_code == 400
 
     def test_create_template_with_unused_variables(self, test_client):
-        """Test template creation succeeds with unused variables (warning only)."""
+        """Test template creation fails with unused variables (error)."""
         response = test_client.post(
             "/api/templates/",
             json={
@@ -117,22 +121,25 @@ class TestCreateTemplate:
                 "yaml_template": "name: {name}",
                 "variable_definitions": [
                     {"type": "string", "name": "name", "display_name": "Name"},
-                    {"type": "int", "name": "unused_port", "display_name": "Unused Port"},
+                    {
+                        "type": "int",
+                        "name": "unused_port",
+                        "display_name": "Unused Port",
+                    },
                 ],
             },
             headers=auth_headers(),
         )
-        assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == "unused-vars-template"
-        assert len(data["variable_definitions"]) == 2
+        assert response.status_code == 400
 
     def test_create_template_duplicate_name(self, test_client):
         """Test template creation fails with duplicate name."""
         payload = {
             "name": "duplicate-name",
             "yaml_template": "test: {var}",
-            "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
+            "variable_definitions": [
+                {"type": "string", "name": "var", "display_name": "Var"}
+            ],
         }
         test_client.post("/api/templates/", json=payload, headers=auth_headers())
         response = test_client.post(
@@ -140,6 +147,7 @@ class TestCreateTemplate:
         )
         assert response.status_code == 409
         assert "已存在" in response.json()["detail"]
+
 
 class TestGetTemplate:
     """Test template retrieval endpoints."""
@@ -151,7 +159,9 @@ class TestGetTemplate:
             json={
                 "name": "list-test",
                 "yaml_template": "test: {var}",
-                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [
+                    {"type": "string", "name": "var", "display_name": "Var"}
+                ],
             },
             headers=auth_headers(),
         )
@@ -166,7 +176,9 @@ class TestGetTemplate:
             json={
                 "name": "detail-test",
                 "yaml_template": "test: {var}",
-                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [
+                    {"type": "string", "name": "var", "display_name": "Var"}
+                ],
             },
             headers=auth_headers(),
         )
@@ -194,7 +206,9 @@ class TestUpdateTemplate:
             json={
                 "name": "update-test",
                 "yaml_template": "test: {var}",
-                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [
+                    {"type": "string", "name": "var", "display_name": "Var"}
+                ],
             },
             headers=auth_headers(),
         )
@@ -219,7 +233,9 @@ class TestDeleteTemplate:
             json={
                 "name": "delete-test",
                 "yaml_template": "test: {var}",
-                "variable_definitions": [{"type": "string", "name": "var", "display_name": "Var"}],
+                "variable_definitions": [
+                    {"type": "string", "name": "var", "display_name": "Var"}
+                ],
             },
             headers=auth_headers(),
         )

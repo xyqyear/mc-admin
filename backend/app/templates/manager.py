@@ -10,7 +10,6 @@ from .models import (
     FloatVariableDefinition,
     IntVariableDefinition,
     StringVariableDefinition,
-    TemplateValidationResult,
     VariableDefinition,
 )
 
@@ -38,23 +37,22 @@ class TemplateManager:
         cls,
         yaml_template: str,
         user_variables: Sequence[VariableDefinition],
-    ) -> TemplateValidationResult:
+    ) -> list[str]:
         """Validate template consistency.
 
         Checks that:
-        1. No duplicate variable names → error
-        2. YAML uses undefined variables → error
-        3. Defined variables not used in YAML → warning
+        1. No duplicate variable names
+        2. All YAML variables are defined
+        3. All defined variables are used in YAML
 
         Args:
             yaml_template: YAML template string
             user_variables: List of user-defined variable definitions
 
         Returns:
-            TemplateValidationResult with errors and warnings.
+            List of error messages. Empty list means valid.
         """
         errors = []
-        warnings = []
 
         # Extract variables from YAML
         yaml_vars = cls.extract_variables_from_yaml(yaml_template)
@@ -78,24 +76,14 @@ class TemplateManager:
         if undefined:
             errors.append(f"YAML 中使用了未定义的变量: {', '.join(sorted(undefined))}")
 
-        # Variables defined but not used in YAML → warning
+        # Variables defined but not used in YAML → error
         unused = user_var_names - yaml_vars
         if unused:
-            warnings.append(
+            errors.append(
                 f"已定义但未在 YAML 中使用的变量: {', '.join(sorted(unused))}"
             )
 
-        return TemplateValidationResult(errors=errors, warnings=warnings)
-
-    @classmethod
-    def filter_yaml_variables(
-        cls,
-        yaml_template: str,
-        variable_definitions: Sequence[VariableDefinition],
-    ) -> list[VariableDefinition]:
-        """Filter variable definitions to only those referenced in the YAML template."""
-        yaml_vars = cls.extract_variables_from_yaml(yaml_template)
-        return [v for v in variable_definitions if v.name in yaml_vars]
+        return errors
 
     @classmethod
     def render_yaml(
@@ -356,11 +344,18 @@ class TemplateManager:
         # Check for missing variables and use defaults
         for var_name in template_vars:
             if var_name not in extracted:
-                if var_name in var_def_map and var_def_map[var_name].default is not None:
+                if (
+                    var_name in var_def_map
+                    and var_def_map[var_name].default is not None
+                ):
                     extracted[var_name] = var_def_map[var_name].default
-                    warnings.append(f"变量 '{var_name}' 未能从 compose 文件中提取，使用默认值")
+                    warnings.append(
+                        f"变量 '{var_name}' 未能从 compose 文件中提取，使用默认值"
+                    )
                 else:
-                    warnings.append(f"变量 '{var_name}' 未能从 compose 文件中提取，且无默认值")
+                    warnings.append(
+                        f"变量 '{var_name}' 未能从 compose 文件中提取，且无默认值"
+                    )
 
         return extracted, warnings
 

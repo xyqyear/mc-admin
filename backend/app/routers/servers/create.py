@@ -87,14 +87,13 @@ async def create_server(
             if not template:
                 raise HTTPException(status_code=404, detail="模板不存在")
 
-            user_variables = deserialize_variable_definitions_json(template.variable_definitions_json)
-
-            # Validate variable values (only for variables actually used in YAML)
-            yaml_variables = TemplateManager.filter_yaml_variables(
-                template.yaml_template, user_variables
+            user_variables = deserialize_variable_definitions_json(
+                template.variable_definitions_json
             )
+
+            # Validate variable values
             errors = TemplateManager.validate_variable_values(
-                yaml_variables, create_request.variable_values
+                user_variables, create_request.variable_values
             )
             if errors:
                 raise HTTPException(status_code=400, detail=errors)
@@ -112,7 +111,9 @@ async def create_server(
                 template_id=template.id,
                 template_name=template.name,
                 yaml_template=template.yaml_template,
-                variable_definitions=deserialize_variable_definitions_json(template.variable_definitions_json),
+                variable_definitions=deserialize_variable_definitions_json(
+                    template.variable_definitions_json
+                ),
                 snapshot_time=datetime.now(timezone.utc).isoformat(),
             )
             variable_values = create_request.variable_values

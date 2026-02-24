@@ -94,12 +94,6 @@ VariableDefinition = Annotated[
     Field(discriminator="type"),
 ]
 
-class TemplateValidationResult(BaseModel):
-    """Result of template validation with separate errors and warnings."""
-
-    errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-
 
 class TemplateSnapshot(BaseModel):
     """Snapshot of a template's state, stored in Server.template_snapshot_json."""
