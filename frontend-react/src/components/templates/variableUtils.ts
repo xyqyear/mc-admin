@@ -1,5 +1,5 @@
 import type { VariableDefinition } from "@/hooks/api/templateApi";
-import type { VariableFormData } from "./VariableDefinitionForm";
+import type { VariableFormData } from "./variableSchemas";
 
 // Helper to convert API variables to form data format
 export const convertToFormData = (variables: VariableDefinition[]): VariableFormData[] => {
