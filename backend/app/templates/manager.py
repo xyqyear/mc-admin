@@ -88,6 +88,16 @@ class TemplateManager:
         return TemplateValidationResult(errors=errors, warnings=warnings)
 
     @classmethod
+    def filter_yaml_variables(
+        cls,
+        yaml_template: str,
+        variable_definitions: Sequence[VariableDefinition],
+    ) -> list[VariableDefinition]:
+        """Filter variable definitions to only those referenced in the YAML template."""
+        yaml_vars = cls.extract_variables_from_yaml(yaml_template)
+        return [v for v in variable_definitions if v.name in yaml_vars]
+
+    @classmethod
     def render_yaml(
         cls,
         yaml_template: str,

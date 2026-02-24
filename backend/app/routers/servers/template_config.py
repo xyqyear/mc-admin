@@ -79,8 +79,11 @@ async def get_template_config(
     snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
     variable_values = json.loads(server.variable_values_json or "{}")
 
-    # Generate JSON Schema
-    json_schema = TemplateManager.generate_json_schema(snapshot.variable_definitions)
+    # Generate JSON Schema (only for variables actually used in YAML)
+    yaml_variables = TemplateManager.filter_yaml_variables(
+        snapshot.yaml_template, snapshot.variable_definitions
+    )
+    json_schema = TemplateManager.generate_json_schema(yaml_variables)
 
     # Check if live template has been updated since snapshot
     has_template_update = False
@@ -134,9 +137,12 @@ async def update_template_config(
     # Parse template snapshot
     snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
 
-    # Validate variable values
+    # Validate variable values (only for variables actually used in YAML)
+    yaml_variables = TemplateManager.filter_yaml_variables(
+        snapshot.yaml_template, snapshot.variable_definitions
+    )
     errors = TemplateManager.validate_variable_values(
-        snapshot.variable_definitions, request.variable_values
+        yaml_variables, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)

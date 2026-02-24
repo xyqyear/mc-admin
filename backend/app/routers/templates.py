@@ -313,7 +313,10 @@ async def get_template_schema(
     user_variables = deserialize_variable_definitions_json(
         template.variable_definitions_json
     )
-    json_schema = TemplateManager.generate_json_schema(user_variables)
+    yaml_variables = TemplateManager.filter_yaml_variables(
+        template.yaml_template, user_variables
+    )
+    json_schema = TemplateManager.generate_json_schema(yaml_variables)
 
     return TemplateSchemaResponse(
         template_id=template.id,
@@ -338,10 +341,13 @@ async def preview_rendered_yaml(
     user_variables = deserialize_variable_definitions_json(
         template.variable_definitions_json
     )
+    yaml_variables = TemplateManager.filter_yaml_variables(
+        template.yaml_template, user_variables
+    )
 
     # Validate values
     errors = TemplateManager.validate_variable_values(
-        user_variables, request.variable_values
+        yaml_variables, request.variable_values
     )
     if errors:
         raise HTTPException(status_code=400, detail=errors)
