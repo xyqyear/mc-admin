@@ -208,7 +208,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
       : [
           {
             title: "操作",
-            width: 120,
+            width: 80,
             render: (_: unknown, record: KeyedVariable) => (
               <Space size="small">
                 <Button
@@ -216,18 +216,14 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
                   size="small"
                   icon={<EditOutlined />}
                   onClick={() => openEditModal(record)}
-                >
-                  编辑
-                </Button>
+                />
                 <Popconfirm
                   title="确定删除该变量？"
                   onConfirm={() => handleDelete(record)}
                   okText="确定"
                   cancelText="取消"
                 >
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                    删除
-                  </Button>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} />
                 </Popconfirm>
               </Space>
             ),
