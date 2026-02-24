@@ -454,6 +454,15 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '模板编辑页中已定义但未使用的变量从错误降级为警告，不再阻止保存 #137'
     ]
+  },
+  {
+    version: '2.0.3',
+    date: '2026-02-24',
+    title: '模板差异对比修复',
+    description: '修复模板差异对比和模式转换时因未过滤未使用变量导致的校验错误。',
+    fixes: [
+      '修复差异对比、模式转换等操作时提示"缺少必需的变量"的问题 #137'
+    ]
   }
 ]
 
