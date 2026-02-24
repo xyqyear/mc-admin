@@ -62,7 +62,7 @@ const TemplateEdit: React.FC = () => {
   const [form] = Form.useForm();
   const [yamlContent, setYamlContent] = useState("");
   const [variables, setVariables] = useState<VariableFormData[]>([]);
-  const [activeTab, setActiveTab] = useState("yaml");
+
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const [isCompareVisible, setIsCompareVisible] = useState(false);
   const [diffTab, setDiffTab] = useState("yaml");
@@ -277,71 +277,50 @@ const TemplateEdit: React.FC = () => {
           </Form.Item>
         </Card>
 
-        <Card className="mb-4">
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={[
-              {
-                key: "yaml",
-                label: "YAML 模板",
-                children: (
-                  <div className="space-y-4">
-                    <Alert
-                      type="info"
-                      showIcon
-                      message="使用 {变量名} 格式定义占位符"
-                      description={
-                        <div>
-                          <p>
-                            当前 YAML 中使用的变量:{" "}
-                            {yamlVariables.length > 0
-                              ? yamlVariables.join(", ")
-                              : "无"}
-                          </p>
-                          <p>
-                            已定义的变量:{" "}
-                            {variables.length > 0
-                              ? variables.map((v) => v.name).filter(Boolean).join(", ") || "无"
-                              : "无"}
-                          </p>
-                        </div>
-                      }
-                    />
+        <Card title="YAML 模板" className="mb-4">
+          <div className="space-y-4">
+            <Alert
+              type="info"
+              showIcon
+              message="使用 {变量名} 格式定义占位符"
+              description={
+                <div>
+                  <p>
+                    当前 YAML 中使用的变量:{" "}
+                    {yamlVariables.length > 0
+                      ? yamlVariables.join(", ")
+                      : "无"}
+                  </p>
+                </div>
+              }
+            />
 
-                    <ComposeYamlEditor
-                      value={yamlContent}
-                      onChange={(value) => setYamlContent(value || "")}
-                      autoHeight
-                      minHeight={400}
-                      theme="vs-light"
-                      path="template.yml"
-                    />
-                  </div>
-                ),
-              },
-              {
-                key: "variables",
-                label: `变量定义 (${variables.length})`,
-                children: (
-                  <div className="space-y-4">
-                    <Alert
-                      type="info"
-                      showIcon
-                      message="定义模板变量"
-                      description="在此定义模板中使用的所有变量。YAML 模板中引用的变量必须在此处都有定义。"
-                    />
+            <ComposeYamlEditor
+              value={yamlContent}
+              onChange={(value) => setYamlContent(value || "")}
+              autoHeight
+              minHeight={400}
+              theme="vs-light"
+              path="template.yml"
+            />
+          </div>
+        </Card>
 
-                    <VariableDefinitionForm
-                      value={variables}
-                      onChange={handleVariablesChange}
-                      title="自定义变量列表"
-                    />
-                  </div>
-                ),
-              },
-            ]}
-          />
+        <Card title={`变量定义 (${variables.length})`} className="mb-4">
+          <div className="space-y-4">
+            <Alert
+              type="info"
+              showIcon
+              message="定义模板变量"
+              description="在此定义模板中使用的所有变量。YAML 模板中引用的变量必须在此处都有定义。"
+            />
+
+            <VariableDefinitionForm
+              value={variables}
+              onChange={handleVariablesChange}
+              title="自定义变量列表"
+            />
+          </div>
         </Card>
 
         {validation.errors.length > 0 && (
