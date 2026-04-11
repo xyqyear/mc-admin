@@ -200,9 +200,9 @@ def test_client_with_temp_path(temp_server_path, test_db):
                         "app.servers.port_utils.get_system_used_ports",
                         return_value=set(),
                     ):
-                        # Mock player_system_manager.start_server_monitoring to avoid log monitor issues
+                        # Mock log_monitor.start_server to avoid log monitor issues
                         with patch(
-                            "app.routers.servers.create.player_system_manager.start_server_monitoring",
+                            "app.routers.servers.create.log_monitor.start_server",
                             new_callable=AsyncMock,
                         ):
                             client = TestClient(api_app, raise_server_exceptions=False)

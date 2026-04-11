@@ -1,6 +1,5 @@
-"""Tests for ChatTracker."""
+"""Tests for record_chat_message and record_achievement tracking functions."""
 
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -8,8 +7,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.events.base import PlayerAchievementEvent, PlayerChatMessageEvent
-from app.events.dispatcher import EventDispatcher
 from app.models import (
     Base,
     Player,
@@ -18,22 +15,19 @@ from app.models import (
     Server,
     ServerStatus,
 )
-from app.players.chat_tracker import ChatTracker
+from app.players.tracking import record_achievement, record_chat_message
 
 
 @pytest.fixture
 async def test_db_engine():
     """Create a temporary in-memory SQLite database for testing."""
-    # Create temporary in-memory database
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
 
-    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
-    # Cleanup
     await engine.dispose()
 
 
@@ -79,7 +73,7 @@ async def test_player(test_db_session):
 def mock_mojang_api():
     """Mock the Mojang API."""
     with patch("app.players.crud.player.fetch_player_uuid_from_mojang") as mock:
-        # Simply return the value directly in async context
+
         async def return_uuid(*args, **kwargs):
             return "new_player_uuid_456"
 
@@ -87,37 +81,22 @@ def mock_mojang_api():
         yield mock
 
 
-class TestChatTracker:
-    """Test ChatTracker functionality."""
+class TestRecordChatMessage:
+    """Test record_chat_message functionality."""
 
     @pytest.mark.asyncio
-    async def test_handle_chat_message_existing_player(
-        self, test_db_session, test_server, test_player
-    ):
-        """Test handling chat message from existing player."""
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+    async def test_existing_player(self, test_db_session, test_server, test_player):
+        """Test recording chat message from existing player."""
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
-
-            # Create chat message event
-            event = PlayerChatMessageEvent(
+            await record_chat_message(
                 server_id="test_server",
                 player_name="TestPlayer",
                 message="Hello world!",
                 timestamp=datetime.now(timezone.utc),
             )
 
-            # Dispatch event
-            await dispatcher.dispatch_player_chat_message(event)
-
-            # Wait for async handlers
-            await asyncio.sleep(0.2)
-
-            # Verify chat message was saved
             result = await test_db_session.execute(
                 select(PlayerChatMessage).where(
                     PlayerChatMessage.player_db_id == test_player.player_db_id
@@ -131,38 +110,22 @@ class TestChatTracker:
             assert messages[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
-    async def test_handle_chat_message_new_player(
-        self, test_db_session, test_server, mock_mojang_api
-    ):
-        """Test handling chat message from new player (auto-creates player)."""
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+    async def test_new_player(self, test_db_session, test_server, mock_mojang_api):
+        """Test recording chat message from new player (auto-creates player)."""
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Mock Mojang API
             with patch(
                 "app.players.crud.player.fetch_player_uuid_from_mojang",
                 return_value="new_player_uuid_456",
             ):
-                # Create event dispatcher and chat tracker
-                dispatcher = EventDispatcher()
-                ChatTracker(dispatcher)
-
-                # Create chat message event for new player
-                event = PlayerChatMessageEvent(
+                await record_chat_message(
                     server_id="test_server",
                     player_name="NewPlayer",
                     message="First message!",
                     timestamp=datetime.now(timezone.utc),
                 )
 
-                # Dispatch event
-                await dispatcher.dispatch_player_chat_message(event)
-
-                # Wait for async handlers
-                await asyncio.sleep(0.2)
-
-                # Verify player was created
                 result = await test_db_session.execute(
                     select(Player).where(Player.current_name == "NewPlayer")
                 )
@@ -171,7 +134,6 @@ class TestChatTracker:
                 assert player is not None
                 assert player.uuid == "new_player_uuid_456"
 
-                # Verify chat message was saved
                 result = await test_db_session.execute(
                     select(PlayerChatMessage).where(
                         PlayerChatMessage.player_db_id == player.player_db_id
@@ -183,33 +145,44 @@ class TestChatTracker:
                 assert messages[0].message_text == "First message!"
 
     @pytest.mark.asyncio
-    async def test_handle_achievement_existing_player(
-        self, test_db_session, test_server, test_player
-    ):
-        """Test handling achievement from existing player."""
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+    async def test_server_not_found(self, test_db_session, test_player):
+        """Test handling when server is not found."""
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
+            with patch(
+                "app.players.tracking.get_server_db_id",
+                return_value=None,
+            ):
+                await record_chat_message(
+                    server_id="unknown_server",
+                    player_name="TestPlayer",
+                    message="Hello!",
+                    timestamp=datetime.now(timezone.utc),
+                )
 
-            # Create achievement event
-            event = PlayerAchievementEvent(
+                result = await test_db_session.execute(select(PlayerChatMessage))
+                messages = result.scalars().all()
+
+                assert len(messages) == 0
+
+
+class TestRecordAchievement:
+    """Test record_achievement functionality."""
+
+    @pytest.mark.asyncio
+    async def test_existing_player(self, test_db_session, test_server, test_player):
+        """Test recording achievement from existing player."""
+        with patch("app.players.tracking.get_async_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = test_db_session
+
+            await record_achievement(
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
                 timestamp=datetime.now(timezone.utc),
             )
 
-            # Dispatch event
-            await dispatcher.dispatch_player_achievement(event)
-
-            # Wait for async handlers
-            await asyncio.sleep(0.2)
-
-            # Verify achievement was saved
             result = await test_db_session.execute(
                 select(PlayerAchievement).where(
                     PlayerAchievement.player_db_id == test_player.player_db_id
@@ -223,74 +196,50 @@ class TestChatTracker:
             assert achievements[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
-    async def test_handle_achievement_unknown_player_skipped(
-        self, test_db_session, test_server
-    ):
-        """Test handling achievement from unknown player (should be skipped, not create player)."""
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+    async def test_unknown_player_skipped(self, test_db_session, test_server):
+        """Test that achievement from unknown player is skipped (no player created)."""
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
-
-            # Create achievement event for unknown player
-            event = PlayerAchievementEvent(
+            await record_achievement(
                 server_id="test_server",
                 player_name="UnknownPlayer",
                 achievement_name="Kill Ender Dragon",
                 timestamp=datetime.now(timezone.utc),
             )
 
-            # Dispatch event
-            await dispatcher.dispatch_player_achievement(event)
-
-            # Wait for async handlers
-            await asyncio.sleep(0.2)
-
-            # Verify player was NOT created
             result = await test_db_session.execute(
                 select(Player).where(Player.current_name == "UnknownPlayer")
             )
             player = result.scalar_one_or_none()
-
             assert player is None
 
-            # Verify achievement was NOT saved
             result = await test_db_session.execute(select(PlayerAchievement))
             achievements = result.scalars().all()
-
             assert len(achievements) == 0
 
     @pytest.mark.asyncio
-    async def test_duplicate_achievement_not_saved(
-        self, test_db_session, test_server, test_player
-    ):
+    async def test_duplicate_not_saved(self, test_db_session, test_server, test_player):
         """Test that duplicate achievements are not saved."""
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
+            ts = datetime.now(timezone.utc)
 
-            # Create achievement event
-            event = PlayerAchievementEvent(
+            await record_achievement(
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=ts,
             )
 
-            # Dispatch event twice
-            await dispatcher.dispatch_player_achievement(event)
-            await asyncio.sleep(0.2)
-            await dispatcher.dispatch_player_achievement(event)
-            await asyncio.sleep(0.2)
+            await record_achievement(
+                server_id="test_server",
+                player_name="TestPlayer",
+                achievement_name="Mine Diamond",
+                timestamp=ts,
+            )
 
-            # Verify only one achievement was saved
             result = await test_db_session.execute(
                 select(PlayerAchievement).where(
                     PlayerAchievement.player_db_id == test_player.player_db_id
@@ -301,44 +250,8 @@ class TestChatTracker:
             assert len(achievements) == 1
 
     @pytest.mark.asyncio
-    async def test_server_not_found(self, test_db_session, test_player):
-        """Test handling when server is not found."""
-        # Mock database session and server_crud to return None
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
-
-            with patch(
-                "app.players.chat_tracker.get_server_db_id",
-                return_value=None,
-            ):
-                # Create event dispatcher and chat tracker
-                dispatcher = EventDispatcher()
-                ChatTracker(dispatcher)
-
-                # Create chat message event
-                event = PlayerChatMessageEvent(
-                    server_id="unknown_server",
-                    player_name="TestPlayer",
-                    message="Hello!",
-                    timestamp=datetime.now(timezone.utc),
-                )
-
-                # Dispatch event
-                await dispatcher.dispatch_player_chat_message(event)
-
-                # Wait for async handlers
-                await asyncio.sleep(0.2)
-
-                # Verify no chat message was saved
-                result = await test_db_session.execute(select(PlayerChatMessage))
-                messages = result.scalars().all()
-
-                assert len(messages) == 0
-
-    @pytest.mark.asyncio
-    async def test_handle_achievement_with_title(self, test_db_session, test_server):
-        """Test handling achievement from player with title (e.g., 'PlayerName the Ugly')."""
-        # Create a test player
+    async def test_player_with_title(self, test_db_session, test_server):
+        """Test matching player with title suffix (e.g., 'PlayerName the Ugly')."""
         player = Player(
             player_db_id=10,
             uuid="test_uuid_with_title",
@@ -348,29 +261,16 @@ class TestChatTracker:
         test_db_session.add(player)
         await test_db_session.commit()
 
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
-
-            # Create achievement event with title in player name
-            event = PlayerAchievementEvent(
+            await record_achievement(
                 server_id="test_server",
-                player_name="___Astesia the Ugly",  # Player name with title
+                player_name="___Astesia the Ugly",
                 achievement_name="Dragon Growth Hormone",
                 timestamp=datetime.now(timezone.utc),
             )
 
-            # Dispatch event
-            await dispatcher.dispatch_player_achievement(event)
-
-            # Wait for async handlers
-            await asyncio.sleep(0.2)
-
-            # Verify achievement was saved for the correct player
             result = await test_db_session.execute(
                 select(PlayerAchievement).where(
                     PlayerAchievement.player_db_id == player.player_db_id
@@ -384,11 +284,8 @@ class TestChatTracker:
             assert achievements[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
-    async def test_handle_achievement_longest_name_match_priority(
-        self, test_db_session, test_server
-    ):
+    async def test_longest_name_match_priority(self, test_db_session, test_server):
         """Test that longest player name is matched first to avoid partial matches."""
-        # Create two players where one name contains the other
         short_player = Player(
             player_db_id=20,
             uuid="short_uuid",
@@ -405,29 +302,16 @@ class TestChatTracker:
         test_db_session.add(long_player)
         await test_db_session.commit()
 
-        # Mock database session
-        with patch("app.players.chat_tracker.get_async_session") as mock_session:
+        with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            # Create event dispatcher and chat tracker
-            dispatcher = EventDispatcher()
-            ChatTracker(dispatcher)
-
-            # Create achievement event with the longer name
-            event = PlayerAchievementEvent(
+            await record_achievement(
                 server_id="test_server",
-                player_name="SteveTheGreat the Mighty",  # Contains both names
+                player_name="SteveTheGreat the Mighty",
                 achievement_name="Epic Achievement",
                 timestamp=datetime.now(timezone.utc),
             )
 
-            # Dispatch event
-            await dispatcher.dispatch_player_achievement(event)
-
-            # Wait for async handlers
-            await asyncio.sleep(0.2)
-
-            # Verify achievement was saved for the LONGER player name
             result = await test_db_session.execute(
                 select(PlayerAchievement).where(
                     PlayerAchievement.player_db_id == long_player.player_db_id
@@ -438,7 +322,6 @@ class TestChatTracker:
             assert len(achievements) == 1
             assert achievements[0].achievement_name == "Epic Achievement"
 
-            # Verify no achievement for the shorter player name
             result = await test_db_session.execute(
                 select(PlayerAchievement).where(
                     PlayerAchievement.player_db_id == short_player.player_db_id

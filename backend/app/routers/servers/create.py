@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
+from ...log_monitor import log_monitor
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
-from ...players import player_system_manager
 from ...servers import (
     check_port_conflicts,
     create_server_record,
@@ -155,7 +155,7 @@ async def create_server(
         )
 
         # Start log monitoring for the new server
-        await player_system_manager.start_server_monitoring(server_id)
+        await log_monitor.start_server(server_id)
 
         return {
             "message": f"服务器 '{server_id}' 创建成功",

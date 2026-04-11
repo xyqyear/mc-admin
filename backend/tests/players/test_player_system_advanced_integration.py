@@ -24,7 +24,8 @@ from app.models import (
     ServerStatus,
     SystemHeartbeat,
 )
-from app.players import HeartbeatManager, PlayerManager, PlayerSyncer, SessionTracker
+from app.players.heartbeat import HeartbeatManager
+from app.players.player_syncer import PlayerSyncer
 from app.players.skin_fetcher import SkinFetcher
 
 # ============================================================================
@@ -57,21 +58,6 @@ async def test_database():
 
     await engine.dispose()
     Path(db_path).unlink(missing_ok=True)
-
-
-@pytest.fixture
-def clean_dispatcher():
-    """Clean event dispatcher handlers before and after test."""
-    from app.events import event_dispatcher
-
-    saved = {k: list(v) for k, v in event_dispatcher._handlers.items()}
-
-    for handlers in event_dispatcher._handlers.values():
-        handlers.clear()
-
-    yield event_dispatcher
-
-    event_dispatcher._handlers = saved
 
 
 @pytest.fixture
@@ -205,7 +191,7 @@ async def set_player_online(db, player_db_id: int, server_db_id: int):
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_config):
+async def test_heartbeat_normal_startup(test_database, mock_config):
     """Test normal startup with recent heartbeat (no crash)."""
     db = test_database
 
@@ -214,10 +200,8 @@ async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_co
     await create_heartbeat(db, recent_time)
 
     patches = [
-        patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
     ]
 
@@ -225,7 +209,7 @@ async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_co
         p.start()
 
     try:
-        heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
+        heartbeat_manager = HeartbeatManager()
 
         # Start heartbeat (should detect normal restart)
         await heartbeat_manager.start()
@@ -245,7 +229,7 @@ async def test_heartbeat_normal_startup(test_database, clean_dispatcher, mock_co
 
 @pytest.mark.asyncio
 async def test_heartbeat_crash_detection(
-    test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
+    test_database, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test crash detection and recovery when heartbeat is stale."""
     db = test_database
@@ -259,7 +243,6 @@ async def test_heartbeat_crash_detection(
 
     # Manually set players online
     async with db() as session:
-        # Create players
         for name in ["Steve", "Alex"]:
             player = Player(
                 uuid=f"uuid_{name}",
@@ -269,7 +252,6 @@ async def test_heartbeat_crash_detection(
             session.add(player)
         await session.commit()
 
-    # Set them online
     steve = await get_player(db, "Steve")
     alex = await get_player(db, "Alex")
     await set_player_online(db, steve.player_db_id, server_db_id)
@@ -279,45 +261,32 @@ async def test_heartbeat_crash_detection(
     online = await get_online_players(db, server_db_id)
     assert len(online) == 2
 
-    # Track crash event
-    crash_event_received = asyncio.Event()
+    # Mock player_syncer.validate_all_servers to avoid needing docker_mc_manager
+    from app.players.player_syncer import player_syncer as ps_singleton
 
-    async def handle_crash(event):
-        crash_event_received.set()
-
-    clean_dispatcher.on_system_crash_detected(handle_crash)
-
-    # Need to register PlayerManager and SessionTracker to handle PlayerLeftEvent
-    from app.players.player_manager import PlayerManager
-    from app.players.session_tracker import SessionTracker
+    mock_validate = AsyncMock()
 
     patches = [
-        patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
-        patch("app.players.session_tracker.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
+        patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
+        patch.object(ps_singleton, "validate_all_servers", mock_validate),
     ]
 
     for p in patches:
         p.start()
 
     try:
-        # Initialize PlayerManager and SessionTracker to handle PlayerLeftEvent
-        _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
-        _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
+        heartbeat_manager = HeartbeatManager()
 
-        heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
-
-        # Start heartbeat (should detect crash)
+        # Start heartbeat (should detect crash and call process_player_left)
         await heartbeat_manager.start()
 
-        # Wait for crash detection
-        await asyncio.wait_for(crash_event_received.wait(), timeout=1.0)
-
-        # Give a small delay for event handlers to complete
-        await asyncio.sleep(0.1)
+        # Give time for crash recovery to complete
+        await asyncio.sleep(0.3)
 
         # Verify all players marked offline (no open sessions)
         online = await get_online_players(db, server_db_id)
@@ -335,6 +304,9 @@ async def test_heartbeat_crash_detection(
                 # Should be ended at stale heartbeat time
                 assert abs((player_session.left_at - stale_time).total_seconds()) < 1
 
+        # validate_all_servers should have been called during crash recovery
+        mock_validate.assert_called_once()
+
         await heartbeat_manager.stop()
 
     finally:
@@ -343,17 +315,13 @@ async def test_heartbeat_crash_detection(
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_continuous_updates(
-    test_database, clean_dispatcher, mock_config
-):
+async def test_heartbeat_continuous_updates(test_database, mock_config):
     """Test heartbeat continuously updates the single record during normal operation."""
     db = test_database
 
     patches = [
-        patch("app.db.database.get_async_session", db),
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
     ]
 
@@ -361,7 +329,7 @@ async def test_heartbeat_continuous_updates(
         p.start()
 
     try:
-        heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
+        heartbeat_manager = HeartbeatManager()
 
         await heartbeat_manager.start()
 
@@ -396,7 +364,7 @@ async def test_heartbeat_continuous_updates(
 
 @pytest.mark.asyncio
 async def test_player_syncer_corrects_false_positives(
-    test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
+    test_database, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test RCON validator corrects players marked online but not in RCON."""
     db = test_database
@@ -431,24 +399,13 @@ async def test_player_syncer_corrects_false_positives(
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
-    # Track player left events
-    left_players = []
-
-    async def track_left(event):
-        left_players.append(event.player_name)
-
-    clean_dispatcher.on_player_left(track_left)
-
     patches = [
-        patch("app.db.database.get_async_session", db),
-        patch("app.players.heartbeat.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
-        patch("app.players.session_tracker.get_async_session", db),
-        patch("app.players.chat_tracker.get_async_session", db),
-        patch("app.players.skin_updater.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -456,14 +413,7 @@ async def test_player_syncer_corrects_false_positives(
         p.start()
 
     try:
-        # Initialize managers
-        _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
-        _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
-
-        player_syncer = PlayerSyncer(
-            mc_manager=mock_mc_manager,
-            event_dispatcher=clean_dispatcher,
-        )
+        player_syncer = PlayerSyncer()
 
         await player_syncer.start()
 
@@ -471,8 +421,6 @@ async def test_player_syncer_corrects_false_positives(
         await asyncio.sleep(0.3)
 
         # Bob should have been marked offline
-        assert "Bob" in left_players
-
         # Verify database state
         online = await get_online_players(db, server_db_id)
         online_names = set()
@@ -495,7 +443,7 @@ async def test_player_syncer_corrects_false_positives(
 
 @pytest.mark.asyncio
 async def test_player_syncer_corrects_false_negatives(
-    test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
+    test_database, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test RCON validator corrects players in RCON but not marked online."""
     db = test_database
@@ -527,24 +475,13 @@ async def test_player_syncer_corrects_false_negatives(
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
-    # Track player joined events
-    joined_players = []
-
-    async def track_joined(event):
-        joined_players.append(event.player_name)
-
-    clean_dispatcher.on_player_joined(track_joined)
-
     patches = [
-        patch("app.db.database.get_async_session", db),
-        patch("app.players.heartbeat.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
-        patch("app.players.session_tracker.get_async_session", db),
-        patch("app.players.chat_tracker.get_async_session", db),
-        patch("app.players.skin_updater.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -552,26 +489,14 @@ async def test_player_syncer_corrects_false_negatives(
         p.start()
 
     try:
-        _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
-        _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
-
-        player_syncer = PlayerSyncer(
-            mc_manager=mock_mc_manager,
-            event_dispatcher=clean_dispatcher,
-        )
+        player_syncer = PlayerSyncer()
 
         await player_syncer.start()
 
-        # Wait for validation (need enough time for both players to be processed sequentially)
-        # Each player takes ~0.2s for Mojang API call + processing time
+        # Wait for validation (need enough time for both players to be processed)
         await asyncio.sleep(0.8)
 
         # Both should have been marked online
-        assert set(joined_players) == {"Steve", "Alex"}, (
-            f"Expected {{'Steve', 'Alex'}}, got {set(joined_players)}"
-        )
-
-        # Verify database state
         online = await get_online_players(db, server_db_id)
         assert len(online) == 2
 
@@ -583,9 +508,7 @@ async def test_player_syncer_corrects_false_negatives(
 
 
 @pytest.mark.asyncio
-async def test_player_syncer_skips_unhealthy_servers(
-    test_database, clean_dispatcher, mock_config
-):
+async def test_player_syncer_skips_unhealthy_servers(test_database, mock_config):
     """Test RCON validator skips servers that are not healthy."""
     db = test_database
     await create_server(db, "server1", is_active=True)
@@ -601,10 +524,9 @@ async def test_player_syncer_skips_unhealthy_servers(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.db.database.get_async_session", db),
-        patch("app.players.heartbeat.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
     ]
 
@@ -612,10 +534,7 @@ async def test_player_syncer_skips_unhealthy_servers(
         p.start()
 
     try:
-        player_syncer = PlayerSyncer(
-            mc_manager=mock_mc_manager,
-            event_dispatcher=clean_dispatcher,
-        )
+        player_syncer = PlayerSyncer()
 
         await player_syncer.start()
         await asyncio.sleep(0.3)
@@ -631,9 +550,7 @@ async def test_player_syncer_skips_unhealthy_servers(
 
 
 @pytest.mark.asyncio
-async def test_player_syncer_handles_rcon_failure(
-    test_database, clean_dispatcher, mock_config
-):
+async def test_player_syncer_handles_rcon_failure(test_database, mock_config):
     """Test RCON validator handles RCON command failures gracefully."""
     db = test_database
     await create_server(db, "server1", is_active=True)
@@ -647,10 +564,9 @@ async def test_player_syncer_handles_rcon_failure(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.db.database.get_async_session", db),
-        patch("app.players.heartbeat.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
     ]
 
@@ -658,10 +574,7 @@ async def test_player_syncer_handles_rcon_failure(
         p.start()
 
     try:
-        player_syncer = PlayerSyncer(
-            mc_manager=mock_mc_manager,
-            event_dispatcher=clean_dispatcher,
-        )
+        player_syncer = PlayerSyncer()
 
         await player_syncer.start()
         await asyncio.sleep(0.3)
@@ -681,7 +594,7 @@ async def test_player_syncer_handles_rcon_failure(
 
 @pytest.mark.asyncio
 async def test_crash_recovery_triggers_rcon_validation(
-    test_database, clean_dispatcher, mock_config, mock_skin_fetcher, mock_mojang_api
+    test_database, mock_config, mock_skin_fetcher, mock_mojang_api
 ):
     """Test crash recovery triggers RCON validation to fix states."""
     db = test_database
@@ -719,28 +632,15 @@ async def test_crash_recovery_triggers_rcon_validation(
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
-    # Track events
-    crash_detected = asyncio.Event()
-    left_players = []
-
-    async def handle_crash(event):
-        crash_detected.set()
-
-    async def handle_left(event):
-        left_players.append(event.player_name)
-
-    clean_dispatcher.on_system_crash_detected(handle_crash)
-    clean_dispatcher.on_player_left(handle_left)
-
     patches = [
         patch("app.players.heartbeat.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
-        patch("app.db.database.get_async_session", db),
+        patch("app.players.tracking.get_async_session", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_manager.get_async_session", db),
-        patch("app.players.session_tracker.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -748,33 +648,17 @@ async def test_crash_recovery_triggers_rcon_validation(
         p.start()
 
     try:
-        # Initialize all managers
-        _player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
-        _session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
+        heartbeat_manager = HeartbeatManager()
 
-        heartbeat_manager = HeartbeatManager(event_dispatcher=clean_dispatcher)
-        player_syncer = PlayerSyncer(
-            mc_manager=mock_mc_manager,
-            event_dispatcher=clean_dispatcher,
-        )
-
-        # Start heartbeat (detects crash and triggers RCON validation)
+        # Start heartbeat (detects crash, calls process_player_left for all,
+        # then calls player_syncer.validate_all_servers)
         await heartbeat_manager.start()
 
-        # Wait for crash detection
-        await asyncio.wait_for(crash_detected.wait(), timeout=1.0)
+        # Wait for crash recovery to complete
+        await asyncio.sleep(0.5)
 
-        # All players should be marked offline by crash recovery
-        online = await get_online_players(db, server_db_id)
-        assert len(online) == 0
-
-        # Start RCON validator (triggered by crash event)
-        await player_syncer.start()
-
-        # Wait for RCON validation
-        await asyncio.sleep(0.3)
-
-        # RCON should have corrected: Steve is online, Alex and Bob stay offline
+        # All players should be marked offline by crash recovery first
+        # Then RCON validation (called during crash recovery) should re-add Steve
         online = await get_online_players(db, server_db_id)
         assert len(online) == 1
 
@@ -786,7 +670,6 @@ async def test_crash_recovery_triggers_rcon_validation(
             assert online_player.current_name == "Steve"
 
         await heartbeat_manager.stop()
-        await player_syncer.stop()
 
     finally:
         for p in patches:

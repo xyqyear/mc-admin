@@ -1,6 +1,5 @@
 """Integration tests for template configuration endpoints."""
 
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -32,7 +31,10 @@ services:
     restart: unless-stopped
 """
 
-def get_traditional_yaml(server_id: str, game_port: int = 25566, rcon_port: int = 25576):
+
+def get_traditional_yaml(
+    server_id: str, game_port: int = 25566, rcon_port: int = 25576
+):
     """Generate traditional YAML for a specific server."""
     return f"""
 version: '3.8'
@@ -106,7 +108,7 @@ def test_client(temp_server_path, test_db):
                             return_value=set(),
                         ):
                             with patch(
-                                "app.routers.servers.create.player_system_manager.start_server_monitoring",
+                                "app.routers.servers.create.log_monitor.start_server",
                                 new_callable=AsyncMock,
                             ):
                                 client = TestClient(

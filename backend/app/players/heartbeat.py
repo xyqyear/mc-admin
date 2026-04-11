@@ -6,8 +6,6 @@ from typing import Optional
 
 from ..db.database import get_async_session
 from ..dynamic_config import config
-from ..events.base import PlayerLeftEvent, SystemCrashDetectedEvent
-from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
 from .crud import get_online_players_with_names_grouped_by_server
 from .crud.heartbeat import get_heartbeat, upsert_heartbeat
@@ -16,13 +14,7 @@ from .crud.heartbeat import get_heartbeat, upsert_heartbeat
 class HeartbeatManager:
     """Manages system heartbeat and crash recovery."""
 
-    def __init__(self, event_dispatcher: EventDispatcher):
-        """Initialize heartbeat manager.
-
-        Args:
-            event_dispatcher: Event dispatcher for crash detection events
-        """
-        self.event_dispatcher = event_dispatcher
+    def __init__(self):
         self._task: Optional[asyncio.Task] = None
         self._stop_flag = False
 
@@ -57,14 +49,12 @@ class HeartbeatManager:
     async def _check_crash(self) -> None:
         """Check if system crashed and perform recovery."""
         async with get_async_session() as session:
-            # Get last heartbeat
             heartbeat = await get_heartbeat(session)
 
             if heartbeat is None:
                 logger.info("No previous heartbeat found (first startup)")
                 return
 
-            # Check if heartbeat is stale
             now = datetime.now(timezone.utc)
             time_since_heartbeat = now - heartbeat.timestamp
 
@@ -91,55 +81,43 @@ class HeartbeatManager:
     ) -> None:
         """Recover from system crash.
 
-        Triggers PlayerLeftEvent for each online player to ensure proper cleanup
-        including session ending and playtime calculation.
-
-        Args:
-            session: Database session
-            crash_timestamp: Timestamp of the crash (last heartbeat time)
-            time_since_crash: Seconds since the crash occurred
+        Calls process_player_left for each online player to ensure proper cleanup
+        including session ending and playtime calculation, then triggers RCON validation.
         """
+        from .player_syncer import player_syncer
+        from .tracking import process_player_left
+
         logger.info("Starting crash recovery...")
 
-        # Get all online players grouped by server using CRUD function
         players_by_server = await get_online_players_with_names_grouped_by_server(
             session
         )
 
-        # Calculate total player count
         total_players = sum(len(players) for players in players_by_server.values())
 
         logger.info(
             f"Found {total_players} online players across {len(players_by_server)} servers to process during crash recovery"
         )
 
-        # Dispatch PlayerLeftEvent for each online player
-        # This ensures proper cleanup: session ending, playtime calculation, etc.
         for server_id, player_names in players_by_server.items():
             logger.info(
-                f"Dispatching PlayerLeftEvent for {len(player_names)} players on server {server_id}: {player_names}"
+                f"Processing {len(player_names)} players on server {server_id}: {player_names}"
             )
             for player_name in player_names:
-                await self.event_dispatcher.dispatch_player_left(
-                    PlayerLeftEvent(
-                        server_id=server_id,
-                        player_name=player_name,
-                        reason="System crash",
-                        timestamp=crash_timestamp,
-                    )
+                await process_player_left(
+                    server_id, player_name, "System crash", crash_timestamp
                 )
 
         logger.info(
-            f"Crash recovery completed - dispatched {total_players} PlayerLeftEvent events"
+            f"Crash recovery completed - processed {total_players} player departures"
         )
 
-        # Dispatch crash detected event to trigger RCON validation
-        await self.event_dispatcher.dispatch_system_crash_detected(
-            SystemCrashDetectedEvent(
-                crash_timestamp=crash_timestamp,
-                time_since_crash=time_since_crash,
-            )
+        # Trigger RCON validation to sync actual player states
+        logger.info(
+            f"System crash event - triggering player sync "
+            f"(crash at {crash_timestamp}, {time_since_crash:.0f}s ago)"
         )
+        await player_syncer.validate_all_servers()
 
     async def _heartbeat_loop(self) -> None:
         """Heartbeat update loop."""
@@ -151,6 +129,8 @@ class HeartbeatManager:
     async def _update_heartbeat(self) -> None:
         """Update system heartbeat."""
         async with get_async_session() as session:
-            # Update the single heartbeat record
             await upsert_heartbeat(session, datetime.now(timezone.utc))
             logger.debug("Updated heartbeat")
+
+
+heartbeat_manager = HeartbeatManager()

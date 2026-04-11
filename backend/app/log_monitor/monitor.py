@@ -8,8 +8,19 @@ import aiofiles
 from aiofiles import os as aioos
 from watchfiles import Change, awatch
 
-from ..events.base import (
-    BaseEvent,
+from ..db.database import get_async_session
+from ..logger import logger
+from ..minecraft import docker_mc_manager
+from ..players.crud import upsert_player
+from ..players.tracking import (
+    close_server_sessions,
+    process_player_join,
+    process_player_left,
+    record_achievement,
+    record_chat_message,
+)
+from .events import (
+    LogEvent,
     PlayerAchievementEvent,
     PlayerChatMessageEvent,
     PlayerJoinedEvent,
@@ -17,23 +28,14 @@ from ..events.base import (
     PlayerUuidDiscoveredEvent,
     ServerStoppingEvent,
 )
-from ..events.dispatcher import EventDispatcher
-from ..logger import logger
 from .parser import LogParser
 
 
 class LogMonitor:
-    """Monitors Minecraft server log files and emits events."""
+    """Monitors Minecraft server log files and dispatches tracking actions."""
 
-    def __init__(self, event_dispatcher: EventDispatcher, log_parser: LogParser):
-        """Initialize log monitor.
-
-        Args:
-            event_dispatcher: Event dispatcher for emitting events
-            log_parser: Log parser for parsing log lines
-        """
-        self.event_dispatcher = event_dispatcher
-        self.log_parser = log_parser
+    def __init__(self):
+        self.log_parser = LogParser()
 
         # Track file pointers for each server
         self._file_pointers: Dict[str, int] = {}
@@ -44,33 +46,32 @@ class LogMonitor:
         # Flag to stop all watches
         self._stop_flag = False
 
-    async def watch_server(self, server_id: str, log_path: Path) -> None:
+    async def start_server(self, server_id: str) -> None:
         """Start watching a server's log file.
 
-        Args:
-            server_id: Server identifier
-            log_path: Path to the log file (typically logs/latest.log)
+        Resolves the log path from the server's data directory.
         """
+        instance = docker_mc_manager.get_instance(server_id)
+        log_path = instance.get_data_path() / "logs" / "latest.log"
+        await self._watch_server(server_id, log_path)
+        logger.info(f"Started log monitoring for server {server_id}")
+
+    async def _watch_server(self, server_id: str, log_path: Path) -> None:
+        """Start watching a server's log file at the given path."""
         if server_id in self._watch_tasks:
             logger.warning(f"Already watching logs for server {server_id}")
             return
 
-        # Create watch task
         task = asyncio.create_task(self._watch_loop(server_id, log_path))
         self._watch_tasks[server_id] = task
         logger.info(f"Started watching logs for server {server_id}")
 
     async def stop_watching(self, server_id: str) -> None:
-        """Stop watching a server's log file.
-
-        Args:
-            server_id: Server identifier
-        """
+        """Stop watching a server's log file."""
         if server_id not in self._watch_tasks:
             logger.warning(f"Not watching logs for server {server_id}")
             return
 
-        # Cancel watch task
         task = self._watch_tasks.pop(server_id)
         task.cancel()
         try:
@@ -78,31 +79,22 @@ class LogMonitor:
         except asyncio.CancelledError:
             pass
 
-        # Remove file pointer
         self._file_pointers.pop(server_id, None)
-
         logger.info(f"Stopped watching logs for server {server_id}")
 
     async def stop_all(self) -> None:
         """Stop watching all servers."""
         self._stop_flag = True
 
-        # Cancel all watch tasks
         for server_id in list(self._watch_tasks.keys()):
             await self.stop_watching(server_id)
 
         logger.info("Stopped all log monitoring")
 
     async def _watch_loop(self, server_id: str, log_path: Path) -> None:
-        """Watch loop for a single server log file.
-
-        Args:
-            server_id: Server identifier
-            log_path: Path to log file
-        """
+        """Watch loop for a single server log file."""
         # Initialize file pointer
         if await aioos.path.exists(log_path):
-            # Start from current end of file
             self._file_pointers[server_id] = await aioos.path.getsize(log_path)
             logger.info(
                 f"Log file found for {server_id}, size: {self._file_pointers[server_id]}"
@@ -113,7 +105,7 @@ class LogMonitor:
                 f"Log file not found for {server_id}, will start from beginning when created"
             )
 
-        # wait for the log file to be created
+        # Wait for the log file to be created
         while not await aioos.path.exists(log_path):
             if self._stop_flag:
                 return
@@ -145,12 +137,7 @@ class LogMonitor:
             logger.error(f"Error in watch loop for {server_id}: {e}", exc_info=True)
 
     async def _process_log_changes(self, server_id: str, log_path: Path) -> None:
-        """Process changes to a log file.
-
-        Args:
-            server_id: Server identifier
-            log_path: Path to log file
-        """
+        """Process changes to a log file."""
         try:
             if not await aioos.path.exists(log_path):
                 return
@@ -174,63 +161,66 @@ class LogMonitor:
                     new_content = await f.read()
                     read_position = await f.tell()
 
-                # Update file pointer
                 self._file_pointers[server_id] = read_position
 
-                # Process new lines
                 lines = new_content.splitlines()
                 for line in lines:
                     line = line.strip()
                     if not line:
                         continue
 
-                    # Parse line and emit event
                     event = self.log_parser.parse_line(server_id, line)
                     if event:
-                        await self._dispatch_event(event)
+                        await self._handle_event(event)
 
         except Exception as e:
             logger.error(
                 f"Error processing log changes for {server_id}: {e}", exc_info=True
             )
 
-    async def _dispatch_event(self, event) -> None:
-        """Dispatch an event through the event dispatcher.
-
-        Args:
-            event: Event to dispatch
-        """
+    async def _handle_event(self, event: LogEvent) -> None:
+        """Route a parsed log event to the appropriate tracking function."""
         try:
-            # Use match syntax to dispatch based on event type
             match event:
-                case event if isinstance(event, BaseEvent):
-                    # Match by event class type for better type safety
-                    match event:
-                        case PlayerUuidDiscoveredEvent():
-                            await self.event_dispatcher.dispatch_player_uuid_discovered(
-                                event
-                            )
-                        case PlayerJoinedEvent():
-                            await self.event_dispatcher.dispatch_player_joined(event)
-                        case PlayerLeftEvent():
-                            await self.event_dispatcher.dispatch_player_left(event)
-                        case PlayerChatMessageEvent():
-                            await self.event_dispatcher.dispatch_player_chat_message(
-                                event
-                            )
-                        case PlayerAchievementEvent():
-                            await self.event_dispatcher.dispatch_player_achievement(
-                                event
-                            )
-                        case ServerStoppingEvent():
-                            await self.event_dispatcher.dispatch_server_stopping(event)
-                        case _:
-                            logger.warning(
-                                f"Unhandled event type: {type(event).__name__}"
-                            )
+                case PlayerUuidDiscoveredEvent():
+                    async with get_async_session() as session:
+                        await upsert_player(session, event.uuid, event.player_name)
+                    logger.info(
+                        f"Updated player UUID: {event.player_name} = {event.uuid}"
+                    )
+                case PlayerJoinedEvent():
+                    await process_player_join(
+                        event.server_id, event.player_name, event.timestamp
+                    )
+                case PlayerLeftEvent():
+                    await process_player_left(
+                        event.server_id,
+                        event.player_name,
+                        event.reason,
+                        event.timestamp,
+                    )
+                case PlayerChatMessageEvent():
+                    await record_chat_message(
+                        event.server_id,
+                        event.player_name,
+                        event.message,
+                        event.timestamp,
+                    )
+                case PlayerAchievementEvent():
+                    await record_achievement(
+                        event.server_id,
+                        event.player_name,
+                        event.achievement_name,
+                        event.timestamp,
+                    )
+                case ServerStoppingEvent():
+                    await close_server_sessions(event.server_id, event.timestamp)
                 case _:
-                    logger.warning(f"Invalid event object: {event}")
+                    logger.warning(f"Unhandled event type: {type(event).__name__}")
         except Exception as e:
             logger.error(
-                f"Error dispatching event {type(event).__name__}: {e}", exc_info=True
+                f"Error handling event {type(event).__name__}: {e}", exc_info=True
             )
+
+
+log_monitor = LogMonitor()

@@ -8,7 +8,7 @@ from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
-from ...players import player_system_manager
+from ...log_monitor import log_monitor
 from ...servers.crud import mark_server_removed
 
 router = APIRouter(
@@ -49,7 +49,7 @@ async def server_operation(
         await instance.down()
     elif action == "remove":
         # Stop log monitoring before removal
-        await player_system_manager.stop_server_monitoring(server_id)
+        await log_monitor.stop_watching(server_id)
         # Mark server as removed in database
         await mark_server_removed(db, server_id, datetime.now(timezone.utc))
         # Remove the server files

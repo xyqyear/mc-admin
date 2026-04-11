@@ -1,7 +1,7 @@
 """
 Integration tests for player management system.
 
-Tests complete event flows without mocking internal logic.
+Tests complete tracking flows using direct function calls.
 Only mocks: skin_fetcher, mojang_api, and uses isolated test databases.
 """
 
@@ -17,14 +17,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import Base
-from app.events.base import (
-    PlayerAchievementEvent,
-    PlayerChatMessageEvent,
-    PlayerJoinedEvent,
-    PlayerLeftEvent,
-    PlayerUuidDiscoveredEvent,
-    ServerStoppingEvent,
-)
 from app.models import (
     Player,
     PlayerAchievement,
@@ -33,8 +25,15 @@ from app.models import (
     Server,
     ServerStatus,
 )
-from app.players import ChatTracker, PlayerManager, SessionTracker
+from app.players.crud import upsert_player
 from app.players.skin_fetcher import SkinFetcher
+from app.players.tracking import (
+    close_server_sessions,
+    process_player_join,
+    process_player_left,
+    record_achievement,
+    record_chat_message,
+)
 
 # ============================================================================
 # Fixtures
@@ -69,24 +68,6 @@ async def test_database():
 
 
 @pytest.fixture
-def clean_dispatcher():
-    """Clean event dispatcher handlers before and after test."""
-    from app.events import event_dispatcher
-
-    # Save current handlers
-    saved = {k: list(v) for k, v in event_dispatcher._handlers.items()}
-
-    # Clear all handlers
-    for handlers in event_dispatcher._handlers.values():
-        handlers.clear()
-
-    yield event_dispatcher
-
-    # Restore handlers
-    event_dispatcher._handlers = saved
-
-
-@pytest.fixture
 def mock_skin_fetcher():
     """Mock skin fetcher with 200ms network delay."""
 
@@ -113,41 +94,24 @@ def mock_mojang_api():
 
 
 @pytest.fixture
-async def player_system(
-    test_database, clean_dispatcher, mock_skin_fetcher, mock_mojang_api
-):
-    """Initialize complete player system with mocked external dependencies."""
+async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
+    """Initialize player system with mocked external dependencies."""
 
-    # Patch all database sessions and external APIs
-    # Need to patch at all import points because imports happen before patching
     patches = [
-        patch("app.db.database.get_async_session", test_database),
-        patch("app.players.player_manager.get_async_session", test_database),
-        patch("app.players.session_tracker.get_async_session", test_database),
-        patch("app.players.chat_tracker.get_async_session", test_database),
+        patch("app.players.tracking.get_async_session", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
-    # Apply all patches
     for p in patches:
         p.start()
 
     try:
-        # Initialize system components
-        player_manager = PlayerManager(event_dispatcher=clean_dispatcher)
-        session_tracker = SessionTracker(event_dispatcher=clean_dispatcher)
-        chat_tracker = ChatTracker(event_dispatcher=clean_dispatcher)
-
         yield {
-            "dispatcher": clean_dispatcher,
             "db": test_database,
-            "player_manager": player_manager,
-            "session_tracker": session_tracker,
-            "chat_tracker": chat_tracker,
         }
     finally:
-        # Stop all patches
         for p in patches:
             p.stop()
 
@@ -237,23 +201,18 @@ async def get_achievements(db, player_db_id: int):
 
 @pytest.mark.asyncio
 async def test_normal_flow_uuid_join_leave(player_system):
-    """Test normal flow: UUID discovered → player joins → player leaves."""
+    """Test normal flow: UUID upserted -> player joins -> player leaves."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     # Create server
     server_db_id = await create_server(db, "server1")
 
-    # Event sequence: UUID → Join → Leave
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="abc123"
-        )
-    )
+    # Upsert player UUID directly
+    async with db() as session:
+        await upsert_player(session, "abc123", "Steve")
 
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve")
-    )
+    # Player joins
+    await process_player_join("server1", "Steve")
 
     # Verify player is online
     player = await get_player(db, "Steve")
@@ -268,9 +227,7 @@ async def test_normal_flow_uuid_join_leave(player_system):
     assert session is not None
 
     # Player leaves
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(server_id="server1", player_name="Steve")
-    )
+    await process_player_left("server1", "Steve")
 
     # Verify player is offline
     assert await is_player_online(db, player.player_db_id, server_db_id) is False
@@ -283,20 +240,14 @@ async def test_normal_flow_uuid_join_leave(player_system):
 async def test_server_stopping_marks_all_offline(player_system):
     """Test server stopping marks all players offline."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server_db_id = await create_server(db, "server1")
 
-    # Three players join
+    # Three players: upsert UUID then join
     for name in ["Steve", "Alex", "Bob"]:
-        await dispatcher.dispatch_player_uuid_discovered(
-            PlayerUuidDiscoveredEvent(
-                server_id="server1", player_name=name, uuid=f"uuid_{name}"
-            )
-        )
-        await dispatcher.dispatch_player_joined(
-            PlayerJoinedEvent(server_id="server1", player_name=name)
-        )
+        async with db() as session:
+            await upsert_player(session, f"uuid_{name}", name)
+        await process_player_join("server1", name)
 
     # Verify all online
     for name in ["Steve", "Alex", "Bob"]:
@@ -304,7 +255,7 @@ async def test_server_stopping_marks_all_offline(player_system):
         assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     # Server stops
-    await dispatcher.dispatch_server_stopping(ServerStoppingEvent(server_id="server1"))
+    await close_server_sessions("server1")
 
     # Verify all offline
     for name in ["Steve", "Alex", "Bob"]:
@@ -316,17 +267,11 @@ async def test_server_stopping_marks_all_offline(player_system):
 async def test_missing_uuid_auto_fetch_from_mojang(player_system):
     """Test player joins without UUID - auto fetch from Mojang."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server_db_id = await create_server(db, "server1")
 
-    # Player joins WITHOUT UUID discovery event
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve")
-    )
-
-    # Should auto-fetch UUID from Mojang
-    await asyncio.sleep(0.3)  # Wait for async Mojang call
+    # Player joins WITHOUT prior UUID upsert - should auto-fetch from Mojang
+    await process_player_join("server1", "Steve")
 
     player = await get_player(db, "Steve")
     assert player is not None
@@ -345,28 +290,22 @@ async def test_missing_uuid_auto_fetch_from_mojang(player_system):
 async def test_session_duration_calculation(player_system):
     """Test session duration and playtime calculation."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
+    # Upsert player UUID
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
+
     # Player joins
     join_time = datetime.now(timezone.utc)
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=join_time)
-    )
+    await process_player_join("server1", "Steve", timestamp=join_time)
 
     player = await get_player(db, "Steve")
 
-    # Wait and leave (simulate 5 minutes)
+    # Player leaves after 5 minutes
     leave_time = join_time + timedelta(minutes=5)
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(server_id="server1", player_name="Steve", timestamp=leave_time)
-    )
+    await process_player_left("server1", "Steve", timestamp=leave_time)
 
     # Check session duration
     async with db() as session:
@@ -383,41 +322,21 @@ async def test_session_duration_calculation(player_system):
 async def test_multiple_sessions_recorded(player_system):
     """Test multiple sessions are recorded correctly."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server_db_id = await create_server(db, "server1")
 
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
 
     # Session 1: 3 minutes
     t1 = datetime.now(timezone.utc)
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=t1)
-    )
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(
-            server_id="server1",
-            player_name="Steve",
-            timestamp=t1 + timedelta(minutes=3),
-        )
-    )
+    await process_player_join("server1", "Steve", timestamp=t1)
+    await process_player_left("server1", "Steve", timestamp=t1 + timedelta(minutes=3))
 
     # Session 2: 7 minutes
     t2 = t1 + timedelta(minutes=10)
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=t2)
-    )
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(
-            server_id="server1",
-            player_name="Steve",
-            timestamp=t2 + timedelta(minutes=7),
-        )
-    )
+    await process_player_join("server1", "Steve", timestamp=t2)
+    await process_player_left("server1", "Steve", timestamp=t2 + timedelta(minutes=7))
 
     # Verify both sessions were recorded
     player = await get_player(db, "Steve")
@@ -440,35 +359,25 @@ async def test_multiple_sessions_recorded(player_system):
 async def test_server_stop_ends_sessions(player_system):
     """Test server stop ends all open sessions with correct duration."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server_db_id = await create_server(db, "server1")
 
     # Two players join
     join_time = datetime.now(timezone.utc)
     for name in ["Steve", "Alex"]:
-        await dispatcher.dispatch_player_uuid_discovered(
-            PlayerUuidDiscoveredEvent(
-                server_id="server1", player_name=name, uuid=f"uuid_{name}"
-            )
-        )
-        await dispatcher.dispatch_player_joined(
-            PlayerJoinedEvent(
-                server_id="server1", player_name=name, timestamp=join_time
-            )
-        )
+        async with db() as session:
+            await upsert_player(session, f"uuid_{name}", name)
+        await process_player_join("server1", name, timestamp=join_time)
 
     # Server stops after 10 minutes
     stop_time = join_time + timedelta(minutes=10)
-    await dispatcher.dispatch_server_stopping(
-        ServerStoppingEvent(server_id="server1", timestamp=stop_time)
-    )
+    await close_server_sessions("server1", timestamp=stop_time)
 
     # Check both sessions ended
     for name in ["Steve", "Alex"]:
         player = await get_player(db, name)
-        session = await get_open_session(db, player.player_db_id, server_db_id)
-        assert session is None
+        open_session = await get_open_session(db, player.player_db_id, server_db_id)
+        assert open_session is None
 
         # Check session was recorded with correct duration
         async with db() as session:
@@ -493,29 +402,20 @@ async def test_server_stop_ends_sessions(player_system):
 async def test_chat_messages_recorded(player_system):
     """Test chat messages are recorded."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve")
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
+
+    await process_player_join("server1", "Steve")
 
     player = await get_player(db, "Steve")
 
     # Send chat messages
     messages = ["Hello world", "How are you?", "Goodbye"]
     for msg in messages:
-        await dispatcher.dispatch_player_chat_message(
-            PlayerChatMessageEvent(
-                server_id="server1", player_name="Steve", message=msg
-            )
-        )
+        await record_chat_message("server1", "Steve", msg)
 
     # Verify messages
     chat_msgs = await get_chat_messages(db, player.player_db_id)
@@ -527,42 +427,20 @@ async def test_chat_messages_recorded(player_system):
 async def test_achievements_recorded_and_deduplicated(player_system):
     """Test achievements are recorded and deduplicated."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
 
     player = await get_player(db, "Steve")
 
-    # Earn achievements
-    await dispatcher.dispatch_player_achievement(
-        PlayerAchievementEvent(
-            server_id="server1",
-            player_name="Steve",
-            achievement_name="Taking Inventory",
-        )
-    )
-    await dispatcher.dispatch_player_achievement(
-        PlayerAchievementEvent(
-            server_id="server1",
-            player_name="Steve",
-            achievement_name="Getting Wood",
-        )
-    )
+    # Earn achievements (player_name arg is the achievement text to match against)
+    await record_achievement("server1", "Steve", "Taking Inventory")
+    await record_achievement("server1", "Steve", "Getting Wood")
 
     # Duplicate achievement (should be ignored)
-    await dispatcher.dispatch_player_achievement(
-        PlayerAchievementEvent(
-            server_id="server1",
-            player_name="Steve",
-            achievement_name="Taking Inventory",
-        )
-    )
+    await record_achievement("server1", "Steve", "Taking Inventory")
 
     # Verify achievements (no duplicates)
     achievements = await get_achievements(db, player.player_db_id)
@@ -579,53 +457,38 @@ async def test_achievements_recorded_and_deduplicated(player_system):
 
 @pytest.mark.asyncio
 async def test_player_leave_without_join(player_system):
-    """Test player leave event without prior join - should handle gracefully."""
+    """Test player leave without prior join - should handle gracefully."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
     # Player leaves without joining (edge case)
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(server_id="server1", player_name="Steve")
-    )
+    await process_player_left("server1", "Steve")
 
-    # Should not crash, player might be fetched from Mojang
-    await asyncio.sleep(0.3)
-
+    # Should not crash, player should be fetched from Mojang
     player = await get_player(db, "Steve")
-    # Player should exist from Mojang fetch
     assert player is not None
 
 
 @pytest.mark.asyncio
 async def test_uuid_update_for_existing_player(player_system):
-    """Test UUID discovery with same UUID updates player name."""
+    """Test UUID upsert with same UUID updates player name."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
-    # Discover UUID from logs (creates player with name Steve)
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="consistent_uuid_123"
-        )
-    )
+    # Upsert player with name Steve
+    async with db() as session:
+        await upsert_player(session, "consistent_uuid_123", "Steve")
 
-    await asyncio.sleep(0.1)
     player = await get_player(db, "Steve")
     assert player.uuid == "consistent_uuid_123"
     assert player.current_name == "Steve"
 
-    # Player changes name to Steve2 (UUID stays same - this is what actually happens in Minecraft)
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve2", uuid="consistent_uuid_123"
-        )
-    )
+    # Player changes name to Steve2 (UUID stays same)
+    async with db() as session:
+        await upsert_player(session, "consistent_uuid_123", "Steve2")
 
-    await asyncio.sleep(0.1)
     # Query the player by UUID
     async with db() as session:
         result = await session.execute(
@@ -642,25 +505,19 @@ async def test_uuid_update_for_existing_player(player_system):
 async def test_multiple_servers_same_player(player_system):
     """Test same player on multiple servers."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server1_id = await create_server(db, "server1")
     server2_id = await create_server(db, "server2")
 
+    # Upsert player UUID
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
+
     # Player joins server1
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve")
-    )
+    await process_player_join("server1", "Steve")
 
     # Same player joins server2
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server2", player_name="Steve")
-    )
+    await process_player_join("server2", "Steve")
 
     player = await get_player(db, "Steve")
 
@@ -669,9 +526,7 @@ async def test_multiple_servers_same_player(player_system):
     assert await is_player_online(db, player.player_db_id, server2_id) is True
 
     # Leave server1, should still be online on server2
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(server_id="server1", player_name="Steve")
-    )
+    await process_player_left("server1", "Steve")
 
     assert await is_player_online(db, player.player_db_id, server1_id) is False
     assert await is_player_online(db, player.player_db_id, server2_id) is True
@@ -681,15 +536,11 @@ async def test_multiple_servers_same_player(player_system):
 async def test_rapid_join_leave_cycles(player_system):
     """Test rapid join/leave cycles."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
 
     player = await get_player(db, "Steve")
 
@@ -699,16 +550,8 @@ async def test_rapid_join_leave_cycles(player_system):
         join_time = base_time + timedelta(minutes=i * 2)
         leave_time = join_time + timedelta(minutes=1)
 
-        await dispatcher.dispatch_player_joined(
-            PlayerJoinedEvent(
-                server_id="server1", player_name="Steve", timestamp=join_time
-            )
-        )
-        await dispatcher.dispatch_player_left(
-            PlayerLeftEvent(
-                server_id="server1", player_name="Steve", timestamp=leave_time
-            )
-        )
+        await process_player_join("server1", "Steve", timestamp=join_time)
+        await process_player_left("server1", "Steve", timestamp=leave_time)
 
     # Check session count
     async with db() as session:
@@ -720,15 +563,14 @@ async def test_rapid_join_leave_cycles(player_system):
         sessions = list(result.scalars().all())
         assert len(sessions) == 5
         # Verify each session has 1 minute (60 seconds) duration
-        for session in sessions:
-            assert session.duration_seconds == 60
+        for s in sessions:
+            assert s.duration_seconds == 60
 
 
 @pytest.mark.asyncio
 async def test_concurrent_players_on_same_server(player_system):
     """Test multiple players on same server concurrently."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server_db_id = await create_server(db, "server1")
 
@@ -736,14 +578,9 @@ async def test_concurrent_players_on_same_server(player_system):
 
     # All players join
     for name in players:
-        await dispatcher.dispatch_player_uuid_discovered(
-            PlayerUuidDiscoveredEvent(
-                server_id="server1", player_name=name, uuid=f"uuid_{name}"
-            )
-        )
-        await dispatcher.dispatch_player_joined(
-            PlayerJoinedEvent(server_id="server1", player_name=name)
-        )
+        async with db() as session:
+            await upsert_player(session, f"uuid_{name}", name)
+        await process_player_join("server1", name)
 
     # Verify all online
     for name in players:
@@ -752,9 +589,7 @@ async def test_concurrent_players_on_same_server(player_system):
 
     # Some players leave
     for name in ["Steve", "Bob"]:
-        await dispatcher.dispatch_player_left(
-            PlayerLeftEvent(server_id="server1", player_name=name)
-        )
+        await process_player_left("server1", name)
 
     # Verify correct online status
     online_players = ["Alex", "Alice", "Charlie"]
@@ -773,21 +608,15 @@ async def test_concurrent_players_on_same_server(player_system):
 async def test_player_name_case_sensitivity(player_system):
     """Test player names are case-sensitive."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
     # Different case variations should be treated as different players
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid_lower"
-        )
-    )
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="STEVE", uuid="uuid_upper"
-        )
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid_lower", "Steve")
+
+    async with db() as session:
+        await upsert_player(session, "uuid_upper", "STEVE")
 
     player_lower = await get_player(db, "Steve")
     player_upper = await get_player(db, "STEVE")
@@ -805,20 +634,15 @@ async def test_player_last_seen_update(player_system):
     from app.players.crud.query.player_query import get_player_last_seen
 
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     await create_server(db, "server1")
 
-    # First join
+    # Upsert UUID and join
     time1 = datetime.now(timezone.utc)
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=time1)
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
+
+    await process_player_join("server1", "Steve", timestamp=time1)
 
     player = await get_player(db, "Steve")
     async with db() as session:
@@ -827,22 +651,19 @@ async def test_player_last_seen_update(player_system):
     # Player is online, so last_seen should be very recent (close to now)
     assert (datetime.now(timezone.utc) - first_last_seen).total_seconds() < 5
 
-    # Leave
-    await dispatcher.dispatch_player_left(
-        PlayerLeftEvent(server_id="server1", player_name="Steve", timestamp=time1)
-    )
+    # Leave 30 minutes later (realistic session duration)
+    leave_time = time1 + timedelta(minutes=30)
+    await process_player_left("server1", "Steve", timestamp=leave_time)
 
-    # After leaving, last_seen should be the left_at time (time1)
+    # After leaving, last_seen should be the left_at time
     async with db() as session:
         second_last_seen = await get_player_last_seen(session, player.player_db_id)
     assert second_last_seen is not None
-    assert abs((second_last_seen - time1).total_seconds()) < 1
+    assert abs((second_last_seen - leave_time).total_seconds()) < 1
 
     # Rejoin later
     time2 = time1 + timedelta(hours=1)
-    await dispatcher.dispatch_player_joined(
-        PlayerJoinedEvent(server_id="server1", player_name="Steve", timestamp=time2)
-    )
+    await process_player_join("server1", "Steve", timestamp=time2)
 
     # Player is online again, last_seen should be current time
     async with db() as session:
@@ -855,36 +676,20 @@ async def test_player_last_seen_update(player_system):
 async def test_achievement_same_name_different_servers(player_system):
     """Test same achievement on different servers are separate records."""
     db = player_system["db"]
-    dispatcher = player_system["dispatcher"]
 
     server1_id = await create_server(db, "server1")
     server2_id = await create_server(db, "server2")
 
-    await dispatcher.dispatch_player_uuid_discovered(
-        PlayerUuidDiscoveredEvent(
-            server_id="server1", player_name="Steve", uuid="uuid1"
-        )
-    )
+    async with db() as session:
+        await upsert_player(session, "uuid1", "Steve")
 
     player = await get_player(db, "Steve")
 
     # Same achievement on server1
-    await dispatcher.dispatch_player_achievement(
-        PlayerAchievementEvent(
-            server_id="server1",
-            player_name="Steve",
-            achievement_name="Taking Inventory",
-        )
-    )
+    await record_achievement("server1", "Steve", "Taking Inventory")
 
     # Same achievement on server2
-    await dispatcher.dispatch_player_achievement(
-        PlayerAchievementEvent(
-            server_id="server2",
-            player_name="Steve",
-            achievement_name="Taking Inventory",
-        )
-    )
+    await record_achievement("server2", "Steve", "Taking Inventory")
 
     # Should have 2 achievement records
     achievements = await get_achievements(db, player.player_db_id)

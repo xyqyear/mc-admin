@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...events import event_dispatcher
-from ...events.base import PlayerSkinUpdateRequestedEvent
 from ...models import Player, UserPublic
 from ...players.crud.query.player_query import (
     PlayerDetailResponse,
@@ -19,6 +17,7 @@ from ...players.crud.query.player_query import (
     get_player_detail_by_name,
     get_player_detail_by_uuid,
 )
+from ...players.tracking import update_player_skin
 
 router = APIRouter(prefix="/players", tags=["players"])
 
@@ -152,13 +151,6 @@ async def refresh_player_skin(
             detail="Player not found",
         )
 
-    # Dispatch skin update event
-    await event_dispatcher.dispatch_player_skin_update_requested(
-        PlayerSkinUpdateRequestedEvent(
-            player_db_id=player.player_db_id,
-            uuid=player.uuid,
-            player_name=player.current_name,
-        )
-    )
+    await update_player_skin(player.player_db_id, player.uuid, player.current_name)
 
     return {"message": "Skin refresh requested"}

@@ -5,31 +5,17 @@ from typing import Optional, Set
 
 from ..db.database import get_async_session
 from ..dynamic_config import config
-from ..events.base import PlayerJoinedEvent, PlayerLeftEvent
-from ..events.dispatcher import EventDispatcher
 from ..logger import log_exception, logger
-from ..minecraft import DockerMCManager, MCServerStatus
+from ..minecraft import MCServerStatus, docker_mc_manager
 from ..servers.crud import get_active_servers_map
 from .crud import get_online_player_names_on_server
+from .tracking import process_player_join, process_player_left
 
 
 class PlayerSyncer:
     """Synchronizes player online status using RCON queries."""
 
-    def __init__(
-        self,
-        mc_manager: DockerMCManager,
-        event_dispatcher: EventDispatcher,
-    ):
-        """Initialize player syncer.
-
-        Args:
-            mc_manager: Minecraft Docker manager
-            event_dispatcher: Event dispatcher for player status changes
-        """
-        self.mc_manager = mc_manager
-        self.event_dispatcher = event_dispatcher
-
+    def __init__(self):
         self._task: Optional[asyncio.Task] = None
         self._stop_flag = False
 
@@ -57,19 +43,17 @@ class PlayerSyncer:
     async def _validate_loop(self) -> None:
         """Validation loop."""
         while not self._stop_flag:
-            await self._validate_all_servers()
+            await self.validate_all_servers()
             await asyncio.sleep(
                 config.players.rcon_validation.validation_interval_seconds
             )
 
     @log_exception("Error validating all servers: ")
-    async def _validate_all_servers(self) -> None:
+    async def validate_all_servers(self) -> None:
         """Validate player status on all active servers."""
         async with get_async_session() as session:
-            # Get all active servers from database
             active_servers = await get_active_servers_map(session)
 
-        # Validate each server with its own session to avoid long transactions
         for server_id, server_db_id in active_servers.items():
             if self._stop_flag:
                 break
@@ -78,22 +62,14 @@ class PlayerSyncer:
 
     @log_exception("Error validating server {server_id}: ")
     async def _validate_server(self, server_id: str, server_db_id: int) -> None:
-        """Validate player status on a single server.
+        """Validate player status on a single server."""
+        instance = docker_mc_manager.get_instance(server_id)
 
-        Args:
-            server_id: Server identifier
-            server_db_id: Server database ID
-        """
-        # Get server instance
-        instance = self.mc_manager.get_instance(server_id)
-
-        # Check server status
         status = await instance.get_status()
         if status != MCServerStatus.HEALTHY:
             logger.debug(f"Server {server_id} is not healthy, skipping validation")
             return
 
-        # Get online players from RCON
         try:
             online_players = await instance.list_players()
             online_player_names: Set[str] = set(online_players)
@@ -101,9 +77,7 @@ class PlayerSyncer:
             logger.warning(f"Failed to get player list from {server_id}: {e}")
             return
 
-        # Get online players from database using CRUD function
         async with get_async_session() as session:
-            # Get online player names using CRUD function
             db_online_names = await get_online_player_names_on_server(
                 session, server_db_id
             )
@@ -118,13 +92,7 @@ class PlayerSyncer:
                     f"Correcting {len(falsely_online)} falsely online players on {server_id}: {falsely_online}"
                 )
                 for player_name in falsely_online:
-                    # Dispatch player left event to trigger proper cleanup
-                    await self.event_dispatcher.dispatch_player_left(
-                        PlayerLeftEvent(
-                            server_id=server_id,
-                            player_name=player_name,
-                        )
-                    )
+                    await process_player_left(server_id, player_name)
 
             # Correct false negatives (online in RCON but not in DB)
             if falsely_offline:
@@ -132,15 +100,12 @@ class PlayerSyncer:
                     f"Correcting {len(falsely_offline)} falsely offline players on {server_id}: {falsely_offline}"
                 )
                 for player_name in falsely_offline:
-                    # Dispatch player joined event to add them to DB
-                    await self.event_dispatcher.dispatch_player_joined(
-                        PlayerJoinedEvent(
-                            server_id=server_id,
-                            player_name=player_name,
-                        )
-                    )
+                    await process_player_join(server_id, player_name)
 
             logger.debug(
                 f"Validated {server_id}: {len(online_player_names)} online, "
                 f"{len(falsely_online)} marked offline, {len(falsely_offline)} marked online"
             )
+
+
+player_syncer = PlayerSyncer()

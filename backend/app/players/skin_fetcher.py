@@ -17,7 +17,6 @@ class SkinFetcher:
     """Fetches player skins from Mojang API."""
 
     def __init__(self):
-        """Initialize skin fetcher."""
         self.session_server_url = (
             "https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"
         )
@@ -120,3 +119,6 @@ class SkinFetcher:
         output = io.BytesIO()
         avatar.save(output, format="PNG")
         return output.getvalue()
+
+
+skin_fetcher = SkinFetcher()

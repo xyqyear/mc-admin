@@ -39,7 +39,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 **Player Management:**
 
-- Real-time player tracking with event-driven architecture
+- Real-time player tracking with direct function call architecture
 - Session records and online status monitoring via Query protocol or RCON as fallback
 - Chat message tracking and achievement records
 - Player skin management with automatic updates via Mojang API
@@ -65,8 +65,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 **Monitoring & Logging:**
 
-- Real-time log monitoring and parsing with Watchdog
-- System-wide event dispatcher for cross-module communication
+- Real-time log monitoring and parsing with watchfiles
 - Operation audit system with structured JSON logging and rotation
 - Server tracker for lifecycle event monitoring
 - Heartbeat system for crash detection and recovery

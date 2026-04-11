@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.dynamic_config.configs.log_parser import LogParserConfig
-from app.events.base import (
+from app.log_monitor.events import (
     PlayerAchievementEvent,
     PlayerChatMessageEvent,
     PlayerJoinedEvent,

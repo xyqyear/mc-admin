@@ -2,7 +2,7 @@
 
 ## What This Component Is
 
-Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with event-driven architecture, DNS management with multi-provider support, advanced cron job system, log monitoring, dynamic configuration management, template-based server creation with typed variables, and background task system for long-running operations.
+Backend REST API for the MC Admin Minecraft server management platform. Built with FastAPI + SQLAlchemy 2.0 on Python 3.13+, providing comprehensive server management APIs, JWT authentication with WebSocket login flow, real-time system monitoring, fully integrated Minecraft Docker management, enterprise-grade Restic backup system, player tracking with direct function calls, DNS management with multi-provider support, advanced cron job system, log monitoring, dynamic configuration management, template-based server creation with typed variables, and background task system for long-running operations.
 
 ## Tech Stack
 
@@ -19,12 +19,11 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 **Integrated Modules:**
 
 - **Minecraft Management** (app.minecraft): Docker Compose lifecycle, cgroup v2 monitoring
-- **Player System** (app.players): Event-driven player tracking, sessions, chat, achievements, skins
+- **Player System** (app.players): Player tracking, sessions, chat, achievements, skins (direct function calls)
 - **Snapshot System** (app.snapshots): Restic backup integration with deletion and unlock
 - **DNS Management** (app.dns): DNSPod and Huawei Cloud DNS integration
 - **Cron System** (app.cron): APScheduler task scheduling with backup jobs
-- **Event System** (app.events): Centralized event dispatcher for cross-module communication
-- **Log Monitor** (app.log_monitor): Real-time log parsing with Watchdog
+- **Log Monitor** (app.log_monitor): Real-time log parsing with watchfiles, triggers player tracking directly
 - **File System** (app.files): Multi-file upload, search, conflict resolution
 - **Dynamic Config** (app.dynamic_config): Runtime configuration with schema migration
 - **Server Tracker** (app.server_tracker): Server lifecycle event monitoring
@@ -169,24 +168,17 @@ app/
 │       └── template_migration.py  # Mode conversion (template ↔ direct)
 │
 ├── players/                # Player tracking system
-│   ├── manager.py          # PlayerSystemManager (main coordinator)
-│   ├── player_manager.py   # Player CRUD and skin management
-│   ├── session_tracker.py  # Session records and online status
-│   ├── chat_tracker.py     # Chat message tracking
-│   ├── heartbeat.py        # Heartbeat and crash detection
-│   ├── player_syncer.py    # Player state synchronization
-│   ├── skin_fetcher.py     # Mojang API skin fetcher
-│   ├── skin_updater.py     # Background skin updates
+│   ├── __init__.py         # start_player_system() / stop_player_system()
+│   ├── tracking.py         # Composite tracking functions (join, leave, chat, etc.)
+│   ├── heartbeat.py        # HeartbeatManager singleton (crash detection)
+│   ├── player_syncer.py    # PlayerSyncer singleton (RCON validation)
+│   ├── skin_fetcher.py     # SkinFetcher singleton (Mojang API)
 │   ├── mojang_api.py       # Mojang API client
 │   └── crud/               # Player database operations
 │
-├── events/                 # Event system
-│   ├── base.py             # BaseEvent and event definitions
-│   ├── dispatcher.py       # EventDispatcher (centralized)
-│   └── types.py            # EventType enum
-│
 ├── log_monitor/            # Log monitoring
-│   ├── monitor.py          # LogMonitor (Watchdog-based)
+│   ├── events.py           # Log event data models (Pydantic)
+│   ├── monitor.py          # LogMonitor singleton (watchfiles-based)
 │   └── parser.py           # LogParser (regex-based parsing)
 │
 ├── server_tracker/         # Server lifecycle tracking
@@ -268,16 +260,25 @@ app/
 
 ### Player Management System
 
-**Event-driven architecture** for comprehensive player tracking:
+**Direct function call architecture** for player tracking. No event dispatcher — producers call tracking functions directly.
 
-- **PlayerSystemManager**: Main coordinator integrating all subsystems
-- **PlayerManager**: Player CRUD, UUID resolution, skin management
-- **SessionTracker**: Real-time session records and online status
-- **ChatTracker**: Chat message persistence
-- **HeartbeatManager**: Heartbeat system with crash detection
-- **PlayerSyncer**: Background sync for player state validation
-- **SkinFetcher**: Mojang API integration for skins
-- **LogMonitor**: Real-time log file monitoring with Watchdog
+**Composite functions** in `app/players/tracking.py`:
+
+- `process_player_join()` — ensure player in DB + create session + trigger skin update
+- `process_player_left()` — ensure player in DB + end sessions
+- `record_chat_message()` — ensure player in DB + save chat
+- `record_achievement()` — match player name + save achievement
+- `close_server_sessions()` — end all sessions on a server
+- `update_player_skin()` — fetch skin from Mojang + update DB
+
+**Independent singletons** (each manages its own lifecycle):
+
+- `heartbeat_manager` (app.players.heartbeat) — heartbeat loop + crash recovery
+- `player_syncer` (app.players.player_syncer) — periodic RCON validation
+- `skin_fetcher` (app.players.skin_fetcher) — Mojang API skin fetcher
+- `log_monitor` (app.log_monitor.monitor) — watchfiles-based log monitoring
+
+**Startup/shutdown** coordinated by `start_player_system()` / `stop_player_system()` in `app/players/__init__.py`, called from `main.py` lifespan.
 
 **Database Models:**
 
@@ -290,42 +291,21 @@ app/
 **Integration:**
 
 ```python
-from app.players import player_system_manager
+from app.players.tracking import process_player_join, update_player_skin
+from app.log_monitor import log_monitor
 
-# Automatically started in app lifespan
-# Monitors all server logs, emits events for player actions
-# Provides APIs via routers/servers/players.py
+# Tracking functions called directly by LogMonitor, HeartbeatManager, PlayerSyncer, and routers
+await process_player_join("server1", "Steve")
+await log_monitor.start_server("server1")
 ```
-
-### Event System
-
-**Centralized event dispatcher** for cross-module communication:
-
-```python
-from app.events import event_dispatcher, EventType
-
-# Subscribe to events
-@event_dispatcher.on_player_joined()
-async def handle_join(event):
-    pass
-
-# Emit events
-await event_dispatcher.emit(PlayerJoinedEvent(...))
-```
-
-**Event Types:**
-
-- Player events (join, leave, chat, achievement)
-- Server events (created, removed)
-- System events (crash detected)
 
 ### Log Monitoring System
 
-**Real-time log parsing** with Watchdog file monitoring:
+**Real-time log parsing** with watchfiles:
 
 - Monitors `logs/latest.log` in server directories
 - Regex-based parsing for Minecraft log formats
-- Emits events for player actions and server events
+- Calls player tracking functions directly on match
 - Handles log rotation and file recreation
 - Crash detection through heartbeat monitoring
 
@@ -579,7 +559,7 @@ When adding features:
 2. **New routers**: Add to `app/routers/` and mount in `main.py`
 3. **New dependencies**: Update `pyproject.toml`
 4. **New integrated modules**: Add to `app/` with `__init__.py` exports
-5. **New event types**: Add to `app/events/types.py` and `base.py`
+5. **New player tracking operations**: Add to `app/players/tracking.py`
 6. **New tests**: Place in appropriate `tests/` subdirectory
 7. **Update this CLAUDE.md** with new patterns and integration points
 
