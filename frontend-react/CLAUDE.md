@@ -637,3 +637,20 @@ When adding features:
 - Check git history before updating to capture all changes since last doc update
 
 Keep this file updated to help future development sessions understand the frontend architecture, component organization, and development patterns.
+
+## UI Migration: Ant Design -> shadcn/ui (In Progress)
+
+The frontend is being incrementally migrated from Ant Design to shadcn/ui + Tailwind CSS + Lucide icons. During migration, both AntD and shadcn components coexist.
+
+**Migration plan documents** in `.claude/migration/`:
+
+- `00-overview.md` - Master plan: phases, session breakdown, what changes vs stays
+- `01-foundation-setup.md` - Phase 0: Install shadcn alongside AntD, configure theme
+- `02-shared-infrastructure.md` - Phase 1: Toast, confirm dialog, loading, RJSF migration
+- `03-page-migrations.md` - Phase 2: Per-page migration guide (Sessions 3-12)
+- `04-shell-and-cleanup.md` - Phase 3-4: Layout shell migration and AntD removal
+- `reference-component-map.md` - AntD -> shadcn component mapping with code examples
+- `reference-icon-map.md` - 37 AntD icons -> Lucide equivalents
+- `reference-patterns.md` - shadcn code patterns: forms, tables, toast, dialogs, layouts
+
+**When working on migration**: Read the relevant migration guide file before starting. Each page migration session should follow the workflow in `03-page-migrations.md`.
