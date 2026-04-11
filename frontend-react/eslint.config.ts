@@ -24,7 +24,13 @@ export default defineConfig([
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
-  pluginReact.configs.flat.recommended,
+  {
+    ...pluginReact.configs.flat.recommended,
+    rules: {
+      ...pluginReact.configs.flat.recommended.rules,
+      "react/react-in-jsx-scope": "off",
+    },
+  },
   reactHooks.configs["recommended-latest"],
   reactRefresh.configs.recommended,
   reactRefresh.configs.vite,

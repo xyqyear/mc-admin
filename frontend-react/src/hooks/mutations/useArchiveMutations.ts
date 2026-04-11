@@ -3,10 +3,9 @@ import { taskQueryKeys } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 import { useDownloadManager } from '@/utils/downloadUtils'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { App } from 'antd'
+import { toast } from 'sonner'
 
 export const useArchiveMutations = () => {
-  const { message } = App.useApp()
   const queryClient = useQueryClient()
   const { executeDownload } = useDownloadManager()
 
@@ -38,10 +37,10 @@ export const useArchiveMutations = () => {
         // Invalidate SHA256 cache for the uploaded file
         const filePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(filePath) })
-        message.success('文件上传成功')
+        toast.success('文件上传成功')
       },
       onError: (error: any) => {
-        message.error(`上传失败: ${error.message}`)
+        toast.error(`上传失败: ${error.message}`)
       }
     })
   }
@@ -53,10 +52,10 @@ export const useArchiveMutations = () => {
         archiveApi.createArchiveItem(request),
       onSuccess: (_, request) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(request.path) })
-        message.success(`${request.type === 'file' ? '文件' : '目录'}创建成功`)
+        toast.success(`${request.type === 'file' ? '文件' : '目录'}创建成功`)
       },
       onError: (error: any) => {
-        message.error(`创建失败: ${error.message}`)
+        toast.error(`创建失败: ${error.message}`)
       }
     })
   }
@@ -70,10 +69,10 @@ export const useArchiveMutations = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
         // Invalidate SHA256 cache for the deleted file
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
-        message.success('删除成功')
+        toast.success('删除成功')
       },
       onError: (error: any) => {
-        message.error(`删除失败: ${error.message}`)
+        toast.error(`删除失败: ${error.message}`)
       }
     })
   }
@@ -90,10 +89,10 @@ export const useArchiveMutations = () => {
         })
         // Invalidate SHA256 cache for the old path
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(request.old_path) })
-        message.success('重命名成功')
+        toast.success('重命名成功')
       },
       onError: (error: any) => {
-        message.error(`重命名失败: ${error.message}`)
+        toast.error(`重命名失败: ${error.message}`)
       }
     })
   }
@@ -119,7 +118,7 @@ export const useArchiveMutations = () => {
         // Note: archive file list will be invalidated when task completes (in ServerFiles.tsx)
       },
       onError: (error: any) => {
-        message.error(`创建压缩包失败: ${error.message}`)
+        toast.error(`创建压缩包失败: ${error.message}`)
       }
     })
   }

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { message } from "antd";
+import { toast } from "sonner";
 import { queryKeys } from "@/utils/api";
 import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
 import {
@@ -20,7 +20,7 @@ export const useTemplateMutations = () => {
       mutationFn: (request: TemplateCreateRequest) =>
         templateApi.createTemplate(request),
       onSuccess: () => {
-        message.success("模板创建成功");
+        toast.success("模板创建成功");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.list(),
         });
@@ -28,9 +28,9 @@ export const useTemplateMutations = () => {
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (typeof detail === "object" && detail.errors) {
-          message.error(`创建失败: ${detail.errors.join(", ")}`);
+          toast.error(`创建失败: ${detail.errors.join(", ")}`);
         } else {
-          message.error(`创建失败: ${detail || error.message}`);
+          toast.error(`创建失败: ${detail || error.message}`);
         }
       },
     });
@@ -47,7 +47,7 @@ export const useTemplateMutations = () => {
         request: TemplateUpdateRequest;
       }) => templateApi.updateTemplate(id, request),
       onSuccess: (_, { id }) => {
-        message.success("模板更新成功");
+        toast.success("模板更新成功");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.list(),
         });
@@ -65,9 +65,9 @@ export const useTemplateMutations = () => {
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (typeof detail === "object" && detail.errors) {
-          message.error(`更新失败: ${detail.errors.join(", ")}`);
+          toast.error(`更新失败: ${detail.errors.join(", ")}`);
         } else {
-          message.error(`更新失败: ${detail || error.message}`);
+          toast.error(`更新失败: ${detail || error.message}`);
         }
       },
     });
@@ -78,7 +78,7 @@ export const useTemplateMutations = () => {
     return useMutation({
       mutationFn: (id: number) => templateApi.deleteTemplate(id),
       onSuccess: () => {
-        message.success("模板删除成功");
+        toast.success("模板删除成功");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.list(),
         });
@@ -88,7 +88,7 @@ export const useTemplateMutations = () => {
         });
       },
       onError: (error: any) => {
-        message.error(`删除失败: ${error.response?.data?.detail || error.message}`);
+        toast.error(`删除失败: ${error.response?.data?.detail || error.message}`);
       },
     });
   };
@@ -106,9 +106,9 @@ export const useTemplateMutations = () => {
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (typeof detail === "object" && detail.errors) {
-          message.error(`预览失败: ${detail.errors.join(", ")}`);
+          toast.error(`预览失败: ${detail.errors.join(", ")}`);
         } else {
-          message.error(`预览失败: ${detail || error.message}`);
+          toast.error(`预览失败: ${detail || error.message}`);
         }
       },
     });
@@ -125,7 +125,7 @@ export const useTemplateMutations = () => {
         templateApi.checkConversion(serverId, templateId, variableValues),
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
-        message.error(`检查失败: ${detail || error.message}`);
+        toast.error(`检查失败: ${detail || error.message}`);
       },
     });
   };
@@ -141,15 +141,15 @@ export const useTemplateMutations = () => {
         variableValues: Record<string, unknown>;
       }) => templateApi.updateServerTemplateConfig(serverId, variableValues),
       onSuccess: () => {
-        message.success("配置更新成功");
+        toast.success("配置更新成功");
         queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (typeof detail === "object" && detail.errors) {
-          message.error(`更新失败: ${detail.errors.join(", ")}`);
+          toast.error(`更新失败: ${detail.errors.join(", ")}`);
         } else {
-          message.error(`更新失败: ${detail || error.message}`);
+          toast.error(`更新失败: ${detail || error.message}`);
         }
       },
     });
@@ -161,14 +161,14 @@ export const useTemplateMutations = () => {
       mutationFn: (variables: VariableDefinition[]) =>
         templateApi.updateDefaultVariables(variables),
       onSuccess: () => {
-        message.success("默认变量配置已更新");
+        toast.success("默认变量配置已更新");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.defaultVariables(),
         });
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
-        message.error(`更新失败: ${detail || error.message}`);
+        toast.error(`更新失败: ${detail || error.message}`);
       },
     });
   };
@@ -178,7 +178,7 @@ export const useTemplateMutations = () => {
     return useMutation({
       mutationFn: (serverId: string) => templateApi.convertToDirectMode(serverId),
       onSuccess: (_, serverId) => {
-        message.success("已转换为直接编辑模式");
+        toast.success("已转换为直接编辑模式");
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.serverConfigPreview(serverId),
         });
@@ -188,7 +188,7 @@ export const useTemplateMutations = () => {
       },
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
-        message.error(`转换失败: ${detail || error.message}`);
+        toast.error(`转换失败: ${detail || error.message}`);
       },
     });
   };
@@ -204,7 +204,7 @@ export const useTemplateMutations = () => {
         templateApi.extractVariables(serverId, templateId),
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
-        message.error(`提取变量失败: ${detail || error.message}`);
+        toast.error(`提取变量失败: ${detail || error.message}`);
       },
     });
   };
@@ -229,9 +229,9 @@ export const useTemplateMutations = () => {
       onError: (error: any) => {
         const detail = error.response?.data?.detail;
         if (Array.isArray(detail)) {
-          message.error(`转换失败: ${detail.join(", ")}`);
+          toast.error(`转换失败: ${detail.join(", ")}`);
         } else {
-          message.error(`转换失败: ${detail || error.message}`);
+          toast.error(`转换失败: ${detail || error.message}`);
         }
       },
     });

@@ -1,8 +1,11 @@
-import React from 'react'
-import { Button } from 'antd'
-import Form from '@/components/forms/rjsfTheme'
+import { withTheme } from '@rjsf/core'
+import { Theme as ShadcnTheme } from '@rjsf/shadcn'
 import validator from '@rjsf/validator-ajv8'
 import { RJSFSchema } from '@rjsf/utils'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+
+const Form = withTheme(ShadcnTheme)
 
 interface SchemaFormProps {
   schema: RJSFSchema
@@ -18,7 +21,7 @@ interface SchemaFormProps {
   showErrorList?: false | 'top' | 'bottom' | undefined
 }
 
-const SchemaForm: React.FC<SchemaFormProps> = ({
+const SchemaForm = ({
   schema,
   formData,
   onChange,
@@ -29,8 +32,8 @@ const SchemaForm: React.FC<SchemaFormProps> = ({
   submitButtonText = '提交',
   formKey,
   liveValidate = 'onChange',
-  showErrorList = false
-}) => {
+  showErrorList = false,
+}: SchemaFormProps) => {
   const handleFormChange = ({ formData: newFormData }: any) => {
     onChange(newFormData)
   }
@@ -46,39 +49,27 @@ const SchemaForm: React.FC<SchemaFormProps> = ({
   }
 
   return (
-    <div className="schema-form-container">
-      <style>
-        {`
-            .schema-form-container #root {
-              height: auto !important;
-            }
-          `}
-      </style>
-      <Form
-        key={formKey}
-        schema={schema}
-        formData={formData}
-        validator={validator}
-        onChange={handleFormChange}
-        onSubmit={handleFormSubmit}
-        onError={handleFormError}
-        showErrorList={showErrorList}
-        liveValidate={liveValidate}
-        disabled={disabled}
-      >
-        {showSubmitButton && (
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-            disabled={disabled}
-          >
-            {submitButtonText}
-          </Button>
-        )}
-        {!showSubmitButton && <div />}
-      </Form>
-    </div>
+    <Form
+      key={formKey}
+      schema={schema}
+      formData={formData}
+      validator={validator}
+      onChange={handleFormChange}
+      onSubmit={handleFormSubmit}
+      onError={handleFormError}
+      showErrorList={showErrorList}
+      liveValidate={liveValidate}
+      disabled={disabled}
+    >
+      {showSubmitButton ? (
+        <Button type="submit" disabled={loading || disabled}>
+          {loading && <Spinner className="size-4" />}
+          {submitButtonText}
+        </Button>
+      ) : (
+        <div />
+      )}
+    </Form>
   )
 }
 

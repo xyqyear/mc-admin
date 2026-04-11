@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { App } from 'antd'
+import { toast } from 'sonner'
 import { queryKeys } from '@/utils/api'
 import * as dnsApi from '@/hooks/api/dnsApi'
 
@@ -8,12 +8,11 @@ import * as dnsApi from '@/hooks/api/dnsApi'
  */
 export const useUpdateDNS = () => {
   const queryClient = useQueryClient()
-  const { message } = App.useApp()
 
   return useMutation({
     mutationFn: dnsApi.updateDNS,
     onSuccess: (data) => {
-      message.success(data.message || 'DNS和路由更新成功')
+      toast.success(data.message || 'DNS和路由更新成功')
 
       // Invalidate related queries to refresh data
       queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
@@ -21,7 +20,7 @@ export const useUpdateDNS = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
     },
     onError: (error: any) => {
-      message.error(`DNS更新失败: ${error.message}`)
+      toast.error(`DNS更新失败: ${error.message}`)
     },
   })
 }
@@ -31,7 +30,6 @@ export const useUpdateDNS = () => {
  */
 export const useRefreshDNSData = () => {
   const queryClient = useQueryClient()
-  const { message } = App.useApp()
 
   return useMutation({
     mutationFn: async () => {
@@ -45,10 +43,10 @@ export const useRefreshDNSData = () => {
       ])
     },
     onSuccess: () => {
-      message.success('DNS数据已刷新')
+      toast.success('DNS数据已刷新')
     },
     onError: (error: any) => {
-      message.error(`刷新失败: ${error.message}`)
+      toast.error(`刷新失败: ${error.message}`)
     },
   })
 }
@@ -59,7 +57,6 @@ export const useRefreshDNSData = () => {
  */
 export const useAutoUpdateDNS = () => {
   const queryClient = useQueryClient()
-  const { message } = App.useApp()
 
   return useMutation({
     mutationFn: async () => {
@@ -76,7 +73,7 @@ export const useAutoUpdateDNS = () => {
     onSuccess: (data) => {
       if (!data.skipped) {
         // Show success message and invalidate queries
-        message.success('DNS记录已自动更新')
+        toast.success('DNS记录已自动更新')
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
@@ -84,7 +81,7 @@ export const useAutoUpdateDNS = () => {
     },
     onError: (error: any) => {
       // Show error message to user
-      message.error(`DNS自动更新失败: ${error.message}`)
+      toast.error(`DNS自动更新失败: ${error.message}`)
     },
   })
 }

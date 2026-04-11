@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { message } from 'antd'
+import { toast } from 'sonner'
 import { queryKeys } from '@/utils/api'
 import * as configApi from '@/hooks/api/configApi'
 import * as dnsApi from '@/hooks/api/dnsApi'
@@ -13,12 +13,12 @@ const MODULE_POST_UPDATE_ACTIONS: Record<string, () => Promise<void>> = {
       const enabledResponse = await dnsApi.getDNSEnabled()
       if (enabledResponse.enabled) {
         await dnsApi.updateDNS()
-        message.success('DNS配置已更新，DNS记录同步成功')
+        toast.success('DNS配置已更新，DNS记录同步成功')
       } else {
-        message.info('DNS配置已更新，但DNS管理器未启用，跳过记录同步')
+        toast.info('DNS配置已更新，但DNS管理器未启用，跳过记录同步')
       }
     } catch (error: any) {
-      message.warning(`DNS配置已更新，但记录同步失败: ${error.message}`)
+      toast.warning(`DNS配置已更新，但记录同步失败: ${error.message}`)
     }
   },
   // Add more module post-update actions here as needed
@@ -35,7 +35,7 @@ export const useUpdateModuleConfig = () => {
     mutationFn: ({ moduleName, configData }: { moduleName: string; configData: Record<string, any> }) =>
       configApi.updateModuleConfig(moduleName, configData),
     onSuccess: async (data, variables) => {
-      message.success(data.message || '配置更新成功')
+      toast.success(data.message || '配置更新成功')
 
       // Invalidate related queries
       queryClient.invalidateQueries({
@@ -60,7 +60,7 @@ export const useUpdateModuleConfig = () => {
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.detail || error.message || '配置更新失败'
-      message.error(`更新失败: ${errorMessage}`)
+      toast.error(`更新失败: ${errorMessage}`)
     },
   })
 }
@@ -74,7 +74,7 @@ export const useResetModuleConfig = () => {
   return useMutation({
     mutationFn: (moduleName: string) => configApi.resetModuleConfig(moduleName),
     onSuccess: (data, moduleName) => {
-      message.success(data.message || '配置重置成功')
+      toast.success(data.message || '配置重置成功')
 
       // Invalidate related queries
       queryClient.invalidateQueries({
@@ -93,7 +93,7 @@ export const useResetModuleConfig = () => {
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.detail || error.message || '配置重置失败'
-      message.error(`重置失败: ${errorMessage}`)
+      toast.error(`重置失败: ${errorMessage}`)
     },
   })
 }

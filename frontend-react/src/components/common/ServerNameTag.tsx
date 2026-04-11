@@ -1,47 +1,46 @@
-import React from 'react';
-import { Tag, Tooltip } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import React from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface ServerNameTagProps {
-  serverId: string;
-  maxLength?: number;
-  color?: string;
+  serverId: string
+  maxLength?: number
 }
 
-/**
- * 显示服务器名称的Tag组件
- * - 支持最大长度限制，超过时截断并显示省略号
- * - 鼠标悬浮显示完整服务器名
- * - 点击跳转到服务器总览页面
- */
-export const ServerNameTag: React.FC<ServerNameTagProps> = ({
-  serverId,
-  maxLength,
-  color = 'blue'
-}) => {
-  const navigate = useNavigate();
+export const ServerNameTag = ({ serverId, maxLength }: ServerNameTagProps) => {
+  const navigate = useNavigate()
 
-  const needsTruncate = maxLength && serverId.length > maxLength;
+  const needsTruncate = maxLength && serverId.length > maxLength
   const displayText = needsTruncate
     ? `${serverId.slice(0, maxLength)}...`
-    : serverId;
+    : serverId
 
   const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigate(`/server/${serverId}`);
-  };
+    e.stopPropagation()
+    navigate(`/server/${serverId}`)
+  }
 
   return (
-    <Tooltip title={serverId}>
-      <Tag
-        color={color}
-        style={{ cursor: 'pointer' }}
-        onClick={handleClick}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant="secondary"
+            className="cursor-pointer hover:bg-secondary/80"
+            onClick={handleClick}
+          />
+        }
       >
         {displayText}
-      </Tag>
+      </TooltipTrigger>
+      <TooltipContent>{serverId}</TooltipContent>
     </Tooltip>
-  );
-};
+  )
+}
 
-export default ServerNameTag;
+export default ServerNameTag

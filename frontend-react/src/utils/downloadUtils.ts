@@ -1,5 +1,5 @@
 import { useDownloadActions } from '@/stores/useDownloadStore'
-import { App } from 'antd'
+import { toast } from 'sonner'
 
 /**
  * 创建浏览器下载链接并触发下载
@@ -48,7 +48,6 @@ export interface DownloadOptions {
  */
 export const useDownloadManager = () => {
   const { addTask, updateTask } = useDownloadActions()
-  const { message } = App.useApp()
 
   /**
    * 执行带进度追踪的下载
@@ -96,7 +95,7 @@ export const useDownloadManager = () => {
         endTime: Date.now(),
       })
 
-      message.success('下载完成')
+      toast.success('下载完成')
       onSuccess?.()
     } catch (error: any) {
       // 检查是否为用户取消
@@ -105,14 +104,14 @@ export const useDownloadManager = () => {
           status: 'cancelled',
           endTime: Date.now(),
         })
-        message.info('下载已取消')
+        toast.info('下载已取消')
       } else {
         updateTask(taskId, {
           status: 'error',
           error: error.response?.data?.detail || error.message || '下载失败',
           endTime: Date.now(),
         })
-        message.error(error.response?.data?.detail || error.message || '下载失败')
+        toast.error(error.response?.data?.detail || error.message || '下载失败')
         onError?.(error)
       }
     }

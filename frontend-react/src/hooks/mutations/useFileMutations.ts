@@ -1,7 +1,7 @@
 import type { CreateFileRequest, RenameFileRequest } from "@/types/Server";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { App } from "antd";
+import { toast } from "sonner";
 import { fileApi } from "@/hooks/api/fileApi";
 import type {
   MultiFileUploadRequest,
@@ -13,7 +13,6 @@ import { useDownloadManager } from "@/utils/downloadUtils";
 
 export const useFileMutations = (serverId: string | undefined) => {
   const queryClient = useQueryClient();
-  const { message } = App.useApp();
   const { executeDownload } = useDownloadManager();
 
   const invalidateFileList = () => {
@@ -29,12 +28,12 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: ({ path, content }: { path: string; content: string }) =>
         fileApi.updateFileContent(serverId!, path, content),
       onSuccess: () => {
-        message.success("文件更新成功");
+        toast.success("文件更新成功");
         // Invalidate all file caches for this server, including list and content.
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "更新文件失败");
+        toast.error(error.response?.data?.detail || "更新文件失败");
       },
     });
   };
@@ -45,11 +44,11 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: ({ path, file }: { path: string; file: File }) =>
         fileApi.uploadFile(serverId!, path, file),
       onSuccess: () => {
-        message.success("文件上传成功");
+        toast.success("文件上传成功");
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "上传文件失败");
+        toast.error(error.response?.data?.detail || "上传文件失败");
       },
     });
   };
@@ -60,13 +59,13 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: (createRequest: CreateFileRequest) =>
         fileApi.createFileOrDirectory(serverId!, createRequest),
       onSuccess: (_, variables) => {
-        message.success(
+        toast.success(
           `${variables.type === "file" ? "文件" : "文件夹"}创建成功`
         );
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "创建失败");
+        toast.error(error.response?.data?.detail || "创建失败");
       },
     });
   };
@@ -77,11 +76,11 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: (path: string) =>
         fileApi.deleteFileOrDirectory(serverId!, path),
       onSuccess: () => {
-        message.success("删除成功");
+        toast.success("删除成功");
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "删除失败");
+        toast.error(error.response?.data?.detail || "删除失败");
       },
     });
   };
@@ -101,14 +100,14 @@ export const useFileMutations = (serverId: string | undefined) => {
       },
       onSuccess: (result) => {
         if (result.failed === 0) {
-          message.success(`成功删除 ${result.successful} 个文件`);
+          toast.success(`成功删除 ${result.successful} 个文件`);
         } else {
-          message.warning(`删除完成：成功 ${result.successful} 个，失败 ${result.failed} 个`);
+          toast.warning(`删除完成：成功 ${result.successful} 个，失败 ${result.failed} 个`);
         }
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "批量删除失败");
+        toast.error(error.response?.data?.detail || "批量删除失败");
       },
     });
   };
@@ -119,11 +118,11 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: (renameRequest: RenameFileRequest) =>
         fileApi.renameFileOrDirectory(serverId!, renameRequest),
       onSuccess: () => {
-        message.success("重命名成功");
+        toast.success("重命名成功");
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "重命名失败");
+        toast.error(error.response?.data?.detail || "重命名失败");
       },
     });
   };
@@ -134,7 +133,7 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: ({ path, uploadRequest }: { path: string; uploadRequest: MultiFileUploadRequest }) =>
         fileApi.checkUploadConflicts(serverId!, path, uploadRequest),
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "检查冲突失败");
+        toast.error(error.response?.data?.detail || "检查冲突失败");
       },
     });
   };
@@ -145,7 +144,7 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: ({ sessionId, policy, reusable }: { sessionId: string; policy: OverwritePolicy; reusable?: boolean }) =>
         fileApi.setUploadPolicy(serverId!, sessionId, policy, reusable),
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "设置覆盖策略失败");
+        toast.error(error.response?.data?.detail || "设置覆盖策略失败");
       },
     });
   };
@@ -172,11 +171,11 @@ export const useFileMutations = (serverId: string | undefined) => {
           r.status === 'success'
         ).length;
         const totalCount = Object.keys(result.results).length;
-        message.success(`上传完成！成功: ${successCount}/${totalCount}`);
+        toast.success(`上传完成！成功: ${successCount}/${totalCount}`);
         invalidateFileList();
       },
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "上传失败");
+        toast.error(error.response?.data?.detail || "上传失败");
       },
     });
   };
@@ -200,7 +199,7 @@ export const useFileMutations = (serverId: string | undefined) => {
       mutationFn: ({ path = "/", searchRequest }: { path?: string; searchRequest: FileSearchRequest }) =>
         fileApi.searchFiles(serverId!, path, searchRequest),
       onError: (error: any) => {
-        message.error(error.response?.data?.detail || "搜索失败");
+        toast.error(error.response?.data?.detail || "搜索失败");
       },
     });
   };

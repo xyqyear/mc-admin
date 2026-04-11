@@ -1,5 +1,3 @@
-
-import { App as AntdApp } from 'antd'
 import React, { ErrorInfo, Suspense } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
@@ -9,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import VersionUpdateModal from '@/components/VersionUpdateModal'
 import { useVersionCheck } from '@/hooks/useVersionCheck'
 import { useTokenStore } from '@/stores/useTokenStore'
+import { toast } from 'sonner'
 
 // Lazy load pages for better performance
 const Login = React.lazy(() => import('@/pages/Login'))
@@ -61,16 +60,14 @@ function AuthRoutes() {
 }
 
 function App() {
-  const { notification } = AntdApp.useApp()
   const { shouldShowModal, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
 
   // Global error handler
   const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)
-    notification.error({
-      title: 'Application Error',
+    toast.error('Application Error', {
       description: 'An unexpected error occurred. Please refresh the page.',
-      duration: 0,
+      duration: Infinity,
     })
   }
 

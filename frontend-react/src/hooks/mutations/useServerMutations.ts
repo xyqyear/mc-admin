@@ -2,7 +2,7 @@ import { serverApi } from "@/hooks/api/serverApi";
 import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { message } from "antd";
+import { toast } from "sonner";
 
 export const useServerMutations = () => {
   const queryClient = useQueryClient();
@@ -36,7 +36,7 @@ export const useServerMutations = () => {
         }
       },
       onSuccess: (_, { action, serverId }) => {
-        message.success(`服务器 ${serverId} ${action} 操作完成`);
+        toast.success(`服务器 ${serverId} ${action} 操作完成`);
 
         // 延迟1秒后触发所有相关数据的重新更新
         setTimeout(() => {
@@ -69,7 +69,7 @@ export const useServerMutations = () => {
         }, 1000);
       },
       onError: (error: Error, { action, serverId }) => {
-        message.error(
+        toast.error(
           `服务器 ${serverId} ${action} 操作失败: ${error.message}`
         );
       },
@@ -83,11 +83,11 @@ export const useServerMutations = () => {
         return serverApi.updateComposeFile(serverId, yamlContent);
       },
       onSuccess: () => {
-        message.success(`服务器 ${serverId} compose 配置更新成功`);
+        toast.success(`服务器 ${serverId} compose 配置更新成功`);
         queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: Error) => {
-        message.error(`compose 配置更新失败: ${error.message}`);
+        toast.error(`compose 配置更新失败: ${error.message}`);
       },
     });
   };
@@ -102,7 +102,7 @@ export const useServerMutations = () => {
         queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: Error, { serverId }) => {
-        message.error(`服务器 ${serverId} 数据填充失败: ${error.message}`);
+        toast.error(`服务器 ${serverId} 数据填充失败: ${error.message}`);
       },
     });
   };
@@ -128,7 +128,7 @@ export const useServerMutations = () => {
         });
       },
       onSuccess: (_, { serverId }) => {
-        message.success(`服务器 "${serverId}" 创建成功!`);
+        toast.success(`服务器 "${serverId}" 创建成功!`);
 
         // 延迟1秒后失效相关缓存
         setTimeout(() => {
@@ -137,7 +137,7 @@ export const useServerMutations = () => {
         }, 1000);
       },
       onError: (error: Error, { serverId }) => {
-        message.error(`创建服务器 "${serverId}" 失败: ${error.message}`);
+        toast.error(`创建服务器 "${serverId}" 失败: ${error.message}`);
       },
     });
   };
@@ -155,7 +155,7 @@ export const useServerMutations = () => {
         return serverApi.createOrUpdateRestartSchedule(serverId, customCron);
       },
       onSuccess: (_, { serverId }) => {
-        message.success(`服务器 "${serverId}" 重启计划配置成功`);
+        toast.success(`服务器 "${serverId}" 重启计划配置成功`);
 
         // 失效重启计划相关查询
         queryClient.invalidateQueries({
@@ -168,7 +168,7 @@ export const useServerMutations = () => {
         });
       },
       onError: (error: Error, { serverId }) => {
-        message.error(`配置服务器 "${serverId}" 重启计划失败: ${error.message}`);
+        toast.error(`配置服务器 "${serverId}" 重启计划失败: ${error.message}`);
       },
     });
   };
@@ -182,7 +182,7 @@ export const useServerMutations = () => {
       },
       onSuccess: (_, serverId) => {
         if (!silent) {
-          message.success(`服务器 "${serverId}" 重启计划已删除`);
+          toast.success(`服务器 "${serverId}" 重启计划已删除`);
         }
 
         // 失效重启计划相关查询
@@ -197,7 +197,7 @@ export const useServerMutations = () => {
       },
       onError: (error: Error, serverId) => {
         if (!silent) {
-          message.error(`删除服务器 "${serverId}" 重启计划失败: ${error.message}`);
+          toast.error(`删除服务器 "${serverId}" 重启计划失败: ${error.message}`);
         }
       },
     });

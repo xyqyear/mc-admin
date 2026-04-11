@@ -1,38 +1,37 @@
-import React from 'react'
-import { Spin } from 'antd'
+import { Spinner } from '@/components/ui/spinner'
+import { cn } from '@/lib/utils'
 
 interface LoadingSpinnerProps {
-  size?: 'small' | 'default' | 'large'
-  tip?: string
   className?: string
   fullscreen?: boolean
   inline?: boolean
   height?: string | number
+  /** @deprecated ignored - kept for backward compatibility during migration */
+  size?: string
+  /** @deprecated ignored - kept for backward compatibility during migration */
+  tip?: string
 }
 
-export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
-  size = 'large',
-  tip = '加载中...',
+export const LoadingSpinner = ({
   className = '',
   fullscreen = false,
   inline = false,
-  height
-}) => {
+  height,
+}: LoadingSpinnerProps) => {
   if (inline) {
-    return <Spin size={size} className={className} />
+    return <Spinner className={cn('size-5', className)} />
   }
 
-  const containerClass = fullscreen
-    ? `flex items-center justify-center h-screen ${className}`
-    : `flex items-center justify-center ${height ? '' : 'min-h-[400px]'} ${className}`
-
-  const containerStyle = height ? { height } : {}
-
   return (
-    <div className={containerClass} style={containerStyle}>
-      <Spin size={size} tip={tip}>
-        <div className="min-h-[100px] min-w-[100px]" />
-      </Spin>
+    <div
+      className={cn(
+        'flex items-center justify-center',
+        fullscreen ? 'h-screen' : height ? '' : 'min-h-[400px]',
+        className,
+      )}
+      style={height ? { height } : undefined}
+    >
+      <Spinner className="size-8" />
     </div>
   )
 }

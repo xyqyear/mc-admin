@@ -1,7 +1,7 @@
 import { useTokenStore } from "@/stores/useTokenStore";
 import { getApiBaseUrl } from "@/utils/api";
-import { App } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 interface CodeMessage {
@@ -34,7 +34,6 @@ export const useCodeLoginWebsocket = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const { setToken } = useTokenStore();
-  const { message } = App.useApp();
   const navigate = useNavigate();
 
   const wsBaseUrl = getApiBaseUrl(true).replace(/\/$/, "");
@@ -85,7 +84,7 @@ export const useCodeLoginWebsocket = () => {
             setCountdown(data.timeout);
           } else if (data.type === "verified") {
             setToken(data.access_token);
-            message.success("验证成功，正在跳转...");
+            toast.success("验证成功，正在跳转...");
             disconnect();
             navigate("/");
           }
@@ -114,7 +113,7 @@ export const useCodeLoginWebsocket = () => {
       setError("无法建立连接");
       setStatus(ConnectionStatus.ERROR);
     }
-  }, [wsBaseUrl, setToken, message, navigate, disconnect]);
+  }, [wsBaseUrl, setToken, navigate, disconnect]);
 
   useEffect(() => {
     if (status === ConnectionStatus.CONNECTED && countdown > 0) {

@@ -6,7 +6,7 @@ import {
   type DeleteSnapshotResponse
 } from "@/hooks/api/snapshotApi";
 import { queryKeys } from "@/utils/api";
-import { message } from "antd";
+import { toast } from "sonner";
 
 export const useSnapshotMutations = () => {
   const queryClient = useQueryClient();
@@ -16,7 +16,7 @@ export const useSnapshotMutations = () => {
     return useMutation({
       mutationFn: snapshotApi.createGlobalSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
-        message.success(`快照创建成功: ${data.snapshot.short_id}`);
+        toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
         // 刷新所有快照相关查询（包含仓库占用）
         queryClient.invalidateQueries({
@@ -25,7 +25,7 @@ export const useSnapshotMutations = () => {
       },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`快照创建失败: ${errorDetail}`);
+        toast.error(`快照创建失败: ${errorDetail}`);
       },
     });
   };
@@ -35,7 +35,7 @@ export const useSnapshotMutations = () => {
     return useMutation({
       mutationFn: snapshotApi.createSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
-        message.success(`快照创建成功: ${data.snapshot.short_id}`);
+        toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
         // 刷新所有快照相关查询
         queryClient.invalidateQueries({
@@ -44,7 +44,7 @@ export const useSnapshotMutations = () => {
       },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`快照创建失败: ${errorDetail}`);
+        toast.error(`快照创建失败: ${errorDetail}`);
       },
     });
   };
@@ -54,7 +54,7 @@ export const useSnapshotMutations = () => {
     return useMutation({
       mutationFn: snapshotApi.restoreSnapshot,
       onSuccess: (data: RestoreSnapshotResponse) => {
-        message.success(data.message);
+        toast.success(data.message);
 
         // 刷新文件列表和快照列表
         queryClient.invalidateQueries({
@@ -66,7 +66,7 @@ export const useSnapshotMutations = () => {
       },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`快照恢复失败: ${errorDetail}`);
+        toast.error(`快照恢复失败: ${errorDetail}`);
       },
     });
   };
@@ -77,7 +77,7 @@ export const useSnapshotMutations = () => {
       mutationFn: snapshotApi.previewRestore,
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`预览失败: ${errorDetail}`);
+        toast.error(`预览失败: ${errorDetail}`);
       },
     });
   };
@@ -87,7 +87,7 @@ export const useSnapshotMutations = () => {
     return useMutation({
       mutationFn: snapshotApi.deleteSnapshot,
       onSuccess: (data: DeleteSnapshotResponse) => {
-        message.success(data.message);
+        toast.success(data.message);
 
         // 刷新所有快照相关查询
         queryClient.invalidateQueries({
@@ -96,7 +96,7 @@ export const useSnapshotMutations = () => {
       },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`快照删除失败: ${errorDetail}`);
+        toast.error(`快照删除失败: ${errorDetail}`);
       },
     });
   };
@@ -112,7 +112,7 @@ export const useSnapshotMutations = () => {
       },
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
-        message.error(`仓库解锁失败: ${errorDetail}`);
+        toast.error(`仓库解锁失败: ${errorDetail}`);
       },
     });
   };
