@@ -4,12 +4,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi import status as http_status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...models import Player, UserPublic
+from ...models import UserPublic
+from ...players.crud import get_player_avatar_data, get_player_by_db_id, get_player_skin_data
 from ...players.crud.query.player_query import (
     PlayerDetailResponse,
     PlayerSummary,
@@ -91,10 +91,7 @@ async def get_player_avatar(
 
     Returns the player's avatar as a PNG image.
     """
-    result = await db.execute(
-        select(Player.avatar_data).where(Player.player_db_id == player_db_id)
-    )
-    avatar_data = result.scalar_one_or_none()
+    avatar_data = await get_player_avatar_data(db, player_db_id)
 
     if not avatar_data:
         raise HTTPException(
@@ -116,10 +113,7 @@ async def get_player_skin(
 
     Returns the player's skin as a PNG image.
     """
-    result = await db.execute(
-        select(Player.skin_data).where(Player.player_db_id == player_db_id)
-    )
-    skin_data = result.scalar_one_or_none()
+    skin_data = await get_player_skin_data(db, player_db_id)
 
     if not skin_data:
         raise HTTPException(
@@ -141,9 +135,7 @@ async def refresh_player_skin(
 
     Triggers a skin update request for the specified player.
     """
-    # Get player info
-    result = await db.execute(select(Player).where(Player.player_db_id == player_db_id))
-    player = result.scalar_one_or_none()
+    player = await get_player_by_db_id(db, player_db_id)
 
     if not player:
         raise HTTPException(

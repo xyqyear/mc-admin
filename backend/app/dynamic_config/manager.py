@@ -6,11 +6,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Type
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_async_session
-from ..models import DynamicConfig
+
+from . import crud
 from .migration import ConfigMigrator
 from .schemas import BaseConfigSchema
 
@@ -88,18 +88,13 @@ class ConfigManager:
         logger.info(f"Initializing {len(self._schemas)} configuration modules...")
 
         async with get_async_session() as session:
-            # Load all existing configurations from database
-            result = await session.execute(select(DynamicConfig))
-            existing_configs = {
-                config.module_name: config for config in result.scalars().all()
-            }
+            existing_configs = await crud.get_all_configs(session)
 
             for module_name, schema_cls in self._schemas.items():
                 try:
                     if module_name in existing_configs:
                         # Migrate existing configuration
                         await self._load_and_migrate_config(
-                            session,
                             module_name,
                             schema_cls,
                             existing_configs[module_name],
@@ -122,19 +117,17 @@ class ConfigManager:
 
     async def _load_and_migrate_config(
         self,
-        session: AsyncSession,
         module_name: str,
         schema_cls: Type[BaseConfigSchema],
-        db_config: DynamicConfig,
+        db_config,
     ) -> None:
         """
         Load configuration from database and perform migration if needed.
 
         Args:
-            session: Database session
             module_name: Module name
             schema_cls: Target schema class
-            db_config: Existing database configuration
+            db_config: Existing database configuration (tracked ORM object)
         """
         logger.info(f"Loading configuration for module '{module_name}'")
 
@@ -183,13 +176,12 @@ class ConfigManager:
         self._configs[module_name] = config_instance
 
         # Save to database
-        db_config = DynamicConfig(
+        await crud.create_config(
+            session,
             module_name=module_name,
             config_data=default_data,
             config_schema_version=schema_cls.get_schema_version(),
-            updated_at=datetime.now(timezone.utc),
         )
-        session.add(db_config)
         logger.info(f"Created default configuration for module '{module_name}'")
 
     async def update_config(
@@ -228,26 +220,12 @@ class ConfigManager:
 
         # Update database
         async with get_async_session() as session:
-            result = await session.execute(
-                select(DynamicConfig).where(DynamicConfig.module_name == module_name)
+            await crud.upsert_config(
+                session,
+                module_name,
+                new_data,
+                schema_cls.get_schema_version(),
             )
-            db_config = result.scalar_one_or_none()
-
-            if db_config:
-                db_config.config_data = new_data
-                db_config.config_schema_version = schema_cls.get_schema_version()
-                db_config.updated_at = datetime.now(timezone.utc)
-            else:
-                # Should not happen if properly initialized, but handle gracefully
-                db_config = DynamicConfig(
-                    module_name=module_name,
-                    config_data=new_data,
-                    config_schema_version=schema_cls.get_schema_version(),
-                    updated_at=datetime.now(timezone.utc),
-                )
-                session.add(db_config)
-
-            await session.commit()
 
         # Update memory cache
         self._configs[module_name] = new_config_instance

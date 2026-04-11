@@ -10,11 +10,11 @@ from typing import List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select, update
 
 from ..db.database import get_async_session
 from ..dynamic_config.schemas import BaseConfigSchema
-from ..models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
+from ..models import CronJobStatus, ExecutionStatus
+from . import crud
 from .registry import cron_registry
 from .types import CronJobConfig, CronJobExecutionRecord, ExecutionContext
 
@@ -90,40 +90,28 @@ class CronManager:
         cronjob_name = name or identifier
 
         async with get_async_session() as session:
-            # Check if cron job already exists (using cronjob_id field, not primary key)
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            existing_cronjob = result.scalar_one_or_none()
+            existing = await crud.get_cronjob(session, cronjob_id)
 
-            if existing_cronjob:
-                # Update existing cron job (especially if it was cancelled)
-                await session.execute(
-                    update(CronJob)
-                    .where(CronJob.cronjob_id == cronjob_id)
-                    .values(
-                        name=cronjob_name,
-                        cron=cron,
-                        second=second,
-                        params_json=params.model_dump_json(),
-                        status=CronJobStatus.ACTIVE,
-                        updated_at=datetime.now(timezone.utc),
-                    )
-                )
-            else:
-                # Create new cron job
-                new_cronjob = CronJob(
-                    cronjob_id=cronjob_id,
-                    identifier=identifier,
+            if existing:
+                await crud.update_cronjob(
+                    session,
+                    cronjob_id,
                     name=cronjob_name,
                     cron=cron,
                     second=second,
                     params_json=params.model_dump_json(),
                     status=CronJobStatus.ACTIVE,
                 )
-                session.add(new_cronjob)
-
-            await session.commit()
+            else:
+                await crud.create_cronjob(
+                    session,
+                    cronjob_id=cronjob_id,
+                    identifier=identifier,
+                    name=cronjob_name,
+                    cron=cron,
+                    second=second,
+                    params_json=params.model_dump_json(),
+                )
 
         # Submit to scheduler
         await self._submit_cronjob_to_scheduler(
@@ -158,40 +146,27 @@ class CronManager:
             raise ValueError(f"CronJob identifier '{identifier}' not registered")
 
         async with get_async_session() as session:
-            # Check if cron job exists
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            existing_cronjob = result.scalar_one_or_none()
+            existing = await crud.get_cronjob(session, cronjob_id)
 
-            if not existing_cronjob:
+            if not existing:
                 raise ValueError(f"CronJob '{cronjob_id}' not found")
 
-            # Get current status to determine if we need to reschedule
-            current_status = existing_cronjob.status
+            current_status = existing.status
 
-            # Update the cron job configuration
-            await session.execute(
-                update(CronJob)
-                .where(CronJob.cronjob_id == cronjob_id)
-                .values(
-                    identifier=identifier,
-                    cron=cron,
-                    second=second,
-                    params_json=params.model_dump_json(),
-                    updated_at=datetime.now(timezone.utc),
-                )
+            await crud.update_cronjob(
+                session,
+                cronjob_id,
+                identifier=identifier,
+                cron=cron,
+                second=second,
+                params_json=params.model_dump_json(),
             )
-
-            await session.commit()
 
         # If the job is currently active, remove from scheduler and re-add with new config
         if current_status == CronJobStatus.ACTIVE:
-            # Remove old job from scheduler
             if self.scheduler.get_job(cronjob_id):
                 self.scheduler.remove_job(cronjob_id)
 
-            # Re-submit with new configuration
             await self._submit_cronjob_to_scheduler(
                 cronjob_id, identifier, params, cron, second
             )
@@ -204,11 +179,7 @@ class CronManager:
             cronjob_id: CronJob ID to pause
         """
         async with get_async_session() as session:
-            # Check if cron job exists first
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
@@ -218,14 +189,9 @@ class CronManager:
                     f"CronJob {cronjob_id} is not active and cannot be paused"
                 )
 
-            await session.execute(
-                update(CronJob)
-                .where(CronJob.cronjob_id == cronjob_id)
-                .values(
-                    status=CronJobStatus.PAUSED, updated_at=datetime.now(timezone.utc)
-                )
+            await crud.update_cronjob(
+                session, cronjob_id, status=CronJobStatus.PAUSED
             )
-            await session.commit()
 
         # Remove from scheduler
         if self.scheduler.get_job(cronjob_id):
@@ -239,28 +205,17 @@ class CronManager:
             cronjob_id: CronJob ID to resume
         """
         async with get_async_session() as session:
-            # Get cron job details
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
 
-            # Check if the job can be resumed (not already active)
             if cronjob_row.status == CronJobStatus.ACTIVE:
                 raise ValueError(f"CronJob {cronjob_id} is already active")
 
-            # Update status
-            await session.execute(
-                update(CronJob)
-                .where(CronJob.cronjob_id == cronjob_id)
-                .values(
-                    status=CronJobStatus.ACTIVE, updated_at=datetime.now(timezone.utc)
-                )
+            await crud.update_cronjob(
+                session, cronjob_id, status=CronJobStatus.ACTIVE
             )
-            await session.commit()
 
             # Get schema class and deserialize params
             schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
@@ -288,11 +243,7 @@ class CronManager:
             cronjob_id: CronJob ID to cancel
         """
         async with get_async_session() as session:
-            # Check if cron job exists first
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
@@ -300,15 +251,9 @@ class CronManager:
             if cronjob_row.status == CronJobStatus.CANCELLED:
                 raise ValueError(f"CronJob {cronjob_id} is already cancelled")
 
-            await session.execute(
-                update(CronJob)
-                .where(CronJob.cronjob_id == cronjob_id)
-                .values(
-                    status=CronJobStatus.CANCELLED,
-                    updated_at=datetime.now(timezone.utc),
-                )
+            await crud.update_cronjob(
+                session, cronjob_id, status=CronJobStatus.CANCELLED
             )
-            await session.commit()
 
         # Remove from scheduler
         if self.scheduler.get_job(cronjob_id):
@@ -325,10 +270,7 @@ class CronManager:
             CronJobConfig instance or None if not found
         """
         async with get_async_session() as session:
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 return None
@@ -371,39 +313,19 @@ class CronManager:
             List of CronJobConfig instances
         """
         async with get_async_session() as session:
-            # Build query with filters
-            query = select(CronJob)
-
-            # Apply identifier filter
-            if identifier:
-                query = query.where(CronJob.identifier == identifier)
-
-            # Apply status filter
-            if status:
-                query = query.where(CronJob.status.in_(status))
-
-            # Apply name filter (case-insensitive partial match)
-            if name:
-                query = query.where(CronJob.name.ilike(f"%{name}%"))
-
-            # Order by creation date (newest first)
-            query = query.order_by(CronJob.created_at.desc())
-
-            result = await session.execute(query)
-            cronjob_rows = result.scalars().all()
+            cronjob_rows = await crud.get_all_cronjobs(
+                session, identifier=identifier, status=status, name=name
+            )
 
             configs = []
             for cronjob_row in cronjob_rows:
-                # Get schema class and deserialize params
                 schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
                 if not schema_cls:
-                    # Skip jobs with unknown identifiers
                     continue
 
                 try:
                     params = schema_cls.model_validate_json(cronjob_row.params_json)
                 except Exception:
-                    # Skip jobs with invalid params
                     continue
 
                 configs.append(
@@ -437,22 +359,14 @@ class CronManager:
             List of CronJobExecutionRecord dataclasses
         """
         async with get_async_session() as session:
-            # Check if cron job exists first
-            cronjob_result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = cronjob_result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
 
-            result = await session.execute(
-                select(CronJobExecution)
-                .where(CronJobExecution.cronjob_id == cronjob_id)
-                .order_by(CronJobExecution.started_at.desc())
-                .limit(limit)
+            executions = await crud.get_execution_history(
+                session, cronjob_id, limit
             )
-            executions = result.scalars().all()
 
             return [
                 CronJobExecutionRecord(
@@ -481,16 +395,11 @@ class CronManager:
             ValueError: If cron job not found or not in active state
         """
         async with get_async_session() as session:
-            # Check if cron job exists and get its status
-            result = await session.execute(
-                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
-            )
-            cronjob_row = result.scalar_one_or_none()
+            cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 raise ValueError(f"CronJob {cronjob_id} not found")
 
-            # Only return next run time if job is active
             if cronjob_row.status != CronJobStatus.ACTIVE:
                 raise ValueError(f"CronJob {cronjob_id} is not in active state")
 
@@ -601,48 +510,22 @@ class CronManager:
                     (context.ended_at - context.started_at).total_seconds() * 1000
                 )
 
-            # Save execution record
-            await self._record_execution(context)
-
-            # Update cron job execution count
-            await self._increment_execution_count(cronjob_id)
-
-    async def _record_execution(self, context: ExecutionContext) -> None:
-        """
-        Record cron job execution to database.
-
-        Args:
-            context: Execution context
-        """
-        async with get_async_session() as session:
-            execution = CronJobExecution(**context.to_execution_record())
-            session.add(execution)
-            await session.commit()
-
-    async def _increment_execution_count(self, cronjob_id: str) -> None:
-        """
-        Increment cron job execution count.
-
-        Args:
-            cronjob_id: CronJob ID
-        """
-        async with get_async_session() as session:
-            await session.execute(
-                update(CronJob)
-                .where(CronJob.cronjob_id == cronjob_id)
-                .values(execution_count=CronJob.execution_count + 1)
-            )
-            await session.commit()
+            # Save execution record and update count
+            async with get_async_session() as session:
+                await crud.create_execution_record(
+                    session, context.to_execution_record()
+                )
+            async with get_async_session() as session:
+                await crud.increment_execution_count(session, cronjob_id)
 
     async def _recover_cronjobs_from_database(self) -> None:
         """
         Recover active cron jobs from database on startup.
         """
         async with get_async_session() as session:
-            result = await session.execute(
-                select(CronJob).where(CronJob.status == CronJobStatus.ACTIVE)
+            active_cronjobs = await crud.get_cronjobs_by_status(
+                session, CronJobStatus.ACTIVE
             )
-            active_cronjobs = result.scalars().all()
 
             for cronjob_row in active_cronjobs:
                 schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
@@ -652,7 +535,6 @@ class CronManager:
                 try:
                     params = schema_cls.model_validate_json(cronjob_row.params_json)
                 except Exception as e:
-                    # Log error but continue with other cron jobs
                     print(f"Failed to recover cron job {cronjob_row.cronjob_id}: {e}")
                     continue
 

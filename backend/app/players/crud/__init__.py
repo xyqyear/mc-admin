@@ -4,7 +4,10 @@ from .heartbeat import get_heartbeat, upsert_heartbeat
 from .player import (
     get_all_player_names_with_ids,
     get_or_add_player_by_name,
+    get_player_avatar_data,
+    get_player_by_db_id,
     get_player_by_name,
+    get_player_skin_data,
     update_player_skin,
     upsert_player,
 )
@@ -26,6 +29,9 @@ __all__ = [
     # Player
     "upsert_player",
     "get_player_by_name",
+    "get_player_by_db_id",
+    "get_player_avatar_data",
+    "get_player_skin_data",
     "get_all_player_names_with_ids",
     "get_or_add_player_by_name",
     "update_player_skin",
