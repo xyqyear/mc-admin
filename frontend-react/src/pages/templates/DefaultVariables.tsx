@@ -1,176 +1,171 @@
-import React, { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { Card, Button, Alert, Space, App, Modal } from "antd";
-import { ArrowLeftOutlined, SaveOutlined, SettingOutlined, DiffOutlined } from "@ant-design/icons";
-import PageHeader from "@/components/layout/PageHeader";
-import LoadingSpinner from "@/components/layout/LoadingSpinner";
-import { MonacoDiffEditor } from "@/components/editors";
+import React, { useEffect, useState, useRef } from "react"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
+import { ArrowLeft, Save, Settings, GitCompare } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Spinner } from "@/components/ui/spinner"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+
+import PageHeader from "@/components/layout/PageHeader"
+import LoadingSpinner from "@/components/layout/LoadingSpinner"
+import { MonacoDiffEditor } from "@/components/editors"
 import {
   VariableDefinitionForm,
   convertToFormData,
   convertToApiFormat,
   type VariableFormData,
-} from "@/components/templates";
-import { useDefaultVariables } from "@/hooks/queries/base/useTemplateQueries";
-import { useTemplateMutations } from "@/hooks/mutations/useTemplateMutations";
-import type { VariableDefinition } from "@/hooks/api/templateApi";
+} from "@/components/templates"
+import { useDefaultVariables } from "@/hooks/queries/base/useTemplateQueries"
+import { useTemplateMutations } from "@/hooks/mutations/useTemplateMutations"
+import type { VariableDefinition } from "@/hooks/api/templateApi"
 
 const DefaultVariables: React.FC = () => {
-  const navigate = useNavigate();
-  const { message } = App.useApp();
+  const navigate = useNavigate()
 
-  const { data: defaultVariablesData, isLoading, refetch } = useDefaultVariables();
-  const { useUpdateDefaultVariables } = useTemplateMutations();
-  const updateMutation = useUpdateDefaultVariables();
+  const { data: defaultVariablesData, isLoading, refetch } = useDefaultVariables()
+  const { useUpdateDefaultVariables } = useTemplateMutations()
+  const updateMutation = useUpdateDefaultVariables()
 
-  const [variables, setVariables] = useState<VariableFormData[]>([]);
-  const [isCompareVisible, setIsCompareVisible] = useState(false);
-  // Store original variables for comparison
-  const originalVariablesRef = useRef<VariableDefinition[]>([]);
+  const [variables, setVariables] = useState<VariableFormData[]>([])
+  const [isCompareVisible, setIsCompareVisible] = useState(false)
+  const originalVariablesRef = useRef<VariableDefinition[]>([])
 
-  // Initialize form with loaded data
   useEffect(() => {
     if (defaultVariablesData?.variable_definitions) {
-      originalVariablesRef.current = defaultVariablesData.variable_definitions;
-      setVariables(convertToFormData(defaultVariablesData.variable_definitions));
+      originalVariablesRef.current = defaultVariablesData.variable_definitions
+      setVariables(convertToFormData(defaultVariablesData.variable_definitions))
     }
-  }, [defaultVariablesData]);
+  }, [defaultVariablesData])
 
-  // Check for duplicate variable names
   const duplicateErrors = React.useMemo(() => {
-    const varNames = variables.map((v) => v.name).filter(Boolean);
-    const duplicates = varNames.filter(
-      (name, index) => varNames.indexOf(name) !== index
-    );
+    const varNames = variables.map((v) => v.name).filter(Boolean)
+    const duplicates = varNames.filter((n, i) => varNames.indexOf(n) !== i)
     if (duplicates.length > 0) {
-      return [`变量名重复: ${[...new Set(duplicates)].join(", ")}`];
+      return [`变量名重复: ${[...new Set(duplicates)].join(", ")}`]
     }
-    return [];
-  }, [variables]);
+    return []
+  }, [variables])
 
-  // Handle compare
   const handleCompare = async () => {
     try {
-      const result = await refetch();
+      const result = await refetch()
       if (result.data?.variable_definitions) {
-        originalVariablesRef.current = result.data.variable_definitions;
+        originalVariablesRef.current = result.data.variable_definitions
       }
-      setIsCompareVisible(true);
+      setIsCompareVisible(true)
     } catch {
-      message.warning("获取最新配置失败，使用当前缓存的配置进行对比");
-      setIsCompareVisible(true);
+      toast.warning("获取最新配置失败，使用当前缓存的配置进行对比")
+      setIsCompareVisible(true)
     }
-  };
+  }
 
   const handleSave = async () => {
     if (duplicateErrors.length > 0) {
-      message.error("请先修复验证错误");
-      return;
+      toast.error("请先修复验证错误")
+      return
     }
 
-    const apiVariables = convertToApiFormat(variables);
-
-    await updateMutation.mutateAsync(apiVariables);
-  };
-
-  if (isLoading) {
-    return <LoadingSpinner />;
+    const apiVariables = convertToApiFormat(variables)
+    await updateMutation.mutateAsync(apiVariables)
   }
 
-  // Get current variables in API format for comparison
-  const currentApiVariables = convertToApiFormat(variables);
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  const currentApiVariables = convertToApiFormat(variables)
 
   return (
     <div className="space-y-4">
-      <PageHeader title="默认变量配置" icon={<SettingOutlined />} />
+      <PageHeader title="默认变量配置" icon={<Settings className="h-5 w-5" />} />
 
       <Card>
-        <Alert
-          type="info"
-          showIcon
-          message="默认变量配置"
-          description="这些变量将在创建新模板时自动预填充到变量列表中。填充后与普通变量无异，可以自由修改或删除。"
-          className="mb-4"
-        />
+        <CardContent className="pt-6">
+          <Alert className="mb-4">
+            <AlertTitle>默认变量配置</AlertTitle>
+            <AlertDescription>
+              这些变量将在创建新模板时自动预填充到变量列表中。填充后与普通变量无异，可以自由修改或删除。
+            </AlertDescription>
+          </Alert>
 
-        <VariableDefinitionForm
-          value={variables}
-          onChange={setVariables}
-          title="默认变量列表"
-        />
-
-        {duplicateErrors.length > 0 && (
-          <Alert
-            type="error"
-            showIcon
-            title="验证错误"
-            description={
-              <ul className="list-disc pl-4">
-                {duplicateErrors.map((error, index) => (
-                  <li key={index}>{error}</li>
-                ))}
-              </ul>
-            }
-            className="mt-4"
+          <VariableDefinitionForm
+            value={variables}
+            onChange={setVariables}
+            title="默认变量列表"
           />
-        )}
 
-        <div className="flex justify-between mt-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
-            返回
-          </Button>
-          <Space>
-            <Button
-              icon={<DiffOutlined />}
-              onClick={handleCompare}
-            >
-              差异对比
+          {duplicateErrors.length > 0 && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertTitle>验证错误</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc pl-4">
+                  {duplicateErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex justify-between mt-4">
+            <Button variant="outline" onClick={() => navigate(-1)}>
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回
             </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              onClick={handleSave}
-              loading={updateMutation.isPending}
-              disabled={duplicateErrors.length > 0}
-            >
-              保存
-            </Button>
-          </Space>
-        </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={handleCompare}>
+                <GitCompare className="mr-1 h-4 w-4" />
+                差异对比
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={updateMutation.isPending || duplicateErrors.length > 0}
+              >
+                {updateMutation.isPending && <Spinner className="mr-2 size-4" />}
+                <Save className="mr-1 h-4 w-4" />
+                保存
+              </Button>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
-      {/* Compare Modal */}
-      <Modal
-        title="配置差异对比"
-        open={isCompareVisible}
-        onCancel={() => setIsCompareVisible(false)}
-        width={1200}
-        footer={[
-          <Button key="close" onClick={() => setIsCompareVisible(false)}>
-            关闭
-          </Button>
-        ]}
-      >
-        <div className="space-y-4">
-          <Alert
-            type="info"
-            showIcon
-            title="差异对比视图"
-            description="左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。"
-          />
-          <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
-            <MonacoDiffEditor
-              height="600px"
-              language="json"
-              original={JSON.stringify(originalVariablesRef.current, null, 2)}
-              modified={JSON.stringify(currentApiVariables, null, 2)}
-              theme="vs-light"
-            />
+      <Dialog open={isCompareVisible} onOpenChange={(o) => !o && setIsCompareVisible(false)}>
+        <DialogContent className="sm:max-w-300">
+          <DialogHeader>
+            <DialogTitle>配置差异对比</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertTitle>差异对比视图</AlertTitle>
+              <AlertDescription>左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。</AlertDescription>
+            </Alert>
+            <div className="border rounded-md overflow-hidden h-150">
+              <MonacoDiffEditor
+                height="600px"
+                language="json"
+                original={JSON.stringify(originalVariablesRef.current, null, 2)}
+                modified={JSON.stringify(currentApiVariables, null, 2)}
+                theme="vs-light"
+              />
+            </div>
           </div>
-        </div>
-      </Modal>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCompareVisible(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
-};
+  )
+}
 
-export default DefaultVariables;
+export default DefaultVariables

@@ -1,15 +1,31 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Select, Button, Empty, Typography } from 'antd'
-import { EyeOutlined } from '@ant-design/icons'
+import { Eye } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+
 import { SimpleEditor } from '@/components/editors'
 import RjsfForm from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 import { useTemplates, useTemplateSchema } from '@/hooks/queries/base/useTemplateQueries'
 import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
-
-const { Text } = Typography
 
 interface TemplateCreationModeProps {
   selectedTemplateId: number | null
@@ -26,15 +42,12 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
 }) => {
   const navigate = useNavigate()
 
-  // Preview state (internal to this component)
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
   const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
 
-  // Queries
   const { data: templates = [], isLoading: templatesLoading } = useTemplates()
   const { data: templateSchema, isLoading: schemaLoading } = useTemplateSchema(selectedTemplateId)
 
-  // Mutations
   const { usePreviewRenderedYaml } = useTemplateMutations()
   const previewMutation = usePreviewRenderedYaml()
 
@@ -57,86 +70,97 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Template Selection */}
-      <Card title="选择模板" size="small">
-        <Select
-          placeholder="选择一个服务器模板"
-          style={{ width: '100%' }}
-          value={selectedTemplateId}
-          onChange={setSelectedTemplateId}
-          loading={templatesLoading}
-          options={templates.map((t) => ({
-            value: t.id,
-            label: `${t.name}${t.description ? ` - ${t.description}` : ''}`,
-          }))}
-          notFoundContent={
-            <Empty
-              description="暂无模板"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            >
-              <Button type="link" onClick={() => navigate('/templates/new')}>
-                创建模板
-              </Button>
-            </Empty>
-          }
-        />
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">选择模板</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Select
+            value={selectedTemplateId ? String(selectedTemplateId) : undefined}
+            onValueChange={(v) => setSelectedTemplateId(Number(v))}
+            itemToStringLabel={(v) => {
+              const t = templates.find(t => String(t.id) === v)
+              return t ? `${t.name}${t.description ? ` - ${t.description}` : ''}` : v
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="选择一个服务器模板" />
+            </SelectTrigger>
+            <SelectContent>
+              {templatesLoading ? (
+                <div className="flex justify-center py-4">
+                  <Spinner className="size-4" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm text-muted-foreground">暂无模板</p>
+                  <Button variant="link" size="sm" onClick={() => navigate('/templates/new')}>
+                    创建模板
+                  </Button>
+                </div>
+              ) : (
+                templates.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.name}{t.description ? ` - ${t.description}` : ''}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </CardContent>
       </Card>
 
-      {/* Template Form */}
       {selectedTemplateId && templateSchema && (
-        <Card
-          title="配置参数"
-          size="small"
-          extra={
+        <Card>
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">配置参数</CardTitle>
             <Button
-              icon={<EyeOutlined />}
+              variant="outline"
+              size="sm"
               onClick={handlePreviewYaml}
-              loading={previewMutation.isPending}
+              disabled={previewMutation.isPending}
             >
+              {previewMutation.isPending ? <Spinner className="mr-1 size-4" /> : <Eye className="mr-1 h-4 w-4" />}
               预览 YAML
             </Button>
-          }
-        >
-          {schemaLoading ? (
-            <div className="text-center py-4">加载中...</div>
-          ) : (
-            <RjsfForm
-              schema={templateSchema.json_schema as RJSFSchema}
-              formData={templateFormData}
-              validator={validator}
-              onChange={handleTemplateFormChange}
-              showErrorList={false}
-              liveValidate
-            >
-              <div /> {/* Hide default submit button */}
-            </RjsfForm>
-          )}
+          </CardHeader>
+          <CardContent>
+            {schemaLoading ? (
+              <div className="text-center py-4 text-muted-foreground">加载中...</div>
+            ) : (
+              <RjsfForm
+                schema={templateSchema.json_schema as RJSFSchema}
+                formData={templateFormData}
+                validator={validator}
+                onChange={handleTemplateFormChange}
+                showErrorList={false}
+                liveValidate
+              >
+                <div />
+              </RjsfForm>
+            )}
+          </CardContent>
         </Card>
       )}
 
-      {/* Preview YAML Modal */}
-      {previewYaml && (
-        <div
-          className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isPreviewModalVisible ? '' : 'hidden'}`}
-          onClick={() => setIsPreviewModalVisible(false)}
-        >
-          <div
-            className="bg-white rounded-lg p-4 w-3/4 max-h-[80vh] overflow-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <Text strong>预览生成的 YAML</Text>
-              <Button onClick={() => setIsPreviewModalVisible(false)}>关闭</Button>
-            </div>
+      <Dialog open={isPreviewModalVisible} onOpenChange={(o) => !o && setIsPreviewModalVisible(false)}>
+        <DialogContent className="sm:max-w-200">
+          <DialogHeader>
+            <DialogTitle>预览生成的 YAML</DialogTitle>
+          </DialogHeader>
+          {previewYaml && (
             <SimpleEditor
               value={previewYaml}
               language="yaml"
               height="60vh"
               options={{ readOnly: true }}
             />
-          </div>
-        </div>
-      )}
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPreviewModalVisible(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

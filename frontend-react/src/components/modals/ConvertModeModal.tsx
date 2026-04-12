@@ -1,7 +1,26 @@
 import React, { useState, useEffect } from 'react'
-import { Modal, Steps, Select, Alert, Button, Space, Spin, message } from 'antd'
-import { ExclamationCircleOutlined, SwapOutlined, SyncOutlined } from '@ant-design/icons'
+import { toast } from 'sonner'
+import { Check, ArrowLeftRight, RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
 import { MonacoDiffEditor } from '@/components/editors'
 import RjsfForm from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
@@ -11,6 +30,7 @@ import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
 import type { ExtractVariablesResponse } from '@/hooks/api/templateApi'
 import { queryKeys } from '@/utils/api'
 import RebuildProgressModal from './RebuildProgressModal'
+import { cn } from '@/lib/utils'
 
 interface ConvertModeModalProps {
   open: boolean
@@ -20,6 +40,31 @@ interface ConvertModeModalProps {
   onClose: () => void
   onSuccess: () => void
 }
+
+const StepIndicator = ({ steps, currentStep }: { steps: string[]; currentStep: number }) => (
+  <div className="flex items-center mb-6">
+    {steps.map((title, i) => (
+      <React.Fragment key={i}>
+        {i > 0 && (
+          <div className={cn('flex-1 h-px mx-2', i <= currentStep ? 'bg-primary' : 'bg-border')} />
+        )}
+        <div className="flex flex-col items-center gap-1">
+          <div className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium',
+            i < currentStep && 'bg-primary text-primary-foreground',
+            i === currentStep && 'border-2 border-primary text-primary',
+            i > currentStep && 'border-2 border-muted-foreground/25 text-muted-foreground'
+          )}>
+            {i < currentStep ? <Check className="h-3.5 w-3.5" /> : i + 1}
+          </div>
+          <span className={cn('text-xs', i <= currentStep ? 'text-foreground' : 'text-muted-foreground')}>
+            {title}
+          </span>
+        </div>
+      </React.Fragment>
+    ))}
+  </div>
+)
 
 const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   open,
@@ -55,7 +100,6 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   const previewRenderedYamlMutation = usePreviewRenderedYaml()
   const checkConversionMutation = useCheckConversion()
 
-  // Reset state when modal opens/closes
   useEffect(() => {
     if (open) {
       setCurrentStep(0)
@@ -67,7 +111,6 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     }
   }, [open, currentMode, initialTemplateId])
 
-  // Update form data when extract result changes
   useEffect(() => {
     if (extractResult) {
       setFormData(extractResult.extracted_values)
@@ -94,7 +137,6 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     if (!selectedTemplateId) return
     setPreviewLoading(true)
     try {
-      // Fetch preview and check rebuild in parallel
       const [rendered, checkResult] = await Promise.all([
         previewRenderedYamlMutation.mutateAsync({
           id: selectedTemplateId,
@@ -110,7 +152,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       setRequiresRebuild(checkResult.requires_rebuild)
       setCurrentStep(2)
     } catch {
-      // Errors are handled in mutation hooks
+      // Errors handled in mutation hooks
     } finally {
       setPreviewLoading(false)
     }
@@ -125,15 +167,12 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     })
 
     if (result.skipped_rebuild) {
-      // No rebuild needed — close modal directly and call onSuccess
-      message.success('配置已更新')
-      // Invalidate queries and close
+      toast.success('配置已更新')
       queryClient.invalidateQueries({ queryKey: queryKeys.templates.serverConfigPreview(serverId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.templates.serverConfig(serverId) })
       onSuccess()
       onClose()
     } else {
-      // Rebuild needed — show rebuild progress modal
       setRebuildTaskId(result.task_id!)
       setIsRebuildModalVisible(true)
     }
@@ -142,7 +181,6 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   const handleRebuildComplete = () => {
     setIsRebuildModalVisible(false)
     setRebuildTaskId(null)
-    // Invalidate serverConfigPreview to refresh template mode status
     queryClient.invalidateQueries({
       queryKey: queryKeys.templates.serverConfigPreview(serverId),
     })
@@ -159,63 +197,76 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   // Template -> Direct: Simple confirmation
   if (currentMode === 'template') {
     return (
-      <Modal
-        title={<><SwapOutlined /> 转换为直接编辑模式</>}
-        open={open}
-        onCancel={onClose}
-        onOk={handleConvertToDirect}
-        okText="确认转换"
-        okType="danger"
-        confirmLoading={convertToDirectMutation.isPending}
-      >
-        <Alert
-          title="确认转换"
-          description="转换后，您将可以直接编辑 Docker Compose 文件。模板关联将被解除，但当前配置不会改变。"
-          type="warning"
-          showIcon
-          icon={<ExclamationCircleOutlined />}
-          className="mb-4"
-        />
-        <p>此操作不会重建服务器，仅解除模板关联。</p>
-      </Modal>
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="h-5 w-5" />
+              转换为直接编辑模式
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert variant="destructive">
+              <AlertTitle>确认转换</AlertTitle>
+              <AlertDescription>转换后，您将可以直接编辑 Docker Compose 文件。模板关联将被解除，但当前配置不会改变。</AlertDescription>
+            </Alert>
+            <p className="text-sm">此操作不会重建服务器，仅解除模板关联。</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>取消</Button>
+            <Button
+              variant="destructive"
+              onClick={handleConvertToDirect}
+              disabled={convertToDirectMutation.isPending}
+            >
+              {convertToDirectMutation.isPending && <Spinner className="mr-2 size-4" />}
+              确认转换
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     )
   }
 
   // Direct -> Template / Update: Multi-step wizard
   if (!isWizardMode) return null
-  const steps = [
-    { title: '选择模板' },
-    { title: '调整变量' },
-    { title: '确认差异' },
-  ]
 
-  const getModalWidth = () => {
-    if (currentStep === 2) return 1000
-    return 520
-  }
+  const steps = ['选择模板', '调整变量', '确认差异']
 
   const renderStepContent = () => {
     if (currentStep === 0) {
       return (
         <div className="space-y-4">
-          <Alert
-            title={isUpdateMode ? "检查模板更新" : "选择目标模板"}
-            description={isUpdateMode
-              ? "系统将从当前配置中提取变量值，并与最新模板进行匹配。"
-              : "系统将尝试从当前 Compose 文件中提取变量值。"
-            }
-            type="info"
-            showIcon
-          />
+          <Alert>
+            <AlertTitle>{isUpdateMode ? "检查模板更新" : "选择目标模板"}</AlertTitle>
+            <AlertDescription>
+              {isUpdateMode
+                ? "系统将从当前配置中提取变量值，并与最新模板进行匹配。"
+                : "系统将尝试从当前 Compose 文件中提取变量值。"
+              }
+            </AlertDescription>
+          </Alert>
           <Select
-            placeholder="选择模板"
-            className="w-full"
-            loading={templatesLoading}
-            value={selectedTemplateId}
-            onChange={setSelectedTemplateId}
+            value={selectedTemplateId ? String(selectedTemplateId) : undefined}
+            onValueChange={(v) => setSelectedTemplateId(Number(v))}
             disabled={isUpdateMode}
-            options={templates?.map(t => ({ label: t.name, value: t.id }))}
-          />
+            itemToStringLabel={(v) => templates?.find(t => String(t.id) === v)?.name ?? v}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="选择模板" />
+            </SelectTrigger>
+            <SelectContent>
+              {templatesLoading ? (
+                <div className="flex justify-center py-4">
+                  <Spinner className="size-4" />
+                </div>
+              ) : (
+                templates?.map(t => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </div>
       )
     }
@@ -224,16 +275,14 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       return (
         <div className="space-y-4">
           {extractResult.warnings.length > 0 && (
-            <Alert
-              title="提取警告"
-              description={
+            <Alert variant="destructive">
+              <AlertTitle>提取警告</AlertTitle>
+              <AlertDescription>
                 <ul className="list-disc pl-4 mb-0">
                   {extractResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
-              }
-              type="warning"
-              showIcon
-            />
+              </AlertDescription>
+            </Alert>
           )}
           <RjsfForm
             schema={extractResult.json_schema as RJSFSchema}
@@ -252,19 +301,18 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
     if (currentStep === 2 && extractResult) {
       return (
         <div className="space-y-4">
-          <Alert
-            title="确认配置差异"
-            description={
-              requiresRebuild === null
+          <Alert variant={requiresRebuild === null ? 'default' : requiresRebuild ? 'destructive' : 'default'}>
+            <AlertTitle>确认配置差异</AlertTitle>
+            <AlertDescription>
+              {requiresRebuild === null
                 ? "正在检查配置差异..."
                 : requiresRebuild
                 ? "检测到配置差异，确认后将重建服务器。"
                 : "配置无变化，确认后将直接更新模板关联，不会重建服务器。"
-            }
-            type={requiresRebuild === null ? "info" : requiresRebuild ? "warning" : "success"}
-            showIcon
-          />
-          <div className="border rounded overflow-hidden" style={{ height: 500 }}>
+              }
+            </AlertDescription>
+          </Alert>
+          <div className="border rounded-md overflow-hidden h-125">
             <MonacoDiffEditor
               language="yaml"
               original={extractResult.current_compose}
@@ -278,69 +326,70 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       )
     }
 
-    return <Spin />
-  }
-
-  const renderFooter = () => {
     return (
-      <Space>
-        <Button onClick={onClose}>取消</Button>
-        {currentStep === 0 && (
-          <Button
-            type="primary"
-            onClick={handleExtractVariables}
-            disabled={!selectedTemplateId}
-            loading={extractVariablesMutation.isPending}
-          >
-            下一步
-          </Button>
-        )}
-        {currentStep === 1 && (
-          <>
-            <Button onClick={() => setCurrentStep(0)}>上一步</Button>
-            <Button
-              type="primary"
-              onClick={handleGoToPreview}
-              loading={previewLoading}
-            >
-              下一步
-            </Button>
-          </>
-        )}
-        {currentStep === 2 && (
-          <>
-            <Button onClick={() => setCurrentStep(1)}>上一步</Button>
-            <Button
-              type="primary"
-              danger={requiresRebuild === true}
-              onClick={handleConvertToTemplate}
-              loading={convertToTemplateMutation.isPending}
-              disabled={requiresRebuild === null}
-            >
-              {requiresRebuild === null
-                ? "检查中..."
-                : requiresRebuild
-                ? (isUpdateMode ? '确认更新并重建' : '确认并重建')
-                : "确认"}
-            </Button>
-          </>
-        )}
-      </Space>
+      <div className="flex justify-center py-8">
+        <Spinner className="size-8" />
+      </div>
     )
   }
 
   return (
     <>
-      <Modal
-        title={isUpdateMode ? <><SyncOutlined /> 更新模板配置</> : <><SwapOutlined /> 转换为模板模式</>}
-        open={open}
-        onCancel={onClose}
-        width={getModalWidth()}
-        footer={renderFooter()}
-      >
-        <Steps current={currentStep} items={steps} className="mb-6" />
-        {renderStepContent()}
-      </Modal>
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className={cn(currentStep === 2 ? 'sm:max-w-250' : 'sm:max-w-lg')}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {isUpdateMode ? <RefreshCw className="h-5 w-5" /> : <ArrowLeftRight className="h-5 w-5" />}
+              {isUpdateMode ? '更新模板配置' : '转换为模板模式'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <StepIndicator steps={steps} currentStep={currentStep} />
+          {renderStepContent()}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>取消</Button>
+            {currentStep === 0 && (
+              <Button
+                onClick={handleExtractVariables}
+                disabled={!selectedTemplateId || extractVariablesMutation.isPending}
+              >
+                {extractVariablesMutation.isPending && <Spinner className="mr-2 size-4" />}
+                下一步
+              </Button>
+            )}
+            {currentStep === 1 && (
+              <>
+                <Button variant="outline" onClick={() => setCurrentStep(0)}>上一步</Button>
+                <Button
+                  onClick={handleGoToPreview}
+                  disabled={previewLoading}
+                >
+                  {previewLoading && <Spinner className="mr-2 size-4" />}
+                  下一步
+                </Button>
+              </>
+            )}
+            {currentStep === 2 && (
+              <>
+                <Button variant="outline" onClick={() => setCurrentStep(1)}>上一步</Button>
+                <Button
+                  variant={requiresRebuild === true ? 'destructive' : 'default'}
+                  onClick={handleConvertToTemplate}
+                  disabled={convertToTemplateMutation.isPending || requiresRebuild === null}
+                >
+                  {convertToTemplateMutation.isPending && <Spinner className="mr-2 size-4" />}
+                  {requiresRebuild === null
+                    ? "检查中..."
+                    : requiresRebuild
+                    ? (isUpdateMode ? '确认更新并重建' : '确认并重建')
+                    : "确认"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <RebuildProgressModal
         open={isRebuildModalVisible}

@@ -1,6 +1,13 @@
 import React, { useEffect } from 'react'
-import { Modal, Progress, App } from 'antd'
+import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { Progress } from '@/components/ui/progress'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 
@@ -19,7 +26,6 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
   onComplete,
   serverId,
 }) => {
-  const { message } = App.useApp()
   const queryClient = useQueryClient()
 
   const { useTask } = useTaskQueries()
@@ -29,8 +35,7 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
     if (!task) return
 
     if (task.status === 'completed') {
-      message.success('服务器文件替换完成!')
-      // Invalidate related caches
+      toast.success('服务器文件替换完成!')
       queryClient.invalidateQueries({
         queryKey: queryKeys.serverInfos.detail(serverId),
       })
@@ -43,38 +48,27 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
       queryClient.invalidateQueries({ queryKey: queryKeys.servers() })
       onComplete()
     } else if (task.status === 'failed') {
-      message.error(`填充失败: ${task.error}`)
+      toast.error(`填充失败: ${task.error}`)
       onClose()
     }
-  }, [task, task?.status, task?.error, serverId, message, queryClient, onComplete, onClose])
+  }, [task, task?.status, task?.error, serverId, queryClient, onComplete, onClose])
 
-  const getProgressStatus = () => {
-    if (!task) return 'normal'
-    if (task.status === 'running') return 'active'
-    if (task.status === 'failed') return 'exception'
-    if (task.status === 'completed') return 'success'
-    return 'normal'
-  }
+  const isActive = task?.status === 'running' || task?.status === 'pending'
 
   return (
-    <Modal
-      open={open}
-      title="正在填充服务器文件"
-      footer={null}
-      closable={task?.status !== 'running' && task?.status !== 'pending'}
-      maskClosable={false}
-      onCancel={onClose}
-    >
-      <div className="py-4">
-        <Progress
-          percent={task?.progress ?? 0}
-          status={getProgressStatus()}
-        />
-        <div className="text-gray-500 text-sm mt-2 text-center">
-          {task?.message || '准备中...'}
+    <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>
+      <DialogContent showCloseButton={!isActive}>
+        <DialogHeader>
+          <DialogTitle>正在填充服务器文件</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <Progress value={task?.progress ?? 0} />
+          <div className="text-muted-foreground text-sm mt-2 text-center">
+            {task?.message || '准备中...'}
+          </div>
         </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   )
 }
 

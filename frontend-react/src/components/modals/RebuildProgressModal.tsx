@@ -1,6 +1,13 @@
 import React, { useEffect } from 'react'
-import { Modal, Progress, App } from 'antd'
+import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { Progress } from '@/components/ui/progress'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 
@@ -19,7 +26,6 @@ const RebuildProgressModal: React.FC<RebuildProgressModalProps> = ({
   onClose,
   onComplete,
 }) => {
-  const { message } = App.useApp()
   const queryClient = useQueryClient()
 
   const { useTask } = useTaskQueries()
@@ -29,8 +35,7 @@ const RebuildProgressModal: React.FC<RebuildProgressModalProps> = ({
     if (!task) return
 
     if (task.status === 'completed') {
-      message.success('服务器配置更新完成')
-      // Invalidate server-related queries after rebuild completion
+      toast.success('服务器配置更新完成')
       queryClient.invalidateQueries({
         queryKey: queryKeys.serverInfos.detail(serverId),
       })
@@ -51,40 +56,27 @@ const RebuildProgressModal: React.FC<RebuildProgressModalProps> = ({
       })
       onComplete()
     } else if (task.status === 'failed') {
-      message.error(`配置更新失败: ${task.error}`)
+      toast.error(`配置更新失败: ${task.error}`)
       onClose()
     }
-  }, [task, serverId, message, queryClient, onComplete, onClose])
-
-  const getProgressStatus = () => {
-    if (!task) return 'normal'
-    if (task.status === 'running') return 'active'
-    if (task.status === 'failed') return 'exception'
-    if (task.status === 'completed') return 'success'
-    return 'normal'
-  }
+  }, [task, serverId, queryClient, onComplete, onClose])
 
   const isActive = task?.status === 'running' || task?.status === 'pending'
 
   return (
-    <Modal
-      open={open}
-      title="正在更新服务器配置"
-      footer={null}
-      closable={!isActive}
-      onCancel={isActive ? undefined : onClose}
-      maskClosable={false}
-    >
-      <div className="py-4">
-        <Progress
-          percent={task?.progress ?? 0}
-          status={getProgressStatus()}
-        />
-        <div className="text-gray-500 text-sm mt-2 text-center">
-          {task?.message || '准备中...'}
+    <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>
+      <DialogContent showCloseButton={!isActive}>
+        <DialogHeader>
+          <DialogTitle>正在更新服务器配置</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <Progress value={task?.progress ?? 0} />
+          <div className="text-muted-foreground text-sm mt-2 text-center">
+            {task?.message || '准备中...'}
+          </div>
         </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
-import { Alert, Button } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
+
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useServerTemplatePreview, useServerTemplateConfig } from '@/hooks/queries/base/useTemplateQueries'
@@ -10,16 +13,13 @@ const ServerCompose: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  // Check if server is template-based
   const { data: templatePreview, isLoading: previewLoading } = useServerTemplatePreview(id || null)
   const isTemplateBased = templatePreview?.is_template_based ?? false
 
-  // Template config for template-based servers
   const { data: templateConfig, isLoading: templateConfigLoading, refetch: refetchTemplateConfig } = useServerTemplateConfig(
     isTemplateBased ? id || null : null
   )
 
-  // Server data
   const { useServerComposeData } = useServerDetailQueries(id || '')
   const {
     serverInfo,
@@ -30,49 +30,39 @@ const ServerCompose: React.FC = () => {
     composeQuery
   } = useServerComposeData()
 
-  // Shared state for rebuild modal
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
   const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
   const [isConvertModalVisible, setIsConvertModalVisible] = useState(false)
 
-  // Missing server ID
   if (!id) {
     return (
       <div className="flex justify-center items-center min-h-64">
-        <Alert
-          message="参数错误"
-          description="缺少服务器ID参数"
-          type="error"
-          action={
-            <Button size="small" onClick={() => navigate('/overview')}>
-              返回概览
-            </Button>
-          }
-        />
+        <Alert variant="destructive">
+          <AlertTitle>参数错误</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            缺少服务器ID参数
+            <Button variant="outline" size="sm" onClick={() => navigate('/overview')}>返回概览</Button>
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }
 
-  // Loading state
   if (previewLoading || serverLoading || composeQuery.isLoading || !serverInfo) {
     return <LoadingSpinner height="16rem" tip="加载配置文件中..." />
   }
 
-  // Error state
   if (serverError || composeQuery.isError) {
     const errorMessage = (serverErrorMessage as any)?.message || `无法加载服务器 "${id}" 的配置信息`
     return (
       <div className="flex justify-center items-center min-h-64">
-        <Alert
-          title="加载失败"
-          description={errorMessage}
-          type="error"
-          action={
-            <Button size="small" onClick={() => navigate('/overview')}>
-              返回概览
-            </Button>
-          }
-        />
+        <Alert variant="destructive">
+          <AlertTitle>加载失败</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            {errorMessage}
+            <Button variant="outline" size="sm" onClick={() => navigate('/overview')}>返回概览</Button>
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }
@@ -82,7 +72,6 @@ const ServerCompose: React.FC = () => {
     refetchTemplateConfig()
   }
 
-  // Template mode
   if (isTemplateBased) {
     if (templateConfigLoading || !templateConfig) {
       return <LoadingSpinner height="16rem" tip="加载模板配置中..." />
@@ -107,7 +96,6 @@ const ServerCompose: React.FC = () => {
     )
   }
 
-  // Direct edit mode
   return (
     <DirectMode
       serverId={id}

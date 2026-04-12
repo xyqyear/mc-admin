@@ -1,24 +1,34 @@
 import React, { useState, useRef } from 'react'
-import { Card, Form, Input, Button, Alert, Space } from 'antd'
-import { CopyOutlined, QuestionCircleOutlined } from '@ant-design/icons'
-import type { FormInstance } from 'antd'
+import { toast } from 'sonner'
+import { Copy, HelpCircle } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+
 import { ComposeYamlEditor } from '@/components/editors'
 import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
 import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
-import { message } from 'antd'
 
 interface TraditionalCreationModeProps {
-  form: FormInstance
+  serverName: string
+  setServerName: (name: string) => void
+  serverNameError: string
+  setServerNameError: (error: string) => void
   composeContent: string
   setComposeContent: (content: string) => void
 }
 
 const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
-  form,
+  serverName,
+  setServerName,
+  serverNameError,
+  setServerNameError,
   composeContent,
   setComposeContent,
 }) => {
-  // Internal state
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
   const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
   const editorRef = useRef<any>(null)
@@ -26,73 +36,64 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
   const handleTemplateSelect = (templateContent: string) => {
     setComposeContent(templateContent)
     setIsTemplateModalVisible(false)
-    form.setFieldsValue({ composeContent: templateContent })
-    message.success('已应用服务器模板配置')
+    toast.success('已应用服务器模板配置')
   }
 
   const handleComposeContentChange = (value: string | undefined) => {
     if (value !== undefined) {
       setComposeContent(value)
-      form.setFieldsValue({ composeContent: value })
     }
   }
 
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      initialValues={{ composeContent: '' }}
-    >
-      {/* Server Name */}
-      <Card title="服务器基本信息" size="small" className="mb-4">
-        <Form.Item
-          name="serverName"
-          label="服务器名称"
-          rules={[
-            { required: true, message: '请输入服务器名称' },
-            { pattern: /^[a-zA-Z0-9-_]+$/, message: '服务器名称只能包含字母、数字、连字符和下划线' },
-            { min: 1, max: 50, message: '服务器名称长度应在1-50个字符之间' }
-          ]}
-        >
-          <Input placeholder="例如: vanilla-survival" size="large" />
-        </Form.Item>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">服务器基本信息</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label>服务器名称</Label>
+          <Input
+            placeholder="例如: vanilla-survival"
+            value={serverName}
+            onChange={(e) => {
+              setServerName(e.target.value)
+              if (serverNameError) setServerNameError('')
+            }}
+            className="max-w-md"
+          />
+          {serverNameError && <p className="text-sm text-destructive">{serverNameError}</p>}
+        </CardContent>
       </Card>
 
-      {/* Compose Editor */}
-      <Card
-        title="Docker Compose 配置"
-        size="small"
-        extra={
-          <Space>
+      <Card>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-sm">Docker Compose 配置</CardTitle>
+          <div className="flex items-center gap-2">
             <Button
-              icon={<QuestionCircleOutlined />}
+              variant="outline"
+              size="sm"
               onClick={() => setIsHelpModalVisible(true)}
-              type="default"
             >
+              <HelpCircle className="mr-1 h-4 w-4" />
               配置帮助
             </Button>
             <Button
-              icon={<CopyOutlined />}
+              variant="outline"
+              size="sm"
               onClick={() => setIsTemplateModalVisible(true)}
-              type="dashed"
             >
+              <Copy className="mr-1 h-4 w-4" />
               从现有服务器复制
             </Button>
-          </Space>
-        }
-      >
-        <Alert
-          message="配置说明"
-          description="注意编辑container_name为mc-{服务器名}; 注意编辑服务器端口，不与现有冲突"
-          type="info"
-          showIcon
-          className="mb-4"
-        />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert>
+            <AlertTitle>配置说明</AlertTitle>
+            <AlertDescription>注意编辑container_name为mc-{'{服务器名}'}; 注意编辑服务器端口，不与现有冲突</AlertDescription>
+          </Alert>
 
-        <Form.Item
-          name="composeContent"
-          rules={[{ required: true, message: '请输入 Docker Compose 配置' }]}
-        >
           <ComposeYamlEditor
             autoHeight
             minHeight={300}
@@ -104,10 +105,9 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
             theme="vs-light"
             path="docker-compose.yml"
           />
-        </Form.Item>
+        </CardContent>
       </Card>
 
-      {/* Modals */}
       <ServerTemplateModal
         open={isTemplateModalVisible}
         onCancel={() => setIsTemplateModalVisible(false)}
@@ -121,7 +121,7 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
         open={isHelpModalVisible}
         onCancel={() => setIsHelpModalVisible(false)}
       />
-    </Form>
+    </div>
   )
 }
 

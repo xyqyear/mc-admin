@@ -1,6 +1,14 @@
 import React from 'react'
-import { Modal, Button, Alert } from 'antd'
 import { MonacoDiffEditor } from '@/components/editors'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 
 export interface ComposeDiffModalProps {
   open: boolean
@@ -25,38 +33,34 @@ const ComposeDiffModal: React.FC<ComposeDiffModalProps> = ({
   description = '左侧为服务器当前配置，右侧为本地编辑的配置。高亮显示的是差异部分。',
 }) => {
   return (
-    <Modal
-      title={title}
-      open={open}
-      onCancel={onClose}
-      width={1400}
-      footer={[
-        <Button key="close" onClick={onClose}>
-          关闭
-        </Button>
-      ]}
-    >
-      <div className="space-y-4">
-        <Alert
-          title="差异对比视图"
-          description={description}
-          type="info"
-          showIcon
-        />
-        <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
-          <MonacoDiffEditor
-            key={`diff-${originalContent?.length || 0}-${modifiedContent?.length || 0}`}
-            height="600px"
-            language="yaml"
-            original={originalContent}
-            modified={modifiedContent}
-            originalTitle={originalTitle}
-            modifiedTitle={modifiedTitle}
-            theme="vs-light"
-          />
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-350">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Alert>
+            <AlertTitle>差异对比视图</AlertTitle>
+            <AlertDescription>{description}</AlertDescription>
+          </Alert>
+          <div className="border rounded-md overflow-hidden h-[600px]">
+            <MonacoDiffEditor
+              key={`diff-${originalContent?.length || 0}-${modifiedContent?.length || 0}`}
+              height="600px"
+              language="yaml"
+              original={originalContent}
+              modified={modifiedContent}
+              originalTitle={originalTitle}
+              modifiedTitle={modifiedTitle}
+              theme="vs-light"
+            />
+          </div>
         </div>
-      </div>
-    </Modal>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>关闭</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

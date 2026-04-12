@@ -1,12 +1,5 @@
-import React, { useState, useCallback, useRef, useMemo } from "react";
-import { Table, Button, Input, Tag, Popconfirm, Empty, Space } from "antd";
-import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  HolderOutlined,
-} from "@ant-design/icons";
-import type { ColumnsType } from "antd/es/table";
+import React, { useState, useCallback, useRef, useMemo } from "react"
+import { Search, Plus, Pencil, Trash2, GripVertical } from "lucide-react"
 import {
   DndContext,
   closestCenter,
@@ -14,37 +7,51 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-} from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
+} from "@dnd-kit/core"
+import type { DragEndEvent } from "@dnd-kit/core"
 import {
   SortableContext,
   verticalListSortingStrategy,
   arrayMove,
-} from "@dnd-kit/sortable";
-import SortableVariableRow from "./SortableVariableRow";
-import VariableEditModal from "./VariableEditModal";
-import type { VariableFormData } from "./variableSchemas";
+} from "@dnd-kit/sortable"
+
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+import SortableVariableRow from "./SortableVariableRow"
+import VariableEditModal from "./VariableEditModal"
+import { useConfirm } from "@/hooks/useConfirm"
+import type { VariableFormData } from "./variableSchemas"
 
 // Re-export for backwards compatibility
-export type { VariableFormData } from "./variableSchemas";
+export type { VariableFormData } from "./variableSchemas"
 
 interface VariableDefinitionFormProps {
-  value: VariableFormData[];
-  onChange: (variables: VariableFormData[]) => void;
-  disabled?: boolean;
-  title?: string;
+  value: VariableFormData[]
+  onChange: (variables: VariableFormData[]) => void
+  disabled?: boolean
+  title?: string
 }
 
-const TYPE_LABELS: Record<VariableFormData["type"], { label: string; color: string }> = {
-  string: { label: "字符串", color: "blue" },
-  int: { label: "整数", color: "green" },
-  float: { label: "浮点数", color: "cyan" },
-  enum: { label: "枚举", color: "orange" },
-  bool: { label: "布尔值", color: "purple" },
-};
+const TYPE_LABELS: Record<VariableFormData["type"], { label: string; className: string }> = {
+  string: { label: "字符串", className: "text-blue-600 border-blue-300" },
+  int: { label: "整数", className: "text-green-600 border-green-300" },
+  float: { label: "浮点数", className: "text-cyan-600 border-cyan-300" },
+  enum: { label: "枚举", className: "text-orange-600 border-orange-300" },
+  bool: { label: "布尔值", className: "text-purple-600 border-purple-300" },
+}
 
 interface KeyedVariable extends VariableFormData {
-  _key: string;
+  _key: string
 }
 
 const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
@@ -53,233 +60,217 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
   disabled = false,
   title,
 }) => {
-  const [searchText, setSearchText] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"add" | "edit">("add");
-  const [editingIndex, setEditingIndex] = useState<number>(-1);
-  const [editingData, setEditingData] = useState<Partial<VariableFormData> | undefined>();
+  const { confirm, confirmDialog } = useConfirm()
+  const [searchText, setSearchText] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState<"add" | "edit">("add")
+  const [editingIndex, setEditingIndex] = useState<number>(-1)
+  const [editingData, setEditingData] = useState<Partial<VariableFormData> | undefined>()
 
   // Stable key counter for dnd-kit
-  const keyCounter = useRef(0);
-  const keyMapRef = useRef(new WeakMap<VariableFormData, string>());
+  const keyCounter = useRef(0)
+  const keyMapRef = useRef(new WeakMap<VariableFormData, string>())
 
   const getKey = useCallback((item: VariableFormData): string => {
-    let key = keyMapRef.current.get(item);
+    let key = keyMapRef.current.get(item)
     if (!key) {
-      key = `var-${keyCounter.current++}`;
-      keyMapRef.current.set(item, key);
+      key = `var-${keyCounter.current++}`
+      keyMapRef.current.set(item, key)
     }
-    return key;
-  }, []);
+    return key
+  }, [])
 
-  // Keyed items for table + dnd
   const keyedItems: KeyedVariable[] = useMemo(
     () => value.map((v) => ({ ...v, _key: getKey(v) })),
     [value, getKey]
-  );
+  )
 
-  const isSearching = searchText.trim().length > 0;
+  const isSearching = searchText.trim().length > 0
 
   const filteredItems = useMemo(() => {
-    if (!isSearching) return keyedItems;
-    const lower = searchText.toLowerCase();
+    if (!isSearching) return keyedItems
+    const lower = searchText.toLowerCase()
     return keyedItems.filter(
       (v) =>
         v.name.toLowerCase().includes(lower) ||
         (v.display_name ?? "").toLowerCase().includes(lower)
-    );
-  }, [keyedItems, searchText, isSearching]);
+    )
+  }, [keyedItems, searchText, isSearching])
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
-  );
+  )
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      const oldIndex = keyedItems.findIndex((v) => v._key === active.id);
-      const newIndex = keyedItems.findIndex((v) => v._key === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-      const reordered = arrayMove([...value], oldIndex, newIndex);
-      onChange(reordered);
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const oldIndex = keyedItems.findIndex((v) => v._key === active.id)
+      const newIndex = keyedItems.findIndex((v) => v._key === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove([...value], oldIndex, newIndex)
+      onChange(reordered)
     },
     [keyedItems, value, onChange]
-  );
+  )
 
-  // Modal handlers
   const openAddModal = useCallback(() => {
-    setModalMode("add");
-    setEditingIndex(-1);
-    setEditingData(undefined);
-    setModalOpen(true);
-  }, []);
+    setModalMode("add")
+    setEditingIndex(-1)
+    setEditingData(undefined)
+    setModalOpen(true)
+  }, [])
 
   const openEditModal = useCallback(
     (record: KeyedVariable) => {
-      const idx = keyedItems.findIndex((v) => v._key === record._key);
-      if (idx === -1) return;
-      // Deep copy without _key
-      const { _key: _unused, ...data } = record;
-      void _unused;
-      setModalMode("edit");
-      setEditingIndex(idx);
-      setEditingData(structuredClone(data));
-      setModalOpen(true);
+      const idx = keyedItems.findIndex((v) => v._key === record._key)
+      if (idx === -1) return
+      const { _key: _unused, ...data } = record
+      void _unused
+      setModalMode("edit")
+      setEditingIndex(idx)
+      setEditingData(structuredClone(data))
+      setModalOpen(true)
     },
     [keyedItems]
-  );
+  )
 
   const handleModalOk = useCallback(
     (data: VariableFormData) => {
-      const next = [...value];
+      const next = [...value]
       if (modalMode === "add") {
-        next.push(data);
+        next.push(data)
       } else if (editingIndex >= 0) {
-        next[editingIndex] = data;
+        next[editingIndex] = data
       }
-      onChange(next);
-      setModalOpen(false);
+      onChange(next)
+      setModalOpen(false)
     },
     [value, onChange, modalMode, editingIndex]
-  );
+  )
 
   const handleDelete = useCallback(
     (record: KeyedVariable) => {
-      const idx = keyedItems.findIndex((v) => v._key === record._key);
-      if (idx === -1) return;
-      const next = [...value];
-      next.splice(idx, 1);
-      onChange(next);
+      confirm({
+        title: '确认删除',
+        description: '确定删除该变量？',
+        confirmText: '确定',
+        cancelText: '取消',
+        variant: 'destructive',
+        onConfirm: async () => {
+          const idx = keyedItems.findIndex((v) => v._key === record._key)
+          if (idx === -1) return
+          const next = [...value]
+          next.splice(idx, 1)
+          onChange(next)
+        },
+      })
     },
-    [keyedItems, value, onChange]
-  );
+    [keyedItems, value, onChange, confirm]
+  )
 
   const formatDefault = (val: unknown): string => {
-    if (val === undefined || val === null) return "-";
-    if (typeof val === "boolean") return val ? "true" : "false";
-    return String(val);
-  };
+    if (val === undefined || val === null) return "-"
+    if (typeof val === "boolean") return val ? "true" : "false"
+    return String(val)
+  }
 
-  const columns: ColumnsType<KeyedVariable> = [
-    ...(disabled || isSearching
-      ? []
-      : [
-          {
-            title: "",
-            dataIndex: "_drag",
-            width: 40,
-            render: () => (
-              <HolderOutlined style={{ cursor: "grab", color: "#999" }} />
-            ),
-          } as const,
-        ]),
-    {
-      title: "变量名",
-      dataIndex: "name",
-      render: (name: string) => (
-        <code style={{ fontSize: 13 }}>{name || <span style={{ color: "#ccc" }}>-</span>}</code>
-      ),
-    },
-    {
-      title: "显示名称",
-      dataIndex: "display_name",
-      render: (v: string) => v || "-",
-    },
-    {
-      title: "类型",
-      dataIndex: "type",
-      width: 90,
-      render: (type: VariableFormData["type"]) => {
-        const info = TYPE_LABELS[type];
-        return info ? <Tag color={info.color}>{info.label}</Tag> : type;
-      },
-    },
-    {
-      title: "默认值",
-      dataIndex: "default",
-      ellipsis: true,
-      render: (_: unknown, record: KeyedVariable) => formatDefault(record.default),
-    },
-    ...(disabled
-      ? []
-      : [
-          {
-            title: "操作",
-            width: 80,
-            render: (_: unknown, record: KeyedVariable) => (
-              <Space size="small">
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => openEditModal(record)}
-                />
-                <Popconfirm
-                  title="确定删除该变量？"
-                  onConfirm={() => handleDelete(record)}
-                  okText="确定"
-                  cancelText="取消"
-                >
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              </Space>
-            ),
-          } as const,
-        ]),
-  ];
+  const showDragHandle = !disabled && !isSearching
+  const showActions = !disabled
+  const sortableIds = keyedItems.map((v) => v._key)
 
-  const tableBody = {
-    body: {
-      row: isSearching || disabled ? undefined : SortableVariableRow,
-    },
-  };
+  const renderRow = (item: KeyedVariable) => {
+    const typeInfo = TYPE_LABELS[item.type]
+    const cells = (
+      <>
+        {showDragHandle && (
+          <TableCell className="w-10">
+            <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+          </TableCell>
+        )}
+        <TableCell>
+          <code className="text-[13px]">{item.name || <span className="text-muted-foreground">-</span>}</code>
+        </TableCell>
+        <TableCell>{item.display_name || "-"}</TableCell>
+        <TableCell className="w-[90px]">
+          {typeInfo ? (
+            <Badge variant="outline" className={typeInfo.className}>{typeInfo.label}</Badge>
+          ) : item.type}
+        </TableCell>
+        <TableCell className="max-w-[200px] truncate">{formatDefault(item.default)}</TableCell>
+        {showActions && (
+          <TableCell className="w-20">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => openEditModal(item)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => handleDelete(item)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </TableCell>
+        )}
+      </>
+    )
 
-  const sortableIds = keyedItems.map((v) => v._key);
-
-  const emptyContent = (
-    <Empty description="暂无变量">
-      {!disabled && (
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-          添加变量
-        </Button>
-      )}
-    </Empty>
-  );
+    if (showDragHandle) {
+      return (
+        <SortableVariableRow
+          key={item._key}
+          data-row-key={item._key}
+          className="border-b transition-colors hover:bg-muted/50"
+        >
+          {cells}
+        </SortableVariableRow>
+      )
+    }
+    return <TableRow key={item._key}>{cells}</TableRow>
+  }
 
   return (
     <div>
       {title && (
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 12 }}>{title}</div>
+        <div className="font-semibold text-[15px] mb-3">{title}</div>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-          gap: 12,
-        }}
-      >
-        <Input.Search
-          placeholder="搜索变量名或显示名称"
-          allowClear
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{ maxWidth: 300 }}
-        />
+      <div className="flex justify-between items-center mb-3 gap-3">
+        <div className="relative max-w-[300px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索变量名或显示名称"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="pl-8"
+          />
+        </div>
         {!disabled && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+          <Button onClick={openAddModal}>
+            <Plus className="mr-1 h-4 w-4" />
             添加变量
           </Button>
         )}
       </div>
 
       {value.length === 0 ? (
-        emptyContent
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <p className="mb-3">暂无变量</p>
+          {!disabled && (
+            <Button onClick={openAddModal}>
+              <Plus className="mr-1 h-4 w-4" />
+              添加变量
+            </Button>
+          )}
+        </div>
       ) : (
         <DndContext
           sensors={sensors}
@@ -290,15 +281,31 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
             items={sortableIds}
             strategy={verticalListSortingStrategy}
           >
-            <Table<KeyedVariable>
-              rowKey="_key"
-              columns={columns}
-              dataSource={filteredItems}
-              components={isSearching || disabled ? undefined : tableBody}
-              pagination={false}
-              size="small"
-              locale={{ emptyText: "无匹配变量" }}
-            />
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {showDragHandle && <TableHead className="w-10" />}
+                    <TableHead>变量名</TableHead>
+                    <TableHead>显示名称</TableHead>
+                    <TableHead className="w-[90px]">类型</TableHead>
+                    <TableHead>默认值</TableHead>
+                    {showActions && <TableHead className="w-20">操作</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredItems.length > 0 ? (
+                    filteredItems.map(renderRow)
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={showDragHandle ? 6 : 5} className="h-24 text-center text-muted-foreground">
+                        无匹配变量
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </SortableContext>
         </DndContext>
       )}
@@ -310,8 +317,10 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
         onOk={handleModalOk}
         onCancel={() => setModalOpen(false)}
       />
-    </div>
-  );
-};
 
-export default VariableDefinitionForm;
+      {confirmDialog}
+    </div>
+  )
+}
+
+export default VariableDefinitionForm

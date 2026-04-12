@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import {
-  Card,
-  Form,
-  Button,
-  Typography,
-  Alert,
-  Space,
-  Switch,
-  message,
-  Divider,
-  Tabs,
-} from 'antd'
-import {
-  FileZipOutlined,
-  PlayCircleOutlined,
-  PlusOutlined,
-  SnippetsOutlined,
-  CodeOutlined,
-} from '@ant-design/icons'
+  FileArchive,
+  Play,
+  Plus,
+  FileText,
+  Code,
+} from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
@@ -29,22 +27,20 @@ import { useTemplateSchema, useAvailablePorts } from '@/hooks/queries/base/useTe
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 
-const { Text } = Typography
-
 type CreationMode = 'traditional' | 'template'
 
 const ServerNew: React.FC = () => {
   const navigate = useNavigate()
-  const [form] = Form.useForm()
 
-  // Creation mode state
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
 
-  // Template mode state (managed by parent for validation and creation)
+  // Template mode state
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
 
-  // Traditional mode state
+  // Traditional mode state (lifted from child)
+  const [serverName, setServerName] = useState('')
+  const [serverNameError, setServerNameError] = useState('')
   const [composeContent, setComposeContent] = useState('')
 
   // Archive selection state
@@ -70,7 +66,6 @@ const ServerNew: React.FC = () => {
   const createRestartScheduleMutation = useCreateOrUpdateRestartSchedule()
   const autoUpdateDNS = useAutoUpdateDNS()
 
-  // Initialize template form data with defaults when schema loads
   useEffect(() => {
     if (templateSchema?.json_schema) {
       const schema = templateSchema.json_schema as RJSFSchema
@@ -84,7 +79,6 @@ const ServerNew: React.FC = () => {
         })
       }
 
-      // Override with available ports
       if (availablePorts) {
         defaults.game_port = availablePorts.suggested_game_port
         defaults.rcon_port = availablePorts.suggested_rcon_port
@@ -94,20 +88,15 @@ const ServerNew: React.FC = () => {
     }
   }, [templateSchema, availablePorts])
 
-  // Sync compose content with form
-  useEffect(() => {
-    form.setFieldsValue({ composeContent: composeContent })
-  }, [form, composeContent])
-
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)
     setIsArchiveModalVisible(false)
-    message.success(`已选择压缩包: ${filename}`)
+    toast.success(`已选择压缩包: ${filename}`)
   }
 
   const handleRemoveArchive = () => {
     setSelectedArchiveFile(null)
-    message.info('已移除压缩包选择')
+    toast.info('已移除压缩包选择')
   }
 
   const triggerDNSUpdateAndNavigate = async () => {
@@ -119,29 +108,81 @@ const ServerNew: React.FC = () => {
     navigate('/overview')
   }
 
+  const validateServerName = (): boolean => {
+    if (!serverName.trim()) {
+      setServerNameError('请输入服务器名称')
+      return false
+    }
+    if (!/^[a-zA-Z0-9-_]+$/.test(serverName)) {
+      setServerNameError('服务器名称只能包含字母、数字、连字符和下划线')
+      return false
+    }
+    if (serverName.length > 50) {
+      setServerNameError('服务器名称长度应在1-50个字符之间')
+      return false
+    }
+    setServerNameError('')
+    return true
+  }
+
   const handleCreate = async () => {
     try {
       if (creationMode === 'template') {
-        // Template mode
         if (!selectedTemplateId) {
-          message.error('请选择一个模板')
+          toast.error('请选择一个模板')
           return
         }
 
-        const serverName = templateFormData.name as string
-        if (!serverName) {
-          message.error('请填写服务器名称')
+        const templateServerName = templateFormData.name as string
+        if (!templateServerName) {
+          toast.error('请填写服务器名称')
           return
         }
 
-        // Create server with template
         await createServerMutation.mutateAsync({
-          serverId: serverName,
+          serverId: templateServerName,
           templateId: selectedTemplateId,
           variableValues: templateFormData,
         })
 
-        // Create restart schedule if enabled
+        if (enableRestartSchedule) {
+          try {
+            await createRestartScheduleMutation.mutateAsync({
+              serverId: templateServerName,
+            })
+          } catch {
+            // Restart schedule creation failed, but don't block the flow
+          }
+        }
+
+        if (selectedArchiveFile) {
+          try {
+            const result = await populateServerMutation.mutateAsync({
+              serverId: templateServerName,
+              archiveFilename: selectedArchiveFile,
+            })
+            setCreatedServerId(templateServerName)
+            setPopulateTaskId(result.task_id)
+            setIsPopulateProgressModalVisible(true)
+          } catch (populateError: any) {
+            toast.warning(`服务器 "${templateServerName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
+            await triggerDNSUpdateAndNavigate()
+          }
+        } else {
+          await triggerDNSUpdateAndNavigate()
+        }
+      } else {
+        if (!validateServerName()) return
+        if (!composeContent.trim()) {
+          toast.error('请输入 Docker Compose 配置')
+          return
+        }
+
+        await createServerMutation.mutateAsync({
+          serverId: serverName,
+          yamlContent: composeContent,
+        })
+
         if (enableRestartSchedule) {
           try {
             await createRestartScheduleMutation.mutateAsync({
@@ -152,7 +193,6 @@ const ServerNew: React.FC = () => {
           }
         }
 
-        // Handle archive population
         if (selectedArchiveFile) {
           try {
             const result = await populateServerMutation.mutateAsync({
@@ -163,42 +203,7 @@ const ServerNew: React.FC = () => {
             setPopulateTaskId(result.task_id)
             setIsPopulateProgressModalVisible(true)
           } catch (populateError: any) {
-            message.warning(`服务器 "${serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
-            await triggerDNSUpdateAndNavigate()
-          }
-        } else {
-          await triggerDNSUpdateAndNavigate()
-        }
-      } else {
-        // Traditional mode
-        const values = await form.validateFields()
-
-        await createServerMutation.mutateAsync({
-          serverId: values.serverName,
-          yamlContent: composeContent,
-        })
-
-        if (enableRestartSchedule) {
-          try {
-            await createRestartScheduleMutation.mutateAsync({
-              serverId: values.serverName,
-            })
-          } catch {
-            // Restart schedule creation failed, but don't block the flow
-          }
-        }
-
-        if (selectedArchiveFile) {
-          try {
-            const result = await populateServerMutation.mutateAsync({
-              serverId: values.serverName,
-              archiveFilename: selectedArchiveFile,
-            })
-            setCreatedServerId(values.serverName)
-            setPopulateTaskId(result.task_id)
-            setIsPopulateProgressModalVisible(true)
-          } catch (populateError: any) {
-            message.warning(`服务器 "${values.serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
+            toast.warning(`服务器 "${serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
             await triggerDNSUpdateAndNavigate()
           }
         } else {
@@ -213,7 +218,7 @@ const ServerNew: React.FC = () => {
   const handlePopulateComplete = async () => {
     setIsPopulateProgressModalVisible(false)
     setPopulateTaskId(null)
-    message.success(`服务器 "${createdServerId}" 创建并填充完成!`)
+    toast.success(`服务器 "${createdServerId}" 创建并填充完成!`)
     await triggerDNSUpdateAndNavigate()
   }
 
@@ -225,7 +230,6 @@ const ServerNew: React.FC = () => {
 
   const isLoading = createServerMutation.isPending || populateServerMutation.isPending || createRestartScheduleMutation.isPending
 
-  // Validate template form data against schema
   const isTemplateFormValid = !!selectedTemplateId && !!templateSchema?.json_schema &&
     validator.isValid(templateSchema.json_schema as RJSFSchema, templateFormData, templateSchema.json_schema as RJSFSchema)
 
@@ -233,96 +237,95 @@ const ServerNew: React.FC = () => {
     <div className="space-y-4">
       <PageHeader
         title="新建服务器"
-        icon={<PlusOutlined />}
+        icon={<Plus className="h-5 w-5" />}
       />
 
-      <Alert
-        message="创建服务器说明"
-        description="创建新的 Minecraft 服务器。可以使用模板快速创建，或使用传统模式手动编辑 Docker Compose 配置。"
-        type="info"
-        showIcon
-        closable
-      />
+      <Alert>
+        <AlertTitle>创建服务器说明</AlertTitle>
+        <AlertDescription>
+          创建新的 Minecraft 服务器。可以使用模板快速创建，或使用传统模式手动编辑 Docker Compose 配置。
+        </AlertDescription>
+      </Alert>
 
       <Card>
-        <Tabs
-          activeKey={creationMode}
-          onChange={(key) => setCreationMode(key as CreationMode)}
-          items={[
-            {
-              key: 'template',
-              label: (
-                <span>
-                  <SnippetsOutlined /> 模板模式
-                </span>
-              ),
-              children: (
-                <TemplateCreationMode
-                  selectedTemplateId={selectedTemplateId}
-                  setSelectedTemplateId={setSelectedTemplateId}
-                  templateFormData={templateFormData}
-                  setTemplateFormData={setTemplateFormData}
-                />
-              ),
-            },
-            {
-              key: 'traditional',
-              label: (
-                <span>
-                  <CodeOutlined /> 传统模式
-                </span>
-              ),
-              children: (
-                <TraditionalCreationMode
-                  form={form}
-                  composeContent={composeContent}
-                  setComposeContent={setComposeContent}
-                />
-              ),
-            },
-          ]}
-        />
+        <CardContent className="pt-6">
+          <Tabs value={creationMode} onValueChange={(key) => setCreationMode(key as CreationMode)}>
+            <TabsList>
+              <TabsTrigger value="template">
+                <FileText className="mr-1 h-4 w-4" />
+                模板模式
+              </TabsTrigger>
+              <TabsTrigger value="traditional">
+                <Code className="mr-1 h-4 w-4" />
+                传统模式
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="template">
+              <TemplateCreationMode
+                selectedTemplateId={selectedTemplateId}
+                setSelectedTemplateId={setSelectedTemplateId}
+                templateFormData={templateFormData}
+                setTemplateFormData={setTemplateFormData}
+              />
+            </TabsContent>
+            <TabsContent value="traditional">
+              <TraditionalCreationMode
+                serverName={serverName}
+                setServerName={setServerName}
+                serverNameError={serverNameError}
+                setServerNameError={setServerNameError}
+                composeContent={composeContent}
+                setComposeContent={setComposeContent}
+              />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
       </Card>
 
-      {/* Restart Schedule */}
-      <Card title="自动重启计划">
-        <div className="flex items-center space-x-3">
-          <Switch
-            checked={enableRestartSchedule}
-            onChange={setEnableRestartSchedule}
-            size="default"
-          />
-          <span className={enableRestartSchedule ? 'text-green-600' : 'text-gray-500'}>
-            {enableRestartSchedule ? '已启用' : '已禁用'}
-          </span>
-        </div>
-        {enableRestartSchedule && (
-          <div className="text-sm text-gray-500 mt-2">
-            系统将自动选择与现有备份任务不冲突的时间创建重启计划
+      <Card>
+        <CardHeader>
+          <CardTitle>自动重启计划</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={enableRestartSchedule}
+              onCheckedChange={setEnableRestartSchedule}
+            />
+            <span className={enableRestartSchedule ? 'text-green-600' : 'text-muted-foreground'}>
+              {enableRestartSchedule ? '已启用' : '已禁用'}
+            </span>
           </div>
-        )}
+          {enableRestartSchedule && (
+            <p className="text-sm text-muted-foreground mt-2">
+              系统将自动选择与现有备份任务不冲突的时间创建重启计划
+            </p>
+          )}
+        </CardContent>
       </Card>
 
-      {/* Archive Selection */}
-      <Card title="服务器数据 (可选)">
-        <div className="space-y-4">
-          <Text type="secondary">
+      <Card>
+        <CardHeader>
+          <CardTitle>服务器数据 (可选)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
             可以选择压缩包文件来填充服务器数据。如果不选择，将创建空的服务器。
-          </Text>
+          </p>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
             <Button
-              icon={<FileZipOutlined />}
+              variant="outline"
               onClick={() => setIsArchiveModalVisible(true)}
-              size="large"
             >
+              <FileArchive className="mr-1 h-4 w-4" />
               选择压缩包文件
             </Button>
 
             {selectedArchiveFile && (
-              <div className="flex items-center space-x-2">
-                <Text strong>已选择: {selectedArchiveFile}</Text>
-                <Button size="small" type="link" onClick={handleRemoveArchive}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">已选择: {selectedArchiveFile}</span>
+                <Button variant="link" size="sm" onClick={handleRemoveArchive}>
                   移除
                 </Button>
               </div>
@@ -330,50 +333,49 @@ const ServerNew: React.FC = () => {
           </div>
 
           {selectedArchiveFile && (
-            <Alert
-              message="已选择压缩包文件"
-              description={`压缩包 "${selectedArchiveFile}" 将在服务器创建后自动解压到服务器数据目录中。`}
-              type="success"
-              showIcon
-            />
+            <Alert>
+              <AlertTitle className="text-green-600">已选择压缩包文件</AlertTitle>
+              <AlertDescription>压缩包 &quot;{selectedArchiveFile}&quot; 将在服务器创建后自动解压到服务器数据目录中。</AlertDescription>
+            </Alert>
           )}
-        </div>
+        </CardContent>
       </Card>
 
-      <Divider />
+      <Separator />
 
-      {/* Create Button */}
       <Card>
-        <div className="flex justify-between items-center">
-          <div>
-            <Text strong>准备创建服务器</Text>
-            <br />
-            <Text type="secondary">
-              {creationMode === 'template'
-                ? isTemplateFormValid
-                  ? '将使用模板创建服务器'
-                  : selectedTemplateId
-                    ? '请填写所有必填参数'
-                    : '请先选择一个模板'
-                : composeContent
-                  ? '将使用自定义 Docker Compose 配置创建服务器'
-                  : '请先输入 Docker Compose 配置'
-              }
-            </Text>
-          </div>
-          <Space>
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="font-semibold">准备创建服务器</p>
+              <p className="text-sm text-muted-foreground">
+                {creationMode === 'template'
+                  ? isTemplateFormValid
+                    ? '将使用模板创建服务器'
+                    : selectedTemplateId
+                      ? '请填写所有必填参数'
+                      : '请先选择一个模板'
+                  : composeContent
+                    ? '将使用自定义 Docker Compose 配置创建服务器'
+                    : '请先输入 Docker Compose 配置'
+                }
+              </p>
+            </div>
             <Button
-              type="primary"
-              size="large"
-              icon={<PlayCircleOutlined />}
-              loading={isLoading}
               onClick={handleCreate}
               disabled={
-                creationMode === 'template'
-                  ? !isTemplateFormValid
-                  : !composeContent
+                isLoading || (
+                  creationMode === 'template'
+                    ? !isTemplateFormValid
+                    : !composeContent
+                )
               }
             >
+              {isLoading ? (
+                <Spinner className="mr-2 size-4" />
+              ) : (
+                <Play className="mr-1 h-4 w-4" />
+              )}
               {createServerMutation.isPending
                 ? '创建中...'
                 : createRestartScheduleMutation.isPending
@@ -382,11 +384,10 @@ const ServerNew: React.FC = () => {
                     ? '填充数据中...'
                     : '创建服务器'}
             </Button>
-          </Space>
-        </div>
+          </div>
+        </CardContent>
       </Card>
 
-      {/* Shared Modals */}
       <ArchiveSelectionModal
         open={isArchiveModalVisible}
         onCancel={() => setIsArchiveModalVisible(false)}
