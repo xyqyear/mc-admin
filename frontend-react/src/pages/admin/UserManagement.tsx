@@ -1,143 +1,191 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
-  Card,
-  Table,
-  Button,
-  Modal,
-  Form,
-  Input,
+  Crown,
+  Plus,
+  Trash2,
+  User,
+  Users,
+} from 'lucide-react'
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+import { useForm, Controller } from 'react-hook-form'
+import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Field, FieldLabel, FieldError } from '@/components/ui/field'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Select,
-  Popconfirm,
-  Space,
-  Alert,
-  Tag,
-  Typography,
-  type TableProps
-} from 'antd'
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
-  PlusOutlined,
-  DeleteOutlined,
-  UserOutlined,
-  CrownOutlined,
-  TeamOutlined
-} from '@ant-design/icons'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
 import PageHeader from '@/components/layout/PageHeader'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useAllUsers } from '@/hooks/queries/base/useUserQueries'
 import { useCreateUser, useDeleteUser } from '@/hooks/mutations/useUserMutations'
-import { UserRole, type User, type UserCreate } from '@/types/User'
+import { UserRole, type UserCreate, type User as UserType } from '@/types/User'
 
-const { Text } = Typography
+const createUserSchema = z.object({
+  username: z
+    .string()
+    .min(3, '用户名至少需要3个字符')
+    .max(50, '用户名不能超过50个字符'),
+  password: z
+    .string()
+    .min(6, '密码至少需要6个字符'),
+  role: z.enum([UserRole.ADMIN, UserRole.OWNER]),
+})
+
+type CreateUserForm = z.infer<typeof createUserSchema>
+
+const staticColumns: ColumnDef<UserType, any>[] = [
+  {
+    accessorKey: 'username',
+    header: '用户名',
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2">
+        {row.original.role === UserRole.OWNER ? (
+          <Crown className="h-4 w-4 text-yellow-500" />
+        ) : (
+          <User className="h-4 w-4" />
+        )}
+        <span>{row.original.username}</span>
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'role',
+    header: '权限',
+    cell: ({ row }) => {
+      const role = row.original.role
+      return role === UserRole.OWNER ? (
+        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+          超级管理员
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+          管理员
+        </Badge>
+      )
+    },
+  },
+  {
+    accessorKey: 'created_at',
+    header: '注册日期',
+    cell: ({ row }) => new Date(row.original.created_at).toLocaleString('zh-CN'),
+  },
+]
 
 const UserManagement: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [createForm] = Form.useForm()
 
-  // Data fetching
+  const { confirm, ConfirmDialog } = useConfirm()
+
   const usersQuery = useAllUsers()
   const users = usersQuery.data || []
 
-  // Mutations
   const createUserMutation = useCreateUser()
   const deleteUserMutation = useDeleteUser()
 
-  // Modal handlers
+  const {
+    control,
+    handleSubmit,
+    reset,
+  } = useForm<CreateUserForm>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: {
+      username: '',
+      password: '',
+      role: UserRole.ADMIN,
+    },
+  })
+
+  const actionColumn: ColumnDef<UserType, any> = useMemo(() => ({
+    id: 'actions',
+    header: '操作',
+    cell: ({ row }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-destructive hover:text-destructive"
+        onClick={() =>
+          confirm({
+            title: '删除用户',
+            description: `确定要删除用户 "${row.original.username}" 吗？`,
+            confirmText: '确定',
+            cancelText: '取消',
+            variant: 'destructive',
+            onConfirm: async () => { await deleteUserMutation.mutateAsync(row.original.id) },
+          })
+        }
+      >
+        <Trash2 className="mr-1 h-3.5 w-3.5" />
+        删除
+      </Button>
+    ),
+  }), [confirm, deleteUserMutation])
+
+  const allColumns = useMemo(() => [...staticColumns, actionColumn], [actionColumn])
+
+  const table = useReactTable({
+    data: users,
+    columns: allColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => String(row.id),
+    autoResetPageIndex: false,
+    initialState: { pagination: { pageSize: 10 } },
+  })
+
   const showCreateModal = () => {
+    reset({ username: '', password: '', role: UserRole.ADMIN })
     setIsCreateModalOpen(true)
   }
 
-  const handleCreateCancel = () => {
+  const handleCreateSubmit = handleSubmit(async (values: CreateUserForm) => {
+    await createUserMutation.mutateAsync(values as UserCreate)
     setIsCreateModalOpen(false)
-    createForm.resetFields()
-  }
-
-  const handleCreateSubmit = async () => {
-    try {
-      const values = await createForm.validateFields()
-      await createUserMutation.mutateAsync(values as UserCreate)
-      setIsCreateModalOpen(false)
-      createForm.resetFields()
-    } catch {
-      // Error is handled by the mutation
-    }
-  }
-
-  const handleDeleteUser = async (userId: number) => {
-    await deleteUserMutation.mutateAsync(userId)
-  }
-
-  // Table columns
-  const columns: TableProps<User>['columns'] = [
-    {
-      title: '用户名',
-      dataIndex: 'username',
-      key: 'username',
-      render: (username: string, record: User) => (
-        <Space>
-          {record.role === UserRole.OWNER ? (
-            <CrownOutlined style={{ color: '#faad14' }} />
-          ) : (
-            <UserOutlined />
-          )}
-          {username}
-        </Space>
-      ),
-    },
-    {
-      title: '权限',
-      dataIndex: 'role',
-      key: 'role',
-      render: (role: UserRole) => (
-        <Tag color={role === UserRole.OWNER ? 'gold' : 'blue'}>
-          {role === UserRole.OWNER ? '超级管理员' : '管理员'}
-        </Tag>
-      ),
-    },
-    {
-      title: '注册日期',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) =>
-        new Date(date).toLocaleString('zh-CN'),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_, record: User) => (
-        <Popconfirm
-          title="删除用户"
-          description={`确定要删除用户 "${record.username}" 吗？`}
-          onConfirm={() => handleDeleteUser(record.id)}
-          okText="确定"
-          cancelText="取消"
-          disabled={deleteUserMutation.isPending}
-        >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            loading={deleteUserMutation.isPending}
-            size="small"
-          >
-            删除
-          </Button>
-        </Popconfirm>
-      ),
-    },
-  ]
+    reset()
+  })
 
   if (usersQuery.isError) {
     return (
-      <Alert
-        title="加载用户数据失败"
-        description={usersQuery.error?.message || '请检查网络连接或稍后重试'}
-        type="error"
-        showIcon
-        action={
-          <Button size="small" onClick={() => usersQuery.refetch()}>
+      <Alert variant="destructive">
+        <AlertTitle>加载用户数据失败</AlertTitle>
+        <AlertDescription className="flex items-center justify-between">
+          <span>{usersQuery.error?.message || '请检查网络连接或稍后重试'}</span>
+          <Button size="sm" variant="outline" onClick={() => usersQuery.refetch()}>
             重试
           </Button>
-        }
-      />
+        </AlertDescription>
+      </Alert>
     )
   }
 
@@ -145,109 +193,165 @@ const UserManagement: React.FC = () => {
     <div className="space-y-4">
       <PageHeader
         title="用户管理"
-        icon={<UserOutlined />}
+        icon={<User />}
         actions={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={showCreateModal}
-          >
+          <Button onClick={showCreateModal}>
+            <Plus className="mr-1 h-4 w-4" />
             新建用户
           </Button>
         }
       />
 
-      <Card
-        title={
-          <div className="flex items-center space-x-2">
-            <TeamOutlined />
-            <span>用户列表</span>
-            <Text type="secondary" className="text-sm font-normal">
-              ({users.length} 个用户)
-            </Text>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              <CardTitle className="text-base">用户列表</CardTitle>
+              <span className="text-sm text-muted-foreground font-normal">
+                ({users.length} 个用户)
+              </span>
+            </div>
+            <CardDescription>
+              管理系统用户账户和权限
+            </CardDescription>
           </div>
-        }
-        extra={
-          <Text type="secondary" className="text-sm">
-            管理系统用户账户和权限
-          </Text>
-        }
-      >
-        <Table<User>
-          columns={columns}
-          dataSource={users}
-          rowKey="id"
-          loading={usersQuery.isLoading}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 个用户`,
-          }}
-        />
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map(headerGroup => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map(header => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows.length ? (
+                  table.getRowModel().rows.map(row => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map(cell => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={allColumns.length} className="h-24 text-center text-muted-foreground">
+                      暂无用户数据
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
       </Card>
 
-      {/* 新建用户模态框 */}
-      <Modal
-        title="新建用户"
-        open={isCreateModalOpen}
-        onOk={handleCreateSubmit}
-        onCancel={handleCreateCancel}
-        confirmLoading={createUserMutation.isPending}
-        okText="创建"
-        cancelText="取消"
-      >
-        <Form
-          form={createForm}
-          layout="vertical"
-          name="createUser"
-        >
-          <Form.Item
-            name="username"
-            label="用户名"
-            rules={[
-              { required: true, message: '请输入用户名' },
-              { min: 3, message: '用户名至少需要3个字符' },
-              { max: 50, message: '用户名不能超过50个字符' },
-            ]}
-          >
-            <Input placeholder="请输入用户名" />
-          </Form.Item>
+      {/* Create user dialog */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>新建用户</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateSubmit} className="space-y-4">
+            <Controller
+              name="username"
+              control={control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name}>用户名</FieldLabel>
+                  <Input
+                    {...field}
+                    id={field.name}
+                    placeholder="请输入用户名"
+                    aria-invalid={fieldState.invalid}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
 
-          <Form.Item
-            name="password"
-            label="密码"
-            rules={[
-              { required: true, message: '请输入密码' },
-              { min: 6, message: '密码至少需要6个字符' },
-            ]}
-          >
-            <Input.Password placeholder="请输入密码" />
-          </Form.Item>
+            <Controller
+              name="password"
+              control={control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name}>密码</FieldLabel>
+                  <Input
+                    {...field}
+                    id={field.name}
+                    type="password"
+                    placeholder="请输入密码"
+                    aria-invalid={fieldState.invalid}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
 
-          <Form.Item
-            name="role"
-            label="角色"
-            rules={[{ required: true, message: '请选择角色' }]}
-            initialValue={UserRole.ADMIN}
-          >
-            <Select placeholder="请选择角色">
-              <Select.Option value={UserRole.ADMIN}>
-                <Space>
-                  <UserOutlined />
-                  管理员
-                </Space>
-              </Select.Option>
-              <Select.Option value={UserRole.OWNER}>
-                <Space>
-                  <CrownOutlined style={{ color: '#faad14' }} />
-                  超级管理员
-                </Space>
-              </Select.Option>
-            </Select>
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Controller
+              name="role"
+              control={control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel>角色</FieldLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => v && field.onChange(v)}
+                    itemToStringLabel={(v) =>
+                      v === UserRole.OWNER ? '超级管理员' : '管理员'
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="请选择角色" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UserRole.ADMIN}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          管理员
+                        </div>
+                      </SelectItem>
+                      <SelectItem value={UserRole.OWNER}>
+                        <div className="flex items-center gap-2">
+                          <Crown className="h-4 w-4 text-yellow-500" />
+                          超级管理员
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateModalOpen(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={createUserMutation.isPending}>
+                创建
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog />
     </div>
   )
 }

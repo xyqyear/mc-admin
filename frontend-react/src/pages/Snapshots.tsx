@@ -1,46 +1,151 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'
+import { toast } from 'sonner'
 import {
-  Card,
-  Table,
-  Button,
-  Tooltip,
-  Alert,
-  Tag,
-  Typography,
-  Popconfirm,
-  Modal,
-  Space,
-  type TableProps,
-} from 'antd';
+  History,
+  Server,
+  Trash2,
+  Plus,
+  RotateCw,
+  Unlock,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  Loader2,
+} from 'lucide-react'
 import {
-  PlusOutlined,
-  ReloadOutlined,
-  HistoryOutlined,
-  CloudServerOutlined,
-  DeleteOutlined,
-  UnlockOutlined,
-} from '@ant-design/icons';
-import PageHeader from '@/components/layout/PageHeader';
-import type { Snapshot } from '@/hooks/api/snapshotApi';
-import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries';
-import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations';
-import { formatDateTime } from '@/utils/formatUtils';
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
 
-const { Text } = Typography;
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+import PageHeader from '@/components/layout/PageHeader'
+import { useConfirm } from '@/hooks/useConfirm'
+import type { Snapshot } from '@/hooks/api/snapshotApi'
+import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
+import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
+import { formatDateTime } from '@/utils/formatUtils'
+
+const SortableHeader = ({ column, title }: { column: any; title: string }) => (
+  <Button
+    variant="ghost"
+    size="sm"
+    className="-ml-3"
+    onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+  >
+    {title}
+    <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
+  </Button>
+)
+
+const columns: ColumnDef<Snapshot, any>[] = [
+  {
+    accessorKey: 'short_id',
+    header: '快照ID',
+    size: 100,
+    cell: ({ row }) => {
+      const snapshot = row.original
+      return (
+        <Tooltip>
+          <TooltipTrigger>
+            <Badge variant="outline" className="font-mono bg-blue-50 text-blue-700 border-blue-200">
+              {snapshot.short_id}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>完整ID: {snapshot.id}</TooltipContent>
+        </Tooltip>
+      )
+    },
+  },
+  {
+    accessorKey: 'time',
+    header: ({ column }) => <SortableHeader column={column} title="创建时间" />,
+    size: 180,
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{formatDateTime(row.original.time)}</span>
+    ),
+    sortingFn: (a, b) => new Date(a.original.time).getTime() - new Date(b.original.time).getTime(),
+  },
+  {
+    accessorKey: 'paths',
+    header: '备份路径',
+    cell: ({ row }) => (
+      <div className="space-y-1">
+        {row.original.paths.map((path, index) => (
+          <Badge key={index} variant="outline" className="font-mono text-xs">
+            {path}
+          </Badge>
+        ))}
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'program_version',
+    header: '版本信息',
+    size: 120,
+    cell: ({ row }) => {
+      const version = row.original.program_version
+      return version ? (
+        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+          {version}
+        </Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">-</span>
+      )
+    },
+  },
+]
 
 const Snapshots: React.FC = () => {
-  const { useGlobalSnapshots, useSnapshotLocks } = useSnapshotQueries();
-  const { useCreateGlobalSnapshot, useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations();
+  const { useGlobalSnapshots, useSnapshotLocks } = useSnapshotQueries()
+  const { useCreateGlobalSnapshot, useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations()
 
-  // 分页状态管理
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
-  // 解锁对话框状态
-  const [unlockModalVisible, setUnlockModalVisible] = useState(false);
-  const [locksInfo, setLocksInfo] = useState<string>('');
-  const [unlockOutput, setUnlockOutput] = useState<string>('');
-  const [isLoadingLocks, setIsLoadingLocks] = useState(false);
+  // Unlock dialog state
+  const [unlockModalVisible, setUnlockModalVisible] = useState(false)
+  const [locksInfo, setLocksInfo] = useState<string>('')
+  const [unlockOutput, setUnlockOutput] = useState<string>('')
+  const [isLoadingLocks, setIsLoadingLocks] = useState(false)
+
+  const { confirm, ConfirmDialog } = useConfirm()
 
   const {
     data: snapshots = [],
@@ -48,305 +153,299 @@ const Snapshots: React.FC = () => {
     isError,
     error,
     refetch,
-  } = useGlobalSnapshots();
-  const { refetch: refetchSnapshotLocks } = useSnapshotLocks(false);
+  } = useGlobalSnapshots()
+  const { refetch: refetchSnapshotLocks } = useSnapshotLocks(false)
 
-  const createSnapshotMutation = useCreateGlobalSnapshot();
-  const deleteSnapshotMutation = useDeleteSnapshot();
-  const unlockMutation = useUnlockRepository();
+  const createSnapshotMutation = useCreateGlobalSnapshot()
+  const deleteSnapshotMutation = useDeleteSnapshot()
+  const unlockMutation = useUnlockRepository()
+
+  const actionColumn: ColumnDef<Snapshot, any> = useMemo(() => ({
+    id: 'actions',
+    header: '操作',
+    size: 100,
+    cell: ({ row }) => (
+      <Button
+        variant="destructive"
+        size="sm"
+        onClick={() =>
+          confirm({
+            title: '删除快照',
+            description: `确定要删除此快照吗？快照ID: ${row.original.short_id}`,
+            confirmText: '确认删除',
+            cancelText: '取消',
+            variant: 'destructive',
+            onConfirm: async () => { await deleteSnapshotMutation.mutateAsync(row.original.id) },
+          })
+        }
+      >
+        <Trash2 className="mr-1 h-3.5 w-3.5" />
+        删除
+      </Button>
+    ),
+  }), [confirm, deleteSnapshotMutation])
+
+  const allColumns = useMemo(() => [...columns, actionColumn], [actionColumn])
+
+  const table = useReactTable({
+    data: snapshots,
+    columns: allColumns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => row.id,
+    autoResetPageIndex: false,
+    initialState: { pagination: { pageSize: 20 } },
+  })
+
+  const pageIndex = table.getState().pagination.pageIndex
+  const pageSize = table.getState().pagination.pageSize
+  const totalRows = table.getFilteredRowModel().rows.length
+  const start = totalRows === 0 ? 0 : pageIndex * pageSize + 1
+  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
 
   const handleCreateSnapshot = () => {
-    createSnapshotMutation.mutate();
-  };
-
-  const handleDeleteSnapshot = (snapshotId: string) => {
-    deleteSnapshotMutation.mutate(snapshotId);
-  };
+    createSnapshotMutation.mutate()
+  }
 
   const handleUnlockClick = async () => {
-    setIsLoadingLocks(true);
-    setUnlockOutput('');
+    setIsLoadingLocks(true)
+    setUnlockOutput('')
 
     try {
-      // 首先获取锁信息
-      const { data } = await refetchSnapshotLocks();
+      const { data } = await refetchSnapshotLocks()
       if (!data) {
-        throw new Error('未获取到锁信息');
+        throw new Error('未获取到锁信息')
       }
-      setLocksInfo(data.locks);
-      setUnlockModalVisible(true);
-    } catch (error: any) {
-      Modal.error({
-        title: '获取锁信息失败',
-        content: error?.message || '未知错误',
-      });
+      setLocksInfo(data.locks)
+      setUnlockModalVisible(true)
+    } catch (err: any) {
+      toast.error('获取锁信息失败', { description: err?.message || '未知错误' })
     } finally {
-      setIsLoadingLocks(false);
+      setIsLoadingLocks(false)
     }
-  };
+  }
 
   const handleUnlock = () => {
-    unlockMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        setUnlockOutput(data.output);
-        Modal.success({
-          title: '解锁成功',
-          content: data.message,
-        });
+    confirm({
+      title: '确认解锁',
+      description: '确定要解锁 Restic 仓库吗？这将移除所有陈旧的锁。',
+      confirmText: '确认解锁',
+      cancelText: '取消',
+      variant: 'destructive',
+      onConfirm: async () => {
+        const data = await unlockMutation.mutateAsync(undefined)
+        setUnlockOutput(data.output)
+        toast.success('解锁成功', { description: data.message })
       },
-    });
-  };
-
-
-  const columns: TableProps<Snapshot>['columns'] = [
-    {
-      title: '快照ID',
-      dataIndex: 'short_id',
-      key: 'short_id',
-      width: 100,
-      render: (shortId: string, record: Snapshot) => (
-        <Tooltip title={`完整ID: ${record.id}`}>
-          <Tag color="blue" className="font-mono">
-            {shortId}
-          </Tag>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 180,
-      render: (time: string) => (
-        <Text className="font-mono text-sm">
-          {formatDateTime(time)}
-        </Text>
-      ),
-      sorter: (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
-      defaultSortOrder: 'descend',
-    },
-    {
-      title: '备份路径',
-      dataIndex: 'paths',
-      key: 'paths',
-      render: (paths: string[]) => (
-        <div className="space-y-1">
-          {paths.map((path, index) => (
-            <Tag key={index} className="font-mono text-xs">
-              {path}
-            </Tag>
-          ))}
-        </div>
-      ),
-    },
-    {
-      title: '版本信息',
-      dataIndex: 'program_version',
-      key: 'program_version',
-      width: 120,
-      render: (version?: string) => (
-        version ? (
-          <Tag color="green" className="text-xs">
-            {version}
-          </Tag>
-        ) : (
-          <Text type="secondary" className="text-xs">-</Text>
-        )
-      ),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 100,
-      fixed: 'right',
-      render: (_: any, record: Snapshot) => (
-        <Popconfirm
-          title="删除快照"
-          description={
-            <div>
-              <div>确定要删除此快照吗？</div>
-              <div className="text-xs text-gray-500 mt-1">
-                快照ID: {record.short_id}
-              </div>
-            </div>
-          }
-          onConfirm={() => handleDeleteSnapshot(record.id)}
-          okText="确认删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            danger
-            size="small"
-            icon={<DeleteOutlined />}
-            loading={deleteSnapshotMutation.isPending}
-          >
-            删除
-          </Button>
-        </Popconfirm>
-      ),
-    },
-  ];
+    })
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="快照管理"
-        icon={<HistoryOutlined />}
+        icon={<History />}
         actions={
           <>
             <Button
-              danger
-              icon={<UnlockOutlined />}
+              variant="destructive"
               onClick={handleUnlockClick}
-              loading={isLoadingLocks}
+              disabled={isLoadingLocks}
             >
+              {isLoadingLocks ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Unlock className="mr-1 h-4 w-4" />}
               解锁仓库
             </Button>
             <Button
-              icon={<ReloadOutlined />}
+              variant="outline"
               onClick={() => refetch()}
-              loading={isLoading}
+              disabled={isLoading}
             >
+              <RotateCw className="mr-1 h-4 w-4" />
               刷新
             </Button>
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
               onClick={handleCreateSnapshot}
-              loading={createSnapshotMutation.isPending}
+              disabled={createSnapshotMutation.isPending}
             >
+              {createSnapshotMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
               创建全局快照
             </Button>
           </>
         }
       />
 
-      {/* 错误提示 */}
       {isError && (
-        <Alert
-          title="加载快照列表失败"
-          description={(error as any)?.message || '发生未知错误'}
-          type="error"
-          showIcon
-          closable
-          action={
-            <Button size="small" danger onClick={() => refetch()}>
+        <Alert variant="destructive">
+          <AlertTitle>加载快照列表失败</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{(error as any)?.message || '发生未知错误'}</span>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
               重试
             </Button>
-          }
-        />
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* 快照列表 */}
-      <Card
-        title={
-          <div className="flex items-center space-x-2">
-            <CloudServerOutlined />
-            <span>快照列表</span>
-            <Text type="secondary" className="text-sm font-normal">
-              ({snapshots.length} 个快照)
-            </Text>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Server className="h-5 w-5" />
+              <CardTitle className="text-base">快照列表</CardTitle>
+              <span className="text-sm text-muted-foreground font-normal">
+                ({snapshots.length} 个快照)
+              </span>
+            </div>
+            <CardDescription>
+              显示所有服务器的快照记录
+            </CardDescription>
           </div>
-        }
-        extra={
-          <Text type="secondary" className="text-sm">
-            显示所有服务器的快照记录
-          </Text>
-        }
-      >
-        <Table
-          dataSource={snapshots}
-          columns={columns}
-          rowKey="id"
-          size="small"
-          scroll={{ x: 'max-content' }}
-          loading={isLoading}
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            pageSizeOptions: ['10', '20', '50', '100'],
-            showTotal: (total, range) =>
-              `${range[0]}-${range[1]} 共 ${total} 个快照`,
-            simple: false,
-            onChange: (page, size) => {
-              setCurrentPage(page);
-              if (size !== pageSize) {
-                setPageSize(size);
-                setCurrentPage(1); // Reset to first page when page size changes
-              }
-            },
-            onShowSizeChange: (_, size) => {
-              setPageSize(size);
-              setCurrentPage(1); // Reset to first page when page size changes
-            },
-          }}
-          locale={{
-            emptyText: (
-              <div className="py-8 text-center">
-                <CloudServerOutlined className="text-4xl text-gray-300 mb-2" />
-                <div className="text-gray-500">暂无快照数据</div>
-                <div className="text-gray-400 text-sm mt-1">
-                  点击&quot;创建全局快照&quot;开始备份服务器数据
-                </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner className="size-8" />
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map(headerGroup => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map(header => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map(row => (
+                        <TableRow key={row.id}>
+                          {row.getVisibleCells().map(cell => (
+                            <TableCell key={cell.id}>
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={allColumns.length} className="h-24 text-center">
+                          <div className="py-8">
+                            <Server className="mx-auto h-10 w-10 text-muted-foreground/30 mb-2" />
+                            <div className="text-muted-foreground">暂无快照数据</div>
+                            <div className="text-muted-foreground/70 text-sm mt-1">
+                              点击&ldquo;创建全局快照&rdquo;开始备份服务器数据
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            ),
-          }}
-        />
+
+              {totalRows > 0 && (
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-sm text-muted-foreground">
+                    {start}-{end} 共 {totalRows} 个快照
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(v) => v && table.setPageSize(Number(v))}
+                      itemToStringLabel={(v) => `${v}条/页`}
+                    >
+                      <SelectTrigger className="w-22.5">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[10, 20, 50, 100].map(size => (
+                          <SelectItem key={size} value={String(size)}>
+                            {size}条/页
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => table.previousPage()}
+                      disabled={!table.getCanPreviousPage()}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {pageIndex + 1} / {table.getPageCount()}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => table.nextPage()}
+                      disabled={!table.getCanNextPage()}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
       </Card>
 
-      {/* 解锁仓库对话框 */}
-      <Modal
-        title="解锁 Restic 仓库"
-        open={unlockModalVisible}
-        onCancel={() => setUnlockModalVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setUnlockModalVisible(false)}>
-            取消
-          </Button>,
-          <Popconfirm
-            key="unlock"
-            title="确认解锁"
-            description="确定要解锁 Restic 仓库吗？这将移除所有陈旧的锁。"
-            onConfirm={handleUnlock}
-            okText="确认解锁"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Button
-              danger
-              type="primary"
-              loading={unlockMutation.isPending}
-              disabled={unlockOutput !== ''}
-            >
-              解锁
-            </Button>
-          </Popconfirm>,
-        ]}
-        width={700}
-      >
-        <Space orientation="vertical" className="w-full" size="large">
-          <div>
-            <Text strong>当前锁信息：</Text>
-            <pre className="mt-2 p-3 bg-gray-100 rounded border border-gray-300 overflow-auto max-h-60">
-              {locksInfo || '无锁信息'}
-            </pre>
-          </div>
-
-          {unlockOutput && (
+      {/* Unlock repository dialog */}
+      <Dialog open={unlockModalVisible} onOpenChange={setUnlockModalVisible}>
+        <DialogContent className="sm:max-w-175">
+          <DialogHeader>
+            <DialogTitle>解锁 Restic 仓库</DialogTitle>
+            <DialogDescription>查看并管理 Restic 仓库锁</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
             <div>
-              <Text strong className="text-green-600">解锁输出：</Text>
-              <pre className="mt-2 p-3 bg-green-50 rounded border border-green-300 overflow-auto max-h-60">
-                {unlockOutput}
+              <span className="font-semibold text-sm">当前锁信息：</span>
+              <pre className="mt-2 p-3 bg-muted rounded-md border overflow-auto max-h-60 text-sm">
+                {locksInfo || '无锁信息'}
               </pre>
             </div>
-          )}
-        </Space>
-      </Modal>
-    </div>
-  );
-};
 
-export default Snapshots;
+            {unlockOutput && (
+              <div>
+                <span className="font-semibold text-sm text-green-600">解锁输出：</span>
+                <pre className="mt-2 p-3 bg-green-50 rounded-md border border-green-200 overflow-auto max-h-60 text-sm">
+                  {unlockOutput}
+                </pre>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUnlockModalVisible(false)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleUnlock}
+              disabled={unlockMutation.isPending || unlockOutput !== ''}
+            >
+              {unlockMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              解锁
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog />
+    </div>
+  )
+}
+
+export default Snapshots

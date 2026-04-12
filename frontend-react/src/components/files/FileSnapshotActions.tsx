@@ -1,6 +1,58 @@
-import React, { useState } from 'react'
-import { Button, Modal, Table, Tooltip, message, Space, Tag, Typography, Drawer, Divider, Popconfirm, type TableProps } from 'antd'
-import { DatabaseOutlined, HistoryOutlined, EyeOutlined } from '@ant-design/icons'
+import React, { useState, useMemo } from 'react'
+import { toast } from 'sonner'
+import {
+  Database,
+  History,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  Loader2,
+} from 'lucide-react'
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+import { useConfirm } from '@/hooks/useConfirm'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
 import { formatDateTime } from '@/utils/formatUtils'
@@ -8,17 +60,9 @@ import { formatUtils } from '@/utils/serverUtils'
 import type { FileItem } from '@/types/Server'
 import type { Snapshot, RestorePreviewAction } from '@/hooks/api/snapshotApi'
 
-const { Text } = Typography
+// --- Safety Check Dialog ---
 
-interface FileSnapshotActionsProps {
-  file?: FileItem
-  serverId: string
-  path?: string
-  isServerMode?: boolean
-  onRefresh?: () => void
-}
-
-interface SafetyCheckModalProps {
+interface SafetyCheckDialogProps {
   open: boolean
   onCancel: () => void
   onCreateAndRestore: () => void
@@ -27,62 +71,70 @@ interface SafetyCheckModalProps {
   isServerMode?: boolean
 }
 
-const SafetyCheckModal: React.FC<SafetyCheckModalProps> = ({
+const SafetyCheckDialog: React.FC<SafetyCheckDialogProps> = ({
   open,
   onCancel,
   onCreateAndRestore,
   onContinueWithoutCreate,
   loading = false,
-  isServerMode = false
+  isServerMode = false,
 }) => (
-  <Modal
-    title="安全检查"
-    open={open}
-    onCancel={onCancel}
-    footer={[
-      <Button key="cancel" onClick={onCancel}>
-        取消
-      </Button>,
-      <Button
-        key="continue"
-        type="default"
-        danger
-        onClick={onContinueWithoutCreate}
-        loading={loading}
-      >
-        继续回滚
-      </Button>,
-      <Button
-        key="create"
-        type="primary"
-        onClick={onCreateAndRestore}
-        loading={loading}
-      >
-        创建快照并回滚
-      </Button>,
-    ]}
-  >
-    <div className="space-y-4">
-      <Text type="warning">
-        ⚠️ 检测到{isServerMode ? '整个服务器' : '该路径'}在过去1分钟内没有创建快照。
-      </Text>
-      <Text>
-        为了安全起见，建议您在回滚前先创建一个当前状态的快照。
-      </Text>
-      <div className="bg-gray-50 p-3 rounded">
-        <Text type="secondary">
-          您可以选择：
-        </Text>
-        <ul className="mt-2 ml-4">
-          <li>创建快照并回滚：安全选项，创建备份后再执行回滚</li>
-          <li>继续回滚：直接执行回滚，不创建备份</li>
-        </ul>
+  <Dialog open={open} onOpenChange={(o) => !o && !loading && onCancel()}>
+    <DialogContent showCloseButton={false}>
+      <DialogHeader>
+        <DialogTitle>安全检查</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <p className="text-orange-600">
+          ⚠️ 检测到{isServerMode ? '整个服务器' : '该路径'}在过去1分钟内没有创建快照。
+        </p>
+        <p className="text-sm">
+          为了安全起见，建议您在回滚前先创建一个当前状态的快照。
+        </p>
+        <div className="bg-muted p-3 rounded-md text-sm">
+          <span className="text-muted-foreground">您可以选择：</span>
+          <ul className="mt-2 ml-4 list-disc space-y-1">
+            <li>创建快照并回滚：安全选项，创建备份后再执行回滚</li>
+            <li>继续回滚：直接执行回滚，不创建备份</li>
+          </ul>
+        </div>
       </div>
-    </div>
-  </Modal>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel} disabled={loading}>
+          取消
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={onContinueWithoutCreate}
+          disabled={loading}
+        >
+          {loading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+          继续回滚
+        </Button>
+        <Button onClick={onCreateAndRestore} disabled={loading}>
+          {loading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+          创建快照并回滚
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 )
 
-interface SnapshotSelectionModalProps {
+// --- Snapshot Selection Dialog ---
+
+const SortableHeader = ({ column, title }: { column: any; title: string }) => (
+  <Button
+    variant="ghost"
+    size="sm"
+    className="-ml-3"
+    onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+  >
+    {title}
+    <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
+  </Button>
+)
+
+interface SnapshotSelectionDialogProps {
   open: boolean
   onCancel: () => void
   snapshots: Snapshot[]
@@ -95,7 +147,40 @@ interface SnapshotSelectionModalProps {
   isServerMode?: boolean
 }
 
-const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
+const snapshotColumns: ColumnDef<Snapshot, any>[] = [
+  {
+    accessorKey: 'short_id',
+    header: '快照ID',
+    size: 100,
+    cell: ({ row }) => (
+      <Tooltip>
+        <TooltipTrigger>
+          <Badge variant="outline" className="font-mono bg-blue-50 text-blue-700 border-blue-200">
+            {row.original.short_id}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>完整ID: {row.original.id}</TooltipContent>
+      </Tooltip>
+    ),
+  },
+  {
+    accessorKey: 'time',
+    header: ({ column }) => <SortableHeader column={column} title="创建时间" />,
+    size: 180,
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{formatDateTime(row.original.time)}</span>
+    ),
+    sortingFn: (a, b) => new Date(a.original.time).getTime() - new Date(b.original.time).getTime(),
+  },
+  {
+    accessorKey: 'username',
+    header: '用户',
+    size: 120,
+    cell: ({ row }) => <span className="text-sm">{row.original.username}</span>,
+  },
+]
+
+const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
   open,
   onCancel,
   snapshots,
@@ -105,130 +190,174 @@ const SnapshotSelectionModal: React.FC<SnapshotSelectionModalProps> = ({
   filePath,
   onPreview,
   previewLoading,
-  isServerMode = false
+  isServerMode = false,
 }) => {
-  // 分页状态管理
-  const [pageSize, setPageSize] = useState(10)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
-  // 当模态框打开时重置分页状态
+  const actionColumn: ColumnDef<Snapshot, any> = useMemo(() => ({
+    id: 'actions',
+    header: '操作',
+    size: 180,
+    cell: ({ row }) => (
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPreview(row.original.id)}
+          disabled={previewLoading}
+        >
+          <Eye className="mr-1 h-3.5 w-3.5" />
+          预览
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => onRestore(row.original.id)}
+          disabled={restoreLoading}
+        >
+          {restoreLoading && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+          回滚
+        </Button>
+      </div>
+    ),
+  }), [onPreview, onRestore, previewLoading, restoreLoading])
+
+  const allColumns = useMemo(() => [...snapshotColumns, actionColumn], [actionColumn])
+
+  const table = useReactTable({
+    data: snapshots,
+    columns: allColumns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => row.id,
+    autoResetPageIndex: false,
+    initialState: { pagination: { pageSize: 10 } },
+  })
+
+  const pageIndex = table.getState().pagination.pageIndex
+  const pageSize = table.getState().pagination.pageSize
+  const totalRows = table.getFilteredRowModel().rows.length
+  const start = totalRows === 0 ? 0 : pageIndex * pageSize + 1
+  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
+
+  // Reset pagination when dialog opens
   React.useEffect(() => {
     if (open) {
-      setCurrentPage(1)
+      table.setPageIndex(0)
     }
-  }, [open])
-  const columns: TableProps<Snapshot>['columns'] = [
-    {
-      title: '快照ID',
-      dataIndex: 'short_id',
-      key: 'short_id',
-      width: 100,
-      render: (shortId: string, record: Snapshot) => (
-        <Tooltip title={`完整ID: ${record.id}`}>
-          <Tag color="blue" className="font-mono">
-            {shortId}
-          </Tag>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 180,
-      render: (time: string) => (
-        <Text className="font-mono text-sm">
-          {formatDateTime(time)}
-        </Text>
-      ),
-      sorter: (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
-      defaultSortOrder: 'descend',
-    },
-    {
-      title: '用户',
-      dataIndex: 'username',
-      key: 'username',
-      width: 120,
-      render: (username: string) => (
-        <Text className="text-sm">{username}</Text>
-      ),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 180,
-      render: (_: any, record: Snapshot) => (
-        <Space size="small">
-          <Button
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => onPreview(record.id)}
-            loading={previewLoading}
-          >
-            预览
-          </Button>
-          <Button
-            type="primary"
-            size="small"
-            onClick={() => onRestore(record.id)}
-            loading={restoreLoading}
-          >
-            回滚
-          </Button>
-        </Space>
-      ),
-    },
-  ]
+  }, [open, table])
 
   return (
-    <Modal
-      title={`选择要回滚的快照 - ${isServerMode ? '整个服务器' : filePath}`}
-      open={open}
-      onCancel={onCancel}
-      width={800}
-      footer={[]}
-    >
-      <div className="space-y-4">
-        <Text type="secondary">
-          以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要回滚的版本：
-        </Text>
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            选择要回滚的快照 - {isServerMode ? '整个服务器' : filePath}
+          </DialogTitle>
+          <DialogDescription>
+            以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要回滚的版本
+          </DialogDescription>
+        </DialogHeader>
 
-        <Table<Snapshot>
-          columns={columns}
-          dataSource={snapshots}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            pageSizeOptions: ['5', '10', '20', '50'],
-            showTotal: (total, range) =>
-              `${range[0]}-${range[1]} 共 ${total} 个快照`,
-            simple: false,
-            size: "small",
-            onChange: (page, size) => {
-              setCurrentPage(page)
-              if (size !== pageSize) {
-                setPageSize(size)
-                setCurrentPage(1) // Reset to first page when page size changes
-              }
-            },
-            onShowSizeChange: (_, size) => {
-              setPageSize(size)
-              setCurrentPage(1) // Reset to first page when page size changes
-            },
-          }}
-          size="small"
-          locale={{ emptyText: `没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照` }}
-        />
-      </div>
-    </Modal>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner className="size-8" />
+          </div>
+        ) : (
+          <>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map(headerGroup => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map(header => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.length ? (
+                    table.getRowModel().rows.map(row => (
+                      <TableRow key={row.id}>
+                        {row.getVisibleCells().map(cell => (
+                          <TableCell key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={allColumns.length} className="h-24 text-center text-muted-foreground">
+                        没有找到包含{isServerMode ? '整个服务器' : '该路径'}的快照
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {totalRows > 0 && (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-sm text-muted-foreground">
+                  {start}-{end} 共 {totalRows} 个快照
+                </span>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(v) => v && table.setPageSize(Number(v))}
+                    itemToStringLabel={(v) => `${v}条/页`}
+                  >
+                    <SelectTrigger className="w-22.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[5, 10, 20, 50].map(size => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}条/页
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {pageIndex + 1} / {table.getPageCount()}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
-interface PreviewModalProps {
+// --- Preview Dialog ---
+
+interface PreviewDialogProps {
   open: boolean
   onCancel: () => void
   previewData: RestorePreviewAction[] | null
@@ -238,80 +367,105 @@ interface PreviewModalProps {
   isServerMode?: boolean
 }
 
-const PreviewModal: React.FC<PreviewModalProps> = ({
+const actionColorMap: Record<string, string> = {
+  updated: 'bg-orange-100 text-orange-700 border-orange-200',
+  deleted: 'bg-red-100 text-red-700 border-red-200',
+  restored: 'bg-green-100 text-green-700 border-green-200',
+}
+
+const actionLabelMap: Record<string, string> = {
+  updated: '更新',
+  deleted: '删除',
+  restored: '恢复',
+}
+
+const PreviewDialog: React.FC<PreviewDialogProps> = ({
   open,
   onCancel,
   previewData,
   previewSummary,
   loading,
   snapshotId,
-  isServerMode = false
+  isServerMode = false,
 }) => (
-  <Drawer
-    title={`预览${isServerMode ? '服务器' : ''}快照回滚 - ${snapshotId}`}
-    open={open}
-    onClose={onCancel}
-    size={800}
-    placement="right"
-  >
-    {loading ? (
-      <div className="text-center py-8">
-        <Text>正在生成预览...</Text>
-      </div>
-    ) : previewData ? (
-      <div className="space-y-4">
-        {previewSummary && (
-          <div className="bg-blue-50 p-3 rounded">
-            <Text strong>{previewSummary}</Text>
-          </div>
-        )}
+  <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+    <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>
+          预览{isServerMode ? '服务器' : ''}快照回滚 - {snapshotId}
+        </DialogTitle>
+      </DialogHeader>
 
-        <Divider>详细变更列表</Divider>
-
-        <div className="space-y-2">
-          {previewData.map((action, index) => (
-            <div key={index} className="p-3 border border-gray-200 rounded bg-gray-50">
-              <div className="flex items-center space-x-2">
-                <Tag color={
-                  action.action === 'updated' ? 'orange' :
-                    action.action === 'deleted' ? 'red' :
-                      action.action === 'restored' ? 'green' : 'blue'
-                }>
-                  {action.action === 'updated' ? '更新' :
-                    action.action === 'deleted' ? '删除' :
-                      action.action === 'restored' ? '恢复' :
-                        action.action || action.message_type}
-                </Tag>
-                <Text className="font-mono text-xs">{action.item}</Text>
-                {action.action !== 'deleted' && action.size && (
-                  <Text type="secondary" className="text-xs">
-                    ({formatUtils.formatBytes(action.size)})
-                  </Text>
-                )}
-              </div>
-            </div>
-          ))}
-          {previewData.length === 0 && (
-            <div className="text-center py-8">
-              <Text type="secondary">没有变更</Text>
+      {loading ? (
+        <div className="text-center py-8">
+          <Spinner className="mx-auto size-6 mb-2" />
+          <span className="text-sm text-muted-foreground">正在生成预览...</span>
+        </div>
+      ) : previewData ? (
+        <div className="space-y-4">
+          {previewSummary && (
+            <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+              <span className="font-semibold text-sm">{previewSummary}</span>
             </div>
           )}
+
+          <div className="flex items-center gap-2">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground">详细变更列表</span>
+            <Separator className="flex-1" />
+          </div>
+
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {previewData.map((action, index) => (
+              <div key={index} className="p-3 border rounded-md bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={actionColorMap[action.action || ''] || ''}
+                  >
+                    {actionLabelMap[action.action || ''] || action.action || action.message_type}
+                  </Badge>
+                  <span className="font-mono text-xs">{action.item}</span>
+                  {action.action !== 'deleted' && action.size != null && (
+                    <span className="text-xs text-muted-foreground">
+                      ({formatUtils.formatBytes(action.size)})
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {previewData.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                没有变更
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    ) : (
-      <div className="text-center py-8">
-        <Text type="secondary">无法生成预览</Text>
-      </div>
-    )}
-  </Drawer>
+      ) : (
+        <div className="text-center py-8 text-muted-foreground">
+          无法生成预览
+        </div>
+      )}
+    </DialogContent>
+  </Dialog>
 )
+
+// --- Main Component ---
+
+interface FileSnapshotActionsProps {
+  file?: FileItem
+  serverId: string
+  path?: string
+  isServerMode?: boolean
+  onRefresh?: () => void
+}
 
 const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   file,
   serverId,
   path,
   isServerMode = false,
-  onRefresh
+  onRefresh,
 }) => {
   const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false)
   const [isSafetyCheckVisible, setIsSafetyCheckVisible] = useState(false)
@@ -320,40 +474,41 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<string | null>(null)
 
-  // Hooks
+  const { confirm, ConfirmDialog } = useConfirm()
+
   const { useCreateSnapshot, useRestoreSnapshot, usePreviewRestore } = useSnapshotMutations()
   const { useSnapshotsForPath } = useSnapshotQueries()
 
-  // Mutations
   const createSnapshotMutation = useCreateSnapshot()
   const restoreSnapshotMutation = useRestoreSnapshot()
   const previewRestoreMutation = usePreviewRestore()
 
-  // 确定实际的路径和文件名
   const actualPath = path || file?.path || '/'
   const displayName = isServerMode ? '整个服务器' : (file?.name || '服务器')
 
-  // Queries - 默认禁用自动查询，只有用户点击回滚按钮时才请求数据
   const {
     data: snapshots = [],
     isLoading: isLoadingSnapshots,
-    refetch: refetchSnapshots
+    refetch: refetchSnapshots,
   } = useSnapshotsForPath(serverId, actualPath, false)
 
-  const handleBackup = async () => {
-    try {
-      await createSnapshotMutation.mutateAsync({
-        server_id: serverId,
-        path: actualPath
-      })
-      message.success(`已为 ${displayName} 创建快照`)
-    } catch (error) {
-      message.error(`创建快照失败: ${error}`)
-    }
+  const handleBackup = () => {
+    confirm({
+      title: '确认创建快照',
+      description: `确定要为 ${displayName} 创建快照吗？`,
+      confirmText: '确定',
+      cancelText: '取消',
+      onConfirm: async () => {
+        await createSnapshotMutation.mutateAsync({
+          server_id: serverId,
+          path: actualPath,
+        })
+        toast.success(`已为 ${displayName} 创建快照`)
+      },
+    })
   }
 
   const handleRollback = () => {
-    // 刷新快照列表并打开选择modal
     refetchSnapshots()
     setIsSnapshotModalVisible(true)
   }
@@ -362,51 +517,44 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     setSelectedSnapshotId(snapshotId)
 
     try {
-      // 首先尝试直接回滚，后端会检查安全性
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: actualPath
+        path: actualPath,
       })
 
-      message.success(`已成功回滚 ${displayName}`)
+      toast.success(`已成功回滚 ${displayName}`)
       setIsSnapshotModalVisible(false)
-      // 如果有刷新回调，执行刷新
       onRefresh?.()
     } catch (error: any) {
-      // 检查是否是安全检查错误
       if (error?.message?.includes('no recent snapshot') || error?.message?.includes('1 minute')) {
-        // 显示安全检查对话框
         setIsSnapshotModalVisible(false)
         setIsSafetyCheckVisible(true)
       } else {
-        message.error(`回滚失败: ${error?.message || '未知错误'}`)
+        toast.error(`回滚失败: ${error?.message || '未知错误'}`)
       }
     }
   }
 
   const handleCreateAndRestore = async () => {
     try {
-      // 先创建快照
       await createSnapshotMutation.mutateAsync({
         server_id: serverId,
-        path: actualPath
+        path: actualPath,
       })
 
-      // 然后执行回滚
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
-        path: actualPath
+        path: actualPath,
       })
 
-      message.success(`已创建安全快照并成功回滚 ${displayName}`)
+      toast.success(`已创建安全快照并成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
-      // 如果有刷新回调，执行刷新
       onRefresh?.()
     } catch (error: any) {
-      message.error(`操作失败: ${error?.message || '未知错误'}`)
+      toast.error(`操作失败: ${error?.message || '未知错误'}`)
     }
   }
 
@@ -420,72 +568,79 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       const previewResult = await previewRestoreMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: actualPath
+        path: actualPath,
       })
 
       setPreviewData(previewResult.actions)
       setPreviewSummary(previewResult.preview_summary)
     } catch (error: any) {
-      message.error(`预览失败: ${error?.message || '未知错误'}`)
+      toast.error(`预览失败: ${error?.message || '未知错误'}`)
       setIsPreviewVisible(false)
     }
   }
 
   const handleContinueWithoutCreate = async () => {
     try {
-      // 跳过安全检查强制执行回滚
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
         path: actualPath,
-        skip_safety_check: true  // 关闭安全检查
+        skip_safety_check: true,
       })
 
-      message.success(`已成功回滚 ${displayName}`)
+      toast.success(`已成功回滚 ${displayName}`)
       setIsSafetyCheckVisible(false)
       setSelectedSnapshotId('')
-      // 如果有刷新回调，执行刷新
       onRefresh?.()
     } catch (error: any) {
-      message.error(`回滚失败: ${error?.message || '未知错误'}`)
+      toast.error(`回滚失败: ${error?.message || '未知错误'}`)
     }
   }
 
   return (
     <>
-      <Space size="small">
-        <Popconfirm
-          title={`确认创建快照`}
-          description={`确定要为 ${displayName} 创建快照吗？`}
-          onConfirm={handleBackup}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Tooltip title={`为 ${displayName} 创建快照`}>
-            <Button
-              icon={<DatabaseOutlined />}
-              size={isServerMode ? "middle" : "small"}
-              loading={createSnapshotMutation.isPending}
-            >
-              {isServerMode ? '创建快照' : ''}
-            </Button>
-          </Tooltip>
-        </Popconfirm>
-
-        <Tooltip title={`回滚 ${displayName}`}>
-          <Button
-            icon={<HistoryOutlined />}
-            size={isServerMode ? "middle" : "small"}
-            type={isServerMode ? "primary" : "default"}
-            onClick={handleRollback}
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger
+            className="inline-flex"
+            render={
+              <Button
+                variant="outline"
+                size={isServerMode ? 'default' : 'icon-sm'}
+                onClick={handleBackup}
+                disabled={createSnapshotMutation.isPending}
+              />
+            }
           >
-            {isServerMode ? '快照回滚' : ''}
-          </Button>
+            {createSnapshotMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="h-4 w-4" />
+            )}
+            {isServerMode && <span className="ml-1">创建快照</span>}
+          </TooltipTrigger>
+          <TooltipContent>为 {displayName} 创建快照</TooltipContent>
         </Tooltip>
-      </Space>
 
-      {/* 快照选择Modal */}
-      <SnapshotSelectionModal
+        <Tooltip>
+          <TooltipTrigger
+            className="inline-flex"
+            render={
+              <Button
+                variant={isServerMode ? 'default' : 'outline'}
+                size={isServerMode ? 'default' : 'icon-sm'}
+                onClick={handleRollback}
+              />
+            }
+          >
+            <History className="h-4 w-4" />
+            {isServerMode && <span className="ml-1">快照回滚</span>}
+          </TooltipTrigger>
+          <TooltipContent>回滚 {displayName}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <SnapshotSelectionDialog
         open={isSnapshotModalVisible}
         onCancel={() => setIsSnapshotModalVisible(false)}
         snapshots={snapshots}
@@ -498,8 +653,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         isServerMode={isServerMode}
       />
 
-      {/* 安全检查Modal */}
-      <SafetyCheckModal
+      <SafetyCheckDialog
         open={isSafetyCheckVisible}
         onCancel={() => {
           setIsSafetyCheckVisible(false)
@@ -511,8 +665,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         isServerMode={isServerMode}
       />
 
-      {/* 预览Modal */}
-      <PreviewModal
+      <PreviewDialog
         open={isPreviewVisible}
         onCancel={() => setIsPreviewVisible(false)}
         previewData={previewData}
@@ -521,6 +674,8 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         snapshotId={selectedSnapshotId}
         isServerMode={isServerMode}
       />
+
+      <ConfirmDialog />
     </>
   )
 }

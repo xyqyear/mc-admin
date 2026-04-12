@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { Loader2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +28,8 @@ export function useConfirm() {
     setOptions(opts)
   }, [])
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (e: React.MouseEvent) => {
+    e.preventDefault()
     if (!options) return
     setLoading(true)
     try {
@@ -49,14 +51,15 @@ export function useConfirm() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>
-            {options?.cancelText || 'Cancel'}
+            {options?.cancelText || '取消'}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={loading}
             variant={options?.variant === 'destructive' ? 'destructive' : 'default'}
           >
-            {loading ? 'Processing...' : (options?.confirmText || 'Confirm')}
+            {loading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+            {options?.confirmText || '确认'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
