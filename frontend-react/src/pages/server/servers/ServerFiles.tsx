@@ -474,7 +474,7 @@ const ServerFiles: React.FC = () => {
       />
 
       <Card>
-        <CardContent className="pt-6 space-y-4">
+        <CardContent className="space-y-4">
           {/* Breadcrumb and Search */}
           <div className="flex items-center justify-between gap-4">
             <FileBreadcrumb
@@ -482,7 +482,7 @@ const ServerFiles: React.FC = () => {
               onNavigateToPath={handleNavigateToPath}
             />
             <div className="flex items-center gap-2">
-              <div className="flex-shrink-0 min-w-75 max-w-md">
+              <div className="shrink-0 min-w-75 max-w-md">
                 <FileSearchBox
                   ref={searchBoxRef}
                   searchTerm={inputSearchTerm}
