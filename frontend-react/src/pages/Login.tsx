@@ -1,15 +1,32 @@
-import React, { useEffect } from 'react'
-import { Card, Form, Input, Button, App, Alert, Progress } from 'antd'
+import { useEffect } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { AlertCircle } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Field, FieldLabel, FieldError } from '@/components/ui/field'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
+import { Spinner } from '@/components/ui/spinner'
 import { useAuthMutations } from '@/hooks/mutations/useAuthMutations'
 import { useCodeLoginWebsocket } from '@/hooks/useCodeLoginWebsocket'
 import { useLoginPreferenceStore } from '@/stores/useLoginPreferenceStore'
 import { useIsAuthenticated } from '@/stores/useTokenStore'
 
-const Login: React.FC = () => {
+const loginSchema = z.object({
+  username: z.string().min(1, 'Username is required'),
+  password: z.string().min(1, 'Password is required'),
+})
+
+type LoginFormData = z.infer<typeof loginSchema>
+
+const Login = () => {
   const navigate = useNavigate()
   const isAuthenticated = useIsAuthenticated()
-  const { message } = App.useApp()
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
   const { useLogin } = useAuthMutations()
   const loginMutation = useLogin()
@@ -25,32 +42,32 @@ const Login: React.FC = () => {
     disconnect,
   } = useCodeLoginWebsocket()
 
-  const [form] = Form.useForm()
+  const { control, handleSubmit } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { username: '', password: '' },
+  })
 
-  const handlePasswordLogin = async (values: { username: string; password: string }) => {
+  const handlePasswordLogin = (values: LoginFormData) => {
     loginMutation.mutate(values)
   }
 
   const handleSwitchLoginMethod = () => {
-    const newPreference = loginPreference === 'password' ? 'code' : 'password'
-    setLoginPreference(newPreference)
+    setLoginPreference(loginPreference === 'password' ? 'code' : 'password')
   }
 
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(code)
-      message.success('复制成功')
+      toast.success('复制成功')
     } catch {
-      message.error('复制失败')
+      toast.error('复制失败')
     }
   }
 
   useEffect(() => {
     if (loginPreference === 'code') {
       connect()
-      return () => {
-        disconnect()
-      }
+      return () => { disconnect() }
     } else {
       disconnect()
     }
@@ -66,50 +83,71 @@ const Login: React.FC = () => {
     return null
   }
 
+  const progressValue = codeTimeout > 0
+    ? Math.max(0, Math.min(100, (countdown / codeTimeout) * 100))
+    : 0
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-96">
         <Card className="shadow-lg">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold">登录</h1>
-          </div>
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold">登录</h1>
+            </div>
 
-          {loginPreference === 'password' ? (
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={handlePasswordLogin}
-              disabled={loginMutation.isPending}
-            >
-              <Form.Item
-                label="用户名"
-                name="username"
-                rules={[{ required: true, message: '请输入用户名' }]}
-              >
-                <Input placeholder="请输入用户名" />
-              </Form.Item>
+            {loginPreference === 'password' ? (
+              <form onSubmit={handleSubmit(handlePasswordLogin)} className="space-y-4">
+                <Controller
+                  name="username"
+                  control={control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor={field.name}>用户名</FieldLabel>
+                      <Input
+                        {...field}
+                        id={field.name}
+                        placeholder="请输入用户名"
+                        disabled={loginMutation.isPending}
+                        aria-invalid={fieldState.invalid}
+                      />
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    </Field>
+                  )}
+                />
 
-              <Form.Item
-                label="密码"
-                name="password"
-                rules={[{ required: true, message: '请输入密码' }]}
-              >
-                <Input.Password placeholder="请输入密码" />
-              </Form.Item>
+                <Controller
+                  name="password"
+                  control={control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor={field.name}>密码</FieldLabel>
+                      <Input
+                        {...field}
+                        id={field.name}
+                        type="password"
+                        placeholder="请输入密码"
+                        disabled={loginMutation.isPending}
+                        aria-invalid={fieldState.invalid}
+                      />
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    </Field>
+                  )}
+                />
 
-              {loginMutation.isError && (
-                <Form.Item>
-                  <Alert
-                    type="error"
-                    title={loginMutation.error?.message || '登录失败'}
-                    showIcon
-                  />
-                </Form.Item>
-              )}
+                {loginMutation.isError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {loginMutation.error?.message || '登录失败'}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              <Form.Item>
                 <div className="flex gap-4">
                   <Button
+                    type="button"
+                    variant="outline"
                     onClick={handleSwitchLoginMethod}
                     className="flex-1"
                     disabled={loginMutation.isPending}
@@ -117,53 +155,48 @@ const Login: React.FC = () => {
                     机器人登录
                   </Button>
                   <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={loginMutation.isPending}
+                    type="submit"
+                    disabled={loginMutation.isPending}
                     className="flex-1"
                   >
+                    {loginMutation.isPending && <Spinner className="mr-2 size-4" />}
                     登录
                   </Button>
                 </div>
-              </Form.Item>
-            </Form>
-          ) : (
-            <Form layout="vertical">
-              <Form.Item label="动态码">
-                <div className="text-center">
-                  <div className="text-2xl font-mono mb-2">{code}</div>
-                  <div className="mb-2">
-                    <Progress
-                      percent={codeTimeout > 0 ? Math.max(0, Math.min(100, (countdown / codeTimeout) * 100)) : 0}
-                      status={connected && countdown > 0 ? 'active' : (countdown === 0 ? 'exception' : (isConnecting ? 'normal' : 'exception'))}
-                      showInfo={false}
-                    />
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <Field>
+                  <FieldLabel>动态码</FieldLabel>
+                  <div className="text-center">
+                    <div className="text-2xl font-mono mb-2">{code}</div>
+                    <div className="mb-2">
+                      <Progress value={progressValue} />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {connected
+                        ? (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期')
+                        : (isConnecting ? '连接中...' : (codeError ? '连接失败' : '连接中...'))}
+                    </p>
                   </div>
-                  <div className="text-sm text-gray-500 mb-4">
-                    {connected ?
-                      (countdown > 0 ? `${countdown}秒后过期` : '验证码已过期') :
-                      (isConnecting ? '连接中...' : (codeError ? '连接失败' : '连接中...'))
-                    }
-                  </div>
-                </div>
-              </Form.Item>
+                </Field>
 
-              {codeError && !isConnecting && (
-                <Form.Item>
-                  <Alert type="error" title={codeError} showIcon />
-                </Form.Item>
-              )}
+                {codeError && !isConnecting && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{codeError}</AlertDescription>
+                  </Alert>
+                )}
 
-              <Form.Item>
                 <div className="flex gap-4">
                   <Button
+                    variant="outline"
                     onClick={handleSwitchLoginMethod}
                     className="flex-1"
                   >
                     密码登录
                   </Button>
                   <Button
-                    type="primary"
                     onClick={handleCopyCode}
                     disabled={!connected || countdown === 0}
                     className="flex-1"
@@ -171,9 +204,9 @@ const Login: React.FC = () => {
                     复制
                   </Button>
                 </div>
-              </Form.Item>
-            </Form>
-          )}
+              </div>
+            )}
+          </CardContent>
         </Card>
       </div>
     </div>
