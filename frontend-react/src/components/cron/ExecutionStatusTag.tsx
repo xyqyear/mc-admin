@@ -1,11 +1,6 @@
 import React from 'react'
-import { Tag } from 'antd'
-import {
-  LoadingOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  StopOutlined
-} from '@ant-design/icons'
+import { Loader2, CheckCircle2, XCircle, Square } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 interface ExecutionStatusTagProps {
   status: string
@@ -14,53 +9,53 @@ interface ExecutionStatusTagProps {
 
 const ExecutionStatusTag: React.FC<ExecutionStatusTagProps> = ({
   status,
-  size = 'default'
+  size = 'default',
 }) => {
   const getStatusConfig = () => {
     switch (status.toLowerCase()) {
       case 'running':
         return {
-          color: 'processing',
+          className: 'bg-blue-100 text-blue-700 border-blue-200',
           text: '运行中',
-          icon: <LoadingOutlined spin />
+          icon: <Loader2 className="h-3 w-3 animate-spin" />,
         }
       case 'completed':
         return {
-          color: 'success',
+          className: 'bg-green-100 text-green-700 border-green-200',
           text: '成功',
-          icon: <CheckCircleOutlined />
+          icon: <CheckCircle2 className="h-3 w-3" />,
         }
       case 'failed':
         return {
-          color: 'error',
+          className: 'bg-red-100 text-red-700 border-red-200',
           text: '失败',
-          icon: <CloseCircleOutlined />
+          icon: <XCircle className="h-3 w-3" />,
         }
       case 'cancelled':
         return {
-          color: 'default',
+          className: '',
           text: '取消',
-          icon: <StopOutlined />
+          icon: <Square className="h-3 w-3" />,
         }
       default:
         return {
-          color: 'default',
+          className: '',
           text: status || '未知',
-          icon: null
+          icon: null,
         }
     }
   }
 
-  const { color, text, icon } = getStatusConfig()
+  const { className, text, icon } = getStatusConfig()
 
   return (
-    <Tag
-      color={color}
-      icon={icon}
-      className={size === 'small' ? 'text-xs' : ''}
+    <Badge
+      variant="outline"
+      className={`${className} ${size === 'small' ? 'text-xs' : ''}`}
     >
+      {icon}
       {text}
-    </Tag>
+    </Badge>
   )
 }
 

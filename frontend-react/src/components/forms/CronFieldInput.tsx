@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { Select, Input, Space, InputNumber } from 'antd'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 
 interface CronFieldConfig {
   label: string
@@ -20,7 +28,7 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
   value,
   onChange,
   config,
-  disabled = false
+  disabled = false,
 }) => {
   const [mode, setMode] = useState<'any' | 'specific' | 'range' | 'interval' | 'list' | 'raw'>('any')
   const [specificValue, setSpecificValue] = useState<number>(config.min)
@@ -31,7 +39,6 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
   const [listValues, setListValues] = useState<number[]>([])
   const [rawValue, setRawValue] = useState<string>('')
 
-  // 解析当前值并设置模式
   useEffect(() => {
     if (value === '*') {
       setMode('any')
@@ -57,7 +64,6 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
     }
   }, [value, config.min, config.max])
 
-  // 根据模式生成值
   const generateValue = (newMode: string, params?: any) => {
     switch (newMode) {
       case 'any':
@@ -66,12 +72,11 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
         return String(params?.value || specificValue)
       case 'range':
         return `${params?.start || rangeStart}-${params?.end || rangeEnd}`
-      case 'interval':
-        {
-          const start = params?.start || intervalStart
-          const step = params?.step || intervalStep
-          return start === config.min ? `*/${step}` : `${start}/${step}`
-        }
+      case 'interval': {
+        const start = params?.start || intervalStart
+        const step = params?.step || intervalStep
+        return start === config.min ? `*/${step}` : `${start}/${step}`
+      }
       case 'list':
         return (params?.values || listValues).join(',')
       case 'raw':
@@ -81,7 +86,8 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
     }
   }
 
-  const handleModeChange = (newMode: string) => {
+  const handleModeChange = (newMode: string | null) => {
+    if (!newMode) return
     setMode(newMode as any)
     onChange(generateValue(newMode))
   }
@@ -123,14 +129,34 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
     onChange(newGeneratedValue)
   }
 
-  const modeOptions = [
-    { label: '任意值 (*)', value: 'any' },
-    { label: '指定值', value: 'specific' },
-    { label: '范围', value: 'range' },
-    { label: '间隔', value: 'interval' },
-    { label: '列表', value: 'list' },
-    { label: '自定义', value: 'raw' }
-  ]
+  const handleNumberInput = (type: string, inputValue: string, min: number, max: number) => {
+    const num = parseInt(inputValue)
+    if (!isNaN(num) && num >= min && num <= max) {
+      handleValueChange(type, num)
+    }
+  }
+
+  const toggleListValue = (val: number) => {
+    const next = listValues.includes(val)
+      ? listValues.filter(v => v !== val)
+      : [...listValues, val].sort((a, b) => a - b)
+    handleValueChange('list', next)
+  }
+
+  const allValues = Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i)
+
+  const modeLabels: Record<string, string> = {
+    any: '任意值 (*)',
+    specific: '指定值',
+    range: '范围',
+    interval: '间隔',
+    list: '列表',
+    raw: '自定义',
+  }
+
+  const optionLabelMap = config.options
+    ? Object.fromEntries(config.options.map(o => [String(o.value), o.label]))
+    : undefined
 
   return (
     <div className="space-y-3">
@@ -138,106 +164,132 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
         <div className="text-sm font-medium mb-2">{config.label}</div>
         <Select
           value={mode}
-          onChange={handleModeChange}
+          onValueChange={handleModeChange}
           disabled={disabled}
-          style={{ width: 140 }}
-          options={modeOptions}
-        />
+          itemToStringLabel={(v) => modeLabels[v as string] || String(v)}
+        >
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">任意值 (*)</SelectItem>
+            <SelectItem value="specific">指定值</SelectItem>
+            <SelectItem value="range">范围</SelectItem>
+            <SelectItem value="interval">间隔</SelectItem>
+            <SelectItem value="list">列表</SelectItem>
+            <SelectItem value="raw">自定义</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {mode === 'specific' && (
         <div className="ml-6">
           {config.options ? (
             <Select
-              value={specificValue}
-              onChange={(val) => handleValueChange('specific', val)}
+              value={String(specificValue)}
+              onValueChange={(val) => val && handleValueChange('specific', parseInt(val))}
               disabled={disabled}
-              style={{ width: 120 }}
-              options={config.options}
-            />
+              itemToStringLabel={(v) => optionLabelMap?.[v as string] || String(v)}
+            >
+              <SelectTrigger className="w-30">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {config.options.map(opt => (
+                  <SelectItem key={opt.value} value={String(opt.value)}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
-            <InputNumber
+            <Input
+              type="number"
               value={specificValue}
-              onChange={(val) => handleValueChange('specific', val || config.min)}
+              onChange={(e) => handleNumberInput('specific', e.target.value, config.min, config.max)}
               min={config.min}
               max={config.max}
               disabled={disabled}
-              style={{ width: 120 }}
+              className="w-30"
             />
           )}
         </div>
       )}
 
       {mode === 'range' && (
-        <div className="ml-6">
-          <Space>
-            <span>从</span>
-            <InputNumber
-              value={rangeStart}
-              onChange={(val) => handleValueChange('rangeStart', val || config.min)}
-              min={config.min}
-              max={config.max}
-              disabled={disabled}
-              style={{ width: 80 }}
-            />
-            <span>到</span>
-            <InputNumber
-              value={rangeEnd}
-              onChange={(val) => handleValueChange('rangeEnd', val || config.max)}
-              min={config.min}
-              max={config.max}
-              disabled={disabled}
-              style={{ width: 80 }}
-            />
-          </Space>
+        <div className="ml-6 flex items-center gap-2">
+          <span className="text-sm">从</span>
+          <Input
+            type="number"
+            value={rangeStart}
+            onChange={(e) => handleNumberInput('rangeStart', e.target.value, config.min, config.max)}
+            min={config.min}
+            max={config.max}
+            disabled={disabled}
+            className="w-20"
+          />
+          <span className="text-sm">到</span>
+          <Input
+            type="number"
+            value={rangeEnd}
+            onChange={(e) => handleNumberInput('rangeEnd', e.target.value, config.min, config.max)}
+            min={config.min}
+            max={config.max}
+            disabled={disabled}
+            className="w-20"
+          />
         </div>
       )}
 
       {mode === 'interval' && (
-        <div className="ml-6">
-          <Space>
-            <span>从</span>
-            <Select
-              value={intervalStart}
-              onChange={(val) => handleValueChange('intervalStart', val)}
-              disabled={disabled}
-              style={{ width: 100 }}
-              options={[
-                { label: '任意', value: config.min },
-                ...Array.from({ length: config.max - config.min + 1 }, (_, i) => ({
-                  label: String(config.min + i),
-                  value: config.min + i
-                }))
-              ]}
-            />
-            <span>开始，每</span>
-            <InputNumber
-              value={intervalStep}
-              onChange={(val) => handleValueChange('intervalStep', val || 1)}
-              min={1}
-              max={config.max - config.min}
-              disabled={disabled}
-              style={{ width: 80 }}
-            />
-            <span>个单位</span>
-          </Space>
+        <div className="ml-6 flex items-center gap-2">
+          <span className="text-sm">从</span>
+          <Select
+            value={String(intervalStart)}
+            onValueChange={(val) => val && handleValueChange('intervalStart', parseInt(val))}
+            disabled={disabled}
+            itemToStringLabel={(v) => v === String(config.min) ? '任意' : String(v)}
+          >
+            <SelectTrigger className="w-25">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={String(config.min)}>任意</SelectItem>
+              {allValues.map(v => (
+                <SelectItem key={v} value={String(v)}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm">开始，每</span>
+          <Input
+            type="number"
+            value={intervalStep}
+            onChange={(e) => handleNumberInput('intervalStep', e.target.value, 1, config.max - config.min)}
+            min={1}
+            max={config.max - config.min}
+            disabled={disabled}
+            className="w-20"
+          />
+          <span className="text-sm">个单位</span>
         </div>
       )}
 
       {mode === 'list' && (
-        <div className="ml-6">
-          <Select
-            mode="multiple"
-            value={listValues}
-            onChange={(vals) => handleValueChange('list', vals)}
-            disabled={disabled}
-            style={{ width: 200 }}
-            placeholder="选择多个值"
-            options={Array.from({ length: config.max - config.min + 1 }, (_, i) => ({
-              label: String(config.min + i),
-              value: config.min + i
-            }))}
-          />
+        <div className="ml-6 flex flex-wrap gap-1">
+          {allValues.map(v => {
+            const label = config.options?.find(o => o.value === v)?.label ?? String(v)
+            const isSelected = listValues.includes(v)
+            return (
+              <Badge
+                key={v}
+                variant={isSelected ? 'default' : 'outline'}
+                className="cursor-pointer select-none"
+                onClick={() => !disabled && toggleListValue(v)}
+              >
+                {label}
+              </Badge>
+            )
+          })}
         </div>
       )}
 
@@ -248,21 +300,19 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
             onChange={(e) => handleValueChange('raw', e.target.value)}
             disabled={disabled}
             placeholder="输入自定义表达式"
-            style={{ width: 200 }}
+            className="w-50"
           />
         </div>
       )}
 
       {config.specialValues && config.specialValues.length > 0 && (
-        <div className="ml-6">
-          <div className="text-xs text-gray-500">
-            特殊值: {config.specialValues.map(sv => `${sv.label}(${sv.value})`).join(', ')}
-          </div>
+        <div className="ml-6 text-xs text-muted-foreground">
+          特殊值: {config.specialValues.map(sv => `${sv.label}(${sv.value})`).join(', ')}
         </div>
       )}
 
-      <div className="text-xs text-gray-500">
-        当前值: <code className="bg-gray-100 px-1 rounded">{value}</code>
+      <div className="text-xs text-muted-foreground">
+        当前值: <code className="bg-muted px-1 rounded">{value}</code>
       </div>
     </div>
   )

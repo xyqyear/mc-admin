@@ -1,36 +1,45 @@
 import React, { useState } from 'react'
 import {
-  Card,
-  Button,
-  Alert,
-  Typography,
-  Table,
-  App,
-  Empty,
-  Space
-} from 'antd'
+  Clock,
+  RotateCw,
+  Plus,
+  Play,
+  Pause,
+  Square,
+  Info,
+  Pencil,
+} from 'lucide-react'
 import {
-  PlusOutlined,
-  ReloadOutlined,
-  ScheduleOutlined,
-  PlayCircleOutlined,
-  PauseCircleOutlined,
-  StopOutlined,
-  InfoCircleOutlined,
-  EditOutlined
-} from '@ant-design/icons'
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
 import PageHeader from '@/components/layout/PageHeader'
 import { useRegisteredCronJobs, useAllCronJobs } from '@/hooks/queries/base/useCronQueries'
 import { useCronMutations } from '@/hooks/mutations/useCronMutations'
 import { CreateCronJobModal, CronJobDetailModal } from '@/components/modals/cron'
 import { CronJobStatusTag, NextRunTimeCell, CronExpressionDisplay, CronJobFilters } from '@/components/cron'
+import { useConfirm } from '@/hooks/useConfirm'
 import type { CronJob } from '@/hooks/api/cronApi'
-import type { TableProps } from 'antd'
-
-const { Text } = Typography
 
 const CronManagement: React.FC = () => {
-  const { modal } = App.useApp()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
@@ -39,7 +48,7 @@ const CronManagement: React.FC = () => {
     identifier?: string
     status: string[]
   }>({
-    status: ['active', 'paused'] // 默认显示运行中和已暂停的任务
+    status: ['active', 'paused'],
   })
 
   const { data: registeredJobs, isLoading: jobsLoading, refetch: refetchJobs } = useRegisteredCronJobs()
@@ -49,16 +58,6 @@ const CronManagement: React.FC = () => {
   const pauseMutation = usePauseCronJob()
   const resumeMutation = useResumeCronJob()
   const cancelMutation = useCancelCronJob()
-
-  const handleFiltersChange = (newFilters: { identifier?: string; status: string[] }) => {
-    setFilters(newFilters)
-  }
-
-  const handleFiltersReset = () => {
-    setFilters({
-      status: ['active', 'paused']
-    })
-  }
 
   const handleViewDetail = (cronjobId: string) => {
     setSelectedJobId(cronjobId)
@@ -71,283 +70,334 @@ const CronManagement: React.FC = () => {
   }
 
   const handlePauseJob = (cronjobId: string) => {
-    modal.confirm({
+    confirm({
       title: '暂停任务',
-      content: '确定要暂停这个定时任务吗？任务将暂停执行直到恢复。',
-      okText: '确认暂停',
-      okType: 'primary',
+      description: '确定要暂停这个定时任务吗？任务将暂停执行直到恢复。',
+      confirmText: '确认暂停',
       cancelText: '取消',
-      onOk: async () => {
+      onConfirm: async () => {
         await pauseMutation.mutateAsync(cronjobId)
-      }
+      },
     })
   }
 
   const handleResumeJob = (cronjobId: string) => {
-    modal.confirm({
+    confirm({
       title: '恢复任务',
-      content: '确定要恢复这个定时任务吗？任务将重新开始按照计划执行。',
-      okText: '确认恢复',
-      okType: 'primary',
+      description: '确定要恢复这个定时任务吗？任务将重新开始按照计划执行。',
+      confirmText: '确认恢复',
       cancelText: '取消',
-      onOk: async () => {
+      onConfirm: async () => {
         await resumeMutation.mutateAsync(cronjobId)
-      }
+      },
     })
   }
 
   const handleCancelJob = (cronjobId: string) => {
-    modal.confirm({
+    confirm({
       title: '取消任务',
-      content: '确定要取消这个定时任务吗？任务将被标记为取消并默认隐藏。',
-      okText: '确认取消',
-      okType: 'danger',
+      description: '确定要取消这个定时任务吗？任务将被标记为取消并默认隐藏。',
+      confirmText: '确认取消',
       cancelText: '取消',
-      onOk: async () => {
+      variant: 'destructive',
+      onConfirm: async () => {
         await cancelMutation.mutateAsync(cronjobId)
-      }
+      },
     })
   }
 
-
-  // 生成任务类型选项
   const identifierOptions = registeredJobs?.map(job => ({
     label: `${job.identifier} - ${job.description}`,
-    value: job.identifier
+    value: job.identifier,
   })) || []
 
-  const columns: TableProps<CronJob>['columns'] = [
+  const columns: ColumnDef<CronJob, any>[] = [
     {
-      title: '任务名称',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name: string, record: CronJob) => (
+      accessorKey: 'name',
+      header: '任务名称',
+      cell: ({ row }) => (
         <div>
-          <div className="font-medium">{name}</div>
-          <Text type="secondary" className="text-xs">
-            {record.identifier}
-          </Text>
+          <div className="font-medium">{row.original.name}</div>
+          <div className="text-xs text-muted-foreground">{row.original.identifier}</div>
         </div>
-      )
+      ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => (
-        <CronJobStatusTag status={status} />
-      )
+      accessorKey: 'status',
+      header: '状态',
+      size: 100,
+      cell: ({ row }) => <CronJobStatusTag status={row.original.status} />,
     },
     {
-      title: 'Cron 表达式',
-      key: 'cron',
-      width: 300,
-      render: (_, record: CronJob) => (
+      id: 'cron',
+      header: 'Cron 表达式',
+      size: 300,
+      cell: ({ row }) => (
         <CronExpressionDisplay
-          cronExpression={record.cron}
-          second={record.second}
+          cronExpression={row.original.cron}
+          second={row.original.second}
           size="small"
         />
-      )
+      ),
     },
     {
-      title: '下次运行',
-      key: 'nextRun',
-      width: 140,
-      render: (_, record: CronJob) => (
+      id: 'nextRun',
+      header: '下次运行',
+      size: 140,
+      cell: ({ row }) => (
         <NextRunTimeCell
-          cronjobId={record.cronjob_id}
-          status={record.status}
+          cronjobId={row.original.cronjob_id}
+          status={row.original.status}
         />
-      )
+      ),
     },
     {
-      title: '执行次数',
-      dataIndex: 'execution_count',
-      key: 'execution_count',
-      width: 80,
-      render: (count: number) => (
-        <Text strong>{count}</Text>
-      )
+      accessorKey: 'execution_count',
+      header: '执行次数',
+      size: 80,
+      cell: ({ row }) => (
+        <span className="font-semibold">{row.original.execution_count}</span>
+      ),
     },
     {
-      title: '操作',
-      key: 'actions',
-      width: 220,
-      render: (_, record: CronJob) => (
-        <Space>
-          <Button
-            icon={<InfoCircleOutlined />}
-            size="small"
-            onClick={() => handleViewDetail(record.cronjob_id)}
-          >
-          </Button>
-          <Button
-            icon={<EditOutlined />}
-            size="small"
-            onClick={() => handleEditJob(record.cronjob_id)}
-          >
-          </Button>
-          {record.status === 'active' && (
+      id: 'actions',
+      header: '操作',
+      size: 220,
+      cell: ({ row }) => {
+        const record = row.original
+        return (
+          <div className="flex items-center gap-1">
             <Button
-              icon={<PauseCircleOutlined />}
-              size="small"
-              onClick={() => handlePauseJob(record.cronjob_id)}
-              loading={pauseMutation.isPending}
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => handleViewDetail(record.cronjob_id)}
+              title="详情"
             >
+              <Info className="h-4 w-4" />
             </Button>
-          )}
-          {(record.status === 'paused' || record.status === 'cancelled') && (
             <Button
-              icon={<PlayCircleOutlined />}
-              size="small"
-              type="primary"
-              onClick={() => handleResumeJob(record.cronjob_id)}
-              loading={resumeMutation.isPending}
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => handleEditJob(record.cronjob_id)}
+              title="编辑"
             >
+              <Pencil className="h-4 w-4" />
             </Button>
-          )}
-          {record.status !== 'cancelled' && (
-            <Button
-              icon={<StopOutlined />}
-              size="small"
-              danger
-              onClick={() => handleCancelJob(record.cronjob_id)}
-              loading={cancelMutation.isPending}
-            >
-            </Button>
-          )}
-        </Space>
-      )
-    }
+            {record.status === 'active' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => handlePauseJob(record.cronjob_id)}
+                disabled={pauseMutation.isPending}
+                title="暂停"
+              >
+                <Pause className="h-4 w-4" />
+              </Button>
+            )}
+            {(record.status === 'paused' || record.status === 'cancelled') && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => handleResumeJob(record.cronjob_id)}
+                disabled={resumeMutation.isPending}
+                title="恢复"
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+            )}
+            {record.status !== 'cancelled' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => handleCancelJob(record.cronjob_id)}
+                disabled={cancelMutation.isPending}
+                title="取消"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        )
+      },
+    },
   ]
+
+  const table = useReactTable({
+    data: cronJobs,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 20 } },
+    getRowId: (row) => row.cronjob_id,
+    autoResetPageIndex: false,
+  })
+
+  const { pageIndex, pageSize } = table.getState().pagination
+  const totalRows = table.getCoreRowModel().rows.length
+  const start = totalRows > 0 ? pageIndex * pageSize + 1 : 0
+  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="定时任务管理"
-        icon={<ScheduleOutlined />}
+        icon={<Clock className="h-5 w-5" />}
         actions={
           <>
             <Button
-              icon={<ReloadOutlined />}
+              variant="outline"
               onClick={() => {
                 refetchJobs()
                 refetchCronJobs()
               }}
-              loading={jobsLoading || cronJobsLoading}
+              disabled={jobsLoading || cronJobsLoading}
             >
+              {(jobsLoading || cronJobsLoading)
+                ? <Spinner className="mr-2 size-4" />
+                : <RotateCw className="mr-2 h-4 w-4" />
+              }
               刷新
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateModalOpen(true)}
-            >
+            <Button onClick={() => setCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
               创建任务
             </Button>
           </>
         }
       />
 
-
-      {/* 任务列表加载错误提示 */}
       {cronJobsError && (
-        <Alert
-          title="加载任务列表失败"
-          description={cronJobsError.message || '发生未知错误'}
-          type="error"
-          showIcon
-          closable
-          action={
-            <Button size="small" danger onClick={() => refetchCronJobs()}>
+        <Alert variant="destructive">
+          <AlertTitle>加载任务列表失败</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{cronJobsError.message || '发生未知错误'}</span>
+            <Button size="sm" variant="destructive" onClick={() => refetchCronJobs()}>
               重试
             </Button>
-          }
-        />
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* 任务列表 */}
-      <Card
-        title={
-          <div className="flex items-center space-x-2">
-            <ScheduleOutlined />
-            <span>任务列表</span>
-            <Text type="secondary" className="text-sm font-normal">
-              ({cronJobs.length} 个任务)
-            </Text>
-          </div>
-        }
-      >
-        {/* 任务筛选 */}
-        <CronJobFilters
-          identifierOptions={identifierOptions}
-          filters={filters}
-          onChange={handleFiltersChange}
-          onReset={handleFiltersReset}
-          loading={cronJobsLoading}
-        />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              <span>任务列表</span>
+              <span className="text-sm font-normal text-muted-foreground">
+                ({cronJobs.length} 个任务)
+              </span>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CronJobFilters
+            identifierOptions={identifierOptions}
+            filters={filters}
+            onChange={setFilters}
+            onReset={() => setFilters({ status: ['active', 'paused'] })}
+            loading={cronJobsLoading}
+          />
 
-        <Table
-          dataSource={cronJobs}
-          columns={columns}
-          rowKey="cronjob_id"
-          size="small"
-          scroll={{ x: 'max-content' }}
-          loading={cronJobsLoading}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            pageSizeOptions: ['10', '20', '50'],
-            showTotal: (total, range) =>
-              `${range[0]}-${range[1]} 共 ${total} 个任务`
-          }}
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={
-                  <div className="space-y-2">
-                    <div>暂无定时任务</div>
-                    <div className="text-sm text-gray-400">
-                      点击&ldquo;创建任务&rdquo;按钮开始创建定时任务
-                    </div>
+          {cronJobsLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner className="size-8" />
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map(headerGroup => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map(header => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map(row => (
+                        <TableRow key={row.id}>
+                          {row.getVisibleCells().map(cell => (
+                            <TableCell key={cell.id}>
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                          <div className="space-y-2">
+                            <div>暂无定时任务</div>
+                            <div className="text-sm">
+                              点击&ldquo;创建任务&rdquo;按钮开始创建定时任务
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalRows > 0 && (
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-sm text-muted-foreground">
+                    {start}-{end} 共 {totalRows} 个任务
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => table.previousPage()}
+                      disabled={!table.getCanPreviousPage()}
+                    >
+                      上一页
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {pageIndex + 1} / {table.getPageCount()}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => table.nextPage()}
+                      disabled={!table.getCanNextPage()}
+                    >
+                      下一页
+                    </Button>
                   </div>
-                }
-              />
-            )
-          }}
-        />
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
       </Card>
 
-      {/* 创建任务模态框 */}
       <CreateCronJobModal
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
-        onSuccess={() => {
-          // 刷新任务列表（会自动应用当前筛选条件）
-          refetchCronJobs()
-        }}
+        onSuccess={() => refetchCronJobs()}
       />
 
-      {/* 编辑任务模态框 */}
       <CreateCronJobModal
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false)
           setSelectedJobId(null)
         }}
-        onSuccess={() => {
-          // 刷新任务列表（会自动应用当前筛选条件）
-          refetchCronJobs()
-        }}
+        onSuccess={() => refetchCronJobs()}
         isEdit={true}
         cronjobId={selectedJobId || undefined}
       />
 
-      {/* 任务详情模态框 */}
       <CronJobDetailModal
         open={detailModalOpen}
         cronjobId={selectedJobId}
@@ -356,6 +406,8 @@ const CronManagement: React.FC = () => {
           setSelectedJobId(null)
         }}
       />
+
+      <ConfirmDialog />
     </div>
   )
 }

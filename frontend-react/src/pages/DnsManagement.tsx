@@ -140,6 +140,7 @@ function TablePagination({ table }: { table: ReturnType<typeof useReactTable<any
         <Select
           value={String(pageSize)}
           onValueChange={(v) => table.setPageSize(Number(v))}
+          itemToStringLabel={(v) => `${v}条/页`}
         >
           <SelectTrigger className="w-22.5">
             <SelectValue />

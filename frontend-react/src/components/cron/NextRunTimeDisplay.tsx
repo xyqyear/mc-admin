@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Typography, Tooltip } from 'antd'
-import { ClockCircleOutlined } from '@ant-design/icons'
+import { Clock } from 'lucide-react'
 import { formatDateTime } from '@/utils/formatUtils'
-
-const { Text } = Typography
 
 interface NextRunTimeDisplayProps {
   nextRunTime: string | null
@@ -12,7 +9,7 @@ interface NextRunTimeDisplayProps {
 
 const NextRunTimeDisplay: React.FC<NextRunTimeDisplayProps> = ({
   nextRunTime,
-  className = ''
+  className = '',
 }) => {
   const [timeLeft, setTimeLeft] = useState<string>('')
 
@@ -62,22 +59,23 @@ const NextRunTimeDisplay: React.FC<NextRunTimeDisplayProps> = ({
 
   if (!nextRunTime) {
     return (
-      <Text type="secondary" className={className}>
-        <ClockCircleOutlined className="mr-1" />
+      <span className={`text-muted-foreground ${className}`}>
+        <Clock className="mr-1 inline h-3.5 w-3.5" />
         无计划运行
-      </Text>
+      </span>
     )
   }
 
   const formattedTime = formatDateTime(nextRunTime)
 
   return (
-    <Tooltip title={`下次运行时间: ${formattedTime}`}>
-      <Text className={`${className} font-mono`}>
-        <ClockCircleOutlined className="mr-1 text-blue-500" />
-        {timeLeft}
-      </Text>
-    </Tooltip>
+    <span
+      className={`font-mono ${className}`}
+      title={`下次运行时间: ${formattedTime}`}
+    >
+      <Clock className="mr-1 inline h-3.5 w-3.5 text-blue-500" />
+      {timeLeft}
+    </span>
   )
 }
 

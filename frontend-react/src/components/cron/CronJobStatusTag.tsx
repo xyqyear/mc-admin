@@ -1,10 +1,6 @@
 import React from 'react'
-import { Tag } from 'antd'
-import {
-  PlayCircleOutlined,
-  PauseCircleOutlined,
-  StopOutlined
-} from '@ant-design/icons'
+import { Play, Pause, Square } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 interface CronJobStatusTagProps {
   status: string
@@ -13,47 +9,47 @@ interface CronJobStatusTagProps {
 
 const CronJobStatusTag: React.FC<CronJobStatusTagProps> = ({
   status,
-  size = 'default'
+  size = 'default',
 }) => {
   const getStatusConfig = () => {
     switch (status.toLowerCase()) {
       case 'active':
         return {
-          color: 'green',
+          className: 'bg-green-100 text-green-700 border-green-200',
           text: '运行中',
-          icon: <PlayCircleOutlined />
+          icon: <Play className="h-3 w-3" />,
         }
       case 'paused':
         return {
-          color: 'orange',
+          className: 'bg-orange-100 text-orange-700 border-orange-200',
           text: '已暂停',
-          icon: <PauseCircleOutlined />
+          icon: <Pause className="h-3 w-3" />,
         }
       case 'cancelled':
         return {
-          color: 'red',
+          className: 'bg-red-100 text-red-700 border-red-200',
           text: '已取消',
-          icon: <StopOutlined />
+          icon: <Square className="h-3 w-3" />,
         }
       default:
         return {
-          color: 'default',
+          className: '',
           text: status || '未知',
-          icon: null
+          icon: null,
         }
     }
   }
 
-  const { color, text, icon } = getStatusConfig()
+  const { className, text, icon } = getStatusConfig()
 
   return (
-    <Tag
-      color={color}
-      icon={icon}
-      className={size === 'small' ? 'text-xs' : ''}
+    <Badge
+      variant="outline"
+      className={`${className} ${size === 'small' ? 'text-xs' : ''}`}
     >
+      {icon}
       {text}
-    </Tag>
+    </Badge>
   )
 }
 

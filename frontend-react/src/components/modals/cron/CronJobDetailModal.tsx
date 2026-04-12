@@ -1,30 +1,39 @@
 import React, { useState } from 'react'
+import { Info, History, RotateCw } from 'lucide-react'
 import {
-  Modal,
-  Card,
-  Descriptions,
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
   Table,
-  Button,
-  Typography,
-  Tag,
-  Alert,
-  Tabs,
-  Empty,
-  Space
-} from 'antd'
-import {
-  InfoCircleOutlined,
-  HistoryOutlined,
-  ReloadOutlined,
-  CloseOutlined
-} from '@ant-design/icons'
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
 import { useCronJob, useCronJobExecutions, useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
 import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressionDisplay } from '@/components/cron'
 import { formatDateTime } from '@/utils/formatUtils'
 import type { CronJobExecution } from '@/hooks/api/cronApi'
-import type { TableProps } from 'antd'
-
-const { Text, Paragraph } = Typography
 
 interface CronJobDetailModalProps {
   open: boolean
@@ -32,33 +41,114 @@ interface CronJobDetailModalProps {
   onCancel: () => void
 }
 
+const executionColumns: ColumnDef<CronJobExecution, any>[] = [
+  {
+    accessorKey: 'execution_id',
+    header: '执行ID',
+    size: 120,
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {row.original.execution_id.slice(-8)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'status',
+    header: '状态',
+    size: 80,
+    cell: ({ row }) => (
+      <ExecutionStatusTag status={row.original.status} size="small" />
+    ),
+  },
+  {
+    accessorKey: 'started_at',
+    header: '开始时间',
+    size: 160,
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {row.original.started_at ? formatDateTime(row.original.started_at) : '-'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'ended_at',
+    header: '结束时间',
+    size: 160,
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {row.original.ended_at ? formatDateTime(row.original.ended_at) : '-'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'duration_ms',
+    header: '耗时',
+    size: 80,
+    cell: ({ row }) => (
+      <span className="text-xs">
+        {row.original.duration_ms ? `${row.original.duration_ms}ms` : '-'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'messages',
+    header: '日志',
+    cell: ({ row }) => {
+      const messages = row.original.messages
+      if (!messages || messages.length === 0) {
+        return <span className="text-xs text-muted-foreground">无日志</span>
+      }
+      return (
+        <div className="max-w-xs">
+          {messages.slice(0, 2).map((msg, index) => (
+            <div key={index} className="text-xs text-muted-foreground truncate">
+              {msg}
+            </div>
+          ))}
+          {messages.length > 2 && (
+            <span className="text-xs text-muted-foreground">
+              ...还有 {messages.length - 2} 条
+            </span>
+          )}
+        </div>
+      )
+    },
+  },
+]
+
 const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
   open,
   cronjobId,
-  onCancel
+  onCancel,
 }) => {
   const [activeTab, setActiveTab] = useState<string>('info')
-  const [logModalOpen, setLogModalOpen] = useState(false)
-  const [selectedLogs, setSelectedLogs] = useState<string[]>([])
 
   const {
     data: jobDetail,
     isLoading: jobLoading,
     error: jobError,
-    refetch: refetchJob
+    refetch: refetchJob,
   } = useCronJob(cronjobId)
 
   const {
     data: executions,
     isLoading: executionsLoading,
     error: executionsError,
-    refetch: refetchExecutions
+    refetch: refetchExecutions,
   } = useCronJobExecutions(cronjobId, 50)
 
   const {
     data: nextRunTime,
-    refetch: refetchNextRun
+    refetch: refetchNextRun,
   } = useCronJobNextRunTime(cronjobId)
+
+  const table = useReactTable({
+    data: executions || [],
+    columns: executionColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 10 } },
+  })
 
   const handleRefresh = () => {
     refetchJob()
@@ -66,297 +156,245 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
     refetchNextRun()
   }
 
-  const handleViewAllLogs = (messages: string[]) => {
-    setSelectedLogs(messages)
-    setLogModalOpen(true)
-  }
-
-  const executionsColumns: TableProps<CronJobExecution>['columns'] = [
-    {
-      title: '执行ID',
-      dataIndex: 'execution_id',
-      key: 'execution_id',
-      width: 120,
-      render: (id: string) => (
-        <Text className="font-mono text-xs">{id.slice(-8)}</Text>
-      )
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 80,
-      render: (status: string) => (
-        <ExecutionStatusTag status={status} size="small" />
-      )
-    },
-    {
-      title: '开始时间',
-      dataIndex: 'started_at',
-      key: 'started_at',
-      width: 160,
-      render: (time: string) => (
-        <Text className="font-mono text-xs">
-          {time ? formatDateTime(time) : '-'}
-        </Text>
-      )
-    },
-    {
-      title: '结束时间',
-      dataIndex: 'ended_at',
-      key: 'ended_at',
-      width: 160,
-      render: (time: string) => (
-        <Text className="font-mono text-xs">
-          {time ? formatDateTime(time) : '-'}
-        </Text>
-      )
-    },
-    {
-      title: '耗时',
-      dataIndex: 'duration_ms',
-      key: 'duration_ms',
-      width: 80,
-      render: (duration: number) => (
-        <Text className="text-xs">
-          {duration ? `${duration}ms` : '-'}
-        </Text>
-      )
-    },
-    {
-      title: '日志',
-      dataIndex: 'messages',
-      key: 'messages',
-      render: (messages: string[]) => (
-        messages.length > 0 ? (
-          <div className="max-w-xs">
-            {messages.slice(0, 2).map((msg, index) => (
-              <div key={index} className="text-xs text-gray-600 truncate">
-                {msg}
-              </div>
-            ))}
-            {messages.length > 2 && (
-              <Button
-                type="link"
-                size="small"
-                className="text-xs p-0 h-auto"
-                onClick={() => handleViewAllLogs(messages)}
-              >
-                ...还有 {messages.length - 2} 条 (查看全部)
-              </Button>
-            )}
-          </div>
-        ) : (
-          <Text type="secondary" className="text-xs">无日志</Text>
-        )
-      )
-    }
-  ]
-
   if (!open || !cronjobId) {
     return null
   }
 
-  const tabItems = [
-    {
-      key: 'info',
-      label: (
-        <Space>
-          <InfoCircleOutlined />
-          <span>任务信息</span>
-        </Space>
-      ),
-      children: (
-        <div className="space-y-4">
-          {jobError && (
-            <Alert
-              title="加载任务信息失败"
-              description={jobError.message}
-              type="error"
-              showIcon
-              closable
-            />
-          )}
-
-          {jobDetail && (
-            <>
-              <Descriptions
-                title="基本信息"
-                bordered
-                size="small"
-                column={2}
-              >
-                <Descriptions.Item label="任务ID" span={2}>
-                  <Text className="font-mono">{jobDetail.cronjob_id}</Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="任务名称" span={2}>
-                  {jobDetail.name}
-                </Descriptions.Item>
-                <Descriptions.Item label="任务类型">
-                  <Tag color="blue">{jobDetail.identifier}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="状态">
-                  <CronJobStatusTag status={jobDetail.status} />
-                </Descriptions.Item>
-                <Descriptions.Item label="执行次数">
-                  <Text strong>{jobDetail.execution_count}</Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="创建时间">
-                  <Text className="font-mono text-sm">
-                    {formatDateTime(jobDetail.created_at)}
-                  </Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="更新时间" span={2}>
-                  <Text className="font-mono text-sm">
-                    {formatDateTime(jobDetail.updated_at)}
-                  </Text>
-                </Descriptions.Item>
-              </Descriptions>
-
-              <Card title="调度配置" size="small">
-                <div className="space-y-3">
-                  <div>
-                    <Text strong>Cron 表达式:</Text>
-                    <div className="mt-1">
-                      <CronExpressionDisplay
-                        cronExpression={jobDetail.cron}
-                        second={jobDetail.second}
-                        showTooltip={true}
-                      />
-                    </div>
-                  </div>
-
-                  {jobDetail.status.toLowerCase() === 'active' && nextRunTime && (
-                    <div>
-                      <Text strong>下次运行:</Text>
-                      <div className="mt-1">
-                        <NextRunTimeDisplay nextRunTime={nextRunTime.next_run_time} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              <Card title="任务参数" size="small">
-                <Paragraph>
-                  <pre className="bg-gray-50 p-3 rounded text-sm overflow-auto">
-                    {JSON.stringify(jobDetail.params, null, 2)}
-                  </pre>
-                </Paragraph>
-              </Card>
-            </>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'executions',
-      label: (
-        <Space>
-          <HistoryOutlined />
-          <span>执行历史</span>
-          {executions && (
-            <Tag>{executions.length}</Tag>
-          )}
-        </Space>
-      ),
-      children: (
-        <div className="space-y-4">
-          {executionsError && (
-            <Alert
-              title="加载执行历史失败"
-              description={executionsError.message}
-              type="error"
-              showIcon
-              closable
-            />
-          )}
-
-          <Table
-            dataSource={executions}
-            columns={executionsColumns}
-            rowKey="execution_id"
-            size="small"
-            loading={executionsLoading}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: false,
-              showTotal: (total, range) =>
-                `${range[0]}-${range[1]} 共 ${total} 条执行记录`
-            }}
-            locale={{
-              emptyText: (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无执行记录"
-                />
-              )
-            }}
-          />
-        </div>
-      )
-    }
-  ]
-
   return (
-    <Modal
-      title={
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <InfoCircleOutlined />
-            <span>任务详情</span>
-            {jobDetail && (
-              <Text type="secondary">- {jobDetail.name}</Text>
-            )}
-          </div>
-          <Button
-            className="mr-6"
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={jobLoading}
-          >
-            刷新
-          </Button>
-        </div>
-      }
-      open={open}
-      onCancel={onCancel}
-      footer={[
-        <Button key="close" icon={<CloseOutlined />} onClick={onCancel}>
-          关闭
-        </Button>
-      ]}
-      width={1000}
-      destroyOnHidden
-    >
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={tabItems}
-      />
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
+        <DialogContent className="sm:max-w-250 max-h-[85vh] overflow-y-auto" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Info className="h-5 w-5" />
+                <span>任务详情</span>
+                {jobDetail && (
+                  <span className="text-sm font-normal text-muted-foreground">- {jobDetail.name}</span>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={jobLoading}
+              >
+                {jobLoading ? <Spinner className="mr-1 size-3.5" /> : <RotateCw className="mr-1 h-3.5 w-3.5" />}
+                刷新
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
 
-      {/* 日志查看模态框 */}
-      <Modal
-        title="执行日志"
-        open={logModalOpen}
-        onCancel={() => setLogModalOpen(false)}
-        footer={[
-          <Button key="close" onClick={() => setLogModalOpen(false)}>
-            关闭
-          </Button>
-        ]}
-        width={600}
-      >
-        <div>
-          {selectedLogs.map((log, index) => (
-            <div key={index} className="border-b border-gray-100 pb-2 last:border-b-0">
-              <Text className="text-xs text-gray-500 mr-2">{index + 1}.</Text>
-              <Text className="text-sm">{log}</Text>
-            </div>
-          ))}
-        </div>
-      </Modal>
-    </Modal>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="info">
+                <Info className="mr-1 h-3.5 w-3.5" />
+                任务信息
+              </TabsTrigger>
+              <TabsTrigger value="executions">
+                <History className="mr-1 h-3.5 w-3.5" />
+                执行历史
+                {executions && (
+                  <Badge variant="secondary" className="ml-1">{executions.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="info">
+              <div className="space-y-4 pt-2">
+                {jobError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>加载任务信息失败</AlertTitle>
+                    <AlertDescription>{jobError.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                {jobLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <Spinner className="size-6" />
+                  </div>
+                )}
+
+                {jobDetail && (
+                  <>
+                    {/* Basic Info */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">基本信息</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">任务ID:</span>
+                            <span className="ml-2 font-mono">{jobDetail.cronjob_id}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">任务名称:</span>
+                            <span className="ml-2">{jobDetail.name}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">任务类型:</span>
+                            <Badge variant="outline" className="ml-2 bg-blue-100 text-blue-700 border-blue-200">
+                              {jobDetail.identifier}
+                            </Badge>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">状态:</span>
+                            <span className="ml-2">
+                              <CronJobStatusTag status={jobDetail.status} />
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">执行次数:</span>
+                            <span className="ml-2 font-semibold">{jobDetail.execution_count}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">创建时间:</span>
+                            <span className="ml-2 font-mono text-xs">{formatDateTime(jobDetail.created_at)}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">更新时间:</span>
+                            <span className="ml-2 font-mono text-xs">{formatDateTime(jobDetail.updated_at)}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Schedule Config */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">调度配置</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div>
+                          <span className="text-sm font-medium">Cron 表达式:</span>
+                          <div className="mt-1">
+                            <CronExpressionDisplay
+                              cronExpression={jobDetail.cron}
+                              second={jobDetail.second}
+                              showTooltip={true}
+                            />
+                          </div>
+                        </div>
+                        {jobDetail.status.toLowerCase() === 'active' && nextRunTime && (
+                          <div>
+                            <span className="text-sm font-medium">下次运行:</span>
+                            <div className="mt-1">
+                              <NextRunTimeDisplay nextRunTime={nextRunTime.next_run_time} />
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Job Params */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">任务参数</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <pre className="bg-muted p-3 rounded text-sm overflow-auto">
+                          {JSON.stringify(jobDetail.params, null, 2)}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="executions">
+              <div className="space-y-4 pt-2">
+                {executionsError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>加载执行历史失败</AlertTitle>
+                    <AlertDescription>{executionsError.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                {executionsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Spinner className="size-6" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          {table.getHeaderGroups().map(headerGroup => (
+                            <TableRow key={headerGroup.id}>
+                              {headerGroup.headers.map(header => (
+                                <TableHead key={header.id}>
+                                  {header.isPlaceholder
+                                    ? null
+                                    : flexRender(header.column.columnDef.header, header.getContext())}
+                                </TableHead>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableHeader>
+                        <TableBody>
+                          {table.getRowModel().rows.length ? (
+                            table.getRowModel().rows.map(row => (
+                              <TableRow key={row.id}>
+                                {row.getVisibleCells().map(cell => (
+                                  <TableCell key={cell.id}>
+                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={executionColumns.length} className="h-24 text-center text-muted-foreground">
+                                暂无执行记录
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {table.getPageCount() > 1 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          共 {executions?.length || 0} 条执行记录
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => table.previousPage()}
+                            disabled={!table.getCanPreviousPage()}
+                          >
+                            上一页
+                          </Button>
+                          <span className="text-sm text-muted-foreground">
+                            {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => table.nextPage()}
+                            disabled={!table.getCanNextPage()}
+                          >
+                            下一页
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onCancel}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
   )
 }
 

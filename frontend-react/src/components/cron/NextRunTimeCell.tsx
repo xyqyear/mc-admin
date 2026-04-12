@@ -1,9 +1,6 @@
 import React from 'react'
-import { Typography } from 'antd'
 import { useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
 import NextRunTimeDisplay from './NextRunTimeDisplay'
-
-const { Text } = Typography
 
 interface NextRunTimeCellProps {
   cronjobId: string
@@ -12,32 +9,22 @@ interface NextRunTimeCellProps {
 
 const NextRunTimeCell: React.FC<NextRunTimeCellProps> = ({
   cronjobId,
-  status
+  status,
 }) => {
   const { data: nextRunData, isLoading } = useCronJobNextRunTime(
     status.toLowerCase() === 'active' ? cronjobId : null
   )
 
   if (status.toLowerCase() !== 'active') {
-    return (
-      <Text type="secondary" className="text-xs">
-        -
-      </Text>
-    )
+    return <span className="text-xs text-muted-foreground">-</span>
   }
 
   if (isLoading) {
-    return (
-      <Text type="secondary" className="text-xs">
-        加载中...
-      </Text>
-    )
+    return <span className="text-xs text-muted-foreground">加载中...</span>
   }
 
   return (
-    <NextRunTimeDisplay
-      nextRunTime={nextRunData?.next_run_time || null}
-    />
+    <NextRunTimeDisplay nextRunTime={nextRunData?.next_run_time || null} />
   )
 }
 
