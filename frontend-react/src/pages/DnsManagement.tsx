@@ -1,45 +1,188 @@
-import React from 'react'
-import {
-  Card,
-  Table,
-  Button,
-  Alert,
-  Tag,
-  Space,
-  Typography,
-  Row,
-  Col,
-  Tooltip,
-  App
-} from 'antd'
-import {
-  ReloadOutlined,
-  SyncOutlined,
-  SettingOutlined,
-  GlobalOutlined,
-  ShareAltOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ExclamationCircleOutlined
-} from '@ant-design/icons'
+import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import { toast } from 'sonner'
+import {
+  Globe,
+  RotateCw,
+  RefreshCw,
+  Settings,
+  Share2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
 import PageHeader from '@/components/layout/PageHeader'
+import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/hooks/queries/base/useDnsQueries'
 import { useUpdateDNS, useRefreshDNSData } from '@/hooks/mutations/useDnsMutations'
 import type { DNSRecord } from '@/types/Dns'
-import type { ColumnsType } from 'antd/es/table'
 
-const { Text } = Typography
+// --- Column definitions ---
+
+const dnsRecordsColumns: ColumnDef<DNSRecord, any>[] = [
+  {
+    accessorKey: 'sub_domain',
+    header: '子域名',
+    size: 200,
+  },
+  {
+    accessorKey: 'record_type',
+    header: '记录类型',
+    size: 100,
+    cell: ({ row }) => {
+      const type = row.getValue<string>('record_type')
+      const colorClass =
+        type === 'A' ? 'bg-blue-100 text-blue-800 hover:bg-blue-100' :
+        type === 'AAAA' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
+        type === 'SRV' ? 'bg-orange-100 text-orange-800 hover:bg-orange-100' :
+        ''
+      return <Badge className={colorClass}>{type}</Badge>
+    },
+  },
+  {
+    accessorKey: 'value',
+    header: '值',
+    cell: ({ row }) => (
+      <span className="truncate block" title={row.getValue<string>('value')}>
+        {row.getValue<string>('value')}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'ttl',
+    header: 'TTL',
+    size: 80,
+    cell: ({ row }) => `${row.getValue<number>('ttl')}s`,
+  },
+  {
+    accessorKey: 'record_id',
+    header: '记录ID',
+    size: 120,
+    cell: ({ row }) => (
+      <span className="text-xs text-muted-foreground truncate block" title={String(row.getValue('record_id'))}>
+        {String(row.getValue('record_id'))}
+      </span>
+    ),
+  },
+]
+
+interface RouterRouteRow {
+  key: string
+  server_address: string
+  backend: string
+}
+
+const routerRoutesColumns: ColumnDef<RouterRouteRow, any>[] = [
+  {
+    accessorKey: 'server_address',
+    header: '服务器地址',
+    cell: ({ row }) => (
+      <span className="truncate block" title={row.getValue<string>('server_address')}>
+        {row.getValue<string>('server_address')}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'backend',
+    header: '后端地址',
+    size: 150,
+  },
+]
+
+// --- Helper: simple table pagination ---
+
+function TablePagination({ table }: { table: ReturnType<typeof useReactTable<any>> }) {
+  const { pageIndex, pageSize } = table.getState().pagination
+  const totalRows = table.getCoreRowModel().rows.length
+  if (totalRows === 0) return null
+
+  const start = pageIndex * pageSize + 1
+  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
+
+  return (
+    <div className="flex items-center justify-between pt-3">
+      <span className="text-sm text-muted-foreground">
+        {start}-{end} 共 {totalRows} 条
+      </span>
+      <div className="flex items-center gap-2">
+        <Select
+          value={String(pageSize)}
+          onValueChange={(v) => table.setPageSize(Number(v))}
+        >
+          <SelectTrigger className="w-22.5">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[10, 20, 50].map(size => (
+              <SelectItem key={size} value={String(size)}>
+                {size}条/页
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          {pageIndex + 1} / {table.getPageCount()}
+        </span>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// --- Main component ---
 
 const DnsManagement: React.FC = () => {
   const navigate = useNavigate()
-  const { message } = App.useApp()
 
   // Queries
   const { data: dnsEnabled, isLoading: enabledLoading } = useDNSEnabled()
-
-  // Only fetch DNS status, records and routes if DNS is enabled
   const isDNSEnabled = dnsEnabled?.enabled ?? false
   const { data: dnsStatus, isLoading: statusLoading, error: statusError } = useDNSStatus(isDNSEnabled)
   const { data: dnsRecords, isLoading: recordsLoading, error: recordsError } = useDNSRecords(isDNSEnabled)
@@ -49,89 +192,24 @@ const DnsManagement: React.FC = () => {
   const updateDNSMutation = useUpdateDNS()
   const refreshDataMutation = useRefreshDNSData()
 
-  // Handle refresh data
   const handleRefresh = () => {
     refreshDataMutation.mutate()
   }
 
-  // Handle DNS update
   const handleUpdate = () => {
     if (!dnsEnabled?.enabled) {
-      message.warning('DNS管理器未启用，无法执行更新操作')
+      toast.warning('DNS管理器未启用，无法执行更新操作')
       return
     }
     updateDNSMutation.mutate()
   }
 
-  // Navigate to dynamic config with dns module selected
   const handleGoToSettings = () => {
     navigate('/config?module=dns')
   }
 
-  // DNS Records table columns
-  const dnsRecordsColumns: ColumnsType<DNSRecord> = [
-    {
-      title: '子域名',
-      dataIndex: 'sub_domain',
-      key: 'sub_domain',
-      width: 200,
-    },
-    {
-      title: '记录类型',
-      dataIndex: 'record_type',
-      key: 'record_type',
-      width: 100,
-      render: (type: string) => (
-        <Tag color={type === 'A' ? 'blue' : type === 'AAAA' ? 'green' : type === 'SRV' ? 'orange' : 'default'}>
-          {type}
-        </Tag>
-      ),
-    },
-    {
-      title: '值',
-      dataIndex: 'value',
-      key: 'value',
-      ellipsis: true,
-    },
-    {
-      title: 'TTL',
-      dataIndex: 'ttl',
-      key: 'ttl',
-      width: 80,
-      render: (ttl: number) => `${ttl}s`,
-    },
-    {
-      title: '记录ID',
-      dataIndex: 'record_id',
-      key: 'record_id',
-      width: 120,
-      ellipsis: true,
-      render: (id: string | number) => (
-        <Text type="secondary" style={{ fontSize: '12px' }}>
-          {String(id)}
-        </Text>
-      ),
-    },
-  ]
-
-  // Router Routes table columns
-  const routerRoutesColumns: ColumnsType<{ server_address: string; backend: string }> = [
-    {
-      title: '服务器地址',
-      dataIndex: 'server_address',
-      key: 'server_address',
-      ellipsis: true,
-    },
-    {
-      title: '后端地址',
-      dataIndex: 'backend',
-      key: 'backend',
-      width: 150,
-    },
-  ]
-
-  // Convert router routes to table data
-  const routerRoutesData = React.useMemo(() => {
+  // Router routes table data
+  const routerRoutesData = useMemo(() => {
     if (!routerRoutes) return []
     return Object.entries(routerRoutes).map(([server_address, backend]) => ({
       key: server_address,
@@ -140,58 +218,110 @@ const DnsManagement: React.FC = () => {
     }))
   }, [routerRoutes])
 
-  // Helper function to check if there are actual changes
-  const hasActualChanges = (dnsStatus: any) => {
-    if (!dnsStatus) return false
+  // TanStack Table instances
+  const [dnsPagination, setDnsPagination] = useState({ pageIndex: 0, pageSize: 20 })
+  const [routesPagination, setRoutesPagination] = useState({ pageIndex: 0, pageSize: 20 })
 
-    const hasDnsChanges = dnsStatus.dns_diff && (
-      (dnsStatus.dns_diff.records_to_add?.length > 0) ||
-      (dnsStatus.dns_diff.records_to_update?.length > 0) ||
-      (dnsStatus.dns_diff.records_to_remove?.length > 0)
+  const dnsTable = useReactTable({
+    data: dnsRecords ?? [],
+    columns: dnsRecordsColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onPaginationChange: setDnsPagination,
+    state: { pagination: dnsPagination },
+    autoResetPageIndex: false,
+    getRowId: (row) => String(row.record_id),
+  })
+
+  const routesTable = useReactTable({
+    data: routerRoutesData,
+    columns: routerRoutesColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onPaginationChange: setRoutesPagination,
+    state: { pagination: routesPagination },
+    autoResetPageIndex: false,
+    getRowId: (row) => row.key,
+  })
+
+  // Helper function to check if there are actual changes
+  const hasActualChanges = (status: any) => {
+    if (!status) return false
+
+    const hasDnsChanges = status.dns_diff && (
+      (status.dns_diff.records_to_add?.length > 0) ||
+      (status.dns_diff.records_to_update?.length > 0) ||
+      (status.dns_diff.records_to_remove?.length > 0)
     )
 
-    const hasRouterChanges = dnsStatus.router_diff && (
-      (Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0) ||
-      (Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0) ||
-      (Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0)
+    const hasRouterChanges = status.router_diff && (
+      (Object.keys(status.router_diff.routes_to_add || {}).length > 0) ||
+      (Object.keys(status.router_diff.routes_to_update || {}).length > 0) ||
+      (Object.keys(status.router_diff.routes_to_remove || {}).length > 0)
     )
 
     return hasDnsChanges || hasRouterChanges
   }
 
-  // Status indicators
+  // Status indicator
   const renderStatusIndicator = () => {
     if (statusLoading || enabledLoading) {
-      return <Tag icon={<SyncOutlined spin />} color="processing">检查中...</Tag>
+      return (
+        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
+          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          检查中...
+        </Badge>
+      )
     }
 
     if (statusError) {
-      return <Tag icon={<CloseCircleOutlined />} color="error">状态获取失败</Tag>
+      return (
+        <Badge variant="destructive">
+          <XCircle className="mr-1 h-3 w-3" />
+          状态获取失败
+        </Badge>
+      )
     }
 
     if (!dnsEnabled?.enabled) {
-      return <Tag icon={<CloseCircleOutlined />} color="warning">DNS管理未启用</Tag>
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+          <XCircle className="mr-1 h-3 w-3" />
+          DNS管理未启用
+        </Badge>
+      )
     }
 
     if (!dnsStatus?.initialized) {
-      return <Tag icon={<ExclamationCircleOutlined />} color="orange">DNS管理器未初始化</Tag>
+      return (
+        <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
+          <AlertCircle className="mr-1 h-3 w-3" />
+          DNS管理器未初始化
+        </Badge>
+      )
     }
 
     if (hasActualChanges(dnsStatus)) {
-      return <Tag icon={<ExclamationCircleOutlined />} color="warning">有待同步的变更</Tag>
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+          <AlertCircle className="mr-1 h-3 w-3" />
+          有待同步的变更
+        </Badge>
+      )
     }
 
-    return <Tag icon={<CheckCircleOutlined />} color="success">状态正常</Tag>
+    return (
+      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+        <CheckCircle2 className="mr-1 h-3 w-3" />
+        状态正常
+      </Badge>
+    )
   }
 
-  // Render errors from HTTP exceptions
+  // Render errors
   const renderErrors = () => {
-    if (!statusError) {
-      return null
-    }
+    if (!statusError) return null
 
-    // Extract error message from the error object
-    // Type guard to check if error is an AxiosError with response
     let errorMessage = '未知错误'
     if (statusError && typeof statusError === 'object' && 'response' in statusError) {
       const axiosError = statusError as any
@@ -201,279 +331,305 @@ const DnsManagement: React.FC = () => {
     }
 
     return (
-      <Alert
-        title="状态检查错误"
-        description={errorMessage}
-        type="error"
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
+      <Alert variant="destructive">
+        <AlertTitle>状态检查错误</AlertTitle>
+        <AlertDescription>{errorMessage}</AlertDescription>
+      </Alert>
     )
   }
 
   // Render differences
   const renderDifferences = () => {
-    if (!dnsStatus || !hasActualChanges(dnsStatus)) {
-      return null
-    }
+    if (!dnsStatus || !hasActualChanges(dnsStatus)) return null
 
     return (
-      <Alert
-        title="检测到待同步的变更"
-        description={
-          <div className="space-y-4">
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>检测到待同步的变更</AlertTitle>
+        <AlertDescription>
+          <div className="space-y-4 mt-2">
             {dnsStatus.dns_diff && (
               dnsStatus.dns_diff.records_to_add?.length > 0 ||
               dnsStatus.dns_diff.records_to_update?.length > 0 ||
               dnsStatus.dns_diff.records_to_remove?.length > 0
             ) && (
-                <div>
-                  <Text strong>DNS记录变更:</Text>
-                  <div className="ml-4 mt-2 space-y-2">
-                    {dnsStatus.dns_diff.records_to_add?.length > 0 && (
-                      <div>
-                        <Text type="success" strong>新增记录 ({dnsStatus.dns_diff.records_to_add.length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {dnsStatus.dns_diff.records_to_add.map((record: any, index: number) => (
-                            <li key={index} className="text-sm">
-                              <Text code>{record.sub_domain}</Text> → <Text type="success">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {dnsStatus.dns_diff.records_to_update?.length > 0 && (
-                      <div>
-                        <Text type="warning" strong>更新记录 ({dnsStatus.dns_diff.records_to_update.length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {dnsStatus.dns_diff.records_to_update.map((record: any, index: number) => (
-                            <li key={index} className="text-sm">
-                              <Text code>{record.sub_domain}</Text> → <Text type="warning">{record.record_type}</Text> → <Text>{record.value}</Text> (TTL: {record.ttl}s)
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {dnsStatus.dns_diff.records_to_remove?.length > 0 && (
-                      <div>
-                        <Text type="danger" strong>删除记录 ({dnsStatus.dns_diff.records_to_remove.length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {dnsStatus.dns_diff.records_to_remove.map((recordId: string, index: number) => (
-                            <li key={index} className="text-sm">
-                              <Text type="danger">记录ID: {recordId}</Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+              <div>
+                <p className="font-medium">DNS记录变更:</p>
+                <div className="ml-4 mt-2 space-y-2">
+                  {dnsStatus.dns_diff.records_to_add?.length > 0 && (
+                    <div>
+                      <p className="text-green-600 font-medium">新增记录 ({dnsStatus.dns_diff.records_to_add.length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_add.map((record: any, index: number) => (
+                          <li key={index} className="text-sm">
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">{record.sub_domain}</code>
+                            {' → '}
+                            <span className="text-green-600">{record.record_type}</span>
+                            {' → '}
+                            <span>{record.value}</span> (TTL: {record.ttl}s)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {dnsStatus.dns_diff.records_to_update?.length > 0 && (
+                    <div>
+                      <p className="text-yellow-600 font-medium">更新记录 ({dnsStatus.dns_diff.records_to_update.length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_update.map((record: any, index: number) => (
+                          <li key={index} className="text-sm">
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">{record.sub_domain}</code>
+                            {' → '}
+                            <span className="text-yellow-600">{record.record_type}</span>
+                            {' → '}
+                            <span>{record.value}</span> (TTL: {record.ttl}s)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {dnsStatus.dns_diff.records_to_remove?.length > 0 && (
+                    <div>
+                      <p className="text-red-600 font-medium">删除记录 ({dnsStatus.dns_diff.records_to_remove.length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {dnsStatus.dns_diff.records_to_remove.map((recordId: string, index: number) => (
+                          <li key={index} className="text-sm text-red-600">
+                            记录ID: {recordId}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
             {dnsStatus.router_diff && (
               Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 ||
               Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 ||
               Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0
             ) && (
-                <div>
-                  <Text strong>路由变更:</Text>
-                  <div className="ml-4 mt-2 space-y-2">
-                    {Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 && (
-                      <div>
-                        <Text type="success" strong>新增路由 ({Object.keys(dnsStatus.router_diff.routes_to_add).length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {Object.entries(dnsStatus.router_diff.routes_to_add).map(([serverAddress, backend], index) => (
-                            <li key={index} className="text-sm">
-                              <Text code>{serverAddress}</Text> → <Text type="success">{String(backend)}</Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 && (
-                      <div>
-                        <Text type="warning" strong>更新路由 ({Object.keys(dnsStatus.router_diff.routes_to_update).length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {Object.entries(dnsStatus.router_diff.routes_to_update).map(([serverAddress, changes], index) => (
-                            <li key={index} className="text-sm">
-                              <Text code>{serverAddress}</Text> → <Text type="warning">{JSON.stringify(changes)}</Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0 && (
-                      <div>
-                        <Text type="danger" strong>删除路由 ({Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条):</Text>
-                        <ul className="ml-4 mt-1">
-                          {Object.entries(dnsStatus.router_diff.routes_to_remove).map(([serverAddress, backend], index) => (
-                            <li key={index} className="text-sm">
-                              <Text code>{serverAddress}</Text> → <Text type="danger">{String(backend)}</Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+              <div>
+                <p className="font-medium">路由变更:</p>
+                <div className="ml-4 mt-2 space-y-2">
+                  {Object.keys(dnsStatus.router_diff.routes_to_add || {}).length > 0 && (
+                    <div>
+                      <p className="text-green-600 font-medium">新增路由 ({Object.keys(dnsStatus.router_diff.routes_to_add).length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_add).map(([serverAddress, backend], index) => (
+                          <li key={index} className="text-sm">
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">{serverAddress}</code>
+                            {' → '}
+                            <span className="text-green-600">{String(backend)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Object.keys(dnsStatus.router_diff.routes_to_update || {}).length > 0 && (
+                    <div>
+                      <p className="text-yellow-600 font-medium">更新路由 ({Object.keys(dnsStatus.router_diff.routes_to_update).length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_update).map(([serverAddress, changes], index) => (
+                          <li key={index} className="text-sm">
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">{serverAddress}</code>
+                            {' → '}
+                            <span className="text-yellow-600">{JSON.stringify(changes)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Object.keys(dnsStatus.router_diff.routes_to_remove || {}).length > 0 && (
+                    <div>
+                      <p className="text-red-600 font-medium">删除路由 ({Object.keys(dnsStatus.router_diff.routes_to_remove).length} 条):</p>
+                      <ul className="ml-4 mt-1">
+                        {Object.entries(dnsStatus.router_diff.routes_to_remove).map(([serverAddress, backend], index) => (
+                          <li key={index} className="text-sm">
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">{serverAddress}</code>
+                            {' → '}
+                            <span className="text-red-600">{String(backend)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
           </div>
-        }
-        type="warning"
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
+        </AlertDescription>
+      </Alert>
     )
   }
 
+  // Render a TanStack Table
+  const renderTable = (table: ReturnType<typeof useReactTable<any>>) => (
+    <>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map(headerGroup => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map(header => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map(row => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map(cell => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center text-muted-foreground">
+                  暂无数据
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <TablePagination table={table} />
+    </>
+  )
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="DNS管理"
-        icon={<GlobalOutlined />}
+        icon={<Globe className="h-5 w-5" />}
         actions={
-          <Space>
+          <>
             {renderStatusIndicator()}
-            <Tooltip title="重新获取DNS记录和路由信息">
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleRefresh}
-                loading={refreshDataMutation.isPending}
-              >
-                刷新
-              </Button>
-            </Tooltip>
-            <Tooltip title="手动触发DNS和路由更新">
-              <Button
-                type="primary"
-                icon={<SyncOutlined />}
-                onClick={handleUpdate}
-                loading={updateDNSMutation.isPending}
-                disabled={!dnsEnabled?.enabled}
-              >
-                更新记录
-              </Button>
-            </Tooltip>
-            <Tooltip title="跳转到DNS配置页面">
-              <Button
-                icon={<SettingOutlined />}
-                onClick={handleGoToSettings}
-              >
-                转到设置
-              </Button>
-            </Tooltip>
-          </Space>
+            <Button
+              variant="outline"
+              onClick={handleRefresh}
+              disabled={refreshDataMutation.isPending}
+              title="重新获取DNS记录和路由信息"
+            >
+              {refreshDataMutation.isPending
+                ? <Spinner className="mr-2 size-4" />
+                : <RotateCw className="mr-2 h-4 w-4" />
+              }
+              刷新
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={updateDNSMutation.isPending || !dnsEnabled?.enabled}
+              title="手动触发DNS和路由更新"
+            >
+              {updateDNSMutation.isPending
+                ? <Spinner className="mr-2 size-4" />
+                : <RefreshCw className="mr-2 h-4 w-4" />
+              }
+              更新记录
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleGoToSettings}
+              title="跳转到DNS配置页面"
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              转到设置
+            </Button>
+          </>
         }
       />
 
-      {/* Status and differences */}
       {renderErrors()}
       {renderDifferences()}
 
-      {/* DNS Records and Router Routes */}
-      <Row gutter={[16, 16]} className="flex-1 min-h-0">
-        <Col xs={24} lg={16} className="flex flex-col">
-          <Card
-            title={
-              <Space>
-                <GlobalOutlined />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* DNS Records */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Globe className="h-4 w-4" />
                 <span>DNS记录</span>
                 {dnsRecords && (
-                  <Tag color="blue">{dnsRecords.length} 条记录</Tag>
+                  <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
+                    {dnsRecords.length} 条记录
+                  </Badge>
                 )}
-              </Space>
-            }
-            className="flex-1 flex flex-col"
-            styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
-          >
-            {recordsLoading ? (
-              <LoadingSpinner height="8rem" tip="加载DNS记录中..." />
-            ) : !isDNSEnabled ? (
-              <Alert
-                title="DNS管理未启用"
-                description="请前往设置页面启用DNS管理功能"
-                type="info"
-                showIcon
-                action={
-                  <Button size="small" onClick={handleGoToSettings}>
-                    前往设置
-                  </Button>
-                }
-              />
-            ) : recordsError ? (
-              <Alert
-                title="DNS记录加载失败"
-                description={String(recordsError)}
-                type="error"
-                showIcon
-              />
-            ) : (
-              <Table
-                columns={dnsRecordsColumns}
-                dataSource={dnsRecords}
-                rowKey="record_id"
-                size="small"
-                pagination={{
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total) => `共 ${total} 条记录`,
-                }}
-                scroll={{ x: 'auto' }}
-              />
-            )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recordsLoading ? (
+                <LoadingSpinner height="8rem" />
+              ) : !isDNSEnabled ? (
+                <Alert>
+                  <AlertTitle>DNS管理未启用</AlertTitle>
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>请前往设置页面启用DNS管理功能</span>
+                    <Button size="sm" onClick={handleGoToSettings}>
+                      前往设置
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : recordsError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>DNS记录加载失败</AlertTitle>
+                  <AlertDescription>{String(recordsError)}</AlertDescription>
+                </Alert>
+              ) : (
+                renderTable(dnsTable)
+              )}
+            </CardContent>
           </Card>
-        </Col>
+        </div>
 
-        <Col xs={24} lg={8} className="flex flex-col">
-          <Card
-            title={
-              <Space>
-                <ShareAltOutlined />
+        {/* Router Routes */}
+        <div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Share2 className="h-4 w-4" />
                 <span>MC Router路由</span>
                 {routerRoutes && (
-                  <Tag color="green">{Object.keys(routerRoutes).length} 条路由</Tag>
+                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                    {Object.keys(routerRoutes).length} 条路由
+                  </Badge>
                 )}
-              </Space>
-            }
-            className="flex-1 flex flex-col"
-            styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } }}
-          >
-            {routesLoading ? (
-              <LoadingSpinner height="8rem" tip="加载路由信息中..." />
-            ) : !isDNSEnabled ? (
-              <Alert
-                title="DNS管理未启用"
-                description="请前往设置页面启用DNS管理功能"
-                type="info"
-                showIcon
-                action={
-                  <Button size="small" onClick={handleGoToSettings}>
-                    前往设置
-                  </Button>
-                }
-              />
-            ) : routesError ? (
-              <Alert
-                title="路由信息加载失败"
-                description={String(routesError)}
-                type="error"
-                showIcon
-              />
-            ) : (
-              <Table
-                columns={routerRoutesColumns}
-                dataSource={routerRoutesData}
-                size="small"
-                pagination={{
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total) => `共 ${total} 条路由`,
-                }}
-              />
-            )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {routesLoading ? (
+                <LoadingSpinner height="8rem" />
+              ) : !isDNSEnabled ? (
+                <Alert>
+                  <AlertTitle>DNS管理未启用</AlertTitle>
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>请前往设置页面启用DNS管理功能</span>
+                    <Button size="sm" onClick={handleGoToSettings}>
+                      前往设置
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : routesError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>路由信息加载失败</AlertTitle>
+                  <AlertDescription>{String(routesError)}</AlertDescription>
+                </Alert>
+              ) : (
+                renderTable(routesTable)
+              )}
+            </CardContent>
           </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
     </div>
   )
 }

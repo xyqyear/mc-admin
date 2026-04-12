@@ -1,460 +1,379 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useMemo } from 'react'
+import { toast } from 'sonner'
 import {
-  Card,
-  Table,
-  Button,
-  Space,
-  Modal,
-  Form,
-  Input,
-  App,
-  Popconfirm,
+  Trash2,
+  Download,
+  RotateCw,
   Upload,
-  Tooltip,
-  Switch,
-  Alert,
-  Dropdown,
-  Progress
-} from 'antd'
+  File,
+  Folder,
+  FileArchive,
+  Pencil,
+  Shield,
+  HelpCircle,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import {
-  DeleteOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  FileOutlined,
-  FolderOutlined,
-  FileZipOutlined,
-  MoreOutlined,
-  SafetyCertificateOutlined,
-  QuestionCircleOutlined
-} from '@ant-design/icons'
+  type ColumnDef,
+  type SortingState,
+  type RowSelectionState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Spinner } from '@/components/ui/spinner'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
 import PageHeader from '@/components/layout/PageHeader'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
+import ArchiveUploadDialog from '@/components/modals/ArchiveUploadDialog'
+import ArchiveRenameDialog from '@/components/modals/ArchiveRenameDialog'
+import SHA256ResultDialog from '@/components/modals/SHA256ResultDialog'
 import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { formatFileSize, formatDate, naturalCompare } from '@/utils/formatUtils'
-import { formatUtils } from '@/utils/serverUtils'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
-import type { ColumnType, SortOrder } from 'antd/es/table/interface'
+
+// --- Sortable header helper ---
+
+function SortableHeader<TData>({
+  column,
+  title,
+}: {
+  column: import('@tanstack/react-table').Column<TData>
+  title: string
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="-ml-3"
+      onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+    >
+      {title}
+      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
+    </Button>
+  )
+}
+
+// --- Main component ---
 
 const ArchiveManagement: React.FC = () => {
-  const { message } = App.useApp()
-  const [renameForm] = Form.useForm()
+  const { confirm, ConfirmDialog } = useConfirm()
 
   // Archive management hooks
   const { useArchiveFileList, useArchiveSHA256 } = useArchiveQueries()
-  const {
-    useUploadFile,
-    useDeleteItem,
-    useRenameItem,
-    downloadFile,
-  } = useArchiveMutations()
+  const { useDeleteItem, downloadFile } = useArchiveMutations()
 
   // Query data
   const { data: fileData, isLoading, refetch } = useArchiveFileList()
-  const archiveFiles = React.useMemo(() => fileData?.items || [], [fileData?.items])
+  const archiveFiles = useMemo(() => fileData?.items || [], [fileData?.items])
 
-  // Initialize mutation hooks
-  const uploadFileMutation = useUploadFile()
+  // Mutation hooks
   const deleteItemMutation = useDeleteItem()
-  const renameItemMutation = useRenameItem()
 
   // Local state
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [isRenameModalVisible, setIsRenameModalVisible] = useState(false)
-  const [isUploadModalVisible, setIsUploadModalVisible] = useState(false)
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [dragDropFiles, setDragDropFiles] = useState<File[] | undefined>(undefined)
   const [renamingFile, setRenamingFile] = useState<ArchiveFileItem | null>(null)
-  const [uploadFileList, setUploadFileList] = useState<any[]>([])
-  const [allowOverwrite, setAllowOverwrite] = useState(false)
-  const [pageSize, setPageSize] = useState(20)
-  const [currentPage, setCurrentPage] = useState(1)
   const [sha256Path, setSha256Path] = useState<string | null>(null)
-  const [sha256ModalVisible, setSha256ModalVisible] = useState(false)
+  const [sha256DialogOpen, setSha256DialogOpen] = useState(false)
   const [sha256Result, setSha256Result] = useState<{ fileName: string; hash: string } | null>(null)
   const [sha256HelpVisible, setSha256HelpVisible] = useState(false)
 
-  // Upload progress tracking
-  const [uploadProgress, setUploadProgress] = useState<number>(0)
-  const [uploadSpeed, setUploadSpeed] = useState<string>('0 B/s')
-  const [isUploading, setIsUploading] = useState<boolean>(false)
-  const uploadBytesHistory = useRef<Array<{ time: number, bytes: number }>>([])
-  const speedUpdateTimer = useRef<NodeJS.Timeout | null>(null)
-  const uploadAbortController = useRef<AbortController | null>(null)
+  // Table state
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: 'modified_at', desc: true },
+  ])
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
 
   // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
     accept: '.zip,.7z',
     onFileDrop: (files) => {
-      // 转换为上传文件列表格式
-      const fileList = files.map((file, index) => ({
-        uid: `${Date.now()}-${index}`,
-        name: file.name,
-        status: 'done' as const,
-        originFileObj: file,
-      }))
-
-      setUploadFileList(fileList)
-      setIsUploadModalVisible(true)
-      message.info(`已选择 ${files.length} 个压缩包文件，请确认上传`)
+      setDragDropFiles(files)
+      setIsUploadDialogOpen(true)
+      toast.info(`已选择 ${files.length} 个压缩包文件，请确认上传`)
     },
     onError: (errorMessage) => {
-      message.error(errorMessage)
-    }
+      toast.error(errorMessage)
+    },
   })
 
   // SHA256 query
   const sha256Query = useArchiveSHA256(sha256Path, !!sha256Path)
 
-  // Handle file operations
-  const handleDownload = async (file: ArchiveFileItem) => {
-    await downloadFile(file.path, file.name)
-  }
-
-  const handleDelete = async (file: ArchiveFileItem) => {
-    try {
-      await deleteItemMutation.mutateAsync(file.path)
-    } catch {
-      // Error is handled by mutation
-    }
-  }
-
-  const handleCalculateSHA256 = async (file: ArchiveFileItem) => {
-    setSha256Path(file.path)
-  }
-
-  // Handle SHA256 result
   React.useEffect(() => {
     if (sha256Query.data && sha256Path) {
       const file = archiveFiles.find(f => f.path === sha256Path)
       setSha256Result({
         fileName: file?.name || sha256Path,
-        hash: sha256Query.data.sha256
+        hash: sha256Query.data.sha256,
       })
-      setSha256ModalVisible(true)
-      setSha256Path(null) // Reset after showing result
+      setSha256DialogOpen(true)
+      setSha256Path(null)
     }
   }, [sha256Query.data, sha256Path, archiveFiles])
 
-  // Handle SHA256 error
   React.useEffect(() => {
     if (sha256Query.error && sha256Path) {
-      message.error(`计算SHA256失败: ${(sha256Query.error as any).message}`)
-      setSha256Path(null) // Reset after showing error
+      toast.error(`计算SHA256失败: ${(sha256Query.error as any).message}`)
+      setSha256Path(null)
     }
-  }, [sha256Query.error, sha256Path, message])
+  }, [sha256Query.error, sha256Path])
 
-  const handleRenameItem = async (values: any) => {
-    if (!renamingFile) return
-
-    try {
-      await renameItemMutation.mutateAsync({
-        old_path: renamingFile.path,
-        new_name: values.new_name,
-      })
-      setIsRenameModalVisible(false)
-      setRenamingFile(null)
-      renameForm.resetFields()
-    } catch {
-      // Error is handled by mutation
-    }
+  // File operations
+  const handleDownload = async (file: ArchiveFileItem) => {
+    await downloadFile(file.path, file.name)
   }
 
-
-  const calculateSpeed = (loadedBytes: number): string => {
-    const now = Date.now()
-    const history = uploadBytesHistory.current
-
-    // Add current data point
-    history.push({ time: now, bytes: loadedBytes })
-
-    // Keep only data points from last 5 seconds
-    const fiveSecondsAgo = now - 5000
-    uploadBytesHistory.current = history.filter(point => point.time >= fiveSecondsAgo)
-
-    if (uploadBytesHistory.current.length < 2) return '0 B/s'
-
-    // Calculate speed using oldest and newest data points in the window
-    const oldest = uploadBytesHistory.current[0]
-    const newest = uploadBytesHistory.current[uploadBytesHistory.current.length - 1]
-    const timeDiff = (newest.time - oldest.time) / 1000 // seconds
-    const bytesDiff = newest.bytes - oldest.bytes
-
-    if (timeDiff <= 0) return '0 B/s'
-
-    const speed = bytesDiff / timeDiff
-    return `${formatUtils.formatBytes(speed)}/s`
+  const handleDelete = (file: ArchiveFileItem) => {
+    confirm({
+      title: '确认删除',
+      description: `确定要删除 ${file.name} 吗？`,
+      confirmText: '确定',
+      cancelText: '取消',
+      variant: 'destructive',
+      onConfirm: async () => {
+        await deleteItemMutation.mutateAsync(file.path)
+      },
+    })
   }
 
-  const handleUploadWithProgress = async (file: File) => {
-    // Create AbortController for this upload
-    const controller = new AbortController()
-    uploadAbortController.current = controller
-
-    // Initialize tracking
-    setIsUploading(true)
-    uploadBytesHistory.current = []
-    setUploadProgress(0)
-    setUploadSpeed('0 B/s')
-
-    try {
-      await uploadFileMutation.mutateAsync({
-        path: '/',
-        file,
-        allowOverwrite,
-        options: {
-          signal: controller.signal,
-          onUploadProgress: (progressEvent) => {
-            const percent = Math.round(progressEvent.progress)
-            setUploadProgress(percent)
-
-            const speed = calculateSpeed(progressEvent.loaded)
-            setUploadSpeed(speed)
-          }
-        }
-      })
-
-      // Clean up on success
-      uploadAbortController.current = null
-      setIsUploading(false)
-      uploadBytesHistory.current = []
-      setUploadProgress(0)
-      setUploadSpeed('0 B/s')
-    } catch (error: any) {
-      // Clean up on error or cancellation
-      uploadAbortController.current = null
-      setIsUploading(false)
-      uploadBytesHistory.current = []
-      setUploadProgress(0)
-      setUploadSpeed('0 B/s')
-
-      // Check if error is due to cancellation
-      if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
-        // Request was cancelled, don't show error message
-        return
-      }
-
-      // Re-throw other errors to be handled by mutation's onError
-      throw error
-    }
-  }
-
-  const hasValidFiles = uploadFileList.some(file => {
-    const fileName = file.name.toLowerCase()
-    return fileName.endsWith('.zip') || fileName.endsWith('.7z')
-  })
-
-  // Unified cleanup function for upload modal
-  const cleanupUploadModal = () => {
-    // Cancel ongoing upload request if exists
-    if (uploadAbortController.current) {
-      uploadAbortController.current.abort()
-      uploadAbortController.current = null
-    }
-
-    setIsUploadModalVisible(false)
-    setUploadFileList([])
-    setAllowOverwrite(false)
-    // Clear progress tracking
-    setUploadProgress(0)
-    setUploadSpeed('0 B/s')
-    setIsUploading(false)
-    uploadBytesHistory.current = []
-    if (speedUpdateTimer.current) {
-      clearInterval(speedUpdateTimer.current)
-      speedUpdateTimer.current = null
-    }
-  }
-
-  // Clean up timer on component unmount
-  React.useEffect(() => {
-    return () => {
-      if (speedUpdateTimer.current) {
-        clearInterval(speedUpdateTimer.current)
-      }
-    }
-  }, [])
+  const selectedPaths = useMemo(() => {
+    return Object.keys(rowSelection)
+      .filter(key => rowSelection[key])
+      .map(idx => archiveFiles[Number(idx)]?.path)
+      .filter(Boolean) as string[]
+  }, [rowSelection, archiveFiles])
 
   const handleBulkDelete = () => {
-    if (selectedFiles.length === 0) {
-      message.warning('请选择要删除的文件')
+    if (selectedPaths.length === 0) {
+      toast.warning('请选择要删除的文件')
       return
     }
-
-    Modal.confirm({
+    confirm({
       title: '确认删除',
-      content: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
-      onOk: async () => {
-        try {
-          for (const filePath of selectedFiles) {
-            await deleteItemMutation.mutateAsync(filePath)
-          }
-          setSelectedFiles([])
-        } catch {
-          // Error is handled by mutation
+      description: `确定要删除选中的 ${selectedPaths.length} 个文件吗？`,
+      confirmText: '确定',
+      cancelText: '取消',
+      variant: 'destructive',
+      onConfirm: async () => {
+        for (const filePath of selectedPaths) {
+          await deleteItemMutation.mutateAsync(filePath)
         }
-      }
+        setRowSelection({})
+      },
     })
   }
 
   const handleRefresh = async () => {
     try {
       await refetch()
-      message.success('刷新成功')
+      toast.success('刷新成功')
     } catch {
-      message.error('刷新失败')
+      toast.error('刷新失败')
     }
   }
 
-  const moreActions = (file: ArchiveFileItem) => [
-    {
-      key: 'rename',
-      label: '重命名',
-      onClick: () => {
-        setRenamingFile(file)
-        renameForm.setFieldValue('new_name', file.name)
-        setIsRenameModalVisible(true)
-      }
-    }
-  ]
+  // --- Column definitions ---
 
-  // Table columns
-  const columns: ColumnType<ArchiveFileItem>[] = [
+  const columns: ColumnDef<ArchiveFileItem, any>[] = [
     {
-      title: '文件名',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => {
-        // Custom sorting: directories first, then files, both with natural sorting (9.txt before 10.txt)
-        if (a.type !== b.type) {
-          return a.type === 'directory' ? -1 : 1
-        }
-        return naturalCompare(a.name, b.name)
-      },
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      render: (name: string, file: ArchiveFileItem) => {
+      id: 'select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected()}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+        />
+      ),
+      enableSorting: false,
+      size: 40,
+    },
+    {
+      accessorKey: 'name',
+      header: ({ column }) => <SortableHeader column={column} title="文件名" />,
+      cell: ({ row }) => {
+        const file = row.original
         const isDirectory = file.type === 'directory'
-
         return (
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             {isDirectory ? (
-              <FolderOutlined style={{ color: '#1677ff' }} />
+              <Folder className="h-4 w-4 text-blue-500 shrink-0" />
             ) : (
-              <FileOutlined style={{ color: '#52c41a' }} />
+              <File className="h-4 w-4 text-green-500 shrink-0" />
             )}
-            <span className="font-medium">{name}</span>
+            <span className="font-medium">{file.name}</span>
+          </div>
+        )
+      },
+      sortingFn: (a, b) => {
+        if (a.original.type !== b.original.type) {
+          return a.original.type === 'directory' ? -1 : 1
+        }
+        return naturalCompare(a.original.name, b.original.name)
+      },
+    },
+    {
+      accessorKey: 'size',
+      header: ({ column }) => <SortableHeader column={column} title="大小" />,
+      size: 90,
+      cell: ({ row }) =>
+        row.original.type === 'file' ? formatFileSize(row.original.size) : '-',
+    },
+    {
+      accessorKey: 'modified_at',
+      header: ({ column }) => <SortableHeader column={column} title="修改时间" />,
+      size: 150,
+      cell: ({ row }) => formatDate(row.original.modified_at),
+    },
+    {
+      id: 'actions',
+      header: '操作',
+      size: 200,
+      cell: ({ row }) => {
+        const file = row.original
+        return (
+          <div className="flex items-center gap-1">
+            {file.type === 'file' && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleDownload(file)}
+                  title="下载"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setSha256Path(file.path)}
+                  disabled={sha256Query.isLoading && sha256Path === file.path}
+                  title="计算SHA256"
+                >
+                  {sha256Query.isLoading && sha256Path === file.path ? (
+                    <Spinner className="size-4" />
+                  ) : (
+                    <Shield className="h-4 w-4" />
+                  )}
+                </Button>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setRenamingFile(file)}
+              title="重命名"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => handleDelete(file)}
+              title="删除"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         )
       },
     },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      width: 90,
-      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => a.size - b.size,
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      render: (size: number, record: ArchiveFileItem) =>
-        record.type === 'file' ? formatFileSize(size) : '-',
-    },
-    {
-      title: '修改时间',
-      dataIndex: 'modified_at',
-      key: 'modified_at',
-      width: 150,
-      sorter: (a: ArchiveFileItem, b: ArchiveFileItem) => a.modified_at - b.modified_at,
-      sortDirections: ['ascend', 'descend'] as SortOrder[],
-      defaultSortOrder: 'descend' as SortOrder,
-      render: (modified_at: number) => formatDate(modified_at),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 200,
-      render: (_, file: ArchiveFileItem) => (
-        <Space size="small">
-          {file.type === 'file' && (
-            <>
-              <Tooltip title="下载">
-                <Button
-                  icon={<DownloadOutlined />}
-                  size="small"
-                  onClick={() => handleDownload(file)}
-                />
-              </Tooltip>
-              <Tooltip title="计算SHA256">
-                <Button
-                  icon={<SafetyCertificateOutlined />}
-                  size="small"
-                  onClick={() => handleCalculateSHA256(file)}
-                  loading={sha256Query.isLoading && sha256Path === file.path}
-                />
-              </Tooltip>
-            </>
-          )}
-          <Dropdown
-            menu={{
-              items: moreActions(file).map(action => ({
-                ...action,
-                onClick: action.onClick
-              }))
-            }}
-            trigger={['click']}
-          >
-            <Button size="small" icon={<MoreOutlined />} />
-          </Dropdown>
-          <Popconfirm
-            title={`确定要删除 ${file.name} 吗？`}
-            onConfirm={() => handleDelete(file)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button
-              icon={<DeleteOutlined />}
-              size="small"
-              danger
-            />
-          </Popconfirm>
-        </Space>
-      ),
-    },
   ]
+
+  const table = useReactTable({
+    data: archiveFiles,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
+    state: { sorting, pagination, rowSelection },
+    autoResetPageIndex: false,
+    getRowId: (row) => row.path,
+  })
+
+  const { pageIndex, pageSize } = table.getState().pagination
+  const totalRows = table.getCoreRowModel().rows.length
+  const start = totalRows > 0 ? pageIndex * pageSize + 1 : 0
+  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
 
   return (
     <div className="space-y-4">
-      {/* 拖拽覆盖层 */}
       <DragDropOverlay
         isDragging={isDragging}
         isScanning={isScanning}
         pageType="archive"
       />
+
       <PageHeader
         title="压缩包管理"
-        icon={<FileZipOutlined />}
+        icon={<FileArchive className="h-5 w-5" />}
         actions={
           <>
             <Button
-              icon={<UploadOutlined />}
-              onClick={() => setIsUploadModalVisible(true)}
+              variant="outline"
+              onClick={() => { setDragDropFiles(undefined); setIsUploadDialogOpen(true) }}
             >
+              <Upload className="mr-2 h-4 w-4" />
               上传文件
             </Button>
             <Button
-              icon={<ReloadOutlined />}
+              variant="outline"
               onClick={handleRefresh}
-              loading={isLoading}
+              disabled={isLoading}
             >
+              {isLoading
+                ? <Spinner className="mr-2 size-4" />
+                : <RotateCw className="mr-2 h-4 w-4" />
+              }
               刷新
             </Button>
-            {selectedFiles.length > 0 && (
+            {selectedPaths.length > 0 && (
               <Button
-                icon={<DeleteOutlined />}
-                danger
+                variant="destructive"
                 onClick={handleBulkDelete}
-                loading={deleteItemMutation.isPending}
+                disabled={deleteItemMutation.isPending}
               >
-                批量删除 ({selectedFiles.length})
+                <Trash2 className="mr-2 h-4 w-4" />
+                批量删除 ({selectedPaths.length})
               </Button>
             )}
           </>
@@ -462,235 +381,144 @@ const ArchiveManagement: React.FC = () => {
       />
 
       <Card>
-        <div className="space-y-4">
-          <Table
-            dataSource={archiveFiles}
-            columns={columns}
-            rowKey="path"
-            size="small"
-            loading={isLoading}
-            rowSelection={{
-              selectedRowKeys: selectedFiles,
-              onChange: (selectedRowKeys: React.Key[]) => {
-                setSelectedFiles(selectedRowKeys as string[])
-              },
-              getCheckboxProps: (record: ArchiveFileItem) => ({
-                name: record.name,
-              }),
-            }}
-            pagination={{
-              current: currentPage,
-              pageSize: pageSize,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              pageSizeOptions: ['10', '20', '50', '100'],
-              showTotal: (total, range) => `${range[0]}-${range[1]} 共 ${total} 个文件`,
-              simple: false,
-              onChange: (page, size) => {
-                setCurrentPage(page)
-                if (size !== pageSize) {
-                  setPageSize(size)
-                  setCurrentPage(1)
-                }
-              },
-              onShowSizeChange: (_, size) => {
-                setPageSize(size)
-                setCurrentPage(1)
-              }
-            }}
-            locale={{ emptyText: '暂无文件' }}
-          />
-        </div>
+        <CardContent className="pt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner className="size-8" />
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map(headerGroup => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map(header => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map(row => (
+                        <TableRow key={row.id}>
+                          {row.getVisibleCells().map(cell => (
+                            <TableCell key={cell.id}>
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                          暂无文件
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalRows > 0 && (
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-sm text-muted-foreground">
+                    {start}-{end} 共 {totalRows} 个文件
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(v) => table.setPageSize(Number(v))}
+                    >
+                      <SelectTrigger className="w-22.5">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[10, 20, 50, 100].map(size => (
+                          <SelectItem key={size} value={String(size)}>
+                            {size}条/页
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => table.previousPage()}
+                      disabled={!table.getCanPreviousPage()}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {pageIndex + 1} / {table.getPageCount()}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => table.nextPage()}
+                      disabled={!table.getCanNextPage()}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
       </Card>
 
-      {/* 重命名模态框 */}
-      <Modal
-        title="重命名"
-        open={isRenameModalVisible}
-        onOk={() => renameForm.submit()}
-        onCancel={() => {
-          setIsRenameModalVisible(false)
-          setRenamingFile(null)
-          renameForm.resetFields()
-        }}
-        okText="确定"
-        cancelText="取消"
-        confirmLoading={renameItemMutation.isPending}
-      >
-        <Form
-          form={renameForm}
-          layout="vertical"
-          onFinish={handleRenameItem}
-        >
-          <Form.Item
-            name="new_name"
-            label="新名称"
-            rules={[
-              { required: true, message: '请输入新名称' },
-              { max: 255, message: '名称不能超过255个字符' },
-              { pattern: /^[^<>:"/\\|?*]+$/, message: '名称包含非法字符' }
-            ]}
-          >
-            <Input placeholder="输入新名称" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 上传文件模态框 */}
-      <Modal
-        title="上传文件"
-        open={isUploadModalVisible}
-        footer={[
-          <Button
-            key="upload"
-            type="primary"
-            onClick={async () => {
-              const validFiles = uploadFileList.filter(file => {
-                const fileName = file.name.toLowerCase()
-                return fileName.endsWith('.zip') || fileName.endsWith('.7z')
-              })
-
-              if (validFiles.length === 0) {
-                message.warning('请选择要上传的压缩包文件')
-                return
-              }
-
-              // Upload files sequentially to show progress for each
-              for (const fileItem of validFiles) {
-                if (fileItem.originFileObj) {
-                  await handleUploadWithProgress(fileItem.originFileObj)
-                }
-              }
-
-              // Close modal and cleanup after successful upload
-              cleanupUploadModal()
-            }}
-            loading={uploadFileMutation.isPending || isUploading}
-            disabled={!hasValidFiles || isUploading}
-          >
-            开始上传
-          </Button>,
-          <Button
-            key="cancel"
-            onClick={cleanupUploadModal}
-          >
-            关闭
-          </Button>
-        ]}
-        onCancel={cleanupUploadModal}
-      >
-        <div className="space-y-4">
-          <Upload
-            fileList={uploadFileList}
-            onChange={({ fileList }) => setUploadFileList(fileList)}
-            beforeUpload={(file) => {
-              const isZipOrSevenZ = file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.7z')
-              if (!isZipOrSevenZ) {
-                message.error(`${file.name} 不是支持的压缩包格式，只支持 .zip 和 .7z 格式`)
-                return false
-              }
-              return false // Prevent automatic upload, we handle it manually
-            }}
-            accept=".zip,.7z"
-            multiple
-            showUploadList={{
-              showPreviewIcon: false,
-              showDownloadIcon: false,
-              showRemoveIcon: true
-            }}
-          >
-            <Button icon={<UploadOutlined />}>选择压缩包文件</Button>
-          </Upload>
-          <div className="mt-2 text-gray-500">
-            仅支持 .zip 和 .7z 格式的压缩包文件
-          </div>
-
-          <Alert
-            title={
-              <div className="flex items-center justify-between">
-                <span>重要提醒</span>
-                <Button
-                  type="text"
-                  icon={<QuestionCircleOutlined />}
-                  onClick={() => setSha256HelpVisible(true)}
-                  className="text-orange-600 hover:text-orange-700"
-                  title="查看Windows SHA256校验方法"
-                />
-              </div>
-            }
-            description="上传后请使用SHA256功能核对文件的完整性，确保文件在传输过程中没有损坏。"
-            type="warning"
-            showIcon
-            className="mt-3"
-          />
-
-          {isUploading && (
-            <div className="mt-4">
-              <Progress
-                percent={uploadProgress}
-                size="default"
-                format={() => `${uploadProgress}% - ${uploadSpeed}`}
-              />
-            </div>
-          )}
-
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={allowOverwrite}
-              onChange={setAllowOverwrite}
-            />
-            <span>允许覆盖同名文件</span>
-          </div>
-        </div>
-      </Modal>
-
-      {/* SHA256 显示模态框 */}
-      <Modal
-        title="文件 SHA256 校验值"
-        open={sha256ModalVisible}
-        onCancel={() => {
-          setSha256ModalVisible(false)
-          setSha256Result(null)
-        }}
-        footer={[]}
-      >
-        {sha256Result && (
-          <div className="space-y-4">
-            <div>
-              <div className="font-medium text-gray-700 mb-2">SHA256 校验值：</div>
-              <div className="bg-gray-50 p-3 rounded border font-mono text-sm break-all select-all">
-                {sha256Result.hash}
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* 压缩包管理说明 */}
-      <Alert
-        title={
+      {/* Info alert */}
+      <Alert>
+        <AlertTitle>
           <div className="flex items-center justify-between">
             <span>压缩包管理说明</span>
             <Button
-              type="text"
-              icon={<QuestionCircleOutlined />}
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setSha256HelpVisible(true)}
               className="text-blue-600 hover:text-blue-700"
               title="查看SHA256校验方法"
-            />
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Button>
           </div>
-        }
-        description="您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。建议上传后使用SHA256功能核对文件完整性。"
-        type="info"
-        showIcon
-        closable
+        </AlertTitle>
+        <AlertDescription>
+          您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。建议上传后使用SHA256功能核对文件完整性。
+        </AlertDescription>
+      </Alert>
+
+      {/* Dialogs */}
+      <ArchiveUploadDialog
+        open={isUploadDialogOpen}
+        onClose={() => { setIsUploadDialogOpen(false); setDragDropFiles(undefined) }}
+        initialFiles={dragDropFiles}
       />
 
-      {/* SHA256 帮助模态框 */}
+      <ArchiveRenameDialog
+        open={!!renamingFile}
+        file={renamingFile}
+        onClose={() => setRenamingFile(null)}
+      />
+
+      <SHA256ResultDialog
+        open={sha256DialogOpen}
+        onClose={() => { setSha256DialogOpen(false); setSha256Result(null) }}
+        result={sha256Result}
+      />
+
       <SHA256HelpModal
         open={sha256HelpVisible}
         onCancel={() => setSha256HelpVisible(false)}
       />
+
+      <ConfirmDialog />
     </div>
   )
 }
