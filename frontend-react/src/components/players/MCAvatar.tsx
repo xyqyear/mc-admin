@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserOutlined } from '@ant-design/icons';
+import { User } from 'lucide-react';
 
 interface MCAvatarProps {
   /** Base64 编码的头像图片 */
@@ -30,7 +30,7 @@ export const MCAvatar: React.FC<MCAvatarProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center justify-center flex-shrink-0 bg-gray-200 ${className}`}
+      className={`inline-flex items-center justify-center shrink-0 bg-gray-200 ${className}`}
       style={{
         width: size,
         height: size,
@@ -48,11 +48,9 @@ export const MCAvatar: React.FC<MCAvatarProps> = ({
           }}
         />
       ) : (
-        <UserOutlined
-          style={{
-            fontSize: size * 0.5,
-            color: '#8c8c8c'
-          }}
+        <User
+          size={size * 0.5}
+          className="text-muted-foreground"
         />
       )}
     </div>

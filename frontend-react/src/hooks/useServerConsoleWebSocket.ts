@@ -55,8 +55,8 @@ export const useServerConsoleWebSocket = (
   const [lastError, setLastError] = useState<string | null>(null);
 
   // Use refs to break circular dependencies
-  const connectWebSocketRef = useRef<(cols: number, rows: number) => void>();
-  const scheduleReconnectRef = useRef<() => void>();
+  const connectWebSocketRef = useRef<(cols: number, rows: number) => void>(undefined);
+  const scheduleReconnectRef = useRef<() => void>(undefined);
 
   // 构建WebSocket URL
   const buildWebSocketUrl = useCallback(

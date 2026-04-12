@@ -1,8 +1,14 @@
 import React from 'react';
-import { Space, Select, Button, Input } from 'antd';
-import { ClearOutlined } from '@ant-design/icons';
-
-const { Search } = Input;
+import { Search, XCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface PlayerFiltersProps {
   serverOptions: { label: string; value: string }[];
@@ -20,6 +26,8 @@ interface PlayerFiltersProps {
   loading?: boolean;
 }
 
+const ALL_VALUE = '__all__';
+
 export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
   serverOptions,
   filters,
@@ -27,24 +35,24 @@ export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
   onReset,
   loading
 }) => {
-  const handleOnlineFilterChange = (value: string | undefined) => {
+  const handleOnlineFilterChange = (value: string | null) => {
     onChange({
       ...filters,
       online_only: value === 'online' ? true : value === 'offline' ? false : undefined
     });
   };
 
-  const handleServerChange = (value: string | undefined) => {
+  const handleServerChange = (value: string | null) => {
     onChange({
       ...filters,
-      server_id: value
+      server_id: (!value || value === ALL_VALUE) ? undefined : value
     });
   };
 
-  const handleSearchChange = (value: string) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({
       ...filters,
-      search: value || undefined
+      search: e.target.value || undefined
     });
   };
 
@@ -52,66 +60,81 @@ export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
     filters.server_id !== undefined ||
     filters.search !== undefined;
 
+  const onlineFilterValue = filters.online_only === true
+    ? 'online'
+    : filters.online_only === false
+      ? 'offline'
+      : ALL_VALUE;
+
+  const onlineLabels: Record<string, string> = {
+    [ALL_VALUE]: '全部',
+    online: '仅在线',
+    offline: '仅离线',
+  };
+
   return (
-    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-      <Space wrap size="middle" className="w-full">
-        <div className="flex flex-col">
-          <span className="text-sm text-gray-600 mb-1">在线状态</span>
-          <Select
-            style={{ width: 150 }}
-            placeholder="全部"
-            allowClear
-            value={
-              filters.online_only === true
-                ? 'online'
-                : filters.online_only === false
-                  ? 'offline'
-                  : undefined
-            }
-            onChange={handleOnlineFilterChange}
-            options={[
-              { label: '仅在线', value: 'online' },
-              { label: '仅离线', value: 'offline' }
-            ]}
-          />
+    <div className="mb-4 p-4 bg-muted/50 rounded-lg">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">在线状态</span>
+          <Select value={onlineFilterValue} onValueChange={handleOnlineFilterChange}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="全部">
+                {(value: string) => onlineLabels[value] ?? '全部'}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>全部</SelectItem>
+              <SelectItem value="online">仅在线</SelectItem>
+              <SelectItem value="offline">仅离线</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="flex flex-col">
-          <span className="text-sm text-gray-600 mb-1">服务器</span>
-          <Select
-            style={{ width: 200 }}
-            placeholder="全部服务器"
-            allowClear
-            value={filters.server_id}
-            onChange={handleServerChange}
-            options={serverOptions}
-          />
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">服务器</span>
+          <Select value={filters.server_id ?? ALL_VALUE} onValueChange={handleServerChange}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="全部服务器">
+                {(value: string) => {
+                  if (!value || value === ALL_VALUE) return '全部服务器';
+                  return serverOptions.find(s => s.value === value)?.label ?? '全部服务器';
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>全部服务器</SelectItem>
+              {serverOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="flex flex-col flex-1" style={{ minWidth: '200px' }}>
-          <span className="text-sm text-gray-600 mb-1">搜索玩家</span>
-          <Search
-            placeholder="输入玩家名称搜索"
-            allowClear
-            value={filters.search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onSearch={handleSearchChange}
-            style={{ width: '100%' }}
-          />
+        <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+          <span className="text-sm text-muted-foreground">搜索玩家</span>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="输入玩家名称搜索"
+              value={filters.search ?? ''}
+              onChange={handleSearchChange}
+            />
+          </div>
         </div>
 
-        <div className="flex flex-col justify-end">
-          <Space>
-            <Button
-              icon={<ClearOutlined />}
-              onClick={onReset}
-              disabled={!hasActiveFilters || loading}
-            >
-              重置
-            </Button>
-          </Space>
-        </div>
-      </Space>
+        <Button
+          variant="outline"
+          onClick={onReset}
+          disabled={!hasActiveFilters || loading}
+        >
+          <XCircle className="mr-2 h-4 w-4" />
+          重置
+        </Button>
+      </div>
     </div>
   );
 };
