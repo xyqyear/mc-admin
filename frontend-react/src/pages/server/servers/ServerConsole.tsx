@@ -1,16 +1,23 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Space, Typography, Spin } from 'antd';
-import { ReloadOutlined, DisconnectOutlined, LinkOutlined, CodeOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons';
+import {
+  Terminal,
+  RotateCw,
+  Unplug,
+  Link,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
 import { useServerConsoleWebSocket, WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
 import PageHeader from '@/components/layout/PageHeader';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
 import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
 import ServerStateTag from '@/components/overview/ServerStateTag';
-
-const { Text } = Typography;
 
 type ConsoleStatus =
   | { type: 'loading' }
@@ -26,21 +33,17 @@ const ServerConsole: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const serverId = id || '';
-  // Terminal ref
   const terminalRef = useRef<ServerTerminalRef>(null);
 
-  // React Query hooks
   const { useServerStatus, useServerInfo } = useServerQueries();
   const { data: serverStatus } = useServerStatus(serverId);
   const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
 
-  // Check if server status allows WebSocket connection
   const canConnectWebSocket = useMemo(() => {
     if (!serverStatus || !id || serverInfoLoading || serverInfoError) return false;
     return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
   }, [serverStatus, id, serverInfoLoading, serverInfoError]);
 
-  // WebSocket hook
   const {
     connectionState,
     lastError,
@@ -52,7 +55,6 @@ const ServerConsole: React.FC = () => {
     disconnect
   } = useServerConsoleWebSocket(serverId, false);
 
-  // Determine console status for header display
   const consoleStatus: ConsoleStatus = useMemo(() => {
     if (!id) {
       return { type: 'error', message: '缺少服务器ID' };
@@ -83,29 +85,59 @@ const ServerConsole: React.FC = () => {
     }
   }, [id, serverInfoLoading, serverInfoError, serverId, serverStatus, canConnectWebSocket, lastError, connectionState]);
 
-  // Get status display info (memoized)
   const statusDisplay = useMemo(() => {
     switch (consoleStatus.type) {
       case 'loading':
-        return { text: '加载中...', color: 'secondary', icon: <LoadingOutlined /> };
+        return {
+          text: '加载中...',
+          className: 'text-muted-foreground',
+          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+        };
       case 'error':
-        return { text: consoleStatus.message, color: 'danger', icon: <ExclamationCircleOutlined /> };
+        return {
+          text: consoleStatus.message,
+          className: 'text-destructive',
+          icon: <AlertCircle className="h-4 w-4" />,
+        };
       case 'unavailable':
-        return { text: consoleStatus.reason, color: 'warning', icon: null };
+        return {
+          text: consoleStatus.reason,
+          className: 'text-yellow-600',
+          icon: null,
+        };
       case 'connected':
-        return { text: '已连接', color: 'success', icon: <LinkOutlined /> };
+        return {
+          text: '已连接',
+          className: 'text-green-600',
+          icon: <Link className="h-4 w-4" />,
+        };
       case 'connecting':
-        return { text: '连接中...', color: 'secondary', icon: <Spin size="small" /> };
+        return {
+          text: '连接中...',
+          className: 'text-muted-foreground',
+          icon: <Spinner className="size-4" />,
+        };
       case 'retrying':
-        return { text: '重试中...', color: 'warning', icon: <Spin size="small" /> };
+        return {
+          text: '重试中...',
+          className: 'text-yellow-600',
+          icon: <Spinner className="size-4" />,
+        };
       case 'connection_error':
-        return { text: consoleStatus.message, color: 'danger', icon: <DisconnectOutlined /> };
+        return {
+          text: consoleStatus.message,
+          className: 'text-destructive',
+          icon: <Unplug className="h-4 w-4" />,
+        };
       default:
-        return { text: '已断开', color: 'secondary', icon: <DisconnectOutlined /> };
+        return {
+          text: '已断开',
+          className: 'text-muted-foreground',
+          icon: <Unplug className="h-4 w-4" />,
+        };
     }
   }, [consoleStatus]);
 
-  // Terminal ready handler - only handles connection
   const handleTerminalReady = useCallback((terminal: ServerTerminalRef) => {
     if (canConnectWebSocket) {
       const size = terminal.getSize();
@@ -115,7 +147,6 @@ const ServerConsole: React.FC = () => {
     }
   }, [canConnectWebSocket, connect]);
 
-  // Handle message subscription with proper cleanup to prevent duplicate callbacks
   useEffect(() => {
     const handleMessage = (message: WebSocketMessage) => {
       terminalRef.current?.onMessage?.(message);
@@ -128,17 +159,14 @@ const ServerConsole: React.FC = () => {
     };
   }, [onMessage, removeMessageListener]);
 
-  // Handle terminal input
   const handleSendInput = useCallback((data: string) => {
     sendInput(data);
   }, [sendInput]);
 
-  // Handle terminal resize
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
     sendResize(cols, rows);
   }, [sendResize]);
 
-  // Manual reconnect
   const handleManualReconnect = useCallback(() => {
     disconnect();
     const size = terminalRef.current?.getSize();
@@ -147,14 +175,12 @@ const ServerConsole: React.FC = () => {
     }
   }, [disconnect, connect]);
 
-  // Clear screen
   const handleClearScreen = useCallback(() => {
     if (terminalRef.current) {
       terminalRef.current.clear();
     }
   }, []);
 
-  // Connection state messages in terminal
   useEffect(() => {
     if (connectionState === 'CONNECTED' && terminalRef.current) {
       terminalRef.current.clear();
@@ -168,7 +194,6 @@ const ServerConsole: React.FC = () => {
     }
   }, [connectionState]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
@@ -184,7 +209,7 @@ const ServerConsole: React.FC = () => {
     <div className="h-full overflow-hidden flex flex-col space-y-4">
       <PageHeader
         title="控制台"
-        icon={<CodeOutlined />}
+        icon={<Terminal className="h-5 w-5" />}
         serverTag={serverInfo?.name}
         actions={
           serverInfo && (
@@ -197,25 +222,23 @@ const ServerConsole: React.FC = () => {
         }
       />
 
-      <Card
-        className="flex-1 min-h-0 flex flex-col"
-        classNames={{ body: "flex flex-col flex-1 min-h-0 !p-4" }}
-        title={
+      <Card className="flex-1 min-h-0 flex flex-col">
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center space-x-2">
-              <Text type="secondary">状态:</Text>
+              <span className="text-sm text-muted-foreground">状态:</span>
               {consoleStatus.type === 'unavailable' ? (
                 statusDisplay.text
               ) : (
-                <Space size="small">
+                <div className="flex items-center gap-1.5">
                   {statusDisplay.icon}
-                  <Text type={statusDisplay.color as any}>{statusDisplay.text}</Text>
-                </Space>
+                  <span className={`text-sm ${statusDisplay.className}`}>{statusDisplay.text}</span>
+                </div>
               )}
               {consoleStatus.type === 'error' && (
                 <Button
-                  size="small"
-                  type="link"
+                  size="sm"
+                  variant="link"
                   onClick={() => navigate('/overview')}
                 >
                   返回概览
@@ -224,29 +247,29 @@ const ServerConsole: React.FC = () => {
             </div>
             <div className="flex items-center space-x-2">
               <Button
-                icon={<ReloadOutlined />}
+                size="sm"
                 onClick={handleManualReconnect}
                 disabled={!canReconnect}
-                type="primary"
-                size="small"
               >
+                <RotateCw className="mr-1 h-3.5 w-3.5" />
                 重新连接
               </Button>
-              <Button onClick={handleClearScreen} size="small">
+              <Button variant="outline" size="sm" onClick={handleClearScreen}>
                 清屏
               </Button>
             </div>
           </div>
-        }
-      >
-        <ServerTerminal
-          key={serverId}
-          ref={terminalRef}
-          onSendInput={handleSendInput}
-          onReady={handleTerminalReady}
-          onResize={handleTerminalResize}
-          className="h-full"
-        />
+        </CardHeader>
+        <CardContent className="flex flex-col flex-1 min-h-0 pt-0!">
+          <ServerTerminal
+            key={serverId}
+            ref={terminalRef}
+            onSendInput={handleSendInput}
+            onReady={handleTerminalReady}
+            onResize={handleTerminalResize}
+            className="h-full"
+          />
+        </CardContent>
       </Card>
     </div>
   );

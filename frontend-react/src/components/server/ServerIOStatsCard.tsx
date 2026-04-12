@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Row, Col } from 'antd';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface ServerIOStatsCardProps {
   diskReadBytes?: number;
@@ -27,41 +27,34 @@ export const ServerIOStatsCard: React.FC<ServerIOStatsCardProps> = ({
   }
 
   return (
-    <Card title="I/O统计" className={className}>
-      <Row gutter={[16, 16]}>
-        <Col span={12}>
+    <Card className={className}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">I/O统计</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>磁盘读取</span>
-                <span>{(diskReadBytes / (1024 ** 2)).toFixed(1)}MB</span>
-              </div>
+            <div className="flex justify-between text-sm">
+              <span>磁盘读取</span>
+              <span>{(diskReadBytes / (1024 ** 2)).toFixed(1)}MB</span>
             </div>
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>磁盘写入</span>
-                <span>{(diskWriteBytes / (1024 ** 2)).toFixed(1)}MB</span>
-              </div>
+            <div className="flex justify-between text-sm">
+              <span>磁盘写入</span>
+              <span>{(diskWriteBytes / (1024 ** 2)).toFixed(1)}MB</span>
             </div>
           </div>
-        </Col>
-        <Col span={12}>
           <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>网络接收</span>
-                <span>{(networkReceiveBytes / (1024 ** 2)).toFixed(1)}MB</span>
-              </div>
+            <div className="flex justify-between text-sm">
+              <span>网络接收</span>
+              <span>{(networkReceiveBytes / (1024 ** 2)).toFixed(1)}MB</span>
             </div>
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>网络发送</span>
-                <span>{(networkSendBytes / (1024 ** 2)).toFixed(1)}MB</span>
-              </div>
+            <div className="flex justify-between text-sm">
+              <span>网络发送</span>
+              <span>{(networkSendBytes / (1024 ** 2)).toFixed(1)}MB</span>
             </div>
           </div>
-        </Col>
-      </Row>
+        </div>
+      </CardContent>
     </Card>
   );
 };

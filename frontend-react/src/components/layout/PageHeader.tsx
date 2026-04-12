@@ -1,7 +1,5 @@
 import React from 'react'
-import { Typography, Space, Tag } from 'antd'
-
-const { Title } = Typography
+import { Badge } from '@/components/ui/badge'
 
 interface PageHeaderProps {
   title: string
@@ -26,17 +24,17 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             {icon}
           </span>
         )}
-        <Title level={2} className="!mb-0 !mt-0">{title}</Title>
+        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
         {serverTag && (
-          <Tag color="blue" className="ml-0">
+          <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
             {serverTag}
-          </Tag>
+          </Badge>
         )}
       </div>
       {actions && (
-        <Space>
+        <div className="flex items-center gap-2">
           {actions}
-        </Space>
+        </div>
       )}
     </div>
   )

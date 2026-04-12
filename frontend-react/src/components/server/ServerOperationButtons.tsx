@@ -1,13 +1,10 @@
 import React from 'react';
-import { Button, Tooltip, Space } from 'antd';
-import {
-  PlayCircleOutlined,
-  StopOutlined,
-  ReloadOutlined,
-  DownOutlined
-} from '@ant-design/icons';
+import { Play, Square, RotateCw, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { Spinner } from '@/components/ui/spinner';
 import { useServerMutations } from '@/hooks/mutations/useServerMutations';
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal';
 import { serverStatusUtils } from '@/utils/serverUtils';
@@ -29,25 +26,19 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   const navigate = useNavigate();
   const { useServerOperation } = useServerMutations();
   const serverOperationMutation = useServerOperation();
-  const { showConfirm } = useServerOperationConfirm();
+  const { showConfirm, ConfirmDialog } = useServerOperationConfirm();
 
-  // 检查操作是否可用
   const isOperationAvailable = (operation: string) => {
     if (!status) return false;
     return serverStatusUtils.isOperationAvailable(operation, status);
   };
 
-  // 智能启动：根据服务器状态决定使用 start 还是 up
   const handleStartServer = () => {
     if (!status) return;
-
-    // 根据状态决定操作类型
     const operation = status === 'CREATED' ? 'start' : 'up';
-
     serverOperationMutation.mutate({ action: operation, serverId });
   };
 
-  // 需要确认的服务器操作处理（停止、重启、下线）
   const handleConfirmableServerOperation = (operation: 'stop' | 'restart' | 'down') => {
     showConfirm({
       operation,
@@ -60,55 +51,86 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   };
 
   return (
-    <Space>
-      <Tooltip title="启动服务器">
-        <Button
-          type={status === 'CREATED' || status === 'EXISTS' ? 'primary' : 'default'}
-          icon={<PlayCircleOutlined />}
-          disabled={!isOperationAvailable('start') && !isOperationAvailable('up')}
-          loading={serverOperationMutation.isPending}
-          onClick={handleStartServer}
-        >
-          启动
-        </Button>
-      </Tooltip>
-      <Tooltip title="停止服务器">
-        <Button
-          danger
-          icon={<StopOutlined />}
-          disabled={!isOperationAvailable('stop')}
-          loading={serverOperationMutation.isPending}
-          onClick={() => handleConfirmableServerOperation('stop')}
-        >
-          停止
-        </Button>
-      </Tooltip>
-      <Tooltip title="重启服务器">
-        <Button
-          danger
-          icon={<ReloadOutlined />}
-          disabled={!isOperationAvailable('restart')}
-          loading={serverOperationMutation.isPending}
-          onClick={() => handleConfirmableServerOperation('restart')}
-        >
-          重启
-        </Button>
-      </Tooltip>
-      <Tooltip title="下线服务器">
-        <Button
-          danger
-          icon={<DownOutlined />}
-          disabled={!isOperationAvailable('down')}
-          loading={serverOperationMutation.isPending}
-          onClick={() => handleConfirmableServerOperation('down')}
-        >
-          下线
-        </Button>
-      </Tooltip>
-      {showReturnButton && (
-        <Button onClick={() => navigate('/overview')}>返回总览</Button>
-      )}
-    </Space>
+    <TooltipProvider>
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
+                disabled={!isOperationAvailable('start') && !isOperationAvailable('up')}
+                onClick={handleStartServer}
+              >
+                {serverOperationMutation.isPending
+                  ? <Spinner className="mr-2 size-4" />
+                  : <Play className="mr-2 h-4 w-4" />
+                }
+                启动
+              </Button>
+            }
+          />
+          <TooltipContent>启动服务器</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="destructive"
+                disabled={!isOperationAvailable('stop')}
+                onClick={() => handleConfirmableServerOperation('stop')}
+              >
+                {serverOperationMutation.isPending
+                  ? <Spinner className="mr-2 size-4" />
+                  : <Square className="mr-2 h-4 w-4" />
+                }
+                停止
+              </Button>
+            }
+          />
+          <TooltipContent>停止服务器</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="destructive"
+                disabled={!isOperationAvailable('restart')}
+                onClick={() => handleConfirmableServerOperation('restart')}
+              >
+                {serverOperationMutation.isPending
+                  ? <Spinner className="mr-2 size-4" />
+                  : <RotateCw className="mr-2 h-4 w-4" />
+                }
+                重启
+              </Button>
+            }
+          />
+          <TooltipContent>重启服务器</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="destructive"
+                disabled={!isOperationAvailable('down')}
+                onClick={() => handleConfirmableServerOperation('down')}
+              >
+                {serverOperationMutation.isPending
+                  ? <Spinner className="mr-2 size-4" />
+                  : <ChevronDown className="mr-2 h-4 w-4" />
+                }
+                下线
+              </Button>
+            }
+          />
+          <TooltipContent>下线服务器</TooltipContent>
+        </Tooltip>
+        {showReturnButton && (
+          <Button variant="outline" onClick={() => navigate('/overview')}>返回总览</Button>
+        )}
+      </div>
+      <ConfirmDialog />
+    </TooltipProvider>
   );
 };
 
