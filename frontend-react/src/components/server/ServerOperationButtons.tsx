@@ -25,7 +25,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   const navigate = useNavigate();
   const { useServerOperation } = useServerMutations();
   const serverOperationMutation = useServerOperation();
-  const { showConfirm, ConfirmDialog } = useServerOperationConfirm();
+  const { showConfirm, confirmDialog } = useServerOperationConfirm();
 
   const isOperationAvailable = (operation: string) => {
     if (!status) return false;
@@ -104,7 +104,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
           <Button variant="outline" onClick={() => navigate('/overview')}>返回总览</Button>
         )}
       </div>
-      <ConfirmDialog />
+      {confirmDialog}
     </>
   );
 };

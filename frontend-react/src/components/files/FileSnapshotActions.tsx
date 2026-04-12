@@ -474,7 +474,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<string | null>(null)
 
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
 
   const { useCreateSnapshot, useRestoreSnapshot, usePreviewRestore } = useSnapshotMutations()
   const { useSnapshotsForPath } = useSnapshotQueries()
@@ -675,7 +675,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         isServerMode={isServerMode}
       />
 
-      <ConfirmDialog />
+      {confirmDialog}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import {
   AlertDialog,
@@ -23,25 +23,27 @@ interface ConfirmOptions {
 export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const [loading, setLoading] = useState(false)
+  const loadingRef = useRef(false)
 
   const confirm = useCallback((opts: ConfirmOptions) => {
     setOptions(opts)
   }, [])
 
-  const handleConfirm = async (e: React.MouseEvent) => {
-    e.preventDefault()
-    if (!options) return
+  const handleConfirm = async () => {
+    if (!options || loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
       await options.onConfirm()
     } finally {
+      loadingRef.current = false
       setLoading(false)
       setOptions(null)
     }
   }
 
-  const ConfirmDialog = () => (
-    <AlertDialog open={!!options} onOpenChange={(open) => !open && !loading && setOptions(null)}>
+  const confirmDialog = (
+    <AlertDialog open={!!options} onOpenChange={(open) => !open && !loadingRef.current && setOptions(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{options?.title}</AlertDialogTitle>
@@ -66,5 +68,5 @@ export function useConfirm() {
     </AlertDialog>
   )
 
-  return { confirm, ConfirmDialog }
+  return { confirm, confirmDialog }
 }

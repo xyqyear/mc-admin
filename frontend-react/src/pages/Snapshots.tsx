@@ -145,7 +145,7 @@ const Snapshots: React.FC = () => {
   const [unlockOutput, setUnlockOutput] = useState<string>('')
   const [isLoadingLocks, setIsLoadingLocks] = useState(false)
 
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
 
   const {
     data: snapshots = [],
@@ -443,7 +443,7 @@ const Snapshots: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   )
 }

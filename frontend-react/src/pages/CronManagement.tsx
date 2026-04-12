@@ -39,7 +39,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import type { CronJob } from '@/hooks/api/cronApi'
 
 const CronManagement: React.FC = () => {
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
@@ -407,7 +407,7 @@ const CronManagement: React.FC = () => {
         }}
       />
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   )
 }

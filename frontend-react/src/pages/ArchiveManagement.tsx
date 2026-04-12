@@ -85,7 +85,7 @@ function SortableHeader<TData>({
 // --- Main component ---
 
 const ArchiveManagement: React.FC = () => {
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
 
   // Archive management hooks
   const { useArchiveFileList, useArchiveSHA256 } = useArchiveQueries()
@@ -519,7 +519,7 @@ const ArchiveManagement: React.FC = () => {
         onCancel={() => setSha256HelpVisible(false)}
       />
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   )
 }

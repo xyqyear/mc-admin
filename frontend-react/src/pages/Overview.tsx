@@ -62,8 +62,8 @@ const Overview: React.FC = () => {
   const deleteRestartScheduleMutation = useDeleteRestartSchedule({ silent: true })
   const autoUpdateDNS = useAutoUpdateDNS()
 
-  const { showConfirm, ConfirmDialog } = useServerOperationConfirm()
-  const { confirm: confirmStart, ConfirmDialog: StartConfirmDialog } = useConfirm()
+  const { showConfirm, confirmDialog } = useServerOperationConfirm()
+  const { confirm: confirmStart, confirmDialog: startConfirmDialog } = useConfirm()
 
   const isOperationAvailable = (operation: string, status: ServerStatus) => {
     return serverStatusUtils.isOperationAvailable(operation, status)
@@ -449,8 +449,8 @@ const Overview: React.FC = () => {
         </CardContent>
       </Card>
 
-      <ConfirmDialog />
-      <StartConfirmDialog />
+      {confirmDialog}
+      {startConfirmDialog}
     </div>
   )
 }

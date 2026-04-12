@@ -35,7 +35,7 @@ const confirmConfigs = {
 }
 
 export const useServerOperationConfirm = () => {
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
 
   const showConfirm = ({ operation, serverName, serverId, onConfirm }: ServerOperationConfirmModalProps) => {
     const config = confirmConfigs[operation]
@@ -53,5 +53,5 @@ export const useServerOperationConfirm = () => {
     }
   }
 
-  return { showConfirm, ConfirmDialog }
+  return { showConfirm, confirmDialog }
 }

@@ -106,7 +106,7 @@ const staticColumns: ColumnDef<UserType, any>[] = [
 const UserManagement: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
-  const { confirm, ConfirmDialog } = useConfirm()
+  const { confirm, confirmDialog } = useConfirm()
 
   const usersQuery = useAllUsers()
   const users = usersQuery.data || []
@@ -351,7 +351,7 @@ const UserManagement: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   )
 }
