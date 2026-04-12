@@ -1,24 +1,37 @@
 import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import {
-  Card,
-  Button,
-  Alert,
-  Modal,
+  Settings,
+  RotateCw,
+  GitCompareArrows,
+  Save,
+  Undo2,
+  Loader2,
+  Info,
+} from 'lucide-react'
+
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
+import {
   Select,
-  Typography,
-  Divider,
-  Spin,
-  App
-} from 'antd'
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
-  SettingOutlined,
-  ReloadOutlined,
-  DiffOutlined,
-  SaveOutlined,
-  UndoOutlined,
-  ExclamationCircleOutlined
-} from '@ant-design/icons'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
 import Form from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import { MonacoDiffEditor } from '@/components/editors'
@@ -26,105 +39,98 @@ import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
 import { useConfigModules, useModuleConfig, useModuleSchema } from '@/hooks/queries/base/useConfigQueries'
 import { useUpdateModuleConfig, useResetModuleConfig } from '@/hooks/mutations/useConfigMutations'
-import { RJSFSchema } from '@rjsf/utils'
-
-const { Title, Text } = Typography
+import { useConfirm } from '@/hooks/useConfirm'
+import type { RJSFSchema } from '@rjsf/utils'
 
 const DynamicConfig: React.FC = () => {
-  const { message, modal } = App.useApp()
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedModule = searchParams.get('module')
   const [formData, setFormData] = useState<any>({})
   const [isCompareVisible, setIsCompareVisible] = useState(false)
+  const [submitDialogData, setSubmitDialogData] = useState<{
+    hasChanges: boolean
+    latestConfigData: any
+  } | null>(null)
 
-  // API hooks
+  const { confirm, confirmDialog } = useConfirm()
+
   const { data: modules, isLoading: modulesLoading, error: modulesError } = useConfigModules()
   const {
     data: moduleConfig,
     isLoading: configLoading,
     error: configError,
-    refetch: refetchConfig
+    refetch: refetchConfig,
   } = useModuleConfig(selectedModule)
   const {
     data: moduleSchema,
     isLoading: schemaLoading,
-    error: schemaError
+    error: schemaError,
   } = useModuleSchema(selectedModule)
 
   const updateConfigMutation = useUpdateModuleConfig()
   const resetConfigMutation = useResetModuleConfig()
 
-  // Update form data when config loads
   useEffect(() => {
     if (moduleConfig?.config_data) {
       setFormData(moduleConfig.config_data)
     }
   }, [moduleConfig])
 
-  // Handle module selection
-  const handleModuleChange = (moduleName: string) => {
+  const handleModuleChange = (moduleName: string | null) => {
+    if (!moduleName) return
     setFormData({})
     setSearchParams({ module: moduleName })
   }
 
-  // Handle form data change
   const handleFormChange = ({ formData: newFormData }: any) => {
     setFormData(newFormData)
   }
 
-  // Handle reload configuration
-  const handleReloadConfig = async () => {
-    modal.confirm({
+  const handleReloadConfig = () => {
+    confirm({
       title: '重新载入配置',
-      content: '确定要重新载入配置吗？这将丢失当前表单中的更改，恢复到服务器的配置。',
-      okText: '确认',
+      description: '确定要重新载入配置吗？这将丢失当前表单中的更改，恢复到服务器的配置。',
+      confirmText: '确认',
       cancelText: '取消',
-      icon: <ExclamationCircleOutlined />,
-      onOk: async () => {
+      onConfirm: async () => {
         try {
           const refreshedConfig = await refetchConfig()
           if (refreshedConfig.data?.config_data) {
             setFormData(refreshedConfig.data.config_data)
           }
-          message.info('配置已重新载入')
+          toast.info('配置已重新载入')
         } catch (error: any) {
-          message.error(`重新载入失败: ${error.message}`)
+          toast.error(`重新载入失败: ${error.message}`)
         }
-      }
+      },
     })
   }
 
-  // Handle reset to defaults
   const handleResetToDefaults = () => {
     if (!selectedModule) return
-
-    modal.confirm({
+    confirm({
       title: '重置为默认配置',
-      content: '确定要将配置重置为默认值吗？这将覆盖所有当前设置。',
-      okText: '确认重置',
-      okType: 'danger',
+      description: '确定要将配置重置为默认值吗？这将覆盖所有当前设置。',
+      confirmText: '确认重置',
       cancelText: '取消',
-      icon: <ExclamationCircleOutlined />,
-      onOk: async () => {
+      variant: 'destructive',
+      onConfirm: async () => {
         try {
           const result = await resetConfigMutation.mutateAsync(selectedModule)
           if (result.updated_config) {
             setFormData(result.updated_config)
           }
-        } catch (error: any) {
-          // Error handling is already done in the mutation
-          console.error('Reset config failed:', error)
+        } catch {
+          // Error toast handled by mutation's onError
         }
-      }
+      },
     })
   }
 
-  // Handle submit configuration
   const handleSubmitConfig = async () => {
     if (!selectedModule || !moduleConfig) return
 
-    // Show loading message and refresh config first
-    const hideLoading = message.loading('正在获取最新配置...', 0)
+    const toastId = toast.loading('正在获取最新配置...')
     let latestConfig = moduleConfig
 
     try {
@@ -133,115 +139,59 @@ const DynamicConfig: React.FC = () => {
         latestConfig = refreshedConfig.data
       }
     } catch {
-      message.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
+      toast.warning('获取最新配置失败，将使用当前缓存的配置进行对比')
     } finally {
-      hideLoading()
+      toast.dismiss(toastId)
     }
 
-    // Check for changes using the latest config
     const hasChanges = JSON.stringify(formData) !== JSON.stringify(latestConfig.config_data)
-
-    modal.confirm({
-      title: '提交配置更改',
-      content: (
-        <div className="space-y-4">
-          <p>确定要提交配置更改吗？</p>
-          {hasChanges && (
-            <div>
-              <div className="mb-2">
-                <strong>配置差异预览：</strong>
-              </div>
-              <div style={{
-                border: '1px solid #d9d9d9',
-                borderRadius: '6px',
-                overflow: 'hidden',
-                height: '400px',
-                backgroundColor: '#fafafa'
-              }}>
-                <MonacoDiffEditor
-                  height="400px"
-                  language="json"
-                  original={JSON.stringify(latestConfig.config_data, null, 2)}
-                  modified={JSON.stringify(formData, null, 2)}
-                  theme="vs-light"
-                  options={{
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    fontSize: 12,
-                    lineNumbers: 'off',
-                    folding: false,
-                    wordWrap: 'on',
-                    scrollbar: {
-                      vertical: 'visible',
-                      horizontal: 'visible'
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {!hasChanges && (
-            <Alert
-              title="没有检测到配置更改"
-              description="当前表单配置与服务器配置相同，提交后不会有任何变化。"
-              type="info"
-              showIcon
-              className="mt-2"
-            />
-          )}
-        </div>
-      ),
-      width: 800,
-      okText: '确认提交',
-      okType: hasChanges ? 'primary' : 'default',
-      cancelText: '取消',
-      icon: <ExclamationCircleOutlined />,
-      onOk: async () => {
-        await updateConfigMutation.mutateAsync({
-          moduleName: selectedModule,
-          configData: formData
-        })
-      }
-    })
+    setSubmitDialogData({ hasChanges, latestConfigData: latestConfig.config_data })
   }
 
-  // Handle compare configuration
-  const handleCompareConfig = async () => {
-    const hideLoading = message.loading('正在获取最新配置...', 0)
+  const handleConfirmSubmit = async () => {
+    if (!selectedModule) return
+    try {
+      await updateConfigMutation.mutateAsync({
+        moduleName: selectedModule,
+        configData: formData,
+      })
+      setSubmitDialogData(null)
+    } catch {
+      // Error toast handled by mutation's onError
+    }
+  }
 
+  const handleCompareConfig = async () => {
+    const toastId = toast.loading('正在获取最新配置...')
     try {
       await refetchConfig()
       setIsCompareVisible(true)
     } catch {
-      message.warning('获取最新配置失败，使用当前缓存的配置进行对比')
+      toast.warning('获取最新配置失败，使用当前缓存的配置进行对比')
       setIsCompareVisible(true)
     } finally {
-      hideLoading()
+      toast.dismiss(toastId)
     }
   }
 
-  // Loading state
   if (modulesLoading) {
-    return <LoadingSpinner height="16rem" tip="加载配置模块中..." />
+    return <LoadingSpinner height="16rem" />
   }
 
-  // Error state
   if (modulesError) {
     return (
       <div className="flex justify-center items-center min-h-64">
-        <Alert
-          title="加载失败"
-          description="无法加载动态配置模块"
-          type="error"
-          showIcon
-        />
+        <Alert variant="destructive">
+          <AlertTitle>加载失败</AlertTitle>
+          <AlertDescription>无法加载动态配置模块</AlertDescription>
+        </Alert>
       </div>
     )
   }
 
   const moduleOptions = Object.entries(modules?.modules || {}).map(([key, module]) => ({
     label: `${module.module_name} (${module.schema_class})`,
-    value: key
+    value: key,
   }))
 
   const isConfigLoaded = moduleConfig && moduleSchema && !configLoading && !schemaLoading
@@ -250,36 +200,37 @@ const DynamicConfig: React.FC = () => {
     <div className="space-y-4">
       <PageHeader
         title="动态配置管理"
-        icon={<SettingOutlined />}
+        icon={<Settings className="h-5 w-5" />}
         actions={
           selectedModule && isConfigLoaded ? (
             <>
-              <Button
-                icon={<DiffOutlined />}
-                onClick={handleCompareConfig}
-              >
+              <Button variant="outline" onClick={handleCompareConfig}>
+                <GitCompareArrows className="mr-2 h-4 w-4" />
                 差异对比
               </Button>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReloadConfig}
-              >
+              <Button variant="outline" onClick={handleReloadConfig}>
+                <RotateCw className="mr-2 h-4 w-4" />
                 重新载入
               </Button>
               <Button
-                danger
-                icon={<UndoOutlined />}
+                variant="destructive"
                 onClick={handleResetToDefaults}
-                loading={resetConfigMutation.isPending}
+                disabled={resetConfigMutation.isPending}
               >
+                {resetConfigMutation.isPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Undo2 className="mr-2 h-4 w-4" />
+                }
                 重置默认
               </Button>
               <Button
-                type="primary"
-                icon={<SaveOutlined />}
                 onClick={handleSubmitConfig}
-                loading={updateConfigMutation.isPending}
+                disabled={updateConfigMutation.isPending}
               >
+                {updateConfigMutation.isPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Save className="mr-2 h-4 w-4" />
+                }
                 提交更改
               </Button>
             </>
@@ -287,65 +238,61 @@ const DynamicConfig: React.FC = () => {
         }
       />
 
-      <Card
-        title="选择配置模块"
-      >
-        <div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">选择配置模块</CardTitle>
+        </CardHeader>
+        <CardContent>
           <Select
-            placeholder="请选择一个配置模块"
-            style={{ width: '100%', marginBottom: 16 }}
-            options={moduleOptions}
-            value={selectedModule}
-            onChange={handleModuleChange}
-            loading={modulesLoading}
-          />
+            value={selectedModule ?? undefined}
+            onValueChange={handleModuleChange}
+            itemToStringLabel={(v: string) => moduleOptions.find(o => o.value === v)?.label ?? v}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="请选择一个配置模块" />
+            </SelectTrigger>
+            <SelectContent>
+              {moduleOptions.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {selectedModule && (
-            <div>
-              <Divider style={{ margin: '16px 0' }} />
+            <>
+              <Separator className="my-4" />
 
-              {/* Loading state for config/schema */}
               {(configLoading || schemaLoading) && (
-                <div className="flex justify-center">
-                  <Spin>
-                    <div className="p-8 text-center text-gray-500">
-                      加载配置中...
-                    </div>
-                  </Spin>
+                <div className="flex justify-center py-8">
+                  <Spinner className="size-8" />
                 </div>
               )}
 
-              {/* Error states */}
               {configError && (
-                <Alert
-                  title="配置加载失败"
-                  description="无法加载选定模块的配置数据"
-                  type="error"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTitle>配置加载失败</AlertTitle>
+                  <AlertDescription>无法加载选定模块的配置数据</AlertDescription>
+                </Alert>
               )}
 
               {schemaError && (
-                <Alert
-                  title="模式加载失败"
-                  description="无法加载选定模块的配置模式"
-                  type="error"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTitle>模式加载失败</AlertTitle>
+                  <AlertDescription>无法加载选定模块的配置模式</AlertDescription>
+                </Alert>
               )}
 
-              {/* Configuration form */}
               {isConfigLoaded && (
                 <div>
                   <div className="mb-4">
-                    <Title level={4} style={{ margin: 0 }}>配置表单</Title>
-                    <Text type="secondary">
+                    <h4 className="text-lg font-semibold">配置表单</h4>
+                    <p className="text-sm text-muted-foreground">
                       模块: {moduleSchema.module_name} |
                       版本: {moduleSchema.version} |
                       类型: {moduleSchema.schema_class}
-                    </Text>
+                    </p>
                   </div>
 
                   <Form
@@ -354,38 +301,94 @@ const DynamicConfig: React.FC = () => {
                     validator={validator}
                     onChange={handleFormChange}
                     onSubmit={handleSubmitConfig}
-                    onError={(errors) => console.log('Form validation errors:', errors)}
+                    onError={(errors: any) => console.log('Form validation errors:', errors)}
                     liveValidate="onChange"
                   >
                     <div />
                   </Form>
                 </div>
               )}
-            </div>
+            </>
           )}
-        </div>
+        </CardContent>
       </Card>
 
-      {/* Compare modal */}
-      <Modal
-        title="配置差异对比"
-        open={isCompareVisible}
-        onCancel={() => setIsCompareVisible(false)}
-        width={1400}
-        footer={[
-          <Button key="close" onClick={() => setIsCompareVisible(false)}>
-            关闭
-          </Button>
-        ]}
+      {/* Submit confirm dialog */}
+      <Dialog
+        open={!!submitDialogData}
+        onOpenChange={(open) => {
+          if (!open && !updateConfigMutation.isPending) setSubmitDialogData(null)
+        }}
       >
-        <div className="space-y-4">
-          <Alert
-            title="差异对比视图"
-            description="左侧为服务器当前配置，右侧为表单编辑的配置。高亮显示的是差异部分。"
-            type="info"
-            showIcon
-          />
-          <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
+        <DialogContent className="sm:max-w-200">
+          <DialogHeader>
+            <DialogTitle>提交配置更改</DialogTitle>
+            <DialogDescription>确定要提交配置更改吗？</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {submitDialogData?.hasChanges && (
+              <div>
+                <p className="mb-2 text-sm font-semibold">配置差异预览：</p>
+                <div className="rounded-md border overflow-hidden h-100">
+                  <MonacoDiffEditor
+                    height="400px"
+                    language="json"
+                    original={JSON.stringify(submitDialogData.latestConfigData, null, 2)}
+                    modified={JSON.stringify(formData, null, 2)}
+                    theme="vs-light"
+                    options={{
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      fontSize: 12,
+                      lineNumbers: 'off',
+                      folding: false,
+                      wordWrap: 'on',
+                      scrollbar: { vertical: 'visible', horizontal: 'visible' },
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {submitDialogData && !submitDialogData.hasChanges && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>没有检测到配置更改</AlertTitle>
+                <AlertDescription>
+                  当前表单配置与服务器配置相同，提交后不会有任何变化。
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSubmitDialogData(null)}
+              disabled={updateConfigMutation.isPending}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleConfirmSubmit}
+              disabled={updateConfigMutation.isPending}
+              variant={submitDialogData?.hasChanges ? 'default' : 'outline'}
+            >
+              {updateConfigMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              确认提交
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare dialog */}
+      <Dialog open={isCompareVisible} onOpenChange={setIsCompareVisible}>
+        <DialogContent className="sm:max-w-350">
+          <DialogHeader>
+            <DialogTitle>配置差异对比</DialogTitle>
+            <DialogDescription>
+              左侧为服务器当前配置，右侧为表单编辑的配置。高亮显示的是差异部分。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border overflow-hidden h-150">
             <MonacoDiffEditor
               height="600px"
               language="json"
@@ -396,9 +399,15 @@ const DynamicConfig: React.FC = () => {
               theme="vs-light"
             />
           </div>
-        </div>
-      </Modal>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCompareVisible(false)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
+      {confirmDialog}
     </div>
   )
 }
