@@ -1,7 +1,15 @@
 import React from 'react'
-import { Modal, Button, Result, Space, Divider } from 'antd'
-import { DownloadOutlined, DatabaseOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Download, Database, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface CompressionResultModalProps {
   open: boolean
@@ -28,63 +36,44 @@ const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
   }
 
   return (
-    <Modal
-      title="压缩完成"
-      open={open}
-      onCancel={onCancel}
-      footer={null}
-      width={500}
-      centered
-    >
-      <div className="space-y-4">
-        <Result
-          icon={<CheckCircleOutlined className="text-green-500" />}
-          title="压缩包创建成功"
-          subTitle={
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="sm:max-w-125">
+        <DialogHeader>
+          <DialogTitle>压缩完成</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="text-center space-y-3">
+            <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
+            <h3 className="text-lg font-semibold text-green-600">压缩包创建成功</h3>
             <div className="space-y-2">
-              <div>{message}</div>
-              <div className="font-mono text-sm bg-gray-50 p-2 rounded border">
+              <div className="text-sm text-muted-foreground">{message}</div>
+              <div className="font-mono text-sm bg-muted p-2 rounded-md border">
                 {archiveFilename}
               </div>
             </div>
-          }
-        />
+          </div>
 
-        <Divider />
+          <Separator />
 
-        <div className="text-center">
-          <Space orientation="vertical" size="middle" className="w-full">
-            <div className="text-gray-600">
-              选择下一步操作：
-            </div>
-
-            <Space size="middle">
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                onClick={onDownload}
-                loading={downloadLoading}
-                size="large"
-              >
+          <div className="text-center space-y-4">
+            <div className="text-muted-foreground text-sm">选择下一步操作：</div>
+            <div className="flex items-center justify-center gap-3">
+              <Button size="lg" onClick={onDownload} disabled={downloadLoading}>
+                <Download className="mr-2 h-4 w-4" />
                 立即下载
               </Button>
-
-              <Button
-                icon={<DatabaseOutlined />}
-                onClick={handleNavigateToArchives}
-                size="large"
-              >
+              <Button variant="outline" size="lg" onClick={handleNavigateToArchives}>
+                <Database className="mr-2 h-4 w-4" />
                 压缩包管理
               </Button>
-            </Space>
-
-            <div className="text-gray-500 text-sm mt-4">
+            </div>
+            <div className="text-muted-foreground text-xs">
               压缩包已保存到系统中，您可以随时在压缩包管理界面找到它
             </div>
-          </Space>
+          </div>
         </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   )
 }
 

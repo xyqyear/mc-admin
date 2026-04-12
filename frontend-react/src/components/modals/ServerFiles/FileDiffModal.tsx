@@ -1,6 +1,16 @@
 import React from 'react'
-import { Modal, Button, Alert } from 'antd'
 import { useNavigate } from 'react-router-dom'
+
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { MonacoDiffEditor } from '@/components/editors'
 
 interface FileDiffModalProps {
@@ -35,79 +45,70 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
   const navigate = useNavigate()
 
   return (
-    <Modal
-      title="文件差异对比"
-      open={open}
-      onCancel={onCancel}
-      width={1400}
-      footer={[
-        <Button key="close" onClick={onCancel}>
-          关闭
-        </Button>
-      ]}
-    >
-      <div className="space-y-4">
-        <Alert
-          title="差异对比视图"
-          description="左侧为文件原始内容，右侧为当前编辑的内容。高亮显示的是差异部分。"
-          type="info"
-          showIcon
-        />
-        {/* Compose override warning for diff view */}
-        {(() => {
-          const { composeWarning } = getCurrentFileLanguageConfig()
-          return composeWarning && (
-            <div className="mb-3">
-              <Alert
-                title={composeWarning.title}
-                description={
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="sm:max-w-350">
+        <DialogHeader>
+          <DialogTitle>文件差异对比</DialogTitle>
+          <DialogDescription>
+            左侧为文件原始内容，右侧为当前编辑的内容。高亮显示的是差异部分。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {(() => {
+            const { composeWarning } = getCurrentFileLanguageConfig()
+            return composeWarning && (
+              <Alert variant={composeWarning.severity === 'error' ? 'destructive' : 'default'}>
+                <AlertTitle>{composeWarning.title}</AlertTitle>
+                <AlertDescription>
                   <div className="space-y-2">
                     <p>{composeWarning.message}</p>
                     <Button
-                      type="link"
-                      size="small"
+                      variant="link"
+                      size="sm"
                       className="p-0 h-auto"
                       onClick={() => navigate(`/server/${serverId}/compose`)}
                     >
                       {composeWarning.linkText}
                     </Button>
                   </div>
-                }
-                type={composeWarning.severity}
-                showIcon
-                closable
-              />
-            </div>
-          )
-        })()}
-
-        <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden', height: '600px' }}>
-          {(() => {
-            const { language, config } = getCurrentFileLanguageConfig()
-            return (
-              <div className="h-full">
-                {config?.supportsValidation && (
-                  <div className="px-3 py-2 bg-gray-50 border-b text-xs text-gray-600">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {config?.description} - 语法高亮已启用
-                    </span>
-                  </div>
-                )}
-                <MonacoDiffEditor
-                  height={config?.supportsValidation ? "570px" : "600px"}
-                  language={language}
-                  original={originalFileContent}
-                  modified={fileContent}
-                  originalTitle="文件原始内容"
-                  modifiedTitle="当前编辑内容"
-                  theme="vs-light"
-                />
-              </div>
+                </AlertDescription>
+              </Alert>
             )
           })()}
+
+          <div className="rounded-md border overflow-hidden h-150">
+            {(() => {
+              const { language, config } = getCurrentFileLanguageConfig()
+              return (
+                <div className="h-full">
+                  {config?.supportsValidation && (
+                    <div className="px-3 py-2 bg-muted border-b text-xs text-muted-foreground">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {config?.description} - 语法高亮已启用
+                      </span>
+                    </div>
+                  )}
+                  <MonacoDiffEditor
+                    height={config?.supportsValidation ? "570px" : "600px"}
+                    language={language}
+                    original={originalFileContent}
+                    modified={fileContent}
+                    originalTitle="文件原始内容"
+                    modifiedTitle="当前编辑内容"
+                    theme="vs-light"
+                  />
+                </div>
+              )
+            })()}
+          </div>
         </div>
-      </div>
-    </Modal>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

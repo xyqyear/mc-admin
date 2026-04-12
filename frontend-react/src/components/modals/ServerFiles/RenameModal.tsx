@@ -1,45 +1,92 @@
-import React from 'react'
-import { Modal, Form, Input } from 'antd'
-import type { FormInstance } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface RenameModalProps {
   open: boolean
   onCancel: () => void
-  onOk: () => void
-  form: FormInstance
+  onSubmit: (newName: string) => void
+  initialName?: string
   confirmLoading: boolean
 }
 
 const RenameModal: React.FC<RenameModalProps> = ({
   open,
   onCancel,
-  onOk,
-  form,
+  onSubmit,
+  initialName = '',
   confirmLoading
 }) => {
+  const [newName, setNewName] = useState(initialName)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setNewName(initialName)
+      setError('')
+    }
+  }, [open, initialName])
+
+  const validate = (): boolean => {
+    if (!newName.trim()) {
+      setError('请输入新名称')
+      return false
+    }
+    if (/[<>:"/\\|?*]/.test(newName)) {
+      setError('名称包含非法字符')
+      return false
+    }
+    setError('')
+    return true
+  }
+
+  const handleSubmit = () => {
+    if (validate()) {
+      onSubmit(newName)
+    }
+  }
+
   return (
-    <Modal
-      title="重命名"
-      open={open}
-      onOk={onOk}
-      onCancel={onCancel}
-      okText="确定"
-      cancelText="取消"
-      confirmLoading={confirmLoading}
-    >
-      <Form form={form} layout="vertical">
-        <Form.Item
-          name="newName"
-          label="新名称"
-          rules={[
-            { required: true, message: '请输入新名称' },
-            { pattern: /^[^<>:"/\\|?*]+$/, message: '名称包含非法字符' }
-          ]}
-        >
-          <Input placeholder="输入新名称" />
-        </Form.Item>
-      </Form>
-    </Modal>
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>重命名</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>新名称</Label>
+          <Input
+            placeholder="输入新名称"
+            value={newName}
+            onChange={(e) => {
+              setNewName(e.target.value)
+              if (error) setError('')
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoFocus
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={confirmLoading}>
+            {confirmLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            确定
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

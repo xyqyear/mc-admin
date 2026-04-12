@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import {
-  Card,
-  Modal,
-  Form,
-  App,
-  Alert,
-  Button
-} from 'antd'
-import {
-  FolderOutlined,
-  SearchOutlined
-} from '@ant-design/icons'
+import { toast } from 'sonner'
+import { Folder, Search } from 'lucide-react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+
 import PageHeader from '@/components/layout/PageHeader'
 import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
 import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
@@ -35,6 +30,7 @@ import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { detectFileLanguage, getLanguageEditorOptions, getComposeOverrideWarning, isFileEditable } from '@/config/fileEditingConfig'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
+import { useConfirm } from '@/hooks/useConfirm'
 import { queryKeys } from '@/utils/api'
 import FileTable from '@/components/server/FileTable'
 import FileToolbar from '@/components/server/FileToolbar'
@@ -48,35 +44,28 @@ const ServerFiles: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const [createForm] = Form.useForm()
-  const [renameForm] = Form.useForm()
-  const { message } = App.useApp()
+  const { confirm, confirmDialog } = useConfirm()
 
-  // Get server data for page info - 只获取基础信息，不获取状态、资源等数据
   const { useServerFilesData } = useServerDetailQueries(id || "")
   const { serverInfo, hasServerInfo } = useServerFilesData()
 
-  // Get current path and search params from URL
   const searchParams = new URLSearchParams(location.search)
   const currentPath = searchParams.get('path') || '/'
   const searchQuery = searchParams.get('q') || ''
   const useRegex = searchParams.get('regex') === 'true'
 
-  // 内部状态：用于输入框显示的搜索词（实时更新，但不触发搜索）
   const [inputSearchTerm, setInputSearchTerm] = useState(searchQuery)
 
-  // File management hooks
   const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
 
-  // Filter files based on search query
   const filteredFileData = React.useMemo(() => {
     if (!fileData?.items || !searchQuery.trim()) {
       return fileData
     }
-
     const filteredItems = searchFiles(fileData.items, searchQuery, useRegex)
     return { ...fileData, items: filteredItems }
   }, [fileData, searchQuery, useRegex])
+
   const {
     useUpdateFile,
     useCreateFile,
@@ -86,22 +75,18 @@ const ServerFiles: React.FC = () => {
     downloadFile
   } = useFileMutations(id)
 
-  // Initialize mutation hooks
   const updateFileMutation = useUpdateFile()
   const createFileMutation = useCreateFile()
   const deleteFileMutation = useDeleteFile()
   const bulkDeleteMutation = useBulkDeleteFiles()
   const renameFileMutation = useRenameFile()
 
-  // Server mutation for populate
   const { usePopulateServer } = useServerMutations()
   const populateServerMutation = usePopulateServer()
 
-  // Archive mutations for compression
   const { useCreateArchive, downloadFile: downloadArchiveFile } = useArchiveMutations()
   const createArchiveMutation = useCreateArchive()
 
-  // Task queries for compression progress
   const { useTask } = useTaskQueries()
 
   // Local state
@@ -119,16 +104,10 @@ const ServerFiles: React.FC = () => {
   const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
   const [originalFileContent, setOriginalFileContent] = useState('')
 
-
-
-  // Replace server files state
   const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
-
-  // Populate progress state
   const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
   const [isPopulateProgressModalVisible, setIsPopulateProgressModalVisible] = useState(false)
 
-  // Compression modal states
   const [isCompressionConfirmModalVisible, setIsCompressionConfirmModalVisible] = useState(false)
   const [isCompressionResultModalVisible, setIsCompressionResultModalVisible] = useState(false)
   const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
@@ -136,46 +115,34 @@ const ServerFiles: React.FC = () => {
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
   const [compressionTaskId, setCompressionTaskId] = useState<string | null>(null)
 
-  // Task query for compression progress
   const { data: compressionTask } = useTask(compressionTaskId || '')
 
-  // Deep search modal state
   const [isDeepSearchModalVisible, setIsDeepSearchModalVisible] = useState(false)
-
-  // Search box ref for focusing
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
 
   // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
     onFileDrop: (files) => {
-      console.log(`ServerFiles 接收到 ${files.length} 个文件:`)
-      files.forEach((file, index) => {
-        console.log(`  ${index + 1}. ${file.name} (${file.size} bytes) webkitRelativePath: ${(file as any).webkitRelativePath || 'none'}`)
-      })
       setSelectedUploadFiles(files)
       setIsMultiFileUploadModalVisible(true)
-      message.info(`已选择 ${files.length} 个文件，请确认上传`)
+      toast.info(`已选择 ${files.length} 个文件，请确认上传`)
     },
     onError: (errorMessage) => {
-      message.error(errorMessage)
+      toast.error(errorMessage)
     },
-    allowDirectories: true  // 启用文件夹拖拽支持
+    allowDirectories: true
   })
 
-  // Get file content for editing
   const { data: fileContentData, isLoading: isLoadingContent } = useFileContent(
     id,
     editingFile?.path || null
   )
 
-  // Get language configuration for the currently editing file
   const getCurrentFileLanguageConfig = () => {
     if (!editingFile) return { language: 'text', options: {}, config: undefined, composeWarning: undefined }
-
     const languageConfig = detectFileLanguage(editingFile.name)
     const editorOptions = getLanguageEditorOptions(languageConfig.language)
     const composeWarning = getComposeOverrideWarning(editingFile.name)
-
     return {
       language: languageConfig.language,
       options: editorOptions,
@@ -184,20 +151,17 @@ const ServerFiles: React.FC = () => {
     }
   }
 
-  // Update file content when data is loaded
   React.useEffect(() => {
     if (fileContentData && editingFile) {
       setFileContent(fileContentData.content)
-      setOriginalFileContent(fileContentData.content) // 保存原始内容用于差异对比
+      setOriginalFileContent(fileContentData.content)
     }
   }, [fileContentData, editingFile])
 
-  // Reset pagination when path changes
   React.useEffect(() => {
     setCurrentPage(1)
   }, [currentPath])
 
-  // 同步URL中的搜索词到输入框状态
   React.useEffect(() => {
     setInputSearchTerm(searchQuery)
   }, [searchQuery])
@@ -214,37 +178,28 @@ const ServerFiles: React.FC = () => {
       setIsCompressionConfirmModalVisible(false)
       setIsCompressionResultModalVisible(true)
       setCompressionTaskId(null)
-      // Invalidate archive file list to show the new archive
       queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
     } else if (compressionTask.status === 'failed') {
-      message.error(`压缩失败: ${compressionTask.error}`)
+      toast.error(`压缩失败: ${compressionTask.error}`)
       setCompressionTaskId(null)
     } else if (compressionTask.status === 'cancelled') {
-      message.info('压缩任务已取消')
+      toast.info('压缩任务已取消')
       setCompressionTaskId(null)
     }
-  }, [compressionTask, compressionTaskId, message, queryClient])
+  }, [compressionTask, compressionTaskId, queryClient])
 
-  // Keyboard shortcut handler for Ctrl+F to focus search
+  // Ctrl+F to focus search
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check for Ctrl+F (Windows/Linux) or Cmd+F (Mac)
       if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
         event.preventDefault()
         searchBoxRef.current?.focus()
       }
     }
-
-    // Add event listener to document
     document.addEventListener('keydown', handleKeyDown)
-
-    // Cleanup event listener on unmount
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Update URL when path changes
   const updatePath = (newPath: string) => {
     const newSearchParams = new URLSearchParams(location.search)
     if (newPath === '/') {
@@ -252,62 +207,40 @@ const ServerFiles: React.FC = () => {
     } else {
       newSearchParams.set('path', newPath)
     }
-    // Clear search query when navigating to different path
     newSearchParams.delete('q')
     newSearchParams.delete('regex')
-
     const newSearch = newSearchParams.toString()
-    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
-    navigate(newUrl, { replace: false })
-    setSelectedFiles([]) // Clear selection when navigating
+    navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: false })
+    setSelectedFiles([])
   }
 
-  // Update URL with search parameters
   const updateSearchParams = (query: string, regex: boolean) => {
     const newSearchParams = new URLSearchParams(location.search)
-
     if (query.trim()) {
       newSearchParams.set('q', query)
     } else {
       newSearchParams.delete('q')
     }
-
     if (regex) {
       newSearchParams.set('regex', 'true')
     } else {
       newSearchParams.delete('regex')
     }
-
     const newSearch = newSearchParams.toString()
-    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
-    navigate(newUrl, { replace: true }) // Use replace to avoid cluttering history
+    navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: true })
   }
 
-  // Search handlers
-  const handleSearchChange = (term: string) => {
-    // 只更新输入框状态，不立即触发搜索
-    setInputSearchTerm(term)
-  }
-
-  const handleSearch = (term: string, regex: boolean) => {
-    // 按回车键触发的搜索
-    updateSearchParams(term, regex)
-  }
-
-  const handleRegexChange = (regex: boolean) => {
-    updateSearchParams(inputSearchTerm, regex)
-  }
-
+  const handleSearchChange = (term: string) => setInputSearchTerm(term)
+  const handleSearch = (term: string, regex: boolean) => updateSearchParams(term, regex)
+  const handleRegexChange = (regex: boolean) => updateSearchParams(inputSearchTerm, regex)
   const handleSearchClear = () => {
     setInputSearchTerm('')
     updateSearchParams('', false)
   }
 
-
-
   const handleFileEdit = (file: FileItem) => {
     if (!isFileEditable(file.name)) {
-      message.warning('该文件不可编辑')
+      toast.warning('该文件不可编辑')
       return
     }
     setEditingFile(file)
@@ -324,110 +257,89 @@ const ServerFiles: React.FC = () => {
     }
   }
 
-  const handleShowDiff = () => {
-    setIsDiffModalVisible(true)
-  }
+  const handleShowDiff = () => setIsDiffModalVisible(true)
 
   const handleFileDelete = (file: FileItem) => {
-    if (id) {
-      deleteFileMutation.mutate(file.path)
-    }
+    if (id) deleteFileMutation.mutate(file.path)
   }
 
   const handleFileDownload = (file: FileItem) => {
     if (file.type === 'directory') {
-      message.info('请点击压缩按钮进行压缩下载')
+      toast.info('请点击压缩按钮进行压缩下载')
       return
     }
-
-    if (id) {
-      downloadFile(file.path, file.name)
-    }
+    if (id) downloadFile(file.path, file.name)
   }
 
   const handleFileRename = (file: FileItem) => {
     setRenamingFile(file)
-    renameForm.setFieldsValue({ newName: file.name })
     setIsRenameModalVisible(true)
   }
 
-  const handleRenameSubmit = () => {
+  const handleRenameSubmit = (newName: string) => {
     if (!renamingFile || !id) return
-
-    renameForm.validateFields().then(values => {
-      renameFileMutation.mutate({
-        old_path: renamingFile.path,
-        new_name: values.newName
-      })
-      setIsRenameModalVisible(false)
-      setRenamingFile(null)
-      renameForm.resetFields()
+    renameFileMutation.mutate({
+      old_path: renamingFile.path,
+      new_name: newName
     })
+    setIsRenameModalVisible(false)
+    setRenamingFile(null)
   }
 
   const handleFolderOpen = (folder: FileItem) => {
-    if (folder.type === 'directory') {
-      updatePath(folder.path)
-    }
+    if (folder.type === 'directory') updatePath(folder.path)
   }
 
-  const handleNavigateToPath = (path: string) => {
-    updatePath(path)
-  }
+  const handleNavigateToPath = (path: string) => updatePath(path)
 
-  const handleCreateFile = () => {
+  const handleCreateFile = (values: { fileType: string; fileName: string }) => {
     if (!id) return
-
-    createForm.validateFields().then(values => {
-      createFileMutation.mutate({
-        name: values.fileName,
-        type: values.fileType,
-        path: currentPath
-      })
-      setIsCreateModalVisible(false)
-      createForm.resetFields()
+    createFileMutation.mutate({
+      name: values.fileName,
+      type: values.fileType as 'file' | 'directory',
+      path: currentPath
     })
+    setIsCreateModalVisible(false)
   }
 
   const handleBulkDelete = () => {
     if (selectedFiles.length === 0) {
-      message.warning('请选择要删除的文件')
+      toast.warning('请选择要删除的文件')
       return
     }
-
-    Modal.confirm({
+    confirm({
       title: '确认删除',
-      content: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
-      onOk: () => {
+      description: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
+      confirmText: '确定',
+      cancelText: '取消',
+      variant: 'destructive',
+      onConfirm: async () => {
         if (id) {
           bulkDeleteMutation.mutate(selectedFiles)
           setSelectedFiles([])
         }
-      }
+      },
     })
   }
 
   const handleMultiFileUploadComplete = () => {
     setSelectedUploadFiles([])
     setIsMultiFileUploadModalVisible(false)
-    refetch() // Refresh file list
+    refetch()
   }
 
   const handleRefresh = async () => {
     try {
       await refetch()
-      message.success('刷新成功')
+      toast.success('刷新成功')
     } catch {
-      message.error('刷新失败')
+      toast.error('刷新失败')
     }
   }
 
-  // Replace server files handlers
   const handleArchiveSelect = async (filename: string) => {
     setIsArchiveModalVisible(false)
-
     if (!id) return
-
     try {
       const result = await populateServerMutation.mutateAsync({
         serverId: id,
@@ -436,7 +348,7 @@ const ServerFiles: React.FC = () => {
       setPopulateTaskId(result.task_id)
       setIsPopulateProgressModalVisible(true)
     } catch (error: any) {
-      message.error(`文件替换失败: ${error.message || '未知错误'}`)
+      toast.error(`文件替换失败: ${error.message || '未知错误'}`)
     }
   }
 
@@ -451,7 +363,6 @@ const ServerFiles: React.FC = () => {
     setPopulateTaskId(null)
   }
 
-  // Compression handlers
   const handleCompress = (file?: FileItem, compressionType?: 'file' | 'folder' | 'server') => {
     setCompressionFile(file || null)
     setCompressionType(compressionType || (file?.type === 'directory' ? 'folder' : 'file'))
@@ -462,8 +373,6 @@ const ServerFiles: React.FC = () => {
     if (!id) return
 
     let compressionPath: string | null = null
-
-    // Determine compression path based on type
     switch (compressionType) {
       case 'file':
         compressionPath = compressionFile?.path || null
@@ -472,7 +381,7 @@ const ServerFiles: React.FC = () => {
         compressionPath = compressionFile?.path || currentPath
         break
       case 'server':
-        compressionPath = null // null means compress entire server
+        compressionPath = null
         break
     }
 
@@ -481,80 +390,57 @@ const ServerFiles: React.FC = () => {
         server_id: id,
         path: compressionPath
       })
-
-      // Set task ID to start polling
       setCompressionTaskId(result.task_id)
     } catch (error: any) {
-      message.error(`压缩失败: ${error.message || '未知错误'}`)
+      toast.error(`压缩失败: ${error.message || '未知错误'}`)
     }
   }
 
   const handleDownloadCompressed = async () => {
     if (!compressionResult) return
-
     try {
       await downloadArchiveFile(`/${compressionResult.filename}`, compressionResult.filename)
     } catch (error: any) {
-      message.error(`下载失败: ${error.message || '未知错误'}`)
+      toast.error(`下载失败: ${error.message || '未知错误'}`)
     }
   }
 
-  // 工具栏事件处理函数
   const handleNavigateToParent = () => {
     const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
     handleNavigateToPath(parentPath)
   }
 
-  const handleCompressServer = () => {
-    handleCompress(undefined, 'server')
-  }
+  const handleCompressServer = () => handleCompress(undefined, 'server')
+  const handleReplaceServerFiles = () => setIsArchiveModalVisible(true)
 
-  const handleReplaceServerFiles = () => {
-    setIsArchiveModalVisible(true)
-  }
-
-  // Handle deep search navigation
   const handleDeepSearchNavigate = (path: string, query?: string, regex?: boolean) => {
-    setIsDeepSearchModalVisible(false) // 隐藏高级搜索模态框
-
-    // 更新URL参数
+    setIsDeepSearchModalVisible(false)
     const newSearchParams = new URLSearchParams(location.search)
     if (path === '/') {
       newSearchParams.delete('path')
     } else {
       newSearchParams.set('path', path)
     }
-
     if (query && query.trim()) {
       newSearchParams.set('q', query)
-      if (regex) {
-        // 保持当前的regex设置，用于继续正则搜索
-        newSearchParams.set('regex', 'true')
-      } else {
-        // 从高级搜索导航过来的是普通搜索
-        newSearchParams.set('regex', 'false')
-      }
-      // 同时更新输入框状态
+      newSearchParams.set('regex', regex ? 'true' : 'false')
       setInputSearchTerm(query)
     } else {
       newSearchParams.delete('q')
       newSearchParams.delete('regex')
       setInputSearchTerm('')
     }
-
     const newSearch = newSearchParams.toString()
-    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
-    navigate(newUrl, { replace: false })
-    setSelectedFiles([]) // 清除选择的文件
+    navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: false })
+    setSelectedFiles([])
   }
 
   if (filesError) {
-    return <div>加载文件列表失败: {filesError.message}</div>
+    return <div className="text-destructive">加载文件列表失败: {filesError.message}</div>
   }
 
   return (
     <div className="space-y-4">
-      {/* 拖拽覆盖层 */}
       <DragDropOverlay
         isDragging={isDragging}
         isScanning={isScanning}
@@ -564,7 +450,7 @@ const ServerFiles: React.FC = () => {
 
       <PageHeader
         title="文件"
-        icon={<FolderOutlined />}
+        icon={<Folder className="h-5 w-5" />}
         serverTag={hasServerInfo ? serverInfo?.name : undefined}
         actions={
           <FileToolbar
@@ -588,7 +474,7 @@ const ServerFiles: React.FC = () => {
       />
 
       <Card>
-        <div className="space-y-4">
+        <CardContent className="pt-6 space-y-4">
           {/* Breadcrumb and Search */}
           <div className="flex items-center justify-between gap-4">
             <FileBreadcrumb
@@ -596,7 +482,7 @@ const ServerFiles: React.FC = () => {
               onNavigateToPath={handleNavigateToPath}
             />
             <div className="flex items-center gap-2">
-              <div className="flex-shrink-0 min-w-[300px] max-w-md">
+              <div className="flex-shrink-0 min-w-75 max-w-md">
                 <FileSearchBox
                   ref={searchBoxRef}
                   searchTerm={inputSearchTerm}
@@ -609,11 +495,10 @@ const ServerFiles: React.FC = () => {
                 />
               </div>
               <Button
-                type="default"
-                icon={<SearchOutlined />}
+                variant="outline"
                 onClick={() => setIsDeepSearchModalVisible(true)}
-                title="高级搜索"
               >
+                <Search className="mr-2 h-4 w-4" />
                 高级搜索
               </Button>
             </div>
@@ -637,10 +522,9 @@ const ServerFiles: React.FC = () => {
             onFileCompress={handleCompress}
             createArchiveMutation={createArchiveMutation}
           />
-        </div>
+        </CardContent>
       </Card>
 
-      {/* 多文件上传模态框 */}
       <MultiFileUploadModal
         open={isMultiFileUploadModalVisible}
         onCancel={() => {
@@ -653,29 +537,24 @@ const ServerFiles: React.FC = () => {
         initialFiles={selectedUploadFiles}
       />
 
-      {/* 创建文件/文件夹模态框 */}
       <CreateModal
         open={isCreateModalVisible}
         onCancel={() => setIsCreateModalVisible(false)}
-        onOk={handleCreateFile}
-        form={createForm}
+        onSubmit={handleCreateFile}
         confirmLoading={createFileMutation.isPending}
       />
 
-      {/* 重命名模态框 */}
       <RenameModal
         open={isRenameModalVisible}
         onCancel={() => {
           setIsRenameModalVisible(false)
           setRenamingFile(null)
-          renameForm.resetFields()
         }}
-        onOk={handleRenameSubmit}
-        form={renameForm}
+        onSubmit={handleRenameSubmit}
+        initialName={renamingFile?.name}
         confirmLoading={renameFileMutation.isPending}
       />
 
-      {/* 文件编辑模态框 */}
       <FileEditModal
         open={isEditModalVisible}
         onCancel={() => {
@@ -696,7 +575,6 @@ const ServerFiles: React.FC = () => {
         getCurrentFileLanguageConfig={getCurrentFileLanguageConfig}
       />
 
-      {/* 文件差异对比模态框 */}
       <FileDiffModal
         open={isDiffModalVisible}
         onCancel={() => setIsDiffModalVisible(false)}
@@ -706,17 +584,13 @@ const ServerFiles: React.FC = () => {
         getCurrentFileLanguageConfig={getCurrentFileLanguageConfig}
       />
 
+      <Alert>
+        <AlertTitle>文件管理说明</AlertTitle>
+        <AlertDescription>
+          您可以浏览、编辑和管理服务器文件。点击文件夹名称或文件夹图标可以进入目录。配置文件可以直接编辑，其他文件可以下载查看。上传的文件将保存到当前目录中。
+        </AlertDescription>
+      </Alert>
 
-      {/* 文件管理说明 */}
-      <Alert
-        title="文件管理说明"
-        description="您可以浏览、编辑和管理服务器文件。点击文件夹名称或文件夹图标可以进入目录。配置文件可以直接编辑，其他文件可以下载查看。上传的文件将保存到当前目录中。"
-        type="info"
-        showIcon
-        closable
-      />
-
-      {/* 压缩包选择弹窗 */}
       <ArchiveSelectionModal
         open={isArchiveModalVisible}
         onCancel={() => setIsArchiveModalVisible(false)}
@@ -727,7 +601,6 @@ const ServerFiles: React.FC = () => {
         selectButtonType="danger"
       />
 
-      {/* 服务器填充进度弹窗 */}
       <PopulateProgressModal
         open={isPopulateProgressModalVisible}
         taskId={populateTaskId}
@@ -736,7 +609,6 @@ const ServerFiles: React.FC = () => {
         onComplete={handlePopulateComplete}
       />
 
-      {/* 压缩确认弹窗 */}
       <CompressionConfirmModal
         open={isCompressionConfirmModalVisible}
         onCancel={() => {
@@ -753,7 +625,6 @@ const ServerFiles: React.FC = () => {
         serverName={hasServerInfo ? serverInfo?.name : ''}
       />
 
-      {/* 压缩结果弹窗 */}
       <CompressionResultModal
         open={isCompressionResultModalVisible}
         onCancel={() => {
@@ -766,7 +637,6 @@ const ServerFiles: React.FC = () => {
         downloadLoading={false}
       />
 
-      {/* 高级搜索模态框 */}
       <FileDeepSearchModal
         open={isDeepSearchModalVisible}
         onCancel={() => setIsDeepSearchModalVisible(false)}
@@ -775,6 +645,7 @@ const ServerFiles: React.FC = () => {
         onNavigate={handleDeepSearchNavigate}
       />
 
+      {confirmDialog}
     </div>
   )
 }

@@ -1,24 +1,23 @@
 import React, { useState, useMemo } from 'react'
+import { toast } from 'sonner'
+import { AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
 import {
-  Modal,
-  Button,
-  Progress,
-  Radio,
-  Space,
-  Alert,
-  Divider,
-  Typography,
-  Card,
-  Statistic,
-  Row,
-  Col,
-  Tag,
-  App
-} from 'antd'
-import {
-  WarningOutlined,
-  CheckCircleOutlined
-} from '@ant-design/icons'
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
 import type {
   OverwriteConflict,
   OverwritePolicy,
@@ -27,8 +26,6 @@ import type {
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import FileUploadTree from './FileUploadTree'
 import ConflictTree from './ConflictTree'
-
-const { Text, Title } = Typography
 
 interface MultiFileUploadModalProps {
   open: boolean
@@ -56,6 +53,14 @@ interface UploadStep {
   error?: string
 }
 
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
 const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
   open,
   onCancel,
@@ -64,7 +69,6 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
   basePath,
   initialFiles = []
 }) => {
-  const { message } = App.useApp()
   const {
     useCheckUploadConflicts,
     useSetUploadPolicy,
@@ -84,7 +88,6 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
   const [conflictDecisions, setConflictDecisions] = useState<Record<string, boolean>>({})
   const [uploadAbortController, setUploadAbortController] = useState<AbortController | null>(null)
 
-  // 重置状态函数
   const resetState = () => {
     setUploadState({
       step: 'select',
@@ -100,10 +103,8 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     setUploadAbortController(null)
   }
 
-  // Initialize files when modal opens
   React.useEffect(() => {
     if (open && initialFiles.length > 0) {
-      // 完全重置状态，然后设置新文件
       resetState()
       setUploadState({
         step: 'select',
@@ -116,28 +117,21 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
         error: undefined
       })
     } else if (open) {
-      // 完全重置状态
       resetState()
     } else if (!open) {
-      // 模态框关闭时也重置状态
       resetState()
     }
   }, [open, initialFiles])
 
-
-  // 构建文件结构
   const buildFileStructure = (files: File[]): FileStructureItem[] => {
     const structure: FileStructureItem[] = []
     const directories = new Set<string>()
 
     files.forEach(file => {
       const relativePath = (file as any).webkitRelativePath || file.name
-
-      // 处理目录路径
       const pathParts = relativePath.split('/')
       let currentPath = ''
 
-      // 添加目录结构
       for (let i = 0; i < pathParts.length - 1; i++) {
         currentPath += (currentPath ? '/' : '') + pathParts[i]
         if (!directories.has(currentPath)) {
@@ -150,7 +144,6 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
         }
       }
 
-      // 添加文件
       structure.push({
         path: relativePath,
         name: file.name,
@@ -162,32 +155,17 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     return structure
   }
 
-  // 计算总大小
   const totalSize = useMemo(() => {
-    return uploadState.files.reduce((total, file) => {
-      return total + file.size
-    }, 0)
+    return uploadState.files.reduce((total, file) => total + file.size, 0)
   }, [uploadState.files])
 
-  // 格式化文件大小
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
-
-  // 检查冲突
   const handleCheckConflicts = async () => {
     const fileStructure = buildFileStructure(uploadState.files)
 
     try {
       const response = await checkConflictsMutation.mutateAsync({
         path: basePath,
-        uploadRequest: {
-          files: fileStructure
-        }
+        uploadRequest: { files: fileStructure }
       })
 
       setUploadState(prev => ({
@@ -197,41 +175,32 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
         sessionId: response.session_id
       }))
 
-      // 如果有冲突，默认全部选中（覆盖）
       if (response.conflicts.length > 0) {
         const defaultDecisions: Record<string, boolean> = {}
         response.conflicts.forEach(conflict => {
-          defaultDecisions[conflict.path] = true // 默认全部覆盖
+          defaultDecisions[conflict.path] = true
         })
         setConflictDecisions(defaultDecisions)
       }
 
-      // 如果没有冲突，直接开始上传
       if (response.conflicts.length === 0) {
         await handleStartUpload(response.session_id, { mode: 'always_overwrite' })
       }
-    } catch (error: any) {
-      message.error('检查冲突失败')
-      console.error('Check conflicts error:', error)
+    } catch {
+      toast.error('检查冲突失败')
     }
   }
 
-  // 处理覆盖策略
   const handleOverwritePolicy = (policy: OverwritePolicy) => {
-    setUploadState(prev => ({
-      ...prev,
-      overwritePolicy: policy
-    }))
+    setUploadState(prev => ({ ...prev, overwritePolicy: policy }))
   }
 
-
-  // 开始上传
   const handleStartUpload = async (sessionId?: string, policy?: OverwritePolicy) => {
     const currentSessionId = sessionId || uploadState.sessionId
     const currentPolicy = policy || uploadState.overwritePolicy
 
     if (!currentSessionId || !currentPolicy) {
-      message.error('缺少上传会话或策略')
+      toast.error('缺少上传会话或策略')
       return
     }
 
@@ -248,22 +217,16 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     }))
 
     try {
-      // 检查是否需要分块上传（超过1000个文件）
       const needsChunking = uploadState.files.length > 1000
-
-      // 创建AbortController用于取消上传
       const abortController = new AbortController()
       setUploadAbortController(abortController)
 
-      // 设置覆盖策略，如果需要分块则设置为可重用
-      // 策略设置一次性处理所有文件，无需分块
       await setUploadPolicyMutation.mutateAsync({
         sessionId: currentSessionId,
         policy: currentPolicy,
         reusable: needsChunking
       })
 
-      // 开始上传 - 这里会自动处理分块逻辑
       const result = await uploadMultipleFilesMutation.mutateAsync({
         sessionId: currentSessionId,
         path: basePath,
@@ -286,18 +249,16 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
         step: 'complete',
         results: result.results
       }))
-
     } catch (error: any) {
-      // 检查是否为用户取消操作
       if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
-        message.info('上传已取消')
+        toast.info('上传已取消')
         setUploadState(prev => ({
           ...prev,
           step: 'select',
           error: '上传已取消'
         }))
       } else {
-        message.error('上传失败')
+        toast.error('上传失败')
         setUploadState(prev => ({
           ...prev,
           step: 'select',
@@ -309,44 +270,29 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     }
   }
 
-  // 取消上传
   const handleCancelUpload = () => {
     if (uploadAbortController) {
       uploadAbortController.abort()
-      message.info('正在取消上传...')
+      toast.info('正在取消上传...')
     }
   }
 
-  // Handle upload completion callback
   const handleUploadSuccess = () => {
     onComplete()
-    // Reset state
-    setUploadState({
-      step: 'select',
-      files: [],
-      conflicts: []
-    })
+    setUploadState({ step: 'select', files: [], conflicts: [] })
     setConflictDecisions({})
   }
 
-  // 重置状态
-  const handleReset = () => {
-    resetState()
-  }
-
-  // 处理冲突树的选择
   const handleConflictTreeCheck = (checked: React.Key[] | { checked: React.Key[]; halfChecked: React.Key[] }) => {
     const checkedKeys = Array.isArray(checked) ? checked : checked.checked
     const newDecisions: Record<string, boolean> = {}
 
-    // 只处理冲突文件的选择状态
     uploadState.conflicts.forEach(conflict => {
       newDecisions[conflict.path] = checkedKeys.includes(conflict.path)
     })
 
     setConflictDecisions(newDecisions)
 
-    // 更新覆盖策略
     if (uploadState.overwritePolicy?.mode === 'per_file') {
       handleOverwritePolicy({
         mode: 'per_file',
@@ -358,14 +304,12 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     }
   }
 
-  // 获取冲突树的选中keys
   const getConflictCheckedKeys = (): React.Key[] => {
     return uploadState.conflicts
-      .filter(conflict => conflictDecisions[conflict.path] ?? true) // 默认全选
+      .filter(conflict => conflictDecisions[conflict.path] ?? true)
       .map(conflict => conflict.path)
   }
 
-  // 渲染不同步骤的内容
   const renderContent = () => {
     switch (uploadState.step) {
       case 'select':
@@ -373,29 +317,33 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
           <div className="space-y-4">
             {uploadState.files.length > 0 ? (
               <>
-                <Card size="small">
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Statistic title="文件数量" value={uploadState.files.length} />
-                    </Col>
-                    <Col span={8}>
-                      <Statistic title="总大小" value={formatFileSize(totalSize)} />
-                    </Col>
-                    <Col span={8}>
-                      <Statistic title="目标路径" value={basePath} />
-                    </Col>
-                  </Row>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">文件数量</div>
+                        <div className="text-2xl font-semibold">{uploadState.files.length}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">总大小</div>
+                        <div className="text-2xl font-semibold">{formatFileSize(totalSize)}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">目标路径</div>
+                        <div className="text-2xl font-semibold truncate">{basePath}</div>
+                      </div>
+                    </div>
+                  </CardContent>
                 </Card>
-
                 <FileUploadTree files={uploadState.files} />
               </>
             ) : (
-              <Alert
-                title="未选择文件"
-                description="请关闭该窗口并使用拖拽的方式选择要上传的文件或文件夹"
-                type="info"
-                showIcon
-              />
+              <Alert>
+                <AlertTitle>未选择文件</AlertTitle>
+                <AlertDescription>
+                  请关闭该窗口并使用拖拽的方式选择要上传的文件或文件夹
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         )
@@ -403,41 +351,49 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
       case 'conflicts':
         return (
           <div className="space-y-4">
-            <Alert
-              title="检测到文件冲突"
-              description={`有 ${uploadState.conflicts.length} 个文件将会覆盖现有文件，请选择处理方式`}
-              type="warning"
-              icon={<WarningOutlined />}
-              showIcon
-            />
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>检测到文件冲突</AlertTitle>
+              <AlertDescription>
+                有 {uploadState.conflicts.length} 个文件将会覆盖现有文件，请选择处理方式
+              </AlertDescription>
+            </Alert>
 
-            <div>
-              <Title level={5}>覆盖策略</Title>
-              <Radio.Group
-                value={uploadState.overwritePolicy?.mode}
-                onChange={(e) => {
-                  const mode = e.target.value
+            <div className="space-y-3">
+              <h5 className="font-medium">覆盖策略</h5>
+              <RadioGroup
+                value={uploadState.overwritePolicy?.mode || ''}
+                onValueChange={(mode) => {
+                  if (!mode) return
                   handleOverwritePolicy({
-                    mode,
-                    decisions: mode === 'per_file' ?
-                      uploadState.conflicts.map(c => ({
-                        path: c.path,
-                        overwrite: conflictDecisions[c.path] ?? false
-                      })) : undefined
+                    mode: mode as OverwritePolicy['mode'],
+                    decisions: mode === 'per_file'
+                      ? uploadState.conflicts.map(c => ({
+                          path: c.path,
+                          overwrite: conflictDecisions[c.path] ?? false
+                        }))
+                      : undefined
                   })
                 }}
               >
-                <Space orientation="vertical">
-                  <Radio value="always_overwrite">总是覆盖所有冲突文件</Radio>
-                  <Radio value="never_overwrite">跳过所有冲突文件</Radio>
-                  <Radio value="per_file">为每个文件单独选择</Radio>
-                </Space>
-              </Radio.Group>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="always_overwrite" id="always_overwrite" />
+                  <Label htmlFor="always_overwrite">总是覆盖所有冲突文件</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="never_overwrite" id="never_overwrite" />
+                  <Label htmlFor="never_overwrite">跳过所有冲突文件</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="per_file" id="per_file" />
+                  <Label htmlFor="per_file">为每个文件单独选择</Label>
+                </div>
+              </RadioGroup>
             </div>
 
             {uploadState.overwritePolicy?.mode === 'per_file' && (
               <>
-                <Divider />
+                <Separator />
                 <ConflictTree
                   conflicts={uploadState.conflicts}
                   checkedKeys={getConflictCheckedKeys()}
@@ -451,37 +407,39 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
       case 'uploading':
         return (
           <div className="space-y-4">
-            <div className="text-center">
-              <Title level={4}>正在上传文件...</Title>
+            <div className="text-center space-y-2">
+              <h4 className="text-lg font-semibold">正在上传文件...</h4>
               {uploadState.files.length > 1000 && (
-                <Text type="secondary" className="block mb-2">
+                <p className="text-sm text-muted-foreground">
                   分块上传模式 - 每批次最多1000个文件
-                </Text>
+                </p>
               )}
-              <Progress
-                percent={uploadState.uploadProgress?.totalProgress || 0}
-                status="active"
-                format={(percent) => `${percent}% (${uploadState.uploadProgress?.uploadedFiles}/${uploadState.uploadProgress?.totalFiles})`}
-              />
+              <Progress value={uploadState.uploadProgress?.totalProgress || 0} />
+              <p className="text-sm text-muted-foreground">
+                {uploadState.uploadProgress?.totalProgress || 0}% ({uploadState.uploadProgress?.uploadedFiles || 0}/{uploadState.uploadProgress?.totalFiles || 0})
+              </p>
             </div>
 
-
-            <Card size="small">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Statistic
-                    title="已上传"
-                    value={`${uploadState.uploadProgress?.uploadedFiles || 0}/${uploadState.uploadProgress?.totalFiles || 0}`}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Statistic
-                    title="传输大小"
-                    value={formatFileSize(uploadState.uploadProgress?.uploadedSize || 0)}
-                    suffix={`/ ${formatFileSize(uploadState.uploadProgress?.totalSize || 0)}`}
-                  />
-                </Col>
-              </Row>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">已上传</div>
+                    <div className="text-2xl font-semibold">
+                      {uploadState.uploadProgress?.uploadedFiles || 0}/{uploadState.uploadProgress?.totalFiles || 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">传输大小</div>
+                    <div className="text-2xl font-semibold">
+                      {formatFileSize(uploadState.uploadProgress?.uploadedSize || 0)}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">
+                        / {formatFileSize(uploadState.uploadProgress?.totalSize || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
             </Card>
           </div>
         )
@@ -489,27 +447,32 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
       case 'complete':
         return (
           <div className="space-y-4">
-            <div className="text-center">
-              <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />
-              <Title level={4} style={{ color: '#52c41a' }}>上传完成！</Title>
+            <div className="text-center space-y-2">
+              <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
+              <h4 className="text-lg font-semibold text-green-600">上传完成！</h4>
             </div>
 
-            <Card title="上传结果">
-              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                {uploadState.results && Object.entries(uploadState.results).map(([filepath, result]) => (
-                  <div key={filepath} className="flex justify-between items-center py-1">
-                    <Text>{filepath}</Text>
-                    <Tag color={
-                      result.status === 'success' ? 'success' :
-                        result.status === 'failed' ? 'error' : 'warning'
-                    }>
-                      {result.status === 'success' ? '成功' :
-                        result.status === 'failed' ? '失败' : '跳过'}
-                      {result.reason && ` (${result.reason})`}
-                    </Tag>
-                  </div>
-                ))}
-              </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">上传结果</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-75 overflow-y-auto space-y-1">
+                  {uploadState.results && Object.entries(uploadState.results).map(([filepath, result]) => (
+                    <div key={filepath} className="flex justify-between items-center py-1">
+                      <span className="text-sm truncate mr-2">{filepath}</span>
+                      <Badge variant={
+                        result.status === 'success' ? 'default' :
+                          result.status === 'failed' ? 'destructive' : 'outline'
+                      }>
+                        {result.status === 'success' ? '成功' :
+                          result.status === 'failed' ? '失败' : '跳过'}
+                        {result.reason && ` (${result.reason})`}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
             </Card>
           </div>
         )
@@ -519,84 +482,75 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     }
   }
 
-  // 渲染底部按钮
   const renderFooter = () => {
     switch (uploadState.step) {
       case 'select':
-        return [
-          <Button key="cancel" onClick={onCancel}>
-            取消
-          </Button>,
-          <Button
-            key="check"
-            type="primary"
-            disabled={uploadState.files.length === 0}
-            onClick={handleCheckConflicts}
-          >
-            检查冲突并上传
-          </Button>
-        ]
-
+        return (
+          <>
+            <Button variant="outline" onClick={onCancel}>取消</Button>
+            <Button
+              disabled={uploadState.files.length === 0}
+              onClick={handleCheckConflicts}
+            >
+              {checkConflictsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              检查冲突并上传
+            </Button>
+          </>
+        )
       case 'conflicts':
-        return [
-          <Button key="back" onClick={() => setUploadState(prev => ({ ...prev, step: 'select' }))}>
-            返回
-          </Button>,
-          <Button
-            key="upload"
-            type="primary"
-            disabled={!uploadState.overwritePolicy}
-            onClick={() => handleStartUpload()}
-          >
-            开始上传
-          </Button>
-        ]
-
+        return (
+          <>
+            <Button variant="outline" onClick={() => setUploadState(prev => ({ ...prev, step: 'select' }))}>
+              返回
+            </Button>
+            <Button
+              disabled={!uploadState.overwritePolicy}
+              onClick={() => handleStartUpload()}
+            >
+              开始上传
+            </Button>
+          </>
+        )
       case 'uploading':
-        return [
-          <Button key="cancel" onClick={handleCancelUpload} danger>
+        return (
+          <Button variant="destructive" onClick={handleCancelUpload}>
             取消上传
           </Button>
-        ]
-
+        )
       case 'complete':
-        return [
-          <Button key="close" onClick={() => {
-            handleReset()
+        return (
+          <Button onClick={() => {
+            resetState()
             onCancel()
             handleUploadSuccess()
           }}>
             关闭
           </Button>
-        ]
-
+        )
       default:
-        return []
+        return null
     }
   }
 
-  // 处理模态框关闭
   const handleModalCancel = () => {
-    // 如果正在上传，先取消上传
     if (uploadState.step === 'uploading' && uploadAbortController) {
       handleCancelUpload()
     }
-    // 关闭模态框
     onCancel()
   }
 
   return (
-    <Modal
-      title="上传文件和文件夹"
-      open={open}
-      onCancel={handleModalCancel}
-      footer={renderFooter()}
-      width={800}
-      maskClosable={true}
-      closable={true}
-    >
-      {renderContent()}
-    </Modal>
+    <Dialog open={open} onOpenChange={(o) => !o && handleModalCancel()}>
+      <DialogContent className="sm:max-w-200">
+        <DialogHeader>
+          <DialogTitle>上传文件和文件夹</DialogTitle>
+        </DialogHeader>
+        {renderContent()}
+        <DialogFooter>
+          {renderFooter()}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

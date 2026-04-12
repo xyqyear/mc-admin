@@ -1,36 +1,37 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
+import { Search, Loader2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
 import {
-  Modal,
-  Form,
-  Input,
-  Checkbox,
-  Button,
-  InputNumber,
   Select,
-  DatePicker,
-  Card,
-  message,
-  Spin,
-  Empty,
-  Flex
-} from 'antd'
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
-  SearchOutlined
-} from '@ant-design/icons'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
 import type { FileSearchRequest, SearchFileItem } from '@/hooks/api/fileApi'
 import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import FileSearchResultTree from '@/components/server/FileSearchResultTree'
 
-const { RangePicker } = DatePicker
-const { Option } = Select
-
-// 文件大小单位选项
 const sizeUnits = [
-  { value: 1, label: 'B' },
-  { value: 1024, label: 'KB' },
-  { value: 1024 * 1024, label: 'MB' },
-  { value: 1024 * 1024 * 1024, label: 'GB' },
-  { value: 1024 * 1024 * 1024 * 1024, label: 'TB' }
+  { value: '1', label: 'B' },
+  { value: '1024', label: 'KB' },
+  { value: String(1024 * 1024), label: 'MB' },
+  { value: String(1024 * 1024 * 1024), label: 'GB' },
+  { value: String(1024 * 1024 * 1024 * 1024), label: 'TB' },
 ]
 
 interface FileDeepSearchModalProps {
@@ -48,134 +49,104 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
   currentPath,
   onNavigate
 }) => {
-  const [form] = Form.useForm()
+  const [regex, setRegex] = useState('')
+  const [ignoreCase, setIgnoreCase] = useState(true)
+  const [searchSubfolders, setSearchSubfolders] = useState(true)
+  const [minSize, setMinSize] = useState('')
+  const [minSizeUnit, setMinSizeUnit] = useState('1')
+  const [maxSize, setMaxSize] = useState('')
+  const [maxSizeUnit, setMaxSizeUnit] = useState(String(1024 * 1024))
+  const [newerThan, setNewerThan] = useState('')
+  const [olderThan, setOlderThan] = useState('')
   const [searchResults, setSearchResults] = useState<SearchFileItem[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [searchPerformed, setSearchPerformed] = useState(false)
-  const [currentRegex, setCurrentRegex] = useState<string>('')
-  const searchInputRef = React.useRef<any>(null)
+  const [currentRegex, setCurrentRegex] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // 使用文件mutations
   const { useSearchFiles } = useFileMutations(serverId)
   const searchFilesMutation = useSearchFiles()
 
-  // Auto-focus to search input when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (open && searchInputRef.current) {
-      // Use setTimeout to ensure the modal is fully rendered before focusing
-      setTimeout(() => {
-        searchInputRef.current?.focus()
-      }, 100)
+      setTimeout(() => searchInputRef.current?.focus(), 100)
     }
   }, [open])
 
-  // Handle form values change to update regex for highlighting
-  const handleValuesChange = (changedValues: any) => {
-    if ('regex' in changedValues) {
-      setCurrentRegex(changedValues.regex || '')
-    }
-  }
-
-
-  // Handle tree node selection
   const handleTreeSelect = (selectedKeys: React.Key[]) => {
     if (selectedKeys.length > 0) {
       const selectedKey = selectedKeys[0] as string
-
-      // Find the corresponding item from search results
       const selectedItem = searchResults.find(result => result.path === selectedKey)
 
       if (selectedItem) {
         const isFile = selectedItem.type === 'file'
 
         if (isFile) {
-          // 对于文件：导航到文件所在的文件夹，并设置搜索查询为文件名
-          const filePath = selectedItem.path // 比如 /saves/level.dat
-          const fileName = selectedItem.name // 比如 level.dat
-
-          // 计算文件所在的父文件夹路径（相对于搜索起点）
+          const filePath = selectedItem.path
+          const fileName = selectedItem.name
           const lastSlashIndex = filePath.lastIndexOf('/')
           const fileDirPath = lastSlashIndex > 0 ? filePath.substring(0, lastSlashIndex) : '/'
 
-          // 将相对路径转换为基于currentPath的绝对路径
           let absoluteDirPath: string
           if (currentPath === '/') {
             absoluteDirPath = fileDirPath
           } else if (fileDirPath === '/') {
             absoluteDirPath = currentPath
           } else {
-            // 确保路径拼接时有正确的斜杠
             absoluteDirPath = currentPath + (fileDirPath.startsWith('/') ? fileDirPath : '/' + fileDirPath)
           }
 
-          // 导航到文件的父文件夹，搜索查询设置为文件名
           onNavigate(absoluteDirPath, fileName)
         } else {
-          // 对于文件夹：导航到该文件夹，并去除搜索查询
-          // 将相对路径转换为基于currentPath的绝对路径
           let absoluteFolderPath: string
           if (currentPath === '/') {
             absoluteFolderPath = selectedItem.path
           } else {
-            // 确保路径拼接时有正确的斜杠
             absoluteFolderPath = currentPath + (selectedItem.path.startsWith('/') ? selectedItem.path : '/' + selectedItem.path)
           }
           onNavigate(absoluteFolderPath)
         }
       } else {
-        // This is a directory node that was created for the tree structure (intermediate directories)
-        // Navigate to the directory path directly
-        const regex = form.getFieldValue('regex')
-        // 将相对路径转换为基于currentPath的绝对路径
         let absoluteFolderPath: string
         if (currentPath === '/') {
           absoluteFolderPath = selectedKey
         } else {
-          // 确保路径拼接时有正确的斜杠
           absoluteFolderPath = currentPath + (selectedKey.startsWith('/') ? selectedKey : '/' + selectedKey)
         }
         onNavigate(absoluteFolderPath, regex, true)
       }
 
-      // 清空所有状态
       handleReset()
     }
   }
 
-
-  // 执行搜索
   const handleSearch = async () => {
+    if (!regex.trim()) {
+      toast.error('请输入搜索模式')
+      return
+    }
+
+    const searchRequest: FileSearchRequest = {
+      regex,
+      ignore_case: ignoreCase,
+      search_subfolders: searchSubfolders
+    }
+
+    if (minSize && minSizeUnit) {
+      searchRequest.min_size = Number(minSize) * Number(minSizeUnit)
+    }
+    if (maxSize && maxSizeUnit) {
+      searchRequest.max_size = Number(maxSize) * Number(maxSizeUnit)
+    }
+
+    if (newerThan) {
+      searchRequest.newer_than = new Date(newerThan).toISOString()
+    }
+    if (olderThan) {
+      searchRequest.older_than = new Date(olderThan).toISOString()
+    }
+
     try {
-      await form.validateFields()
-      const values = form.getFieldsValue()
-
-      // 构建搜索请求
-      const searchRequest: FileSearchRequest = {
-        regex: values.regex,
-        ignore_case: values.ignore_case !== false, // 默认为true
-        search_subfolders: values.search_subfolders !== false // 默认为true
-      }
-
-      // 处理文件大小限制
-      if (values.minSize && values.minSizeUnit) {
-        searchRequest.min_size = values.minSize * values.minSizeUnit
-      }
-      if (values.maxSize && values.maxSizeUnit) {
-        searchRequest.max_size = values.maxSize * values.maxSizeUnit
-      }
-
-      // 处理日期范围
-      if (values.dateRange && values.dateRange.length === 2) {
-        const [startDate, endDate] = values.dateRange
-        if (startDate) {
-          searchRequest.newer_than = startDate.toISOString()
-        }
-        if (endDate) {
-          searchRequest.older_than = endDate.toISOString()
-        }
-      }
-
-      // 执行搜索
       const searchResponse = await searchFilesMutation.mutateAsync({
         path: currentPath,
         searchRequest
@@ -184,147 +155,208 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
       setSearchResults(searchResponse.results)
       setTotalCount(searchResponse.total_count)
       setSearchPerformed(true)
+      setCurrentRegex(regex)
 
-      message.success(`找到 ${searchResponse.total_count} 个匹配结果`)
-    } catch (error: any) {
-      console.error('搜索失败:', error.response?.data?.detail || error.message || 'Unknown error')
-      // mutation已经处理了错误消息显示
+      toast.success(`找到 ${searchResponse.total_count} 个匹配结果`)
+    } catch {
+      // mutation handles error display
     }
   }
 
-  // 重置表单和结果
   const handleReset = () => {
-    form.resetFields()
+    setRegex('')
+    setIgnoreCase(true)
+    setSearchSubfolders(true)
+    setMinSize('')
+    setMinSizeUnit('1')
+    setMaxSize('')
+    setMaxSizeUnit(String(1024 * 1024))
+    setNewerThan('')
+    setOlderThan('')
     setSearchResults([])
     setTotalCount(0)
     setSearchPerformed(false)
     setCurrentRegex('')
   }
 
-
-  // 模态框关闭时重置表单
   const handleCancel = () => {
     handleReset()
     onCancel()
   }
 
-
   return (
-    <Modal
-      title="高级搜索"
-      open={open}
-      onCancel={handleCancel}
-      width={800}
-      footer={null}
-    >
-      <div className="space-y-4">
-        {/* 搜索表单 */}
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ ignore_case: true, search_subfolders: true }}
-          onValuesChange={handleValuesChange}
-        >
-          <Form.Item
-            label="搜索模式"
-            name="regex"
-            rules={[{ required: true, message: '请输入搜索模式' }]}
-          >
-            <Input
-              ref={searchInputRef}
-              placeholder="输入正则表达式搜索文件名..."
-              prefix={<SearchOutlined />}
-              onPressEnter={handleSearch}
-            />
-          </Form.Item>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item name="ignore_case" valuePropName="checked">
-              <Checkbox>忽略大小写</Checkbox>
-            </Form.Item>
-            <Form.Item name="search_subfolders" valuePropName="checked">
-              <Checkbox>搜索子文件夹</Checkbox>
-            </Form.Item>
-          </div>
-
-          {/* 文件大小过滤 */}
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item label="最小文件大小">
-              <Flex>
-                <Form.Item name="minSize" noStyle>
-                  <InputNumber min={0} placeholder="最小大小" style={{ flex: 1 }} />
-                </Form.Item>
-                <Form.Item name="minSizeUnit" noStyle initialValue={1}>
-                  <Select style={{ width: 80, marginLeft: 8 }}>
-                    {sizeUnits.map(unit => (
-                      <Option key={unit.value} value={unit.value}>{unit.label}</Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Flex>
-            </Form.Item>
-
-            <Form.Item label="最大文件大小">
-              <Flex>
-                <Form.Item name="maxSize" noStyle>
-                  <InputNumber min={0} placeholder="最大大小" style={{ flex: 1 }} />
-                </Form.Item>
-                <Form.Item name="maxSizeUnit" noStyle initialValue={1024 * 1024}>
-                  <Select style={{ width: 80, marginLeft: 8 }}>
-                    {sizeUnits.map(unit => (
-                      <Option key={unit.value} value={unit.value}>{unit.label}</Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Flex>
-            </Form.Item>
-          </div>
-
-          {/* 日期范围过滤 */}
-          <Form.Item label="文件修改时间" name="dateRange">
-            <RangePicker showTime placeholder={['开始时间', '结束时间']} />
-          </Form.Item>
-
-          {/* 操作按钮 */}
-          <div className="flex justify-end space-x-2">
-            <Button onClick={handleReset}>重置</Button>
-            <Button
-              type="primary"
-              icon={<SearchOutlined />}
-              loading={searchFilesMutation.isPending}
-              onClick={handleSearch}
-            >
-              搜索
-            </Button>
-          </div>
-        </Form>
-
-        {/* 搜索结果 */}
-        {searchPerformed && (
-          <Card
-            title={`搜索结果 (${totalCount} 个文件)`}
-            size="small"
-          >
-            {searchFilesMutation.isPending ? (
-              <div className="flex justify-center py-8">
-                <Spin size="large" />
+    <Dialog open={open} onOpenChange={(o) => !o && handleCancel()}>
+      <DialogContent className="sm:max-w-200">
+        <DialogHeader>
+          <DialogTitle>高级搜索</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Search form */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>搜索模式</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={searchInputRef}
+                  placeholder="输入正则表达式搜索文件名..."
+                  value={regex}
+                  onChange={(e) => {
+                    setRegex(e.target.value)
+                    setCurrentRegex(e.target.value)
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  className="pl-8"
+                />
               </div>
-            ) : searchResults.length > 0 ? (
-              <FileSearchResultTree
-                searchResults={searchResults}
-                currentRegex={currentRegex}
-                onSelect={handleTreeSelect}
-              />
-            ) : searchPerformed ? (
-              <Empty
-                description="没有找到匹配的文件"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-              />
-            ) : null}
-          </Card>
-        )}
-      </div>
-    </Modal>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={ignoreCase}
+                  onCheckedChange={(checked) => setIgnoreCase(checked === true)}
+                  id="ignore-case"
+                />
+                <Label htmlFor="ignore-case" className="cursor-pointer">忽略大小写</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={searchSubfolders}
+                  onCheckedChange={(checked) => setSearchSubfolders(checked === true)}
+                  id="search-subfolders"
+                />
+                <Label htmlFor="search-subfolders" className="cursor-pointer">搜索子文件夹</Label>
+              </div>
+            </div>
+
+            {/* File size filters */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>最小文件大小</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="最小大小"
+                    value={minSize}
+                    onChange={(e) => setMinSize(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Select
+                    value={minSizeUnit}
+                    onValueChange={(v) => v && setMinSizeUnit(v)}
+                    itemToStringLabel={(v) => sizeUnits.find(u => u.value === v)?.label ?? v}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sizeUnits.map(unit => (
+                        <SelectItem key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>最大文件大小</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="最大大小"
+                    value={maxSize}
+                    onChange={(e) => setMaxSize(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Select
+                    value={maxSizeUnit}
+                    onValueChange={(v) => v && setMaxSizeUnit(v)}
+                    itemToStringLabel={(v) => sizeUnits.find(u => u.value === v)?.label ?? v}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sizeUnits.map(unit => (
+                        <SelectItem key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Date range filters */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>修改时间（从）</Label>
+                <Input
+                  type="datetime-local"
+                  value={newerThan}
+                  onChange={(e) => setNewerThan(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>修改时间（到）</Label>
+                <Input
+                  type="datetime-local"
+                  value={olderThan}
+                  onChange={(e) => setOlderThan(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={handleReset}>重置</Button>
+              <Button
+                onClick={handleSearch}
+                disabled={searchFilesMutation.isPending}
+              >
+                {searchFilesMutation.isPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Search className="mr-2 h-4 w-4" />
+                }
+                搜索
+              </Button>
+            </div>
+          </div>
+
+          {/* Search results */}
+          {searchPerformed && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">搜索结果 ({totalCount} 个文件)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {searchFilesMutation.isPending ? (
+                  <div className="flex justify-center py-8">
+                    <Spinner className="size-8" />
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <FileSearchResultTree
+                    searchResults={searchResults}
+                    currentRegex={currentRegex}
+                    onSelect={handleTreeSelect}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    没有找到匹配的文件
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

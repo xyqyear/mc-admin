@@ -1,13 +1,15 @@
 import React from 'react'
-import { Button, Space } from 'antd'
 import {
-  DeleteOutlined,
-  PlusOutlined,
-  ArrowUpOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  FileZipOutlined
-} from '@ant-design/icons'
+  Trash2,
+  Plus,
+  ArrowUp,
+  RotateCw,
+  Upload,
+  Archive,
+} from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
 
 interface FileToolbarProps {
@@ -46,18 +48,16 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   onRefreshSnapshot
 }) => {
   return (
-    <Space wrap>
-      {/* 返回上级按钮 */}
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Navigate to parent */}
       {currentPath !== '/' && (
-        <Button
-          icon={<ArrowUpOutlined />}
-          onClick={onNavigateToParent}
-        >
+        <Button variant="outline" onClick={onNavigateToParent}>
+          <ArrowUp className="mr-2 h-4 w-4" />
           返回上级
         </Button>
       )}
 
-      {/* 根目录特有的按钮 */}
+      {/* Root-only buttons */}
       {currentPath === '/' && (
         <>
           <FileSnapshotActions
@@ -67,56 +67,62 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
             onRefresh={onRefreshSnapshot}
           />
           <Button
-            icon={<FileZipOutlined />}
+            variant="outline"
             onClick={onCompressServer}
-            loading={createArchiveMutation.isPending}
+            disabled={createArchiveMutation.isPending}
           >
+            {createArchiveMutation.isPending
+              ? <Spinner className="mr-2 size-4" />
+              : <Archive className="mr-2 h-4 w-4" />
+            }
             打包服务器
           </Button>
           <Button
-            icon={<FileZipOutlined />}
-            danger
+            variant="destructive"
             onClick={onReplaceServerFiles}
-            loading={populateServerMutation.isPending}
+            disabled={populateServerMutation.isPending}
           >
+            {populateServerMutation.isPending
+              ? <Spinner className="mr-2 size-4" />
+              : <Archive className="mr-2 h-4 w-4" />
+            }
             替换服务器文件
           </Button>
         </>
       )}
 
-      {/* 通用按钮 */}
-      <Button
-        icon={<UploadOutlined />}
-        onClick={onUpload}
-      >
+      {/* Common buttons */}
+      <Button variant="outline" onClick={onUpload}>
+        <Upload className="mr-2 h-4 w-4" />
         上传文件
       </Button>
-      <Button
-        icon={<PlusOutlined />}
-        onClick={onCreateFile}
-      >
+      <Button variant="outline" onClick={onCreateFile}>
+        <Plus className="mr-2 h-4 w-4" />
         新建文件/文件夹
       </Button>
-      <Button
-        icon={<ReloadOutlined />}
-        onClick={onRefresh}
-        loading={isLoadingFiles}
-      >
+      <Button variant="outline" onClick={onRefresh} disabled={isLoadingFiles}>
+        {isLoadingFiles
+          ? <Spinner className="mr-2 size-4" />
+          : <RotateCw className="mr-2 h-4 w-4" />
+        }
         刷新
       </Button>
 
-      {/* 批量删除按钮 */}
+      {/* Bulk delete */}
       {selectedFiles.length > 0 && (
         <Button
-          icon={<DeleteOutlined />}
-          danger
+          variant="destructive"
           onClick={onBulkDelete}
-          loading={bulkDeleteMutation.isPending}
+          disabled={bulkDeleteMutation.isPending}
         >
+          {bulkDeleteMutation.isPending
+            ? <Spinner className="mr-2 size-4" />
+            : <Trash2 className="mr-2 h-4 w-4" />
+          }
           批量删除 ({selectedFiles.length})
         </Button>
       )}
-    </Space>
+    </div>
   )
 }
 

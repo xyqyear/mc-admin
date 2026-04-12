@@ -1,6 +1,13 @@
 import React from 'react'
-import { Breadcrumb } from 'antd'
-import { HomeOutlined } from '@ant-design/icons'
+import { Home } from 'lucide-react'
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
 
 interface FileBreadcrumbProps {
   currentPath: string
@@ -14,33 +21,47 @@ const FileBreadcrumb: React.FC<FileBreadcrumbProps> = ({
   const pathSegments = currentPath.split('/').filter(Boolean)
 
   return (
-    <Breadcrumb
-      items={[
-        {
-          title: (
-            <>
-              <HomeOutlined />
-              <span
-                className="cursor-pointer ml-1"
-                onClick={() => onNavigateToPath('/')}
-              >
-                根目录
-              </span>
-            </>
-          )
-        },
-        ...pathSegments.map((segment, index) => ({
-          title: (
-            <span
-              className="cursor-pointer"
-              onClick={() => onNavigateToPath('/' + pathSegments.slice(0, index + 1).join('/'))}
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          {pathSegments.length === 0 ? (
+            <BreadcrumbPage className="inline-flex items-center gap-1">
+              <Home className="h-3.5 w-3.5" />
+              根目录
+            </BreadcrumbPage>
+          ) : (
+            <BreadcrumbLink
+              className="inline-flex items-center gap-1 cursor-pointer"
+              onClick={() => onNavigateToPath('/')}
             >
-              {segment}
-            </span>
+              <Home className="h-3.5 w-3.5" />
+              根目录
+            </BreadcrumbLink>
+          )}
+        </BreadcrumbItem>
+        {pathSegments.map((segment, index) => {
+          const isLast = index === pathSegments.length - 1
+          const path = '/' + pathSegments.slice(0, index + 1).join('/')
+          return (
+            <React.Fragment key={path}>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                {isLast ? (
+                  <BreadcrumbPage>{segment}</BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink
+                    className="cursor-pointer"
+                    onClick={() => onNavigateToPath(path)}
+                  >
+                    {segment}
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+            </React.Fragment>
           )
-        }))
-      ]}
-    />
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
   )
 }
 

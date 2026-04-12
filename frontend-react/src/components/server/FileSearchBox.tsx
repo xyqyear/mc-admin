@@ -1,6 +1,13 @@
 import React, { useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
-import { Input, Checkbox, Tooltip, Space } from 'antd'
-import { SearchOutlined, ClearOutlined, CodeOutlined } from '@ant-design/icons'
+import { Search, X, Regex } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface FileSearchBoxProps {
   searchTerm: string
@@ -8,7 +15,7 @@ interface FileSearchBoxProps {
   onSearchChange: (term: string) => void
   onRegexChange: (useRegex: boolean) => void
   onClear: () => void
-  onSearch?: (term: string, regex: boolean) => void // 新增：按回车键触发的搜索
+  onSearch?: (term: string, regex: boolean) => void
   placeholder?: string
   className?: string
 }
@@ -27,9 +34,8 @@ const FileSearchBox = forwardRef<FileSearchBoxRef, FileSearchBoxProps>(({
   placeholder = "搜索文件名...",
   className = ""
 }, ref) => {
-  const inputRef = useRef<any>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Expose focus method through ref
   useImperativeHandle(ref, () => ({
     focus: () => {
       inputRef.current?.focus()
@@ -44,58 +50,55 @@ const FileSearchBox = forwardRef<FileSearchBoxRef, FileSearchBoxProps>(({
     onClear()
   }, [onClear])
 
-  const handleRegexChange = useCallback((e: any) => {
-    onRegexChange(e.target.checked)
-  }, [onRegexChange])
-
-  // Handle keyboard events
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      // 按回车键触发搜索
       onSearch?.(searchTerm, useRegex)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       handleClear()
-      // Keep focus on input after clearing
       inputRef.current?.focus()
     }
   }, [handleClear, onSearch, searchTerm, useRegex])
 
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
-      <Input
-        ref={inputRef}
-        placeholder={placeholder}
-        prefix={<SearchOutlined className="text-gray-400" />}
-        suffix={
-          searchTerm ? (
-            <Tooltip title="清除搜索">
-              <ClearOutlined
-                className="text-gray-400 hover:text-gray-600 cursor-pointer"
-                onClick={handleClear}
-              />
-            </Tooltip>
-          ) : null
-        }
-        value={searchTerm}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        className="flex-1 min-w-0"
-        allowClear={false} // We handle clear ourselves for better control
-      />
+    <div className={`flex items-center gap-2 ${className}`}>
+      <div className="relative flex-1 min-w-0">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          ref={inputRef}
+          placeholder={placeholder}
+          value={searchTerm}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          className="pl-8 pr-8"
+        />
+        {searchTerm && (
+          <Tooltip>
+            <TooltipTrigger
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={handleClear}
+            >
+              <X className="h-4 w-4" />
+            </TooltipTrigger>
+            <TooltipContent>清除搜索</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
 
-      <Tooltip title="使用正则表达式搜索">
-        <Checkbox
-          checked={useRegex}
-          onChange={handleRegexChange}
-          className="whitespace-nowrap"
-        >
-          <Space align="center">
-            <CodeOutlined />
+      <Tooltip>
+        <TooltipTrigger className="inline-flex items-center gap-1.5">
+          <Checkbox
+            checked={useRegex}
+            onCheckedChange={(checked) => onRegexChange(checked === true)}
+            id="regex-toggle"
+          />
+          <Label htmlFor="regex-toggle" className="flex items-center gap-1 cursor-pointer whitespace-nowrap text-sm">
+            <Regex className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">正则</span>
-          </Space>
-        </Checkbox>
+          </Label>
+        </TooltipTrigger>
+        <TooltipContent>使用正则表达式搜索</TooltipContent>
       </Tooltip>
     </div>
   )

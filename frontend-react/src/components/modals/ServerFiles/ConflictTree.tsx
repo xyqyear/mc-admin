@@ -1,10 +1,20 @@
-import React, { useState } from 'react'
-import { Card, Button, Tree, Space } from 'antd'
-import { ExpandOutlined, CompressOutlined } from '@ant-design/icons'
-import type { DataNode } from 'antd/es/tree'
-import type { OverwriteConflict } from '@/hooks/api/fileApi'
+import React, { useState, useMemo } from 'react'
+import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import FileIcon from '@/components/files/FileIcon'
+import type { OverwriteConflict } from '@/hooks/api/fileApi'
 import type { FileItem } from '@/types/Server'
+
+interface TreeNode {
+  key: string
+  name: string
+  isLeaf: boolean
+  conflict?: OverwriteConflict
+  children?: TreeNode[]
+}
 
 interface ConflictTreeProps {
   conflicts: OverwriteConflict[]
@@ -13,156 +23,227 @@ interface ConflictTreeProps {
   title?: string
 }
 
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const conflictToFileItem = (conflict: OverwriteConflict, name: string): FileItem => ({
+  name,
+  path: conflict.path,
+  type: conflict.type,
+  size: conflict.current_size || 0,
+  modified_at: Date.now() / 1000,
+})
+
+function buildConflictTreeData(conflicts: OverwriteConflict[]): TreeNode[] {
+  const nodeMap: Record<string, TreeNode> = {}
+  const rootNodes: TreeNode[] = []
+
+  conflicts.forEach((conflict) => {
+    const pathParts = conflict.path.split('/')
+    let currentPath = ''
+
+    pathParts.forEach((part: string, partIndex: number) => {
+      const parentPath = currentPath
+      currentPath += (currentPath ? '/' : '') + part
+      const isLastPart = partIndex === pathParts.length - 1
+
+      if (!nodeMap[currentPath]) {
+        const node: TreeNode = {
+          key: currentPath,
+          name: part,
+          isLeaf: isLastPart,
+          conflict: isLastPart ? conflict : undefined,
+          children: isLastPart ? undefined : [],
+        }
+        nodeMap[currentPath] = node
+
+        if (parentPath && nodeMap[parentPath]) {
+          nodeMap[parentPath].children = nodeMap[parentPath].children || []
+          nodeMap[parentPath].children!.push(node)
+        } else if (!parentPath) {
+          rootNodes.push(node)
+        }
+      }
+    })
+  })
+
+  return rootNodes
+}
+
+function getAllKeys(nodes: TreeNode[]): string[] {
+  const keys: string[] = []
+  const traverse = (list: TreeNode[]) => {
+    list.forEach(node => {
+      keys.push(node.key)
+      if (node.children) traverse(node.children)
+    })
+  }
+  traverse(nodes)
+  return keys
+}
+
+function getLeafKeys(nodes: TreeNode[]): string[] {
+  const keys: string[] = []
+  const traverse = (list: TreeNode[]) => {
+    list.forEach(node => {
+      if (node.isLeaf) keys.push(node.key)
+      if (node.children) traverse(node.children)
+    })
+  }
+  traverse(nodes)
+  return keys
+}
+
+const TreeNodeRow: React.FC<{
+  node: TreeNode
+  level: number
+  expandedKeys: Set<string>
+  checkedSet: Set<string>
+  onToggle: (key: string) => void
+  onCheckChange: (key: string, checked: boolean) => void
+}> = ({ node, level, expandedKeys, checkedSet, onToggle, onCheckChange }) => {
+  const isExpanded = expandedKeys.has(node.key)
+  const hasChildren = !!node.children?.length
+  const isChecked = checkedSet.has(node.key)
+
+  // For directories, compute checked state from children
+  const childLeafKeys = useMemo(() => node.children ? getLeafKeys([node]) : [], [node])
+  const dirChecked = hasChildren
+    ? childLeafKeys.length > 0 && childLeafKeys.every(k => checkedSet.has(k))
+    : isChecked
+  const dirIndeterminate = hasChildren && !dirChecked && childLeafKeys.some(k => checkedSet.has(k))
+
+  const handleDirCheck = (checked: boolean) => {
+    // Toggle all leaf children
+    childLeafKeys.forEach(k => onCheckChange(k, checked))
+  }
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-1.5 py-1 px-2 hover:bg-accent/50 rounded"
+        style={{ paddingLeft: `${level * 16 + 8}px` }}
+      >
+        {hasChildren ? (
+          <span className="shrink-0 cursor-pointer" onClick={() => onToggle(node.key)}>
+            {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </span>
+        ) : (
+          <span className="w-3.5" />
+        )}
+        <Checkbox
+          checked={hasChildren ? dirChecked : isChecked}
+          indeterminate={dirIndeterminate}
+          onCheckedChange={(checked) => {
+            if (hasChildren) {
+              handleDirCheck(checked === true)
+            } else {
+              onCheckChange(node.key, checked === true)
+            }
+          }}
+        />
+        <span className="shrink-0">
+          <FileIcon file={conflictToFileItem(
+            node.conflict || { path: node.key, type: 'directory', current_size: 0, new_size: 0 },
+            node.name
+          )} />
+        </span>
+        <span className="text-sm">{node.name}</span>
+        {node.conflict?.current_size != null && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatFileSize(node.conflict.current_size)} → {formatFileSize(node.conflict.new_size || 0)})
+          </span>
+        )}
+      </div>
+      {isExpanded && node.children?.map(child => (
+        <TreeNodeRow
+          key={child.key}
+          node={child}
+          level={level + 1}
+          expandedKeys={expandedKeys}
+          checkedSet={checkedSet}
+          onToggle={onToggle}
+          onCheckChange={onCheckChange}
+        />
+      ))}
+    </>
+  )
+}
+
 const ConflictTree: React.FC<ConflictTreeProps> = ({
   conflicts,
   checkedKeys,
   onCheck,
   title = "冲突文件列表"
 }) => {
-  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+  const treeData = useMemo(() => buildConflictTreeData(conflicts), [conflicts])
+  const checkedSet = useMemo(() => new Set(checkedKeys.map(String)), [checkedKeys])
 
-  // 格式化文件大小
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
-
-  // 将OverwriteConflict转换为FileItem格式以便使用FileIcon
-  const conflictToFileItem = (conflict: OverwriteConflict, fileName: string): FileItem => ({
-    name: fileName,
-    path: conflict.path,
-    type: conflict.type,
-    size: conflict.current_size || 0,
-    modified_at: Date.now() / 1000 // 当前时间戳，因为conflict没有modified_at信息
-  })
-
-  // 将冲突列表转换为Tree数据结构
-  const buildConflictTreeData = (conflicts: OverwriteConflict[]): DataNode[] => {
-    const nodeMap: Record<string, DataNode> = {}
-    const rootNodes: DataNode[] = []
-
-    conflicts.forEach((conflict) => {
-      const pathParts = conflict.path.split('/')
-
-      let currentPath = ''
-
-      pathParts.forEach((part: string, partIndex: number) => {
-        const parentPath = currentPath
-        currentPath += (currentPath ? '/' : '') + part
-        const isLastPart = partIndex === pathParts.length - 1
-
-        // 如果节点不存在，创建它
-        if (!nodeMap[currentPath]) {
-          const node: DataNode = {
-            key: currentPath,
-            title: isLastPart ? (
-              <span>
-                <span style={{ marginRight: 8 }}>
-                  <FileIcon file={conflictToFileItem(conflict, part)} />
-                </span>
-                {part}
-                {conflict.current_size && (
-                  <span style={{ color: '#999', fontSize: '12px', marginLeft: 8 }}>
-                    ({formatFileSize(conflict.current_size)} → {formatFileSize(conflict.new_size || 0)})
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span>
-                <span style={{ marginRight: 8 }}>
-                  <FileIcon file={{ name: part, path: currentPath, type: 'directory', size: 0, modified_at: Date.now() / 1000 }} />
-                </span>
-                {part}
-              </span>
-            ),
-            children: isLastPart ? undefined : [],
-            isLeaf: isLastPart
-          }
-
-          nodeMap[currentPath] = node
-
-          // 添加到父节点或根节点
-          if (parentPath && nodeMap[parentPath]) {
-            nodeMap[parentPath].children = nodeMap[parentPath].children || []
-            nodeMap[parentPath].children!.push(node)
-          } else if (!parentPath) {
-            rootNodes.push(node)
-          }
-        }
-      })
+  const handleToggle = (key: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
-
-    return rootNodes
   }
 
-  // 获取所有节点keys
-  const getAllTreeKeys = (nodes: DataNode[]): React.Key[] => {
-    const keys: React.Key[] = []
-    const traverse = (nodeList: DataNode[]) => {
-      nodeList.forEach(node => {
-        keys.push(node.key)
-        if (node.children) {
-          traverse(node.children)
-        }
-      })
-    }
-    traverse(nodes)
-    return keys
+  const handleCheckChange = (key: string, checked: boolean) => {
+    const newChecked = new Set(checkedSet)
+    if (checked) newChecked.add(key)
+    else newChecked.delete(key)
+    onCheck(Array.from(newChecked))
   }
 
-  // 展开所有节点
   const handleExpandAll = () => {
-    const treeData = buildConflictTreeData(conflicts)
-    setExpandedKeys(getAllTreeKeys(treeData))
+    setExpandedKeys(new Set(getAllKeys(treeData)))
   }
 
-  // 收起所有节点
   const handleCollapseAll = () => {
-    setExpandedKeys([])
+    setExpandedKeys(new Set())
   }
-
-  const treeData = buildConflictTreeData(conflicts)
 
   return (
-    <Card
-      title={title}
-      size="small"
-      extra={
-        <Space>
-          <Button
-            size="small"
-            type="text"
-            icon={<ExpandOutlined />}
-            onClick={handleExpandAll}
-          >
-            展开所有
-          </Button>
-          <Button
-            size="small"
-            type="text"
-            icon={<CompressOutlined />}
-            onClick={handleCollapseAll}
-          >
-            收起所有
-          </Button>
-        </Space>
-      }
-    >
-      <Tree
-        checkable
-        treeData={treeData}
-        checkedKeys={checkedKeys}
-        onCheck={onCheck}
-        expandedKeys={expandedKeys}
-        onExpand={setExpandedKeys}
-        showIcon={false}
-      />
-      <div className="mt-2 text-gray-500 text-sm">
-        默认全部选中（覆盖），取消选中表示跳过该文件
-      </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm">{title}</CardTitle>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={handleExpandAll}>
+              <Maximize2 className="mr-1 h-3.5 w-3.5" />
+              展开所有
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleCollapseAll}>
+              <Minimize2 className="mr-1 h-3.5 w-3.5" />
+              收起所有
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="max-h-80 overflow-y-auto">
+          {treeData.map(node => (
+            <TreeNodeRow
+              key={node.key}
+              node={node}
+              level={0}
+              expandedKeys={expandedKeys}
+              checkedSet={checkedSet}
+              onToggle={handleToggle}
+              onCheckChange={handleCheckChange}
+            />
+          ))}
+        </div>
+        <div className="mt-2 text-muted-foreground text-sm">
+          默认全部选中（覆盖），取消选中表示跳过该文件
+        </div>
+      </CardContent>
     </Card>
   )
 }
