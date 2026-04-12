@@ -4,7 +4,6 @@ import { Clock, Settings } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { Spinner } from '@/components/ui/spinner'
 import CronExpressionDisplay from '@/components/cron/CronExpressionDisplay'
 import type { RestartScheduleResponse } from '@/hooks/api/serverApi'
@@ -84,23 +83,15 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
             重启计划
           </div>
         </CardTitle>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleNavigateToCronManagement}
-                >
-                  <Settings className="mr-1 h-3.5 w-3.5" />
-                  管理
-                </Button>
-              }
-            />
-            <TooltipContent>定时任务管理</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleNavigateToCronManagement}
+          title="定时任务管理"
+        >
+          <Settings className="mr-1 h-3.5 w-3.5" />
+          管理
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="space-y-3 text-sm">

@@ -1,11 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 interface ServerNameTagProps {
   serverId: string
@@ -26,20 +21,14 @@ export const ServerNameTag = ({ serverId, maxLength }: ServerNameTagProps) => {
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Badge
-            variant="secondary"
-            className="cursor-pointer hover:bg-secondary/80"
-            onClick={handleClick}
-          />
-        }
-      >
-        {displayText}
-      </TooltipTrigger>
-      <TooltipContent>{serverId}</TooltipContent>
-    </Tooltip>
+    <Badge
+      variant="secondary"
+      className="cursor-pointer hover:bg-secondary/80"
+      onClick={handleClick}
+      title={serverId}
+    >
+      {displayText}
+    </Badge>
   )
 }
 

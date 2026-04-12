@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card } from 'antd'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface ServerCountCardProps {
   totalServers: number
@@ -8,30 +8,18 @@ interface ServerCountCardProps {
 
 const ServerCountCard: React.FC<ServerCountCardProps> = ({ totalServers, runningServers }) => {
   return (
-    <Card
-      className="h-full w-full"
-      styles={{
-        body: {
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center'
-        }
-      }}
-    >
-      <div>
-        <div className="text-3xl sm:text-4xl font-bold text-gray-800 mb-3">
+    <Card className="h-full w-full">
+      <CardContent className="h-full flex flex-col items-center justify-center text-center">
+        <div className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
           {runningServers}/{totalServers}
         </div>
-        <div className="text-sm sm:text-base font-semibold text-gray-600 mb-2">
+        <div className="text-sm sm:text-base font-semibold text-muted-foreground mb-2">
           服务器状态
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-muted-foreground">
           运行中/总数
         </div>
-      </div>
+      </CardContent>
     </Card>
   )
 }

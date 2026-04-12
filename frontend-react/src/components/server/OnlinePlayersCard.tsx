@@ -2,7 +2,6 @@ import React from 'react';
 import { User, Clock } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useServerOnlinePlayers } from '@/hooks/queries/base/usePlayerQueries';
 import { MCAvatar } from '@/components/players/MCAvatar';
 
@@ -48,45 +47,37 @@ export const OnlinePlayersCard: React.FC<OnlinePlayersCardProps> = ({
       </CardHeader>
       <CardContent>
         {isLoading ? null : (
-          <TooltipProvider>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {onlinePlayers.map(player => (
-                <div
-                  key={player.player_db_id}
-                  className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
-                >
-                  <MCAvatar
-                    avatarBase64={player.avatar_base64}
-                    size={48}
-                    playerName={player.current_name}
-                  />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {onlinePlayers.map(player => (
+              <div
+                key={player.player_db_id}
+                className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+              >
+                <MCAvatar
+                  avatarBase64={player.avatar_base64}
+                  size={48}
+                  playerName={player.current_name}
+                />
 
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-base truncate" title={player.current_name}>
-                      {player.current_name}
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <div className="text-sm text-muted-foreground flex items-center space-x-1 cursor-default">
-                            <Clock className="h-3 w-3" />
-                            <span>{formatDuration(player.session_duration_seconds)}</span>
-                          </div>
-                        }
-                      />
-                      <TooltipContent>
-                        加入时间: {new Date(player.joined_at).toLocaleString('zh-CN')}
-                      </TooltipContent>
-                    </Tooltip>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-base truncate" title={player.current_name}>
+                    {player.current_name}
                   </div>
-
-                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100 shrink-0">
-                    在线
-                  </Badge>
+                  <div
+                    className="text-sm text-muted-foreground flex items-center space-x-1 cursor-default"
+                    title={`加入时间: ${new Date(player.joined_at).toLocaleString('zh-CN')}`}
+                  >
+                    <Clock className="h-3 w-3" />
+                    <span>{formatDuration(player.session_duration_seconds)}</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </TooltipProvider>
+
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 shrink-0">
+                  在线
+                </Badge>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

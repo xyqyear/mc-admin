@@ -3,7 +3,6 @@ import { Play, Square, RotateCw, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/ui/spinner';
 import { useServerMutations } from '@/hooks/mutations/useServerMutations';
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal';
@@ -51,86 +50,62 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   };
 
   return (
-    <TooltipProvider>
+    <>
       <div className="flex items-center gap-2">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
-                disabled={!isOperationAvailable('start') && !isOperationAvailable('up')}
-                onClick={handleStartServer}
-              >
-                {serverOperationMutation.isPending
-                  ? <Spinner className="mr-2 size-4" />
-                  : <Play className="mr-2 h-4 w-4" />
-                }
-                启动
-              </Button>
-            }
-          />
-          <TooltipContent>启动服务器</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="destructive"
-                disabled={!isOperationAvailable('stop')}
-                onClick={() => handleConfirmableServerOperation('stop')}
-              >
-                {serverOperationMutation.isPending
-                  ? <Spinner className="mr-2 size-4" />
-                  : <Square className="mr-2 h-4 w-4" />
-                }
-                停止
-              </Button>
-            }
-          />
-          <TooltipContent>停止服务器</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="destructive"
-                disabled={!isOperationAvailable('restart')}
-                onClick={() => handleConfirmableServerOperation('restart')}
-              >
-                {serverOperationMutation.isPending
-                  ? <Spinner className="mr-2 size-4" />
-                  : <RotateCw className="mr-2 h-4 w-4" />
-                }
-                重启
-              </Button>
-            }
-          />
-          <TooltipContent>重启服务器</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="destructive"
-                disabled={!isOperationAvailable('down')}
-                onClick={() => handleConfirmableServerOperation('down')}
-              >
-                {serverOperationMutation.isPending
-                  ? <Spinner className="mr-2 size-4" />
-                  : <ChevronDown className="mr-2 h-4 w-4" />
-                }
-                下线
-              </Button>
-            }
-          />
-          <TooltipContent>下线服务器</TooltipContent>
-        </Tooltip>
+        <Button
+          variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
+          disabled={serverOperationMutation.isPending || (!isOperationAvailable('start') && !isOperationAvailable('up'))}
+          onClick={handleStartServer}
+          title="启动服务器"
+        >
+          {serverOperationMutation.isPending
+            ? <Spinner className="mr-2 size-4" />
+            : <Play className="mr-2 h-4 w-4" />
+          }
+          启动
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={serverOperationMutation.isPending || !isOperationAvailable('stop')}
+          onClick={() => handleConfirmableServerOperation('stop')}
+          title="停止服务器"
+        >
+          {serverOperationMutation.isPending
+            ? <Spinner className="mr-2 size-4" />
+            : <Square className="mr-2 h-4 w-4" />
+          }
+          停止
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={serverOperationMutation.isPending || !isOperationAvailable('restart')}
+          onClick={() => handleConfirmableServerOperation('restart')}
+          title="重启服务器"
+        >
+          {serverOperationMutation.isPending
+            ? <Spinner className="mr-2 size-4" />
+            : <RotateCw className="mr-2 h-4 w-4" />
+          }
+          重启
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={serverOperationMutation.isPending || !isOperationAvailable('down')}
+          onClick={() => handleConfirmableServerOperation('down')}
+          title="下线服务器"
+        >
+          {serverOperationMutation.isPending
+            ? <Spinner className="mr-2 size-4" />
+            : <ChevronDown className="mr-2 h-4 w-4" />
+          }
+          下线
+        </Button>
         {showReturnButton && (
           <Button variant="outline" onClick={() => navigate('/overview')}>返回总览</Button>
         )}
       </div>
       <ConfirmDialog />
-    </TooltipProvider>
+    </>
   );
 };
 

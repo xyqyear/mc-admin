@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card } from 'antd'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface SimpleMetricCardProps {
   value: number | string
@@ -8,27 +8,15 @@ interface SimpleMetricCardProps {
 
 const SimpleMetricCard: React.FC<SimpleMetricCardProps> = ({ value, title }) => {
   return (
-    <Card
-      className="h-full w-full"
-      styles={{
-        body: {
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center'
-        }
-      }}
-    >
-      <div>
-        <div className="text-3xl sm:text-4xl font-bold text-gray-800 mb-3">
+    <Card className="h-full w-full">
+      <CardContent className="h-full flex flex-col items-center justify-center text-center">
+        <div className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
           {value}
         </div>
-        <div className="text-sm sm:text-base font-semibold text-gray-600">
+        <div className="text-sm sm:text-base font-semibold text-muted-foreground">
           {title}
         </div>
-      </div>
+      </CardContent>
     </Card>
   )
 }
