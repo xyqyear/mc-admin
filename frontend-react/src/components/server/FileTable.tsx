@@ -11,7 +11,7 @@ import {
 import {
   Trash2,
   Download,
-  MoreHorizontal,
+  Pencil,
   Archive,
   ArrowUpDown,
   ChevronLeft,
@@ -26,12 +26,6 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -238,18 +232,21 @@ const FileTable: React.FC<FileTableProps> = ({
               </TooltipTrigger>
               <TooltipContent>压缩</TooltipContent>
             </Tooltip>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button variant="outline" size="icon-sm" />}
+            <Tooltip>
+              <TooltipTrigger
+                className="inline-flex"
+                render={
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => onFileRename(file)}
+                  />
+                }
               >
-                <MoreHorizontal className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onFileRename(file)}>
-                  重命名
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <Pencil className="h-4 w-4" />
+              </TooltipTrigger>
+              <TooltipContent>重命名</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 className="inline-flex"
