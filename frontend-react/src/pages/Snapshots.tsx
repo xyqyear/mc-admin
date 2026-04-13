@@ -112,7 +112,7 @@ const Snapshots: React.FC = () => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
   // Unlock dialog state
-  const [unlockModalVisible, setUnlockModalVisible] = useState(false)
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false)
   const [locksInfo, setLocksInfo] = useState<string>('')
   const [unlockOutput, setUnlockOutput] = useState<string>('')
   const [isLoadingLocks, setIsLoadingLocks] = useState(false)
@@ -186,7 +186,7 @@ const Snapshots: React.FC = () => {
         throw new Error('未获取到锁信息')
       }
       setLocksInfo(data.locks)
-      setUnlockModalVisible(true)
+      setUnlockDialogOpen(true)
     } catch (err: any) {
       toast.error('获取锁信息失败', { description: err?.message || '未知错误' })
     } finally {
@@ -287,7 +287,7 @@ const Snapshots: React.FC = () => {
       </Card>
 
       {/* Unlock repository dialog */}
-      <Dialog open={unlockModalVisible} onOpenChange={setUnlockModalVisible}>
+      <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
         <DialogContent className="sm:max-w-175">
           <DialogHeader>
             <DialogTitle>解锁 Restic 仓库</DialogTitle>
@@ -311,7 +311,7 @@ const Snapshots: React.FC = () => {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUnlockModalVisible(false)}>
+            <Button variant="outline" onClick={() => setUnlockDialogOpen(false)}>
               取消
             </Button>
             <Button

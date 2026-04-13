@@ -19,14 +19,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-interface CreateModalProps {
+interface CreateDialogProps {
   open: boolean
   onCancel: () => void
   onSubmit: (values: { fileType: string; fileName: string }) => void
   confirmLoading: boolean
 }
 
-const CreateModal: React.FC<CreateModalProps> = ({
+const CreateDialog: React.FC<CreateDialogProps> = ({
   open,
   onCancel,
   onSubmit,
@@ -116,4 +116,4 @@ const CreateModal: React.FC<CreateModalProps> = ({
   )
 }
 
-export default CreateModal
+export default CreateDialog

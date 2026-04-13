@@ -19,9 +19,9 @@ import { Spinner } from '@/components/ui/spinner'
 import RjsfForm from '@/components/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema, UiSchema } from '@rjsf/utils'
-import { ComposeDiffModal } from '@/components/modals/ServerCompose'
-import RebuildProgressModal from '@/components/modals/RebuildProgressModal'
-import ConvertModeModal from '@/components/modals/ConvertModeModal'
+import { ComposeDiffDialog } from '@/components/dialogs/ServerCompose'
+import RebuildProgressDialog from '@/components/dialogs/RebuildProgressDialog'
+import ConvertModeDialog from '@/components/dialogs/ConvertModeDialog'
 import PageHeader from '@/components/layout/PageHeader'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
@@ -49,10 +49,10 @@ interface TemplateModeProps {
   refetchTemplateConfig: () => void
   rebuildTaskId: string | null
   setRebuildTaskId: (id: string | null) => void
-  isRebuildModalVisible: boolean
-  setIsRebuildModalVisible: (visible: boolean) => void
-  isConvertModalVisible: boolean
-  setIsConvertModalVisible: (visible: boolean) => void
+  isRebuildDialogOpen: boolean
+  setIsRebuildDialogOpen: (visible: boolean) => void
+  isConvertDialogOpen: boolean
+  setIsConvertDialogOpen: (visible: boolean) => void
   onConvertModeSuccess: () => void
 }
 
@@ -65,10 +65,10 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
   refetchTemplateConfig,
   rebuildTaskId,
   setRebuildTaskId,
-  isRebuildModalVisible,
-  setIsRebuildModalVisible,
-  isConvertModalVisible,
-  setIsConvertModalVisible,
+  isRebuildDialogOpen,
+  setIsRebuildDialogOpen,
+  isConvertDialogOpen,
+  setIsConvertDialogOpen,
   onConvertModeSuccess,
 }) => {
   const { confirm, confirmDialog } = useConfirm()
@@ -81,7 +81,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
   const [isTemplateDiffVisible, setIsTemplateDiffVisible] = useState(false)
   const [templateDiffLoading, setTemplateDiffLoading] = useState(false)
-  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false)
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false)
 
   const templateUiSchema: UiSchema = {
     name: {
@@ -132,7 +132,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
           variableValues: templateFormData,
         })
         setRebuildTaskId(result.task_id)
-        setIsRebuildModalVisible(true)
+        setIsRebuildDialogOpen(true)
       },
     })
   }
@@ -164,7 +164,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
             {templateConfig.has_template_update && !templateConfig.template_deleted && (
               <Button
                 variant="outline"
-                onClick={() => setIsUpdateModalVisible(true)}
+                onClick={() => setIsUpdateDialogOpen(true)}
               >
                 <RefreshCcw className="mr-1 h-4 w-4" />
                 模板有更新
@@ -172,7 +172,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
             )}
             <Button
               variant="outline"
-              onClick={() => setIsConvertModalVisible(true)}
+              onClick={() => setIsConvertDialogOpen(true)}
             >
               <ArrowLeftRight className="mr-1 h-4 w-4" />
               转换为直接编辑
@@ -238,7 +238,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
         </CardContent>
       </Card>
 
-      <ComposeDiffModal
+      <ComposeDiffDialog
         open={isTemplateDiffVisible}
         onClose={() => setIsTemplateDiffVisible(false)}
         originalContent={composeContent || ''}
@@ -248,36 +248,36 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
         description="左侧为服务器当前配置，右侧为根据当前表单参数渲染的配置。高亮显示的是差异部分。"
       />
 
-      <RebuildProgressModal
-        open={isRebuildModalVisible}
+      <RebuildProgressDialog
+        open={isRebuildDialogOpen}
         taskId={rebuildTaskId}
         serverId={serverId}
         onClose={() => {
-          setIsRebuildModalVisible(false)
+          setIsRebuildDialogOpen(false)
           setRebuildTaskId(null)
         }}
         onComplete={() => {
-          setIsRebuildModalVisible(false)
+          setIsRebuildDialogOpen(false)
           setRebuildTaskId(null)
           refetchTemplateConfig()
           composeQuery.refetch()
         }}
       />
 
-      <ConvertModeModal
-        open={isConvertModalVisible}
+      <ConvertModeDialog
+        open={isConvertDialogOpen}
         serverId={serverId}
         currentMode="template"
-        onClose={() => setIsConvertModalVisible(false)}
+        onClose={() => setIsConvertDialogOpen(false)}
         onSuccess={onConvertModeSuccess}
       />
 
-      <ConvertModeModal
-        open={isUpdateModalVisible}
+      <ConvertModeDialog
+        open={isUpdateDialogOpen}
         serverId={serverId}
         currentMode="update"
         initialTemplateId={templateConfig.template_id}
-        onClose={() => setIsUpdateModalVisible(false)}
+        onClose={() => setIsUpdateDialogOpen(false)}
         onSuccess={onConvertModeSuccess}
       />
 

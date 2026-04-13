@@ -29,10 +29,10 @@ import { useTemplates } from '@/hooks/queries/base/useTemplateQueries'
 import { useTemplateMutations } from '@/hooks/mutations/useTemplateMutations'
 import type { ExtractVariablesResponse } from '@/hooks/api/templateApi'
 import { queryKeys } from '@/utils/api'
-import RebuildProgressModal from './RebuildProgressModal'
+import RebuildProgressDialog from './RebuildProgressDialog'
 import { cn } from '@/lib/utils'
 
-interface ConvertModeModalProps {
+interface ConvertModeDialogProps {
   open: boolean
   serverId: string
   currentMode: 'template' | 'direct' | 'update'
@@ -66,7 +66,7 @@ const StepIndicator = ({ steps, currentStep }: { steps: string[]; currentStep: n
   </div>
 )
 
-const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
+const ConvertModeDialog: React.FC<ConvertModeDialogProps> = ({
   open,
   serverId,
   currentMode,
@@ -79,7 +79,7 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
   const [extractResult, setExtractResult] = useState<ExtractVariablesResponse | null>(null)
   const [formData, setFormData] = useState<Record<string, unknown>>({})
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
-  const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
+  const [isRebuildDialogOpen, setIsRebuildDialogOpen] = useState(false)
   const [previewYaml, setPreviewYaml] = useState<string>('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [requiresRebuild, setRequiresRebuild] = useState<boolean | null>(null)
@@ -174,12 +174,12 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
       onClose()
     } else {
       setRebuildTaskId(result.task_id!)
-      setIsRebuildModalVisible(true)
+      setIsRebuildDialogOpen(true)
     }
   }
 
   const handleRebuildComplete = () => {
-    setIsRebuildModalVisible(false)
+    setIsRebuildDialogOpen(false)
     setRebuildTaskId(null)
     queryClient.invalidateQueries({
       queryKey: queryKeys.templates.serverConfigPreview(serverId),
@@ -391,15 +391,15 @@ const ConvertModeModal: React.FC<ConvertModeModalProps> = ({
         </DialogContent>
       </Dialog>
 
-      <RebuildProgressModal
-        open={isRebuildModalVisible}
+      <RebuildProgressDialog
+        open={isRebuildDialogOpen}
         taskId={rebuildTaskId}
         serverId={serverId}
-        onClose={() => setIsRebuildModalVisible(false)}
+        onClose={() => setIsRebuildDialogOpen(false)}
         onComplete={handleRebuildComplete}
       />
     </>
   )
 }
 
-export default ConvertModeModal
+export default ConvertModeDialog

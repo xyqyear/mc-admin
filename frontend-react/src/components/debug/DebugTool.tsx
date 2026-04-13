@@ -6,10 +6,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import DebugModal from './DebugModal'
+import DebugDialog from './DebugDialog'
 
 const DebugTool: React.FC = () => {
-  const [modalVisible, setModalVisible] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   if (import.meta.env.MODE !== 'development') {
     return null
@@ -24,7 +24,7 @@ const DebugTool: React.FC = () => {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => setModalVisible(true)}
+              onClick={() => setDialogOpen(true)}
             >
               <Bug className="h-4 w-4" />
               <span className="sr-only">调试工具</span>
@@ -34,9 +34,9 @@ const DebugTool: React.FC = () => {
         <TooltipContent side="right">调试工具</TooltipContent>
       </Tooltip>
 
-      <DebugModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+      <DebugDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
       />
     </>
   )

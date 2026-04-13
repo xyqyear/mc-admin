@@ -4,7 +4,7 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { ErrorFallback } from '@/components/layout/ErrorFallback'
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
 import { MainLayout } from '@/components/layout/MainLayout'
-import VersionUpdateModal from '@/components/VersionUpdateModal'
+import VersionUpdateDialog from '@/components/VersionUpdateDialog'
 import { useVersionCheck } from '@/hooks/useVersionCheck'
 import { useTokenStore } from '@/stores/useTokenStore'
 import { toast } from 'sonner'
@@ -60,7 +60,7 @@ function AuthRoutes() {
 }
 
 function App() {
-  const { shouldShowModal, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
+  const { shouldShowDialog, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
 
   // Global error handler
   const handleError = (error: unknown, errorInfo: ErrorInfo) => {
@@ -115,9 +115,9 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Version Update Modal - 只在登录后的页面显示 */}
-      <VersionUpdateModal
-        visible={shouldShowModal}
+      {/* Version Update Dialog - 只在登录后的页面显示 */}
+      <VersionUpdateDialog
+        open={shouldShowDialog}
         onClose={handleClose}
         onRemindLater={handleRemindLater}
         fromVersion={fromVersion}

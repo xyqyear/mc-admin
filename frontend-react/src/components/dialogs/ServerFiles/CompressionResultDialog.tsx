@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-interface CompressionResultModalProps {
+interface CompressionResultDialogProps {
   open: boolean
   onCancel: () => void
   archiveFilename: string
@@ -20,7 +20,7 @@ interface CompressionResultModalProps {
   downloadLoading: boolean
 }
 
-const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
+const CompressionResultDialog: React.FC<CompressionResultDialogProps> = ({
   open,
   onCancel,
   archiveFilename,
@@ -77,4 +77,4 @@ const CompressionResultModal: React.FC<CompressionResultModalProps> = ({
   )
 }
 
-export default CompressionResultModal
+export default CompressionResultDialog

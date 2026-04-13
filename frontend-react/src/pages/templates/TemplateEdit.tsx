@@ -55,7 +55,6 @@ const TemplateEdit: React.FC = () => {
   const templateId = id ? parseInt(id, 10) : copyFromId ? parseInt(copyFromId, 10) : null
   const isNewTemplate = !isEditMode && !copyFromId
 
-  // Form state (replaces AntD Form)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [nameError, setNameError] = useState("")

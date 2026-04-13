@@ -30,7 +30,7 @@ import { SortableHeader } from '@/components/common/SortableHeader'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import type { ServerListItem } from '@/hooks/api/serverApi'
 
-interface ServerTemplateModalProps {
+interface ServerTemplateDialogProps {
   open: boolean
   onCancel: () => void
   onSelect: (composeContent: string) => void
@@ -39,7 +39,7 @@ interface ServerTemplateModalProps {
   selectButtonText?: string
 }
 
-const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
+const ServerTemplateDialog: React.FC<ServerTemplateDialogProps> = ({
   open,
   onCancel,
   onSelect,
@@ -53,7 +53,7 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
   })
 
   const [selectedServer, setSelectedServer] = useState<ServerListItem | null>(null)
-  const [previewModalVisible, setPreviewModalVisible] = useState(false)
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
 
@@ -70,13 +70,13 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
 
   const handleCancel = () => {
     setSelectedServer(null)
-    setPreviewModalVisible(false)
+    setPreviewDialogOpen(false)
     onCancel()
   }
 
   const handlePreview = (server: ServerListItem) => {
     setSelectedServer(server)
-    setPreviewModalVisible(true)
+    setPreviewDialogOpen(true)
   }
 
   const serverList = useMemo(() => servers || [], [servers])
@@ -218,7 +218,7 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={previewModalVisible} onOpenChange={(o) => !o && setPreviewModalVisible(false)}>
+      <Dialog open={previewDialogOpen} onOpenChange={(o) => !o && setPreviewDialogOpen(false)}>
         <DialogContent className="sm:max-w-200">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -255,11 +255,11 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewModalVisible(false)}>关闭</Button>
+            <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>关闭</Button>
             <Button
               disabled={!composeContent || composeLoading}
               onClick={() => {
-                setPreviewModalVisible(false)
+                setPreviewDialogOpen(false)
                 handleSelect()
               }}
             >
@@ -273,4 +273,4 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
   )
 }
 
-export default ServerTemplateModal
+export default ServerTemplateDialog

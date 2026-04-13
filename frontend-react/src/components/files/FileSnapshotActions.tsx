@@ -354,7 +354,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   isServerMode = false,
   onRefresh,
 }) => {
-  const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false)
+  const [isSnapshotDialogOpen, setIsSnapshotDialogOpen] = useState(false)
   const [isSafetyCheckVisible, setIsSafetyCheckVisible] = useState(false)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('')
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
@@ -397,7 +397,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
   const handleRollback = () => {
     refetchSnapshots()
-    setIsSnapshotModalVisible(true)
+    setIsSnapshotDialogOpen(true)
   }
 
   const handleSnapshotRestore = async (snapshotId: string) => {
@@ -411,11 +411,11 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       })
 
       toast.success(`已成功回滚 ${displayName}`)
-      setIsSnapshotModalVisible(false)
+      setIsSnapshotDialogOpen(false)
       onRefresh?.()
     } catch (error: any) {
       if (error?.message?.includes('no recent snapshot') || error?.message?.includes('1 minute')) {
-        setIsSnapshotModalVisible(false)
+        setIsSnapshotDialogOpen(false)
         setIsSafetyCheckVisible(true)
       } else {
         toast.error(`回滚失败: ${error?.message || '未知错误'}`)
@@ -528,8 +528,8 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       </div>
 
       <SnapshotSelectionDialog
-        open={isSnapshotModalVisible}
-        onCancel={() => setIsSnapshotModalVisible(false)}
+        open={isSnapshotDialogOpen}
+        onCancel={() => setIsSnapshotDialogOpen(false)}
         snapshots={snapshots}
         loading={isLoadingSnapshots}
         onRestore={handleSnapshotRestore}

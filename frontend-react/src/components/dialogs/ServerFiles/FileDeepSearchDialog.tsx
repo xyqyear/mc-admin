@@ -35,7 +35,7 @@ const sizeUnits = [
   { value: String(1024 * 1024 * 1024 * 1024), label: 'TB' },
 ]
 
-interface FileDeepSearchModalProps {
+interface FileDeepSearchDialogProps {
   open: boolean
   onCancel: () => void
   serverId: string
@@ -43,7 +43,7 @@ interface FileDeepSearchModalProps {
   onNavigate: (path: string, query?: string, keepRegex?: boolean) => void
 }
 
-const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
+const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
   open,
   onCancel,
   serverId,
@@ -366,4 +366,4 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
   )
 }
 
-export default FileDeepSearchModal
+export default FileDeepSearchDialog

@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 
 import { ComposeYamlEditor } from '@/components/editors'
-import ServerTemplateModal from '@/components/modals/ServerTemplateModal'
-import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
+import ServerTemplateDialog from '@/components/dialogs/ServerTemplateDialog'
+import DockerComposeHelpDialog from '@/components/dialogs/DockerComposeHelpDialog'
 
 interface TraditionalCreationModeProps {
   serverName: string
@@ -29,13 +29,13 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
   composeContent,
   setComposeContent,
 }) => {
-  const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
-  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false)
   const editorRef = useRef<any>(null)
 
   const handleTemplateSelect = (templateContent: string) => {
     setComposeContent(templateContent)
-    setIsTemplateModalVisible(false)
+    setIsTemplateDialogOpen(false)
     toast.success('已应用服务器模板配置')
   }
 
@@ -77,7 +77,7 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsHelpModalVisible(true)}
+              onClick={() => setIsHelpDialogOpen(true)}
             >
               <HelpCircle className="mr-1 h-4 w-4" />
               配置帮助
@@ -85,7 +85,7 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsTemplateModalVisible(true)}
+              onClick={() => setIsTemplateDialogOpen(true)}
             >
               <Copy className="mr-1 h-4 w-4" />
               从现有服务器复制
@@ -111,18 +111,18 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
         </CardContent>
       </Card>
 
-      <ServerTemplateModal
-        open={isTemplateModalVisible}
-        onCancel={() => setIsTemplateModalVisible(false)}
+      <ServerTemplateDialog
+        open={isTemplateDialogOpen}
+        onCancel={() => setIsTemplateDialogOpen(false)}
         onSelect={handleTemplateSelect}
         title="选择服务器模板"
         description="选择现有服务器作为模板，使用其 Docker Compose 配置创建新服务器"
         selectButtonText="使用模板"
       />
 
-      <DockerComposeHelpModal
-        open={isHelpModalVisible}
-        onCancel={() => setIsHelpModalVisible(false)}
+      <DockerComposeHelpDialog
+        open={isHelpDialogOpen}
+        onCancel={() => setIsHelpDialogOpen(false)}
       />
     </div>
   )

@@ -92,7 +92,7 @@ const staticColumns: ColumnDef<UserType, any>[] = [
 ]
 
 const UserManagement: React.FC = () => {
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   const { confirm, confirmDialog } = useConfirm()
 
@@ -152,14 +152,14 @@ const UserManagement: React.FC = () => {
     initialState: { pagination: { pageSize: 10 } },
   })
 
-  const showCreateModal = () => {
+  const showCreateDialog = () => {
     reset({ username: '', password: '', role: UserRole.ADMIN })
-    setIsCreateModalOpen(true)
+    setIsCreateDialogOpen(true)
   }
 
   const handleCreateSubmit = handleSubmit(async (values: CreateUserForm) => {
     await createUserMutation.mutateAsync(values as UserCreate)
-    setIsCreateModalOpen(false)
+    setIsCreateDialogOpen(false)
     reset()
   })
 
@@ -183,7 +183,7 @@ const UserManagement: React.FC = () => {
         title="用户管理"
         icon={<User />}
         actions={
-          <Button onClick={showCreateModal}>
+          <Button onClick={showCreateDialog}>
             <Plus className="mr-1 h-4 w-4" />
             新建用户
           </Button>
@@ -215,7 +215,7 @@ const UserManagement: React.FC = () => {
       </Card>
 
       {/* Create user dialog */}
-      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>新建用户</DialogTitle>
@@ -296,7 +296,7 @@ const UserManagement: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={() => setIsCreateDialogOpen(false)}
               >
                 取消
               </Button>

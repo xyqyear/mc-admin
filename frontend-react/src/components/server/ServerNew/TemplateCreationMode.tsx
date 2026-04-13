@@ -43,7 +43,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
   const navigate = useNavigate()
 
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
-  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false)
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates()
   const { data: templateSchema, isLoading: schemaLoading } = useTemplateSchema(selectedTemplateId)
@@ -65,7 +65,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
       variableValues: templateFormData,
     })
     setPreviewYaml(yaml)
-    setIsPreviewModalVisible(true)
+    setIsPreviewDialogOpen(true)
   }
 
   return (
@@ -143,7 +143,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
         </Card>
       )}
 
-      <Dialog open={isPreviewModalVisible} onOpenChange={(o) => !o && setIsPreviewModalVisible(false)}>
+      <Dialog open={isPreviewDialogOpen} onOpenChange={(o) => !o && setIsPreviewDialogOpen(false)}>
         <DialogContent className="sm:max-w-200">
           <DialogHeader>
             <DialogTitle>预览生成的 YAML</DialogTitle>
@@ -157,7 +157,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
             />
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPreviewModalVisible(false)}>关闭</Button>
+            <Button variant="outline" onClick={() => setIsPreviewDialogOpen(false)}>关闭</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

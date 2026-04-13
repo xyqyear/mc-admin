@@ -15,7 +15,7 @@ import {
 import { SimpleEditor } from '@/components/editors'
 import type { FileItem } from '@/types/Server'
 
-interface FileEditModalProps {
+interface FileEditDialogProps {
   open: boolean
   onCancel: () => void
   onSave: () => void
@@ -40,7 +40,7 @@ interface FileEditModalProps {
   }
 }
 
-const FileEditModal: React.FC<FileEditModalProps> = ({
+const FileEditDialog: React.FC<FileEditDialogProps> = ({
   open,
   onCancel,
   onSave,
@@ -137,4 +137,4 @@ const FileEditModal: React.FC<FileEditModalProps> = ({
   )
 }
 
-export default FileEditModal
+export default FileEditDialog

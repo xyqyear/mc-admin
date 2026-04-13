@@ -32,10 +32,10 @@ import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
-import ArchiveUploadDialog from '@/components/modals/ArchiveUploadDialog'
-import ArchiveRenameDialog from '@/components/modals/ArchiveRenameDialog'
-import SHA256ResultDialog from '@/components/modals/SHA256ResultDialog'
-import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
+import ArchiveUploadDialog from '@/components/dialogs/ArchiveUploadDialog'
+import ArchiveRenameDialog from '@/components/dialogs/ArchiveRenameDialog'
+import SHA256ResultDialog from '@/components/dialogs/SHA256ResultDialog'
+import SHA256HelpDialog from '@/components/dialogs/SHA256HelpDialog'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
@@ -387,7 +387,7 @@ const ArchiveManagement: React.FC = () => {
         result={sha256Result}
       />
 
-      <SHA256HelpModal
+      <SHA256HelpDialog
         open={sha256HelpVisible}
         onCancel={() => setSha256HelpVisible(false)}
       />

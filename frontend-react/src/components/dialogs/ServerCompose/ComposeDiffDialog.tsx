@@ -10,7 +10,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
-export interface ComposeDiffModalProps {
+export interface ComposeDiffDialogProps {
   open: boolean
   onClose: () => void
   originalContent: string
@@ -22,7 +22,7 @@ export interface ComposeDiffModalProps {
   loading?: boolean
 }
 
-const ComposeDiffModal: React.FC<ComposeDiffModalProps> = ({
+const ComposeDiffDialog: React.FC<ComposeDiffDialogProps> = ({
   open,
   onClose,
   originalContent,
@@ -63,4 +63,4 @@ const ComposeDiffModal: React.FC<ComposeDiffModalProps> = ({
   )
 }
 
-export default ComposeDiffModal
+export default ComposeDiffDialog

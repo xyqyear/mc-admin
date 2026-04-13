@@ -35,7 +35,7 @@ import { useOverviewData } from '@/hooks/queries/page/useOverviewData'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
 import { serverStatusUtils } from '@/utils/serverUtils'
-import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
+import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog'
 import { useConfirm } from '@/hooks/useConfirm'
 
 const gradientIndicatorStyle = (percent: number): React.CSSProperties => {

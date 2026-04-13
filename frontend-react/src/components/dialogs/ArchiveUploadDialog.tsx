@@ -20,7 +20,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
-import SHA256HelpModal from '@/components/modals/SHA256HelpModal'
+import SHA256HelpDialog from '@/components/dialogs/SHA256HelpDialog'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
 import { formatUtils } from '@/utils/serverUtils'
 
@@ -272,7 +272,7 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({
         </DialogContent>
       </Dialog>
 
-      <SHA256HelpModal
+      <SHA256HelpDialog
         open={sha256HelpVisible}
         onCancel={() => setSha256HelpVisible(false)}
       />

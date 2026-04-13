@@ -14,16 +14,16 @@ import {
 import { compareVersions, versionUpdates } from '@/config/versionConfig'
 import { parseIssueReferences } from '@/utils/issueParser'
 
-interface VersionUpdateModalProps {
-  visible: boolean
+interface VersionUpdateDialogProps {
+  open: boolean
   onClose: () => void
   onRemindLater: () => void
   fromVersion: string
   toVersion: string
 }
 
-const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
-  visible,
+const VersionUpdateDialog: React.FC<VersionUpdateDialogProps> = ({
+  open,
   onClose,
   onRemindLater,
   fromVersion,
@@ -69,7 +69,7 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
   }
 
   return (
-    <Dialog open={visible} onOpenChange={(o) => !o && onRemindLater()}>
+    <Dialog open={open} onOpenChange={(o) => !o && onRemindLater()}>
       <DialogContent className="sm:max-w-180">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -136,4 +136,4 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
   )
 }
 
-export default VersionUpdateModal
+export default VersionUpdateDialog

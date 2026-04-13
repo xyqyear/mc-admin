@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { MonacoDiffEditor } from '@/components/editors'
 
-interface FileDiffModalProps {
+interface FileDiffDialogProps {
   open: boolean
   onCancel: () => void
   originalFileContent: string
@@ -35,7 +35,7 @@ interface FileDiffModalProps {
   }
 }
 
-const FileDiffModal: React.FC<FileDiffModalProps> = ({
+const FileDiffDialog: React.FC<FileDiffDialogProps> = ({
   open,
   onCancel,
   originalFileContent,
@@ -112,4 +112,4 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
   )
 }
 
-export default FileDiffModal
+export default FileDiffDialog

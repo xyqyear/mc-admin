@@ -40,7 +40,7 @@ const nameSchema = z.object({
 
 type NameFormData = z.infer<typeof nameSchema>
 
-interface CreateCronJobModalProps {
+interface CreateCronJobDialogProps {
   open: boolean
   onCancel: () => void
   onSuccess?: () => void
@@ -48,7 +48,7 @@ interface CreateCronJobModalProps {
   cronjobId?: string
 }
 
-const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
+const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
   open,
   onCancel,
   onSuccess,
@@ -285,4 +285,4 @@ const CreateCronJobModal: React.FC<CreateCronJobModalProps> = ({
   )
 }
 
-export default CreateCronJobModal
+export default CreateCronJobDialog

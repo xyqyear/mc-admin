@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-interface RenameModalProps {
+interface RenameDialogProps {
   open: boolean
   onCancel: () => void
   onSubmit: (newName: string) => void
@@ -20,7 +20,7 @@ interface RenameModalProps {
   confirmLoading: boolean
 }
 
-const RenameModal: React.FC<RenameModalProps> = ({
+const RenameDialog: React.FC<RenameDialogProps> = ({
   open,
   onCancel,
   onSubmit,
@@ -92,4 +92,4 @@ const RenameModal: React.FC<RenameModalProps> = ({
   )
 }
 
-export default RenameModal
+export default RenameDialog

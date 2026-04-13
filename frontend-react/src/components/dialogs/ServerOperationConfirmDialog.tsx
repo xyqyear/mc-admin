@@ -1,6 +1,6 @@
 import { useConfirm } from '@/hooks/useConfirm'
 
-export interface ServerOperationConfirmModalProps {
+export interface ServerOperationConfirmDialogProps {
   operation: 'stop' | 'restart' | 'down' | 'remove'
   serverName: string
   serverId: string
@@ -37,7 +37,7 @@ const confirmConfigs = {
 export const useServerOperationConfirm = () => {
   const { confirm, confirmDialog } = useConfirm()
 
-  const showConfirm = ({ operation, serverName, serverId, onConfirm }: ServerOperationConfirmModalProps) => {
+  const showConfirm = ({ operation, serverName, serverId, onConfirm }: ServerOperationConfirmDialogProps) => {
     const config = confirmConfigs[operation]
     if (config) {
       confirm({

@@ -31,7 +31,7 @@ import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { formatFileSize, formatDate } from '@/utils/formatUtils'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
 
-interface ArchiveSelectionModalProps {
+interface ArchiveSelectionDialogProps {
   open: boolean
   onCancel: () => void
   onSelect: (filename: string) => void
@@ -41,7 +41,7 @@ interface ArchiveSelectionModalProps {
   selectButtonType?: 'primary' | 'danger'
 }
 
-const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
+const ArchiveSelectionDialog: React.FC<ArchiveSelectionDialogProps> = ({
   open,
   onCancel,
   onSelect,
@@ -209,4 +209,4 @@ const ArchiveSelectionModal: React.FC<ArchiveSelectionModalProps> = ({
   )
 }
 
-export default ArchiveSelectionModal
+export default ArchiveSelectionDialog

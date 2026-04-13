@@ -22,10 +22,10 @@ import {
 } from '@/components/ui/dialog'
 
 import { ComposeYamlEditor, MonacoDiffEditor } from '@/components/editors'
-import { ComposeDiffModal } from '@/components/modals/ServerCompose'
-import RebuildProgressModal from '@/components/modals/RebuildProgressModal'
-import ConvertModeModal from '@/components/modals/ConvertModeModal'
-import DockerComposeHelpModal from '@/components/modals/DockerComposeHelpModal'
+import { ComposeDiffDialog } from '@/components/dialogs/ServerCompose'
+import RebuildProgressDialog from '@/components/dialogs/RebuildProgressDialog'
+import ConvertModeDialog from '@/components/dialogs/ConvertModeDialog'
+import DockerComposeHelpDialog from '@/components/dialogs/DockerComposeHelpDialog'
 import PageHeader from '@/components/layout/PageHeader'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
@@ -41,10 +41,10 @@ interface DirectModeProps {
   composeQuery: UseQueryResult<string, Error>
   rebuildTaskId: string | null
   setRebuildTaskId: (id: string | null) => void
-  isRebuildModalVisible: boolean
-  setIsRebuildModalVisible: (visible: boolean) => void
-  isConvertModalVisible: boolean
-  setIsConvertModalVisible: (visible: boolean) => void
+  isRebuildDialogOpen: boolean
+  setIsRebuildDialogOpen: (visible: boolean) => void
+  isConvertDialogOpen: boolean
+  setIsConvertDialogOpen: (visible: boolean) => void
   onConvertModeSuccess: () => void
 }
 
@@ -55,10 +55,10 @@ const DirectMode: React.FC<DirectModeProps> = ({
   composeQuery,
   rebuildTaskId,
   setRebuildTaskId,
-  isRebuildModalVisible,
-  setIsRebuildModalVisible,
-  isConvertModalVisible,
-  setIsConvertModalVisible,
+  isRebuildDialogOpen,
+  setIsRebuildDialogOpen,
+  isConvertDialogOpen,
+  setIsConvertDialogOpen,
   onConvertModeSuccess,
 }) => {
   const { confirm, confirmDialog } = useConfirm()
@@ -67,7 +67,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
 
   const [rawYaml, setRawYaml] = useState('')
   const [isCompareVisible, setIsCompareVisible] = useState(false)
-  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false)
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false)
   const [isSubmitConfirmVisible, setIsSubmitConfirmVisible] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
   const editorRef = useRef<any>(null)
@@ -92,7 +92,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
       const result = await updateComposeMutation.mutateAsync(rawYaml)
       setIsSubmitConfirmVisible(false)
       setRebuildTaskId(result.task_id)
-      setIsRebuildModalVisible(true)
+      setIsRebuildDialogOpen(true)
     } catch (error: any) {
       toast.error(`配置提交失败: ${error.message}`)
     }
@@ -144,7 +144,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
           <>
             <Button
               variant="outline"
-              onClick={() => setIsConvertModalVisible(true)}
+              onClick={() => setIsConvertDialogOpen(true)}
             >
               <ArrowLeftRight className="mr-1 h-4 w-4" />
               转换为模板模式
@@ -181,7 +181,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsHelpModalVisible(true)}
+              onClick={() => setIsHelpDialogOpen(true)}
             >
               <HelpCircle className="mr-1 h-4 w-4" />
               配置帮助
@@ -204,7 +204,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
         </CardContent>
       </Card>
 
-      <ComposeDiffModal
+      <ComposeDiffDialog
         open={isCompareVisible}
         onClose={() => setIsCompareVisible(false)}
         originalContent={composeContent || ''}
@@ -213,33 +213,33 @@ const DirectMode: React.FC<DirectModeProps> = ({
         modifiedTitle="本地编辑配置"
       />
 
-      <DockerComposeHelpModal
-        open={isHelpModalVisible}
-        onCancel={() => setIsHelpModalVisible(false)}
+      <DockerComposeHelpDialog
+        open={isHelpDialogOpen}
+        onCancel={() => setIsHelpDialogOpen(false)}
         page="ServerCompose"
       />
 
-      <RebuildProgressModal
-        open={isRebuildModalVisible}
+      <RebuildProgressDialog
+        open={isRebuildDialogOpen}
         taskId={rebuildTaskId}
         serverId={serverId}
         onClose={() => {
-          setIsRebuildModalVisible(false)
+          setIsRebuildDialogOpen(false)
           setRebuildTaskId(null)
         }}
         onComplete={() => {
-          setIsRebuildModalVisible(false)
+          setIsRebuildDialogOpen(false)
           setRebuildTaskId(null)
           composeQuery.refetch()
           setEditorKey(prev => prev + 1)
         }}
       />
 
-      <ConvertModeModal
-        open={isConvertModalVisible}
+      <ConvertModeDialog
+        open={isConvertDialogOpen}
         serverId={serverId}
         currentMode="direct"
-        onClose={() => setIsConvertModalVisible(false)}
+        onClose={() => setIsConvertDialogOpen(false)}
         onSuccess={onConvertModeSuccess}
       />
 

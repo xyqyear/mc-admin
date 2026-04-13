@@ -11,20 +11,20 @@ import {
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 
-interface PopulateProgressModalProps {
+interface RebuildProgressDialogProps {
   open: boolean
   taskId: string | null
+  serverId: string
   onClose: () => void
   onComplete: () => void
-  serverId: string
 }
 
-const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
+const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
   open,
   taskId,
+  serverId,
   onClose,
   onComplete,
-  serverId,
 }) => {
   const queryClient = useQueryClient()
 
@@ -35,23 +35,31 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
     if (!task) return
 
     if (task.status === 'completed') {
-      toast.success('服务器文件替换完成!')
+      toast.success('服务器配置更新完成')
       queryClient.invalidateQueries({
         queryKey: queryKeys.serverInfos.detail(serverId),
       })
       queryClient.invalidateQueries({
-        queryKey: queryKeys.serverRuntimes.disk(serverId),
+        queryKey: queryKeys.compose.detail(serverId),
       })
       queryClient.invalidateQueries({
-        queryKey: queryKeys.files.lists(serverId),
+        queryKey: queryKeys.serverStatuses.detail(serverId),
       })
-      queryClient.invalidateQueries({ queryKey: queryKeys.servers() })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.serverRuntimes.detail(serverId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.servers(),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.players.serverOnline(serverId),
+      })
       onComplete()
     } else if (task.status === 'failed') {
-      toast.error(`填充失败: ${task.error}`)
+      toast.error(`配置更新失败: ${task.error}`)
       onClose()
     }
-  }, [task, task?.status, task?.error, serverId, queryClient, onComplete, onClose])
+  }, [task, serverId, queryClient, onComplete, onClose])
 
   const isActive = task?.status === 'running' || task?.status === 'pending'
 
@@ -59,7 +67,7 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
     <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>
       <DialogContent showCloseButton={!isActive}>
         <DialogHeader>
-          <DialogTitle>正在填充服务器文件</DialogTitle>
+          <DialogTitle>正在更新服务器配置</DialogTitle>
         </DialogHeader>
         <div className="py-4">
           <Progress value={task?.progress ?? 0} />
@@ -72,4 +80,4 @@ const PopulateProgressModal: React.FC<PopulateProgressModalProps> = ({
   )
 }
 
-export default PopulateProgressModal
+export default RebuildProgressDialog

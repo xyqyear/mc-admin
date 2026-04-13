@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table"
 
 import SortableVariableRow from "./SortableVariableRow"
-import VariableEditModal from "./VariableEditModal"
+import VariableEditDialog from "./VariableEditDialog"
 import { useConfirm } from "@/hooks/useConfirm"
 import type { VariableFormData } from "./variableSchemas"
 
@@ -62,8 +62,8 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
 }) => {
   const { confirm, confirmDialog } = useConfirm()
   const [searchText, setSearchText] = useState("")
-  const [modalOpen, setModalOpen] = useState(false)
-  const [modalMode, setModalMode] = useState<"add" | "edit">("add")
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<"add" | "edit">("add")
   const [editingIndex, setEditingIndex] = useState<number>(-1)
   const [editingData, setEditingData] = useState<Partial<VariableFormData> | undefined>()
 
@@ -115,39 +115,39 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
     [keyedItems, value, onChange]
   )
 
-  const openAddModal = useCallback(() => {
-    setModalMode("add")
+  const openAddDialog = useCallback(() => {
+    setDialogMode("add")
     setEditingIndex(-1)
     setEditingData(undefined)
-    setModalOpen(true)
+    setDialogOpen(true)
   }, [])
 
-  const openEditModal = useCallback(
+  const openEditDialog = useCallback(
     (record: KeyedVariable) => {
       const idx = keyedItems.findIndex((v) => v._key === record._key)
       if (idx === -1) return
       const { _key: _unused, ...data } = record
       void _unused
-      setModalMode("edit")
+      setDialogMode("edit")
       setEditingIndex(idx)
       setEditingData(structuredClone(data))
-      setModalOpen(true)
+      setDialogOpen(true)
     },
     [keyedItems]
   )
 
-  const handleModalOk = useCallback(
+  const handleDialogOk = useCallback(
     (data: VariableFormData) => {
       const next = [...value]
-      if (modalMode === "add") {
+      if (dialogMode === "add") {
         next.push(data)
       } else if (editingIndex >= 0) {
         next[editingIndex] = data
       }
       onChange(next)
-      setModalOpen(false)
+      setDialogOpen(false)
     },
-    [value, onChange, modalMode, editingIndex]
+    [value, onChange, dialogMode, editingIndex]
   )
 
   const handleDelete = useCallback(
@@ -205,7 +205,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => openEditModal(item)}
+                onClick={() => openEditDialog(item)}
               >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
@@ -254,7 +254,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
           />
         </div>
         {!disabled && (
-          <Button onClick={openAddModal}>
+          <Button onClick={openAddDialog}>
             <Plus className="mr-1 h-4 w-4" />
             添加变量
           </Button>
@@ -265,7 +265,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <p className="mb-3">暂无变量</p>
           {!disabled && (
-            <Button onClick={openAddModal}>
+            <Button onClick={openAddDialog}>
               <Plus className="mr-1 h-4 w-4" />
               添加变量
             </Button>
@@ -310,12 +310,12 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
         </DndContext>
       )}
 
-      <VariableEditModal
-        open={modalOpen}
-        mode={modalMode}
+      <VariableEditDialog
+        open={dialogOpen}
+        mode={dialogMode}
         initialData={editingData}
-        onOk={handleModalOk}
-        onCancel={() => setModalOpen(false)}
+        onOk={handleDialogOk}
+        onCancel={() => setDialogOpen(false)}
       />
 
       {confirmDialog}

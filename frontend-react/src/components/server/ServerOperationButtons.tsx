@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useServerMutations } from '@/hooks/mutations/useServerMutations';
-import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal';
+import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog';
 import { serverStatusUtils } from '@/utils/serverUtils';
 import { ServerStatus } from '@/types/ServerInfo';
 

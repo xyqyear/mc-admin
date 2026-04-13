@@ -16,15 +16,15 @@ import {
 } from '@/components/ui/dialog'
 import { currentVersion } from '@/config/versionConfig'
 
-interface DebugModalProps {
-  visible: boolean
+interface DebugDialogProps {
+  open: boolean
   onClose: () => void
 }
 
 const VERSION_STORAGE_KEY = 'mc-admin-last-seen-version'
 const REMIND_TIME_STORAGE_KEY = 'mc-admin-remind-time'
 
-const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
+const DebugDialog: React.FC<DebugDialogProps> = ({ open, onClose }) => {
   const [version, setVersion] = useState('')
   const [remindTime, setRemindTime] = useState('')
   const [storedVersion, setStoredVersion] = useState('')
@@ -40,10 +40,10 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
   }, [])
 
   useEffect(() => {
-    if (visible) {
+    if (open) {
       refreshData()
     }
-  }, [visible, refreshData])
+  }, [open, refreshData])
 
   const handleSaveVersion = () => {
     if (version) {
@@ -106,7 +106,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
   }
 
   return (
-    <Dialog open={visible} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-150">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -239,4 +239,4 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
   )
 }
 
-export default DebugModal
+export default DebugDialog

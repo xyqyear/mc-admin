@@ -9,19 +9,19 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 
 import PageHeader from '@/components/layout/PageHeader'
-import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
-import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
+import ArchiveSelectionDialog from '@/components/dialogs/ArchiveSelectionDialog'
+import PopulateProgressDialog from '@/components/dialogs/PopulateProgressDialog'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
 import {
-  MultiFileUploadModal,
-  CreateModal,
-  RenameModal,
-  FileEditModal,
-  FileDiffModal,
-  CompressionConfirmModal,
-  CompressionResultModal,
-  FileDeepSearchModal
-} from '@/components/modals/ServerFiles'
+  MultiFileUploadDialog,
+  CreateDialog,
+  RenameDialog,
+  FileEditDialog,
+  FileDiffDialog,
+  CompressionConfirmDialog,
+  CompressionResultDialog,
+  FileDeepSearchDialog
+} from '@/components/dialogs/ServerFiles'
 import { useServerDetailQueries } from '@/hooks/queries/page/useServerDetailQueries'
 import { useFileList, useFileContent } from '@/hooks/queries/base/useFileQueries'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
@@ -91,25 +91,25 @@ const ServerFiles: React.FC = () => {
 
   // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false)
-  const [isMultiFileUploadModalVisible, setIsMultiFileUploadModalVisible] = useState(false)
-  const [isRenameModalVisible, setIsRenameModalVisible] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isMultiFileUploadDialogOpen, setIsMultiFileUploadDialogOpen] = useState(false)
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [editingFile, setEditingFile] = useState<FileItem | null>(null)
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [selectedUploadFiles, setSelectedUploadFiles] = useState<File[]>([])
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
-  const [isDiffModalVisible, setIsDiffModalVisible] = useState(false)
+  const [isDiffDialogOpen, setIsDiffDialogOpen] = useState(false)
   const [originalFileContent, setOriginalFileContent] = useState('')
 
-  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
+  const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false)
   const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
-  const [isPopulateProgressModalVisible, setIsPopulateProgressModalVisible] = useState(false)
+  const [isPopulateProgressDialogOpen, setIsPopulateProgressDialogOpen] = useState(false)
 
-  const [isCompressionConfirmModalVisible, setIsCompressionConfirmModalVisible] = useState(false)
-  const [isCompressionResultModalVisible, setIsCompressionResultModalVisible] = useState(false)
+  const [isCompressionConfirmDialogOpen, setIsCompressionConfirmDialogOpen] = useState(false)
+  const [isCompressionResultDialogOpen, setIsCompressionResultDialogOpen] = useState(false)
   const [compressionFile, setCompressionFile] = useState<FileItem | null>(null)
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
@@ -117,14 +117,14 @@ const ServerFiles: React.FC = () => {
 
   const { data: compressionTask } = useTask(compressionTaskId || '')
 
-  const [isDeepSearchModalVisible, setIsDeepSearchModalVisible] = useState(false)
+  const [isDeepSearchDialogOpen, setIsDeepSearchDialogOpen] = useState(false)
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
 
   // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
     onFileDrop: (files) => {
       setSelectedUploadFiles(files)
-      setIsMultiFileUploadModalVisible(true)
+      setIsMultiFileUploadDialogOpen(true)
       toast.info(`已选择 ${files.length} 个文件，请确认上传`)
     },
     onError: (errorMessage) => {
@@ -175,8 +175,8 @@ const ServerFiles: React.FC = () => {
         filename: compressionTask.result.filename as string,
         message: 'Compression complete'
       })
-      setIsCompressionConfirmModalVisible(false)
-      setIsCompressionResultModalVisible(true)
+      setIsCompressionConfirmDialogOpen(false)
+      setIsCompressionResultDialogOpen(true)
       setCompressionTaskId(null)
       queryClient.invalidateQueries({ queryKey: queryKeys.archive.files('/') })
     } else if (compressionTask.status === 'failed') {
@@ -244,20 +244,20 @@ const ServerFiles: React.FC = () => {
       return
     }
     setEditingFile(file)
-    setIsEditModalVisible(true)
+    setIsEditDialogOpen(true)
   }
 
   const handleFileSave = () => {
     if (editingFile && id) {
       updateFileMutation.mutate({ path: editingFile.path, content: fileContent })
-      setIsEditModalVisible(false)
+      setIsEditDialogOpen(false)
       setEditingFile(null)
       setFileContent('')
       setOriginalFileContent('')
     }
   }
 
-  const handleShowDiff = () => setIsDiffModalVisible(true)
+  const handleShowDiff = () => setIsDiffDialogOpen(true)
 
   const handleFileDelete = (file: FileItem) => {
     if (id) deleteFileMutation.mutate(file.path)
@@ -273,7 +273,7 @@ const ServerFiles: React.FC = () => {
 
   const handleFileRename = (file: FileItem) => {
     setRenamingFile(file)
-    setIsRenameModalVisible(true)
+    setIsRenameDialogOpen(true)
   }
 
   const handleRenameSubmit = (newName: string) => {
@@ -282,7 +282,7 @@ const ServerFiles: React.FC = () => {
       old_path: renamingFile.path,
       new_name: newName
     })
-    setIsRenameModalVisible(false)
+    setIsRenameDialogOpen(false)
     setRenamingFile(null)
   }
 
@@ -299,7 +299,7 @@ const ServerFiles: React.FC = () => {
       type: values.fileType as 'file' | 'directory',
       path: currentPath
     })
-    setIsCreateModalVisible(false)
+    setIsCreateDialogOpen(false)
   }
 
   const handleBulkDelete = () => {
@@ -324,7 +324,7 @@ const ServerFiles: React.FC = () => {
 
   const handleMultiFileUploadComplete = () => {
     setSelectedUploadFiles([])
-    setIsMultiFileUploadModalVisible(false)
+    setIsMultiFileUploadDialogOpen(false)
     refetch()
   }
 
@@ -338,7 +338,7 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleArchiveSelect = async (filename: string) => {
-    setIsArchiveModalVisible(false)
+    setIsArchiveDialogOpen(false)
     if (!id) return
     try {
       const result = await populateServerMutation.mutateAsync({
@@ -346,27 +346,27 @@ const ServerFiles: React.FC = () => {
         archiveFilename: filename,
       })
       setPopulateTaskId(result.task_id)
-      setIsPopulateProgressModalVisible(true)
+      setIsPopulateProgressDialogOpen(true)
     } catch (error: any) {
       toast.error(`文件替换失败: ${error.message || '未知错误'}`)
     }
   }
 
   const handlePopulateComplete = () => {
-    setIsPopulateProgressModalVisible(false)
+    setIsPopulateProgressDialogOpen(false)
     setPopulateTaskId(null)
     refetch()
   }
 
   const handlePopulateClose = () => {
-    setIsPopulateProgressModalVisible(false)
+    setIsPopulateProgressDialogOpen(false)
     setPopulateTaskId(null)
   }
 
   const handleCompress = (file?: FileItem, compressionType?: 'file' | 'folder' | 'server') => {
     setCompressionFile(file || null)
     setCompressionType(compressionType || (file?.type === 'directory' ? 'folder' : 'file'))
-    setIsCompressionConfirmModalVisible(true)
+    setIsCompressionConfirmDialogOpen(true)
   }
 
   const handleCompressionConfirm = async () => {
@@ -411,10 +411,10 @@ const ServerFiles: React.FC = () => {
   }
 
   const handleCompressServer = () => handleCompress(undefined, 'server')
-  const handleReplaceServerFiles = () => setIsArchiveModalVisible(true)
+  const handleReplaceServerFiles = () => setIsArchiveDialogOpen(true)
 
   const handleDeepSearchNavigate = (path: string, query?: string, regex?: boolean) => {
-    setIsDeepSearchModalVisible(false)
+    setIsDeepSearchDialogOpen(false)
     const newSearchParams = new URLSearchParams(location.search)
     if (path === '/') {
       newSearchParams.delete('path')
@@ -463,8 +463,8 @@ const ServerFiles: React.FC = () => {
             bulkDeleteMutation={bulkDeleteMutation}
             onNavigateToParent={handleNavigateToParent}
             onRefresh={handleRefresh}
-            onUpload={() => setIsMultiFileUploadModalVisible(true)}
-            onCreateFile={() => setIsCreateModalVisible(true)}
+            onUpload={() => setIsMultiFileUploadDialogOpen(true)}
+            onCreateFile={() => setIsCreateDialogOpen(true)}
             onBulkDelete={handleBulkDelete}
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
@@ -496,7 +496,7 @@ const ServerFiles: React.FC = () => {
               </div>
               <Button
                 variant="outline"
-                onClick={() => setIsDeepSearchModalVisible(true)}
+                onClick={() => setIsDeepSearchDialogOpen(true)}
               >
                 <Search className="mr-2 h-4 w-4" />
                 高级搜索
@@ -525,10 +525,10 @@ const ServerFiles: React.FC = () => {
         </CardContent>
       </Card>
 
-      <MultiFileUploadModal
-        open={isMultiFileUploadModalVisible}
+      <MultiFileUploadDialog
+        open={isMultiFileUploadDialogOpen}
         onCancel={() => {
-          setIsMultiFileUploadModalVisible(false)
+          setIsMultiFileUploadDialogOpen(false)
           setSelectedUploadFiles([])
         }}
         onComplete={handleMultiFileUploadComplete}
@@ -537,17 +537,17 @@ const ServerFiles: React.FC = () => {
         initialFiles={selectedUploadFiles}
       />
 
-      <CreateModal
-        open={isCreateModalVisible}
-        onCancel={() => setIsCreateModalVisible(false)}
+      <CreateDialog
+        open={isCreateDialogOpen}
+        onCancel={() => setIsCreateDialogOpen(false)}
         onSubmit={handleCreateFile}
         confirmLoading={createFileMutation.isPending}
       />
 
-      <RenameModal
-        open={isRenameModalVisible}
+      <RenameDialog
+        open={isRenameDialogOpen}
         onCancel={() => {
-          setIsRenameModalVisible(false)
+          setIsRenameDialogOpen(false)
           setRenamingFile(null)
         }}
         onSubmit={handleRenameSubmit}
@@ -555,10 +555,10 @@ const ServerFiles: React.FC = () => {
         confirmLoading={renameFileMutation.isPending}
       />
 
-      <FileEditModal
-        open={isEditModalVisible}
+      <FileEditDialog
+        open={isEditDialogOpen}
         onCancel={() => {
-          setIsEditModalVisible(false)
+          setIsEditDialogOpen(false)
           setEditingFile(null)
           setFileContent('')
           setOriginalFileContent('')
@@ -575,9 +575,9 @@ const ServerFiles: React.FC = () => {
         getCurrentFileLanguageConfig={getCurrentFileLanguageConfig}
       />
 
-      <FileDiffModal
-        open={isDiffModalVisible}
-        onCancel={() => setIsDiffModalVisible(false)}
+      <FileDiffDialog
+        open={isDiffDialogOpen}
+        onCancel={() => setIsDiffDialogOpen(false)}
         originalFileContent={originalFileContent}
         fileContent={fileContent}
         serverId={id || ''}
@@ -591,9 +591,9 @@ const ServerFiles: React.FC = () => {
         </AlertDescription>
       </Alert>
 
-      <ArchiveSelectionModal
-        open={isArchiveModalVisible}
-        onCancel={() => setIsArchiveModalVisible(false)}
+      <ArchiveSelectionDialog
+        open={isArchiveDialogOpen}
+        onCancel={() => setIsArchiveDialogOpen(false)}
         onSelect={handleArchiveSelect}
         title="选择压缩包文件"
         description="选择要用于替换服务器文件的压缩包文件"
@@ -601,18 +601,18 @@ const ServerFiles: React.FC = () => {
         selectButtonType="danger"
       />
 
-      <PopulateProgressModal
-        open={isPopulateProgressModalVisible}
+      <PopulateProgressDialog
+        open={isPopulateProgressDialogOpen}
         taskId={populateTaskId}
         serverId={id || ''}
         onClose={handlePopulateClose}
         onComplete={handlePopulateComplete}
       />
 
-      <CompressionConfirmModal
-        open={isCompressionConfirmModalVisible}
+      <CompressionConfirmDialog
+        open={isCompressionConfirmDialogOpen}
         onCancel={() => {
-          setIsCompressionConfirmModalVisible(false)
+          setIsCompressionConfirmDialogOpen(false)
           setCompressionFile(null)
           setCompressionTaskId(null)
         }}
@@ -625,10 +625,10 @@ const ServerFiles: React.FC = () => {
         serverName={hasServerInfo ? serverInfo?.name : ''}
       />
 
-      <CompressionResultModal
-        open={isCompressionResultModalVisible}
+      <CompressionResultDialog
+        open={isCompressionResultDialogOpen}
         onCancel={() => {
-          setIsCompressionResultModalVisible(false)
+          setIsCompressionResultDialogOpen(false)
           setCompressionResult(null)
         }}
         archiveFilename={compressionResult?.filename || ''}
@@ -637,9 +637,9 @@ const ServerFiles: React.FC = () => {
         downloadLoading={false}
       />
 
-      <FileDeepSearchModal
-        open={isDeepSearchModalVisible}
-        onCancel={() => setIsDeepSearchModalVisible(false)}
+      <FileDeepSearchDialog
+        open={isDeepSearchDialogOpen}
+        onCancel={() => setIsDeepSearchDialogOpen(false)}
         serverId={id || ''}
         currentPath={currentPath}
         onNavigate={handleDeepSearchNavigate}

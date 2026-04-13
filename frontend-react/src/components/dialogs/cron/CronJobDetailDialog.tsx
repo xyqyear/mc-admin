@@ -28,7 +28,7 @@ import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressio
 import { formatDateTime } from '@/utils/formatUtils'
 import type { CronJobExecution } from '@/hooks/api/cronApi'
 
-interface CronJobDetailModalProps {
+interface CronJobDetailDialogProps {
   open: boolean
   cronjobId: string | null
   onCancel: () => void
@@ -109,7 +109,7 @@ const executionColumns: ColumnDef<CronJobExecution, any>[] = [
   },
 ]
 
-const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
+const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
   open,
   cronjobId,
   onCancel,
@@ -325,4 +325,4 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
   )
 }
 
-export default CronJobDetailModal
+export default CronJobDetailDialog

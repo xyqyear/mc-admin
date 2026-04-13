@@ -31,8 +31,8 @@ const ServerCompose: React.FC = () => {
   } = useServerComposeData()
 
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null)
-  const [isRebuildModalVisible, setIsRebuildModalVisible] = useState(false)
-  const [isConvertModalVisible, setIsConvertModalVisible] = useState(false)
+  const [isRebuildDialogOpen, setIsRebuildDialogOpen] = useState(false)
+  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)
 
   if (!id) {
     return (
@@ -87,10 +87,10 @@ const ServerCompose: React.FC = () => {
         refetchTemplateConfig={refetchTemplateConfig}
         rebuildTaskId={rebuildTaskId}
         setRebuildTaskId={setRebuildTaskId}
-        isRebuildModalVisible={isRebuildModalVisible}
-        setIsRebuildModalVisible={setIsRebuildModalVisible}
-        isConvertModalVisible={isConvertModalVisible}
-        setIsConvertModalVisible={setIsConvertModalVisible}
+        isRebuildDialogOpen={isRebuildDialogOpen}
+        setIsRebuildDialogOpen={setIsRebuildDialogOpen}
+        isConvertDialogOpen={isConvertDialogOpen}
+        setIsConvertDialogOpen={setIsConvertDialogOpen}
         onConvertModeSuccess={handleConvertModeSuccess}
       />
     )
@@ -104,10 +104,10 @@ const ServerCompose: React.FC = () => {
       composeQuery={composeQuery}
       rebuildTaskId={rebuildTaskId}
       setRebuildTaskId={setRebuildTaskId}
-      isRebuildModalVisible={isRebuildModalVisible}
-      setIsRebuildModalVisible={setIsRebuildModalVisible}
-      isConvertModalVisible={isConvertModalVisible}
-      setIsConvertModalVisible={setIsConvertModalVisible}
+      isRebuildDialogOpen={isRebuildDialogOpen}
+      setIsRebuildDialogOpen={setIsRebuildDialogOpen}
+      isConvertDialogOpen={isConvertDialogOpen}
+      setIsConvertDialogOpen={setIsConvertDialogOpen}
       onConvertModeSuccess={handleConvertModeSuccess}
     />
   )

@@ -26,16 +26,16 @@ import { DataTable } from '@/components/common/DataTable'
 import { EmptyState } from '@/components/common/EmptyState'
 import { useRegisteredCronJobs, useAllCronJobs } from '@/hooks/queries/base/useCronQueries'
 import { useCronMutations } from '@/hooks/mutations/useCronMutations'
-import { CreateCronJobModal, CronJobDetailModal } from '@/components/modals/cron'
+import { CreateCronJobDialog, CronJobDetailDialog } from '@/components/dialogs/cron'
 import { CronJobStatusTag, NextRunTimeCell, CronExpressionDisplay, CronJobFilters } from '@/components/cron'
 import { useConfirm } from '@/hooks/useConfirm'
 import type { CronJob } from '@/hooks/api/cronApi'
 
 const CronManagement: React.FC = () => {
   const { confirm, confirmDialog } = useConfirm()
-  const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [editModalOpen, setEditModalOpen] = useState(false)
-  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [filters, setFilters] = useState<{
     identifier?: string
@@ -54,12 +54,12 @@ const CronManagement: React.FC = () => {
 
   const handleViewDetail = (cronjobId: string) => {
     setSelectedJobId(cronjobId)
-    setDetailModalOpen(true)
+    setDetailDialogOpen(true)
   }
 
   const handleEditJob = (cronjobId: string) => {
     setSelectedJobId(cronjobId)
-    setEditModalOpen(true)
+    setEditDialogOpen(true)
   }
 
   const handlePauseJob = (cronjobId: string) => {
@@ -247,7 +247,7 @@ const CronManagement: React.FC = () => {
               }
               刷新
             </Button>
-            <Button onClick={() => setCreateModalOpen(true)}>
+            <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               创建任务
             </Button>
@@ -303,16 +303,16 @@ const CronManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      <CreateCronJobModal
-        open={createModalOpen}
-        onCancel={() => setCreateModalOpen(false)}
+      <CreateCronJobDialog
+        open={createDialogOpen}
+        onCancel={() => setCreateDialogOpen(false)}
         onSuccess={() => refetchCronJobs()}
       />
 
-      <CreateCronJobModal
-        open={editModalOpen}
+      <CreateCronJobDialog
+        open={editDialogOpen}
         onCancel={() => {
-          setEditModalOpen(false)
+          setEditDialogOpen(false)
           setSelectedJobId(null)
         }}
         onSuccess={() => refetchCronJobs()}
@@ -320,11 +320,11 @@ const CronManagement: React.FC = () => {
         cronjobId={selectedJobId || undefined}
       />
 
-      <CronJobDetailModal
-        open={detailModalOpen}
+      <CronJobDetailDialog
+        open={detailDialogOpen}
         cronjobId={selectedJobId}
         onCancel={() => {
-          setDetailModalOpen(false)
+          setDetailDialogOpen(false)
           setSelectedJobId(null)
         }}
       />

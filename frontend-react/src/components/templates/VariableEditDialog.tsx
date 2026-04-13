@@ -20,7 +20,7 @@ import {
   type VariableFormData,
 } from "./variableSchemas"
 
-interface VariableEditModalProps {
+interface VariableEditDialogProps {
   open: boolean
   mode: "add" | "edit"
   initialData?: Partial<VariableFormData>
@@ -47,7 +47,7 @@ const customValidate: CustomValidator<VariableFormData> = (formData, errors) => 
   return errors
 }
 
-const VariableEditModal: React.FC<VariableEditModalProps> = ({
+const VariableEditDialog: React.FC<VariableEditDialogProps> = ({
   open,
   mode,
   initialData,
@@ -99,4 +99,4 @@ const VariableEditModal: React.FC<VariableEditModalProps> = ({
   )
 }
 
-export default VariableEditModal
+export default VariableEditDialog

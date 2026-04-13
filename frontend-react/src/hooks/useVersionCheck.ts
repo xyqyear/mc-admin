@@ -6,16 +6,16 @@ const VERSION_STORAGE_KEY = 'mc-admin-last-seen-version'
 const REMIND_TIME_STORAGE_KEY = 'mc-admin-remind-time'
 
 interface VersionCheckResult {
-  shouldShowModal: boolean
+  shouldShowDialog: boolean
   fromVersion: string
   toVersion: string
-  showModal: () => void
+  showDialog: () => void
   handleClose: () => void
   handleRemindLater: () => void
 }
 
 export function useVersionCheck(): VersionCheckResult {
-  const [shouldShowModal, setShouldShowModal] = useState(false)
+  const [shouldShowDialog, setShouldShowDialog] = useState(false)
   const [fromVersion, setFromVersion] = useState('')
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export function useVersionCheck(): VersionCheckResult {
 
         // 显示版本更新弹窗
         setFromVersion(lastSeenVersion)
-        setShouldShowModal(true)
+        setShouldShowDialog(true)
       }
     }
 
@@ -55,28 +55,28 @@ export function useVersionCheck(): VersionCheckResult {
     return () => clearTimeout(timer)
   }, [])
 
-  const showModal = () => {
-    setShouldShowModal(true)
+  const showDialog = () => {
+    setShouldShowDialog(true)
   }
 
   const handleClose = () => {
     // 用户点击"明白了"，保存最新版本并清除提醒时间
     localStorage.setItem(VERSION_STORAGE_KEY, currentVersion)
     localStorage.removeItem(REMIND_TIME_STORAGE_KEY)
-    setShouldShowModal(false)
+    setShouldShowDialog(false)
   }
 
   const handleRemindLater = () => {
     // 用户点击"稍后提醒我"，保存当前时间
     localStorage.setItem(REMIND_TIME_STORAGE_KEY, new Date().toISOString())
-    setShouldShowModal(false)
+    setShouldShowDialog(false)
   }
 
   return {
-    shouldShowModal,
+    shouldShowDialog,
     fromVersion,
     toVersion: currentVersion,
-    showModal,
+    showDialog,
     handleClose,
     handleRemindLater
   }

@@ -27,7 +27,7 @@ import { useFileMutations } from '@/hooks/mutations/useFileMutations'
 import FileUploadTree from './FileUploadTree'
 import ConflictTree from './ConflictTree'
 
-interface MultiFileUploadModalProps {
+interface MultiFileUploadDialogProps {
   open: boolean
   onCancel: () => void
   onComplete: () => void
@@ -61,7 +61,7 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
+const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
   open,
   onCancel,
   onComplete,
@@ -532,7 +532,7 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
     }
   }
 
-  const handleModalCancel = () => {
+  const handleDialogCancel = () => {
     if (uploadState.step === 'uploading' && uploadAbortController) {
       handleCancelUpload()
     }
@@ -540,7 +540,7 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && handleModalCancel()}>
+    <Dialog open={open} onOpenChange={(o) => !o && handleDialogCancel()}>
       <DialogContent className="sm:max-w-200">
         <DialogHeader>
           <DialogTitle>上传文件和文件夹</DialogTitle>
@@ -554,4 +554,4 @@ const MultiFileUploadModal: React.FC<MultiFileUploadModalProps> = ({
   )
 }
 
-export default MultiFileUploadModal
+export default MultiFileUploadDialog

@@ -9,12 +9,12 @@ import {
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 
-interface SHA256HelpModalProps {
+interface SHA256HelpDialogProps {
   open: boolean
   onCancel: () => void
 }
 
-const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
+const SHA256HelpDialog: React.FC<SHA256HelpDialogProps> = ({
   open,
   onCancel,
 }) => {
@@ -150,4 +150,4 @@ const SHA256HelpModal: React.FC<SHA256HelpModalProps> = ({
   )
 }
 
-export default SHA256HelpModal
+export default SHA256HelpDialog

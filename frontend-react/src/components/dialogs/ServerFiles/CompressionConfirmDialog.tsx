@@ -15,7 +15,7 @@ import {
 import type { FileItem } from '@/types/Server'
 import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 
-interface CompressionConfirmModalProps {
+interface CompressionConfirmDialogProps {
   open: boolean
   onCancel: () => void
   onOk: () => void
@@ -27,7 +27,7 @@ interface CompressionConfirmModalProps {
   serverName?: string
 }
 
-const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
+const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
   open,
   onCancel,
   onOk,
@@ -158,4 +158,4 @@ const CompressionConfirmModal: React.FC<CompressionConfirmModalProps> = ({
   )
 }
 
-export default CompressionConfirmModal
+export default CompressionConfirmDialog

@@ -18,8 +18,8 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 import PageHeader from '@/components/layout/PageHeader'
-import ArchiveSelectionModal from '@/components/modals/ArchiveSelectionModal'
-import PopulateProgressModal from '@/components/modals/PopulateProgressModal'
+import ArchiveSelectionDialog from '@/components/dialogs/ArchiveSelectionDialog'
+import PopulateProgressDialog from '@/components/dialogs/PopulateProgressDialog'
 import { TemplateCreationMode, TraditionalCreationMode } from '@/components/server/ServerNew'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
 import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
@@ -44,12 +44,12 @@ const ServerNew: React.FC = () => {
   const [composeContent, setComposeContent] = useState('')
 
   // Archive selection state
-  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false)
+  const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false)
   const [selectedArchiveFile, setSelectedArchiveFile] = useState<string | null>(null)
 
   // Populate progress state
   const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
-  const [isPopulateProgressModalVisible, setIsPopulateProgressModalVisible] = useState(false)
+  const [isPopulateProgressDialogOpen, setIsPopulateProgressDialogOpen] = useState(false)
   const [createdServerId, setCreatedServerId] = useState<string | null>(null)
 
   // Restart schedule state
@@ -90,7 +90,7 @@ const ServerNew: React.FC = () => {
 
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)
-    setIsArchiveModalVisible(false)
+    setIsArchiveDialogOpen(false)
     toast.success(`已选择压缩包: ${filename}`)
   }
 
@@ -163,7 +163,7 @@ const ServerNew: React.FC = () => {
             })
             setCreatedServerId(templateServerName)
             setPopulateTaskId(result.task_id)
-            setIsPopulateProgressModalVisible(true)
+            setIsPopulateProgressDialogOpen(true)
           } catch (populateError: any) {
             toast.warning(`服务器 "${templateServerName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
             await triggerDNSUpdateAndNavigate()
@@ -201,7 +201,7 @@ const ServerNew: React.FC = () => {
             })
             setCreatedServerId(serverName)
             setPopulateTaskId(result.task_id)
-            setIsPopulateProgressModalVisible(true)
+            setIsPopulateProgressDialogOpen(true)
           } catch (populateError: any) {
             toast.warning(`服务器 "${serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
             await triggerDNSUpdateAndNavigate()
@@ -216,14 +216,14 @@ const ServerNew: React.FC = () => {
   }
 
   const handlePopulateComplete = async () => {
-    setIsPopulateProgressModalVisible(false)
+    setIsPopulateProgressDialogOpen(false)
     setPopulateTaskId(null)
     toast.success(`服务器 "${createdServerId}" 创建并填充完成!`)
     await triggerDNSUpdateAndNavigate()
   }
 
   const handlePopulateClose = () => {
-    setIsPopulateProgressModalVisible(false)
+    setIsPopulateProgressDialogOpen(false)
     setPopulateTaskId(null)
     navigate('/overview')
   }
@@ -316,7 +316,7 @@ const ServerNew: React.FC = () => {
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
-              onClick={() => setIsArchiveModalVisible(true)}
+              onClick={() => setIsArchiveDialogOpen(true)}
             >
               <FileArchive className="mr-1 h-4 w-4" />
               选择压缩包文件
@@ -388,16 +388,16 @@ const ServerNew: React.FC = () => {
         </CardContent>
       </Card>
 
-      <ArchiveSelectionModal
-        open={isArchiveModalVisible}
-        onCancel={() => setIsArchiveModalVisible(false)}
+      <ArchiveSelectionDialog
+        open={isArchiveDialogOpen}
+        onCancel={() => setIsArchiveDialogOpen(false)}
         onSelect={handleArchiveSelect}
         title="选择压缩包文件"
         description="选择要用于填充服务器数据的压缩包文件"
       />
 
-      <PopulateProgressModal
-        open={isPopulateProgressModalVisible}
+      <PopulateProgressDialog
+        open={isPopulateProgressDialogOpen}
         taskId={populateTaskId}
         serverId={createdServerId || ''}
         onClose={handlePopulateClose}

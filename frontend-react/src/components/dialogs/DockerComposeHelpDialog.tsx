@@ -17,13 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-interface DockerComposeHelpModalProps {
+interface DockerComposeHelpDialogProps {
   open: boolean
   onCancel: () => void
   page?: string
 }
 
-const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
+const DockerComposeHelpDialog: React.FC<DockerComposeHelpDialogProps> = ({
   open,
   onCancel,
   page,
@@ -281,4 +281,4 @@ const DockerComposeHelpModal: React.FC<DockerComposeHelpModalProps> = ({
   )
 }
 
-export default DockerComposeHelpModal
+export default DockerComposeHelpDialog
