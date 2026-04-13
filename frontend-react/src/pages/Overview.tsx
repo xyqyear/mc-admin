@@ -38,6 +38,12 @@ import { serverStatusUtils } from '@/utils/serverUtils'
 import { useServerOperationConfirm } from '@/components/modals/ServerOperationConfirmModal'
 import { useConfirm } from '@/hooks/useConfirm'
 
+const gradientIndicatorStyle = (percent: number): React.CSSProperties => {
+  const clamped = Math.max(0, Math.min(100, percent))
+  const hue = 120 - (clamped / 100) * 120
+  return { '--indicator-color': `hsl(${hue} 70% 45%)` } as React.CSSProperties
+}
+
 const Overview: React.FC = () => {
   const navigate = useNavigate()
 
@@ -164,11 +170,8 @@ const Overview: React.FC = () => {
               <span className="w-8">CPU:</span>
               <Progress
                 value={cpuPercentage}
-                className={`w-15 **:data-[slot=progress-indicator]:${
-                  cpuPercentage > 80 ? 'bg-red-500' :
-                  cpuPercentage > 60 ? 'bg-yellow-500' :
-                  'bg-green-500'
-                }`}
+                className="w-15 **:data-[slot=progress-indicator]:bg-(--indicator-color)"
+                style={gradientIndicatorStyle(cpuPercentage)}
               />
               <span className="text-muted-foreground">{cpuPercentage.toFixed(1)}%</span>
             </div>
@@ -176,11 +179,8 @@ const Overview: React.FC = () => {
               <span className="w-8">内存:</span>
               <Progress
                 value={memoryPercent}
-                className={`w-15 **:data-[slot=progress-indicator]:${
-                  memoryPercent > 80 ? 'bg-red-500' :
-                  memoryPercent > 60 ? 'bg-yellow-500' :
-                  'bg-green-500'
-                }`}
+                className="w-15 **:data-[slot=progress-indicator]:bg-(--indicator-color)"
+                style={gradientIndicatorStyle(memoryPercent)}
               />
               <span className="text-muted-foreground">{(memoryUsageMB / 1024).toFixed(1)}GB</span>
             </div>
@@ -219,17 +219,14 @@ const Overview: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* System overview cards */}
-      <div
-        className="grid gap-3 sm:gap-4"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
-      >
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+      <div className="grid gap-3 sm:gap-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
+        <div className="h-60 flex min-w-50">
           <ServerCountCard totalServers={serverNum} runningServers={runningServers} />
         </div>
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+        <div className="h-60 flex min-w-50">
           <SimpleMetricCard value={onlinePlayerNum} title="在线玩家" />
         </div>
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+        <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={systemCpuPercent ?? 0}
             title="CPU使用率"
@@ -240,7 +237,7 @@ const Overview: React.FC = () => {
             }
           />
         </div>
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+        <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={
               systemInfo
@@ -255,7 +252,7 @@ const Overview: React.FC = () => {
             }
           />
         </div>
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+        <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={
               systemDiskUsage
@@ -270,7 +267,7 @@ const Overview: React.FC = () => {
             }
           />
         </div>
-        <div className="h-60 flex" style={{ minWidth: '200px' }}>
+        <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={
               backupRepositoryUsage
