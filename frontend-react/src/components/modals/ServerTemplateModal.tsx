@@ -3,14 +3,10 @@ import {
   Copy,
   Eye,
   Settings,
-  ChevronLeft,
-  ChevronRight,
-  ArrowUpDown,
 } from 'lucide-react'
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   getPaginationRowModel,
@@ -27,45 +23,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
+import { DataTable } from '@/components/common/DataTable'
+import { SortableHeader } from '@/components/common/SortableHeader'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import type { ServerListItem } from '@/hooks/api/serverApi'
-
-function SortableHeader<TData>({
-  column,
-  title,
-}: {
-  column: import('@tanstack/react-table').Column<TData>
-  title: string
-}) {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="-ml-3"
-      onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-    >
-      {title}
-      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
-    </Button>
-  )
-}
 
 interface ServerTemplateModalProps {
   open: boolean
@@ -194,11 +157,6 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
     getRowId: (row) => row.id,
   })
 
-  const { pageIndex, pageSize } = table.getState().pagination
-  const totalRows = table.getCoreRowModel().rows.length
-  const start = totalRows > 0 ? pageIndex * pageSize + 1 : 0
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
-
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => !o && handleCancel()}>
@@ -222,105 +180,22 @@ const ServerTemplateModal: React.FC<ServerTemplateModalProps> = ({
               </Alert>
             )}
 
-            {serversLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner className="size-8" />
-              </div>
-            ) : (
-              <RadioGroup
-                value={selectedServer?.id ?? ''}
-                onValueChange={(v) => {
-                  const server = serverList.find(s => s.id === v)
-                  setSelectedServer(server || null)
-                }}
-              >
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      {table.getHeaderGroups().map(headerGroup => (
-                        <TableRow key={headerGroup.id}>
-                          {headerGroup.headers.map(header => (
-                            <TableHead key={header.id}>
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableHeader>
-                    <TableBody>
-                      {table.getRowModel().rows.length ? (
-                        table.getRowModel().rows.map(row => (
-                          <TableRow
-                            key={row.id}
-                            className="cursor-pointer"
-                            onClick={() => setSelectedServer(row.original)}
-                          >
-                            {row.getVisibleCells().map(cell => (
-                              <TableCell key={cell.id}>
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                            {serversLoading ? '加载中...' : '暂无服务器'}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </RadioGroup>
-            )}
-
-            {totalRows > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  {start}-{end} 共 {totalRows} 个服务器
-                </span>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={(v) => table.setPageSize(Number(v))}
-                    itemToStringLabel={(v) => `${v}条/页`}
-                  >
-                    <SelectTrigger className="w-22.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[10, 20, 50].map(size => (
-                        <SelectItem key={size} value={String(size)}>
-                          {size}条/页
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {pageIndex + 1} / {table.getPageCount()}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+            <RadioGroup
+              value={selectedServer?.id ?? ''}
+              onValueChange={(v) => {
+                const server = serverList.find(s => s.id === v)
+                setSelectedServer(server || null)
+              }}
+            >
+              <DataTable
+                table={table}
+                isLoading={serversLoading}
+                rowLabel="个服务器"
+                pageSizeOptions={[10, 20, 50]}
+                emptyMessage="暂无服务器"
+                onRowClick={(row) => setSelectedServer(row.original)}
+              />
+            </RadioGroup>
 
             {selectedServer && (
               <Alert>

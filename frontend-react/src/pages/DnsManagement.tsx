@@ -11,12 +11,9 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import {
   type ColumnDef,
-  flexRender,
   getCoreRowModel,
   getPaginationRowModel,
   useReactTable,
@@ -27,24 +24,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 import PageHeader from '@/components/layout/PageHeader'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
+import { DataTable } from '@/components/common/DataTable'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/hooks/queries/base/useDnsQueries'
 import { useUpdateDNS, useRefreshDNSData } from '@/hooks/mutations/useDnsMutations'
 import type { DNSRecord } from '@/types/Dns'
@@ -120,62 +103,6 @@ const routerRoutesColumns: ColumnDef<RouterRouteRow, any>[] = [
     size: 150,
   },
 ]
-
-// --- Helper: simple table pagination ---
-
-function TablePagination({ table }: { table: ReturnType<typeof useReactTable<any>> }) {
-  const { pageIndex, pageSize } = table.getState().pagination
-  const totalRows = table.getCoreRowModel().rows.length
-  if (totalRows === 0) return null
-
-  const start = pageIndex * pageSize + 1
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
-
-  return (
-    <div className="flex items-center justify-between pt-3">
-      <span className="text-sm text-muted-foreground">
-        {start}-{end} 共 {totalRows} 条
-      </span>
-      <div className="flex items-center gap-2">
-        <Select
-          value={String(pageSize)}
-          onValueChange={(v) => table.setPageSize(Number(v))}
-          itemToStringLabel={(v) => `${v}条/页`}
-        >
-          <SelectTrigger className="w-22.5">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[10, 20, 50].map(size => (
-              <SelectItem key={size} value={String(size)}>
-                {size}条/页
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          {pageIndex + 1} / {table.getPageCount()}
-        </span>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  )
-}
 
 // --- Main component ---
 
@@ -463,47 +390,8 @@ const DnsManagement: React.FC = () => {
     )
   }
 
-  // Render a TanStack Table
   const renderTable = (table: ReturnType<typeof useReactTable<any>>) => (
-    <>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map(headerGroup => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map(row => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center text-muted-foreground">
-                  暂无数据
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      <TablePagination table={table} />
-    </>
+    <DataTable table={table} pageSizeOptions={[10, 20, 50]} />
   )
 
   return (

@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import {
   type ColumnDef,
-  flexRender,
   getCoreRowModel,
   getPaginationRowModel,
   useReactTable,
@@ -21,16 +20,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 import PageHeader from '@/components/layout/PageHeader'
+import { DataTable } from '@/components/common/DataTable'
+import { EmptyState } from '@/components/common/EmptyState'
 import { useRegisteredCronJobs, useAllCronJobs } from '@/hooks/queries/base/useCronQueries'
 import { useCronMutations } from '@/hooks/mutations/useCronMutations'
 import { CreateCronJobModal, CronJobDetailModal } from '@/components/modals/cron'
@@ -233,11 +226,6 @@ const CronManagement: React.FC = () => {
     autoResetPageIndex: false,
   })
 
-  const { pageIndex, pageSize } = table.getState().pagination
-  const totalRows = table.getCoreRowModel().rows.length
-  const start = totalRows > 0 ? pageIndex * pageSize + 1 : 0
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -300,84 +288,18 @@ const CronManagement: React.FC = () => {
             loading={cronJobsLoading}
           />
 
-          {cronJobsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Spinner className="size-8" />
-            </div>
-          ) : (
-            <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    {table.getHeaderGroups().map(headerGroup => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <TableHead key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map(row => (
-                        <TableRow key={row.id}>
-                          {row.getVisibleCells().map(cell => (
-                            <TableCell key={cell.id}>
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                          <div className="space-y-2">
-                            <div>暂无定时任务</div>
-                            <div className="text-sm">
-                              点击&ldquo;创建任务&rdquo;按钮开始创建定时任务
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {totalRows > 0 && (
-                <div className="flex items-center justify-between pt-3">
-                  <span className="text-sm text-muted-foreground">
-                    {start}-{end} 共 {totalRows} 个任务
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.previousPage()}
-                      disabled={!table.getCanPreviousPage()}
-                    >
-                      上一页
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      {pageIndex + 1} / {table.getPageCount()}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.nextPage()}
-                      disabled={!table.getCanNextPage()}
-                    >
-                      下一页
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <DataTable
+            table={table}
+            isLoading={cronJobsLoading}
+            rowLabel="个任务"
+            paginationVariant="compact"
+            emptyMessage={
+              <EmptyState
+                title="暂无定时任务"
+                description={<>点击&ldquo;创建任务&rdquo;按钮开始创建定时任务</>}
+              />
+            }
+          />
         </CardContent>
       </Card>
 

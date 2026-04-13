@@ -4,15 +4,11 @@ import {
   Database,
   History,
   Eye,
-  ChevronLeft,
-  ChevronRight,
-  ArrowUpDown,
   Loader2,
 } from 'lucide-react'
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   getPaginationRowModel,
@@ -36,22 +32,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
+import { DataTable } from '@/components/common/DataTable'
+import { SortableHeader } from '@/components/common/SortableHeader'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -121,18 +104,6 @@ const SafetyCheckDialog: React.FC<SafetyCheckDialogProps> = ({
 )
 
 // --- Snapshot Selection Dialog ---
-
-const SortableHeader = ({ column, title }: { column: any; title: string }) => (
-  <Button
-    variant="ghost"
-    size="sm"
-    className="-ml-3"
-    onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-  >
-    {title}
-    <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
-  </Button>
-)
 
 interface SnapshotSelectionDialogProps {
   open: boolean
@@ -236,12 +207,6 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
     initialState: { pagination: { pageSize: 10 } },
   })
 
-  const pageIndex = table.getState().pagination.pageIndex
-  const pageSize = table.getState().pagination.pageSize
-  const totalRows = table.getFilteredRowModel().rows.length
-  const start = totalRows === 0 ? 0 : pageIndex * pageSize + 1
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows)
-
   // Reset pagination when dialog opens
   React.useEffect(() => {
     if (open) {
@@ -261,95 +226,13 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner className="size-8" />
-          </div>
-        ) : (
-          <>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map(headerGroup => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map(header => (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows.length ? (
-                    table.getRowModel().rows.map(row => (
-                      <TableRow key={row.id}>
-                        {row.getVisibleCells().map(cell => (
-                          <TableCell key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={allColumns.length} className="h-24 text-center text-muted-foreground">
-                        没有找到包含{isServerMode ? '整个服务器' : '该路径'}的快照
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {totalRows > 0 && (
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-sm text-muted-foreground">
-                  {start}-{end} 共 {totalRows} 个快照
-                </span>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={(v) => v && table.setPageSize(Number(v))}
-                    itemToStringLabel={(v) => `${v}条/页`}
-                  >
-                    <SelectTrigger className="w-22.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[5, 10, 20, 50].map(size => (
-                        <SelectItem key={size} value={String(size)}>
-                          {size}条/页
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {pageIndex + 1} / {table.getPageCount()}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        <DataTable
+          table={table}
+          isLoading={loading}
+          rowLabel="个快照"
+          pageSizeOptions={[5, 10, 20, 50]}
+          emptyMessage={`没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照`}
+        />
       </DialogContent>
     </Dialog>
   )

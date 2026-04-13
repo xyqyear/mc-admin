@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Info, History, RotateCw } from 'lucide-react'
 import {
   type ColumnDef,
-  flexRender,
   getCoreRowModel,
   getPaginationRowModel,
   useReactTable,
@@ -21,15 +20,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
+import { DataTable } from '@/components/common/DataTable'
 import { useCronJob, useCronJobExecutions, useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
 import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressionDisplay } from '@/components/cron'
 import { formatDateTime } from '@/utils/formatUtils'
@@ -311,79 +303,13 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
                   </Alert>
                 )}
 
-                {executionsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Spinner className="size-6" />
-                  </div>
-                ) : (
-                  <>
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          {table.getHeaderGroups().map(headerGroup => (
-                            <TableRow key={headerGroup.id}>
-                              {headerGroup.headers.map(header => (
-                                <TableHead key={header.id}>
-                                  {header.isPlaceholder
-                                    ? null
-                                    : flexRender(header.column.columnDef.header, header.getContext())}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableHeader>
-                        <TableBody>
-                          {table.getRowModel().rows.length ? (
-                            table.getRowModel().rows.map(row => (
-                              <TableRow key={row.id}>
-                                {row.getVisibleCells().map(cell => (
-                                  <TableCell key={cell.id}>
-                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={executionColumns.length} className="h-24 text-center text-muted-foreground">
-                                暂无执行记录
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    {table.getPageCount() > 1 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          共 {executions?.length || 0} 条执行记录
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => table.previousPage()}
-                            disabled={!table.getCanPreviousPage()}
-                          >
-                            上一页
-                          </Button>
-                          <span className="text-sm text-muted-foreground">
-                            {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => table.nextPage()}
-                            disabled={!table.getCanNextPage()}
-                          >
-                            下一页
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                <DataTable
+                  table={table}
+                  isLoading={executionsLoading}
+                  rowLabel="条执行记录"
+                  paginationVariant="compact"
+                  emptyMessage="暂无执行记录"
+                />
               </div>
             </TabsContent>
           </Tabs>

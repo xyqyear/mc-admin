@@ -4,14 +4,10 @@ import {
   RotateCw,
   Clock,
   Calendar,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   getPaginationRowModel,
@@ -23,23 +19,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 import PageHeader from '@/components/layout/PageHeader';
+import { DataTable } from '@/components/common/DataTable';
+import { SortableHeader } from '@/components/common/SortableHeader';
+import { EmptyState } from '@/components/common/EmptyState';
 import PlayerFilters from '@/components/players/PlayerFilters';
 import PlayerDetailDialog from '@/components/players/PlayerDetailDialog';
 import { MCAvatar } from '@/components/players/MCAvatar';
@@ -62,28 +46,6 @@ const formatDuration = (seconds: number): string => {
   }
   return `${minutes}分钟`;
 };
-
-// --- Sortable header helper ---
-
-function SortableHeader<TData>({
-  column,
-  title,
-}: {
-  column: import('@tanstack/react-table').Column<TData>;
-  title: string;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="-ml-3"
-      onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-    >
-      {title}
-      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
-    </Button>
-  );
-}
 
 // --- Column definitions ---
 
@@ -263,11 +225,6 @@ const PlayerManagement: React.FC = () => {
     autoResetPageIndex: false,
   });
 
-  const { pageIndex, pageSize } = table.getState().pagination;
-  const totalRows = table.getCoreRowModel().rows.length;
-  const start = totalRows > 0 ? pageIndex * pageSize + 1 : 0;
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows);
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -321,102 +278,17 @@ const PlayerManagement: React.FC = () => {
             loading={isLoading}
           />
 
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Spinner className="size-8" />
-            </div>
-          ) : (
-            <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    {table.getHeaderGroups().map(headerGroup => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <TableHead key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map(row => (
-                        <TableRow key={row.id}>
-                          {row.getVisibleCells().map(cell => (
-                            <TableCell key={cell.id}>
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={tableColumns.length} className="h-24 text-center">
-                          <div className="space-y-2 text-muted-foreground">
-                            <div>暂无玩家数据</div>
-                            <div className="text-sm">
-                              玩家数据会在玩家首次加入服务器时自动记录
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination */}
-              {totalRows > 0 && (
-                <div className="flex items-center justify-between pt-3">
-                  <span className="text-sm text-muted-foreground">
-                    {start}-{end} 共 {totalRows} 个玩家
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={String(pageSize)}
-                      onValueChange={v => table.setPageSize(Number(v))}
-                    >
-                      <SelectTrigger className="w-22.5">
-                        <SelectValue>
-                          {(value: string) => `${value}条/页`}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[10, 20, 50, 100].map(size => (
-                          <SelectItem key={size} value={String(size)}>
-                            {size}条/页
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => table.previousPage()}
-                      disabled={!table.getCanPreviousPage()}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      {pageIndex + 1} / {table.getPageCount()}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => table.nextPage()}
-                      disabled={!table.getCanNextPage()}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <DataTable
+            table={table}
+            isLoading={isLoading}
+            rowLabel="个玩家"
+            emptyMessage={
+              <EmptyState
+                title="暂无玩家数据"
+                description="玩家数据会在玩家首次加入服务器时自动记录"
+              />
+            }
+          />
         </CardContent>
       </Card>
 

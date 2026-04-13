@@ -6,13 +6,9 @@ import {
   Trophy,
   Calendar,
   RotateCw,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import {
   type ColumnDef,
-  type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   getPaginationRowModel,
@@ -32,22 +28,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
+import { DataTable } from '@/components/common/DataTable';
 import {
   usePlayerByUUID,
   usePlayerSessions,
@@ -87,146 +69,36 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}分钟`;
 };
 
-// --- TanStack Table pagination controls ---
+// --- Data table helper ---
 
-function TablePagination<TData>({ table }: { table: ReturnType<typeof useReactTable<TData>> }) {
-  const { pageIndex, pageSize } = table.getState().pagination;
-  const totalRows = table.getCoreRowModel().rows.length;
-  const start = pageIndex * pageSize + 1;
-  const end = Math.min((pageIndex + 1) * pageSize, totalRows);
-
-  if (totalRows === 0) return null;
-
-  return (
-    <div className="flex items-center justify-between pt-3">
-      <span className="text-sm text-muted-foreground">
-        {start}-{end} 共 {totalRows} 条
-      </span>
-      <div className="flex items-center gap-2">
-        <Select
-          value={String(pageSize)}
-          onValueChange={v => table.setPageSize(Number(v))}
-        >
-          <SelectTrigger className="w-[80px]">
-            <SelectValue>
-              {(value: string) => `${value}条`}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {[10, 20, 50].map(size => (
-              <SelectItem key={size} value={String(size)}>
-                {size}条
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          {pageIndex + 1} / {table.getPageCount()}
-        </span>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// --- Generic data table ---
-
-function DataTable<TData>({
+function PlayerTabTable<TData>({
   columns,
   data,
   isLoading,
   emptyMessage,
-  sorting,
-  onSortingChange,
-  initialPageSize = 10,
 }: {
   columns: ColumnDef<TData, any>[];
   data: TData[];
   isLoading?: boolean;
   emptyMessage: string;
-  sorting?: SortingState;
-  onSortingChange?: React.Dispatch<React.SetStateAction<SortingState>>;
-  initialPageSize?: number;
 }) {
-  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
-  const effectiveSorting = sorting ?? internalSorting;
-  const effectiveOnSortingChange = onSortingChange ?? setInternalSorting;
-
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    onSortingChange: effectiveOnSortingChange,
-    state: { sorting: effectiveSorting },
-    initialState: { pagination: { pageSize: initialPageSize } },
+    initialState: { pagination: { pageSize: 10 } },
     autoResetPageIndex: false,
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map(headerGroup => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map(row => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  {emptyMessage}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      <TablePagination table={table} />
-    </div>
+    <DataTable
+      table={table}
+      isLoading={isLoading}
+      emptyMessage={emptyMessage}
+      pageSizeOptions={[10, 20, 50]}
+    />
   );
 }
 
@@ -595,7 +467,7 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
 
               {/* Sessions tab */}
               <TabsContent value="sessions" className="mt-4">
-                <DataTable
+                <PlayerTabTable
                   columns={sessionColumns}
                   data={sessions}
                   isLoading={sessionsLoading}
@@ -605,7 +477,7 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
 
               {/* Chat tab */}
               <TabsContent value="chat" className="mt-4">
-                <DataTable
+                <PlayerTabTable
                   columns={chatColumns}
                   data={chatMessages}
                   isLoading={chatLoading}
@@ -615,7 +487,7 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
 
               {/* Achievements tab */}
               <TabsContent value="achievements" className="mt-4">
-                <DataTable
+                <PlayerTabTable
                   columns={achievementColumns}
                   data={achievements}
                   isLoading={achievementsLoading}
