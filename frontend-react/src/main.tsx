@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider, App as AntdApp } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { BrowserRouter } from 'react-router-dom'
@@ -9,7 +8,6 @@ import { Toaster } from '@/components/ui/sonner'
 import App from '@/App'
 import './index.css'
 
-import zhCN from 'antd/locale/zh_CN'
 import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
@@ -47,18 +45,15 @@ self.MonacoEnvironment = {
 loader.config({ monaco });
 loader.init();
 
-// Register SNBT language for Minecraft NBT files
 monaco.languages.register({ id: 'snbt' });
 monaco.languages.setMonarchTokensProvider('snbt', snbtLanguageDefinition);
 monaco.languages.setLanguageConfiguration('snbt', snbtLanguageConfiguration);
 
-// Create a query client with modern defaults and better error handling
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
       retry: (failureCount, error: any) => {
-        // Don't retry on 4xx errors except 408, 429
         if (error?.response?.status >= 400 && error?.response?.status < 500) {
           if (error?.response?.status === 408 || error?.response?.status === 429) {
             return failureCount < 3
@@ -75,39 +70,20 @@ const queryClient = new QueryClient({
   },
 })
 
-// Modern Ant Design theme configuration following v5 best practices
-const theme = {
-  token: {
-    colorPrimary: '#1677ff', // Updated to modern primary color
-    borderRadius: 6,
-    wireframe: false,
-  },
-  components: {
-    Layout: {
-      siderBg: '#001529',
-      triggerBg: '#002140',
-    },
-  },
-}
-
 ReactDOM.createRoot(document.getElementById('app-root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider theme={theme} locale={zhCN}>
-        <AntdApp>
-          <TooltipProvider>
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <App />
-            </BrowserRouter>
-            <Toaster richColors position="top-center" />
-          </TooltipProvider>
-        </AntdApp>
-      </ConfigProvider>
+      <TooltipProvider>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <App />
+        </BrowserRouter>
+        <Toaster richColors position="top-center" />
+      </TooltipProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   </React.StrictMode>,

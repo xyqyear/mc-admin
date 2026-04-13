@@ -1,10 +1,18 @@
 import React from 'react'
-import { Modal, Button, Typography, Timeline, Tag, Space, Divider } from 'antd'
-import { ClockCircleOutlined, CheckCircleOutlined, BugOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Clock, CheckCircle, Bug, Zap } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { compareVersions, versionUpdates } from '@/config/versionConfig'
 import { parseIssueReferences } from '@/utils/issueParser'
-
-const { Title, Text, Paragraph } = Typography
 
 interface VersionUpdateModalProps {
   visible: boolean
@@ -19,36 +27,40 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
   onClose,
   onRemindLater,
   fromVersion,
-  toVersion
+  toVersion,
 }) => {
   const relevantUpdates = versionUpdates
-    .filter(update =>
-      compareVersions(update.version, fromVersion) > 0 &&
-      compareVersions(update.version, toVersion) <= 0
+    .filter(
+      (update) =>
+        compareVersions(update.version, fromVersion) > 0 &&
+        compareVersions(update.version, toVersion) <= 0
     )
     .sort((a, b) => compareVersions(b.version, a.version))
 
-  const renderUpdateItem = (type: 'features' | 'fixes' | 'improvements', items: string[] = []) => {
+  const renderUpdateItem = (
+    type: 'features' | 'fixes' | 'improvements',
+    items: string[] = []
+  ) => {
     if (items.length === 0) return null
 
     const config = {
-      features: { icon: <ThunderboltOutlined />, color: 'blue', title: '新功能' },
-      fixes: { icon: <BugOutlined />, color: 'red', title: '问题修复' },
-      improvements: { icon: <CheckCircleOutlined />, color: 'green', title: '优化改进' }
+      features: { Icon: Zap, color: 'text-blue-600', title: '新功能' },
+      fixes: { Icon: Bug, color: 'text-red-600', title: '问题修复' },
+      improvements: { Icon: CheckCircle, color: 'text-green-600', title: '优化改进' },
     }
 
-    const { icon, color, title } = config[type]
+    const { Icon, color, title } = config[type]
 
     return (
       <div className="mb-4">
-        <Space>
-          {icon}
-          <Text strong style={{ color }}>{title}：</Text>
-        </Space>
-        <ul className="ml-6 mt-2">
+        <div className="flex items-center gap-1.5">
+          <Icon className={`h-4 w-4 ${color}`} />
+          <strong className={`text-sm ${color}`}>{title}：</strong>
+        </div>
+        <ul className="ml-6 mt-2 space-y-1">
           {items.map((item, index) => (
-            <li key={index} className="mb-1">
-              <Text>{parseIssueReferences(item)}</Text>
+            <li key={index} className="text-sm">
+              {parseIssueReferences(item)}
             </li>
           ))}
         </ul>
@@ -57,77 +69,71 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
   }
 
   return (
-    <Modal
-      title={
-        <Space>
-          <ThunderboltOutlined className="text-blue-500" />
-          <span>版本更新通知</span>
-        </Space>
-      }
-      open={visible}
-      onCancel={onRemindLater}
-      width={720}
-      footer={[
-        <Button key="later" onClick={onRemindLater}>
-          稍后提醒我
-        </Button>,
-        <Button key="close" type="primary" onClick={onClose}>
-          明白了
-        </Button>
-      ]}
-    >
-      <div className="py-4">
-        <div className="mb-6 text-center">
-          <Title level={4} className="mb-2">
-            欢迎使用 MC Admin v{toVersion}！
-          </Title>
-          <Text type="secondary">
-            从 v{fromVersion} 到 v{toVersion} 的更新内容
-          </Text>
-        </div>
+    <Dialog open={visible} onOpenChange={(o) => !o && onRemindLater()}>
+      <DialogContent className="sm:max-w-180">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-blue-600" />
+            <span>版本更新通知</span>
+          </DialogTitle>
+        </DialogHeader>
 
-        <Divider />
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto py-2">
+          <div className="text-center">
+            <h4 className="text-lg font-semibold">欢迎使用 MC Admin v{toVersion}！</h4>
+            <p className="text-sm text-muted-foreground mt-1">
+              从 v{fromVersion} 到 v{toVersion} 的更新内容
+            </p>
+          </div>
 
-        {relevantUpdates.length > 0 ? (
-          <Timeline
-            items={relevantUpdates.map(update => ({
-              icon: <ClockCircleOutlined className="text-blue-500" />,
-              content: (
-                <div>
-                  <div className="mb-3">
-                    <Space>
-                      <Tag color="blue" className="font-medium">
-                        v{update.version}
-                      </Tag>
-                      <Text type="secondary" className="text-sm">
-                        {update.date}
-                      </Text>
-                    </Space>
-                    <Title level={5} className="mt-2 mb-2">
-                      {parseIssueReferences(update.title)}
-                    </Title>
-                    <Paragraph className="text-gray-600">
-                      {parseIssueReferences(update.description)}
-                    </Paragraph>
+          <Separator />
+
+          {relevantUpdates.length > 0 ? (
+            <div className="space-y-6">
+              {relevantUpdates.map((update, idx) => (
+                <div key={update.version} className="relative pl-8">
+                  <div className="absolute left-0 top-1">
+                    <Clock className="h-5 w-5 text-blue-600" />
                   </div>
-
-                  <div className="ml-4">
-                    {renderUpdateItem('features', update.features)}
-                    {renderUpdateItem('improvements', update.improvements)}
-                    {renderUpdateItem('fixes', update.fixes)}
+                  {idx < relevantUpdates.length - 1 && (
+                    <div className="absolute left-2.25 top-7 -bottom-6 w-px bg-border" />
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
+                        v{update.version}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">{update.date}</span>
+                    </div>
+                    <h5 className="text-base font-semibold mb-2">
+                      {parseIssueReferences(update.title)}
+                    </h5>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      {parseIssueReferences(update.description)}
+                    </p>
+                    <div className="ml-2">
+                      {renderUpdateItem('features', update.features)}
+                      {renderUpdateItem('improvements', update.improvements)}
+                      {renderUpdateItem('fixes', update.fixes)}
+                    </div>
                   </div>
                 </div>
-              )
-            }))}
-          />
-        ) : (
-          <div className="text-center py-8">
-            <Text type="secondary">暂无更新记录</Text>
-          </div>
-        )}
-      </div>
-    </Modal>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">暂无更新记录</div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onRemindLater}>
+            稍后提醒我
+          </Button>
+          <Button onClick={onClose}>明白了</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-export default VersionUpdateModal;
+export default VersionUpdateModal

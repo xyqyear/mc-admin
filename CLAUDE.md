@@ -7,7 +7,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 **Architecture:**
 
 - **Backend**: FastAPI + Python 3.13+ with SQLAlchemy 2.0 async, SQLite database, Alembic migrations
-- **Frontend**: React 18 + TypeScript + Ant Design 6 + TanStack Query v5
+- **Frontend**: React 19 + TypeScript + shadcn/ui (base-ui primitives) + Tailwind CSS v4 + TanStack Query v5
 - **Container Management**: Integrated Docker Compose management with lifecycle control
 - **Authentication**: Dual auth system (JWT + WebSocket login codes + Master token)
 - **Real-time**: WebSocket support for console streaming and live updates via docker-py attach
@@ -126,10 +126,11 @@ pnpm dev  # Runs on port 3000
 
 **Frontend:**
 
-- React 18 + TypeScript 5 + Vite 5
-- Ant Design 6 + @ant-design/icons + @rjsf/antd v6
-- Tailwind CSS 3 (preflight disabled for AntD compatibility)
-- TanStack React Query v5 (three-layer architecture)
+- React 19 + TypeScript 5 + Vite 5
+- shadcn/ui (built on `@base-ui/react` primitives) + Lucide icons + @rjsf/shadcn
+- Tailwind CSS v4 with CSS-only config, OKLCH color space, `tw-animate-css`
+- sonner for toast notifications
+- TanStack React Query v5 (three-layer architecture) + TanStack Table v8
 - Zustand v4 for state management with persistence
 - Monaco Editor v0.52 with YAML schema validation
 - React Router v6 with lazy loading
@@ -142,7 +143,7 @@ pnpm dev  # Runs on port 3000
 **Use Context7 MCP tool for library documentation:**
 
 Backend: `/tiangolo/fastapi`, `/websites/sqlalchemy-en-20`, `/pydantic/pydantic`, `/restic/restic`
-Frontend: `/facebook/react`, `/ant-design/ant-design`, `/tanstack/query`, `/microsoft/monaco-editor`
+Frontend: `/facebook/react`, `/shadcn-ui/ui`, `/mui/base-ui`, `/tailwindlabs/tailwindcss`, `/tanstack/query`, `/microsoft/monaco-editor`
 
 Use `mcp__context7__resolve-library-id` first, then `mcp__context7__get-library-docs` with specific topics.
 

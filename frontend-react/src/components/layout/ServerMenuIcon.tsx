@@ -1,7 +1,7 @@
 import React from 'react'
+import { Monitor } from 'lucide-react'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import ServerStateIcon from '@/components/overview/ServerStateIcon'
-import { DesktopOutlined } from '@ant-design/icons'
 
 interface ServerMenuIconProps {
   serverId: string
@@ -11,9 +11,8 @@ const ServerMenuIcon: React.FC<ServerMenuIconProps> = ({ serverId }) => {
   const { useServerStatus } = useServerQueries()
   const statusQuery = useServerStatus(serverId)
 
-  // 如果状态加载失败或未加载完成，显示默认图标
   if (statusQuery.isError || !statusQuery.data) {
-    return <DesktopOutlined />
+    return <Monitor className="h-4 w-4" />
   }
 
   return <ServerStateIcon state={statusQuery.data} />

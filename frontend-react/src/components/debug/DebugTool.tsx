@@ -1,12 +1,11 @@
 import React, { useState } from 'react'
-import { Button, Tooltip } from 'antd'
-import { BugOutlined } from '@ant-design/icons'
+import { Bug } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import DebugModal from './DebugModal'
 
 const DebugTool: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false)
 
-  // 只在开发环境下显示
   if (import.meta.env.MODE !== 'development') {
     return null
   }
@@ -14,17 +13,15 @@ const DebugTool: React.FC = () => {
   return (
     <>
       <div className="p-2">
-        <Tooltip title="调试工具" placement="right">
-          <Button
-            type="text"
-            icon={<BugOutlined />}
-            size="small"
-            onClick={() => setModalVisible(true)}
-            className="w-full flex items-center justify-center text-gray-500 hover:text-blue-500 hover:bg-blue-50"
-          >
-            调试
-          </Button>
-        </Tooltip>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setModalVisible(true)}
+          className="w-full justify-center text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
+        >
+          <Bug className="mr-1 h-4 w-4" />
+          调试
+        </Button>
       </div>
 
       <DebugModal

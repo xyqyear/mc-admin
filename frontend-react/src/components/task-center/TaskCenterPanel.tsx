@@ -1,17 +1,14 @@
 import React from 'react'
-import { Card, Tabs, Typography } from 'antd'
-import {
-  CloseOutlined,
-  CloudSyncOutlined,
-  DownloadOutlined,
-} from '@ant-design/icons'
+import { X, CloudUpload, Download } from 'lucide-react'
+
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTaskCenterStore } from '@/stores/useTaskCenterStore'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { useDownloadTasks } from '@/stores/useDownloadStore'
 import BackgroundTaskList from './BackgroundTaskList'
 import DownloadTaskList from './DownloadTaskList'
-
-const { Text } = Typography
 
 const TaskCenterPanel: React.FC = () => {
   const { isOpen, activeTab, setOpen, setActiveTab } = useTaskCenterStore()
@@ -19,7 +16,6 @@ const TaskCenterPanel: React.FC = () => {
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
 
-  // Count active tasks
   const activeBackgroundCount = activeTasks?.length || 0
   const activeDownloadCount = downloadTasks.filter(
     (t) => t.status === 'downloading'
@@ -29,68 +25,54 @@ const TaskCenterPanel: React.FC = () => {
     return null
   }
 
-  const tabItems = [
-    {
-      key: 'background',
-      label: (
-        <span className="flex items-center gap-1.5">
-          <CloudSyncOutlined />
-          后台任务
-          {activeBackgroundCount > 0 && (
-            <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-5 text-center">
-              {activeBackgroundCount}
-            </span>
-          )}
-        </span>
-      ),
-      children: <BackgroundTaskList />,
-    },
-    {
-      key: 'download',
-      label: (
-        <span className="flex items-center gap-1.5">
-          <DownloadOutlined />
-          下载
-          {activeDownloadCount > 0 && (
-            <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-5 text-center">
-              {activeDownloadCount}
-            </span>
-          )}
-        </span>
-      ),
-      children: <DownloadTaskList />,
-    },
-  ]
-
   return (
-    <div className="fixed bottom-24 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
-      <Card
-        className="shadow-lg"
-        styles={{
-          body: { padding: 0 },
-          header: { padding: '8px 12px', minHeight: 'auto' },
-        }}
-        title={
+    <div className="fixed bottom-24 right-6 z-50 w-90 animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <Card className="shadow-lg py-0 gap-0 overflow-hidden">
+        <CardHeader className="py-2 px-3 border-b">
           <div className="flex items-center justify-between">
-            <Text strong>任务中心</Text>
-            <div
+            <CardTitle className="text-sm font-semibold">任务中心</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setOpen(false)}
-              className="px-1 hover:bg-gray-100 rounded transition-colors"
             >
-              <CloseOutlined className="text-gray-500" />
-            </div>
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-        }
-        style={{ width: 360 }}
-      >
-        <Tabs
-          activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as 'background' | 'download')}
-          items={tabItems}
-          size="small"
-          className="task-center-tabs"
-          tabBarStyle={{ margin: 0, paddingLeft: 12, paddingRight: 12 }}
-        />
+        </CardHeader>
+        <CardContent className="p-0">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'background' | 'download')}
+          >
+            <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-3 h-9">
+              <TabsTrigger value="background" className="data-[state=active]:shadow-none">
+                <CloudUpload className="mr-1 h-3.5 w-3.5" />
+                后台任务
+                {activeBackgroundCount > 0 && (
+                  <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] text-white">
+                    {activeBackgroundCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="download" className="data-[state=active]:shadow-none">
+                <Download className="mr-1 h-3.5 w-3.5" />
+                下载
+                {activeDownloadCount > 0 && (
+                  <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] text-white">
+                    {activeDownloadCount}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="background" className="mt-0">
+              <BackgroundTaskList />
+            </TabsContent>
+            <TabsContent value="download" className="mt-0">
+              <DownloadTaskList />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
       </Card>
     </div>
   )

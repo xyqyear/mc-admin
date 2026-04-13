@@ -1,28 +1,21 @@
 import React from 'react'
 import {
-  FolderOutlined,
-  FileTextOutlined,
-  DatabaseOutlined,
-  FileImageOutlined,
-  FilePdfOutlined,
-  FileZipOutlined,
-  FileExcelOutlined,
-  FileWordOutlined,
-  FilePptOutlined,
-  CodeOutlined,
-  Html5Outlined,
-  VideoCameraOutlined,
-  SoundOutlined,
-  SettingOutlined,
-  FileMarkdownOutlined,
-  FileSearchOutlined,
-  BugOutlined,
-  FileProtectOutlined,
-  ConsoleSqlOutlined,
-  ExperimentOutlined,
-  ApiOutlined,
-  FileUnknownOutlined
-} from '@ant-design/icons'
+  Folder,
+  FileText,
+  FileCode,
+  Database,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileSpreadsheet,
+  FileArchive,
+  Settings,
+  FileKey,
+  Container,
+  FlaskConical,
+  FileQuestion,
+  FileSearch,
+} from 'lucide-react'
 import type { FileItem } from '@/types/Server'
 
 export interface FileIconProps {
@@ -31,14 +24,13 @@ export interface FileIconProps {
 
 const FileIcon: React.FC<FileIconProps> = ({ file }) => {
   if (file.type === 'directory') {
-    return <FolderOutlined style={{ color: '#1890ff' }} />
+    return <Folder className="h-4 w-4 text-blue-500" />
   }
 
   const ext = file.name.split('.').pop()?.toLowerCase()
   const fileName = file.name.toLowerCase()
 
   switch (ext) {
-    // Text and configuration files
     case 'txt':
     case 'log':
     case 'properties':
@@ -48,14 +40,12 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'yml':
     case 'yaml':
     case 'json':
-      return <FileTextOutlined style={{ color: '#52c41a' }} />
+      return <FileText className="h-4 w-4 text-green-600" />
 
-    // Markdown files
     case 'md':
     case 'markdown':
-      return <FileMarkdownOutlined style={{ color: '#13c2c2' }} />
+      return <FileText className="h-4 w-4 text-cyan-600" />
 
-    // Programming and script files
     case 'js':
     case 'ts':
     case 'jsx':
@@ -85,35 +75,32 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'ps1':
     case 'bat':
     case 'cmd':
-      return <CodeOutlined style={{ color: '#722ed1' }} />
+      return <FileCode className="h-4 w-4 text-purple-600" />
 
-    // Web files
     case 'html':
     case 'htm':
     case 'xhtml':
-      return <Html5Outlined style={{ color: '#fa541c' }} />
+      return <FileCode className="h-4 w-4 text-orange-600" />
 
     case 'css':
     case 'scss':
     case 'sass':
     case 'less':
     case 'styl':
-      return <BugOutlined style={{ color: '#1890ff' }} />
+      return <FileCode className="h-4 w-4 text-blue-500" />
 
-    // Data and database files
     case 'sql':
     case 'mysql':
     case 'psql':
-      return <ConsoleSqlOutlined style={{ color: '#52c41a' }} />
+      return <Database className="h-4 w-4 text-green-600" />
 
     case 'db':
     case 'sqlite':
     case 'sqlite3':
     case 'mdb':
     case 'accdb':
-      return <DatabaseOutlined style={{ color: '#13c2c2' }} />
+      return <Database className="h-4 w-4 text-cyan-600" />
 
-    // Images
     case 'png':
     case 'jpg':
     case 'jpeg':
@@ -124,9 +111,8 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'ico':
     case 'tiff':
     case 'tif':
-      return <FileImageOutlined style={{ color: '#fa8c16' }} />
+      return <FileImage className="h-4 w-4 text-orange-500" />
 
-    // Videos
     case 'mp4':
     case 'avi':
     case 'mkv':
@@ -136,9 +122,8 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'webm':
     case 'm4v':
     case '3gp':
-      return <VideoCameraOutlined style={{ color: '#eb2f96' }} />
+      return <FileVideo className="h-4 w-4 text-pink-500" />
 
-    // Audio files
     case 'mp3':
     case 'wav':
     case 'flac':
@@ -147,30 +132,28 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'wma':
     case 'm4a':
     case 'opus':
-      return <SoundOutlined style={{ color: '#fa541c' }} />
+      return <FileAudio className="h-4 w-4 text-orange-600" />
 
-    // Documents
     case 'pdf':
-      return <FilePdfOutlined style={{ color: '#f5222d' }} />
+      return <FileText className="h-4 w-4 text-red-600" />
 
     case 'doc':
     case 'docx':
     case 'rtf':
     case 'odt':
-      return <FileWordOutlined style={{ color: '#1890ff' }} />
+      return <FileText className="h-4 w-4 text-blue-500" />
 
     case 'xls':
     case 'xlsx':
     case 'csv':
     case 'ods':
-      return <FileExcelOutlined style={{ color: '#52c41a' }} />
+      return <FileSpreadsheet className="h-4 w-4 text-green-600" />
 
     case 'ppt':
     case 'pptx':
     case 'odp':
-      return <FilePptOutlined style={{ color: '#fa541c' }} />
+      return <FileText className="h-4 w-4 text-orange-600" />
 
-    // Archives and packages
     case 'zip':
     case '7z':
     case 'rar':
@@ -183,9 +166,8 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'ear':
     case 'dmg':
     case 'iso':
-      return <FileZipOutlined style={{ color: '#722ed1' }} />
+      return <FileArchive className="h-4 w-4 text-purple-600" />
 
-    // Executables and binaries
     case 'exe':
     case 'msi':
     case 'app':
@@ -194,16 +176,14 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'pkg':
     case 'run':
     case 'bin':
-      return <ExperimentOutlined style={{ color: '#f5222d' }} />
+      return <FlaskConical className="h-4 w-4 text-red-600" />
 
-    // Configuration and system files
     case 'env':
     case 'cfg':
     case 'config':
     case 'settings':
-      return <SettingOutlined style={{ color: '#1677ff' }} />
+      return <Settings className="h-4 w-4 text-blue-600" />
 
-    // Certificates and security files
     case 'pem':
     case 'crt':
     case 'cer':
@@ -212,38 +192,35 @@ const FileIcon: React.FC<FileIconProps> = ({ file }) => {
     case 'pfx':
     case 'jks':
     case 'keystore':
-      return <FileProtectOutlined style={{ color: '#fa541c' }} />
+      return <FileKey className="h-4 w-4 text-orange-600" />
 
-    // Special Minecraft-related files
     case 'mcmeta':
     case 'mcfunction':
     case 'nbt':
     case 'dat':
-      return <ExperimentOutlined style={{ color: '#52c41a' }} />
+      return <FlaskConical className="h-4 w-4 text-green-600" />
 
-    // SNBT (Stringified NBT) - Minecraft data format
     case 'snbt':
-      return <SettingOutlined style={{ color: '#722ed1' }} />
+      return <Settings className="h-4 w-4 text-purple-600" />
 
     default:
-      // Check for specific filenames
       if (fileName === 'dockerfile' || fileName === 'containerfile') {
-        return <ApiOutlined style={{ color: '#1677ff' }} />
+        return <Container className="h-4 w-4 text-blue-600" />
       }
       if (fileName === 'makefile' || fileName === 'rakefile' || fileName === 'gemfile') {
-        return <CodeOutlined style={{ color: '#722ed1' }} />
+        return <FileCode className="h-4 w-4 text-purple-600" />
       }
       if (fileName === 'readme' || fileName.includes('readme')) {
-        return <FileSearchOutlined style={{ color: '#13c2c2' }} />
+        return <FileSearch className="h-4 w-4 text-cyan-600" />
       }
       if (fileName === 'license' || fileName === 'licence' || fileName.includes('license')) {
-        return <FileProtectOutlined style={{ color: '#fa541c' }} />
+        return <FileKey className="h-4 w-4 text-orange-600" />
       }
       if (fileName.includes('docker-compose')) {
-        return <ApiOutlined style={{ color: '#1677ff' }} />
+        return <Container className="h-4 w-4 text-blue-600" />
       }
 
-      return <FileUnknownOutlined style={{ color: '#8c8c8c' }} />
+      return <FileQuestion className="h-4 w-4 text-gray-500" />
   }
 }
 

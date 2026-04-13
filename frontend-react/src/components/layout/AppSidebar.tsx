@@ -1,29 +1,45 @@
-import React, { useState, useEffect } from 'react'
-import { Layout, Menu, Button } from 'antd'
+import React, { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import type { MenuProps } from 'antd'
 import {
-  HomeOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  PlusOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  SettingOutlined,
-  FolderOutlined,
-  LogoutOutlined,
-  CodeOutlined,
-  CrownOutlined,
-  UserOutlined,
-  HistoryOutlined,
-  FileZipOutlined,
-  ScheduleOutlined,
-  GlobalOutlined,
-  TeamOutlined,
-  SnippetsOutlined,
-} from '@ant-design/icons'
-import type { MenuItem } from '@/types/MenuItem'
+  Home,
+  LayoutDashboard,
+  Database,
+  Plus,
+  Settings,
+  Folder,
+  LogOut,
+  Code,
+  Crown,
+  UserCog,
+  History,
+  FileArchive,
+  Calendar,
+  Globe,
+  Users,
+  FileText,
+  ChevronRight,
+} from 'lucide-react'
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarRail,
+} from '@/components/ui/sidebar'
+import {
+  Collapsible,
+  CollapsibleContent,
+} from '@/components/ui/collapsible'
+import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
@@ -32,211 +48,307 @@ import { UserRole } from '@/types/User'
 import ServerMenuIcon from '@/components/layout/ServerMenuIcon'
 import DebugTool from '@/components/debug/DebugTool'
 
-const { Sider } = Layout
-
-type MenuItemType = Required<MenuProps>['items'][number]
+const SERVER_GROUP_KEY = '服务器管理'
+const ADMIN_GROUP_KEY = '超管'
 
 const AppSidebar: React.FC = () => {
-  const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
   const { clearToken } = useTokenStore()
 
-  // 获取服务器列表数据
   const { useServers } = useServerQueries()
   const serversQuery = useServers()
   const servers = serversQuery.data || []
 
-  // 获取当前用户数据
   const currentUserQuery = useCurrentUser()
   const currentUser = currentUserQuery.data
   const isOwner = currentUser?.role === UserRole.OWNER
 
-  // Update open keys when route changes (only for real navigation)
   useEffect(() => {
     updateForNavigation(location.pathname)
   }, [location.pathname, updateForNavigation])
 
   const handleLogout = () => {
     clearToken()
-    // 清除所有缓存数据
     queryClient.clear()
     navigate('/login')
   }
 
-  const menuItemsData: MenuItem[] = [
-    {
-      title: '首页',
-      icon: <HomeOutlined />,
-      path: '/',
-    },
-    {
-      title: '服务器总览',
-      icon: <DashboardOutlined />,
-      path: '/overview',
-    },
-    {
-      title: '服务器管理',
-      icon: <DatabaseOutlined />,
-      items: [
-        ...servers.map(server => ({
-          title: server.id,
-          icon: <ServerMenuIcon serverId={server.id} />,
-          items: [
-            {
-              title: '概览',
-              icon: <DashboardOutlined />,
-              path: `/server/${server.id}`,
-            },
-            {
-              title: '设置',
-              icon: <SettingOutlined />,
-              path: `/server/${server.id}/compose`,
-            },
-            {
-              title: '文件',
-              icon: <FolderOutlined />,
-              path: `/server/${server.id}/files`,
-            },
-            {
-              title: '控制台',
-              icon: <CodeOutlined />,
-              path: `/server/${server.id}/console`,
-            },
-          ],
-        })),
-        {
-          title: '新建',
-          icon: <PlusOutlined />,
-          path: '/server/new',
-        },
-      ],
-    },
-    {
-      title: '服务器模板',
-      icon: <SnippetsOutlined />,
-      path: '/templates',
-    },
-    // 只有OWNER角色才能看到超管菜单
-    ...(isOwner ? [{
-      title: '超管',
-      icon: <CrownOutlined />,
-      items: [
-        {
-          title: '用户管理',
-          icon: <UserOutlined />,
-          path: '/admin/users',
-        },
-      ],
-    }] : []),
-    {
-      title: '玩家管理',
-      icon: <TeamOutlined />,
-      path: '/players',
-    },
-    {
-      title: '快照管理',
-      icon: <HistoryOutlined />,
-      path: '/snapshots',
-    },
-    {
-      title: '压缩包管理',
-      icon: <FileZipOutlined />,
-      path: '/archives',
-    },
-    {
-      title: '动态配置',
-      icon: <SettingOutlined />,
-      path: '/config',
-    },
-    {
-      title: 'DNS管理',
-      icon: <GlobalOutlined />,
-      path: '/dns',
-    },
-    {
-      title: '任务管理',
-      icon: <ScheduleOutlined />,
-      path: '/cron',
-    },
-  ]
-
-  const handleMenuClick = (path: string) => {
-    navigate(path)
+  const isKeyOpen = (key: string) => openKeys.includes(key)
+  const toggleKey = (key: string) => {
+    if (openKeys.includes(key)) {
+      setOpenKeys(openKeys.filter((k) => k !== key))
+    } else {
+      setOpenKeys([...openKeys, key])
+    }
   }
 
-  const handleOpenChange = (keys: string[]) => {
-    setOpenKeys(keys)
-  }
-
-  const convertToMenuItems = (items: MenuItem[]): MenuItemType[] => {
-    return items.map((item) => {
-      if (item.items) {
-        return {
-          key: item.path || item.title,
-          icon: item.icon,
-          label: item.title,
-          children: convertToMenuItems(item.items),
-        }
-      }
-
-      return {
-        key: item.path!,
-        icon: item.icon,
-        label: item.title,
-        onClick: () => item.path && handleMenuClick(item.path),
-      }
-    })
-  }
-
-  const menuItems = convertToMenuItems(menuItemsData)
+  const isActive = (path: string) => location.pathname === path
+  const navigateTo = (path: string) => navigate(path)
 
   return (
-    <Sider
-      collapsible
-      collapsed={collapsed}
-      onCollapse={setCollapsed}
-      className="bg-white border-r border-gray-200 [&_.ant-layout-sider-trigger]:flex [&_.ant-layout-sider-trigger]:items-center [&_.ant-layout-sider-trigger]:justify-center [&_.ant-layout-sider-trigger]:p-0"
-      trigger={
-        <div className="flex items-center justify-center w-full h-full text-center">
-          {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-        </div>
-      }
-    >
-      <div className="flex flex-col h-full">
-        {/* 退出登录按钮 */}
-        <div className="p-3 border-b border-gray-200">
-          <Button
-            icon={<LogoutOutlined />}
-            onClick={handleLogout}
-            type="text"
-            block
-            className="flex items-center justify-center"
-          >
-            {!collapsed && "退出登录"}
-          </Button>
-        </div>
+    <Sidebar collapsible="icon">
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/')}
+                  onClick={() => navigateTo('/')}
+                  tooltip="首页"
+                >
+                  <Home />
+                  <span>首页</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-        {/* 菜单 */}
-        <div className="flex-1 overflow-y-auto">
-          <Menu
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            openKeys={openKeys}
-            onOpenChange={handleOpenChange}
-            items={menuItems}
-            className="border-r-0"
-          />
-        </div>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/overview')}
+                  onClick={() => navigateTo('/overview')}
+                  tooltip="服务器总览"
+                >
+                  <LayoutDashboard />
+                  <span>服务器总览</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-        {/* 调试工具 - 固定在底部，只在开发环境显示 */}
-        <div className="border-t border-gray-200">
-          <DebugTool />
-        </div>
-      </div>
-    </Sider>
+              <Collapsible
+                open={isKeyOpen(SERVER_GROUP_KEY)}
+                onOpenChange={() => toggleKey(SERVER_GROUP_KEY)}
+              >
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => toggleKey(SERVER_GROUP_KEY)}
+                    tooltip="服务器管理"
+                  >
+                    <Database />
+                    <span>服务器管理</span>
+                    <ChevronRight
+                      className={cn(
+                        'ml-auto transition-transform',
+                        isKeyOpen(SERVER_GROUP_KEY) && 'rotate-90'
+                      )}
+                    />
+                  </SidebarMenuButton>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {servers.map((server) => (
+                        <Collapsible
+                          key={server.id}
+                          open={isKeyOpen(server.id)}
+                          onOpenChange={() => toggleKey(server.id)}
+                        >
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() => toggleKey(server.id)}
+                              className="cursor-pointer"
+                            >
+                              <ServerMenuIcon serverId={server.id} />
+                              <span>{server.id}</span>
+                              <ChevronRight
+                                className={cn(
+                                  'ml-auto h-3 w-3 transition-transform',
+                                  isKeyOpen(server.id) && 'rotate-90'
+                                )}
+                              />
+                            </SidebarMenuSubButton>
+                            <CollapsibleContent>
+                              <SidebarMenuSub>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}`)}
+                                    onClick={() => navigateTo(`/server/${server.id}`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <LayoutDashboard />
+                                    <span>概览</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}/compose`)}
+                                    onClick={() => navigateTo(`/server/${server.id}/compose`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Settings />
+                                    <span>设置</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}/files`)}
+                                    onClick={() => navigateTo(`/server/${server.id}/files`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Folder />
+                                    <span>文件</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}/console`)}
+                                    onClick={() => navigateTo(`/server/${server.id}/console`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Code />
+                                    <span>控制台</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              </SidebarMenuSub>
+                            </CollapsibleContent>
+                          </SidebarMenuSubItem>
+                        </Collapsible>
+                      ))}
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          isActive={isActive('/server/new')}
+                          onClick={() => navigateTo('/server/new')}
+                          className="cursor-pointer"
+                        >
+                          <Plus />
+                          <span>新建</span>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/templates')}
+                  onClick={() => navigateTo('/templates')}
+                  tooltip="服务器模板"
+                >
+                  <FileText />
+                  <span>服务器模板</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {isOwner && (
+                <Collapsible
+                  open={isKeyOpen(ADMIN_GROUP_KEY)}
+                  onOpenChange={() => toggleKey(ADMIN_GROUP_KEY)}
+                >
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => toggleKey(ADMIN_GROUP_KEY)}
+                      tooltip="超管"
+                    >
+                      <Crown />
+                      <span>超管</span>
+                      <ChevronRight
+                        className={cn(
+                          'ml-auto transition-transform',
+                          isKeyOpen(ADMIN_GROUP_KEY) && 'rotate-90'
+                        )}
+                      />
+                    </SidebarMenuButton>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            isActive={isActive('/admin/users')}
+                            onClick={() => navigateTo('/admin/users')}
+                            className="cursor-pointer"
+                          >
+                            <UserCog />
+                            <span>用户管理</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/players')}
+                  onClick={() => navigateTo('/players')}
+                  tooltip="玩家管理"
+                >
+                  <Users />
+                  <span>玩家管理</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/snapshots')}
+                  onClick={() => navigateTo('/snapshots')}
+                  tooltip="快照管理"
+                >
+                  <History />
+                  <span>快照管理</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/archives')}
+                  onClick={() => navigateTo('/archives')}
+                  tooltip="压缩包管理"
+                >
+                  <FileArchive />
+                  <span>压缩包管理</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/config')}
+                  onClick={() => navigateTo('/config')}
+                  tooltip="动态配置"
+                >
+                  <Settings />
+                  <span>动态配置</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/dns')}
+                  onClick={() => navigateTo('/dns')}
+                  tooltip="DNS管理"
+                >
+                  <Globe />
+                  <span>DNS管理</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('/cron')}
+                  onClick={() => navigateTo('/cron')}
+                  tooltip="任务管理"
+                >
+                  <Calendar />
+                  <span>任务管理</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <DebugTool />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleLogout} tooltip="退出登录">
+              <LogOut />
+              <span>退出登录</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }
 

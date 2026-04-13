@@ -2,22 +2,24 @@
 
 ## What This Component Is
 
-Modern React 18 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, background task center for long-running operations, server template system with typed variable forms and mode conversion, version update notifications, and direct container terminal access.
+Modern React 19 + TypeScript single-page application for MC Admin Minecraft server management. Features responsive interface with real-time updates, sophisticated three-layer data architecture, dual authentication systems, Monaco editor with Docker Compose schema validation, comprehensive backup management, player tracking with detail viewer, DNS management, advanced cron job management, file search and multi-file upload, download progress tracking, background task center for long-running operations, server template system with typed variable forms and mode conversion, version update notifications, and direct container terminal access.
 
 ## Tech Stack
 
 **Runtime & Build:**
 
 - Node.js 18+ with pnpm (pnpm-lock.yaml present)
-- React 18 + TypeScript 5 (strict mode)
+- React 19 + TypeScript 5 (strict mode)
 - Vite 5 with @vitejs/plugin-react, path alias `@` → `src/`
 - Dev server: port 3000 (typically already running)
 
 **UI & Styling:**
 
-- Ant Design 6 (v6.2.1) + @ant-design/icons v6 + @rjsf/antd v6
-- Tailwind CSS 3 + PostCSS (preflight disabled for AntD compatibility)
-- Custom AntD theme with primary blue (#1677ff)
+- shadcn/ui built on `@base-ui/react` primitives (not Radix) with `useRender` + `render` prop pattern
+- Tailwind CSS v4 with CSS-only config (no `tailwind.config.js`), OKLCH color space via CSS variables
+- Lucide icons throughout
+- `@rjsf/shadcn` for schema-driven forms
+- Sonner for toast notifications
 - ESLint v9 with modern flat config
 
 **State & Data:**
@@ -60,20 +62,21 @@ pnpm preview    # Preview production build
 
 ```text
 src/
-├── main.tsx                 # App bootstrap with React Query, AntD theme, Monaco workers
+├── main.tsx                 # App bootstrap with React Query, TooltipProvider, sonner Toaster, Monaco workers
 ├── App.tsx                  # Routes, error boundaries, auth wrappers
 ├── yaml.worker.js           # Monaco YAML worker
 ├── snbtLanguage.ts          # SNBT language definition for Monaco
 │
 ├── components/
-│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, PageHeader
-│   ├── overview/            # ServerStateTag, MetricCard components
+│   ├── ui/                  # shadcn/ui components (button, card, dialog, sidebar, etc.)
+│   ├── layout/              # AppSidebar, MainLayout, ErrorFallback, PageHeader, LoadingSpinner
+│   ├── overview/            # ServerStateIcon, MetricCard components
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
-│   ├── files/               # FileIcon, FileSnapshotActions
+│   ├── files/               # FileIcon (Lucide-based), FileSnapshotActions
 │   │
 │   ├── task-center/         # Background task UI
-│   │   ├── TaskCenterTrigger.tsx       # FloatButton with badge
-│   │   ├── TaskCenterPanel.tsx         # Popover panel with tabs
+│   │   ├── TaskCenterTrigger.tsx       # Fixed Button with badge
+│   │   ├── TaskCenterPanel.tsx         # Card panel with tabs
 │   │   ├── BackgroundTaskList.tsx      # List of background tasks
 │   │   ├── BackgroundTaskItem.tsx      # Individual task item
 │   │   ├── DownloadTaskList.tsx        # Download tasks tab
@@ -127,7 +130,7 @@ src/
 │   │   ├── CronExpressionBuilder.tsx    # Visual cron expression creation
 │   │   ├── CronFieldInput.tsx           # Cron field inputs
 │   │   ├── SchemaForm.tsx               # Dynamic JSON schema forms
-│   │   └── rjsfTheme.tsx                # RJSF custom theme for AntD v6
+│   │   └── rjsfTheme.tsx                # Re-export of @rjsf/shadcn Theme as default form
 │   │
 │   ├── debug/               # **DEV-ONLY** - Debug tools
 │   │   ├── DebugModal.tsx              # Debug information modal
@@ -142,7 +145,6 @@ src/
 │   │
 │   └── modals/              # Modal components
 │       ├── ServerFiles/     # File management modals
-│       │   ├── UploadModal.tsx                 # Single file upload
 │       │   ├── MultiFileUploadModal.tsx        # Multi-file/folder upload
 │       │   ├── FileUploadTree.tsx              # Upload tree display
 │       │   ├── ConflictTree.tsx                # Conflict resolution tree
@@ -396,8 +398,8 @@ export const useServerDetailQueries = (serverId: string) => {
 
 **Unified task management UI** for long-running backend operations:
 
-- FloatButton trigger with active task badge count
-- Panel with tabs: Background Tasks + Downloads
+- Fixed Button trigger with active task badge count
+- Card panel with tabs: Background Tasks + Downloads
 - Real-time polling (1s when active, 10s otherwise)
 - Task cancellation and removal
 - Progress display with percentage and messages
@@ -405,10 +407,10 @@ export const useServerDetailQueries = (serverId: string) => {
 
 **Components:**
 
-- `TaskCenterTrigger.tsx`: FloatButton with badge
-- `TaskCenterPanel.tsx`: Popover panel with tabs
+- `TaskCenterTrigger.tsx`: Fixed-position Button with badge and tooltip
+- `TaskCenterPanel.tsx`: Floating Card with shadcn Tabs
 - `BackgroundTaskList.tsx`: Task list with grouping
-- `BackgroundTaskItem.tsx`: Individual task display
+- `BackgroundTaskItem.tsx`: Individual task display with Popover details
 
 **Hooks:**
 
@@ -607,8 +609,12 @@ Features:
 Use Context7 MCP tool:
 
 - React: `/facebook/react`
-- Ant Design: `/ant-design/ant-design`
+- shadcn/ui: `/shadcn-ui/ui`
+- base-ui primitives: `/mui/base-ui`
+- Tailwind CSS: `/tailwindlabs/tailwindcss`
+- Lucide icons: `/lucide-icons/lucide`
 - TanStack Query: `/tanstack/query`
+- TanStack Table: `/tanstack/table`
 - Monaco Editor: `/microsoft/monaco-editor`
 - React Router: `/remix-run/react-router`
 - Zustand: `/pmndrs/zustand`
@@ -638,19 +644,15 @@ When adding features:
 
 Keep this file updated to help future development sessions understand the frontend architecture, component organization, and development patterns.
 
-## UI Migration: Ant Design -> shadcn/ui (In Progress)
+## UI Stack Conventions (shadcn/ui + base-ui)
 
-The frontend is being incrementally migrated from Ant Design to shadcn/ui + Tailwind CSS + Lucide icons. During migration, both AntD and shadcn components coexist.
+The frontend uses shadcn/ui components built on top of `@base-ui/react` primitives. A few project-specific conventions to remember:
 
-**Migration plan documents** in `.claude/migration/`:
+- **Not Radix** — shadcn here uses base-ui, so patterns like `asChild` do **not** apply. Instead, use the `render` prop that base-ui's `useRender` accepts, or compose via controlled state.
+- **TooltipProvider** is mounted once in `src/main.tsx`. Do **not** wrap individual components in another `TooltipProvider`.
+- **Select** (`@/components/ui/select`) requires string `value`/`onValueChange`. When the display text differs from the option value (e.g. "10条/页" for value `"10"`), pass `itemToStringLabel={(v) => "..."}` on the `Select` so that the trigger renders the label correctly.
+- **Toast** notifications use `sonner` (`import { toast } from 'sonner'`).
+- **Confirmation dialogs** use the `useConfirm` hook (`hooks/useConfirm.ts`). It accepts `title`, `description`, `confirmText`, `cancelText`, `variant`, and `onConfirm` — it does **not** accept a `content` field. For rich confirmations (with diff previews etc.), use a dedicated state-driven `<Dialog>` instead.
+- **Sidebar layout**: `MainLayout.tsx` wraps the app in `SidebarProvider` + `AppSidebar` + `SidebarInset`. `AppSidebar` uses `collapsible="icon"` mode with controlled `Collapsible` sections keyed by `useSidebarStore.openKeys`.
 
-- `00-overview.md` - Master plan: phases, session breakdown, what changes vs stays
-- `01-foundation-setup.md` - Phase 0: Install shadcn alongside AntD, configure theme
-- `02-shared-infrastructure.md` - Phase 1: Toast, confirm dialog, loading, RJSF migration
-- `03-page-migrations.md` - Phase 2: Per-page migration guide (Sessions 3-12)
-- `04-shell-and-cleanup.md` - Phase 3-4: Layout shell migration and AntD removal
-- `reference-component-map.md` - AntD -> shadcn component mapping with code examples
-- `reference-icon-map.md` - 37 AntD icons -> Lucide equivalents
-- `reference-patterns.md` - shadcn code patterns: forms, tables, toast, dialogs, layouts
-
-**When working on migration**: Read the relevant migration guide file before starting. Each page migration session should follow the workflow in `03-page-migrations.md`.
+Legacy Ant Design has been fully removed (no `antd`, `@ant-design/icons`, or `@rjsf/antd` dependencies). The historical migration plan lives in `.claude/migration/` for reference only.

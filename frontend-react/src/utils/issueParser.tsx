@@ -1,14 +1,7 @@
 import React from 'react'
-import { Tag } from 'antd'
+import { Badge } from '@/components/ui/badge'
 import { getGithubIssueUrl } from '@/config/versionConfig'
 
-/**
- * 解析文本中的 GitHub issue 引用（#123 格式）
- * 将 issue 引用转换为可点击的 Tag 组件
- *
- * @param text 要解析的文本
- * @returns React 节点数组，包含文本和 issue 标签
- */
 export const parseIssueReferences = (text: string): React.ReactNode[] => {
   const issuePattern = /#(\d+)/g
   const parts: React.ReactNode[] = []
@@ -25,17 +18,17 @@ export const parseIssueReferences = (text: string): React.ReactNode[] => {
     }
 
     parts.push(
-      <Tag
+      <Badge
         key={`issue-${issueId}-${matchIndex}`}
-        color="blue"
-        className="cursor-pointer hover:opacity-80 transition-opacity"
+        variant="secondary"
+        className="cursor-pointer bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 hover:opacity-90 transition-colors mx-0.5"
         onClick={(e) => {
           e.stopPropagation()
           window.open(getGithubIssueUrl(issueId), '_blank', 'noopener,noreferrer')
         }}
       >
         {fullMatch}
-      </Tag>
+      </Badge>
     )
 
     lastIndex = matchIndex + fullMatch.length

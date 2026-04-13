@@ -1,16 +1,25 @@
 import React from 'react'
-import { Progress, Button, Typography, Tooltip, Popover } from 'antd'
 import {
-  DownloadOutlined,
-  CloseOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  StopOutlined,
-} from '@ant-design/icons'
-import { useDownloadActions, type DownloadTask } from '@/stores/useDownloadStore'
-import { formatFileSize } from '@/utils/formatUtils'
+  Download,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Ban,
+} from 'lucide-react'
 
-const { Text } = Typography
+import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  useDownloadActions,
+  type DownloadTask,
+} from '@/stores/useDownloadStore'
+import { formatFileSize } from '@/utils/formatUtils'
 
 interface DownloadTaskItemProps {
   task: DownloadTask
@@ -22,30 +31,15 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   const getStatusIcon = () => {
     switch (task.status) {
       case 'downloading':
-        return <DownloadOutlined className="text-blue-500 animate-pulse" />
+        return <Download className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
       case 'completed':
-        return <CheckCircleOutlined className="text-green-500" />
+        return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
       case 'error':
-        return <ExclamationCircleOutlined className="text-red-500" />
+        return <AlertCircle className="h-3.5 w-3.5 text-red-500" />
       case 'cancelled':
-        return <StopOutlined className="text-gray-500" />
+        return <Ban className="h-3.5 w-3.5 text-gray-500" />
       default:
-        return <DownloadOutlined />
-    }
-  }
-
-  const getStatusColor = () => {
-    switch (task.status) {
-      case 'downloading':
-        return '#1677ff'
-      case 'completed':
-        return '#52c41a'
-      case 'error':
-        return '#ff4d4f'
-      case 'cancelled':
-        return '#d9d9d9'
-      default:
-        return '#1677ff'
+        return <Download className="h-3.5 w-3.5" />
     }
   }
 
@@ -83,69 +77,64 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   }
 
   const taskInfo = (
-    <div className="space-y-2 min-w-48">
+    <div className="space-y-2 min-w-48 text-xs">
       <div>
-        <Text strong>文件名：</Text>
-        <Text className="break-all">{task.fileName}</Text>
+        <strong>文件名：</strong>
+        <span className="break-all">{task.fileName}</span>
       </div>
       {task.serverId && (
         <div>
-          <Text strong>服务器：</Text>
-          <Text>{task.serverId}</Text>
+          <strong>服务器：</strong>
+          {task.serverId}
         </div>
       )}
       <div>
-        <Text strong>状态：</Text>
-        <Text>{task.status === 'downloading' ? '下载中' :
-          task.status === 'completed' ? '已完成' :
-            task.status === 'error' ? '出错' : '已取消'}</Text>
+        <strong>状态：</strong>
+        {task.status === 'downloading'
+          ? '下载中'
+          : task.status === 'completed'
+            ? '已完成'
+            : task.status === 'error'
+              ? '出错'
+              : '已取消'}
       </div>
       <div>
-        <Text strong>用时：</Text>
-        <Text>{getElapsedTime()}</Text>
+        <strong>用时：</strong>
+        {getElapsedTime()}
       </div>
       {task.speed && task.status === 'downloading' && (
         <div>
-          <Text strong>速度：</Text>
-          <Text>{formatSpeed(task.speed)}</Text>
+          <strong>速度：</strong>
+          {formatSpeed(task.speed)}
         </div>
       )}
       {task.error && (
         <div>
-          <Text strong>错误：</Text>
-          <Text type="danger" className="break-all">{task.error}</Text>
+          <strong>错误：</strong>
+          <span className="text-destructive break-all">{task.error}</span>
         </div>
       )}
     </div>
   )
 
   return (
-    <div className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors">
-      <span className="flex-shrink-0 w-5 text-center">
-        {getStatusIcon()}
-      </span>
+    <div className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded transition-colors">
+      <span className="flex shrink-0 w-5 justify-center">{getStatusIcon()}</span>
 
       <div className="flex-1 min-w-0">
-        <Popover content={taskInfo} title="下载详情" placement="left">
-          <div className="cursor-pointer">
-            <Text
-              className="block truncate text-xs font-medium"
-              style={{ maxWidth: '160px' }}
+        <Popover>
+          <PopoverTrigger className="w-full text-left cursor-pointer">
+            <span
+              className="block truncate text-xs font-medium max-w-40"
               title={task.fileName}
             >
               {task.fileName}
-            </Text>
+            </span>
 
             {task.status === 'downloading' && (
               <div className="mt-1">
-                <Progress
-                  percent={task.progress}
-                  size="small"
-                  strokeColor={getStatusColor()}
-                  showInfo={false}
-                  className="mb-0.5"
-                />
-                <div className="flex justify-between text-xs text-gray-500">
+                <Progress value={task.progress} className="h-1 mb-0.5" />
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{getProgressInfo()}</span>
                   {task.speed && <span>{formatSpeed(task.speed)}</span>}
                 </div>
@@ -153,28 +142,45 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
             )}
 
             {task.status === 'completed' && (
-              <Text type="success" className="text-xs">下载完成</Text>
+              <span className="text-xs text-green-600">下载完成</span>
             )}
 
             {task.status === 'error' && (
-              <Text type="danger" className="text-xs">下载失败</Text>
+              <span className="text-xs text-destructive">下载失败</span>
             )}
 
             {task.status === 'cancelled' && (
-              <Text type="secondary" className="text-xs">已取消</Text>
+              <span className="text-xs text-muted-foreground">已取消</span>
             )}
-          </div>
+          </PopoverTrigger>
+          <PopoverContent side="left" className="w-auto">
+            <div className="mb-2 text-sm font-semibold">下载详情</div>
+            {taskInfo}
+          </PopoverContent>
         </Popover>
       </div>
 
-      <Tooltip title={task.status === 'downloading' ? '取消下载' : '移除任务'}>
-        <Button
-          size="small"
-          type="text"
-          icon={task.status === 'downloading' ? <StopOutlined /> : <CloseOutlined />}
-          onClick={handleCancel}
-          className="flex-shrink-0"
-        />
+      <Tooltip>
+        <TooltipTrigger
+          className="inline-flex"
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleCancel}
+              className="shrink-0"
+            />
+          }
+        >
+          {task.status === 'downloading' ? (
+            <Ban className="h-3.5 w-3.5" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          {task.status === 'downloading' ? '取消下载' : '移除任务'}
+        </TooltipContent>
       </Tooltip>
     </div>
   )

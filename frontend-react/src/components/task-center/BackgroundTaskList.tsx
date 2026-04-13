@@ -1,12 +1,12 @@
 import React from 'react'
-import { Empty, Button, Typography, Divider } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { Inbox, Trash2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { useTaskMutations } from '@/hooks/mutations/useTaskMutations'
 import BackgroundTaskItem from './BackgroundTaskItem'
 import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
-
-const { Text } = Typography
 
 const BackgroundTaskList: React.FC = () => {
   const { useTasks } = useTaskQueries()
@@ -18,7 +18,6 @@ const BackgroundTaskList: React.FC = () => {
 
   const tasks = data?.tasks || []
 
-  // Separate active and completed tasks
   const activeTasks = tasks.filter(
     (task) => task.status === 'pending' || task.status === 'running'
   )
@@ -29,7 +28,6 @@ const BackgroundTaskList: React.FC = () => {
       task.status === 'cancelled'
   )
 
-  // Only show completed tasks from the last 30 minutes
   const recentCompletedTasks = completedTasks.filter((task) => {
     if (!task.endedAt) return true
     return Date.now() - task.endedAt < 30 * 60 * 1000
@@ -49,19 +47,15 @@ const BackgroundTaskList: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-4 text-center">
-        <Text type="secondary">加载中...</Text>
-      </div>
+      <div className="p-4 text-center text-sm text-muted-foreground">加载中...</div>
     )
   }
 
   if (tasks.length === 0) {
     return (
-      <div className="p-4">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="暂无后台任务"
-        />
+      <div className="flex flex-col items-center justify-center p-6 text-muted-foreground">
+        <Inbox className="mb-2 h-8 w-8 opacity-50" />
+        <p className="text-xs">暂无后台任务</p>
       </div>
     )
   }
@@ -70,10 +64,10 @@ const BackgroundTaskList: React.FC = () => {
     <div className="max-h-80 overflow-y-auto">
       {activeTasks.length > 0 && (
         <div>
-          <div className="px-3 py-1.5 bg-gray-50">
-            <Text strong className="text-xs text-gray-600">
+          <div className="px-3 py-1.5 bg-muted/50">
+            <span className="text-xs font-semibold text-muted-foreground">
               正在进行 ({activeTasks.length})
-            </Text>
+            </span>
           </div>
           {activeTasks.map((task: BackgroundTask) => (
             <BackgroundTaskItem
@@ -88,18 +82,18 @@ const BackgroundTaskList: React.FC = () => {
 
       {recentCompletedTasks.length > 0 && (
         <div>
-          {activeTasks.length > 0 && <Divider className="my-1" />}
-          <div className="px-3 py-1.5 bg-gray-50 flex items-center justify-between">
-            <Text strong className="text-xs text-gray-600">
+          {activeTasks.length > 0 && <Separator className="my-1" />}
+          <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">
+            <span className="text-xs font-semibold text-muted-foreground">
               已完成 ({recentCompletedTasks.length})
-            </Text>
+            </span>
             <Button
-              size="small"
-              type="text"
-              icon={<DeleteOutlined />}
+              variant="ghost"
+              size="sm"
               onClick={handleClearCompleted}
-              className="text-xs"
+              className="h-6 px-2 text-xs"
             >
+              <Trash2 className="mr-1 h-3 w-3" />
               清除
             </Button>
           </div>
