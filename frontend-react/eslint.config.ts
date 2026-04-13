@@ -2,36 +2,54 @@ import js from "@eslint/js";
 import pluginReact from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
+  globalIgnores(["dist/**"]),
+
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "postcss.config.cjs"],
-  },
-  {
-    files: ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-    plugins: { js, tseslint },
+    files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
-    languageOptions: { globals: globals.browser },
-    settings: {
-      react: {
-        version: "detect",
-      },
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.browser },
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+
   {
-    ...pluginReact.configs.flat.recommended,
+    files: ["**/*.{jsx,tsx}"],
+    extends: [
+      pluginReact.configs.flat.recommended,
+      pluginReact.configs.flat["jsx-runtime"],
+    ],
+    settings: { react: { version: "detect" } },
+  },
+
+  reactHooks.configs["recommended-latest"],
+  reactRefresh.configs.vite,
+
+  // shadcn UI boilerplate co-locates variant constants (cva) and context
+  // with components, which trips react-refresh/only-export-components.
+  // Fast refresh still works for consumer code; these files are edited rarely.
+  {
+    files: [
+      "src/components/ui/**/*.{ts,tsx}",
+      "src/components/theme-provider.tsx",
+    ],
     rules: {
-      ...pluginReact.configs.flat.recommended.rules,
-      "react/react-in-jsx-scope": "off",
+      "react-refresh/only-export-components": "off",
     },
   },
-  reactHooks.configs["recommended-latest"],
-  reactRefresh.configs.recommended,
-  reactRefresh.configs.vite,
+
+  {
+    linterOptions: {
+      reportUnusedDisableDirectives: "error",
+    },
+  },
 ]);

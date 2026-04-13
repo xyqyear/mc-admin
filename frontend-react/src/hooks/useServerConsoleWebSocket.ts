@@ -42,7 +42,7 @@ export const useServerConsoleWebSocket = (
 
   // WebSocket refs
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const messageCallbacksRef = useRef<Set<(message: WebSocketMessage) => void>>(

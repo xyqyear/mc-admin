@@ -32,7 +32,7 @@ export const useCodeLoginWebsocket = () => {
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { setToken } = useTokenStore();
   const navigate = useNavigate();
 
