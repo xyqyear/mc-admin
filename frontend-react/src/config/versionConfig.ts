@@ -482,6 +482,23 @@ export const versionUpdates: VersionUpdate[] = [
     improvements: [
       '模板变量校验恢复严格模式，已定义但未使用的变量将阻止保存 #137'
     ]
+  },
+  {
+    version: '3.0.0',
+    date: '2026-04-13',
+    title: '全面迁移到 shadcn/ui',
+    description: 'MC Admin 前端从 Ant Design 全面迁移到 shadcn/ui（基于 base-ui 和 Tailwind CSS v4），整体视觉风格焕然一新，并新增深色模式支持。',
+    features: [
+      '前端 UI 全面迁移到 shadcn/ui + Tailwind CSS v4 + Lucide 图标 #141',
+      '新增深色模式，支持主题切换',
+    ],
+    improvements: [
+      '后端玩家追踪系统重构：移除事件分发器，改为直接函数调用并拆分为独立单例',
+      '后端数据库操作抽取为独立的 CRUD 模块',
+    ],
+    fixes: [
+      '修复 useConfirm 确认对话框在异步确认时闪烁的问题',
+    ]
   }
 ]
 
