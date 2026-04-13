@@ -6,7 +6,7 @@ import { Save, ArrowLeft, FileText, GitCompare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
+import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
@@ -218,28 +218,31 @@ const TemplateEdit: React.FC = () => {
           <CardTitle>基本信息</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>模板名称</Label>
+          <Field data-invalid={!!nameError || undefined}>
+            <FieldLabel htmlFor="template-name">模板名称</FieldLabel>
             <Input
+              id="template-name"
               placeholder="例如: paper-server"
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
                 if (nameError) setNameError("")
               }}
+              aria-invalid={!!nameError || undefined}
             />
-            {nameError && <p className="text-sm text-destructive">{nameError}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label>描述</Label>
+            {nameError && <FieldError>{nameError}</FieldError>}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="template-description">描述</FieldLabel>
             <Textarea
+              id="template-description"
               placeholder="模板描述（可选）"
               rows={2}
               maxLength={500}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-          </div>
+          </Field>
         </CardContent>
       </Card>
 

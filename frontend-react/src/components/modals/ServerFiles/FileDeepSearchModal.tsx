@@ -5,6 +5,7 @@ import { Search, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
@@ -193,11 +194,12 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
         <div className="space-y-4">
           {/* Search form */}
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>搜索模式</Label>
+            <Field>
+              <FieldLabel htmlFor="search-regex">搜索模式</FieldLabel>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="search-regex"
                   ref={searchInputRef}
                   placeholder="输入正则表达式搜索文件名..."
                   value={regex}
@@ -209,7 +211,7 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
                   className="pl-8"
                 />
               </div>
-            </div>
+            </Field>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
@@ -232,10 +234,11 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
 
             {/* File size filters */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>最小文件大小</Label>
+              <Field>
+                <FieldLabel htmlFor="search-min-size">最小文件大小</FieldLabel>
                 <div className="flex gap-2">
                   <Input
+                    id="search-min-size"
                     type="number"
                     min={0}
                     placeholder="最小大小"
@@ -260,12 +263,13 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+              </Field>
 
-              <div className="space-y-2">
-                <Label>最大文件大小</Label>
+              <Field>
+                <FieldLabel htmlFor="search-max-size">最大文件大小</FieldLabel>
                 <div className="flex gap-2">
                   <Input
+                    id="search-max-size"
                     type="number"
                     min={0}
                     placeholder="最大大小"
@@ -290,27 +294,29 @@ const FileDeepSearchModal: React.FC<FileDeepSearchModalProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+              </Field>
             </div>
 
             {/* Date range filters */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>修改时间（从）</Label>
+              <Field>
+                <FieldLabel htmlFor="search-newer-than">修改时间（从）</FieldLabel>
                 <Input
+                  id="search-newer-than"
                   type="datetime-local"
                   value={newerThan}
                   onChange={(e) => setNewerThan(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label>修改时间（到）</Label>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="search-older-than">修改时间（到）</FieldLabel>
                 <Input
+                  id="search-older-than"
                   type="datetime-local"
                   value={olderThan}
                   onChange={(e) => setOlderThan(e.target.value)}
                 />
-              </div>
+              </Field>
             </div>
 
             {/* Action buttons */}

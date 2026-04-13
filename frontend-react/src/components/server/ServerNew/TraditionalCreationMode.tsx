@@ -4,7 +4,7 @@ import { Copy, HelpCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 
@@ -51,18 +51,22 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">服务器基本信息</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <Label>服务器名称</Label>
-          <Input
-            placeholder="例如: vanilla-survival"
-            value={serverName}
-            onChange={(e) => {
-              setServerName(e.target.value)
-              if (serverNameError) setServerNameError('')
-            }}
-            className="max-w-md"
-          />
-          {serverNameError && <p className="text-sm text-destructive">{serverNameError}</p>}
+        <CardContent>
+          <Field data-invalid={!!serverNameError || undefined}>
+            <FieldLabel htmlFor="server-name">服务器名称</FieldLabel>
+            <Input
+              id="server-name"
+              placeholder="例如: vanilla-survival"
+              value={serverName}
+              onChange={(e) => {
+                setServerName(e.target.value)
+                if (serverNameError) setServerNameError('')
+              }}
+              aria-invalid={!!serverNameError || undefined}
+              className="max-w-md"
+            />
+            {serverNameError && <FieldError>{serverNameError}</FieldError>}
+          </Field>
         </CardContent>
       </Card>
 

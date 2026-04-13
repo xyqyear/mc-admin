@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import {
   Dialog,
   DialogContent,
@@ -62,9 +62,10 @@ const RenameModal: React.FC<RenameModalProps> = ({
         <DialogHeader>
           <DialogTitle>重命名</DialogTitle>
         </DialogHeader>
-        <div className="space-y-2">
-          <Label>新名称</Label>
+        <Field data-invalid={!!error || undefined}>
+          <FieldLabel htmlFor="rename-new-name">新名称</FieldLabel>
           <Input
+            id="rename-new-name"
             placeholder="输入新名称"
             value={newName}
             onChange={(e) => {
@@ -72,10 +73,11 @@ const RenameModal: React.FC<RenameModalProps> = ({
               if (error) setError('')
             }}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            aria-invalid={!!error || undefined}
             autoFocus
           />
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
+          {error && <FieldError>{error}</FieldError>}
+        </Field>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>
             取消

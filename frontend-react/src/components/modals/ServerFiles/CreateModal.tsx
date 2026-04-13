@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import {
   Dialog,
   DialogContent,
@@ -70,14 +70,14 @@ const CreateModal: React.FC<CreateModalProps> = ({
           <DialogTitle>新建文件/文件夹</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>类型</Label>
+          <Field>
+            <FieldLabel htmlFor="create-file-type">类型</FieldLabel>
             <Select
               value={fileType}
               onValueChange={(v) => v && setFileType(v)}
               itemToStringLabel={(v) => v === 'file' ? '文件' : v === 'directory' ? '文件夹' : v}
             >
-              <SelectTrigger>
+              <SelectTrigger id="create-file-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -85,10 +85,11 @@ const CreateModal: React.FC<CreateModalProps> = ({
                 <SelectItem value="directory">文件夹</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>名称</Label>
+          </Field>
+          <Field data-invalid={!!error || undefined}>
+            <FieldLabel htmlFor="create-file-name">名称</FieldLabel>
             <Input
+              id="create-file-name"
               placeholder="输入文件名或文件夹名"
               value={fileName}
               onChange={(e) => {
@@ -96,9 +97,10 @@ const CreateModal: React.FC<CreateModalProps> = ({
                 if (error) setError('')
               }}
               onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              aria-invalid={!!error || undefined}
             />
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+            {error && <FieldError>{error}</FieldError>}
+          </Field>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>

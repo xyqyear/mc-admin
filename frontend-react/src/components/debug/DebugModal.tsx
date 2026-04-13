@@ -4,7 +4,7 @@ import { Bug, Trash2, Save, RotateCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -146,8 +146,8 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
               <Separator className="flex-1" />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="debug-version">设置存储版本</Label>
+            <Field>
+              <FieldLabel htmlFor="debug-version">设置存储版本</FieldLabel>
               <div className="flex gap-2">
                 <Input
                   id="debug-version"
@@ -166,7 +166,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">设置 localStorage 中存储的版本号，用于测试版本更新提醒</p>
-            </div>
+            </Field>
           </div>
 
           <div className="space-y-3">
@@ -176,8 +176,8 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
               <Separator className="flex-1" />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="debug-remind">设置提醒时间</Label>
+            <Field>
+              <FieldLabel htmlFor="debug-remind">设置提醒时间</FieldLabel>
               <div className="flex gap-2">
                 <Input
                   id="debug-remind"
@@ -196,11 +196,11 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">设置 localStorage 中的提醒时间 (ISO 格式)</p>
-            </div>
+            </Field>
 
-            <div>
-              <Label>快速设置</Label>
-              <div className="mt-2 flex gap-2">
+            <Field>
+              <FieldLabel>快速设置</FieldLabel>
+              <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={handleSetCurrentTime}>
                   设为当前时间
                 </Button>
@@ -208,7 +208,7 @@ const DebugModal: React.FC<DebugModalProps> = ({ visible, onClose }) => {
                   设为一小时前（触发提醒）
                 </Button>
               </div>
-            </div>
+            </Field>
           </div>
 
           <Separator />
