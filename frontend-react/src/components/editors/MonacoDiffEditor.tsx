@@ -1,5 +1,6 @@
 import React from 'react'
 import { DiffEditor } from '@monaco-editor/react'
+import { useMonacoTheme } from '@/components/theme-provider'
 
 export interface MonacoDiffEditorProps {
   original?: string
@@ -7,7 +8,6 @@ export interface MonacoDiffEditorProps {
   onMount?: (editor: any) => void
   height?: string | number
   language?: string
-  theme?: 'vs-light' | 'vs-dark'
   className?: string
   originalTitle?: string
   modifiedTitle?: string
@@ -21,10 +21,10 @@ const MonacoDiffEditor: React.FC<MonacoDiffEditorProps> = ({
   onMount,
   height = '600px',
   language = 'yaml',
-  theme = 'vs-light',
   className,
   options = {}
 }) => {
+  const theme = useMonacoTheme()
   const handleMount = (editor: any) => {
     console.log('Diff editor mounted:', {
       original: original.substring(0, 50) + '...',

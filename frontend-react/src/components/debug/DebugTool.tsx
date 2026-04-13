@@ -1,6 +1,11 @@
 import React, { useState } from 'react'
 import { Bug } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import DebugModal from './DebugModal'
 
 const DebugTool: React.FC = () => {
@@ -12,17 +17,22 @@ const DebugTool: React.FC = () => {
 
   return (
     <>
-      <div className="p-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setModalVisible(true)}
-          className="w-full justify-center text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
-        >
-          <Bug className="mr-1 h-4 w-4" />
-          调试
-        </Button>
-      </div>
+      <Tooltip>
+        <TooltipTrigger
+          className="inline-flex"
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setModalVisible(true)}
+            >
+              <Bug className="h-4 w-4" />
+              <span className="sr-only">调试工具</span>
+            </Button>
+          }
+        />
+        <TooltipContent side="right">调试工具</TooltipContent>
+      </Tooltip>
 
       <DebugModal
         visible={modalVisible}

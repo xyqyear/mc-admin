@@ -107,7 +107,6 @@ const FileEditModal: React.FC<FileEditModalProps> = ({
                     language={language}
                     value={fileContent}
                     onChange={(value: string | undefined) => value !== undefined && setFileContent(value)}
-                    theme="vs-light"
                     options={options}
                   />
                 </div>

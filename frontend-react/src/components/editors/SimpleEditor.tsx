@@ -1,5 +1,6 @@
 import React from 'react'
 import Editor from '@monaco-editor/react'
+import { useMonacoTheme } from '@/components/theme-provider'
 
 export interface SimpleEditorProps {
   value?: string
@@ -8,7 +9,6 @@ export interface SimpleEditorProps {
   height?: string | number
   language?: string
   readOnly?: boolean
-  theme?: 'vs-light' | 'vs-dark'
   className?: string
   options?: any
 }
@@ -20,10 +20,10 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
   height = '500px',
   language = 'text',
   readOnly = false,
-  theme = 'vs-light',
   className,
   options = {}
 }) => {
+  const theme = useMonacoTheme()
   const defaultOptions = {
     fontSize: 13,
     fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',

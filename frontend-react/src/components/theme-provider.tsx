@@ -67,3 +67,13 @@ export const useTheme = () => {
     throw new Error("useTheme must be used within a ThemeProvider")
   return context
 }
+
+export const useMonacoTheme = (): "vs" | "vs-dark" => {
+  const { theme } = useTheme()
+  if (theme === "dark") return "vs-dark"
+  if (theme === "light") return "vs"
+  const prefersDark =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  return prefersDark ? "vs-dark" : "vs"
+}

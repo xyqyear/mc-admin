@@ -19,6 +19,9 @@ import {
   Users,
   FileText,
   ChevronRight,
+  PanelLeftIcon,
+  Sun,
+  Moon,
 } from 'lucide-react'
 
 import {
@@ -34,11 +37,19 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   Collapsible,
   CollapsibleContent,
 } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useTheme } from '@/components/theme-provider'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
@@ -57,6 +68,9 @@ const AppSidebar: React.FC = () => {
   const queryClient = useQueryClient()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
   const { clearToken } = useTokenStore()
+  const { toggleSidebar, state: sidebarState } = useSidebar()
+  const { theme, setTheme } = useTheme()
+  const isDark = theme !== 'light'
 
   const { useServers } = useServerQueries()
   const serversQuery = useServers()
@@ -336,16 +350,57 @@ const AppSidebar: React.FC = () => {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="flex-row items-center justify-around gap-1 group-data-[collapsible=icon]:flex-col-reverse">
+        <Tooltip>
+          <TooltipTrigger
+            className="inline-flex"
+            render={
+              <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} />
+            }
+          >
+            <PanelLeftIcon className="h-4 w-4" />
+            <span className="sr-only">
+              {sidebarState === 'expanded' ? '收起' : '展开'}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {sidebarState === 'expanded' ? '收起' : '展开'}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            className="inline-flex"
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              />
+            }
+          >
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <span className="sr-only">切换主题</span>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {isDark ? '切换到亮色主题' : '切换到深色主题'}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            className="inline-flex"
+            render={
+              <Button variant="ghost" size="icon-sm" onClick={handleLogout} />
+            }
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="sr-only">退出登录</span>
+          </TooltipTrigger>
+          <TooltipContent side="right">退出登录</TooltipContent>
+        </Tooltip>
+
         <DebugTool />
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleLogout} tooltip="退出登录">
-              <LogOut />
-              <span>退出登录</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

@@ -199,7 +199,6 @@ const DirectMode: React.FC<DirectModeProps> = ({
             onMount={(editor: any) => {
               editorRef.current = editor
             }}
-            theme="vs-light"
             path="docker-compose.yml"
           />
         </CardContent>
@@ -262,7 +261,6 @@ const DirectMode: React.FC<DirectModeProps> = ({
                     language="yaml"
                     original={composeContent || ''}
                     modified={rawYaml}
-                    theme="vs-light"
                     options={{
                       minimap: { enabled: false },
                       scrollBeyondLastLine: false,

@@ -155,7 +155,6 @@ const DefaultVariables: React.FC = () => {
                 language="json"
                 original={JSON.stringify(originalVariablesRef.current, null, 2)}
                 modified={JSON.stringify(currentApiVariables, null, 2)}
-                theme="vs-light"
               />
             </div>
           </div>

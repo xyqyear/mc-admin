@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
 import { type IDisposable } from 'monaco-editor'
+import { useMonacoTheme } from '@/components/theme-provider'
 
 export interface ComposeYamlEditorProps {
   value?: string
@@ -9,7 +10,6 @@ export interface ComposeYamlEditorProps {
   onMount?: (editor: any) => void
   height?: string | number
   readOnly?: boolean
-  theme?: 'vs-light' | 'vs-dark'
   className?: string
   path?: string
   autoHeight?: boolean
@@ -22,12 +22,12 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
   onMount,
   height = '500px',
   readOnly = false,
-  theme = 'vs-light',
   className,
   path = 'docker-compose.yml',
   autoHeight = false,
   minHeight = 300
 }) => {
+  const theme = useMonacoTheme()
   const editorRef = useRef<any>(null)
   const yamlDisposableRef = useRef<IDisposable | null>(null)
   const [editorHeight, setEditorHeight] = useState<number>(minHeight)

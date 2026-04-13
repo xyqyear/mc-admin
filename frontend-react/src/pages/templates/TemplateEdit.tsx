@@ -260,7 +260,6 @@ const TemplateEdit: React.FC = () => {
             onChange={(value) => setYamlContent(value || "")}
             autoHeight
             minHeight={400}
-            theme="vs-light"
             path="template.yml"
           />
         </CardContent>
@@ -344,7 +343,6 @@ const TemplateEdit: React.FC = () => {
                     language="yaml"
                     original={originalYamlRef.current}
                     modified={yamlContent}
-                    theme="vs-light"
                   />
                 </div>
               </TabsContent>
@@ -355,7 +353,6 @@ const TemplateEdit: React.FC = () => {
                     language="json"
                     original={JSON.stringify(originalVariablesRef.current, null, 2)}
                     modified={JSON.stringify(currentApiVariables, null, 2)}
-                    theme="vs-light"
                   />
                 </div>
               </TabsContent>

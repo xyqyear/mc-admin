@@ -9,7 +9,10 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
-    <SidebarProvider className="h-screen">
+    <SidebarProvider
+      className="h-screen"
+      style={{ '--sidebar-width': '13rem' } as React.CSSProperties}
+    >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
         <main className="flex-1 p-4 overflow-auto">{children}</main>

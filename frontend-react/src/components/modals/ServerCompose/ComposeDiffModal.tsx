@@ -52,7 +52,6 @@ const ComposeDiffModal: React.FC<ComposeDiffModalProps> = ({
               modified={modifiedContent}
               originalTitle={originalTitle}
               modifiedTitle={modifiedTitle}
-              theme="vs-light"
             />
           </div>
         </div>

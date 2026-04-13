@@ -102,7 +102,6 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
             onMount={(editor: any) => {
               editorRef.current = editor
             }}
-            theme="vs-light"
             path="docker-compose.yml"
           />
         </CardContent>

@@ -95,7 +95,6 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
                     modified={fileContent}
                     originalTitle="文件原始内容"
                     modifiedTitle="当前编辑内容"
-                    theme="vs-light"
                   />
                 </div>
               )

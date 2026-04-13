@@ -335,7 +335,6 @@ const DynamicConfig: React.FC = () => {
                     language="json"
                     original={JSON.stringify(submitDialogData.latestConfigData, null, 2)}
                     modified={JSON.stringify(formData, null, 2)}
-                    theme="vs-light"
                     options={{
                       minimap: { enabled: false },
                       scrollBeyondLastLine: false,
@@ -396,7 +395,6 @@ const DynamicConfig: React.FC = () => {
               modified={JSON.stringify(formData, null, 2)}
               originalTitle="服务器当前配置"
               modifiedTitle="表单编辑配置"
-              theme="vs-light"
             />
           </div>
           <DialogFooter>
