@@ -40,6 +40,7 @@ import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
 import { EmptyState } from '@/components/common/EmptyState'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import { useConfirm } from '@/hooks/useConfirm'
 import type { Snapshot } from '@/hooks/api/snapshotApi'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -56,9 +57,9 @@ const columns: ColumnDef<Snapshot, any>[] = [
       return (
         <Tooltip>
           <TooltipTrigger>
-            <Badge variant="outline" className="font-mono bg-blue-50 text-blue-700 border-blue-200">
+            <StatusBadge tone="info" badgeStyle="soft" className="font-mono">
               {snapshot.short_id}
-            </Badge>
+            </StatusBadge>
           </TooltipTrigger>
           <TooltipContent>完整ID: {snapshot.id}</TooltipContent>
         </Tooltip>
@@ -94,9 +95,9 @@ const columns: ColumnDef<Snapshot, any>[] = [
     cell: ({ row }) => {
       const version = row.original.program_version
       return version ? (
-        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+        <StatusBadge tone="success" badgeStyle="soft" className="text-xs">
           {version}
-        </Badge>
+        </StatusBadge>
       ) : (
         <span className="text-xs text-muted-foreground">-</span>
       )
@@ -302,8 +303,8 @@ const Snapshots: React.FC = () => {
 
             {unlockOutput && (
               <div>
-                <span className="font-semibold text-sm text-green-600">解锁输出：</span>
-                <pre className="mt-2 p-3 bg-green-50 rounded-md border border-green-200 overflow-auto max-h-60 text-sm">
+                <span className="font-semibold text-sm text-green-600 dark:text-green-400">解锁输出：</span>
+                <pre className="mt-2 p-3 bg-green-50 dark:bg-green-950/40 rounded-md border border-green-200 dark:border-green-900 overflow-auto max-h-60 text-sm">
                   {unlockOutput}
                 </pre>
               </div>

@@ -28,6 +28,7 @@ import { Spinner } from '@/components/ui/spinner'
 import PageHeader from '@/components/layout/PageHeader'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { DataTable } from '@/components/common/DataTable'
+import { StatusBadge, type BadgeTone } from '@/components/common/StatusBadge'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/hooks/queries/base/useDnsQueries'
 import { useUpdateDNS, useRefreshDNSData } from '@/hooks/mutations/useDnsMutations'
 import type { DNSRecord } from '@/types/Dns'
@@ -46,12 +47,12 @@ const dnsRecordsColumns: ColumnDef<DNSRecord, any>[] = [
     size: 100,
     cell: ({ row }) => {
       const type = row.getValue<string>('record_type')
-      const colorClass =
-        type === 'A' ? 'bg-blue-100 text-blue-800 hover:bg-blue-100' :
-        type === 'AAAA' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
-        type === 'SRV' ? 'bg-orange-100 text-orange-800 hover:bg-orange-100' :
-        ''
-      return <Badge className={colorClass}>{type}</Badge>
+      const tone: BadgeTone | null =
+        type === 'A' ? 'info' :
+        type === 'AAAA' ? 'success' :
+        type === 'SRV' ? 'warning' :
+        null
+      return tone ? <StatusBadge tone={tone}>{type}</StatusBadge> : <Badge>{type}</Badge>
     },
   },
   {
@@ -195,10 +196,12 @@ const DnsManagement: React.FC = () => {
   const renderStatusIndicator = () => {
     if (statusLoading || enabledLoading) {
       return (
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+        <StatusBadge
+          tone="info"
+          iconSlot={<Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+        >
           检查中...
-        </Badge>
+        </StatusBadge>
       )
     }
 
@@ -213,36 +216,32 @@ const DnsManagement: React.FC = () => {
 
     if (!dnsEnabled?.enabled) {
       return (
-        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-          <XCircle className="mr-1 h-3 w-3" />
+        <StatusBadge tone="warning" icon={XCircle}>
           DNS管理未启用
-        </Badge>
+        </StatusBadge>
       )
     }
 
     if (!dnsStatus?.initialized) {
       return (
-        <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
-          <AlertCircle className="mr-1 h-3 w-3" />
+        <StatusBadge tone="warning" icon={AlertCircle}>
           DNS管理器未初始化
-        </Badge>
+        </StatusBadge>
       )
     }
 
     if (hasActualChanges(dnsStatus)) {
       return (
-        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-          <AlertCircle className="mr-1 h-3 w-3" />
+        <StatusBadge tone="warning" icon={AlertCircle}>
           有待同步的变更
-        </Badge>
+        </StatusBadge>
       )
     }
 
     return (
-      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-        <CheckCircle2 className="mr-1 h-3 w-3" />
+      <StatusBadge tone="success" icon={CheckCircle2}>
         状态正常
-      </Badge>
+      </StatusBadge>
     )
   }
 
@@ -449,9 +448,7 @@ const DnsManagement: React.FC = () => {
                 <Globe className="h-4 w-4" />
                 <span>DNS记录</span>
                 {dnsRecords && (
-                  <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-                    {dnsRecords.length} 条记录
-                  </Badge>
+                  <StatusBadge tone="info">{dnsRecords.length} 条记录</StatusBadge>
                 )}
               </CardTitle>
             </CardHeader>
@@ -488,9 +485,9 @@ const DnsManagement: React.FC = () => {
                 <Share2 className="h-4 w-4" />
                 <span>MC Router路由</span>
                 {routerRoutes && (
-                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                  <StatusBadge tone="success">
                     {Object.keys(routerRoutes).length} 条路由
-                  </Badge>
+                  </StatusBadge>
                 )}
               </CardTitle>
             </CardHeader>

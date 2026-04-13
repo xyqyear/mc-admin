@@ -25,11 +25,12 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
 import { DataTable } from '@/components/common/DataTable';
+import { StatusBadge } from '@/components/common/StatusBadge';
+import { PlayerOnlineBadge } from '@/components/common/PlayerOnlineBadge';
 import {
   usePlayerByUUID,
   usePlayerSessions,
@@ -124,7 +125,7 @@ const sessionColumns: ColumnDef<SessionInfo, any>[] = [
       const leftAt = row.getValue<string | null>('left_at');
       return leftAt
         ? new Date(leftAt).toLocaleString('zh-CN')
-        : <Badge className="bg-green-100 text-green-800 hover:bg-green-100">在线中</Badge>;
+        : <StatusBadge tone="success">在线中</StatusBadge>;
     },
     size: 180,
   },
@@ -265,14 +266,7 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
             <DialogTitle className="flex items-center gap-2">
               <User className="h-4 w-4" />
               <span>玩家详情</span>
-              {player && (
-                <Badge className={player.is_online
-                  ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                  : ''
-                }>
-                  {player.is_online ? '在线' : '离线'}
-                </Badge>
-              )}
+              {player && <PlayerOnlineBadge online={player.is_online} />}
             </DialogTitle>
             <DialogDescription className="sr-only">
               Player detail information

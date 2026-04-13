@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 import { DataTable } from '@/components/common/DataTable'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import { useCronJob, useCronJobExecutions, useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
 import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressionDisplay } from '@/components/cron'
 import { formatDateTime } from '@/utils/formatUtils'
@@ -225,9 +226,9 @@ const CronJobDetailModal: React.FC<CronJobDetailModalProps> = ({
                           </div>
                           <div>
                             <span className="text-muted-foreground">任务类型:</span>
-                            <Badge variant="outline" className="ml-2 bg-blue-100 text-blue-700 border-blue-200">
+                            <StatusBadge tone="info" badgeStyle="soft" className="ml-2">
                               {jobDetail.identifier}
-                            </Badge>
+                            </StatusBadge>
                           </div>
                           <div>
                             <span className="text-muted-foreground">状态:</span>

@@ -35,6 +35,7 @@ import {
 
 import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
+import { StatusBadge, type BadgeTone } from '@/components/common/StatusBadge'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -126,9 +127,9 @@ const snapshotColumns: ColumnDef<Snapshot, any>[] = [
     cell: ({ row }) => (
       <Tooltip>
         <TooltipTrigger>
-          <Badge variant="outline" className="font-mono bg-blue-50 text-blue-700 border-blue-200">
+          <StatusBadge tone="info" badgeStyle="soft" className="font-mono">
             {row.original.short_id}
-          </Badge>
+          </StatusBadge>
         </TooltipTrigger>
         <TooltipContent>完整ID: {row.original.id}</TooltipContent>
       </Tooltip>
@@ -250,10 +251,10 @@ interface PreviewDialogProps {
   isServerMode?: boolean
 }
 
-const actionColorMap: Record<string, string> = {
-  updated: 'bg-orange-100 text-orange-700 border-orange-200',
-  deleted: 'bg-red-100 text-red-700 border-red-200',
-  restored: 'bg-green-100 text-green-700 border-green-200',
+const actionToneMap: Record<string, BadgeTone> = {
+  updated: 'warning',
+  deleted: 'danger',
+  restored: 'success',
 }
 
 const actionLabelMap: Record<string, string> = {
@@ -287,7 +288,7 @@ const PreviewDialog: React.FC<PreviewDialogProps> = ({
       ) : previewData ? (
         <div className="space-y-4">
           {previewSummary && (
-            <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+            <div className="bg-blue-50 dark:bg-blue-950/40 p-3 rounded-md border border-blue-200 dark:border-blue-900">
               <span className="font-semibold text-sm">{previewSummary}</span>
             </div>
           )}
@@ -302,12 +303,15 @@ const PreviewDialog: React.FC<PreviewDialogProps> = ({
             {previewData.map((action, index) => (
               <div key={index} className="p-3 border rounded-md bg-muted/50">
                 <div className="flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className={actionColorMap[action.action || ''] || ''}
-                  >
-                    {actionLabelMap[action.action || ''] || action.action || action.message_type}
-                  </Badge>
+                  {(() => {
+                    const tone = actionToneMap[action.action || '']
+                    const label = actionLabelMap[action.action || ''] || action.action || action.message_type
+                    return tone ? (
+                      <StatusBadge tone={tone} badgeStyle="soft">{label}</StatusBadge>
+                    ) : (
+                      <Badge variant="outline">{label}</Badge>
+                    )
+                  })()}
                   <span className="font-mono text-xs">{action.item}</span>
                   {action.action !== 'deleted' && action.size != null && (
                     <span className="text-xs text-muted-foreground">

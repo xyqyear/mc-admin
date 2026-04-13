@@ -1,5 +1,5 @@
 import React from 'react'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import { getGithubIssueUrl } from '@/config/versionConfig'
 
 export const parseIssueReferences = (text: string): React.ReactNode[] => {
@@ -18,17 +18,18 @@ export const parseIssueReferences = (text: string): React.ReactNode[] => {
     }
 
     parts.push(
-      <Badge
+      <StatusBadge
         key={`issue-${issueId}-${matchIndex}`}
-        variant="secondary"
-        className="cursor-pointer bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 hover:opacity-90 transition-colors mx-0.5"
+        tone="info"
+        badgeStyle="soft"
+        className="cursor-pointer hover:opacity-80 transition-opacity mx-0.5"
         onClick={(e) => {
           e.stopPropagation()
           window.open(getGithubIssueUrl(issueId), '_blank', 'noopener,noreferrer')
         }}
       >
         {fullMatch}
-      </Badge>
+      </StatusBadge>
     )
 
     lastIndex = matchIndex + fullMatch.length

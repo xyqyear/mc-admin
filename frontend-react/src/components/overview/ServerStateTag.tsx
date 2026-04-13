@@ -1,5 +1,5 @@
 import React from 'react'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge, type BadgeTone } from '@/components/common/StatusBadge'
 import type { ServerStatus } from '@/types/Server'
 import ServerStateIcon from '@/components/overview/ServerStateIcon'
 
@@ -7,53 +7,56 @@ interface ServerStateTagProps {
   state: ServerStatus
 }
 
-const tagConfigs: Record<string, { text: string; description: string; className: string }> = {
+const tagConfigs: Record<string, { text: string; description: string; tone: BadgeTone }> = {
   HEALTHY: {
     text: '健康',
     description: '服务器正在运行且响应正常',
-    className: 'bg-green-100 text-green-800 hover:bg-green-100',
+    tone: 'success',
   },
   RUNNING: {
     text: '运行中',
     description: '服务器正在运行但健康状态未知',
-    className: 'bg-blue-100 text-blue-800 hover:bg-blue-100',
+    tone: 'info',
   },
   STARTING: {
     text: '启动中',
     description: '服务器正在启动',
-    className: 'bg-blue-100 text-blue-800 hover:bg-blue-100',
+    tone: 'info',
   },
   CREATED: {
     text: '已停止',
     description: '容器已创建但未运行',
-    className: 'bg-red-100 text-red-800 hover:bg-red-100',
+    tone: 'danger',
   },
   EXISTS: {
     text: '未创建',
     description: '服务器文件存在但无容器',
-    className: 'bg-gray-100 text-gray-800 hover:bg-gray-100',
+    tone: 'neutral',
   },
   REMOVED: {
     text: '已删除',
     description: '服务器已被删除',
-    className: 'bg-red-100 text-red-800 hover:bg-red-100',
+    tone: 'danger',
   },
 }
 
 const defaultConfig = {
   text: '未知',
   description: '未知服务器状态',
-  className: 'bg-gray-100 text-gray-800 hover:bg-gray-100',
+  tone: 'neutral' as BadgeTone,
 }
 
 const ServerStateTag: React.FC<ServerStateTagProps> = ({ state }) => {
-  const { text, description, className } = tagConfigs[state] || defaultConfig
+  const { text, description, tone } = tagConfigs[state] || defaultConfig
 
   return (
-    <Badge className={className} title={description}>
-      <ServerStateIcon state={state} className="mr-1" />
+    <StatusBadge
+      tone={tone}
+      title={description}
+      iconSlot={<ServerStateIcon state={state} className="mr-1" />}
+    >
       {text}
-    </Badge>
+    </StatusBadge>
   )
 }
 

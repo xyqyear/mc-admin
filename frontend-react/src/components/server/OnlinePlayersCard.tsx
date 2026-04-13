@@ -1,7 +1,7 @@
 import React from 'react';
 import { User, Clock } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/common/StatusBadge';
 import { useServerOnlinePlayers } from '@/hooks/queries/base/usePlayerQueries';
 import { MCAvatar } from '@/components/players/MCAvatar';
 
@@ -39,9 +39,7 @@ export const OnlinePlayersCard: React.FC<OnlinePlayersCardProps> = ({
           <div className="flex items-center gap-2">
             <User className="h-4 w-4" />
             <span>在线玩家</span>
-            <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-              {onlinePlayers.length} 人
-            </Badge>
+            <StatusBadge tone="info">{onlinePlayers.length} 人</StatusBadge>
           </div>
         </CardTitle>
       </CardHeader>
@@ -72,9 +70,9 @@ export const OnlinePlayersCard: React.FC<OnlinePlayersCardProps> = ({
                   </div>
                 </div>
 
-                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 shrink-0">
+                <StatusBadge tone="success" className="shrink-0">
                   在线
-                </Badge>
+                </StatusBadge>
               </div>
             ))}
           </div>

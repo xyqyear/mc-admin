@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import {
   Dialog,
   DialogContent,
@@ -83,9 +84,9 @@ const FileDiffModal: React.FC<FileDiffModalProps> = ({
                 <div className="h-full">
                   {config?.supportsValidation && (
                     <div className="px-3 py-2 bg-muted border-b text-xs text-muted-foreground">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <StatusBadge tone="info">
                         {config?.description} - 语法高亮已启用
-                      </span>
+                      </StatusBadge>
                     </div>
                   )}
                   <MonacoDiffEditor

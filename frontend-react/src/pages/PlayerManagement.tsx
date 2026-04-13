@@ -16,7 +16,6 @@ import {
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
@@ -24,6 +23,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { SortableHeader } from '@/components/common/SortableHeader';
 import { EmptyState } from '@/components/common/EmptyState';
+import { PlayerOnlineBadge } from '@/components/common/PlayerOnlineBadge';
 import PlayerFilters from '@/components/players/PlayerFilters';
 import PlayerDetailDialog from '@/components/players/PlayerDetailDialog';
 import { MCAvatar } from '@/components/players/MCAvatar';
@@ -77,17 +77,9 @@ const columns: ColumnDef<PlayerSummary, any>[] = [
   {
     accessorKey: 'is_online',
     header: '状态',
-    cell: ({ row }) => {
-      const isOnline = row.getValue<boolean>('is_online');
-      return (
-        <Badge className={isOnline
-          ? 'bg-green-100 text-green-800 hover:bg-green-100'
-          : ''
-        }>
-          {isOnline ? '在线' : '离线'}
-        </Badge>
-      );
-    },
+    cell: ({ row }) => (
+      <PlayerOnlineBadge online={row.getValue<boolean>('is_online')} />
+    ),
     size: 100,
   },
   {

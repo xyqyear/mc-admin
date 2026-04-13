@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import {
   Dialog,
   DialogContent,
@@ -96,9 +97,9 @@ const FileEditModal: React.FC<FileEditModalProps> = ({
 
                   {config?.supportsValidation && (
                     <div className="text-xs text-muted-foreground px-2">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <StatusBadge tone="info">
                         {config?.description} - 支持语法检查
-                      </span>
+                      </StatusBadge>
                     </div>
                   )}
 

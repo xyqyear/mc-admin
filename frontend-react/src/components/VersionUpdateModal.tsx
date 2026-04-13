@@ -2,8 +2,8 @@ import React from 'react'
 import { Clock, CheckCircle, Bug, Zap } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import {
   Dialog,
   DialogContent,
@@ -100,9 +100,9 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
                   )}
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
+                      <StatusBadge tone="info" badgeStyle="soft">
                         v{update.version}
-                      </Badge>
+                      </StatusBadge>
                       <span className="text-xs text-muted-foreground">{update.date}</span>
                     </div>
                     <h5 className="text-base font-semibold mb-2">

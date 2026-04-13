@@ -1,5 +1,5 @@
 import React from 'react'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/common/StatusBadge'
 
 interface PageHeaderProps {
   title: string
@@ -25,11 +25,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
           </span>
         )}
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-        {serverTag && (
-          <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-            {serverTag}
-          </Badge>
-        )}
+        {serverTag && <StatusBadge tone="info">{serverTag}</StatusBadge>}
       </div>
       {actions && (
         <div className="flex items-center gap-2">

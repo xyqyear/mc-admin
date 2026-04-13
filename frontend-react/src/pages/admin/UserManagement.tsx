@@ -18,7 +18,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Field, FieldLabel, FieldError } from '@/components/ui/field'
@@ -39,6 +38,7 @@ import {
 
 import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useAllUsers } from '@/hooks/queries/base/useUserQueries'
 import { useCreateUser, useDeleteUser } from '@/hooks/mutations/useUserMutations'
@@ -78,13 +78,9 @@ const staticColumns: ColumnDef<UserType, any>[] = [
     cell: ({ row }) => {
       const role = row.original.role
       return role === UserRole.OWNER ? (
-        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-          超级管理员
-        </Badge>
+        <StatusBadge tone="warning" badgeStyle="soft">超级管理员</StatusBadge>
       ) : (
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-          管理员
-        </Badge>
+        <StatusBadge tone="info" badgeStyle="soft">管理员</StatusBadge>
       )
     },
   },
