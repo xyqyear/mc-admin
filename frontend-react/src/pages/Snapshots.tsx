@@ -5,7 +5,6 @@ import {
   Server,
   Trash2,
   Plus,
-  RotateCw,
   Unlock,
   Loader2,
 } from 'lucide-react'
@@ -41,6 +40,7 @@ import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import type { Snapshot } from '@/hooks/api/snapshotApi'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
@@ -122,10 +122,20 @@ const Snapshots: React.FC = () => {
   const {
     data: snapshots = [],
     isLoading,
+    isFetching,
     isError,
     error,
     refetch,
   } = useGlobalSnapshots()
+
+  const handleRefresh = async () => {
+    try {
+      await refetch()
+      toast.success('刷新成功')
+    } catch {
+      toast.error('刷新失败')
+    }
+  }
   const { refetch: refetchSnapshotLocks } = useSnapshotLocks(false)
 
   const createSnapshotMutation = useCreateGlobalSnapshot()
@@ -224,14 +234,7 @@ const Snapshots: React.FC = () => {
               {isLoadingLocks ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Unlock className="mr-1 h-4 w-4" />}
               解锁仓库
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RotateCw className="mr-1 h-4 w-4" />
-              刷新
-            </Button>
+            <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
             <Button
               onClick={handleCreateSnapshot}
               disabled={createSnapshotMutation.isPending}

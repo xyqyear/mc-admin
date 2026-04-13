@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Settings,
-  RotateCw,
   GitCompareArrows,
   Save,
   Undo2,
@@ -37,6 +36,7 @@ import validator from '@rjsf/validator-ajv8'
 import { MonacoDiffEditor } from '@/components/editors'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import PageHeader from '@/components/layout/PageHeader'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { useConfigModules, useModuleConfig, useModuleSchema } from '@/hooks/queries/base/useConfigQueries'
 import { useUpdateModuleConfig, useResetModuleConfig } from '@/hooks/mutations/useConfigMutations'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -58,12 +58,14 @@ const DynamicConfig: React.FC = () => {
   const {
     data: moduleConfig,
     isLoading: configLoading,
+    isFetching: configFetching,
     error: configError,
     refetch: refetchConfig,
   } = useModuleConfig(selectedModule)
   const {
     data: moduleSchema,
     isLoading: schemaLoading,
+    isFetching: schemaFetching,
     error: schemaError,
   } = useModuleSchema(selectedModule)
 
@@ -208,10 +210,11 @@ const DynamicConfig: React.FC = () => {
                 <GitCompareArrows className="mr-2 h-4 w-4" />
                 差异对比
               </Button>
-              <Button variant="outline" onClick={handleReloadConfig}>
-                <RotateCw className="mr-2 h-4 w-4" />
-                重新载入
-              </Button>
+              <RefreshButton
+                onClick={handleReloadConfig}
+                isRefreshing={configFetching || schemaFetching}
+                label="重新载入"
+              />
               <Button
                 variant="destructive"
                 onClick={handleResetToDefaults}

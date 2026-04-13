@@ -3,13 +3,13 @@ import {
   Trash2,
   Plus,
   ArrowUp,
-  RotateCw,
   Upload,
   Archive,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import FileSnapshotActions from '@/components/files/FileSnapshotActions'
 
 interface FileToolbarProps {
@@ -100,13 +100,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
         <Plus className="mr-2 h-4 w-4" />
         新建文件/文件夹
       </Button>
-      <Button variant="outline" onClick={onRefresh} disabled={isLoadingFiles}>
-        {isLoadingFiles
-          ? <Spinner className="mr-2 size-4" />
-          : <RotateCw className="mr-2 h-4 w-4" />
-        }
-        刷新
-      </Button>
+      <RefreshButton onClick={onRefresh} isRefreshing={isLoadingFiles} />
 
       {/* Bulk delete */}
       {selectedFiles.length > 0 && (

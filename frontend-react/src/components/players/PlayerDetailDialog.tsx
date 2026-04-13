@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Trophy,
   Calendar,
-  RotateCw,
 } from 'lucide-react';
 import {
   type ColumnDef,
@@ -25,12 +24,11 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
 
 import { DataTable } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { PlayerOnlineBadge } from '@/components/common/PlayerOnlineBadge';
+import { RefreshButton } from '@/components/common/RefreshButton';
 import {
   usePlayerByUUID,
   usePlayerSessions,
@@ -157,7 +155,7 @@ const chatColumns: ColumnDef<ChatMessageInfo, any>[] = [
     accessorKey: 'message_text',
     header: '消息内容',
     cell: ({ row }) => (
-      <span className="truncate block max-w-[300px]" title={row.getValue<string>('message_text')}>
+      <span className="truncate block max-w-75" title={row.getValue<string>('message_text')}>
         {row.getValue<string>('message_text')}
       </span>
     ),
@@ -169,7 +167,7 @@ const achievementColumns: ColumnDef<AchievementInfo, any>[] = [
     accessorKey: 'achievement_name',
     header: '成就名称',
     cell: ({ row }) => (
-      <span className="truncate block max-w-[200px]" title={row.getValue<string>('achievement_name')}>
+      <span className="truncate block max-w-50" title={row.getValue<string>('achievement_name')}>
         {row.getValue<string>('achievement_name')}
       </span>
     ),
@@ -327,18 +325,12 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                             title="查看皮肤"
                           />
                         )}
-                        <Button
+                        <RefreshButton
                           size="sm"
-                          variant="outline"
-                          disabled={refreshPlayerSkinMutation.isPending}
+                          isRefreshing={refreshPlayerSkinMutation.isPending}
                           onClick={handleRefreshSkin}
-                        >
-                          {refreshPlayerSkinMutation.isPending
-                            ? <Spinner className="mr-1.5 size-3.5" />
-                            : <RotateCw className="mr-1.5 h-3.5 w-3.5" />
-                          }
-                          刷新皮肤
-                        </Button>
+                          label="刷新皮肤"
+                        />
                       </div>
 
                       {/* Details */}

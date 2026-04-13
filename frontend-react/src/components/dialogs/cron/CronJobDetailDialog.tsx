@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Info, History, RotateCw } from 'lucide-react'
+import { Info, History } from 'lucide-react'
 import {
   type ColumnDef,
   getCoreRowModel,
@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 import { DataTable } from '@/components/common/DataTable'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { useCronJob, useCronJobExecutions, useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
 import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressionDisplay } from '@/components/cron'
 import { formatDateTime } from '@/utils/formatUtils'
@@ -165,15 +166,7 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                   <span className="text-sm font-normal text-muted-foreground">- {jobDetail.name}</span>
                 )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={jobLoading}
-              >
-                {jobLoading ? <Spinner className="mr-1 size-3.5" /> : <RotateCw className="mr-1 h-3.5 w-3.5" />}
-                刷新
-              </Button>
+              <RefreshButton size="sm" onClick={handleRefresh} isRefreshing={jobLoading} />
             </DialogTitle>
           </DialogHeader>
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
-import { Bug, Trash2, Save, RotateCw } from 'lucide-react'
+import { Bug, Trash2, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { Input } from '@/components/ui/input'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -224,10 +225,7 @@ const DebugDialog: React.FC<DebugDialogProps> = ({ open, onClose }) => {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={refreshData}>
-            <RotateCw className="mr-1 h-4 w-4" />
-            刷新数据
-          </Button>
+          <RefreshButton onClick={refreshData} label="刷新数据" />
           <Button variant="destructive" onClick={handleClearAll}>
             <Trash2 className="mr-1 h-4 w-4" />
             清空所有

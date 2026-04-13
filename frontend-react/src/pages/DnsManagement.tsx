@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Globe,
-  RotateCw,
   RefreshCw,
   Settings,
   Share2,
@@ -29,6 +28,7 @@ import PageHeader from '@/components/layout/PageHeader'
 import LoadingSpinner from '@/components/layout/LoadingSpinner'
 import { DataTable } from '@/components/common/DataTable'
 import { StatusBadge, type BadgeTone } from '@/components/common/StatusBadge'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/hooks/queries/base/useDnsQueries'
 import { useUpdateDNS, useRefreshDNSData } from '@/hooks/mutations/useDnsMutations'
 import type { DNSRecord } from '@/types/Dns'
@@ -401,18 +401,11 @@ const DnsManagement: React.FC = () => {
         actions={
           <>
             {renderStatusIndicator()}
-            <Button
-              variant="outline"
+            <RefreshButton
               onClick={handleRefresh}
-              disabled={refreshDataMutation.isPending}
+              isRefreshing={refreshDataMutation.isPending}
               title="重新获取DNS记录和路由信息"
-            >
-              {refreshDataMutation.isPending
-                ? <Spinner className="mr-2 size-4" />
-                : <RotateCw className="mr-2 h-4 w-4" />
-              }
-              刷新
-            </Button>
+            />
             <Button
               onClick={handleUpdate}
               disabled={updateDNSMutation.isPending || !dnsEnabled?.enabled}

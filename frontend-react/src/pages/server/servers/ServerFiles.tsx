@@ -56,7 +56,7 @@ const ServerFiles: React.FC = () => {
 
   const [inputSearchTerm, setInputSearchTerm] = useState(searchQuery)
 
-  const { data: fileData, isLoading: isLoadingFiles, error: filesError, refetch } = useFileList(id, currentPath)
+  const { data: fileData, isLoading: isLoadingFiles, isFetching: isFetchingFiles, error: filesError, refetch } = useFileList(id, currentPath)
 
   const filteredFileData = React.useMemo(() => {
     if (!fileData?.items || !searchQuery.trim()) {
@@ -457,7 +457,7 @@ const ServerFiles: React.FC = () => {
             currentPath={currentPath}
             selectedFiles={selectedFiles}
             serverId={id || ''}
-            isLoadingFiles={isLoadingFiles}
+            isLoadingFiles={isFetchingFiles}
             createArchiveMutation={createArchiveMutation}
             populateServerMutation={populateServerMutation}
             bulkDeleteMutation={bulkDeleteMutation}

@@ -110,6 +110,12 @@ src/
 │   │       └── DirectMode.tsx           # Direct YAML editing
 │   │
 │   ├── common/              # Shared components
+│   │   ├── DataTable.tsx                # TanStack Table wrapper
+│   │   ├── SortableHeader.tsx           # Sortable column header
+│   │   ├── StatusBadge.tsx              # Tone-based status badge
+│   │   ├── EmptyState.tsx               # Empty list placeholder
+│   │   ├── PlayerOnlineBadge.tsx        # Online/offline dot badge
+│   │   ├── RefreshButton.tsx            # Unified refresh button with spin-on-load
 │   │   └── ServerNameTag.tsx            # Clickable server name tags
 │   │
 │   ├── players/             # Player management components

@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 import {
   Trash2,
   Download,
-  RotateCw,
   Upload,
   File,
   Folder,
@@ -31,6 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
 import ArchiveUploadDialog from '@/components/dialogs/ArchiveUploadDialog'
 import ArchiveRenameDialog from '@/components/dialogs/ArchiveRenameDialog'
@@ -53,7 +53,7 @@ const ArchiveManagement: React.FC = () => {
   const { useDeleteItem, downloadFile } = useArchiveMutations()
 
   // Query data
-  const { data: fileData, isLoading, refetch } = useArchiveFileList()
+  const { data: fileData, isLoading, isFetching, refetch } = useArchiveFileList()
   const archiveFiles = useMemo(() => fileData?.items || [], [fileData?.items])
 
   // Mutation hooks
@@ -311,17 +311,7 @@ const ArchiveManagement: React.FC = () => {
               <Upload className="mr-2 h-4 w-4" />
               上传文件
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              {isLoading
-                ? <Spinner className="mr-2 size-4" />
-                : <RotateCw className="mr-2 h-4 w-4" />
-              }
-              刷新
-            </Button>
+            <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
             {selectedPaths.length > 0 && (
               <Button
                 variant="destructive"

@@ -1,9 +1,9 @@
 import React, { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import {
   FileText,
   Plus,
-  RefreshCw,
   Pencil,
   Trash2,
   Copy,
@@ -30,6 +30,7 @@ import PageHeader from "@/components/layout/PageHeader"
 import { DataTable } from "@/components/common/DataTable"
 import { SortableHeader } from "@/components/common/SortableHeader"
 import { EmptyState } from "@/components/common/EmptyState"
+import { RefreshButton } from "@/components/common/RefreshButton"
 import { useConfirm } from "@/hooks/useConfirm"
 import { useTemplates } from "@/hooks/queries/base/useTemplateQueries"
 import { useTemplateMutations } from "@/hooks/mutations/useTemplateMutations"
@@ -42,9 +43,19 @@ const TemplateList: React.FC = () => {
   const {
     data: templates = [],
     isLoading,
+    isFetching,
     error,
     refetch,
   } = useTemplates()
+
+  const handleRefresh = async () => {
+    try {
+      await refetch()
+      toast.success("刷新成功")
+    } catch {
+      toast.error("刷新失败")
+    }
+  }
 
   const { useDeleteTemplate } = useTemplateMutations()
   const deleteMutation = useDeleteTemplate()
@@ -182,10 +193,7 @@ const TemplateList: React.FC = () => {
               <Settings className="mr-1 h-4 w-4" />
               默认变量配置
             </Button>
-            <Button variant="outline" onClick={() => refetch()}>
-              <RefreshCw className="mr-1 h-4 w-4" />
-              刷新
-            </Button>
+            <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
           </div>
 
           {error ? (

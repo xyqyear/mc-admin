@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
+import { toast } from 'sonner'
 import {
   Clock,
-  RotateCw,
   Plus,
   Play,
   Pause,
@@ -19,10 +19,10 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/spinner'
 
 import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
+import { RefreshButton } from '@/components/common/RefreshButton'
 import { EmptyState } from '@/components/common/EmptyState'
 import { useRegisteredCronJobs, useAllCronJobs } from '@/hooks/queries/base/useCronQueries'
 import { useCronMutations } from '@/hooks/mutations/useCronMutations'
@@ -44,8 +44,17 @@ const CronManagement: React.FC = () => {
     status: ['active', 'paused'],
   })
 
-  const { data: registeredJobs, isLoading: jobsLoading, refetch: refetchJobs } = useRegisteredCronJobs()
-  const { data: cronJobs = [], isLoading: cronJobsLoading, error: cronJobsError, refetch: refetchCronJobs } = useAllCronJobs(filters)
+  const { data: registeredJobs, isFetching: jobsFetching, refetch: refetchJobs } = useRegisteredCronJobs()
+  const { data: cronJobs = [], isLoading: cronJobsLoading, isFetching: cronJobsFetching, error: cronJobsError, refetch: refetchCronJobs } = useAllCronJobs(filters)
+
+  const handleRefresh = async () => {
+    try {
+      await Promise.all([refetchJobs(), refetchCronJobs()])
+      toast.success('刷新成功')
+    } catch {
+      toast.error('刷新失败')
+    }
+  }
   const { usePauseCronJob, useResumeCronJob, useCancelCronJob } = useCronMutations()
 
   const pauseMutation = usePauseCronJob()
@@ -233,20 +242,10 @@ const CronManagement: React.FC = () => {
         icon={<Clock className="h-5 w-5" />}
         actions={
           <>
-            <Button
-              variant="outline"
-              onClick={() => {
-                refetchJobs()
-                refetchCronJobs()
-              }}
-              disabled={jobsLoading || cronJobsLoading}
-            >
-              {(jobsLoading || cronJobsLoading)
-                ? <Spinner className="mr-2 size-4" />
-                : <RotateCw className="mr-2 h-4 w-4" />
-              }
-              刷新
-            </Button>
+            <RefreshButton
+              onClick={handleRefresh}
+              isRefreshing={jobsFetching || cronJobsFetching}
+            />
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               创建任务

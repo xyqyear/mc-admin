@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import {
   Users,
-  RotateCw,
   Clock,
   Calendar,
 } from 'lucide-react';
@@ -16,7 +16,6 @@ import {
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 import PageHeader from '@/components/layout/PageHeader';
@@ -24,6 +23,7 @@ import { DataTable } from '@/components/common/DataTable';
 import { SortableHeader } from '@/components/common/SortableHeader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PlayerOnlineBadge } from '@/components/common/PlayerOnlineBadge';
+import { RefreshButton } from '@/components/common/RefreshButton';
 import PlayerFilters from '@/components/players/PlayerFilters';
 import PlayerDetailDialog from '@/components/players/PlayerDetailDialog';
 import { MCAvatar } from '@/components/players/MCAvatar';
@@ -157,12 +157,22 @@ const PlayerManagement: React.FC = () => {
   const {
     data: allPlayers = [],
     isLoading,
+    isFetching,
     error,
     refetch,
   } = useAllPlayers({
     online_only: filters.online_only,
     server_id: filters.server_id,
   });
+
+  const handleRefresh = async () => {
+    try {
+      await refetch();
+      toast.success('刷新成功');
+    } catch {
+      toast.error('刷新失败');
+    }
+  };
 
   // Client-side search filter
   const filteredPlayers = useMemo(() => {
@@ -223,17 +233,7 @@ const PlayerManagement: React.FC = () => {
         title="玩家管理"
         icon={<Users className="h-5 w-5" />}
         actions={
-          <Button
-            variant="outline"
-            onClick={() => refetch()}
-            disabled={isLoading}
-          >
-            {isLoading
-              ? <Spinner className="mr-2 size-4" />
-              : <RotateCw className="mr-2 h-4 w-4" />
-            }
-            刷新
-          </Button>
+          <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
         }
       />
 
