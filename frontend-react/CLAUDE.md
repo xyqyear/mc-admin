@@ -73,6 +73,7 @@ src/
 │   ├── overview/            # ServerStateIcon, MetricCard components
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
 │   ├── files/               # FileIcon (Lucide-based), FileSnapshotActions
+│   ├── map/                 # ServerMap (Leaflet), ServerMapTileLayer (authed GridLayer), coords helpers
 │   │
 │   ├── task-center/         # Background task UI
 │   │   ├── TaskCenterTrigger.tsx       # Fixed Button with badge
@@ -254,7 +255,8 @@ src/
 │           ├── ServerDetail.tsx    # Server overview
 │           ├── ServerFiles.tsx     # File management with search
 │           ├── ServerCompose.tsx   # Compose editing (auto-detects template/direct mode)
-│           └── ServerConsole.tsx   # Real-time terminal with xterm.js
+│           ├── ServerConsole.tsx   # Real-time terminal with xterm.js
+│           └── ServerMap.tsx       # Per-server map view with dimension switcher
 │
 ├── stores/                  # Zustand stores
 │   ├── useTokenStore.ts           # JWT token
@@ -271,6 +273,7 @@ src/
 │   ├── MenuItem.ts
 │   ├── User.ts
 │   ├── Dns.ts
+│   ├── MapTypes.ts          # Map status, dimensions, init events, selection types
 │   └── lifecycle.ts         # Mirrors backend CreateServerResult / RemoveServerResult / SyncResult
 
 ├── utils/                   # Utilities
@@ -554,6 +557,26 @@ Features:
 - Supports terminal features (command history, tab completion via MC server)
 - Auto-reconnection handling
 - Server-provided terminal features (history navigation, tab completion)
+
+## Server Map (mcmap)
+
+**Pages & Components:**
+
+- `pages/server/servers/ServerMap.tsx` — initialization gate (calls `/initialize` SSE), dimension switcher, and Leaflet container; reads/writes dimension + zoom + center to URL search params (dimension is bidirectional source-of-truth, zoom/center is one-way map→URL with `replace: true`); fetches the per-dimension region manifest and gates map render on it
+- `components/map/ServerMap.tsx` — Leaflet wrapper with `regionPath`, `regions` (manifest set), `initialView`/`onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, and `overlays` props (selection consumers and overlay layers come in future iterations)
+- `components/map/ServerMapTileLayer.ts` — custom `L.GridLayer` that fetches PNGs through the project's authed `axios` instance (so the JWT applies), short-circuits to a blank tile for regions absent from the manifest, and aborts in-flight requests via `AbortController` when leaflet unloads tiles
+- `components/map/coords.ts` — pure-function block ↔ chunk ↔ region conversions
+- `components/dialogs/MapInitDialog.tsx` — two-stage progress dialog driven by SSE from `POST /servers/{id}/map/initialize`
+
+**Data flow:**
+
+- `hooks/api/mapApi.ts` — REST: status, dimensions, regions, cache clear
+- `hooks/queries/base/useMapQueries.ts` — `useMapStatus`, `useMapDimensions`, `useMapRegions`
+- Init SSE is consumed directly via `fetch` + `ReadableStream` in `MapInitDialog` (the only streaming consumer; other endpoints use TanStack Query)
+
+**Sparse-world optimization:** `GET /servers/{id}/map/regions?region=...` returns the list of `[x, z]` pairs that exist on disk for the selected dimension. The frontend turns it into a `Set<"x,z">` and passes it to the tile layer, which skips HTTP requests for any tile not in the set. The backend 404 path stays as a safety net for regions generated after the manifest was fetched.
+
+**Cancellation cascade:** leaflet `_removeTile` → `AbortController.abort()` → axios cancels → backend handler `CancelledError` → queue refcount drop → mid-batch mcmap subprocess termination if last consumer leaves the active batch.
 
 ## Monaco Editor Integration
 

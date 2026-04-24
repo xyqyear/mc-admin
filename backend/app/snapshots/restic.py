@@ -105,7 +105,9 @@ class ResticManager:
         if not path.is_absolute():
             raise ValueError("Path must be absolute for restic backup")
 
-        args = self._add_password_args(["restic", "backup", str(path), "--json"])
+        args = self._add_password_args(
+            ["restic", "backup", str(path), "--exclude", ".mcmap", "--json"]
+        )
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
         # Parse the backup result to get summary and snapshot_id

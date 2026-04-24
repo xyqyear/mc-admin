@@ -29,6 +29,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Template System** (app.templates): Template-based server creation with typed variables
 - **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
 - **Background Tasks** (app.background_tasks): Async task manager for long-running operations
+- **Server Map** (app.mcmap): On-demand world rendering via the mcmap CLI with batched, cancellable per-dimension queues
 
 **Additional Libraries:**
 
@@ -161,6 +162,7 @@ app/
 │       ├── players.py      # Online player list
 │       ├── files.py        # File management
 │       ├── console.py      # WebSocket console endpoint
+│       ├── map.py          # Map status, dimensions, /initialize SSE, tiles, cache delete
 │       ├── populate.py     # Archive population
 │       ├── restart_schedule.py  # CRUD + reusable schedule_auto_restart helper
 │       ├── sync.py         # POST /servers/sync (OWNER-only fs↔DB reconciler)
@@ -257,6 +259,15 @@ app/
 │   ├── manager.py          # BackgroundTaskManager singleton
 │   ├── models.py           # BackgroundTask Pydantic model
 │   └── types.py            # TaskType, TaskStatus, TaskProgress, TaskResult
+│
+├── mcmap/                  # Server map (mcmap CLI integration)
+│   ├── __init__.py         # Public exports: mcmap_manager, ServerMapCache, etc.
+│   ├── runner.py           # Async subprocess wrapper, NDJSON parsing, uid/gid demotion
+│   ├── cache.py            # ServerMapCache: per-region paths and freshness checks
+│   ├── palette.py          # Palette hash + invalidation, mods dir discovery
+│   ├── queue.py            # ServerRenderQueue: refcount-coalesced batching with cancellation
+│   ├── manager.py          # MCMapManager singleton: queues per (server, region_path)
+│   └── types.py            # Pydantic models for SSE events, status, dimensions
 │
 └── websocket/
     └── console.py          # Console WebSocket with docker-py attach
@@ -513,6 +524,48 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 - DefaultVariableConfig (singleton, stores default variables pre-filled when creating templates)
 - Server fields: template_id, template_snapshot_json, variable_values_json
 
+### Server Map System
+
+**On-demand world rendering** via the `mcmap` CLI (NDJSON event stream). Tile artifacts live under `data/.mcmap/` per server (excluded from Restic backups). The cache is fully regenerable.
+
+**Pipeline:**
+
+1. Per-server `/initialize` (SSE) downloads the Minecraft client `.jar` (`mcmap download-client`) and builds the block→color palette (`mcmap gen-palette modern`). Palette currency is tracked by a SHA256 hash of `version + sorted(mod_jar_filenames)` — written to `data/.mcmap/palette.hash` and re-checked on each request.
+2. Tile requests `(x, z, region_path)` check freshness: if `mca.mtime - png.mtime < stale_timeout_seconds`, the cached PNG is served directly. Otherwise the request is enqueued.
+3. A per-`(server, region_path)` `ServerRenderQueue` batches up to `batch_size` regions into a single `mcmap render --split --preserve-mtime -j N` invocation, resolves each waiter as the corresponding `region` event arrives in the NDJSON stream, and falls back to `RenderError` for any region that the subprocess never emitted (e.g. terminated mid-render).
+
+**Key design properties:**
+
+- **Subprocess ownership:** every mcmap invocation runs as the owner of the server's `data/` directory via `preexec_fn` (drops privileges only when the backend itself is root and the target uid differs).
+- **Refcount-coalesced cancellation:** duplicate `(x, z)` requests share one `asyncio.Future`. The consumer `await` is wrapped in `asyncio.shield` so cancelling one consumer does not disturb others. When the last consumer for a key disconnects, the entry is dropped from the queue; if the running batch becomes empty, the mcmap subprocess is terminated (SIGTERM, then SIGKILL after 2 s).
+- **Hard dimension isolation:** the queue key includes `region_path`, so no `mcmap render` invocation can mix regions from different dimensions (PNGs always land in the correct subfolder).
+- **Region path is request-scoped** — never persisted in the database or config. Frontend tracks the selected dimension in component state and includes it on each tile fetch as a query parameter; `_resolve_region_path()` validates it stays inside `data/` and rejects traversal/absolute paths.
+- **Idle worker timeout:** worker exits after 60 s of inactivity, respawns on next request.
+
+**Settings:**
+
+- Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`)
+- Dynamic (`mcmap` schema): `stale_timeout_seconds`, `batch_size`, `thread_count`, `request_timeout_seconds`
+
+**Endpoints (mounted under `/api/servers/{server_id}/map/`):**
+
+- `GET /status` — initialization state + game version
+- `GET /dimensions` — auto-discovers region folders (skipping `.mcmap/`); labels Overworld / Nether / End by path heuristic
+- `GET /regions?region=<rel-path>` — manifest of `[x, z]` pairs for every existing `r.X.Z.mca` in the dimension; the frontend uses it to skip HTTP requests for non-existent regions in sparse worlds
+- `POST /initialize` — two-stage SSE (`stage: "client"` → `stage: "palette"` → `stage: "complete"`); fast-path emits `cached: true` when nothing needs regeneration
+- `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch; 404 if MCA missing, 409 if not initialized, 503 on render timeout
+- `DELETE /cache?region=<rel-path>` — wipes one dimension's tiles
+
+**Usage:**
+
+```python
+from app.mcmap import mcmap_manager, ServerMapCache, palette_is_current
+
+cache = ServerMapCache(data_path=instance.get_data_path())
+queue = await mcmap_manager.get_queue(server_id, region_path, cache)
+png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeout_seconds)
+```
+
 ## Authentication & Authorization
 
 **JWT Authentication:**
@@ -552,6 +605,7 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 **Templates**: `/api/templates/` - CRUD, schema, preview, default variables, available ports
 **Server Template Config**: `/api/servers/{id}/template-config` - read/update template config
 **Server Template Migration**: `/api/servers/{id}/convert-to-direct`, `convert-to-template`, `extract-variables`, `check-conversion`
+**Server Map**: `/api/servers/{id}/map/` - status, dimensions, regions, initialize (SSE), tiles, cache delete
 
 ## Database Patterns
 
@@ -597,6 +651,7 @@ tests/
 ├── background_tasks/  # Background task manager tests
 ├── templates/         # Template manager, API, default variables, YAML utils tests
 ├── servers/           # Server creation (template mode), template config, lifecycle, sync tests
+├── mcmap/             # Cache, palette hash, runner, queue, cancellation, dimensions, region path
 └── fixtures/          # Test utilities
 ```
 

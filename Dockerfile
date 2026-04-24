@@ -34,7 +34,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="8000" \
     STATIC_PATH="/app/static" \
-    FD_BINARY_PATH="/usr/bin/fd"
+    FD_BINARY_PATH="/usr/bin/fd" \
+    MCMAP_BINARY_PATH="/usr/local/bin/mcmap"
 
 RUN apk add --no-cache \
     docker \
@@ -44,6 +45,13 @@ RUN apk add --no-cache \
     curl \
     fd \
     coreutils
+
+ARG MCMAP_VERSION=v0.2.3
+RUN curl -L "https://github.com/xyqyear/mcmap/releases/download/${MCMAP_VERSION}/mcmap-${MCMAP_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+      -o /tmp/mcmap.tar.gz \
+ && tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin \
+ && chmod +x /usr/local/bin/mcmap \
+ && rm /tmp/mcmap.tar.gz
 
 WORKDIR /data
 

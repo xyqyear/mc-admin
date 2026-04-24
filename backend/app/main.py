@@ -42,6 +42,7 @@ from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
 from .routers.servers import create as server_create
 from .routers.servers import files as server_files
+from .routers.servers import map as server_map
 from .routers.servers import misc as server_misc
 from .routers.servers import operations as server_operations
 from .routers.servers import players as server_players
@@ -132,6 +133,7 @@ api_app.include_router(server_create.router)
 api_app.include_router(server_populate.router)
 api_app.include_router(server_console.router)
 api_app.include_router(server_files.router)
+api_app.include_router(server_map.router)
 api_app.include_router(server_restart_schedule.router)
 api_app.include_router(server_template_config.router)
 api_app.include_router(server_template_migration.router)

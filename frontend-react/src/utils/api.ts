@@ -242,6 +242,15 @@ export const queryKeys = {
     routes: () => [...queryKeys.dns.all, "routes"] as const,
   },
 
+  // 服务器地图 (mcmap)
+  map: {
+    all: ["map"] as const,
+    status: (serverId: string) => [...queryKeys.map.all, "status", serverId] as const,
+    dimensions: (serverId: string) => [...queryKeys.map.all, "dimensions", serverId] as const,
+    regions: (serverId: string, region: string) =>
+      [...queryKeys.map.all, "regions", serverId, region] as const,
+  },
+
   // 模板管理
   templates: {
     all: ["templates"] as const,

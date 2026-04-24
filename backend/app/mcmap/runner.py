@@ -1,0 +1,163 @@
+"""Async wrapper around mcmap subprocess invocations.
+
+Each subcommand is exposed as an async context manager that yields an
+``MCMapProcess`` exposing a JSON-event iterator and a ``terminate()`` method.
+The context manager guarantees the subprocess is killed (SIGTERM, then SIGKILL
+after a grace period) on exit, regardless of how the caller exits.
+"""
+
+import asyncio
+import json
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, AsyncIterator, List, Optional
+
+from ..config import settings
+from ..logger import logger
+
+TERMINATE_GRACE_SECONDS = 2.0
+
+
+class MCMapProcess:
+    """Live mcmap subprocess with event iteration and idempotent termination."""
+
+    def __init__(self, proc: asyncio.subprocess.Process):
+        self._proc = proc
+        self._terminated = False
+
+    def __aiter__(self) -> AsyncIterator[dict]:
+        return self._read_events()
+
+    async def _read_events(self) -> AsyncIterator[dict]:
+        assert self._proc.stdout is not None
+        async for raw in self._proc.stdout:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("mcmap: malformed NDJSON line: %r", line)
+
+    async def terminate(self) -> None:
+        if self._terminated or self._proc.returncode is not None:
+            return
+        self._terminated = True
+        try:
+            self._proc.terminate()
+        except ProcessLookupError:
+            return
+        try:
+            await asyncio.wait_for(self._proc.wait(), timeout=TERMINATE_GRACE_SECONDS)
+        except asyncio.TimeoutError:
+            try:
+                self._proc.kill()
+            except ProcessLookupError:
+                pass
+            await self._proc.wait()
+
+    async def stderr(self) -> str:
+        if self._proc.stderr is None:
+            return ""
+        data = await self._proc.stderr.read()
+        return data.decode(errors="replace")
+
+    @property
+    def returncode(self) -> Optional[int]:
+        return self._proc.returncode
+
+
+async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
+    """Spawn mcmap as the owner of ``owned_by`` (the server's data dir).
+
+    Uses ``preexec_fn`` to drop privileges in the child, matching the project
+    pattern in ``app/utils/exec.py``. Falls back to no privilege change if the
+    backend isn't running as a user able to setuid (typical for dev setups);
+    in that case files are written as the current user with a logged warning.
+    """
+    st = os.stat(owned_by)
+    target_uid = st.st_uid
+    target_gid = st.st_gid
+    current_uid = os.geteuid()
+
+    def demote():
+        if current_uid == 0 and target_uid != 0:
+            os.setgid(target_gid)
+            os.setuid(target_uid)
+
+    if current_uid != 0 and current_uid != target_uid:
+        logger.warning(
+            "mcmap: running as uid=%d but data dir owned by uid=%d; cannot drop privileges",
+            current_uid,
+            target_uid,
+        )
+
+    return await asyncio.create_subprocess_exec(
+        str(settings.mcmap_binary_path),
+        "--json",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        preexec_fn=demote,
+    )
+
+
+@asynccontextmanager
+async def _run(args: List[str], owned_by: Path) -> AsyncIterator[MCMapProcess]:
+    proc = await _spawn(args, owned_by=owned_by)
+    wrapper = MCMapProcess(proc)
+    try:
+        yield wrapper
+    finally:
+        await wrapper.terminate()
+
+
+@asynccontextmanager
+async def download_client(
+    version: str, target: Path, *, owned_by: Path
+) -> AsyncIterator[MCMapProcess]:
+    async with _run(["download-client", version, str(target)], owned_by) as p:
+        yield p
+
+
+@asynccontextmanager
+async def gen_palette_modern(
+    packs: List[Path], output: Path, *, owned_by: Path
+) -> AsyncIterator[MCMapProcess]:
+    args: List[str] = ["gen-palette", "modern", "-o", str(output)]
+    for pack in packs:
+        args.extend(["-p", str(pack)])
+    async with _run(args, owned_by) as p:
+        yield p
+
+
+@asynccontextmanager
+async def render(
+    palette: Path,
+    output_dir: Path,
+    mcas: List[Path],
+    threads: int,
+    *,
+    owned_by: Path,
+) -> AsyncIterator[MCMapProcess]:
+    args: List[str] = [
+        "render",
+        "-p",
+        str(palette),
+        "-o",
+        str(output_dir),
+        "--split",
+        "--preserve-mtime",
+        "-j",
+        str(threads),
+    ]
+    for mca in mcas:
+        args.extend(["-r", str(mca)])
+    async with _run(args, owned_by) as p:
+        yield p
+
+
+def parse_event_for_test(line: bytes) -> Any:
+    """Test helper: parse a single NDJSON line. Exposed for tests only."""
+    return json.loads(line.strip())

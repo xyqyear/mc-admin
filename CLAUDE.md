@@ -33,6 +33,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Bidirectional conversion between template mode and direct editing mode
 - File management with Monaco editor, deep search, multi-file/folder drag-and-drop upload
 - SNBT file editing with syntax highlighting
+- Per-server map view (Leaflet + mcmap CLI) with on-demand tile rendering, dimension switcher, and refcount-coalesced cancellation
 
 **Backup & Recovery:**
 
@@ -95,6 +96,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Node.js 18+ with pnpm
 - Docker Engine + Docker Compose
 - Restic (automatically managed)
+- mcmap binary (installed in the Docker image; for local dev, point `mcmap_binary_path` at a downloaded release)
 
 **Quick Start:**
 
@@ -145,6 +147,7 @@ pnpm dev  # Runs on port 3000
 - Axios with interceptors and auto-retry
 - react-error-boundary for error handling
 - xterm.js for terminal emulation
+- Leaflet 1.9 with `CRS.Simple` for the per-server map view (custom `GridLayer` for authed tile fetches)
 
 ## External Documentation
 

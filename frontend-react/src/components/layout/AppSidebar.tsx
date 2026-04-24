@@ -10,6 +10,7 @@ import {
   Folder,
   LogOut,
   Code,
+  Map as MapIcon,
   Crown,
   UserCog,
   History,
@@ -210,6 +211,16 @@ const AppSidebar: React.FC = () => {
                                   >
                                     <Code />
                                     <span>控制台</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}/map`)}
+                                    onClick={() => navigateTo(`/server/${server.id}/map`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <MapIcon />
+                                    <span>地图</span>
                                   </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
                               </SidebarMenuSub>
