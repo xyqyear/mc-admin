@@ -13,8 +13,11 @@ export interface DimensionInfo {
   mca_count: number
 }
 
-// One [x, z] pair per existing r.X.Z.mca file in a dimension's region folder.
-export type RegionList = Array<[number, number]>
+// One [x, z, mtime] triple per existing r.X.Z.mca in the dimension's region
+// folder. `mtime` is the MCA file's modification time in whole epoch seconds;
+// the tile layer appends it as a `?mt=` query param so the browser HTTP cache
+// busts automatically when the source MCA is regenerated.
+export type RegionList = Array<[number, number, number]>
 
 export type ChunkKey = `${number},${number}`
 

@@ -106,8 +106,11 @@ def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
     return results
 
 
-def _list_regions(region_dir: Path) -> List[Tuple[int, int]]:
-    coords: List[Tuple[int, int]] = []
+def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
+    # Each entry is `(x, z, mtime)`. The mtime is the MCA file's mtime in
+    # whole epoch seconds; the frontend appends it as `?mt=` on tile URLs so
+    # the browser HTTP cache busts automatically on regeneration.
+    coords: List[Tuple[int, int, int]] = []
     try:
         entries = list(region_dir.iterdir())
     except (PermissionError, OSError):
@@ -126,7 +129,7 @@ def _list_regions(region_dir: Path) -> List[Tuple[int, int]]:
         # an HTTP round-trip.
         if not entry.is_file() or st.st_size == 0:
             continue
-        coords.append((int(m.group(1)), int(m.group(2))))
+        coords.append((int(m.group(1)), int(m.group(2)), int(st.st_mtime)))
     coords.sort()
     return coords
 
@@ -173,15 +176,16 @@ async def get_dimensions(
     return _discover_dimensions(data_path)
 
 
-# Region manifest: list of (x, z) coords for every r.X.Z.mca in the dimension.
-# Frontend uses this to skip HTTP requests for non-existent tiles, which matters
-# for sparse worlds with island/line topology (most tiles in the viewport miss).
-@router.get("/{server_id}/map/regions", response_model=List[Tuple[int, int]])
+# Region manifest: list of (x, z, mtime) triples for every r.X.Z.mca in the
+# dimension. Frontend uses this to (1) skip HTTP requests for non-existent
+# tiles and (2) append the mtime to each tile URL so the browser HTTP cache
+# busts automatically when the MCA changes.
+@router.get("/{server_id}/map/regions", response_model=List[Tuple[int, int, int]])
 async def get_regions(
     server_id: str,
     region: str = Query(..., description="Region folder relative to data/"),
     _: UserPublic = Depends(get_current_user),
-) -> List[Tuple[int, int]]:
+) -> List[Tuple[int, int, int]]:
     data_path = await _get_data_path(server_id)
     region_dir = _resolve_region_path(data_path, region)
     return _list_regions(region_dir)
@@ -419,11 +423,18 @@ async def get_tile(
 
 
 def _png_response(png: Path) -> FileResponse:
+    # Tile URLs carry the source MCA's mtime as `?mt=`, so any regeneration
+    # produces a new URL; the cached response can sit forever (`max-age=1y`)
+    # without going stale. `private` keeps it out of shared proxies — the
+    # response body is gated by per-user JWT — and `Vary: Authorization`
+    # prevents one user's cached response from being reused under a different
+    # token. ETag stays as a fallback for the hard-reload (revalidate) path.
     return FileResponse(
         str(png),
         media_type="image/png",
         headers={
-            "Cache-Control": "no-cache, must-revalidate",
+            "Cache-Control": "private, max-age=31536000",
+            "Vary": "Authorization",
             "ETag": f'"{int(png.stat().st_mtime)}"',
         },
     )

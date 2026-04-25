@@ -66,11 +66,12 @@ const ServerMapPage: React.FC = () => {
     isError: regionsError,
   } = useMapRegions(serverId, selectedRegion ?? undefined)
 
-  // Stable Set reference per regionsList payload — the map effect depends on
-  // referential identity to know when to swap layers.
-  const regionsSet = useMemo(() => {
+  // Stable Map reference per regionsList payload (key `${x},${z}` → mtime).
+  // The map effect depends on referential identity to know when to swap
+  // layers. The tile layer uses the mtime to cache-bust per region.
+  const regionsMap = useMemo(() => {
     if (!regionsList) return undefined
-    return new Set(regionsList.map(([x, z]) => `${x},${z}`))
+    return new Map(regionsList.map(([x, z, mt]) => [`${x},${z}`, mt]))
   }, [regionsList])
 
   useEffect(() => {
@@ -223,11 +224,11 @@ const ServerMapPage: React.FC = () => {
       {initialized && selectedRegion && !regionsError && (
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-0 h-full min-h-[60vh]">
-            {regionsSet ? (
+            {regionsMap ? (
               <ServerMap
                 serverId={serverId}
                 regionPath={selectedRegion}
-                regions={regionsSet}
+                regions={regionsMap}
                 initialView={initialView}
                 onViewChange={handleViewChange}
               />

@@ -28,9 +28,11 @@ export interface ServerMapView {
 export interface ServerMapProps {
   serverId: string
   regionPath: string
-  // Manifest of existing regions for this dimension (`${x},${z}` keys). The
-  // tile layer uses it to skip HTTP requests for non-existent regions.
-  regions: ReadonlySet<string>
+  // Manifest of existing regions for this dimension keyed by `${x},${z}`,
+  // mapped to the source MCA's mtime (epoch seconds). The tile layer uses
+  // it to skip HTTP requests for non-existent regions and to cache-bust
+  // tile URLs when the underlying MCA is regenerated.
+  regions: ReadonlyMap<string, number>
   selectionMode?: SelectionMode
   selection?: Set<ChunkKey>
   onSelectionChange?: (next: Set<ChunkKey>) => void

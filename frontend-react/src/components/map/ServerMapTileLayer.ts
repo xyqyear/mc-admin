@@ -8,10 +8,13 @@ import { BLOCKS_PER_REGION } from './coords'
 interface ServerMapTileLayerOptions extends L.GridLayerOptions {
   serverId: string
   regionPath: string
-  // Manifest of existing regions for this dimension, keyed as `${x},${z}`.
-  // Tiles whose key is not in the set are skipped without an HTTP request —
-  // critical for sparse worlds (islands, lines) where most viewport tiles miss.
-  regions: ReadonlySet<string>
+  // Manifest of existing regions for this dimension, keyed as `${x},${z}`,
+  // mapped to the source MCA's mtime (epoch seconds). Tiles whose key is
+  // not in the map are skipped without an HTTP request — critical for sparse
+  // worlds (islands, lines) where most viewport tiles miss. The mtime is
+  // appended to each tile URL as `?mt=` so the browser HTTP cache (1y
+  // max-age) busts automatically when the MCA is regenerated.
+  regions: ReadonlyMap<string, number>
 }
 
 // Custom GridLayer that fetches PNGs through the project's authed axios so the
@@ -20,7 +23,7 @@ interface ServerMapTileLayerOptions extends L.GridLayerOptions {
 export class ServerMapTileLayer extends L.GridLayer {
   private readonly serverId: string
   private readonly regionPath: string
-  private readonly regions: ReadonlySet<string>
+  private readonly regions: ReadonlyMap<string, number>
   private readonly aborts = new Map<string, AbortController>()
 
   constructor(opts: ServerMapTileLayerOptions) {
@@ -41,7 +44,8 @@ export class ServerMapTileLayer extends L.GridLayer {
     // tile synchronously and skip the network round-trip entirely. The 404
     // path below stays as a safety net for regions generated after the
     // manifest was fetched.
-    if (!this.regions.has(`${coords.x},${coords.y}`)) {
+    const mt = this.regions.get(`${coords.x},${coords.y}`)
+    if (mt === undefined) {
       queueMicrotask(() => done(undefined, tile))
       return tile
     }
@@ -52,7 +56,7 @@ export class ServerMapTileLayer extends L.GridLayer {
 
     api
       .get(`/servers/${this.serverId}/map/tiles/${coords.x}/${coords.y}.png`, {
-        params: { region: this.regionPath },
+        params: { region: this.regionPath, mt },
         responseType: 'blob',
         signal: ctrl.signal,
         // No timeout for tile fetches; backend has its own request_timeout
