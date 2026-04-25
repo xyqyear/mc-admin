@@ -97,6 +97,12 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   useEffect(() => {
     onViewChangeRef.current = onViewChange
   }, [onViewChange])
+  // Latest-regions ref so handlers registered in the once-only init effect
+  // can probe the manifest without resubscribing on every manifest refetch.
+  const regionsRef = useRef(regions)
+  useEffect(() => {
+    regionsRef.current = regions
+  }, [regions])
 
   // Initialize the leaflet map exactly once.
   useEffect(() => {
@@ -154,9 +160,17 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         const placeholder = 'X: —  Z: —'
         div.textContent = placeholder
         const onMove = (e: L.LeafletMouseEvent) => {
-          div.textContent = `X: ${Math.round(e.latlng.lng)}  Z: ${Math.round(
-            -e.latlng.lat,
-          )}`
+          const bx = Math.round(e.latlng.lng)
+          const bz = Math.round(-e.latlng.lat)
+          const rx = Math.floor(e.latlng.lng / BLOCKS_PER_REGION)
+          const rz = Math.floor(-e.latlng.lat / BLOCKS_PER_REGION)
+          // Only prepend the MCA name when the region actually exists on
+          // disk; over empty grid cells the readout falls back to plain
+          // block coords so we don't advertise files that aren't there.
+          const mca = regionsRef.current.has(`${rx},${rz}`)
+            ? `r.${rx}.${rz}.mca   `
+            : ''
+          div.textContent = `${mca}X: ${bx}  Z: ${bz}`
         }
         const onOut = () => {
           div.textContent = placeholder
@@ -175,9 +189,51 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
     new CoordControl().addTo(map)
 
+    // Translucent frame around the region currently under the cursor. Only
+    // drawn when the region exists in the manifest — i.e. when there's a
+    // real rendered tile to highlight. The lastHoverKey gate keeps every
+    // sub-pixel mousemove from churning rectangles.
+    const hoverGroup = L.layerGroup().addTo(map)
+    let hoverRect: L.Rectangle | null = null
+    let lastHoverKey: string | null = null
+    const onHoverMove = (e: L.LeafletMouseEvent) => {
+      const rx = Math.floor(e.latlng.lng / BLOCKS_PER_REGION)
+      const rz = Math.floor(-e.latlng.lat / BLOCKS_PER_REGION)
+      const key = `${rx},${rz}`
+      if (key === lastHoverKey) return
+      lastHoverKey = key
+      hoverRect?.remove()
+      hoverRect = null
+      if (!regionsRef.current.has(key)) return
+      const sw = blockToLatLng(
+        rx * BLOCKS_PER_REGION,
+        (rz + 1) * BLOCKS_PER_REGION,
+      )
+      const ne = blockToLatLng(
+        (rx + 1) * BLOCKS_PER_REGION,
+        rz * BLOCKS_PER_REGION,
+      )
+      hoverRect = L.rectangle([sw, ne], {
+        color: '#ffffff',
+        weight: 2,
+        opacity: 0.7,
+        fill: false,
+        interactive: false,
+      }).addTo(hoverGroup)
+    }
+    const onHoverOut = () => {
+      hoverRect?.remove()
+      hoverRect = null
+      lastHoverKey = null
+    }
+    map.on('mousemove', onHoverMove)
+    map.on('mouseout', onHoverOut)
+
     return () => {
       map.off('moveend', emitView)
       map.off('zoomend', emitView)
+      map.off('mousemove', onHoverMove)
+      map.off('mouseout', onHoverOut)
       map.remove()
       mapRef.current = null
       tileLayerRef.current = null
