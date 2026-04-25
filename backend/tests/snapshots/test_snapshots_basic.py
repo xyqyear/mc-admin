@@ -35,7 +35,15 @@ class TestResticManagerBasic:
 
         relative_path = Path("relative/path")
         with pytest.raises(ValueError, match="Path must be absolute"):
-            await manager.backup(relative_path)
+            await manager.backup([relative_path])
+
+    @pytest.mark.asyncio
+    async def test_backup_requires_non_empty_paths(self):
+        """Test that backup method rejects an empty paths list"""
+        manager = ResticManager("/test/repo", "password")
+
+        with pytest.raises(ValueError, match="At least one path"):
+            await manager.backup([])
 
     def test_environment_variables_setup(self):
         """Test that environment variables are set correctly"""

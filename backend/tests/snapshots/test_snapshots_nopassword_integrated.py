@@ -96,7 +96,7 @@ class TestResticManagerNoPasswordIntegrated:
         manager = restic_manager_no_password
 
         # Create backup
-        snapshot = await manager.backup(temp_backup_dir_no_password)
+        snapshot = await manager.backup([temp_backup_dir_no_password])
 
         # Verify snapshot properties
         assert snapshot.id is not None
@@ -122,7 +122,7 @@ class TestResticManagerNoPasswordIntegrated:
         manager = restic_manager_no_password
 
         # Create initial backup
-        snapshot = await manager.backup(temp_backup_dir_no_password)
+        snapshot = await manager.backup([temp_backup_dir_no_password])
 
         # Modify files to create changes
         (temp_backup_dir_no_password / "test_file1.txt").write_text(
@@ -133,7 +133,7 @@ class TestResticManagerNoPasswordIntegrated:
         actions = await manager.restore_preview(
             snapshot_id=snapshot.id,
             target_path=Path("/"),
-            include_path=temp_backup_dir_no_password,
+            include_paths=[temp_backup_dir_no_password],
         )
 
         # Verify preview provides meaningful information
@@ -156,7 +156,7 @@ class TestResticManagerNoPasswordIntegrated:
         original_content = (temp_backup_dir_no_password / "test_file1.txt").read_text()
 
         # Create backup
-        snapshot = await manager.backup(temp_backup_dir_no_password)
+        snapshot = await manager.backup([temp_backup_dir_no_password])
 
         # Modify files
         (temp_backup_dir_no_password / "test_file1.txt").write_text(
@@ -175,7 +175,7 @@ class TestResticManagerNoPasswordIntegrated:
         await manager.restore(
             snapshot_id=snapshot.id,
             target_path=Path("/"),  # Root for in-place restore
-            include_path=temp_backup_dir_no_password,
+            include_paths=[temp_backup_dir_no_password],
         )
 
         # Verify restoration
@@ -198,7 +198,7 @@ class TestResticManagerNoPasswordIntegrated:
             (temp_backup_dir_no_password / "test_file.txt").write_text(
                 f"Version {i + 1}"
             )
-            snapshot = await manager.backup(temp_backup_dir_no_password)
+            snapshot = await manager.backup([temp_backup_dir_no_password])
             snapshots_created.append(snapshot)
             time.sleep(0.1)  # Ensure different timestamps
 
@@ -230,10 +230,10 @@ class TestResticManagerNoPasswordIntegrated:
         subdir = temp_backup_dir_no_password / "nested_dir"
 
         # Backup entire directory
-        snapshot_full = await manager.backup(temp_backup_dir_no_password)
+        snapshot_full = await manager.backup([temp_backup_dir_no_password])
 
         # Backup just subdirectory
-        snapshot_sub = await manager.backup(subdir)
+        snapshot_sub = await manager.backup([subdir])
 
         # List all snapshots
         all_snapshots = await manager.list_snapshots()

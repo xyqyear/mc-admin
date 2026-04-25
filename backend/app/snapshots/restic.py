@@ -89,24 +89,39 @@ class ResticManager:
         return args
 
     async def backup(
-        self, path: Path, uid: int | None = None, gid: int | None = None
+        self,
+        paths: List[Path],
+        uid: int | None = None,
+        gid: int | None = None,
     ) -> ResticSnapshotWithSummary:
         """
-        Create a backup snapshot of the specified path
+        Create a backup snapshot covering one or more paths.
+
+        All paths are captured into a single snapshot.
 
         Args:
-            path: Absolute path to backup
+            paths: Absolute paths to back up
             uid: User ID for command execution
             gid: Group ID for command execution
 
         Returns:
             Created snapshot information with summary
         """
-        if not path.is_absolute():
-            raise ValueError("Path must be absolute for restic backup")
+        if not paths:
+            raise ValueError("At least one path must be provided for restic backup")
+        for path in paths:
+            if not path.is_absolute():
+                raise ValueError("Path must be absolute for restic backup")
 
         args = self._add_password_args(
-            ["restic", "backup", str(path), "--exclude", ".mcmap", "--json"]
+            [
+                "restic",
+                "backup",
+                *(str(p) for p in paths),
+                "--exclude",
+                ".mcmap",
+                "--json",
+            ]
         )
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
 
@@ -249,7 +264,7 @@ class ResticManager:
         self,
         snapshot_id: str,
         target_path: Path,
-        include_path: Optional[Path] = None,
+        include_paths: Optional[List[Path]] = None,
         uid: int | None = None,
         gid: int | None = None,
     ) -> List[ResticRestorePreviewAction]:
@@ -259,7 +274,8 @@ class ResticManager:
         Args:
             snapshot_id: Snapshot ID to restore
             target_path: Target path for restore (usually "/" for in-place restore)
-            include_path: Optional path to include (filter what gets restored)
+            include_paths: Optional list of paths to include (filter what gets restored).
+                Each path becomes a `--include` flag; matches are OR-combined.
             uid: User ID for command execution
             gid: Group ID for command execution
 
@@ -278,8 +294,9 @@ class ResticManager:
             "--json",
         ]
 
-        if include_path:
-            args.extend(["--include", str(include_path)])
+        if include_paths:
+            for include_path in include_paths:
+                args.extend(["--include", str(include_path)])
 
         args = self._add_password_args(args)
         result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
@@ -321,7 +338,7 @@ class ResticManager:
         self,
         snapshot_id: str,
         target_path: Path,
-        include_path: Optional[Path] = None,
+        include_paths: Optional[List[Path]] = None,
         uid: int | None = None,
         gid: int | None = None,
     ) -> None:
@@ -331,7 +348,10 @@ class ResticManager:
         Args:
             snapshot_id: Snapshot ID to restore
             target_path: Target path for restore (usually "/" for in-place restore)
-            include_path: Optional path to include (filter what gets restored)
+            include_paths: Optional list of paths to include (filter what gets restored).
+                Each path becomes a `--include` flag; matches are OR-combined. With
+                `--target /`, restic requires at least one include or exclude when
+                `--delete` is used.
             uid: User ID for command execution
             gid: Group ID for command execution
         """
@@ -344,8 +364,9 @@ class ResticManager:
             "--delete",
         ]
 
-        if include_path:
-            args.extend(["--include", str(include_path)])
+        if include_paths:
+            for include_path in include_paths:
+                args.extend(["--include", str(include_path)])
 
         args = self._add_password_args(args)
         await exec_command(*args, uid=uid, gid=gid, env=self.env)

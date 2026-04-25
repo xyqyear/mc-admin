@@ -94,7 +94,7 @@ class TestResticManagerIntegrated:
         manager = restic_manager
 
         # Create backup
-        snapshot = await manager.backup(temp_backup_dir)
+        snapshot = await manager.backup([temp_backup_dir])
 
         # Verify snapshot properties
         assert snapshot.id is not None
@@ -137,7 +137,7 @@ class TestResticManagerIntegrated:
                     )
 
         # Create backup
-        snapshot = await manager.backup(temp_backup_dir)
+        snapshot = await manager.backup([temp_backup_dir])
 
         # Modify original files
         (temp_backup_dir / "test_file1.txt").write_text("MODIFIED CONTENT")
@@ -154,7 +154,7 @@ class TestResticManagerIntegrated:
             await manager.restore(
                 snapshot_id=snapshot.id,
                 target_path=restore_path,
-                include_path=temp_backup_dir,
+                include_paths=[temp_backup_dir],
             )
 
             # Verify restored content matches original
@@ -175,7 +175,7 @@ class TestResticManagerIntegrated:
         manager = restic_manager
 
         # Create initial backup
-        snapshot = await manager.backup(temp_backup_dir)
+        snapshot = await manager.backup([temp_backup_dir])
 
         # Modify files to create changes
         (temp_backup_dir / "test_file1.txt").write_text("Modified for preview test")
@@ -188,7 +188,9 @@ class TestResticManagerIntegrated:
 
         # Preview restore
         actions = await manager.restore_preview(
-            snapshot_id=snapshot.id, target_path=Path("/"), include_path=temp_backup_dir
+            snapshot_id=snapshot.id,
+            target_path=Path("/"),
+            include_paths=[temp_backup_dir],
         )
 
         # Verify preview provides meaningful information
@@ -222,7 +224,7 @@ class TestResticManagerIntegrated:
         original_content = (temp_backup_dir / "test_file1.txt").read_text()
 
         # Create backup
-        snapshot = await manager.backup(temp_backup_dir)
+        snapshot = await manager.backup([temp_backup_dir])
 
         # Modify files
         (temp_backup_dir / "test_file1.txt").write_text("Modified for in-place test")
@@ -237,7 +239,7 @@ class TestResticManagerIntegrated:
         await manager.restore(
             snapshot_id=snapshot.id,
             target_path=Path("/"),  # Root for in-place restore
-            include_path=temp_backup_dir,
+            include_paths=[temp_backup_dir],
         )
 
         # Verify restoration
@@ -256,10 +258,10 @@ class TestResticManagerIntegrated:
         subdir = temp_backup_dir / "nested_dir"
 
         # Backup entire directory
-        snapshot_full = await manager.backup(temp_backup_dir)
+        snapshot_full = await manager.backup([temp_backup_dir])
 
         # Backup just subdirectory
-        snapshot_sub = await manager.backup(subdir)
+        snapshot_sub = await manager.backup([subdir])
 
         # List all snapshots
         all_snapshots = await manager.list_snapshots()
@@ -290,7 +292,7 @@ class TestResticManagerIntegrated:
             (temp_backup_dir / "test_file1.txt").write_text(f"Version {i + 1} content")
 
             # Create snapshot
-            snapshot = await manager.backup(temp_backup_dir)
+            snapshot = await manager.backup([temp_backup_dir])
             snapshots_created.append(snapshot)
 
             # Small delay to ensure different timestamps
@@ -312,7 +314,7 @@ class TestResticManagerIntegrated:
                 await manager.restore(
                     snapshot_id=created_snapshot.id,
                     target_path=restore_path,
-                    include_path=temp_backup_dir,
+                    include_paths=[temp_backup_dir],
                 )
 
                 # Verify content matches the version when snapshot was created
@@ -333,7 +335,7 @@ class TestResticManagerIntegrated:
         snapshots_created = []
         for i in range(5):
             (temp_backup_dir / "test_file.txt").write_text(f"Version {i + 1}")
-            snapshot = await manager.backup(temp_backup_dir)
+            snapshot = await manager.backup([temp_backup_dir])
             snapshots_created.append(snapshot)
             time.sleep(0.1)  # Ensure different timestamps
 
@@ -363,13 +365,13 @@ class TestResticManagerIntegrated:
             await manager.restore(
                 snapshot_id="invalid-snapshot-id-123",
                 target_path=Path("/tmp"),
-                include_path=temp_backup_dir,
+                include_paths=[temp_backup_dir],
             )
 
         # Test backup of non-existent path
         nonexistent_path = Path("/tmp/nonexistent-" + str(int(time.time())))
         with pytest.raises((RuntimeError, ValueError)):
-            await manager.backup(nonexistent_path)
+            await manager.backup([nonexistent_path])
 
     @pytest.mark.asyncio
     async def test_relative_path_rejection(self, restic_manager):
@@ -379,7 +381,7 @@ class TestResticManagerIntegrated:
         relative_path = Path("relative/path/test")
 
         with pytest.raises(ValueError, match="Path must be absolute"):
-            await manager.backup(relative_path)
+            await manager.backup([relative_path])
 
     @pytest.mark.asyncio
     async def test_backup_empty_directory(self, restic_manager):
@@ -388,7 +390,7 @@ class TestResticManagerIntegrated:
             empty_dir = Path(temp_dir)
 
             # Backup empty directory
-            snapshot = await restic_manager.backup(empty_dir)
+            snapshot = await restic_manager.backup([empty_dir])
 
             # Verify snapshot was created
             assert snapshot.id is not None
@@ -410,7 +412,7 @@ class TestResticManagerIntegrated:
             large_file.write_text(large_content)
 
             # Backup
-            snapshot = await restic_manager.backup(test_dir)
+            snapshot = await restic_manager.backup([test_dir])
 
             # Verify backup includes the large file
             assert snapshot.summary.total_bytes_processed >= len(large_content)
@@ -422,7 +424,7 @@ class TestResticManagerIntegrated:
                 await restic_manager.restore(
                     snapshot_id=snapshot.id,
                     target_path=restore_path,
-                    include_path=test_dir,
+                    include_paths=[test_dir],
                 )
 
                 # Verify large file was restored correctly
@@ -431,6 +433,55 @@ class TestResticManagerIntegrated:
                     restore_path / test_dir.relative_to(Path("/")) / "large_file.txt"
                 )
                 assert restored_file.read_text() == large_content
+
+    @pytest.mark.asyncio
+    async def test_multi_path_backup_and_restore(self, restic_manager):
+        """Back up two unrelated directories in one snapshot, then restore both in place."""
+        manager = restic_manager
+
+        with (
+            tempfile.TemporaryDirectory(prefix="multi_a_") as dir_a_str,
+            tempfile.TemporaryDirectory(prefix="multi_b_") as dir_b_str,
+        ):
+            dir_a = Path(dir_a_str)
+            dir_b = Path(dir_b_str)
+
+            # Seed both directories with distinct content
+            (dir_a / "a.txt").write_text("alpha original")
+            (dir_b / "b.txt").write_text("bravo original")
+
+            # Single snapshot covering both roots
+            snapshot = await manager.backup([dir_a, dir_b])
+            assert str(dir_a) in snapshot.paths
+            assert str(dir_b) in snapshot.paths
+
+            # Mutate both directories
+            (dir_a / "a.txt").write_text("alpha modified")
+            (dir_b / "b.txt").write_text("bravo modified")
+            (dir_a / "extra_a.txt").write_text("should be deleted")
+            (dir_b / "extra_b.txt").write_text("should be deleted")
+
+            # Preview should report changes for both roots
+            preview = await manager.restore_preview(
+                snapshot_id=snapshot.id,
+                target_path=Path("/"),
+                include_paths=[dir_a, dir_b],
+            )
+            preview_items = [a.item or "" for a in preview]
+            assert any(str(dir_a) in item for item in preview_items)
+            assert any(str(dir_b) in item for item in preview_items)
+
+            # In-place restore both at once
+            await manager.restore(
+                snapshot_id=snapshot.id,
+                target_path=Path("/"),
+                include_paths=[dir_a, dir_b],
+            )
+
+            assert (dir_a / "a.txt").read_text() == "alpha original"
+            assert (dir_b / "b.txt").read_text() == "bravo original"
+            assert not (dir_a / "extra_a.txt").exists()
+            assert not (dir_b / "extra_b.txt").exists()
 
     @pytest.mark.asyncio
     async def test_list_locks_no_locks(self, restic_manager):

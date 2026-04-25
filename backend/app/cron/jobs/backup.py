@@ -205,7 +205,7 @@ async def backup_cronjob(context: ExecutionContext):
 
         # Create backup
         context.log(f"正在创建快照: {backup_path}")
-        snapshot = await restic_manager.backup(backup_path)
+        snapshot = await restic_manager.backup([backup_path])
 
         context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
         if snapshot.summary:

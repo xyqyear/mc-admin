@@ -605,7 +605,7 @@ class TestSnapshotEndpoints:
             plugins_snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id, "path": "/plugins"},
+                json={"server_id": server_id, "paths": ["/plugins"]},
             )
             assert plugins_snapshot_response.status_code == 200
             plugins_snapshot_id = plugins_snapshot_response.json()["snapshot"]["id"]
@@ -872,7 +872,7 @@ modified=true
                 json={
                     "snapshot_id": snapshot_id,
                     "server_id": server_id,
-                    "path": "/plugins",
+                    "paths": ["/plugins"],
                 },
             )
             assert restore_response.status_code == 200
@@ -1186,6 +1186,86 @@ modified=true
             remaining_snapshots = list_after_delete.json()["snapshots"]
             assert len(remaining_snapshots) == 1
             assert remaining_snapshots[0]["id"] == snapshot2_id
+
+    @pytest.mark.asyncio
+    async def test_multi_path_create_preview_and_restore_endpoint(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """Create a snapshot covering multiple data paths, then preview and restore them in one call."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            # Add an extra plugin file so /plugins changes meaningfully on restore
+            (instance.get_data_path() / "plugins" / "first.jar").write_bytes(b"first")
+
+            # Snapshot covering /plugins + /world together
+            create_response = client.post(
+                "/snapshots",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={
+                    "server_id": server_id,
+                    "paths": ["/plugins", "/world"],
+                },
+            )
+            assert create_response.status_code == 200
+            snapshot = create_response.json()["snapshot"]
+            snapshot_id = snapshot["id"]
+
+            data_path = instance.get_data_path()
+            assert str((data_path / "plugins").resolve()) in snapshot["paths"]
+            assert str((data_path / "world").resolve()) in snapshot["paths"]
+
+            # Mutate both included roots and a sibling that must remain untouched
+            (instance.get_data_path() / "plugins" / "intruder.jar").write_bytes(
+                b"intruder"
+            )
+            (instance.get_data_path() / "world" / "intruder.txt").write_text(
+                "should be deleted"
+            )
+            untouched_path = instance.get_data_path() / "server.properties"
+            untouched_original = untouched_path.read_text()
+            untouched_path.write_text("# untouched marker\nserver-port=25600")
+
+            # Preview reports actions for both roots
+            preview_response = client.post(
+                "/snapshots/restore/preview",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={
+                    "snapshot_id": snapshot_id,
+                    "server_id": server_id,
+                    "paths": ["/plugins", "/world"],
+                },
+            )
+            assert preview_response.status_code == 200
+            actions = preview_response.json()["actions"]
+            items = [a.get("item", "") for a in actions]
+            assert any(str(data_path / "plugins") in item for item in items)
+            assert any(str(data_path / "world") in item for item in items)
+
+            # Restore both included roots in one call
+            restore_response = client.post(
+                "/snapshots/restore",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={
+                    "snapshot_id": snapshot_id,
+                    "server_id": server_id,
+                    "paths": ["/plugins", "/world"],
+                },
+            )
+            assert restore_response.status_code == 200
+            assert "safety_snapshot_id" in restore_response.json()
+
+            # Intruders inside both included roots are gone
+            assert not (
+                instance.get_data_path() / "plugins" / "intruder.jar"
+            ).exists()
+            assert not (
+                instance.get_data_path() / "world" / "intruder.txt"
+            ).exists()
+
+            # File outside the included roots is preserved (not touched by restore)
+            assert untouched_path.read_text() != untouched_original
+            assert untouched_path.read_text().startswith("# untouched marker")
 
     @pytest.mark.asyncio
     async def test_delete_snapshot_unauthorized(

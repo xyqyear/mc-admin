@@ -388,7 +388,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       onConfirm: async () => {
         await createSnapshotMutation.mutateAsync({
           server_id: serverId,
-          path: actualPath,
+          paths: [actualPath],
         })
         toast.success(`已为 ${displayName} 创建快照`)
       },
@@ -407,7 +407,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: actualPath,
+        paths: [actualPath],
       })
 
       toast.success(`已成功回滚 ${displayName}`)
@@ -427,13 +427,13 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     try {
       await createSnapshotMutation.mutateAsync({
         server_id: serverId,
-        path: actualPath,
+        paths: [actualPath],
       })
 
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
-        path: actualPath,
+        paths: [actualPath],
       })
 
       toast.success(`已创建安全快照并成功回滚 ${displayName}`)
@@ -455,7 +455,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       const previewResult = await previewRestoreMutation.mutateAsync({
         snapshot_id: snapshotId,
         server_id: serverId,
-        path: actualPath,
+        paths: [actualPath],
       })
 
       setPreviewData(previewResult.actions)
@@ -471,7 +471,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
       await restoreSnapshotMutation.mutateAsync({
         snapshot_id: selectedSnapshotId,
         server_id: serverId,
-        path: actualPath,
+        paths: [actualPath],
         skip_safety_check: true,
       })
 

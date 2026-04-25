@@ -101,34 +101,35 @@ def _get_restic_manager():
     return restic_manager
 
 
-def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
+def _resolve_backup_paths(
+    server_id: Optional[str], paths: Optional[List[str]]
+) -> List[Path]:
     """
-    Resolve the actual backup path based on server_id and path parameters
+    Resolve the absolute backup paths from request parameters.
 
     Args:
         server_id: Optional server identifier
-        path: Optional path within server (relative to data directory)
+        paths: Optional list of paths within the server's data directory
 
     Returns:
-        Absolute path to backup
+        List of absolute paths to back up or restore
     """
-    if not server_id and not path:
+    if not server_id and not paths:
         # Backup entire servers directory
-        return settings.server_path.resolve()
-    elif server_id and not path:
+        return [settings.server_path.resolve()]
+    elif server_id and not paths:
         # Backup specific server directory
         instance = docker_mc_manager.get_instance(server_id)
-        return instance.get_project_path().resolve()
-    elif server_id and path:
-        # Backup specific path within server's data directory
+        return [instance.get_project_path().resolve()]
+    elif server_id and paths:
+        # Backup specific paths within server's data directory
         instance = docker_mc_manager.get_instance(server_id)
         data_path = instance.get_data_path()
-        target_path = data_path / path.lstrip("/")
-        return target_path.resolve()
+        return [(data_path / p.lstrip("/")).resolve() for p in paths]
     else:
-        error_msg = "Cannot specify path without server_id"
+        error_msg = "Cannot specify paths without server_id"
         logger.error(
-            f"Snapshot path resolution failed: {error_msg} (server_id={server_id}, path={path})"
+            f"Snapshot path resolution failed: {error_msg} (server_id={server_id}, paths={paths})"
         )
         raise HTTPException(status_code=400, detail=error_msg)
 
@@ -136,19 +137,19 @@ def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
 # Request/Response models
 class CreateSnapshotRequest(BaseModel):
     server_id: Optional[str] = None
-    path: Optional[str] = None
+    paths: Optional[List[str]] = None
 
 
 class RestorePreviewRequest(BaseModel):
     snapshot_id: str
     server_id: Optional[str] = None
-    path: Optional[str] = None
+    paths: Optional[List[str]] = None
 
 
 class RestoreRequest(BaseModel):
     snapshot_id: str
     server_id: Optional[str] = None
-    path: Optional[str] = None
+    paths: Optional[List[str]] = None
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -170,28 +171,30 @@ class RestorePreviewResponse(BaseModel):
 async def create_global_snapshot(
     request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
 ):
-    """Create a global snapshot or snapshot of the specified server/path"""
+    """Create a snapshot covering one or more paths (or a server, or all servers)"""
     try:
         # Check if current time is in restricted backup periods
         await _check_backup_time_restriction()
 
-        backup_path = _resolve_backup_path(request.server_id, request.path)
+        backup_paths = _resolve_backup_paths(request.server_id, request.paths)
 
-        if not await aioos.path.exists(backup_path):
-            error_msg = f"Path not found: {backup_path}"
-            logger.error(
-                f"Snapshot creation failed: {error_msg} (server_id={request.server_id}, path={request.path})"
-            )
-            raise HTTPException(status_code=404, detail=error_msg)
+        for backup_path in backup_paths:
+            if not await aioos.path.exists(backup_path):
+                error_msg = f"Path not found: {backup_path}"
+                logger.error(
+                    f"Snapshot creation failed: {error_msg} (server_id={request.server_id}, paths={request.paths})"
+                )
+                raise HTTPException(status_code=404, detail=error_msg)
 
         restic_manager = _get_restic_manager()
-        snapshot = await restic_manager.backup(backup_path)
+        snapshot = await restic_manager.backup(backup_paths)
 
+        paths_repr = ", ".join(str(p) for p in backup_paths)
         logger.info(
-            f"Snapshot created successfully: {snapshot.short_id} for {backup_path} (server_id={request.server_id}, path={request.path})"
+            f"Snapshot created successfully: {snapshot.short_id} for {paths_repr} (server_id={request.server_id}, paths={request.paths})"
         )
         return CreateSnapshotResponse(
-            message=f"Snapshot created successfully for {backup_path}",
+            message=f"Snapshot created successfully for {len(backup_paths)} path(s)",
             snapshot=snapshot,
         )
 
@@ -200,7 +203,7 @@ async def create_global_snapshot(
     except Exception as e:
         error_msg = f"Failed to create snapshot: {str(e)}"
         logger.error(
-            f"Snapshot creation error: {error_msg} (server_id={request.server_id}, path={request.path})",
+            f"Snapshot creation error: {error_msg} (server_id={request.server_id}, paths={request.paths})",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=error_msg)
@@ -212,12 +215,17 @@ async def list_global_snapshots(
     path: Optional[str] = None,
     _: UserPublic = Depends(get_current_user),
 ):
-    """List all snapshots or snapshots for the specified server/path"""
+    """List all snapshots, or snapshots that touch the specified server/path"""
     try:
         restic_manager = _get_restic_manager()
 
         if server_id:
-            filter_path = _resolve_backup_path(server_id, path)
+            # Listing filters by a single path; reuse multi-path resolver and take the
+            # single resolved root.
+            resolved = _resolve_backup_paths(
+                server_id, [path] if path else None
+            )
+            filter_path = resolved[0]
         else:
             filter_path = None
 
@@ -245,13 +253,13 @@ async def preview_global_restore(
 ):
     """Preview restore operation (dry run)"""
     try:
-        target_path = _resolve_backup_path(request.server_id, request.path)
+        target_paths = _resolve_backup_paths(request.server_id, request.paths)
 
         restic_manager = _get_restic_manager()
         actions = await restic_manager.restore_preview(
             snapshot_id=request.snapshot_id,
             target_path=Path("/"),  # Restore in-place
-            include_path=target_path,
+            include_paths=target_paths,
         )
 
         # Create summary
@@ -262,7 +270,7 @@ async def preview_global_restore(
         summary = f"预览结果：{updated_count} 个文件更新，{deleted_count} 个文件删除，{restored_count} 个文件恢复"
 
         logger.info(
-            f"Restore preview completed for snapshot {request.snapshot_id}: {summary} (server_id={request.server_id}, path={request.path})"
+            f"Restore preview completed for snapshot {request.snapshot_id}: {summary} (server_id={request.server_id}, paths={request.paths})"
         )
         return RestorePreviewResponse(actions=actions, preview_summary=summary)
 
@@ -271,7 +279,7 @@ async def preview_global_restore(
     except Exception as e:
         error_msg = f"Failed to preview restore: {str(e)}"
         logger.error(
-            f"Restore preview error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})",
+            f"Restore preview error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=error_msg)
@@ -283,23 +291,24 @@ async def restore_global_snapshot(
 ):
     """Restore snapshot with automatic pre-restore backup"""
     try:
-        target_path = _resolve_backup_path(request.server_id, request.path)
+        target_paths = _resolve_backup_paths(request.server_id, request.paths)
 
         restic_manager = _get_restic_manager()
 
-        # Create a safety snapshot before restoring
+        # Create a safety snapshot covering every path being restored, in one snapshot
         logger.info(
-            f"Creating safety snapshot before restore (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})"
+            f"Creating safety snapshot before restore (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})"
         )
         try:
-            safety_snapshot = await restic_manager.backup(target_path)
+            safety_snapshot = await restic_manager.backup(target_paths)
+            paths_repr = ", ".join(str(p) for p in target_paths)
             logger.info(
-                f"Safety snapshot created: {safety_snapshot.short_id} before restoring to {target_path}"
+                f"Safety snapshot created: {safety_snapshot.short_id} before restoring to {paths_repr}"
             )
         except Exception as e:
             error_msg = f"Failed to create safety snapshot before restore: {str(e)}"
             logger.error(
-                f"Safety snapshot creation failed: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})",
+                f"Safety snapshot creation failed: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
                 exc_info=True,
             )
             raise HTTPException(
@@ -311,14 +320,15 @@ async def restore_global_snapshot(
         await restic_manager.restore(
             snapshot_id=request.snapshot_id,
             target_path=Path("/"),
-            include_path=target_path,
+            include_paths=target_paths,
         )
 
+        paths_repr = ", ".join(str(p) for p in target_paths)
         success_msg = (
-            f"Snapshot {request.snapshot_id} restored successfully to {target_path}"
+            f"Snapshot {request.snapshot_id} restored successfully to {paths_repr}"
         )
         logger.info(
-            f"Restore completed: {success_msg} (safety_snapshot_id={safety_snapshot.short_id}, server_id={request.server_id}, path={request.path})"
+            f"Restore completed: {success_msg} (safety_snapshot_id={safety_snapshot.short_id}, server_id={request.server_id}, paths={request.paths})"
         )
         return {
             "message": success_msg,
@@ -330,7 +340,7 @@ async def restore_global_snapshot(
     except Exception as e:
         error_msg = f"Failed to restore snapshot: {str(e)}"
         logger.error(
-            f"Restore error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, path={request.path})",
+            f"Restore error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=error_msg)

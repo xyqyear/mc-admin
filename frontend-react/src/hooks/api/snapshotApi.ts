@@ -43,7 +43,7 @@ interface ListSnapshotsResponse {
 interface RestoreSnapshotRequest {
   snapshot_id: string;
   server_id?: string;
-  path?: string;
+  paths?: string[];
   skip_safety_check?: boolean;  // 新增：控制是否跳过安全检查
 }
 
@@ -68,7 +68,7 @@ interface UnlockResponse {
 interface RestorePreviewRequest {
   snapshot_id: string;
   server_id?: string;
-  path?: string;
+  paths?: string[];
 }
 
 interface RestorePreviewAction {
@@ -98,10 +98,10 @@ export const snapshotApi = {
     return res.data.snapshots;
   },
 
-  // 创建快照（全局或特定路径）
+  // 创建快照（全局或一组路径）
   createSnapshot: async (params?: {
     server_id?: string;
-    path?: string;
+    paths?: string[];
   }): Promise<CreateSnapshotResponse> => {
     const res = await api.post<CreateSnapshotResponse>("/snapshots", params || {});
     return res.data;
