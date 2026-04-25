@@ -113,11 +113,20 @@ def _list_regions(region_dir: Path) -> List[Tuple[int, int]]:
     except (PermissionError, OSError):
         return coords
     for entry in entries:
-        if not entry.is_file():
-            continue
         m = REGION_FILE_RE.match(entry.name)
-        if m:
-            coords.append((int(m.group(1)), int(m.group(2))))
+        if not m:
+            continue
+        try:
+            st = entry.stat()
+        except OSError:
+            continue
+        # Skip zero-byte MCAs: fastanvil cannot parse them, mcmap reports
+        # `UnexpectedEof` and the tile would never render. Excluding them from
+        # the manifest lets the frontend short-circuit to a blank tile without
+        # an HTTP round-trip.
+        if not entry.is_file() or st.st_size == 0:
+            continue
+        coords.append((int(m.group(1)), int(m.group(2))))
     coords.sort()
     return coords
 

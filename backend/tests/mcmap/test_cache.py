@@ -38,8 +38,19 @@ def test_is_fresh_missing_png():
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
-        mca.write_bytes(b"")
+        mca.write_bytes(b"x")
         assert cache.is_fresh("world/region", 0, 0, 60) == "missing_png"
+
+
+def test_is_fresh_zero_byte_mca_treated_as_missing():
+    """0-byte MCAs are unrenderable; freshness must report `missing_mca` so
+    the tile endpoint short-circuits to 404 instead of queuing a doomed render."""
+    with tempfile.TemporaryDirectory() as d:
+        cache = ServerMapCache(data_path=Path(d))
+        mca = cache.mca_path("world/region", 0, 0)
+        mca.parent.mkdir(parents=True)
+        mca.write_bytes(b"")
+        assert cache.is_fresh("world/region", 0, 0, 60) == "missing_mca"
 
 
 def test_is_fresh_fresh_when_within_threshold():
@@ -49,7 +60,7 @@ def test_is_fresh_fresh_when_within_threshold():
         png = cache.png_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         png.parent.mkdir(parents=True)
-        mca.write_bytes(b"")
+        mca.write_bytes(b"x")
         png.write_bytes(b"")
         # PNG older than MCA by 30s; threshold 60s → fresh
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
@@ -64,7 +75,7 @@ def test_is_fresh_stale_when_beyond_threshold():
         png = cache.png_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         png.parent.mkdir(parents=True)
-        mca.write_bytes(b"")
+        mca.write_bytes(b"x")
         png.write_bytes(b"")
         # MCA newer than PNG by 90s; threshold 60s → stale
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))

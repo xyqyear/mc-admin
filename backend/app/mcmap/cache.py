@@ -51,12 +51,19 @@ class ServerMapCache:
         self, region_path: str, x: int, z: int, stale_timeout: int
     ) -> FreshnessState:
         mca = self.mca_path(region_path, x, z)
-        if not mca.exists():
+        try:
+            mca_st = mca.stat()
+        except FileNotFoundError:
+            return "missing_mca"
+        # Zero-byte MCAs cannot be parsed (fastanvil raises UnexpectedEof on
+        # the header read). Treat them as absent so the tile endpoint short-
+        # circuits to 404 without ever queuing an mcmap render.
+        if mca_st.st_size == 0:
             return "missing_mca"
         png = self.png_path(region_path, x, z)
         if not png.exists():
             return "missing_png"
-        if mca.stat().st_mtime - png.stat().st_mtime < stale_timeout:
+        if mca_st.st_mtime - png.stat().st_mtime < stale_timeout:
             return "fresh"
         return "stale"
 
