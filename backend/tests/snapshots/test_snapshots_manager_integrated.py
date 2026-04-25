@@ -483,6 +483,118 @@ class TestResticManagerIntegrated:
             assert not (dir_a / "extra_a.txt").exists()
             assert not (dir_b / "extra_b.txt").exists()
 
+    def test_compute_restore_destination(self):
+        """Unit test for the static path-mapping helper."""
+        # Root target: result equals snapshot path (in-place)
+        assert ResticManager.compute_restore_destination(
+            Path("/"), Path("/srv/world/level.dat")
+        ) == Path("/srv/world/level.dat")
+
+        # Non-root target: snapshot's absolute path is preserved under target
+        assert ResticManager.compute_restore_destination(
+            Path("/tmp/staging"), Path("/srv/world/level.dat")
+        ) == Path("/tmp/staging/srv/world/level.dat")
+
+        # Relative snapshot path is rejected
+        with pytest.raises(ValueError, match="must be absolute"):
+            ResticManager.compute_restore_destination(
+                Path("/tmp/staging"), Path("relative/path")
+            )
+
+    @pytest.mark.asyncio
+    async def test_restore_default_target_is_in_place(
+        self, restic_manager, temp_backup_dir
+    ):
+        """Omitting target_path defaults to in-place restore."""
+        manager = restic_manager
+
+        original = (temp_backup_dir / "test_file1.txt").read_text()
+        snapshot = await manager.backup([temp_backup_dir])
+
+        (temp_backup_dir / "test_file1.txt").write_text("mutated")
+        (temp_backup_dir / "intruder.txt").write_text("should be deleted")
+
+        # No target_path passed — default Path("/") applies
+        await manager.restore(
+            snapshot_id=snapshot.id,
+            include_paths=[temp_backup_dir],
+        )
+
+        assert (temp_backup_dir / "test_file1.txt").read_text() == original
+        assert not (temp_backup_dir / "intruder.txt").exists()
+
+    @pytest.mark.asyncio
+    async def test_restore_with_custom_target_path(
+        self, restic_manager, temp_backup_dir
+    ):
+        """Restoring to a non-root target preserves the snapshot's absolute hierarchy under it."""
+        manager = restic_manager
+
+        original = (temp_backup_dir / "test_file1.txt").read_text()
+        snapshot = await manager.backup([temp_backup_dir])
+
+        with tempfile.TemporaryDirectory(prefix="restic_target_") as staging_str:
+            staging = Path(staging_str)
+
+            await manager.restore(
+                snapshot_id=snapshot.id,
+                target_path=staging,
+                include_paths=[temp_backup_dir],
+            )
+
+            # Source files are untouched (target was non-root)
+            assert (temp_backup_dir / "test_file1.txt").read_text() == original
+
+            # Helper predicts the destination for each include
+            mapped_root = ResticManager.compute_restore_destination(
+                staging, temp_backup_dir
+            )
+            assert mapped_root == staging / temp_backup_dir.relative_to("/")
+            assert mapped_root.is_dir()
+            assert (mapped_root / "test_file1.txt").read_text() == original
+            assert (mapped_root / "nested_dir" / "nested_file.txt").read_text() == (
+                "Nested file original content"
+            )
+
+            # Restic auto-creates intermediate directories under the target
+            for parent in mapped_root.parents:
+                if parent == staging:
+                    break
+                assert parent.is_dir()
+
+    @pytest.mark.asyncio
+    async def test_restore_preview_with_custom_target_path(
+        self, restic_manager, temp_backup_dir
+    ):
+        """Preview with a non-root target: action items remain absolute snapshot paths;
+        helper translates each into the on-disk destination."""
+        manager = restic_manager
+
+        snapshot = await manager.backup([temp_backup_dir])
+
+        with tempfile.TemporaryDirectory(prefix="restic_preview_target_") as staging_str:
+            staging = Path(staging_str)
+
+            actions = await manager.restore_preview(
+                snapshot_id=snapshot.id,
+                target_path=staging,
+                include_paths=[temp_backup_dir],
+            )
+
+            # Preview should still report actions (restic restores to the empty target)
+            assert len(actions) > 0
+            for action in actions:
+                # `item` is the original snapshot path, not the staged destination
+                assert action.item is not None
+                assert Path(action.item).is_absolute()
+                assert str(temp_backup_dir) in action.item
+
+                # Helper maps it to where it would actually land
+                predicted = ResticManager.compute_restore_destination(
+                    staging, Path(action.item)
+                )
+                assert predicted == staging / Path(action.item).relative_to("/")
+
     @pytest.mark.asyncio
     async def test_list_locks_no_locks(self, restic_manager):
         """Test list_locks when no locks exist"""

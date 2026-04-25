@@ -260,10 +260,31 @@ class ResticManager:
 
         return snapshots
 
+    @staticmethod
+    def compute_restore_destination(target_path: Path, snapshot_path: Path) -> Path:
+        """
+        Compute where a snapshot item will land after `restic restore --target target_path`.
+
+        Mirrors restic's path-prefixing: the snapshot's absolute path is preserved
+        under the target. With ``target_path=Path('/')`` the result equals
+        ``snapshot_path`` (in-place restore).
+
+        Args:
+            target_path: The ``--target`` value passed to ``restore``
+            snapshot_path: An absolute path inside the snapshot (e.g. an include
+                path or a preview action's ``item``)
+
+        Returns:
+            Final on-disk path of the restored item.
+        """
+        if not snapshot_path.is_absolute():
+            raise ValueError("snapshot_path must be absolute")
+        return target_path / snapshot_path.relative_to("/")
+
     async def restore_preview(
         self,
         snapshot_id: str,
-        target_path: Path,
+        target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
         uid: int | None = None,
         gid: int | None = None,
@@ -271,11 +292,21 @@ class ResticManager:
         """
         Preview restore operation (dry run)
 
+        Path mapping: each snapshot item at absolute path `S` is reported with
+        its original absolute path in the action `item` field, but on a real
+        restore would land at ``target_path / S.relative_to('/')``. With the
+        default ``target_path=Path('/')`` this collapses to `S` (in-place).
+        Use ``ResticManager.compute_restore_destination`` to translate an
+        action's `item` into the final on-disk location for a non-root target.
+
         Args:
             snapshot_id: Snapshot ID to restore
-            target_path: Target path for restore (usually "/" for in-place restore)
+            target_path: Target path for restore. Defaults to ``Path('/')``
+                (in-place restore). When non-root, restic preserves each
+                item's original absolute hierarchy under this prefix.
             include_paths: Optional list of paths to include (filter what gets restored).
                 Each path becomes a `--include` flag; matches are OR-combined.
+                Must be the original absolute snapshot paths (not target-mapped).
             uid: User ID for command execution
             gid: Group ID for command execution
 
@@ -337,7 +368,7 @@ class ResticManager:
     async def restore(
         self,
         snapshot_id: str,
-        target_path: Path,
+        target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
         uid: int | None = None,
         gid: int | None = None,
@@ -345,13 +376,25 @@ class ResticManager:
         """
         Restore snapshot
 
+        Path mapping: each snapshot item at absolute path `S` lands at
+        ``target_path / S.relative_to('/')``. With the default
+        ``target_path=Path('/')`` this collapses to `S` (in-place restore).
+        Use ``ResticManager.compute_restore_destination`` to predict where
+        a chosen include path will end up on disk. Restic auto-creates
+        ``target_path`` if it does not exist.
+
         Args:
             snapshot_id: Snapshot ID to restore
-            target_path: Target path for restore (usually "/" for in-place restore)
+            target_path: Target path for restore. Defaults to ``Path('/')``
+                (in-place restore). When non-root, restic preserves each
+                item's original absolute hierarchy under this prefix.
             include_paths: Optional list of paths to include (filter what gets restored).
-                Each path becomes a `--include` flag; matches are OR-combined. With
-                `--target /`, restic requires at least one include or exclude when
-                `--delete` is used.
+                Each path becomes a `--include` flag; matches are OR-combined.
+                Must be the original absolute snapshot paths (not target-mapped).
+                With ``--target /``, restic requires at least one include or
+                exclude when ``--delete`` is used; non-root targets do not have
+                this constraint. ``--delete`` is scoped to included roots — files
+                outside them (but under the target) are left untouched.
             uid: User ID for command execution
             gid: Group ID for command execution
         """
