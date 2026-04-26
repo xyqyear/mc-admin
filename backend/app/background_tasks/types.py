@@ -8,6 +8,7 @@ class TaskType(str, Enum):
     ARCHIVE_CREATE = "archive_create"
     ARCHIVE_EXTRACT = "archive_extract"
     SERVER_REBUILD = "server_rebuild"
+    WORLD_RESTORE = "world_restore"
 
 
 class TaskStatus(str, Enum):
