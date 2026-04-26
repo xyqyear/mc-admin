@@ -260,6 +260,56 @@ class ResticManager:
 
         return snapshots
 
+    async def find_snapshots_covering(
+        self,
+        paths: List[Path],
+        uid: int | None = None,
+        gid: int | None = None,
+    ) -> List[ResticSnapshot]:
+        """
+        Return snapshots that cover EVERY path in ``paths``.
+
+        A snapshot 'covers' a path P when at least one of its recorded paths
+        is an ancestor of P (or equal to it). All input paths must be covered
+        by the same snapshot for it to qualify.
+
+        Used by world-restore eligibility filtering — distinct contract from
+        ``list_snapshots(path_filter=...)`` which filters loosely.
+
+        Args:
+            paths: Absolute paths each snapshot must cover. Empty list is rejected.
+            uid: User ID for command execution
+            gid: Group ID for command execution
+
+        Returns:
+            Snapshots ordered newest-first.
+        """
+        if not paths:
+            raise ValueError("At least one path must be provided")
+        for path in paths:
+            if not path.is_absolute():
+                raise ValueError("Paths must be absolute")
+
+        all_snapshots = await self.list_snapshots(uid=uid, gid=gid)
+
+        resolved_paths = [p.resolve() for p in paths]
+
+        def covers(snapshot: ResticSnapshot, target: Path) -> bool:
+            for snapshot_path in snapshot.paths:
+                snap = Path(snapshot_path).resolve()
+                try:
+                    target.relative_to(snap)
+                    return True
+                except ValueError:
+                    continue
+            return False
+
+        matching = [
+            s for s in all_snapshots if all(covers(s, p) for p in resolved_paths)
+        ]
+        matching.sort(key=lambda s: s.time, reverse=True)
+        return matching
+
     @staticmethod
     def compute_restore_destination(target_path: Path, snapshot_path: Path) -> Path:
         """
