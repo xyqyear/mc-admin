@@ -158,6 +158,55 @@ async def render(
         yield p
 
 
+def _serialize_chunks(chunks: List[tuple[int, int]]) -> str:
+    return ";".join(f"{x},{z}" for x, z in chunks)
+
+
+@asynccontextmanager
+async def replace_chunks(
+    *,
+    source_mca: Path,
+    target_mca: Path,
+    chunks: List[tuple[int, int]],
+    owned_by: Path,
+) -> AsyncIterator[MCMapProcess]:
+    """Run ``mcmap replace-chunks`` for region-relative coords (0..31)."""
+    if not chunks:
+        raise ValueError("replace_chunks requires at least one chunk coord")
+    args: List[str] = [
+        "replace-chunks",
+        "-s",
+        str(source_mca),
+        "-t",
+        str(target_mca),
+        "-c",
+        _serialize_chunks(chunks),
+    ]
+    async with _run(args, owned_by) as p:
+        yield p
+
+
+@asynccontextmanager
+async def remove_chunks(
+    *,
+    target_mca: Path,
+    chunks: List[tuple[int, int]],
+    owned_by: Path,
+) -> AsyncIterator[MCMapProcess]:
+    """Run ``mcmap remove-chunks`` for region-relative coords (0..31)."""
+    if not chunks:
+        raise ValueError("remove_chunks requires at least one chunk coord")
+    args: List[str] = [
+        "remove-chunks",
+        "-t",
+        str(target_mca),
+        "-c",
+        _serialize_chunks(chunks),
+    ]
+    async with _run(args, owned_by) as p:
+        yield p
+
+
 def parse_event_for_test(line: bytes) -> Any:
     """Test helper: parse a single NDJSON line. Exposed for tests only."""
     return json.loads(line.strip())

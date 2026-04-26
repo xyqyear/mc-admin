@@ -9,7 +9,7 @@ from ..dynamic_config import config
 from ..logger import logger
 from . import runner
 from .cache import ServerMapCache
-from .types import RenderError
+from .types import MCMapError
 
 WORKER_IDLE_TIMEOUT_SECONDS = 60.0
 BATCH_COLLECT_TIMEOUT_SECONDS = 0.01
@@ -151,7 +151,7 @@ class ServerRenderQueue:
                         )
                     else:
                         pending.future.set_exception(
-                            RenderError(event.get("error", "unknown"))
+                            MCMapError(event.get("error", "unknown"))
                         )
         except Exception as e:
             logger.exception(
@@ -173,7 +173,7 @@ class ServerRenderQueue:
             if (p.x, p.z) in self._pending and not p.future.done():
                 self._pending.pop((p.x, p.z), None)
                 p.future.set_exception(
-                    RenderError(
+                    MCMapError(
                         f"render did not complete for ({p.x}, {p.z})"
                     )
                 )

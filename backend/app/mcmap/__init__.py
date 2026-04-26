@@ -8,7 +8,13 @@ from .palette import (
     palette_is_current,
     write_palette_hash,
 )
-from .types import DimensionInfo, InitEvent, MapStatus, RenderError
+from .types import (
+    DimensionInfo,
+    InitEvent,
+    MapStatus,
+    MCMapError,
+    RenderError,
+)
 
 __all__ = [
     "mcmap_manager",
@@ -20,5 +26,6 @@ __all__ = [
     "DimensionInfo",
     "MapStatus",
     "InitEvent",
+    "MCMapError",
     "RenderError",
 ]

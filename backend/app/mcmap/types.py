@@ -42,5 +42,34 @@ class InitEvent(BaseModel):
     cached: Optional[bool] = None
 
 
-class RenderError(Exception):
-    """Raised when mcmap reports a region render failure."""
+class ChunkReplaceEvent(BaseModel):
+    """NDJSON event emitted per replaced chunk by `mcmap replace-chunks`."""
+
+    type: Literal["chunk_replaced"]
+    x: int
+    z: int
+    source_kind: Literal["empty", "inline", "external"]
+
+
+class ChunkRemoveEvent(BaseModel):
+    """NDJSON event emitted per removed chunk by `mcmap remove-chunks`."""
+
+    type: Literal["chunk_removed"]
+    x: int
+    z: int
+
+
+class ChunkOpResultEvent(BaseModel):
+    """Terminal `result` event for replace/remove."""
+
+    type: Literal["result"]
+    replaced: Optional[int] = None
+    removed: Optional[int] = None
+
+
+class MCMapError(Exception):
+    """Raised when mcmap reports a failure (render, replace, remove, ...)."""
+
+
+# Backward-compatible alias retained so existing imports continue to work.
+RenderError = MCMapError
