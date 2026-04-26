@@ -306,7 +306,7 @@ const ServerWorldRestore: React.FC = () => {
 
       <ServerStopGuard serverId={serverId} status={statusQ.data} />
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
+      <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] gap-4">
         <Card className="overflow-hidden">
           <CardContent className="p-0 h-full min-h-[60vh]">
             {regionsMap && regionRelpath ? (
@@ -328,7 +328,7 @@ const ServerWorldRestore: React.FC = () => {
           </CardContent>
         </Card>
 
-        <div className="hidden xl:flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-w-0">
           <WorldRestoreSelectionPanel
             serverId={serverId}
             worldRootName={currentRoot?.name ?? null}
