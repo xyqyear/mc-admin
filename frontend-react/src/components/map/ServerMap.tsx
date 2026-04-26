@@ -380,6 +380,11 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       return
     }
 
+    // Capture the ref's stable mutable object once. The handlers below mutate
+    // its fields directly; the cleanup function uses the same captured local
+    // to reset them — keeping the lint rule about cleanup-time ref access happy.
+    const dragState = dragStateRef.current
+
     // Block-aligned bounding box of the latlng pair, snapped to chunk or region
     // granularity according to selectionMode.
     const cellsCovered = (a: L.LatLng, b: L.LatLng): Set<ChunkKey> => {
@@ -418,18 +423,17 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
 
     const updateGhost = () => {
-      const st = dragStateRef.current
-      st.rafScheduled = false
-      if (!st.active || !st.start || !st.last) return
+      dragState.rafScheduled = false
+      if (!dragState.active || !dragState.start || !dragState.last) return
       const sw: LatLngPair = [
-        Math.min(st.start.lat, st.last.lat),
-        Math.min(st.start.lng, st.last.lng),
+        Math.min(dragState.start.lat, dragState.last.lat),
+        Math.min(dragState.start.lng, dragState.last.lng),
       ]
       const ne: LatLngPair = [
-        Math.max(st.start.lat, st.last.lat),
-        Math.max(st.start.lng, st.last.lng),
+        Math.max(dragState.start.lat, dragState.last.lat),
+        Math.max(dragState.start.lng, dragState.last.lng),
       ]
-      const color = st.mode === 'remove' ? '#ef4444' : '#3b82f6'
+      const color = dragState.mode === 'remove' ? '#ef4444' : '#3b82f6'
       if (!dragGhostRef.current) {
         dragGhostRef.current = L.rectangle([sw, ne], {
           color,
@@ -480,45 +484,43 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       // Shift drags reuse the left button — disable map panning so the gesture
       // doesn't move the map. Right-button drag never engages map dragging.
       if (isShift) map.dragging.disable()
-      const st = dragStateRef.current
-      st.active = true
-      st.start = e.latlng
-      st.last = e.latlng
-      st.mode = isRight ? 'remove' : 'add'
-      st.rafScheduled = false
+      dragState.active = true
+      dragState.start = e.latlng
+      dragState.last = e.latlng
+      dragState.mode = isRight ? 'remove' : 'add'
+      dragState.rafScheduled = false
       removeGhost()
       updateGhost()
     }
 
     const onMouseMove = (e: L.LeafletMouseEvent) => {
-      const st = dragStateRef.current
-      if (!st.active) return
-      st.last = e.latlng
-      if (!st.rafScheduled) {
-        st.rafScheduled = true
+      if (!dragState.active) return
+      dragState.last = e.latlng
+      if (!dragState.rafScheduled) {
+        dragState.rafScheduled = true
         requestAnimationFrame(updateGhost)
       }
     }
 
     const finishDrag = (end: L.LatLng | null) => {
-      const st = dragStateRef.current
-      if (!st.active) {
+      if (!dragState.active) {
         map.dragging.enable()
         return
       }
-      const start = st.start
-      const last = end ?? st.last
-      st.active = false
-      st.start = null
-      st.last = null
-      st.rafScheduled = false
+      const start = dragState.start
+      const last = end ?? dragState.last
+      const mode = dragState.mode
+      dragState.active = false
+      dragState.start = null
+      dragState.last = null
+      dragState.rafScheduled = false
       removeGhost()
       map.dragging.enable()
       if (!onSelectionChange || !start || !last) return
       const cells = cellsCovered(start, last)
       if (cells.size === 0) return
       const next = new Set<ChunkKey>(selection ?? [])
-      if (st.mode === 'remove') {
+      if (mode === 'remove') {
         for (const k of cells) next.delete(k)
       } else {
         for (const k of cells) next.add(k)
@@ -532,7 +534,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     // so a release outside the canvas still finishes the drag — leaving a
     // ghost rectangle stuck on screen until the next interaction is jarring.
     const onWindowMouseUp = () => {
-      if (dragStateRef.current.active) finishDrag(null)
+      if (dragState.active) finishDrag(null)
     }
     window.addEventListener('mouseup', onWindowMouseUp)
 
@@ -556,9 +558,9 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       window.removeEventListener('mouseup', onWindowMouseUp)
       container?.removeEventListener('keydown', onKeyDown)
       removeGhost()
-      dragStateRef.current.active = false
-      dragStateRef.current.start = null
-      dragStateRef.current.last = null
+      dragState.active = false
+      dragState.start = null
+      dragState.last = null
       map.dragging.enable()
     }
   }, [selectionMode, selection, onSelectionChange])
