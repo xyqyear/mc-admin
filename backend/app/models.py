@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import JSON, TEXT, DateTime, Index, Integer, String
+from sqlalchemy import JSON, TEXT, Boolean, DateTime, Index, Integer, String
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -325,3 +325,67 @@ class DefaultVariableConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
+
+
+# World Restore System Models
+
+
+class RestorationType(str, Enum):
+    """Granularity of a world-restoration operation."""
+
+    WORLD = "world"
+    DIMENSION = "dimension"
+    REGIONS = "regions"
+    CHUNKS = "chunks"
+
+
+class RestorationStatus(str, Enum):
+    """Lifecycle state of a restoration."""
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+class Restoration(Base):
+    """Restoration history table.
+
+    Flat: rollbacks create new rows pointing at a prior safety snapshot via
+    ``source_snapshot_id``. ``is_rollback=true`` distinguishes them.
+    """
+
+    __tablename__ = "restoration"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    server_id: Mapped[str] = mapped_column(String(100), index=True)
+    type: Mapped[RestorationType] = mapped_column(SQLAlchemyEnum(RestorationType))
+    source_snapshot_id: Mapped[str] = mapped_column(String(64))
+    safety_snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    selection_json: Mapped[str] = mapped_column(TEXT)
+    is_rollback: Mapped[bool] = mapped_column(Boolean, default=False)
+    initiated_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime(), nullable=True)
+    status: Mapped[RestorationStatus] = mapped_column(
+        SQLAlchemyEnum(RestorationStatus), default=RestorationStatus.RUNNING
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+
+
+class RestorationSelection(BaseModel):
+    """Pydantic model describing what's being snapshotted/restored.
+
+    Persisted as JSON in ``Restoration.selection_json`` and exchanged with the
+    frontend. ``chunks`` holds absolute chunk coords; the orchestrator groups
+    them by region at execution time.
+    """
+
+    type: RestorationType
+    world_root_name: str
+    dimension_label: Optional[str] = None
+    region_dir_relpath: Optional[str] = None
+    regions: list[Tuple[int, int]] = PydanticField(default_factory=list)
+    chunks: list[Tuple[int, int]] = PydanticField(default_factory=list)
