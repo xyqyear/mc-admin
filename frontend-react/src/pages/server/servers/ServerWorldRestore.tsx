@@ -280,6 +280,9 @@ const ServerWorldRestore: React.FC = () => {
                   const [rootName, rel] = v.split('::')
                   if (rootName && rel) handleDimensionChange(rootName, rel)
                 }}
+                itemToStringLabel={(v) =>
+                  dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
+                }
               >
                 <SelectTrigger className="w-[260px]">
                   <SelectValue placeholder="选择维度" />
