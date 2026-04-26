@@ -24,7 +24,6 @@ const ServerDetail = React.lazy(() => import('@/pages/server/servers/ServerDetai
 const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'))
 const ServerCompose = React.lazy(() => import('@/pages/server/servers/ServerCompose'))
 const ServerConsole = React.lazy(() => import('@/pages/server/servers/ServerConsole'))
-const ServerMap = React.lazy(() => import('@/pages/server/servers/ServerMap'))
 const ServerWorldRestore = React.lazy(() => import('@/pages/server/servers/ServerWorldRestore'))
 const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
 const TemplateList = React.lazy(() => import('@/pages/templates/TemplateList'))
@@ -101,7 +100,6 @@ function App() {
             <Route path=":id/files" element={<ServerFiles />} />
             <Route path=":id/compose" element={<ServerCompose />} />
             <Route path=":id/console" element={<ServerConsole />} />
-            <Route path=":id/map" element={<ServerMap />} />
             <Route path=":id/world-restore" element={<ServerWorldRestore />} />
           </Route>
           <Route path="/admin">

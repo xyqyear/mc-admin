@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { History as HistoryIcon } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Map as MapIcon } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,19 +17,21 @@ import {
 import PageHeader from '@/components/layout/PageHeader'
 import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
 import MapHelpButton from '@/components/map/MapHelpButton'
+import MapInitDialog from '@/components/dialogs/MapInitDialog'
 import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
 import {
   ServerStopGuard,
   ServerStartHint,
 } from '@/components/world-restore/ServerStopGuard'
 import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
-import { useMapRegions } from '@/hooks/queries/base/useMapQueries'
+import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import {
   useWorldRestoreSelectionStore,
   type WorldRestoreSelectionMode,
 } from '@/stores/useWorldRestoreSelectionStore'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
+import { queryKeys } from '@/utils/api'
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
 
@@ -58,6 +61,18 @@ const ServerWorldRestore: React.FC = () => {
   const { useServerStatus } = useServerQueries()
   const statusQ = useServerStatus(serverId)
   const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false
+
+  const queryClient = useQueryClient()
+  const mapStatusQ = useMapStatus(serverId)
+  const mapInitialized =
+    !!mapStatusQ.data?.client_jar_present &&
+    !!mapStatusQ.data?.palette_present &&
+    !!mapStatusQ.data?.palette_current
+  const [initOpen, setInitOpen] = useState(false)
+  const handleInitComplete = useCallback(() => {
+    setInitOpen(false)
+    queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
+  }, [queryClient])
 
   const selectionState = useWorldRestoreSelectionStore((s) =>
     s.byServer[serverId],
@@ -125,7 +140,10 @@ const ServerWorldRestore: React.FC = () => {
     data: regionsList,
     isLoading: regionsLoading,
     isError: regionsError,
-  } = useMapRegions(serverId, regionRelpath ?? undefined)
+  } = useMapRegions(
+    serverId,
+    mapInitialized ? regionRelpath ?? undefined : undefined,
+  )
 
   const regionsMap = useMemo(() => {
     if (!regionsList) return undefined
@@ -224,12 +242,17 @@ const ServerWorldRestore: React.FC = () => {
   return (
     <div className="flex flex-col gap-4 h-full">
       <PageHeader
-        title="世界恢复"
-        icon={<HistoryIcon className="w-5 h-5" />}
+        title="地图回档"
+        icon={<MapIcon className="w-5 h-5" />}
         serverTag={serverId}
         actions={
           dimensionOptions.length > 0 ? (
             <div className="flex items-center gap-2">
+              {mapInitialized && (
+                <Button variant="outline" onClick={() => setInitOpen(true)}>
+                  重载渲染前置
+                </Button>
+              )}
               <div className="inline-flex rounded-md border border-input p-0.5 bg-background">
                 <Button
                   variant={urlMode === 'region' ? 'secondary' : 'ghost'}
@@ -306,45 +329,76 @@ const ServerWorldRestore: React.FC = () => {
         </Alert>
       )}
 
-      <ServerStopGuard serverId={serverId} status={statusQ.data} />
+      {mapStatusQ.isError && (
+        <Alert variant="destructive">
+          <AlertTitle>加载失败</AlertTitle>
+          <AlertDescription>无法获取地图初始化状态</AlertDescription>
+        </Alert>
+      )}
 
-      <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] gap-4">
-        <Card className="overflow-hidden">
-          <CardContent className="p-0 h-full min-h-[60vh]">
-            {regionsMap && regionRelpath ? (
-              <ServerMap
-                serverId={serverId}
-                regionPath={regionRelpath}
-                regions={regionsMap}
-                selectionMode={selectionMode}
-                selection={selection}
-                onSelectionChange={handleSelectionChange}
-                initialView={initialView}
-                onViewChange={handleViewChange}
-              />
-            ) : regionsLoading ? (
-              <div className="h-full min-h-[60vh] flex items-center justify-center">
-                <Spinner />
-              </div>
-            ) : null}
+      {!mapStatusQ.isLoading && mapStatusQ.data && !mapInitialized && (
+        <Card>
+          <CardContent className="py-8 flex flex-col items-center gap-4">
+            <div className="text-center text-muted-foreground">
+              {!mapStatusQ.data.client_jar_present
+                ? '尚未下载客户端 JAR。'
+                : !mapStatusQ.data.palette_present
+                ? '尚未生成调色板。'
+                : '调色板已过期（版本或mods变更）。'}
+            </div>
+            <Button onClick={() => setInitOpen(true)}>初始化地图</Button>
           </CardContent>
         </Card>
+      )}
 
-        <div className="flex flex-col gap-3 min-w-0">
-          <WorldRestoreSelectionPanel
-            serverId={serverId}
-            worldRootName={currentRoot?.name ?? null}
-            dimensionLabel={currentDimension?.label ?? null}
-            regionDirRelpath={regionRelpath}
-            selection={selection}
-            mode={urlMode}
-            onModeChange={handleModeChange}
-            onSelectionChange={handleSelectionChange}
-            serverStopped={serverStopped}
-          />
-          <ServerStartHint serverId={serverId} status={statusQ.data} />
+      <ServerStopGuard serverId={serverId} status={statusQ.data} />
+
+      {mapInitialized && (
+        <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] gap-4">
+          <Card className="overflow-hidden">
+            <CardContent className="p-0 h-full min-h-[60vh]">
+              {regionsMap && regionRelpath ? (
+                <ServerMap
+                  serverId={serverId}
+                  regionPath={regionRelpath}
+                  regions={regionsMap}
+                  selectionMode={selectionMode}
+                  selection={selection}
+                  onSelectionChange={handleSelectionChange}
+                  initialView={initialView}
+                  onViewChange={handleViewChange}
+                />
+              ) : regionsLoading ? (
+                <div className="h-full min-h-[60vh] flex items-center justify-center">
+                  <Spinner />
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-3 min-w-0">
+            <WorldRestoreSelectionPanel
+              serverId={serverId}
+              worldRootName={currentRoot?.name ?? null}
+              dimensionLabel={currentDimension?.label ?? null}
+              regionDirRelpath={regionRelpath}
+              selection={selection}
+              mode={urlMode}
+              onModeChange={handleModeChange}
+              onSelectionChange={handleSelectionChange}
+              serverStopped={serverStopped}
+            />
+            <ServerStartHint serverId={serverId} status={statusQ.data} />
+          </div>
         </div>
-      </div>
+      )}
+
+      <MapInitDialog
+        open={initOpen}
+        serverId={serverId}
+        onClose={() => setInitOpen(false)}
+        onComplete={handleInitComplete}
+      />
     </div>
   )
 }

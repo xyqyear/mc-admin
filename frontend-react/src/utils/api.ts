@@ -242,11 +242,10 @@ export const queryKeys = {
     routes: () => [...queryKeys.dns.all, "routes"] as const,
   },
 
-  // 服务器地图 (mcmap)
+  // 服务器地图 (mcmap) — init status + region manifest, used by 地图回档.
   map: {
     all: ["map"] as const,
     status: (serverId: string) => [...queryKeys.map.all, "status", serverId] as const,
-    dimensions: (serverId: string) => [...queryKeys.map.all, "dimensions", serverId] as const,
     regions: (serverId: string, region: string) =>
       [...queryKeys.map.all, "regions", serverId, region] as const,
   },

@@ -73,7 +73,7 @@ src/
 │   ├── overview/            # ServerStateIcon, MetricCard components
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
 │   ├── files/               # FileIcon (Lucide-based), FileSnapshotActions
-│   ├── map/                 # ServerMap (Leaflet), ServerMapTileLayer (authed GridLayer), coords helpers
+│   ├── map/                 # ServerMap (Leaflet), ServerMapTileLayer (authed GridLayer), coords helpers, MapHelpButton
 │   ├── world-restore/       # WorldRestoreSelectionPanel, SnapshotPicker, RestorePreviewModal (mini Leaflet + PreviewTileLayer), RestorationHistoryDrawer, ServerStopGuard, RestoreProgressCard, restoreProgress reducer, selectionUtils
 │   │
 │   ├── task-center/         # Background task UI
@@ -262,7 +262,6 @@ src/
 │           ├── ServerFiles.tsx     # File management with search
 │           ├── ServerCompose.tsx   # Compose editing (auto-detects template/direct mode)
 │           ├── ServerConsole.tsx   # Real-time terminal with xterm.js
-│           ├── ServerMap.tsx       # Per-server map view with dimension switcher
 │           └── ServerWorldRestore.tsx # World restore page (map + side panel + URL-driven dim/mode)
 │
 ├── stores/                  # Zustand stores
@@ -281,7 +280,7 @@ src/
 │   ├── MenuItem.ts
 │   ├── User.ts
 │   ├── Dns.ts
-│   ├── MapTypes.ts          # Map status, dimensions, init events, selection types
+│   ├── MapTypes.ts          # Region manifest, chunk key, selection mode types
 │   ├── lifecycle.ts         # Mirrors backend CreateServerResult / RemoveServerResult / SyncResult
 │   └── WorldRestore.ts      # Pydantic-mirroring types for layout, restoration history, RestoreEvent / PreviewEvent SSE payloads
 
@@ -569,19 +568,21 @@ Features:
 
 ## Server Map (mcmap)
 
-**Pages & Components:**
+The map is no longer a standalone page — it's an embeddable component used exclusively by the world-restore page.
 
-- `pages/server/servers/ServerMap.tsx` — initialization gate (calls `/initialize` SSE), dimension switcher, and Leaflet container; reads/writes dimension + zoom + center to URL search params (dimension is bidirectional source-of-truth, zoom/center is one-way map→URL with `replace: true`); fetches the per-dimension region manifest and gates map render on it
-- `components/map/ServerMap.tsx` — Leaflet wrapper with `regionPath`, `regions` (manifest set), `initialView`/`onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, `overlays` props. Selection interactions: single-click toggles a chunk or full region; shift-drag adds a rectangle; right-button drag subtracts; Escape (with the canvas focused) clears. Hover frame is suppressed during a drag. Selection paint degrades to per-region rectangles past 5,000 chunks for performance.
+**Components:**
+
+- `components/map/ServerMap.tsx` — Leaflet wrapper with `regionPath`, `regions` (manifest set), `initialView`/`onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, `overlays` props. Interactions: plain left-drag pans; Ctrl/Shift + click adds the chunk/region under the cursor; Ctrl/Shift + drag adds a rectangle; right-click removes; right-button + drag subtracts; Escape (with the canvas focused) clears. Selection paint degrades to per-region rectangles past 5,000 chunks for performance.
 - `components/map/ServerMapTileLayer.ts` — custom `L.GridLayer` that fetches PNGs through the project's authed `axios` instance (so the JWT applies), short-circuits to a blank tile for regions absent from the manifest, and aborts in-flight requests via `AbortController` when leaflet unloads tiles
 - `components/map/coords.ts` — pure-function block ↔ chunk ↔ region conversions; also exposes `regionToChunkKeys`, `chunksToFullyCoveredRegions`, `chunksToCoveredRegions` for the world-restore mode-switch math and overlay rendering
-- `components/dialogs/MapInitDialog.tsx` — two-stage progress dialog driven by SSE from `POST /servers/{id}/map/initialize`
+- `components/map/MapHelpButton.tsx` — circular help button + dialog explaining the gesture model; mounted in the 地图回档 page header
+- `components/dialogs/MapInitDialog.tsx` — two-stage progress dialog driven by SSE from `POST /servers/{id}/map/initialize`; opened from the 地图回档 page when the client JAR or palette is missing/stale, plus a "重载渲染前置" button once initialized
 
 **Data flow:**
 
-- `hooks/api/mapApi.ts` — REST: status, dimensions, regions, cache clear
-- `hooks/queries/base/useMapQueries.ts` — `useMapStatus`, `useMapDimensions`, `useMapRegions`
-- Init SSE is consumed directly via `fetch` + `ReadableStream` in `MapInitDialog` (the only streaming consumer; other endpoints use TanStack Query)
+- `hooks/api/mapApi.ts` — REST: `getStatus(serverId)`, `getRegions(serverId, region)`
+- `hooks/queries/base/useMapQueries.ts` — `useMapStatus`, `useMapRegions`
+- The 地图回档 page gates tile rendering on `useMapStatus` (`client_jar_present && palette_present && palette_current`); when missing, the page shows the init prompt instead of the map
 
 **Sparse-world optimization:** `GET /servers/{id}/map/regions?region=...` returns the list of `[x, z]` pairs that exist on disk for the selected dimension. The frontend turns it into a `Set<"x,z">` and passes it to the tile layer, which skips HTTP requests for any tile not in the set. The backend 404 path stays as a safety net for regions generated after the manifest was fetched.
 
@@ -610,12 +611,12 @@ Features:
 **SSE consumer** (`hooks/useEventStream.ts`):
 
 - Generic `useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })` — fetch + `AbortController` + `\n\n` block parser. Authorization header injected from `useTokenStore`. Body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
-- Used for all four world-restore SSE flows: `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback`, plus a future `POST /map/initialize` hand-off if `MapInitDialog` is ever refactored to use it.
+- Used for all three world-restore SSE flows: `POST /preview`, `POST /restore`, and `POST /restorations/{id}/rollback`.
 
 **Routing & navigation:**
 
 - Route: `<Route path=":id/world-restore" element={<ServerWorldRestore />} />` in `App.tsx`, lazy-loaded.
-- Sidebar: `ArchiveRestore` lucide icon under each server's submenu, navigating to `/server/{id}/world-restore`.
+- Sidebar: `Map` lucide icon labeled "地图回档" under each server's submenu, navigating to `/server/{id}/world-restore`.
 
 ## Monaco Editor Integration
 

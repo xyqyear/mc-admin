@@ -11,14 +11,6 @@ export const useMapStatus = (serverId: string | undefined) =>
     staleTime: 1000 * 30,
   })
 
-export const useMapDimensions = (serverId: string | undefined) =>
-  useQuery({
-    queryKey: queryKeys.map.dimensions(serverId || ''),
-    queryFn: () => mapApi.getDimensions(serverId!),
-    enabled: !!serverId,
-    staleTime: 1000 * 60,
-  })
-
 export const useMapRegions = (
   serverId: string | undefined,
   regionPath: string | undefined,

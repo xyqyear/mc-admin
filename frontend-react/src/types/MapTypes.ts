@@ -7,12 +7,6 @@ export interface MapStatus {
   version: string | null
 }
 
-export interface DimensionInfo {
-  region_path: string
-  label: string
-  mca_count: number
-}
-
 // One [x, z, mtime] triple per existing r.X.Z.mca in the dimension's region
 // folder. `mtime` is the MCA file's modification time in whole epoch seconds;
 // the tile layer appends it as a `?mt=` query param so the browser HTTP cache

@@ -11,7 +11,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
     <SidebarProvider
       className="h-screen"
-      style={{ '--sidebar-width': '13rem' } as React.CSSProperties}
+      style={{ '--sidebar-width': '14rem' } as React.CSSProperties}
     >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">

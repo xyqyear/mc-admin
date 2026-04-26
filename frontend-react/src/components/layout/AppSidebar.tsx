@@ -11,7 +11,6 @@ import {
   LogOut,
   Code,
   Map as MapIcon,
-  ArchiveRestore,
   Crown,
   UserCog,
   History,
@@ -216,22 +215,12 @@ const AppSidebar: React.FC = () => {
                                 </SidebarMenuSubItem>
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
-                                    isActive={isActive(`/server/${server.id}/map`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/map`)}
-                                    className="cursor-pointer"
-                                  >
-                                    <MapIcon />
-                                    <span>地图</span>
-                                  </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                                <SidebarMenuSubItem>
-                                  <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/world-restore`)}
                                     onClick={() => navigateTo(`/server/${server.id}/world-restore`)}
                                     className="cursor-pointer"
                                   >
-                                    <ArchiveRestore />
-                                    <span>世界恢复</span>
+                                    <MapIcon />
+                                    <span>地图回档</span>
                                   </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
                               </SidebarMenuSub>
