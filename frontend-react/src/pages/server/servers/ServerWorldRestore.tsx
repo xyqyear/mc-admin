@@ -15,13 +15,21 @@ import {
 } from '@/components/ui/select'
 import PageHeader from '@/components/layout/PageHeader'
 import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
+import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
+import {
+  ServerStopGuard,
+  ServerStartHint,
+} from '@/components/world-restore/ServerStopGuard'
 import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
 import { useMapRegions } from '@/hooks/queries/base/useMapQueries'
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import {
   useWorldRestoreSelectionStore,
   type WorldRestoreSelectionMode,
 } from '@/stores/useWorldRestoreSelectionStore'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
+
+const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
 
 function parseInitialView(params: URLSearchParams): ServerMapView | undefined {
   if (!params.has('z') && !params.has('cx') && !params.has('cz')) return undefined
@@ -46,6 +54,9 @@ const ServerWorldRestore: React.FC = () => {
   const [initialView] = useState(() => parseInitialView(searchParams))
 
   const layoutQ = useWorldLayout(serverId)
+  const { useServerStatus } = useServerQueries()
+  const statusQ = useServerStatus(serverId)
+  const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false
 
   const selectionState = useWorldRestoreSelectionStore((s) =>
     s.byServer[serverId],
@@ -293,6 +304,8 @@ const ServerWorldRestore: React.FC = () => {
         </Alert>
       )}
 
+      <ServerStopGuard serverId={serverId} status={statusQ.data} />
+
       <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
         <Card className="overflow-hidden">
           <CardContent className="p-0 h-full min-h-[60vh]">
@@ -315,20 +328,20 @@ const ServerWorldRestore: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* TODO(Session 5): selection panel, snapshot picker, preview modal,
-            history drawer wire up here. For now, a stub keeps the layout
-            stable so we can verify the page mounts and selection round-trips
-            through the store. */}
-        <Card className="hidden xl:flex flex-col">
-          <CardContent className="p-4 text-sm text-muted-foreground">
-            <div className="font-medium text-foreground mb-2">选择</div>
-            <div>模式: {urlMode === 'region' ? '区域' : '区块'}</div>
-            <div>已选区块: {selection.size}</div>
-            <div className="mt-4 text-xs">
-              快照选择、预览、恢复历史等控件将在下一阶段填充。
-            </div>
-          </CardContent>
-        </Card>
+        <div className="hidden xl:flex flex-col gap-3">
+          <WorldRestoreSelectionPanel
+            serverId={serverId}
+            worldRootName={currentRoot?.name ?? null}
+            dimensionLabel={currentDimension?.label ?? null}
+            regionDirRelpath={regionRelpath}
+            selection={selection}
+            mode={urlMode}
+            onModeChange={handleModeChange}
+            onSelectionChange={handleSelectionChange}
+            serverStopped={serverStopped}
+          />
+          <ServerStartHint serverId={serverId} status={statusQ.data} />
+        </div>
       </div>
     </div>
   )
