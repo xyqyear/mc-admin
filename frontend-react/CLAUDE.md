@@ -74,6 +74,7 @@ src/
 │   ├── editors/             # ComposeYamlEditor, SimpleEditor, MonacoDiffEditor
 │   ├── files/               # FileIcon (Lucide-based), FileSnapshotActions
 │   ├── map/                 # ServerMap (Leaflet), ServerMapTileLayer (authed GridLayer), coords helpers
+│   ├── world-restore/       # WorldRestoreSelectionPanel, SnapshotPicker, RestorePreviewModal (mini Leaflet + PreviewTileLayer), RestorationHistoryDrawer, ServerStopGuard, RestoreProgressCard, restoreProgress reducer, selectionUtils
 │   │
 │   ├── task-center/         # Background task UI
 │   │   ├── TaskCenterTrigger.tsx       # Fixed Button with badge
@@ -193,7 +194,8 @@ src/
 │   │   ├── userApi.ts
 │   │   ├── playerApi.ts     # Player management API
 │   │   ├── taskApi.ts       # Background task API
-│   │   └── templateApi.ts   # Template CRUD, config, conversion, preview
+│   │   ├── templateApi.ts   # Template CRUD, config, conversion, preview
+│   │   └── worldRestoreApi.ts # Layout, eligible snapshots, snapshot create, preview heartbeat/end, tile URL builder, restoration list/detail
 │   │
 │   ├── queries/
 │   │   ├── base/            # **Layer 2** - Resource-focused query hooks
@@ -208,7 +210,8 @@ src/
 │   │   │   ├── useUserQueries.ts
 │   │   │   ├── usePlayerQueries.ts   # Player data queries
 │   │   │   ├── useTaskQueries.ts     # Background task queries with polling
-│   │   │   └── useTemplateQueries.ts # Template list, detail, schema, config, ports
+│   │   │   ├── useTemplateQueries.ts # Template list, detail, schema, config, ports
+│   │   │   └── useWorldRestoreQueries.ts # World layout, eligible snapshots, restoration history, restoration detail
 │   │   │
 │   │   └── page/            # **Layer 3** - Page-level compositions
 │   │       ├── useServerDetailQueries.ts
@@ -226,11 +229,14 @@ src/
 │   │   ├── useUserMutations.ts
 │   │   ├── usePlayerMutations.ts
 │   │   ├── useTaskMutations.ts
-│   │   └── useTemplateMutations.ts  # Template CRUD, config update, mode conversion
+│   │   ├── useTemplateMutations.ts  # Template CRUD, config update, mode conversion
+│   │   └── useWorldRestoreMutations.ts # World snapshot creation, preview heartbeat/end
 │   │
 │   ├── useCodeLoginWebsocket.ts     # WebSocket code login
 │   ├── useServerConsoleWebSocket.ts # Console WebSocket with direct attach
 │   ├── usePageDragUpload.ts         # Drag-and-drop validation
+│   ├── useEventStream.ts            # Reusable SSE consumer (auth-aware fetch + AbortController + \n\n parser)
+│   ├── useConfirm.tsx               # Confirmation dialog hook (built on AlertDialog)
 │   └── useVersionCheck.ts           # Version update detection
 │
 ├── pages/                   # Route components
@@ -256,7 +262,8 @@ src/
 │           ├── ServerFiles.tsx     # File management with search
 │           ├── ServerCompose.tsx   # Compose editing (auto-detects template/direct mode)
 │           ├── ServerConsole.tsx   # Real-time terminal with xterm.js
-│           └── ServerMap.tsx       # Per-server map view with dimension switcher
+│           ├── ServerMap.tsx       # Per-server map view with dimension switcher
+│           └── ServerWorldRestore.tsx # World restore page (map + side panel + URL-driven dim/mode)
 │
 ├── stores/                  # Zustand stores
 │   ├── useTokenStore.ts           # JWT token
@@ -264,7 +271,8 @@ src/
 │   ├── useLoginPreferenceStore.ts # Auth method preference
 │   ├── useDownloadStore.ts        # Download tasks
 │   ├── useBackgroundTaskStore.ts  # Background task state
-│   └── useTaskCenterStore.ts      # Task center panel state
+│   ├── useTaskCenterStore.ts      # Task center panel state
+│   └── useWorldRestoreSelectionStore.ts # Per-server world-restore selection (mode, dimension, chunk set; not persisted)
 
 ├── types/                   # TypeScript definitions
 │   ├── Server.ts
@@ -274,7 +282,8 @@ src/
 │   ├── User.ts
 │   ├── Dns.ts
 │   ├── MapTypes.ts          # Map status, dimensions, init events, selection types
-│   └── lifecycle.ts         # Mirrors backend CreateServerResult / RemoveServerResult / SyncResult
+│   ├── lifecycle.ts         # Mirrors backend CreateServerResult / RemoveServerResult / SyncResult
+│   └── WorldRestore.ts      # Pydantic-mirroring types for layout, restoration history, RestoreEvent / PreviewEvent SSE payloads
 
 ├── utils/                   # Utilities
 │   ├── api.ts               # Axios config, query keys, interceptors
@@ -563,9 +572,9 @@ Features:
 **Pages & Components:**
 
 - `pages/server/servers/ServerMap.tsx` — initialization gate (calls `/initialize` SSE), dimension switcher, and Leaflet container; reads/writes dimension + zoom + center to URL search params (dimension is bidirectional source-of-truth, zoom/center is one-way map→URL with `replace: true`); fetches the per-dimension region manifest and gates map render on it
-- `components/map/ServerMap.tsx` — Leaflet wrapper with `regionPath`, `regions` (manifest set), `initialView`/`onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, and `overlays` props (selection consumers and overlay layers come in future iterations)
+- `components/map/ServerMap.tsx` — Leaflet wrapper with `regionPath`, `regions` (manifest set), `initialView`/`onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, `overlays` props. Selection interactions: single-click toggles a chunk or full region; shift-drag adds a rectangle; right-button drag subtracts; Escape (with the canvas focused) clears. Hover frame is suppressed during a drag. Selection paint degrades to per-region rectangles past 5,000 chunks for performance.
 - `components/map/ServerMapTileLayer.ts` — custom `L.GridLayer` that fetches PNGs through the project's authed `axios` instance (so the JWT applies), short-circuits to a blank tile for regions absent from the manifest, and aborts in-flight requests via `AbortController` when leaflet unloads tiles
-- `components/map/coords.ts` — pure-function block ↔ chunk ↔ region conversions
+- `components/map/coords.ts` — pure-function block ↔ chunk ↔ region conversions; also exposes `regionToChunkKeys`, `chunksToFullyCoveredRegions`, `chunksToCoveredRegions` for the world-restore mode-switch math and overlay rendering
 - `components/dialogs/MapInitDialog.tsx` — two-stage progress dialog driven by SSE from `POST /servers/{id}/map/initialize`
 
 **Data flow:**
@@ -577,6 +586,36 @@ Features:
 **Sparse-world optimization:** `GET /servers/{id}/map/regions?region=...` returns the list of `[x, z]` pairs that exist on disk for the selected dimension. The frontend turns it into a `Set<"x,z">` and passes it to the tile layer, which skips HTTP requests for any tile not in the set. The backend 404 path stays as a safety net for regions generated after the manifest was fetched.
 
 **Cancellation cascade:** leaflet `_removeTile` → `AbortController.abort()` → axios cancels → backend handler `CancelledError` → queue refcount drop → mid-batch mcmap subprocess termination if last consumer leaves the active batch.
+
+## World Restore Page
+
+**Pages & Components:**
+
+- `pages/server/servers/ServerWorldRestore.tsx` — page shell. URL is the source of truth for `?world=<root_name>&dim=<region_dir_relpath>&mode=region|chunk` plus `?z`, `?cx`, `?cz` for map view. Auto-selects the first world root's Overworld dimension when no URL params are present. Embeds `<ServerMap>` on the left and `<WorldRestoreSelectionPanel>` on the right with `<ServerStopGuard>` above and `<ServerStartHint>` below.
+- `components/world-restore/WorldRestoreSelectionPanel.tsx` — side panel with mode tabs (区域/区块), selection summary (chunks, covered regions, fully-covered regions), three "create snapshot" actions (selected scope / dimension / world), three "restore…" actions that open the snapshot picker, and a "view restore history" button. Mode-switch math runs through `chunksToFullyCoveredRegions`; demotion to region mode prompts a confirm if it would drop partially-covered regions.
+- `components/world-restore/SnapshotPicker.tsx` — right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row offers Preview (opens `<RestorePreviewModal>`) and Restore (opens a destructive confirm, then drives the restore SSE via `useEventStream<RestoreEvent>` and renders progress in-place via `<RestoreProgressCard>`).
+- `components/world-restore/RestorePreviewModal.tsx` — `<Dialog>` containing a mini Leaflet map with `CRS.Simple` and `<PreviewTileLayer>` (a clone of `ServerMapTileLayer` pointed at the preview tile endpoint). Drives `POST /preview` via `useEventStream<PreviewEvent>`, captures `session_id` from the `ready` event, heartbeats every 30s, and fires `DELETE /preview/{session_id}` on close.
+- `components/world-restore/RestorationHistoryDrawer.tsx` — right-anchored `<Sheet>` listing rows from `useRestorations` (auto-refreshes every 5s). Per-row rollback gated on `status ∈ {succeeded, interrupted}` AND `safety_snapshot_id` set AND `is_rollback === false`. The "needs rollback" alert highlights `interrupted` rows.
+- `components/world-restore/ServerStopGuard.tsx` — banner shown when status is anything but stopped/created/removed; offers a one-click confirm-and-stop. Backend re-checks inside the lock (returns 409) but the pre-flight nudge is friendlier. Companion `<ServerStartHint>` invites the user to start the server again post-restore.
+- `components/world-restore/RestoreProgressCard.tsx` + `restoreProgress.ts` — shared SSE event reducer (`applyRestoreEvent`) and progress card UI used by both the snapshot picker (restore flow) and the history drawer (rollback flow).
+- `components/world-restore/PreviewTileLayer.ts` — Leaflet `GridLayer` for the preview map; mirrors `ServerMapTileLayer` but hits `/preview/{session_id}/tile/{rx}/{rz}.png` and gates by an `available` set so empty regions don't 404.
+- `components/world-restore/selectionUtils.ts` — `buildSelection(...)` packages the panel's state into the backend `RestorationSelection` shape; `computeSelectionStats(...)` returns chunk count, covered region count, fully-covered region count.
+
+**Selection state** (`stores/useWorldRestoreSelectionStore.ts`):
+
+- Per-server entries keyed by `serverId`, not persisted (selection is transient and intentionally clears on reload).
+- `setMode` does the chunk → region collapse via `chunksToFullyCoveredRegions`; region → chunk is a no-op on the data (the underlying set is already chunks).
+- `setDimension` clears the selection if `worldRootName` or `dimension` changes — chunks aren't comparable across dimensions.
+
+**SSE consumer** (`hooks/useEventStream.ts`):
+
+- Generic `useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })` — fetch + `AbortController` + `\n\n` block parser. Authorization header injected from `useTokenStore`. Body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
+- Used for all four world-restore SSE flows: `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback`, plus a future `POST /map/initialize` hand-off if `MapInitDialog` is ever refactored to use it.
+
+**Routing & navigation:**
+
+- Route: `<Route path=":id/world-restore" element={<ServerWorldRestore />} />` in `App.tsx`, lazy-loaded.
+- Sidebar: `ArchiveRestore` lucide icon under each server's submenu, navigating to `/server/{id}/world-restore`.
 
 ## Monaco Editor Integration
 

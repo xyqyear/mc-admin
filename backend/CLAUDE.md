@@ -30,6 +30,7 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
 - **Background Tasks** (app.background_tasks): Async task manager for long-running operations
 - **Server Map** (app.mcmap): On-demand world rendering via the mcmap CLI with batched, cancellable per-dimension queues
+- **World Restore** (app.world): World layout discovery, per-server backup/restore lock, restore orchestrator (chunk/region/dimension/world scopes), and `/tmp` preview session manager driving the world-restore SSE flows
 
 **Additional Libraries:**
 
@@ -163,6 +164,7 @@ app/
 │       ├── files.py        # File management
 │       ├── console.py      # WebSocket console endpoint
 │       ├── map.py          # Map status, dimensions, /initialize SSE, tiles, cache delete
+│       ├── world_restore.py # Layout, eligible snapshots, snapshot creation, preview SSE, restore SSE, restoration history, rollback SSE
 │       ├── populate.py     # Archive population
 │       ├── restart_schedule.py  # CRUD + reusable schedule_auto_restart helper
 │       ├── sync.py         # POST /servers/sync (OWNER-only fs↔DB reconciler)
@@ -262,12 +264,19 @@ app/
 │
 ├── mcmap/                  # Server map (mcmap CLI integration)
 │   ├── __init__.py         # Public exports: mcmap_manager, ServerMapCache, etc.
-│   ├── runner.py           # Async subprocess wrapper, NDJSON parsing, uid/gid demotion
+│   ├── runner.py           # Async subprocess wrapper, NDJSON parsing, uid/gid demotion; render + replace_chunks + remove_chunks ctx managers
 │   ├── cache.py            # ServerMapCache: per-region paths and freshness checks
 │   ├── palette.py          # Palette hash + invalidation, mods dir discovery
 │   ├── queue.py            # ServerRenderQueue: refcount-coalesced batching with cancellation
 │   ├── manager.py          # MCMapManager singleton: queues per (server, region_path)
-│   └── types.py            # Pydantic models for SSE events, status, dimensions
+│   └── types.py            # Pydantic models for SSE events, status, dimensions, MCMapError
+│
+├── world/                  # World restore (layout, locks, orchestrator, preview)
+│   ├── __init__.py         # Singleton: world_restore_orchestrator + initialize/reset helpers + start/stop_janitor
+│   ├── layout.py           # discover_world_roots, WorldRoot, DimensionInfo (Overworld/Nether/End by path heuristic)
+│   ├── locks.py            # Per-server asyncio.Lock with LockHolder metadata; ServerOperationKind = BACKUP|RESTORE
+│   ├── restore.py          # WorldRestoreOrchestrator: create_snapshot, list_eligible_snapshots, begin_restore (4 scopes), rollback, begin_preview
+│   └── preview.py          # PreviewSessionManager: heartbeat-driven sessions under /tmp, janitor, disk threshold guard, one-per-server enforcement
 │
 └── websocket/
     └── console.py          # Console WebSocket with docker-py attach
@@ -546,6 +555,7 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`)
 - Dynamic (`mcmap` schema): `stale_timeout_seconds`, `batch_size`, `thread_count`, `request_timeout_seconds`
+- Dynamic (`snapshots.world_restore` schema): `restore_temp_dir`, `temp_disk_threshold_bytes`, `preview_session_ttl_seconds`, `preview_janitor_interval_seconds`
 
 **Endpoints (mounted under `/api/servers/{server_id}/map/`):**
 
@@ -564,6 +574,74 @@ from app.mcmap import mcmap_manager, ServerMapCache, palette_is_current
 cache = ServerMapCache(data_path=instance.get_data_path())
 queue = await mcmap_manager.get_queue(server_id, region_path, cache)
 png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeout_seconds)
+```
+
+### World Restore System
+
+**Selective world rollback** at chunk, region, dimension, or whole-world granularity. Built on Restic snapshots + mcmap v0.3.0's `replace-chunks` and `remove-chunks` subcommands. Every restore creates a **safety snapshot** first, so a one-click rollback recovers the pre-restore state.
+
+**Four scopes:**
+
+- **WORLD**: Restic restore against the whole world root (e.g. `world/`); all dimensions covered.
+- **DIMENSION**: Restic restore scoped to a single `region/`, `entities/`, `poi/` triple inside a world root.
+- **REGIONS**: Restic restore filtered to specific `r.X.Z.mca` files; entities/poi sidecars and `c.<absX>.<absZ>.mcc` overflow chunks for the affected region grid are included so partial regions don't desync.
+- **CHUNKS**: Stage source MCAs from the snapshot into a tmp dir, then run `mcmap replace-chunks` to splice the selected chunks into the live MCAs (or `remove-chunks` for chunks the snapshot didn't have). Same restic include-path expansion as REGIONS for entities/poi.
+
+**Per-server lock semantics** (`app.world.locks`):
+
+- `server_operation_lock` is a singleton holding one `asyncio.Lock` per server id (or `__global__`). Acquired as `BACKUP` for snapshot creation and `RESTORE` for restores; held for the full operation including the safety snapshot.
+- `LockHolder` records `kind`, `started_at`, optional `user_id`, human-readable description, and the active `restoration_id` so the UI can show "another admin is restoring".
+- The cron backup job calls `server_operation_lock.is_locked(server_id)` before running and emits a structured "skipped" log + Uptime Kuma notification when held — backups never collide with restores.
+
+**Preview session lifecycle** (`app.world.preview`):
+
+- One preview session per server: starting a new preview tears down the prior session for that server.
+- Sessions live under `restore_temp_dir/<session_id>/` (default `/tmp/mc-admin-world-restore/`). Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
+- Heartbeat-driven TTL (default 30 min). A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs.
+- Disk threshold guard: estimated cost is `affected_regions × 8 MiB × 2`; preview returns 507 with `{"free", "required"}` if the FS doesn't have headroom.
+
+**Crash recovery:**
+
+- On startup, `mark_running_restorations_interrupted()` flips any `Restoration.status = RUNNING` rows to `INTERRUPTED` with `error_message="server restarted before completion"`. The history drawer surfaces a "rollback" CTA on these rows.
+
+**Endpoints (mounted under `/api/servers/{server_id}/world-restore/`):**
+
+- `GET /layout` — world roots + dimensions (Overworld/Nether/End label heuristic; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
+- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
+- `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held
+- `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (start → stage → merge_region → render_progress → ready); returns `session_id` in the `ready` event
+- `POST /preview/{session_id}/heartbeat` — extends the TTL; 404 if the session is unknown
+- `DELETE /preview/{session_id}` — idempotent teardown
+- `GET /preview/{session_id}/tile/{rx}/{rz}.png` — preview tile (also heartbeats)
+- `POST /restore` (body: `{source_snapshot_id, selection}`) — SSE stream of `RestoreEvent`; pre-checks return 409 (server running) or 423 (locked) before SSE handshake so the frontend can render distinct UI
+- `GET /restorations` / `GET /restorations/{id}` — restoration history rows
+- `POST /restorations/{id}/rollback` — SSE stream of `RestoreEvent`; uses the row's `safety_snapshot_id` as the source
+
+**Singleton wiring** (in `app.main` lifespan):
+
+1. `mark_running_restorations_interrupted()` flips stuck rows.
+2. `initialize_world_restore_orchestrator()` builds the singleton with values from `config.snapshots.world_restore.*` (no-op if restic isn't configured).
+3. `start_janitor()` launches the preview janitor task; `stop_janitor()` cancels it on shutdown.
+
+The router accesses the orchestrator via `from ... import world as world_subsystem` and reads `world_subsystem.world_restore_orchestrator` *at request time* — so the lifespan-time reassignment is observed.
+
+**Usage:**
+
+```python
+from app.world import world_restore_orchestrator
+from app.models import RestorationSelection
+
+# Eligible snapshots for a chunk-scope selection
+snaps = await world_restore_orchestrator.list_eligible_snapshots(
+    server_id="survival",
+    selection=RestorationSelection(type="chunks", world_root_name="world", chunks=[(0, 0)]),
+)
+
+# Drive the SSE
+async for event in world_restore_orchestrator.begin_restore(
+    server_id="survival", source_snapshot_id=snaps[0].id, selection=sel, user_id=42,
+):
+    print(event.event_type, event.message)
 ```
 
 ## Authentication & Authorization
@@ -606,6 +684,7 @@ png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeo
 **Server Template Config**: `/api/servers/{id}/template-config` - read/update template config
 **Server Template Migration**: `/api/servers/{id}/convert-to-direct`, `convert-to-template`, `extract-variables`, `check-conversion`
 **Server Map**: `/api/servers/{id}/map/` - status, dimensions, regions, initialize (SSE), tiles, cache delete
+**World Restore**: `/api/servers/{id}/world-restore/` - layout, eligible-snapshots, snapshots (POST), preview (SSE), preview heartbeat/delete/tile, restore (SSE), restorations (list/detail), rollback (SSE)
 
 ## Database Patterns
 
@@ -619,7 +698,7 @@ async def get_user(db: AsyncSession = Depends(get_db)):
     return result.scalar_one_or_none()
 ```
 
-**Models**: User, Server, ServerTemplate, DefaultVariableConfig, Player, PlayerSession, PlayerChat, PlayerAchievement, CronJob, CronJobExecution, DynamicConfig, ServerHeartbeat
+**Models**: User, Server, ServerTemplate, DefaultVariableConfig, Player, PlayerSession, PlayerChat, PlayerAchievement, CronJob, CronJobExecution, DynamicConfig, ServerHeartbeat, Restoration
 
 **Migrations**: Use Alembic for schema changes (only needed for existing table modifications, not new tables)
 
@@ -652,6 +731,7 @@ tests/
 ├── templates/         # Template manager, API, default variables, YAML utils tests
 ├── servers/           # Server creation (template mode), template config, lifecycle, sync tests
 ├── mcmap/             # Cache, palette hash, runner, queue, cancellation, dimensions, region path
+├── world/             # Layout discovery, locks, restoration model, orchestrator, preview lifecycle, endpoints, crash recovery
 └── fixtures/          # Test utilities
 ```
 

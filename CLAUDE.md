@@ -33,13 +33,16 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 - Bidirectional conversion between template mode and direct editing mode
 - File management with Monaco editor, deep search, multi-file/folder drag-and-drop upload
 - SNBT file editing with syntax highlighting
-- Per-server map view (Leaflet + mcmap CLI) with on-demand tile rendering, dimension switcher, and refcount-coalesced cancellation
+- Per-server map view (Leaflet + mcmap CLI) with on-demand tile rendering, dimension switcher, region/chunk selection (drag-rect, right-click deselect, keyboard clear), and refcount-coalesced cancellation
 
 **Backup & Recovery:**
 
 - Enterprise-grade Restic-based snapshot system with global and server-specific backups
 - Snapshot deletion and repository unlock functionality
-- Automatic safety snapshot creation during restore operations
+- World restore page with chunk-, region-, dimension-, and world-scope selection driven by an interactive map; on-demand preview that renders affected regions in a sandboxed working directory; one-click rollback from the per-restoration safety snapshot
+- mcmap v0.3.0 powers both rendering and partial chunk replace/remove for region/chunk-level rollbacks
+- Per-server operation lock serializes backup vs restore operations and skips overlapping cron backups
+- Crash recovery flips interrupted restorations to a recoverable state on startup so the user can roll back from the safety snapshot
 - Archive management with compression/decompression (ZIP, TAR, TAR.GZ, 7z)
 - SHA256 verification for archive integrity
 - Server population from archives
@@ -147,7 +150,7 @@ pnpm dev  # Runs on port 3000
 - Axios with interceptors and auto-retry
 - react-error-boundary for error handling
 - xterm.js for terminal emulation
-- Leaflet 1.9 with `CRS.Simple` for the per-server map view (custom `GridLayer` for authed tile fetches)
+- Leaflet 1.9 with `CRS.Simple` for the per-server map view and the world-restore preview modal (custom `GridLayer` for authed tile fetches)
 
 ## External Documentation
 
