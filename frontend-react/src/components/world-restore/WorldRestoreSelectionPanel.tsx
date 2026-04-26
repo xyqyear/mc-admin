@@ -187,7 +187,7 @@ export const WorldRestoreSelectionPanel: React.FC<
         </div>
 
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          <div className="font-medium mb-1">当前选择</div>
+          <div className="font-medium mb-1">当前选区</div>
           {hasSelection ? (
             <div className="text-muted-foreground space-y-0.5 tabular-nums">
               <div>

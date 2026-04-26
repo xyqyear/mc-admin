@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import PageHeader from '@/components/layout/PageHeader'
 import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
+import MapHelpButton from '@/components/map/MapHelpButton'
 import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
 import {
   ServerStopGuard,
@@ -268,6 +269,7 @@ const ServerWorldRestore: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <MapHelpButton />
             </div>
           ) : null
         }
