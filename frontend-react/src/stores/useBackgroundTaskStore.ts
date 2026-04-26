@@ -7,6 +7,7 @@ export type BackgroundTaskType =
   | 'archive_create'
   | 'archive_extract'
   | 'server_rebuild'
+  | 'world_restore'
 
 export interface BackgroundTask {
   taskId: string

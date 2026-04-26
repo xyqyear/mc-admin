@@ -251,6 +251,19 @@ export const queryKeys = {
       [...queryKeys.map.all, "regions", serverId, region] as const,
   },
 
+  // 世界恢复 (world-restore)
+  worldRestore: {
+    all: ["world-restore"] as const,
+    layout: (serverId: string) =>
+      [...queryKeys.worldRestore.all, "layout", serverId] as const,
+    eligible: (serverId: string, selection: unknown) =>
+      [...queryKeys.worldRestore.all, "eligible", serverId, selection] as const,
+    history: (serverId: string) =>
+      [...queryKeys.worldRestore.all, "history", serverId] as const,
+    restoration: (serverId: string, id: string) =>
+      [...queryKeys.worldRestore.all, "restoration", serverId, id] as const,
+  },
+
   // 模板管理
   templates: {
     all: ["templates"] as const,
