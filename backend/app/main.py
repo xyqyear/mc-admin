@@ -76,7 +76,13 @@ async def lifespan(app: FastAPI):
     logger.info("Starting player management system...")
     await start_player_system()
 
-    logger.info("Initializing world-restore orchestrator...")
+    logger.info("Initializing world-restore orchestrator and crash recovery...")
+    interrupted = await server_world_restore.mark_running_restorations_interrupted()
+    if interrupted:
+        logger.info(
+            "World restore crash recovery: %d running restoration(s) marked interrupted",
+            interrupted,
+        )
     world_restore_orchestrator = initialize_world_restore_orchestrator()
     if world_restore_orchestrator is not None:
         world_restore_orchestrator.start_janitor()
