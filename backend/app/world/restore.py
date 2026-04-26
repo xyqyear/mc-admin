@@ -180,6 +180,7 @@ class WorldRestoreOrchestrator:
         session_factory: SessionFactory,
         preview_base_dir: Optional[Path] = None,
         preview_ttl_seconds: Optional[int] = None,
+        preview_janitor_interval_seconds: Optional[int] = None,
     ) -> None:
         self._restic = restic_manager
         self._docker = docker_mc_manager
@@ -188,11 +189,14 @@ class WorldRestoreOrchestrator:
         base_dir = preview_base_dir or (
             Path(tempfile.gettempdir()) / "mc-admin-world-preview"
         )
-        from .preview import DEFAULT_TTL_SECONDS
+        from .preview import DEFAULT_JANITOR_INTERVAL_SECONDS, DEFAULT_TTL_SECONDS
 
         self._preview_manager = PreviewSessionManager(
             base_dir=base_dir,
             ttl_seconds=preview_ttl_seconds or DEFAULT_TTL_SECONDS,
+            janitor_interval_seconds=(
+                preview_janitor_interval_seconds or DEFAULT_JANITOR_INTERVAL_SECONDS
+            ),
         )
 
     # --- Snapshot creation -----------------------------------------------

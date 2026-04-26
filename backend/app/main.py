@@ -52,6 +52,8 @@ from .routers.servers import restart_schedule as server_restart_schedule
 from .routers.servers import sync as server_sync
 from .routers.servers import template_config as server_template_config
 from .routers.servers import template_migration as server_template_migration
+from .routers.servers import world_restore as server_world_restore
+from .world import initialize_world_restore_orchestrator
 
 
 @asynccontextmanager
@@ -74,8 +76,22 @@ async def lifespan(app: FastAPI):
     logger.info("Starting player management system...")
     await start_player_system()
 
+    logger.info("Initializing world-restore orchestrator...")
+    world_restore_orchestrator = initialize_world_restore_orchestrator()
+    if world_restore_orchestrator is not None:
+        world_restore_orchestrator.start_janitor()
+        logger.info("World restore preview janitor started.")
+    else:
+        logger.info(
+            "World restore orchestrator not initialized (restic is not configured)."
+        )
+
     logger.info("Startup complete.")
     yield
+
+    logger.info("Stopping world-restore preview janitor...")
+    if world_restore_orchestrator is not None:
+        await world_restore_orchestrator.stop_janitor()
 
     logger.info("Stopping player management system...")
     await stop_player_system()
@@ -137,6 +153,7 @@ api_app.include_router(server_map.router)
 api_app.include_router(server_restart_schedule.router)
 api_app.include_router(server_template_config.router)
 api_app.include_router(server_template_migration.router)
+api_app.include_router(server_world_restore.router)
 
 
 # Global exception handler for API app
