@@ -14,7 +14,9 @@ Preview lifecycle (heartbeat, janitor, disk guard) lives in
 
 from __future__ import annotations
 
+import asyncio
 import secrets
+import shutil
 import tempfile
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
@@ -49,6 +51,7 @@ from .locks import (
     ServerOperationKind,
     ServerOperationLock,
 )
+from .preview import PreviewSessionManager
 
 
 SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
@@ -176,12 +179,21 @@ class WorldRestoreOrchestrator:
         server_operation_lock: ServerOperationLock,
         session_factory: SessionFactory,
         preview_base_dir: Optional[Path] = None,
+        preview_ttl_seconds: Optional[int] = None,
     ) -> None:
         self._restic = restic_manager
         self._docker = docker_mc_manager
         self._lock = server_operation_lock
         self._session_factory = session_factory
-        self._preview_base_dir = preview_base_dir or Path(tempfile.gettempdir()) / "mc-admin-world-preview"
+        base_dir = preview_base_dir or (
+            Path(tempfile.gettempdir()) / "mc-admin-world-preview"
+        )
+        from .preview import DEFAULT_TTL_SECONDS
+
+        self._preview_manager = PreviewSessionManager(
+            base_dir=base_dir,
+            ttl_seconds=preview_ttl_seconds or DEFAULT_TTL_SECONDS,
+        )
 
     # --- Snapshot creation -----------------------------------------------
 
@@ -360,27 +372,152 @@ class WorldRestoreOrchestrator:
         ):
             yield ev
 
-    # --- Preview (skeleton; Phase 7 fleshes it out) ----------------------
+    # --- Preview lifecycle ----------------------------------------------
 
     async def begin_preview(
         self,
         server_id: str,
         source_snapshot_id: str,
         selection: RestorationSelection,
-    ) -> AsyncGenerator[PreviewEvent, None]:  # pragma: no cover — Phase 7
-        raise NotImplementedError("preview lifecycle is implemented in Phase 7")
-        yield  # pragma: no cover
+    ) -> AsyncGenerator[PreviewEvent, None]:
+        """Stage snapshot MCAs into a /tmp session dir and emit progress events.
 
-    async def end_preview(self, session_id: str) -> None:  # pragma: no cover
-        raise NotImplementedError("preview lifecycle is implemented in Phase 7")
+        Tile rendering is performed lazily by ``get_preview_tile`` on the
+        Session 3 endpoint side (using the existing mcmap render queue).
+        """
+        paths = await self._resolve_paths_for_selection(server_id, selection)
+        if not paths:
+            raise SelectionResolutionError(
+                f"selection resolved to no paths: {selection.model_dump()}"
+            )
 
-    async def heartbeat_preview(self, session_id: str) -> None:  # pragma: no cover
-        raise NotImplementedError("preview lifecycle is implemented in Phase 7")
+        affected_regions = _count_affected_regions(selection)
+        session_dir = self._preview_manager.create_session(
+            server_id, affected_regions=affected_regions
+        )
+        session_id = session_dir.name
+
+        try:
+            yield PreviewEvent(
+                event_type="start",
+                session_id=session_id,
+                message=f"preview staging from snapshot {source_snapshot_id[:8]}",
+            )
+            (session_dir / "source").mkdir(exist_ok=True)
+            await self._restic.restore(
+                snapshot_id=source_snapshot_id,
+                target_path=session_dir / "source",
+                include_paths=paths,
+            )
+            yield PreviewEvent(
+                event_type="stage",
+                session_id=session_id,
+                message="snapshot MCAs staged",
+            )
+
+            if selection.type is RestorationType.CHUNKS:
+                async for ev in self._preview_chunk_merge(
+                    server_id=server_id,
+                    selection=selection,
+                    session_dir=session_dir,
+                    session_id=session_id,
+                ):
+                    yield ev
+
+            yield PreviewEvent(
+                event_type="ready",
+                session_id=session_id,
+                message="preview ready",
+            )
+        except Exception as exc:
+            self._preview_manager.end(session_id)
+            yield PreviewEvent(
+                event_type="error",
+                session_id=session_id,
+                message=str(exc),
+            )
+
+    async def _preview_chunk_merge(
+        self,
+        *,
+        server_id: str,
+        selection: RestorationSelection,
+        session_dir: Path,
+        session_id: str,
+    ) -> AsyncGenerator[PreviewEvent, None]:
+        """Copy live MCAs into a preview/ subdir, then merge selected chunks
+        from the staged snapshot. The live world is never touched."""
+        instance = self._docker.get_instance(server_id)
+        data_path = instance.get_data_path()
+        roots = await discover_world_roots(data_path)
+        _, dim = _find_root_and_dimension(roots, selection)
+
+        grouped = _group_chunks_by_region(selection.chunks)
+        live_subdirs: dict[str, Optional[Path]] = {
+            "region": dim.region_dir,
+            "entities": dim.entities_dir,
+            "poi": dim.poi_dir,
+        }
+
+        preview_dir = session_dir / "preview"
+        total = len(grouped) * sum(1 for v in live_subdirs.values() if v is not None)
+        done = 0
+        for (rx, rz), local_chunks in grouped.items():
+            for sub, live_dir in live_subdirs.items():
+                if live_dir is None:
+                    continue
+                live_mca = live_dir / f"r.{rx}.{rz}.mca"
+                staged_mca = _stage_destination(session_dir / "source", live_mca)
+                preview_subdir = _stage_destination(preview_dir, live_dir)
+                preview_subdir.mkdir(parents=True, exist_ok=True)
+                preview_mca = preview_subdir / f"r.{rx}.{rz}.mca"
+
+                if live_mca.exists():
+                    shutil.copy2(live_mca, preview_mca)
+                if staged_mca.exists():
+                    if not preview_mca.exists():
+                        # Live had no copy of this region but snapshot does — start
+                        # the preview from an empty file to give mcmap a target.
+                        preview_mca.write_bytes(b"\x00" * 8192)
+                    await self._merge_replace(
+                        source_mca=staged_mca,
+                        target_mca=preview_mca,
+                        chunks=local_chunks,
+                        owned_by=data_path,
+                    )
+                elif preview_mca.exists():
+                    await self._merge_remove(
+                        target_mca=preview_mca,
+                        chunks=local_chunks,
+                        owned_by=data_path,
+                    )
+                done += 1
+                yield PreviewEvent(
+                    event_type="merge_region",
+                    session_id=session_id,
+                    percent=(done / total) * 100.0 if total else 100.0,
+                )
+
+    def end_preview(self, session_id: str) -> None:
+        self._preview_manager.end(session_id)
+
+    def heartbeat_preview(self, session_id: str) -> None:
+        self._preview_manager.heartbeat(session_id)
 
     def get_preview_tile(
         self, session_id: str, rx: int, rz: int
-    ) -> Optional[Path]:  # pragma: no cover
-        raise NotImplementedError("preview lifecycle is implemented in Phase 7")
+    ) -> Optional[Path]:
+        return self._preview_manager.get_tile_path(session_id, rx, rz)
+
+    def get_preview_session_dir(self, session_id: str) -> Optional[Path]:
+        """Expose the staged source/preview dirs for the tile-render endpoint."""
+        return self._preview_manager.get_session_dir(session_id)
+
+    def start_janitor(self) -> "asyncio.Task":
+        return self._preview_manager.start_janitor()
+
+    async def stop_janitor(self) -> None:
+        await self._preview_manager.stop_janitor()
 
     # --- Internal flow methods -------------------------------------------
 
@@ -695,5 +832,16 @@ def _expand_region_paths(
             paths.append(live_dir / f"r.{rx}.{rz}.mca")
             paths.extend(_mcc_paths_for_region(live_dir, rx, rz))
     return paths
+
+
+def _count_affected_regions(selection: RestorationSelection) -> int:
+    """Used by the disk-guard heuristic in PreviewSessionManager."""
+    if selection.type is RestorationType.REGIONS:
+        return len(selection.regions)
+    if selection.type is RestorationType.CHUNKS:
+        return len({(c[0] // 32, c[1] // 32) for c in selection.chunks})
+    # WORLD/DIMENSION are ambiguous — caller has to scan disk for an exact count.
+    # Use a conservative default so the disk guard doesn't trip on typical setups.
+    return 16
 
 
