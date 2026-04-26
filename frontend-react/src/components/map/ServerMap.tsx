@@ -7,7 +7,6 @@ import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 import {
   BLOCKS_PER_CHUNK,
   BLOCKS_PER_REGION,
-  blockToChunk,
   chunkKey,
   chunkKeyToCoord,
   chunksInBlockBox,
@@ -87,8 +86,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   const tileLayerRef = useRef<ServerMapTileLayer | null>(null)
   const overlayLayerRef = useRef<L.LayerGroup | null>(null)
   const selectionLayerRef = useRef<L.LayerGroup | null>(null)
-  // Drag-rect selection (shift-drag adds, right-button-drag removes). State
-  // lives in refs so mousemove can update the ghost rectangle without
+  // Drag-rect selection (Ctrl/Shift+drag adds, right-button-drag removes).
+  // State lives in refs so mousemove can update the ghost rectangle without
   // triggering React re-renders. The hover-frame handler in the init effect
   // also reads `active` to suppress the hover overlay during drags.
   const dragGhostRef = useRef<L.Rectangle | null>(null)
@@ -364,29 +363,31 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   // Selection handling.
   //
   // Interactions:
-  //   • Single click           : toggle one chunk (chunk mode) or a region's
-  //                              1024 chunks (region mode).
-  //   • Shift + drag           : additive rectangle selection.
+  //   • Plain left drag        : map pan (Leaflet's default, always enabled).
+  //   • Ctrl/Shift + click     : add the chunk/region under the cursor.
+  //   • Ctrl/Shift + drag      : additive rectangle selection.
+  //   • Right click            : remove the chunk/region under the cursor.
   //   • Right-button + drag    : subtractive rectangle selection.
   //   • Escape (map focused)   : clear selection.
   //
-  // The drag ghost is updated under requestAnimationFrame so a high-frequency
-  // mousemove stream still produces at most one rectangle setBounds per frame.
+  // Selection gestures are intercepted at the container's DOM capture phase
+  // and finished via window listeners. That keeps Leaflet's drag handler out
+  // of the picture entirely — we never call `map.dragging.disable()`, so the
+  // handler can't be left wedged when the component unmounts mid-gesture.
+  // The drag ghost updates under requestAnimationFrame so a high-frequency
+  // mousemove stream produces at most one rectangle setBounds per frame.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    if (selectionMode === 'none') {
-      map.dragging.enable()
-      return
-    }
+    if (selectionMode === 'none') return
+    const container = containerRef.current
+    if (!container) return
 
-    // Capture the ref's stable mutable object once. The handlers below mutate
-    // its fields directly; the cleanup function uses the same captured local
-    // to reset them — keeping the lint rule about cleanup-time ref access happy.
     const dragState = dragStateRef.current
 
     // Block-aligned bounding box of the latlng pair, snapped to chunk or region
-    // granularity according to selectionMode.
+    // granularity according to selectionMode. Single-point gestures (a click)
+    // collapse to one cell.
     const cellsCovered = (a: L.LatLng, b: L.LatLng): Set<ChunkKey> => {
       const minBx = Math.min(a.lng, b.lng)
       const maxBx = Math.max(a.lng, b.lng)
@@ -407,7 +408,6 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         }
         return out
       }
-      // chunk mode — enumerate every chunk inside the inclusive block box
       for (const c of chunksInBlockBox(
         { bx: minBx, bz: minBz },
         { bx: maxBx, bz: maxBz },
@@ -439,6 +439,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
           color,
           weight: 1,
           fillOpacity: 0.1,
+          interactive: false,
         }).addTo(map)
       } else {
         dragGhostRef.current.setBounds(L.latLngBounds(sw, ne))
@@ -446,67 +447,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       }
     }
 
-    const onClick = (e: L.LeafletMouseEvent) => {
-      if (!onSelectionChange) return
-      // Shift-click is reserved for the drag start; treat a stray
-      // shift-click (no movement) as a drag of zero size and ignore it.
-      if (e.originalEvent.shiftKey) return
-      const bx = Math.floor(e.latlng.lng)
-      const bz = Math.floor(-e.latlng.lat)
-      const next = new Set<ChunkKey>(selection ?? [])
-      if (selectionMode === 'region') {
-        const rx = Math.floor(bx / BLOCKS_PER_REGION)
-        const rz = Math.floor(bz / BLOCKS_PER_REGION)
-        const keys = regionToChunkKeys({ rx, rz })
-        // Toggle: if every chunk of the region is present, remove all;
-        // otherwise add all. Single-chunk noise inside the region is
-        // promoted to a full region select on click.
-        const allPresent = keys.every((k) => next.has(k))
-        if (allPresent) {
-          for (const k of keys) next.delete(k)
-        } else {
-          for (const k of keys) next.add(k)
-        }
-      } else {
-        const c = blockToChunk({ bx, bz })
-        const k = chunkKey(c)
-        if (next.has(k)) next.delete(k)
-        else next.add(k)
-      }
-      onSelectionChange(next)
-    }
-
-    const onMouseDown = (e: L.LeafletMouseEvent) => {
-      const ev = e.originalEvent
-      const isShift = ev.shiftKey
-      const isRight = ev.button === 2
-      if (!isShift && !isRight) return
-      // Shift drags reuse the left button — disable map panning so the gesture
-      // doesn't move the map. Right-button drag never engages map dragging.
-      if (isShift) map.dragging.disable()
-      dragState.active = true
-      dragState.start = e.latlng
-      dragState.last = e.latlng
-      dragState.mode = isRight ? 'remove' : 'add'
-      dragState.rafScheduled = false
-      removeGhost()
-      updateGhost()
-    }
-
-    const onMouseMove = (e: L.LeafletMouseEvent) => {
-      if (!dragState.active) return
-      dragState.last = e.latlng
-      if (!dragState.rafScheduled) {
-        dragState.rafScheduled = true
-        requestAnimationFrame(updateGhost)
-      }
-    }
-
     const finishDrag = (end: L.LatLng | null) => {
-      if (!dragState.active) {
-        map.dragging.enable()
-        return
-      }
+      if (!dragState.active) return
       const start = dragState.start
       const last = end ?? dragState.last
       const mode = dragState.mode
@@ -515,7 +457,6 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       dragState.last = null
       dragState.rafScheduled = false
       removeGhost()
-      map.dragging.enable()
       if (!onSelectionChange || !start || !last) return
       const cells = cellsCovered(start, last)
       if (cells.size === 0) return
@@ -528,40 +469,75 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       onSelectionChange(next)
     }
 
-    const onMouseUp = (e: L.LeafletMouseEvent) => finishDrag(e.latlng)
-
-    // Outside-the-map mouseup never fires Leaflet's `mouseup`. Hook the window
-    // so a release outside the canvas still finishes the drag — leaving a
-    // ghost rectangle stuck on screen until the next interaction is jarring.
-    const onWindowMouseUp = () => {
-      if (dragState.active) finishDrag(null)
+    let onWindowMove: ((ev: MouseEvent) => void) | null = null
+    let onWindowUp: ((ev: MouseEvent) => void) | null = null
+    const detachWindow = () => {
+      if (onWindowMove) {
+        window.removeEventListener('mousemove', onWindowMove)
+        onWindowMove = null
+      }
+      if (onWindowUp) {
+        window.removeEventListener('mouseup', onWindowUp)
+        onWindowUp = null
+      }
     }
-    window.addEventListener('mouseup', onWindowMouseUp)
 
-    const container = containerRef.current
+    // Capture-phase mousedown so we run before Leaflet's bubble-phase
+    // listeners on the same element. stopImmediatePropagation prevents both
+    // the Map's `_handleDOMEvent` and Draggable's `_onDown` from firing,
+    // which means Leaflet never sees the gesture and never starts a pan.
+    const onContainerMouseDown = (ev: MouseEvent) => {
+      const isLeft = ev.button === 0
+      const isRight = ev.button === 2
+      const isModifier = ev.shiftKey || ev.ctrlKey
+      let mode: 'add' | 'remove' | null = null
+      if (isLeft && isModifier) mode = 'add'
+      else if (isRight) mode = 'remove'
+      if (!mode) return
+      ev.stopImmediatePropagation()
+      ev.preventDefault()
+
+      const startLatLng = map.mouseEventToLatLng(ev)
+      dragState.active = true
+      dragState.start = startLatLng
+      dragState.last = startLatLng
+      dragState.mode = mode
+      dragState.rafScheduled = false
+      removeGhost()
+      updateGhost()
+
+      onWindowMove = (e: MouseEvent) => {
+        if (!dragState.active) return
+        dragState.last = map.mouseEventToLatLng(e)
+        if (!dragState.rafScheduled) {
+          dragState.rafScheduled = true
+          requestAnimationFrame(updateGhost)
+        }
+      }
+      onWindowUp = (e: MouseEvent) => {
+        finishDrag(map.mouseEventToLatLng(e))
+        detachWindow()
+      }
+      window.addEventListener('mousemove', onWindowMove)
+      window.addEventListener('mouseup', onWindowUp)
+    }
+    container.addEventListener('mousedown', onContainerMouseDown, true)
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (!onSelectionChange) return
       onSelectionChange(new Set())
     }
-    container?.addEventListener('keydown', onKeyDown)
+    container.addEventListener('keydown', onKeyDown)
 
-    map.on('click', onClick)
-    map.on('mousedown', onMouseDown)
-    map.on('mousemove', onMouseMove)
-    map.on('mouseup', onMouseUp)
     return () => {
-      map.off('click', onClick)
-      map.off('mousedown', onMouseDown)
-      map.off('mousemove', onMouseMove)
-      map.off('mouseup', onMouseUp)
-      window.removeEventListener('mouseup', onWindowMouseUp)
-      container?.removeEventListener('keydown', onKeyDown)
+      container.removeEventListener('mousedown', onContainerMouseDown, true)
+      container.removeEventListener('keydown', onKeyDown)
+      detachWindow()
       removeGhost()
       dragState.active = false
       dragState.start = null
       dragState.last = null
-      map.dragging.enable()
     }
   }, [selectionMode, selection, onSelectionChange])
 
