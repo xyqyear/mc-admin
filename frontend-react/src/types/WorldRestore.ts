@@ -48,10 +48,14 @@ export type RestorationStatus =
 // Selection sent to the backend. The backend resolves it against the world
 // layout to produce the affected MCA paths. `chunks` carries absolute chunk
 // coords; the orchestrator groups them by region at execution time.
+//
+// `region_dir_relpath` is required for DIMENSION / REGIONS / CHUNKS scopes.
+// The relpath is under the server's data/ dir (e.g. "world/region",
+// "world_creative/region/DIM-1") and uniquely identifies a dimension across
+// all world roots because the world root dir name is its prefix.
+// WORLD scope ignores it and snapshots/restores every valid world root.
 export interface RestorationSelection {
   type: RestorationType
-  world_root_name: string
-  dimension_label?: string | null
   region_dir_relpath?: string | null
   regions?: Array<[number, number]>
   chunks?: Array<[number, number]>

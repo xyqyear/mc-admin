@@ -592,7 +592,7 @@ The map is no longer a standalone page — it's an embeddable component used exc
 
 **Pages & Components:**
 
-- `pages/server/servers/ServerWorldRestore.tsx` — page shell. URL is the source of truth for `?world=<root_name>&dim=<region_dir_relpath>&mode=region|chunk` plus `?z`, `?cx`, `?cz` for map view. Auto-selects the first world root's Overworld dimension when no URL params are present. Embeds `<ServerMap>` on the left and `<WorldRestoreSelectionPanel>` on the right with `<ServerStopGuard>` above and `<ServerStartHint>` below.
+- `pages/server/servers/ServerWorldRestore.tsx` — page shell. URL is the source of truth for `?dim=<region_dir_relpath>&mode=region|chunk` plus `?z`, `?cx`, `?cz` for map view. Auto-selects the first world root's Overworld dimension when no URL params are present. The relpath alone identifies a (root, dim) pair because the root directory name is its first path segment, so multi-world setups are unambiguous without a separate root parameter. Embeds `<ServerMap>` on the left and `<WorldRestoreSelectionPanel>` on the right with `<ServerStopGuard>` above and `<ServerStartHint>` below.
 - `components/world-restore/WorldRestoreSelectionPanel.tsx` — side panel with mode tabs (区域/区块), selection summary (chunks, covered regions, fully-covered regions), three "create snapshot" actions (selected scope / dimension / world), three "restore…" actions that open the snapshot picker, and a "view restore history" button. Mode-switch math runs through `chunksToFullyCoveredRegions`; demotion to region mode prompts a confirm if it would drop partially-covered regions.
 - `components/world-restore/SnapshotPicker.tsx` — right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row offers Preview (opens `<RestorePreviewModal>`) and Restore (opens a destructive confirm, then drives the restore SSE via `useEventStream<RestoreEvent>` and renders progress in-place via `<RestoreProgressCard>`).
 - `components/world-restore/RestorePreviewModal.tsx` — `<Dialog>` containing a mini Leaflet map with `CRS.Simple` and `<PreviewTileLayer>` (a clone of `ServerMapTileLayer` pointed at the preview tile endpoint). Drives `POST /preview` via `useEventStream<PreviewEvent>`, captures `session_id` from the `ready` event, heartbeats every 30s, and fires `DELETE /preview/{session_id}` on close.
@@ -606,7 +606,7 @@ The map is no longer a standalone page — it's an embeddable component used exc
 
 - Per-server entries keyed by `serverId`, not persisted (selection is transient and intentionally clears on reload).
 - `setMode` does the chunk → region collapse via `chunksToFullyCoveredRegions`; region → chunk is a no-op on the data (the underlying set is already chunks).
-- `setDimension` clears the selection if `worldRootName` or `dimension` changes — chunks aren't comparable across dimensions.
+- `setDimension(serverId, dimension)` clears the selection when `dimension` changes — chunks aren't comparable across dimensions, and the dimension relpath uniquely identifies the (root, dim) pair on its own.
 
 **SSE consumer** (`hooks/useEventStream.ts`):
 

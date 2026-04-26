@@ -190,7 +190,6 @@ async def _read_restoration(session_factory, rid: str) -> Optional[Restoration]:
 async def test_world_scope_round_trip(orchestrator, data_path, session_factory):
     selection = RestorationSelection(
         type=RestorationType.WORLD,
-        world_root_name="world",
     )
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
     assert snap.id
@@ -235,7 +234,7 @@ async def test_world_scope_round_trip(orchestrator, data_path, session_factory):
 async def test_dimension_scope_restores_only_target_dimension(
     orchestrator, data_path
 ):
-    full = RestorationSelection(type=RestorationType.WORLD, world_root_name="world")
+    full = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", full, user_id=None)
 
     # Mutate both Overworld and Nether.
@@ -244,8 +243,7 @@ async def test_dimension_scope_restores_only_target_dimension(
 
     selection = RestorationSelection(
         type=RestorationType.DIMENSION,
-        world_root_name="world",
-        dimension_label="Nether",
+        region_dir_relpath="world/DIM-1/region",
     )
     events = await _drain(
         orchestrator.begin_restore(
@@ -274,7 +272,7 @@ async def test_dimension_scope_restores_only_target_dimension(
 async def test_regions_scope_restores_only_selected_regions(
     orchestrator, data_path
 ):
-    full = RestorationSelection(type=RestorationType.WORLD, world_root_name="world")
+    full = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", full, user_id=None)
 
     region_dir = data_path / "world" / "region"
@@ -283,8 +281,7 @@ async def test_regions_scope_restores_only_selected_regions(
 
     selection = RestorationSelection(
         type=RestorationType.REGIONS,
-        world_root_name="world",
-        dimension_label="Overworld",
+        region_dir_relpath="world/region",
         regions=[(0, 0)],
     )
     events = await _drain(
@@ -311,13 +308,12 @@ async def test_regions_scope_restores_only_selected_regions(
 async def test_chunks_scope_invokes_mcmap_and_completes(
     orchestrator, data_path, session_factory
 ):
-    full = RestorationSelection(type=RestorationType.WORLD, world_root_name="world")
+    full = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", full, user_id=None)
 
     selection = RestorationSelection(
         type=RestorationType.CHUNKS,
-        world_root_name="world",
-        dimension_label="Overworld",
+        region_dir_relpath="world/region",
         chunks=[(3, 4), (5, 6)],  # both inside region (0, 0)
     )
     events = await _drain(
@@ -351,8 +347,7 @@ async def test_chunks_scope_remove_when_source_missing(
     # Snapshot regions where (1, 0) has region/ but NO entities/ data.
     full = RestorationSelection(
         type=RestorationType.REGIONS,
-        world_root_name="world",
-        dimension_label="Overworld",
+        region_dir_relpath="world/region",
         regions=[(0, 0)],  # snapshot only covers region (0, 0)
     )
     snap = await orchestrator.create_snapshot("srv1", full, user_id=None)
@@ -362,8 +357,7 @@ async def test_chunks_scope_remove_when_source_missing(
 
     selection = RestorationSelection(
         type=RestorationType.CHUNKS,
-        world_root_name="world",
-        dimension_label="Overworld",
+        region_dir_relpath="world/region",
         chunks=[(36, 4)],  # in region (1, 0)
     )
     # Snapshot doesn't cover region (1, 0), so eligibility filter should reject.
@@ -376,9 +370,7 @@ async def test_chunks_scope_remove_when_source_missing(
 
 @pytest.mark.asyncio
 async def test_lock_held_during_restore(orchestrator, data_path, lock):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     holders_seen: list[Optional[LockHolder]] = []
@@ -412,9 +404,7 @@ async def test_lock_held_during_restore(orchestrator, data_path, lock):
 
 @pytest.mark.asyncio
 async def test_restore_blocked_when_server_running(orchestrator, fake_docker):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     fake_docker._instance.set_status(MCServerStatus.RUNNING)
@@ -434,9 +424,7 @@ async def test_restore_blocked_when_server_running(orchestrator, fake_docker):
 
 @pytest.mark.asyncio
 async def test_safety_snapshot_recorded_on_row(orchestrator, data_path, session_factory):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     events = await _drain(
@@ -463,9 +451,7 @@ async def test_safety_snapshot_recorded_on_row(orchestrator, data_path, session_
 async def test_rollback_uses_safety_as_source(
     orchestrator, data_path, session_factory
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap1 = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     # Mutate, then run a restore — this captures live state into a safety snapshot.
@@ -513,9 +499,7 @@ async def test_rollback_uses_safety_as_source(
 async def test_restore_failure_marks_row_failed(
     orchestrator, data_path, session_factory
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     # Force a failure by pointing at a bogus snapshot id after the safety snapshot
@@ -551,6 +535,80 @@ async def test_restore_failure_marks_row_failed(
     assert row is not None
     assert row.status is RestorationStatus.FAILED
     assert "simulated restic failure" in row.error_message
+
+
+# --- Tests: multi-root WORLD scope -----------------------------------------
+
+
+@pytest.fixture
+def multi_root_data_path():
+    """Two world roots — Bukkit/Paper-style multi-world layout."""
+    with tempfile.TemporaryDirectory(prefix="mc-restore-multi-data-") as tmp:
+        data = Path(tmp)
+        # Primary: world (server.properties default)
+        world = data / "world"
+        (world / "region").mkdir(parents=True)
+        (world / "region" / "r.0.0.mca").write_bytes(_empty_mca())
+        (world / "level.dat").write_bytes(b"level-stub-1")
+
+        # Peer root: world_creative
+        creative = data / "world_creative"
+        (creative / "region").mkdir(parents=True)
+        (creative / "region" / "r.0.0.mca").write_bytes(_empty_mca() + b"\xfa\xce")
+        (creative / "level.dat").write_bytes(b"level-stub-2")
+        yield data
+
+
+@pytest.fixture
+def fake_docker_multi(multi_root_data_path):
+    instance = _FakeInstance(multi_root_data_path, status=MCServerStatus.EXISTS)
+    return _FakeDockerMC(instance)
+
+
+@pytest.fixture
+def orchestrator_multi(restic_manager, fake_docker_multi, lock, session_factory):
+    return WorldRestoreOrchestrator(
+        restic_manager=restic_manager,
+        docker_mc_manager=fake_docker_multi,
+        server_operation_lock=lock,
+        session_factory=session_factory,
+    )
+
+
+@pytest.mark.asyncio
+async def test_world_scope_covers_all_roots(
+    orchestrator_multi, multi_root_data_path
+):
+    """WORLD scope on a multi-root server should snapshot every root and
+    restore every root in one operation."""
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    paths = await orchestrator_multi._resolve_paths_for_selection("srv1", selection)
+    path_names = {p.name for p in paths}
+    assert path_names == {"world", "world_creative"}
+
+    snap = await orchestrator_multi.create_snapshot("srv1", selection, user_id=None)
+
+    # Mutate both roots.
+    (multi_root_data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"corrupt-1")
+    (multi_root_data_path / "world_creative" / "region" / "r.0.0.mca").write_bytes(b"corrupt-2")
+
+    events = await _drain(
+        orchestrator_multi.begin_restore(
+            server_id="srv1",
+            source_snapshot_id=snap.id,
+            selection=selection,
+            user_id=None,
+        )
+    )
+    assert events[-1].event_type == "complete"
+
+    # Both roots restored.
+    assert (
+        multi_root_data_path / "world" / "region" / "r.0.0.mca"
+    ).read_bytes() == _empty_mca()
+    assert (
+        multi_root_data_path / "world_creative" / "region" / "r.0.0.mca"
+    ).read_bytes() == _empty_mca() + b"\xfa\xce"
 
 
 # Silence "unused import" warnings.

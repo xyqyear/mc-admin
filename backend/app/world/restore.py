@@ -454,7 +454,11 @@ class WorldRestoreOrchestrator:
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
         roots = await discover_world_roots(data_path)
-        _, dim = _find_root_and_dimension(roots, selection)
+        if selection.region_dir_relpath is None:
+            raise SelectionResolutionError(
+                "chunks selection requires region_dir_relpath"
+            )
+        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
         grouped = _group_chunks_by_region(selection.chunks)
         live_subdirs: dict[str, Optional[Path]] = {
@@ -558,7 +562,11 @@ class WorldRestoreOrchestrator:
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
         roots = await discover_world_roots(data_path)
-        root, dim = _find_root_and_dimension(roots, selection)
+        if selection.region_dir_relpath is None:
+            raise SelectionResolutionError(
+                "chunks selection requires region_dir_relpath"
+            )
+        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
         grouped = _group_chunks_by_region(selection.chunks)
         live_subdirs: dict[str, Optional[Path]] = {
@@ -633,8 +641,6 @@ class WorldRestoreOrchestrator:
                         percent=(done / total_jobs) * 100.0 if total_jobs else 100.0,
                     )
 
-        del root  # match value not needed past dimension lookup
-
     async def _merge_replace(
         self,
         *,
@@ -707,7 +713,11 @@ class WorldRestoreOrchestrator:
         if selection.type is RestorationType.WORLD:
             return [root.path for root in roots]
 
-        root, dim = _find_root_and_dimension(roots, selection)
+        if selection.region_dir_relpath is None:
+            raise SelectionResolutionError(
+                f"selection type '{selection.type.value}' requires region_dir_relpath"
+            )
+        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
         if selection.type is RestorationType.DIMENSION:
             paths = [dim.region_dir]
@@ -789,39 +799,23 @@ class WorldRestoreOrchestrator:
 # --- Module-level helpers ----------------------------------------------
 
 
-def _find_root_and_dimension(
-    roots: list[WorldRoot], selection: RestorationSelection
-) -> tuple[WorldRoot, DimensionInfo]:
-    target_root = next(
-        (r for r in roots if r.name == selection.world_root_name), None
-    )
-    if target_root is None:
-        raise SelectionResolutionError(
-            f"world root '{selection.world_root_name}' not found"
-        )
-
-    target_dim: Optional[DimensionInfo] = None
-    if selection.dimension_label:
-        target_dim = next(
-            (d for d in target_root.dimensions if d.label == selection.dimension_label),
-            None,
-        )
-    elif selection.region_dir_relpath:
-        # Fallback match by region_dir relpath (frontend may send either).
-        for d in target_root.dimensions:
+def _find_dimension(
+    data_path: Path,
+    roots: list[WorldRoot],
+    region_dir_relpath: str,
+) -> DimensionInfo:
+    """Locate a dimension across all world roots by its data-relative path."""
+    target = Path(region_dir_relpath)
+    for root in roots:
+        for dim in root.dimensions:
             try:
-                if d.region_dir.resolve().match(selection.region_dir_relpath):
-                    target_dim = d
-                    break
-            except Exception:
+                if dim.region_dir.relative_to(data_path) == target:
+                    return dim
+            except ValueError:
                 continue
-
-    if target_dim is None:
-        raise SelectionResolutionError(
-            f"dimension '{selection.dimension_label}' not found under "
-            f"world root '{selection.world_root_name}'"
-        )
-    return target_root, target_dim
+    raise SelectionResolutionError(
+        f"dimension with region_dir_relpath '{region_dir_relpath}' not found"
+    )
 
 
 def _expand_region_paths(

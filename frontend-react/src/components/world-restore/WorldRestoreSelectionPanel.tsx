@@ -30,8 +30,6 @@ import { RestorationHistoryDrawer } from './RestorationHistoryDrawer'
 
 interface WorldRestoreSelectionPanelProps {
   serverId: string
-  worldRootName: string | null
-  dimensionLabel: string | null
   regionDirRelpath: string | null
   selection: Set<ChunkKey>
   mode: WorldRestoreSelectionMode
@@ -52,8 +50,6 @@ export const WorldRestoreSelectionPanel: React.FC<
   WorldRestoreSelectionPanelProps
 > = ({
   serverId,
-  worldRootName,
-  dimensionLabel,
   regionDirRelpath,
   selection,
   mode,
@@ -112,8 +108,11 @@ export const WorldRestoreSelectionPanel: React.FC<
     onModeChange(next)
   }
 
-  const layoutReady = !!worldRootName
+  // Layout is "ready" once a dimension has been resolved — every dimension
+  // implies a world root and the WORLD scope no longer needs a per-root
+  // identifier (it spans every valid root on the server).
   const dimensionReady = !!regionDirRelpath
+  const layoutReady = dimensionReady
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
@@ -123,11 +122,8 @@ export const WorldRestoreSelectionPanel: React.FC<
     scope: 'world' | 'dimension' | 'regions' | 'chunks',
     description: string,
   ) => {
-    if (!worldRootName) return
     const sel = buildSelection({
       scope,
-      worldRootName,
-      dimensionLabel,
       regionDirRelpath,
       selection,
     })
@@ -143,11 +139,8 @@ export const WorldRestoreSelectionPanel: React.FC<
   }
 
   const openPicker = (scope: 'world' | 'dimension' | 'regions' | 'chunks') => {
-    if (!worldRootName) return
     const sel = buildSelection({
       scope,
-      worldRootName,
-      dimensionLabel,
       regionDirRelpath,
       selection,
     })
@@ -244,7 +237,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             onClick={() =>
               startCreate(
                 'dimension',
-                `将为当前维度 ${dimensionLabel ?? regionDirRelpath ?? ''} 创建快照。`,
+                `将为当前维度 ${regionDirRelpath ?? ''} 创建快照。`,
               )
             }
           >
@@ -263,7 +256,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             onClick={() =>
               startCreate(
                 'world',
-                `将为整个世界 ${worldRootName ?? ''} 创建快照。`,
+                '将为该服务器的所有世界创建快照。',
               )
             }
           >

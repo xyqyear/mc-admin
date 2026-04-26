@@ -36,8 +36,6 @@ async def session_maker():
 async def test_restoration_round_trip(session_maker):
     selection = RestorationSelection(
         type=RestorationType.CHUNKS,
-        world_root_name="world",
-        dimension_label="Overworld",
         region_dir_relpath="world/region",
         regions=[],
         chunks=[(10, 20), (-3, 4)],
@@ -82,7 +80,6 @@ async def test_restoration_terminal_state_update(session_maker):
     rest_id = "ee" * 16
     selection = RestorationSelection(
         type=RestorationType.WORLD,
-        world_root_name="world",
     )
     async with session_maker() as session:
         session.add(
@@ -119,8 +116,6 @@ async def test_restoration_rollback_record(session_maker):
     rollback_id = "cd" * 16
     selection = RestorationSelection(
         type=RestorationType.REGIONS,
-        world_root_name="world",
-        dimension_label="Overworld",
         region_dir_relpath="world/region",
         regions=[(0, 0), (1, 1)],
     )
@@ -167,14 +162,12 @@ async def test_restoration_rollback_record(session_maker):
 def test_restoration_selection_json_keys():
     selection = RestorationSelection(
         type=RestorationType.DIMENSION,
-        world_root_name="world",
-        dimension_label="Nether",
         region_dir_relpath="world/DIM-1/region",
     )
     payload = json.loads(selection.model_dump_json())
     assert payload["type"] == "dimension"
-    assert payload["world_root_name"] == "world"
-    assert payload["dimension_label"] == "Nether"
     assert payload["region_dir_relpath"] == "world/DIM-1/region"
     assert payload["regions"] == []
     assert payload["chunks"] == []
+    assert "world_root_name" not in payload
+    assert "dimension_label" not in payload

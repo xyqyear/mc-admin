@@ -10,8 +10,9 @@ import {
 // selection is transient and intentionally disappears on reload.
 //
 // `dimension` stores the dimension's `region_dir_relpath` (the same value the
-// backend expects on selection payloads), so switching dimensions clears the
-// selection (different chunks live in different dimensions).
+// backend expects on selection payloads). The relpath is unique across world
+// roots because the root directory name is its first path segment, so this
+// alone is enough to disambiguate selections in multi-world setups.
 //
 // `mode` is either `'chunk'` or `'region'`. The page-level switch promotes or
 // demotes the selection set when the mode changes — see `setMode` below.
@@ -21,14 +22,12 @@ export type WorldRestoreSelectionMode = 'chunk' | 'region'
 export interface ServerSelectionState {
   mode: WorldRestoreSelectionMode
   dimension: string | null
-  worldRootName: string | null
   selection: Set<ChunkKey>
 }
 
 const emptyState = (): ServerSelectionState => ({
   mode: 'region',
   dimension: null,
-  worldRootName: null,
   selection: new Set(),
 })
 
@@ -36,11 +35,7 @@ interface WorldRestoreSelectionStore {
   byServer: Record<string, ServerSelectionState>
   getOrInit: (serverId: string) => ServerSelectionState
   setSelection: (serverId: string, selection: Set<ChunkKey>) => void
-  setDimension: (
-    serverId: string,
-    worldRootName: string | null,
-    dimension: string | null,
-  ) => void
+  setDimension: (serverId: string, dimension: string | null) => void
   setMode: (serverId: string, mode: WorldRestoreSelectionMode) => void
   clearForServer: (serverId: string) => void
 }
@@ -69,19 +64,16 @@ export const useWorldRestoreSelectionStore = create<WorldRestoreSelectionStore>(
       })),
 
     // Switching dimension wipes the selection — chunks aren't comparable
-    // across dimensions. Switching `worldRootName` similarly clears.
-    setDimension: (serverId, worldRootName, dimension) =>
+    // across dimensions.
+    setDimension: (serverId, dimension) =>
       set((state) => {
         const prev = state.byServer[serverId] ?? emptyState()
-        const sameWorld = prev.worldRootName === worldRootName
-        const sameDim = prev.dimension === dimension
-        if (sameWorld && sameDim) return state
+        if (prev.dimension === dimension) return state
         return {
           byServer: {
             ...state.byServer,
             [serverId]: {
               ...prev,
-              worldRootName,
               dimension,
               selection: new Set(),
             },

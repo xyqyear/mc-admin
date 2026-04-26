@@ -53,7 +53,6 @@ const ServerWorldRestore: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const dimensionRelpath = searchParams.get('dim') ?? null
-  const worldRootName = searchParams.get('world') ?? null
   const urlMode = searchParams.get('mode') === 'chunk' ? 'chunk' : 'region'
   const [initialView] = useState(() => parseInitialView(searchParams))
 
@@ -85,51 +84,62 @@ const ServerWorldRestore: React.FC = () => {
   // map tile layer needs the *region directory* path (e.g.
   // `world/region`), which is the `region_dir_relpath` the backend returns;
   // for the existing /map endpoint we send it as the `region` query param.
+  // The relpath alone identifies a (root, dim) pair uniquely because every
+  // root is named in the first path segment.
   const { rootList, currentDimension, currentRoot } = useMemo(() => {
     const roots = layoutQ.data?.world_roots ?? []
     if (roots.length === 0) {
       return { rootList: [], currentDimension: null, currentRoot: null }
     }
-    const byName = new Map(roots.map((r) => [r.name, r]))
-    const root =
-      (worldRootName ? byName.get(worldRootName) : undefined) ?? roots[0]
+    if (dimensionRelpath) {
+      for (const root of roots) {
+        const match = root.dimensions.find(
+          (d) => relpathOf(d.region_dir, root.path) === dimensionRelpath,
+        )
+        if (match) {
+          return {
+            rootList: roots,
+            currentDimension: match,
+            currentRoot: root,
+          }
+        }
+      }
+    }
+    // Fall back to the first root's Overworld (or first dimension).
+    const root = roots[0]
     const dim =
-      root.dimensions.find(
-        (d) => relpathOf(d.region_dir, root.path) === dimensionRelpath,
-      ) ??
       root.dimensions.find((d) => d.label === 'Overworld') ??
-      root.dimensions[0]
-    return { rootList: roots, currentDimension: dim ?? null, currentRoot: root }
-  }, [layoutQ.data, worldRootName, dimensionRelpath])
+      root.dimensions[0] ??
+      null
+    return { rootList: roots, currentDimension: dim, currentRoot: root }
+  }, [layoutQ.data, dimensionRelpath])
 
   const regionRelpath = useMemo(() => {
     if (!currentDimension || !currentRoot) return null
     return relpathOf(currentDimension.region_dir, currentRoot.path)
   }, [currentDimension, currentRoot])
 
-  // Seed URL with default world+dim once the layout loads. Replace, no
-  // history entries.
+  // Seed URL with default dim once the layout loads. Replace, no history
+  // entries.
   useEffect(() => {
     if (!currentRoot || !currentDimension) return
     const wantedRel = relpathOf(currentDimension.region_dir, currentRoot.path)
-    if (worldRootName === currentRoot.name && dimensionRelpath === wantedRel) return
+    if (dimensionRelpath === wantedRel) return
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
-        next.set('world', currentRoot.name)
         next.set('dim', wantedRel)
         return next
       },
       { replace: true },
     )
-  }, [currentRoot, currentDimension, worldRootName, dimensionRelpath, setSearchParams])
+  }, [currentRoot, currentDimension, dimensionRelpath, setSearchParams])
 
-  // Reflect URL → store. The store wipes the selection when world or dim
-  // changes (chunks aren't comparable across dimensions).
+  // Reflect URL → store. The store wipes the selection when dim changes.
   useEffect(() => {
     if (!serverId) return
-    setStoreDimension(serverId, worldRootName, dimensionRelpath)
-  }, [serverId, worldRootName, dimensionRelpath, setStoreDimension])
+    setStoreDimension(serverId, dimensionRelpath)
+  }, [serverId, dimensionRelpath, setStoreDimension])
 
   useEffect(() => {
     if (!serverId) return
@@ -189,11 +199,10 @@ const ServerWorldRestore: React.FC = () => {
   )
 
   const handleDimensionChange = useCallback(
-    (rootName: string, dimRelpath: string) => {
+    (dimRelpath: string) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev)
-          params.set('world', rootName)
           params.set('dim', dimRelpath)
           // Drop view params — different dimensions have different extents.
           params.delete('z')
@@ -209,19 +218,13 @@ const ServerWorldRestore: React.FC = () => {
 
   const dimensionOptions = useMemo(() => {
     if (!layoutQ.data) return []
-    const out: Array<{ value: string; label: string; rootName: string }> = []
+    const multipleRoots = layoutQ.data.world_roots.length > 1
+    const out: Array<{ value: string; label: string }> = []
     for (const r of layoutQ.data.world_roots) {
       for (const d of r.dimensions) {
         const rel = relpathOf(d.region_dir, r.path)
-        const label =
-          layoutQ.data.world_roots.length > 1
-            ? `${r.name} / ${d.label}`
-            : d.label
-        out.push({
-          value: `${r.name}::${rel}`,
-          label,
-          rootName: r.name,
-        })
+        const label = multipleRoots ? `${r.name} / ${d.label}` : d.label
+        out.push({ value: rel, label })
       }
     }
     return out
@@ -270,15 +273,9 @@ const ServerWorldRestore: React.FC = () => {
                 </Button>
               </div>
               <Select
-                value={
-                  worldRootName && dimensionRelpath
-                    ? `${worldRootName}::${dimensionRelpath}`
-                    : undefined
-                }
+                value={dimensionRelpath ?? undefined}
                 onValueChange={(v) => {
-                  if (typeof v !== 'string') return
-                  const [rootName, rel] = v.split('::')
-                  if (rootName && rel) handleDimensionChange(rootName, rel)
+                  if (typeof v === 'string') handleDimensionChange(v)
                 }}
                 itemToStringLabel={(v) =>
                   dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
@@ -382,8 +379,6 @@ const ServerWorldRestore: React.FC = () => {
           <div className="flex flex-col gap-3 min-w-0">
             <WorldRestoreSelectionPanel
               serverId={serverId}
-              worldRootName={currentRoot?.name ?? null}
-              dimensionLabel={currentDimension?.label ?? null}
               regionDirRelpath={regionRelpath}
               selection={selection}
               mode={urlMode}

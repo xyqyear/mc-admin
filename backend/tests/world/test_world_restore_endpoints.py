@@ -258,9 +258,7 @@ async def test_get_layout_returns_world_roots(http: AsyncClient):
 async def test_eligible_snapshots_filters_by_coverage(
     http: AsyncClient, orchestrator
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     response = await http.post(
@@ -278,9 +276,7 @@ async def test_eligible_snapshots_filters_by_coverage(
 
 @pytest.mark.asyncio
 async def test_create_snapshot_endpoint(http: AsyncClient):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     response = await http.post(
         "/api/servers/srv1/world-restore/snapshots",
         headers=_auth(),
@@ -296,9 +292,7 @@ async def test_create_snapshot_endpoint(http: AsyncClient):
 async def test_create_snapshot_returns_423_when_locked(
     http: AsyncClient, lock
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     holder = LockHolder(
         kind=ServerOperationKind.RESTORE,
         started_at=datetime.now(timezone.utc),
@@ -327,8 +321,7 @@ async def test_preview_sse_stream_emits_ready(
 ):
     selection = RestorationSelection(
         type=RestorationType.REGIONS,
-        world_root_name="world",
-        dimension_label="Overworld",
+        region_dir_relpath="world/region",
         regions=[(0, 0)],
     )
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
@@ -419,9 +412,7 @@ async def test_preview_tile_serves_png_when_present(
 async def test_restore_409_when_server_running(
     http: AsyncClient, orchestrator, fake_instance
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
     fake_instance.set_status(MCServerStatus.RUNNING)
     r = await http.post(
@@ -437,9 +428,7 @@ async def test_restore_409_when_server_running(
 async def test_restore_423_when_locked(
     http: AsyncClient, orchestrator, lock
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     holder = LockHolder(
@@ -465,9 +454,7 @@ async def test_restore_423_when_locked(
 async def test_restore_sse_completes_and_writes_row(
     http: AsyncClient, orchestrator, session_factory, data_path
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
     (data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"corrupt")
 
@@ -502,9 +489,7 @@ async def test_restore_sse_completes_and_writes_row(
 async def test_list_and_get_restorations(
     http: AsyncClient, orchestrator
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     async for _ in orchestrator.begin_restore(
@@ -537,9 +522,7 @@ async def test_list_and_get_restorations(
 async def test_rollback_creates_new_row(
     http: AsyncClient, orchestrator, data_path
 ):
-    selection = RestorationSelection(
-        type=RestorationType.WORLD, world_root_name="world"
-    )
+    selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
     (data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"pre-restore")

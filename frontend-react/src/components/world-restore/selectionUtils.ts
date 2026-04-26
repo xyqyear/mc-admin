@@ -9,24 +9,20 @@ import type { RestorationSelection } from '@/types/WorldRestore'
 // Build the backend RestorationSelection payload from the page's selection
 // state. The `scope` argument lets the caller pick a coarser grain than the
 // current selection — e.g. "create snapshot of the whole dimension" reuses
-// the current dimension/world but discards the chunks/regions arrays.
+// the current dimension but discards the chunks/regions arrays. World scope
+// covers every valid world root on the server, so it carries no relpath.
 export function buildSelection(args: {
   scope: 'world' | 'dimension' | 'regions' | 'chunks'
-  worldRootName: string
-  dimensionLabel: string | null
   regionDirRelpath: string | null
   selection: Set<ChunkKey>
 }): RestorationSelection {
-  const { scope, worldRootName, dimensionLabel, regionDirRelpath, selection } =
-    args
+  const { scope, regionDirRelpath, selection } = args
   if (scope === 'world') {
-    return { type: 'world', world_root_name: worldRootName }
+    return { type: 'world' }
   }
   if (scope === 'dimension') {
     return {
       type: 'dimension',
-      world_root_name: worldRootName,
-      dimension_label: dimensionLabel ?? undefined,
       region_dir_relpath: regionDirRelpath ?? undefined,
     }
   }
@@ -36,8 +32,6 @@ export function buildSelection(args: {
     )
     return {
       type: 'regions',
-      world_root_name: worldRootName,
-      dimension_label: dimensionLabel ?? undefined,
       region_dir_relpath: regionDirRelpath ?? undefined,
       regions,
     }
@@ -50,8 +44,6 @@ export function buildSelection(args: {
   }
   return {
     type: 'chunks',
-    world_root_name: worldRootName,
-    dimension_label: dimensionLabel ?? undefined,
     region_dir_relpath: regionDirRelpath ?? undefined,
     chunks,
   }

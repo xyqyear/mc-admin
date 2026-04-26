@@ -384,8 +384,10 @@ class RestorationSelection(BaseModel):
     """
 
     type: RestorationType
-    world_root_name: str
-    dimension_label: Optional[str] = None
+    # Required for DIMENSION / REGIONS / CHUNKS scopes; ignored for WORLD.
+    # The relpath is under the server's data/ dir, e.g. "world/region",
+    # "world_creative/region/DIM-1". It uniquely identifies a dimension
+    # across all world roots because the world root dir name is its prefix.
     region_dir_relpath: Optional[str] = None
     regions: list[Tuple[int, int]] = PydanticField(default_factory=list)
     chunks: list[Tuple[int, int]] = PydanticField(default_factory=list)

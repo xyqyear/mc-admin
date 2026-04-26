@@ -582,10 +582,10 @@ png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeo
 
 **Four scopes:**
 
-- **WORLD**: Restic restore against the whole world root (e.g. `world/`); all dimensions covered.
-- **DIMENSION**: Restic restore scoped to a single `region/`, `entities/`, `poi/` triple inside a world root.
-- **REGIONS**: Restic restore filtered to specific `r.X.Z.mca` files; entities/poi sidecars and `c.<absX>.<absZ>.mcc` overflow chunks for the affected region grid are included so partial regions don't desync.
-- **CHUNKS**: Stage source MCAs from the snapshot into a tmp dir, then run `mcmap replace-chunks` to splice the selected chunks into the live MCAs (or `remove-chunks` for chunks the snapshot didn't have). Same restic include-path expansion as REGIONS for entities/poi.
+- **WORLD**: Restic restore against *every* valid world root on the server (Bukkit/Paper multi-world setups are covered in one operation); all dimensions of every root included. Carries no `region_dir_relpath`.
+- **DIMENSION**: Restic restore scoped to a single `region/`, `entities/`, `poi/` triple. The dimension is identified by `region_dir_relpath` (data-relative, e.g. `world/region`, `world_creative/region/DIM-1`); the relpath is unique across roots because the world root dir name is its first segment.
+- **REGIONS**: Restic restore filtered to specific `r.X.Z.mca` files inside the dimension named by `region_dir_relpath`; entities/poi sidecars and `c.<absX>.<absZ>.mcc` overflow chunks for the affected region grid are included so partial regions don't desync.
+- **CHUNKS**: Stage source MCAs from the snapshot into a tmp dir, then run `mcmap replace-chunks` to splice the selected chunks into the live MCAs (or `remove-chunks` for chunks the snapshot didn't have) inside the dimension named by `region_dir_relpath`. Same restic include-path expansion as REGIONS for entities/poi.
 
 **Per-server lock semantics** (`app.world.locks`):
 
@@ -634,7 +634,9 @@ from app.models import RestorationSelection
 # Eligible snapshots for a chunk-scope selection
 snaps = await world_restore_orchestrator.list_eligible_snapshots(
     server_id="survival",
-    selection=RestorationSelection(type="chunks", world_root_name="world", chunks=[(0, 0)]),
+    selection=RestorationSelection(
+        type="chunks", region_dir_relpath="world/region", chunks=[(0, 0)]
+    ),
 )
 
 # Drive the SSE
