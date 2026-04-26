@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, List, Optional, cast
 
@@ -9,6 +10,12 @@ from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
 from ...minecraft import docker_mc_manager
 from ...snapshots import restic_manager
+from ...world import (
+    GLOBAL_LOCK_KEY,
+    LockHolder,
+    ServerOperationKind,
+    server_operation_lock,
+)
 from ..types import ExecutionContext
 
 
@@ -177,79 +184,110 @@ async def backup_cronjob(context: ExecutionContext):
 
     This cron job creates a backup using restic and can optionally
     clean up old snapshots based on retention policies.
+
+    If the server-operation lock is currently held (by a restore or another
+    backup), this run is skipped with a structured log entry. Skips also send
+    a "skipped" Uptime Kuma notification when configured.
     """
     params = cast(BackupJobParams, context.params)
     start_time = time.time()
 
-    try:
-        # Get restic manager
-        restic_manager = _get_restic_manager()
+    lock_key = params.server_id if params.server_id else GLOBAL_LOCK_KEY
 
-        # Resolve backup path
-        backup_path = _resolve_backup_path(params.server_id, params.path)
-
-        # Log backup start
-        if params.server_id:
-            if params.path:
-                context.log(
-                    f"开始备份服务器 '{params.server_id}' 的路径 '{params.path}'"
-                )
-            else:
-                context.log(f"开始备份服务器 '{params.server_id}'")
-        else:
-            context.log("开始备份所有服务器")
-
-        # Verify backup path exists
-        if not backup_path.exists():
-            raise RuntimeError(f"备份路径不存在: {backup_path}")
-
-        # Create backup
-        context.log(f"正在创建快照: {backup_path}")
-        snapshot = await restic_manager.backup([backup_path])
-
-        context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
-        if snapshot.summary:
-            context.log(
-                f"备份统计: {snapshot.summary.total_files_processed} 个文件, "
-                f"{snapshot.summary.total_bytes_processed} 字节"
+    if server_operation_lock.is_locked(lock_key):
+        current = server_operation_lock.get_holder(lock_key)
+        if current is not None:
+            skip_msg = (
+                f"跳过备份: 服务器 '{lock_key}' 被 {current.kind.value} 占用"
+                f" ({current.description}, 起始 {current.started_at.isoformat()})"
             )
-
-        # Run forget if enabled
-        if params.enable_forget:
-            context.log("开始清理旧快照...")
-
-            try:
-                await restic_manager.forget(
-                    keep_last=params.keep_last,
-                    keep_hourly=params.keep_hourly,
-                    keep_daily=params.keep_daily,
-                    keep_weekly=params.keep_weekly,
-                    keep_monthly=params.keep_monthly,
-                    keep_yearly=params.keep_yearly,
-                    keep_tag=params.keep_tag,
-                    keep_within=params.keep_within,
-                    prune=params.prune,
-                )
-                context.log("旧快照清理完成")
-            except Exception as e:
-                context.log(f"警告: 清理旧快照时出错: {str(e)}")
-                # Don't fail the entire job if forget fails
-
-        # Final success message
-        backup_desc = (
-            f"服务器 '{params.server_id}'" if params.server_id else "所有服务器"
-        )
-        if params.server_id and params.path:
-            backup_desc += f" 路径 '{params.path}'"
-
-        context.log(f"备份任务完成: {backup_desc} -> 快照 {snapshot.short_id}")
-
-        # Send Uptime Kuma notification for success if configured
+        else:
+            skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
+        context.log(skip_msg)
         if params.uptimekuma_url and params.uptimekuma_url.strip():
             running_time = time.time() - start_time
             await _send_uptimekuma_notification(
-                context, params.uptimekuma_url, True, "OK", running_time
+                context, params.uptimekuma_url, True, f"skipped: {skip_msg}", running_time
             )
+        return
+
+    holder = LockHolder(
+        kind=ServerOperationKind.BACKUP,
+        started_at=datetime.now(timezone.utc),
+        user_id=None,
+        description=f"scheduled backup ({lock_key})",
+    )
+
+    try:
+        async with server_operation_lock.acquire(lock_key, holder):
+            # Get restic manager
+            restic_manager_local = _get_restic_manager()
+
+            # Resolve backup path
+            backup_path = _resolve_backup_path(params.server_id, params.path)
+
+            # Log backup start
+            if params.server_id:
+                if params.path:
+                    context.log(
+                        f"开始备份服务器 '{params.server_id}' 的路径 '{params.path}'"
+                    )
+                else:
+                    context.log(f"开始备份服务器 '{params.server_id}'")
+            else:
+                context.log("开始备份所有服务器")
+
+            # Verify backup path exists
+            if not backup_path.exists():
+                raise RuntimeError(f"备份路径不存在: {backup_path}")
+
+            # Create backup
+            context.log(f"正在创建快照: {backup_path}")
+            snapshot = await restic_manager_local.backup([backup_path])
+
+            context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
+            if snapshot.summary:
+                context.log(
+                    f"备份统计: {snapshot.summary.total_files_processed} 个文件, "
+                    f"{snapshot.summary.total_bytes_processed} 字节"
+                )
+
+            # Run forget if enabled
+            if params.enable_forget:
+                context.log("开始清理旧快照...")
+
+                try:
+                    await restic_manager_local.forget(
+                        keep_last=params.keep_last,
+                        keep_hourly=params.keep_hourly,
+                        keep_daily=params.keep_daily,
+                        keep_weekly=params.keep_weekly,
+                        keep_monthly=params.keep_monthly,
+                        keep_yearly=params.keep_yearly,
+                        keep_tag=params.keep_tag,
+                        keep_within=params.keep_within,
+                        prune=params.prune,
+                    )
+                    context.log("旧快照清理完成")
+                except Exception as e:
+                    context.log(f"警告: 清理旧快照时出错: {str(e)}")
+                    # Don't fail the entire job if forget fails
+
+            # Final success message
+            backup_desc = (
+                f"服务器 '{params.server_id}'" if params.server_id else "所有服务器"
+            )
+            if params.server_id and params.path:
+                backup_desc += f" 路径 '{params.path}'"
+
+            context.log(f"备份任务完成: {backup_desc} -> 快照 {snapshot.short_id}")
+
+            # Send Uptime Kuma notification for success if configured
+            if params.uptimekuma_url and params.uptimekuma_url.strip():
+                running_time = time.time() - start_time
+                await _send_uptimekuma_notification(
+                    context, params.uptimekuma_url, True, "OK", running_time
+                )
 
     except Exception as e:
         error_msg = f"备份任务失败: {str(e)}"
