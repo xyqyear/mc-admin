@@ -256,22 +256,6 @@ const ServerWorldRestore: React.FC = () => {
                   重载渲染前置
                 </Button>
               )}
-              <div className="inline-flex rounded-md border border-input p-0.5 bg-background">
-                <Button
-                  variant={urlMode === 'region' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => handleModeChange('region')}
-                >
-                  区域
-                </Button>
-                <Button
-                  variant={urlMode === 'chunk' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => handleModeChange('chunk')}
-                >
-                  区块
-                </Button>
-              </div>
               <Select
                 value={dimensionRelpath ?? undefined}
                 onValueChange={(v) => {

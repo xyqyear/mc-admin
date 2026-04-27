@@ -6,6 +6,7 @@ import {
   Loader2,
   RotateCcw,
 } from 'lucide-react'
+import { Tabs as TabsPrimitive } from '@base-ui/react/tabs'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -162,19 +163,28 @@ export const WorldRestoreSelectionPanel: React.FC<
               if (v === 'chunk' || v === 'region') handleModeChange(v)
             }}
           >
-            <TabsList className="w-full">
-              <TabsTrigger value="region" className="flex-1">
+            <TabsList className="w-full relative">
+              <TabsPrimitive.Indicator
+                className="absolute left-0 top-0 z-0 rounded-md bg-background shadow-sm pointer-events-none translate-x-(--active-tab-left) translate-y-(--active-tab-top) w-(--active-tab-width) h-(--active-tab-height) transition-[translate,width,height] duration-300 ease-out dark:bg-input/30 dark:border dark:border-input"
+              />
+              <TabsTrigger
+                value="region"
+                className="flex-1 relative z-10 data-active:bg-transparent data-active:shadow-none dark:data-active:bg-transparent dark:data-active:border-transparent"
+              >
                 区域选择
               </TabsTrigger>
-              <TabsTrigger value="chunk" className="flex-1">
+              <TabsTrigger
+                value="chunk"
+                className="flex-1 relative z-10 data-active:bg-transparent data-active:shadow-none dark:data-active:bg-transparent dark:data-active:border-transparent"
+              >
                 区块选择
               </TabsTrigger>
             </TabsList>
             <TabsContent value="region" className="mt-2 text-xs text-muted-foreground">
-              单击切换整个区域；按住 Shift 拖动框选；右键拖动取消。
+              按住 Ctrl 选择，右键取消。拖动可框选
             </TabsContent>
             <TabsContent value="chunk" className="mt-2 text-xs text-muted-foreground">
-              单击切换单个区块；按住 Shift 拖动框选；右键拖动取消。
+              按住 Ctrl 框选，右键取消。拖动可框选
             </TabsContent>
           </Tabs>
         </div>
