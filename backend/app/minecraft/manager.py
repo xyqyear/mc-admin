@@ -12,7 +12,7 @@ from .instance import MCInstance, MCServerInfo
 
 class DockerMCManager:
     def __init__(self, servers_path: str | Path) -> None:
-        self.servers_path = Path(servers_path)
+        self.servers_path = Path(servers_path).resolve()
 
     async def get_all_server_compose_obj(self) -> list[MCComposeFile]:
         compose_obj_list = list[MCComposeFile]()
