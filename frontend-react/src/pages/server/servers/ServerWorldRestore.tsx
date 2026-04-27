@@ -338,9 +338,9 @@ const ServerWorldRestore: React.FC = () => {
       <ServerStopGuard serverId={serverId} status={statusQ.data} />
 
       {mapInitialized && (
-        <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] gap-4">
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_360px] gap-4">
           <Card className="overflow-hidden">
-            <CardContent className="p-0 h-full min-h-[60vh]">
+            <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
                 <ServerMap
                   serverId={serverId}
@@ -353,7 +353,7 @@ const ServerWorldRestore: React.FC = () => {
                   onViewChange={handleViewChange}
                 />
               ) : regionsLoading ? (
-                <div className="h-full min-h-[60vh] flex items-center justify-center">
+                <div className="h-[60vh] md:h-full flex items-center justify-center">
                   <Spinner />
                 </div>
               ) : null}

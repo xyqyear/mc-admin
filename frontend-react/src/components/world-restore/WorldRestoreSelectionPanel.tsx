@@ -181,10 +181,10 @@ export const WorldRestoreSelectionPanel: React.FC<
               </TabsTrigger>
             </TabsList>
             <TabsContent value="region" className="mt-2 text-xs text-muted-foreground">
-              按住 Ctrl 选择，右键取消。拖动可框选
+              地图右上工具栏切换 平移 / 添加 / 擦除
             </TabsContent>
             <TabsContent value="chunk" className="mt-2 text-xs text-muted-foreground">
-              按住 Ctrl 框选，右键取消。拖动可框选
+              地图右上工具栏切换 平移 / 添加 / 擦除
             </TabsContent>
           </Tabs>
         </div>

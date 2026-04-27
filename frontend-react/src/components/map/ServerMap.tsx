@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { Eraser, Hand, Plus, Trash2 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 
 import {
@@ -17,6 +20,11 @@ import {
 import { ServerMapTileLayer } from './ServerMapTileLayer'
 
 const REGION_OVERLAY_THRESHOLD = 5_000
+
+// Selection tool — the canonical input on every device. On desktop, Ctrl-drag
+// and right-click still work as power-user shortcuts regardless of the active
+// tool; on touch the tool is the only way to express intent.
+export type SelectionTool = 'pan' | 'add' | 'erase'
 
 export interface ServerMapOverlay {
   id: string
@@ -128,6 +136,21 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   // a stale rectangle without waiting for the next mousemove.
   const hoverRectRef = useRef<L.Rectangle | null>(null)
   const lastHoverKeyRef = useRef<string | null>(null)
+  // Selection tool. Drives single-finger / plain-left gesture intent so the
+  // map is usable on touch devices (no Ctrl, no right click). Defaults to
+  // pan; users switch to add/erase via the on-map toolbar.
+  const [tool, setTool] = useState<SelectionTool>('pan')
+  const toolRef = useRef(tool)
+  useEffect(() => {
+    toolRef.current = tool
+  }, [tool])
+  // Coarse pointers (touch / pen) don't benefit from a hover preview — skip
+  // the hover handler entirely on those devices to avoid stuck rectangles
+  // from synthesized mousemove on tap.
+  const isCoarsePointer = useMemo(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(pointer: coarse)').matches
+  }, [])
 
   // Initialize the leaflet map exactly once.
   useEffect(() => {
@@ -268,8 +291,10 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       hoverRectRef.current = null
       lastHoverKeyRef.current = null
     }
-    map.on('mousemove', onHoverMove)
-    map.on('mouseout', onHoverOut)
+    if (!isCoarsePointer) {
+      map.on('mousemove', onHoverMove)
+      map.on('mouseout', onHoverOut)
+    }
 
     // Suppress the browser context menu so right-click drag can subtract from
     // the selection. This is wired once at init regardless of selectionMode —
@@ -291,8 +316,10 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     return () => {
       map.off('moveend', emitView)
       map.off('zoomend', emitView)
-      map.off('mousemove', onHoverMove)
-      map.off('mouseout', onHoverOut)
+      if (!isCoarsePointer) {
+        map.off('mousemove', onHoverMove)
+        map.off('mouseout', onHoverOut)
+      }
       map.off('contextmenu', onContextMenu)
       map.remove()
       mapRef.current = null
@@ -302,7 +329,9 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       hoverRectRef.current = null
       lastHoverKeyRef.current = null
     }
-  }, [])
+    // isCoarsePointer is memoized with [] deps — it never changes after mount,
+    // so listing it as a dep keeps lint happy without re-running this effect.
+  }, [isCoarsePointer])
 
   // When the selection mode flips, drop any existing hover frame so the next
   // mousemove redraws at the new granularity instead of leaving a stale
@@ -405,20 +434,30 @@ export const ServerMap: React.FC<ServerMapProps> = ({
 
   // Selection handling.
   //
-  // Interactions:
-  //   • Plain left drag        : map pan (Leaflet's default, always enabled).
-  //   • Ctrl + click     : add the chunk/region under the cursor.
-  //   • Ctrl + drag      : additive rectangle selection.
-  //   • Right click            : remove the chunk/region under the cursor.
-  //   • Right-button + drag    : subtractive rectangle selection.
-  //   • Escape (map focused)   : clear selection.
+  // The on-map toolbar is the canonical input — its active tool decides what
+  // a single-finger drag / plain-left drag does:
+  //   • pan  : nothing here; Leaflet's default pan + zoom apply.
+  //   • add  : drag = additive rectangle, tap = add the cell under the cursor.
+  //   • erase: drag = subtractive rectangle, tap = remove the cell under the cursor.
   //
-  // Selection gestures are intercepted at the container's DOM capture phase
-  // and finished via window listeners. That keeps Leaflet's drag handler out
-  // of the picture entirely — we never call `map.dragging.disable()`, so the
-  // handler can't be left wedged when the component unmounts mid-gesture.
+  // Desktop power-user shortcuts work on top of any tool:
+  //   • Ctrl + left-click / drag : add (regardless of tool).
+  //   • Right-button click / drag: remove (regardless of tool).
+  //   • Escape (map focused)     : clear selection.
+  //
+  // We listen to pointer events at the container's capture phase so the path
+  // is uniform across mouse / touch / pen. preventDefault on pointerdown
+  // suppresses the synthesized mousedown / touchstart that Leaflet's drag
+  // handler binds to — so Leaflet never sees the gesture and never starts a
+  // pan. We never call `map.dragging.disable()`; if the component unmounts
+  // mid-gesture, no Leaflet handler is left wedged.
+  //
+  // On touch, a second pointer arriving mid-drag aborts our gesture. The
+  // 2nd touchstart still reaches Leaflet (we only stopped propagation on
+  // the first finger's pointerdown), so pinch-zoom takes over cleanly.
+  //
   // The drag ghost updates under requestAnimationFrame so a high-frequency
-  // mousemove stream produces at most one rectangle setBounds per frame.
+  // pointermove stream produces at most one rectangle setBounds per frame.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -512,34 +551,39 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       onSelectionChange(next)
     }
 
-    let onWindowMove: ((ev: MouseEvent) => void) | null = null
-    let onWindowUp: ((ev: MouseEvent) => void) | null = null
-    const detachWindow = () => {
-      if (onWindowMove) {
-        window.removeEventListener('mousemove', onWindowMove)
-        onWindowMove = null
-      }
-      if (onWindowUp) {
-        window.removeEventListener('mouseup', onWindowUp)
-        onWindowUp = null
-      }
+    const cancelDrag = () => {
+      dragState.active = false
+      dragState.start = null
+      dragState.last = null
+      dragState.rafScheduled = false
+      removeGhost()
     }
 
-    // Capture-phase mousedown so we run before Leaflet's bubble-phase
-    // listeners on the same element. stopImmediatePropagation prevents both
-    // the Map's `_handleDOMEvent` and Draggable's `_onDown` from firing,
-    // which means Leaflet never sees the gesture and never starts a pan.
-    const onContainerMouseDown = (ev: MouseEvent) => {
-      const isLeft = ev.button === 0
-      const isRight = ev.button === 2
-      const isModifier = ev.ctrlKey
+    let detachWindow: (() => void) | null = null
+
+    const onContainerPointerDown = (ev: PointerEvent) => {
+      // Only the primary pointer kicks off a gesture. Secondary touches hit
+      // a separate listener that aborts the in-progress drag so Leaflet's
+      // pinch-zoom can take over.
+      if (!ev.isPrimary) return
+      const tool = toolRef.current
+      const isMouse = ev.pointerType === 'mouse'
       let mode: 'add' | 'remove' | null = null
-      if (isLeft && isModifier) mode = 'add'
-      else if (isRight) mode = 'remove'
+      if (isMouse) {
+        const isLeft = ev.button === 0
+        const isRight = ev.button === 2
+        if (isLeft && (ev.ctrlKey || tool === 'add')) mode = 'add'
+        else if (isRight || (isLeft && tool === 'erase')) mode = 'remove'
+      } else {
+        // Touch / pen: no Ctrl, no right click — tool is the only signal.
+        if (tool === 'add') mode = 'add'
+        else if (tool === 'erase') mode = 'remove'
+      }
       if (!mode) return
       ev.stopImmediatePropagation()
       ev.preventDefault()
 
+      const pointerId = ev.pointerId
       const startLatLng = map.mouseEventToLatLng(ev)
       dragState.active = true
       dragState.start = startLatLng
@@ -549,7 +593,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       removeGhost()
       updateGhost()
 
-      onWindowMove = (e: MouseEvent) => {
+      const onPointerMove = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return
         if (!dragState.active) return
         dragState.last = map.mouseEventToLatLng(e)
         if (!dragState.rafScheduled) {
@@ -557,14 +602,40 @@ export const ServerMap: React.FC<ServerMapProps> = ({
           requestAnimationFrame(updateGhost)
         }
       }
-      onWindowUp = (e: MouseEvent) => {
+      const onPointerUp = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return
         finishDrag(map.mouseEventToLatLng(e))
-        detachWindow()
+        detachWindow?.()
       }
-      window.addEventListener('mousemove', onWindowMove)
-      window.addEventListener('mouseup', onWindowUp)
+      const onPointerCancel = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return
+        cancelDrag()
+        detachWindow?.()
+      }
+      // For touch only: if a second pointer lands while the first is still
+      // dragging, abort. The 2nd finger's touchstart wasn't suppressed (we
+      // only preventDefaulted the first), so Leaflet sees a 2-touch gesture
+      // and starts pinch-zoom from there.
+      const onSecondaryPointerDown = (e: PointerEvent) => {
+        if (e.pointerId === pointerId) return
+        if (isMouse) return
+        cancelDrag()
+        detachWindow?.()
+      }
+
+      window.addEventListener('pointermove', onPointerMove)
+      window.addEventListener('pointerup', onPointerUp)
+      window.addEventListener('pointercancel', onPointerCancel)
+      window.addEventListener('pointerdown', onSecondaryPointerDown)
+      detachWindow = () => {
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', onPointerUp)
+        window.removeEventListener('pointercancel', onPointerCancel)
+        window.removeEventListener('pointerdown', onSecondaryPointerDown)
+        detachWindow = null
+      }
     }
-    container.addEventListener('mousedown', onContainerMouseDown, true)
+    container.addEventListener('pointerdown', onContainerPointerDown, true)
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -574,9 +645,9 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     container.addEventListener('keydown', onKeyDown)
 
     return () => {
-      container.removeEventListener('mousedown', onContainerMouseDown, true)
+      container.removeEventListener('pointerdown', onContainerPointerDown, true)
       container.removeEventListener('keydown', onKeyDown)
-      detachWindow()
+      detachWindow?.()
       removeGhost()
       dragState.active = false
       dragState.start = null
@@ -588,18 +659,85 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   // tiles match the surrounding theme in both light and dark modes. Inline
   // style beats Leaflet's `.leaflet-container { background: #ddd }` on
   // specificity without needing a global CSS override.
-  const style = useMemo(
-    () => ({ width: '100%', height: '100%', background: 'var(--card)' }),
+  const mapStyle = useMemo(
+    () => ({ background: 'var(--card)' }),
     [],
   )
 
+  const handleClear = () => {
+    onSelectionChange?.(new Set())
+  }
+
   return (
-    <div
-      ref={containerRef}
-      style={style}
-      className={className}
-      data-testid="server-map"
-    />
+    <div className={cn('relative h-full w-full', className)}>
+      <div
+        ref={containerRef}
+        className="absolute inset-0"
+        style={mapStyle}
+        data-testid="server-map"
+      />
+      {selectionMode !== 'none' && (
+        <SelectionToolbar
+          tool={tool}
+          onToolChange={setTool}
+          onClear={handleClear}
+          canClear={!!selection && selection.size > 0}
+        />
+      )}
+    </div>
+  )
+}
+
+interface SelectionToolbarProps {
+  tool: SelectionTool
+  onToolChange: (next: SelectionTool) => void
+  onClear: () => void
+  canClear: boolean
+}
+
+const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
+  tool,
+  onToolChange,
+  onClear,
+  canClear,
+}) => {
+  const item = (
+    value: SelectionTool,
+    label: string,
+    Icon: typeof Hand,
+  ): React.ReactElement => (
+    <Button
+      key={value}
+      variant={tool === value ? 'default' : 'ghost'}
+      size="icon-sm"
+      aria-label={label}
+      title={label}
+      aria-pressed={tool === value}
+      onClick={() => onToolChange(value)}
+    >
+      <Icon className="h-4 w-4" />
+    </Button>
+  )
+  return (
+    <div className="absolute top-2 right-2 z-1000 flex flex-col items-end gap-1.5">
+      <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur supports-backdrop-filter:bg-background/80">
+        {item('pan', '平移', Hand)}
+        {item('add', '添加', Plus)}
+        {item('erase', '擦除', Eraser)}
+      </div>
+      <div className="rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur supports-backdrop-filter:bg-background/80">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="清空选区"
+          title="清空选区"
+          disabled={!canClear}
+          onClick={onClear}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   )
 }
 

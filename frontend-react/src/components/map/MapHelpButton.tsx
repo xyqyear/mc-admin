@@ -33,30 +33,27 @@ export const MapHelpButton: React.FC = () => {
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <section>
+              <div className="mb-1 font-medium">地图右上工具栏</div>
+              <ul className="list-inside list-disc space-y-1 text-muted-foreground">
+                <li>平移：拖动地图，缩放手势照常生效</li>
+                <li>添加：单击 / 拖动以添加区域或区块到选区</li>
+                <li>擦除：单击 / 拖动以从选区中移除</li>
+                <li>垃圾桶：清空当前选区</li>
+              </ul>
+            </section>
+            <section>
               <div className="mb-1 font-medium">查看地图</div>
               <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-                <li>按住鼠标左键拖动：平移视角</li>
-                <li>滚轮：缩放</li>
+                <li>桌面：左键拖动平移、滚轮缩放</li>
+                <li>触摸：单指拖动平移、双指捏合缩放</li>
               </ul>
             </section>
             <section>
-              <div className="mb-1 font-medium">添加选区</div>
+              <div className="mb-1 font-medium">桌面快捷方式</div>
               <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-                <li>Ctrl + 鼠标左键单击：添加光标处的区域 / 区块</li>
-                <li>Ctrl + 鼠标左键拖拽：框选添加</li>
-              </ul>
-            </section>
-            <section>
-              <div className="mb-1 font-medium">取消选区</div>
-              <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-                <li>鼠标右键单击：移除光标处的区域 / 区块</li>
-                <li>鼠标右键拖拽：框选移除</li>
-              </ul>
-            </section>
-            <section>
-              <div className="mb-1 font-medium">清空选区</div>
-              <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-                <li>地图聚焦后按 Esc 键</li>
+                <li>Ctrl + 左键单击 / 拖拽：添加（不受工具影响）</li>
+                <li>右键单击 / 拖拽：移除（不受工具影响）</li>
+                <li>地图聚焦后按 Esc：清空选区</li>
               </ul>
             </section>
           </div>
