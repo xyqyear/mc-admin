@@ -11,6 +11,7 @@ import {
   chunkKeyToCoord,
   chunksInBlockBox,
   chunksToCoveredRegions,
+  chunksToFullyCoveredRegions,
   regionToChunkKeys,
 } from './coords'
 import { ServerMapTileLayer } from './ServerMapTileLayer'
@@ -86,7 +87,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   const tileLayerRef = useRef<ServerMapTileLayer | null>(null)
   const overlayLayerRef = useRef<L.LayerGroup | null>(null)
   const selectionLayerRef = useRef<L.LayerGroup | null>(null)
-  // Drag-rect selection (Ctrl/Shift+drag adds, right-button-drag removes).
+  // Drag-rect selection (Ctrl+drag adds, right-button-drag removes).
   // State lives in refs so mousemove can update the ghost rectangle without
   // triggering React re-renders. The hover-frame handler in the init effect
   // also reads `active` to suppress the hover overlay during drags.
@@ -117,6 +118,16 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   useEffect(() => {
     regionsRef.current = regions
   }, [regions])
+  // Same bridge for selectionMode: the hover handler is bound once at init,
+  // but its granularity (chunk vs region) needs to follow the current mode.
+  const selectionModeRef = useRef(selectionMode)
+  useEffect(() => {
+    selectionModeRef.current = selectionMode
+  }, [selectionMode])
+  // Hover outline state — lifted to refs so a mode-change effect can clear
+  // a stale rectangle without waiting for the next mousemove.
+  const hoverRectRef = useRef<L.Rectangle | null>(null)
+  const lastHoverKeyRef = useRef<string | null>(null)
 
   // Initialize the leaflet map exactly once.
   useEffect(() => {
@@ -203,41 +214,48 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
     new CoordControl().addTo(map)
 
-    // Translucent frame around the region currently under the cursor. Only
-    // drawn when the region exists in the manifest — i.e. when there's a
-    // real rendered tile to highlight. The lastHoverKey gate keeps every
-    // sub-pixel mousemove from churning rectangles.
+    // Translucent frame around the cell currently under the cursor. The cell
+    // is region-sized in region mode and chunk-sized in chunk mode; in both
+    // cases the hover is gated on the parent region existing in the manifest
+    // so we don't advertise tiles that aren't there. The lastHoverKey gate
+    // keeps every sub-pixel mousemove from churning rectangles.
     const hoverGroup = L.layerGroup().addTo(map)
-    let hoverRect: L.Rectangle | null = null
-    let lastHoverKey: string | null = null
     const onHoverMove = (e: L.LeafletMouseEvent) => {
       // Suppress the hover frame while a drag-rect selection is in progress —
       // the drag ghost is the relevant feedback during that gesture.
       if (dragStateRef.current.active) {
-        if (hoverRect) {
-          hoverRect.remove()
-          hoverRect = null
-          lastHoverKey = null
+        if (hoverRectRef.current) {
+          hoverRectRef.current.remove()
+          hoverRectRef.current = null
+          lastHoverKeyRef.current = null
         }
         return
       }
-      const rx = Math.floor(e.latlng.lng / BLOCKS_PER_REGION)
-      const rz = Math.floor(-e.latlng.lat / BLOCKS_PER_REGION)
-      const key = `${rx},${rz}`
-      if (key === lastHoverKey) return
-      lastHoverKey = key
-      hoverRect?.remove()
-      hoverRect = null
-      if (!regionsRef.current.has(key)) return
-      const sw = blockToLatLng(
-        rx * BLOCKS_PER_REGION,
-        (rz + 1) * BLOCKS_PER_REGION,
-      )
-      const ne = blockToLatLng(
-        (rx + 1) * BLOCKS_PER_REGION,
-        rz * BLOCKS_PER_REGION,
-      )
-      hoverRect = L.rectangle([sw, ne], {
+      const mode = selectionModeRef.current
+      let key: string
+      let bounds: [LatLngPair, LatLngPair]
+      let regionKey: string
+      if (mode === 'chunk') {
+        const cx = Math.floor(e.latlng.lng / BLOCKS_PER_CHUNK)
+        const cz = Math.floor(-e.latlng.lat / BLOCKS_PER_CHUNK)
+        const rx = cx >> 5
+        const rz = cz >> 5
+        key = `c:${cx},${cz}`
+        regionKey = `${rx},${rz}`
+        bounds = chunkBounds(cx, cz)
+      } else {
+        const rx = Math.floor(e.latlng.lng / BLOCKS_PER_REGION)
+        const rz = Math.floor(-e.latlng.lat / BLOCKS_PER_REGION)
+        key = `r:${rx},${rz}`
+        regionKey = `${rx},${rz}`
+        bounds = regionBounds(rx, rz)
+      }
+      if (key === lastHoverKeyRef.current) return
+      lastHoverKeyRef.current = key
+      hoverRectRef.current?.remove()
+      hoverRectRef.current = null
+      if (!regionsRef.current.has(regionKey)) return
+      hoverRectRef.current = L.rectangle(bounds, {
         color: '#ffffff',
         weight: 2,
         opacity: 0.7,
@@ -246,9 +264,9 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       }).addTo(hoverGroup)
     }
     const onHoverOut = () => {
-      hoverRect?.remove()
-      hoverRect = null
-      lastHoverKey = null
+      hoverRectRef.current?.remove()
+      hoverRectRef.current = null
+      lastHoverKeyRef.current = null
     }
     map.on('mousemove', onHoverMove)
     map.on('mouseout', onHoverOut)
@@ -281,8 +299,19 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       tileLayerRef.current = null
       overlayLayerRef.current = null
       selectionLayerRef.current = null
+      hoverRectRef.current = null
+      lastHoverKeyRef.current = null
     }
   }, [])
+
+  // When the selection mode flips, drop any existing hover frame so the next
+  // mousemove redraws at the new granularity instead of leaving a stale
+  // region-sized (or chunk-sized) rectangle on screen.
+  useEffect(() => {
+    hoverRectRef.current?.remove()
+    hoverRectRef.current = null
+    lastHoverKeyRef.current = null
+  }, [selectionMode])
 
   // Rebuild the tile layer when serverId, regionPath, or the regions manifest
   // changes. The manifest is captured by reference inside the layer, so a new
@@ -327,17 +356,31 @@ export const ServerMap: React.FC<ServerMapProps> = ({
 
   // Repaint selection overlay.
   //
-  // For very large selections the per-chunk fill is the bottleneck (one Leaflet
-  // path per chunk; with 5k+ chunks the canvas renderer churns). When the
-  // selection grows past the threshold we degrade to a per-region overlay —
-  // one rectangle per affected region. The underlying chunk set remains
-  // authoritative; only the visualization changes.
+  // In region mode we draw one rectangle per fully-covered region (the gesture
+  // can only ever produce full regions, so any partial residue from a prior
+  // mode-switch is intentionally not rendered — it's not selectable here).
+  //
+  // In chunk mode we draw one rectangle per chunk, with a per-region perf
+  // fallback past REGION_OVERLAY_THRESHOLD: with 5k+ chunks the canvas
+  // renderer churns one path per chunk. The underlying chunk set remains
+  // authoritative; only the visualization degrades.
   useEffect(() => {
     const group = selectionLayerRef.current
     if (!group) return
     group.clearLayers()
     if (!selection || selection.size === 0) return
     const renderer = L.canvas()
+    if (selectionMode === 'region') {
+      for (const r of chunksToFullyCoveredRegions(selection)) {
+        L.rectangle(regionBounds(r.rx, r.rz), {
+          renderer,
+          color: '#3b82f6',
+          weight: 1,
+          fillOpacity: 0.2,
+        }).addTo(group)
+      }
+      return
+    }
     if (selection.size > REGION_OVERLAY_THRESHOLD) {
       for (const r of chunksToCoveredRegions(selection)) {
         L.rectangle(regionBounds(r.rx, r.rz), {
@@ -358,7 +401,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         fillOpacity: 0.25,
       }).addTo(group)
     }
-  }, [selection])
+  }, [selection, selectionMode])
 
   // Selection handling.
   //
