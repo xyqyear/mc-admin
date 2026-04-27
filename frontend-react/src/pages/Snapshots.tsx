@@ -79,7 +79,7 @@ const columns: ColumnDef<Snapshot, any>[] = [
     accessorKey: 'paths',
     header: '备份路径',
     cell: ({ row }) => (
-      <div className="space-y-1">
+      <div className="flex flex-col items-start gap-1">
         {row.original.paths.map((path, index) => (
           <Badge key={index} variant="outline" className="font-mono text-xs">
             {path}
