@@ -26,7 +26,10 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from ..mcmap.queue import ServerRenderQueue
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,41 @@ class _Session:
     base_dir: Path
     last_seen: datetime
     affected_regions: int = 0
+    render_queue: Optional["ServerRenderQueue"] = None
+    affected_keys: Optional[set[tuple[int, int]]] = None
+
+
+@dataclass
+class PreviewMapCache:
+    """Path resolver shaped like ``ServerMapCache`` for preview tile rendering.
+
+    Mimics the bits of ``ServerMapCache`` that ``ServerRenderQueue`` reaches
+    into (``mca_path`` / ``tiles_dir`` / ``png_path`` / ``palette_json`` /
+    ``data_path`` / ``ensure_dir``), but rooted at a session's staged-MCA
+    directory and a session-local tiles output. Reusing the queue keeps tile
+    coalescing, batching, and cancellation identical to the live map.
+
+    ``data_path`` points at the live world's data dir so mcmap's ``--chown``
+    targets the data-dir owner (rendered PNGs in /tmp inherit that uid/gid).
+    ``palette_json`` reuses the live world's palette — no per-preview palette.
+    """
+
+    palette_json: Path
+    data_path: Path
+    staged_region_dir: Path
+    tiles_root: Path
+
+    def mca_path(self, _region_path: str, x: int, z: int) -> Path:
+        return self.staged_region_dir / f"r.{x}.{z}.mca"
+
+    def tiles_dir(self, _region_path: str) -> Path:
+        return self.tiles_root
+
+    def png_path(self, _region_path: str, x: int, z: int) -> Path:
+        return self.tiles_root / f"r.{x}.{z}.png"
+
+    def ensure_dir(self, target: Path) -> None:
+        target.mkdir(parents=True, exist_ok=True)
 
 
 def _utcnow() -> datetime:
@@ -127,6 +165,8 @@ class PreviewSessionManager:
         sess = self._sessions.pop(session_id, None)
         if sess is None:
             return
+        if sess.render_queue is not None:
+            sess.render_queue.shutdown()
         # Drop the server→session pointer only if it still points at this session
         # (a concurrent create_session may have replaced it).
         existing = self._server_to_session.get(sess.server_id)
@@ -136,6 +176,9 @@ class PreviewSessionManager:
 
     def get_active_for_server(self, server_id: str) -> Optional[str]:
         return self._server_to_session.get(server_id)
+
+    def get_session(self, session_id: str) -> Optional[_Session]:
+        return self._sessions.get(session_id)
 
     def get_session_dir(self, session_id: str) -> Optional[Path]:
         sess = self._sessions.get(session_id)
@@ -147,6 +190,28 @@ class PreviewSessionManager:
             return None
         candidate = sess.base_dir / "tiles" / f"r.{rx}.{rz}.png"
         return candidate if candidate.exists() else None
+
+    def attach_render_queue(
+        self,
+        session_id: str,
+        *,
+        queue: "ServerRenderQueue",
+        affected_keys: set[tuple[int, int]],
+    ) -> None:
+        """Register a lazy-render queue for ``session_id`` and the (rx, rz) keys
+        whose MCAs were staged. Tile requests for keys outside this set should
+        be rejected as 404 — the queue would otherwise spawn an mcmap render
+        for a missing region and the subprocess would emit ``missing``.
+        """
+        sess = self._sessions.get(session_id)
+        if sess is None:
+            raise PreviewSessionNotFoundError(session_id)
+        # If a prior queue is somehow attached (e.g. a re-staging on the same
+        # session), tear it down first so its worker doesn't outlive us.
+        if sess.render_queue is not None:
+            sess.render_queue.shutdown()
+        sess.render_queue = queue
+        sess.affected_keys = set(affected_keys)
 
     # --- Disk + janitor --------------------------------------------------
 

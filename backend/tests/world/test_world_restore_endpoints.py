@@ -319,10 +319,13 @@ async def test_create_snapshot_returns_423_when_locked(
 async def test_preview_sse_stream_emits_ready(
     http: AsyncClient, orchestrator
 ):
+    # Use DIMENSION scope: it stages from restic but skips the mcmap render
+    # step, so the test does not need a fully initialized live-map palette.
+    # Region/chunk-scope rendering is exercised separately where the palette
+    # can be wired up.
     selection = RestorationSelection(
-        type=RestorationType.REGIONS,
+        type=RestorationType.DIMENSION,
         region_dir_relpath="world/region",
-        regions=[(0, 0)],
     )
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 

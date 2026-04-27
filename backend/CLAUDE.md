@@ -597,7 +597,8 @@ png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeo
 
 - One preview session per server: starting a new preview tears down the prior session for that server.
 - Sessions live under `restore_temp_dir/<session_id>/` (default `/tmp/mc-admin-world-restore/`). Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
-- Heartbeat-driven TTL (default 30 min). A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs.
+- **Lazy tile rendering**: `begin_preview` only stages MCAs (restic restore + optional chunk merge) and attaches a per-session `ServerRenderQueue` before emitting `ready`. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle inactivity, so a quiet preview costs nothing. `PreviewMapCache` (in `app.world.preview`) provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `request_preview_tile` is the orchestrator's tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set.
+- Heartbeat-driven TTL (default 30 min). A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Tearing down a session also calls `ServerRenderQueue.shutdown()` to cancel the worker, fail outstanding waiters, and terminate any running mcmap subprocess.
 - Disk threshold guard: estimated cost is `affected_regions × 8 MiB × 2`; preview returns 507 with `{"free", "required"}` if the FS doesn't have headroom.
 
 **Subprocess ownership and staged trees:**

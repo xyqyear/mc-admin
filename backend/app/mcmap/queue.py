@@ -46,6 +46,24 @@ class ServerRenderQueue:
         self._running_batch: Optional[Dict[Key, _PendingRequest]] = None
         self._running_proc: Optional[runner.MCMapProcess] = None
 
+    def shutdown(self) -> None:
+        """Tear down the queue: cancel the worker, fail outstanding requests,
+        terminate any running mcmap subprocess. Idempotent and synchronous —
+        callers don't await teardown.
+        """
+        if self._worker_task is not None and not self._worker_task.done():
+            self._worker_task.cancel()
+        self._worker_task = None
+        for req in list(self._pending.values()):
+            if not req.future.done():
+                req.future.cancel()
+        self._pending.clear()
+        self._running_batch = None
+        if self._running_proc is not None:
+            proc = self._running_proc
+            self._running_proc = None
+            asyncio.create_task(proc.terminate())
+
     async def request(self, x: int, z: int) -> Path:
         key = (x, z)
         req = self._pending.get(key)

@@ -34,8 +34,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..dynamic_config import config as dynamic_config
 from ..logger import logger
 from ..mcmap import runner as mcmap_runner
+from ..mcmap.cache import ServerMapCache
+from ..mcmap.queue import ServerRenderQueue
 from ..mcmap.types import MCMapError
 from ..minecraft import DockerMCManager, MCServerStatus
 from ..models import (
@@ -51,7 +54,7 @@ from .locks import (
     ServerOperationKind,
     ServerOperationLock,
 )
-from .preview import PreviewSessionManager
+from .preview import PreviewMapCache, PreviewSessionManager, PreviewSessionNotFoundError
 
 
 SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
@@ -388,10 +391,17 @@ class WorldRestoreOrchestrator:
         source_snapshot_id: str,
         selection: RestorationSelection,
     ) -> AsyncGenerator[PreviewEvent, None]:
-        """Stage snapshot MCAs into a /tmp session dir and emit progress events.
+        """Stage snapshot MCAs into a /tmp session dir, run any chunk merge,
+        and attach a lazy-render queue before emitting ``ready``.
 
-        Tile rendering is performed lazily by ``get_preview_tile`` on the
-        Session 3 endpoint side (using the existing mcmap render queue).
+        Tiles are *not* rendered eagerly — instead, the per-session
+        ``ServerRenderQueue`` (mirroring the live-map pattern) renders each
+        affected region on first tile request, with batching, coalescing of
+        duplicate requests, and cancellation cascading to the mcmap
+        subprocess when consumers disconnect. The render reuses the live
+        world's palette (``data_path/.mcmap/palette.json``); if that's
+        missing the SSE emits an ``error`` event prompting the user to
+        initialize the live map first.
         """
         paths = await self._resolve_paths_for_selection(server_id, selection)
         if not paths:
@@ -431,6 +441,14 @@ class WorldRestoreOrchestrator:
                     session_id=session_id,
                 ):
                     yield ev
+
+            if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
+                await self._attach_preview_render_queue(
+                    server_id=server_id,
+                    selection=selection,
+                    session_dir=session_dir,
+                    session_id=session_id,
+                )
 
             yield PreviewEvent(
                 event_type="ready",
@@ -510,6 +528,76 @@ class WorldRestoreOrchestrator:
                     percent=(done / total) * 100.0 if total else 100.0,
                 )
 
+    async def _attach_preview_render_queue(
+        self,
+        *,
+        server_id: str,
+        selection: RestorationSelection,
+        session_dir: Path,
+        session_id: str,
+    ) -> None:
+        """Build a per-session ``ServerRenderQueue`` and attach it to the
+        preview session. Tiles are rendered lazily on first request.
+
+        Source MCAs live under ``preview/`` for chunk-scope (the chunk-merged
+        copies) and ``source/`` for region-scope (the snapshot's regions,
+        untouched). Output PNGs land at ``<session_dir>/tiles/r.<rx>.<rz>.png``
+        — the path ``PreviewSessionManager.get_tile_path`` checks. The queue
+        reuses the live world's palette so we don't need a separate
+        download/palette step per preview.
+        """
+        if selection.region_dir_relpath is None:
+            return
+
+        instance = self._docker.get_instance(server_id)
+        data_path = instance.get_data_path()
+        cache = ServerMapCache(data_path=data_path)
+        if not cache.palette_json.exists():
+            raise RestoreError(
+                "Cannot render preview: live map palette is not initialized; "
+                "open the world map page and run initialization first."
+            )
+
+        roots = await discover_world_roots(data_path)
+        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
+        live_region_dir = dim.region_dir
+
+        if selection.type is RestorationType.CHUNKS:
+            source_root = session_dir / "preview"
+            grouped = _group_chunks_by_region(selection.chunks)
+            affected_iter = list(grouped.keys())
+        else:
+            source_root = session_dir / "source"
+            affected_iter = list(set(selection.regions))
+
+        staged_region_dir = _stage_destination(source_root, live_region_dir)
+        affected_keys: set[tuple[int, int]] = set()
+        for (rx, rz) in affected_iter:
+            mca = staged_region_dir / f"r.{rx}.{rz}.mca"
+            if mca.exists():
+                affected_keys.add((rx, rz))
+
+        if not affected_keys:
+            return
+
+        tiles_dir = session_dir / "tiles"
+        tiles_dir.mkdir(parents=True, exist_ok=True)
+
+        preview_cache = PreviewMapCache(
+            palette_json=cache.palette_json,
+            data_path=data_path,
+            staged_region_dir=staged_region_dir,
+            tiles_root=tiles_dir,
+        )
+        queue = ServerRenderQueue(
+            server_name=session_id,
+            region_path=selection.region_dir_relpath,
+            cache=preview_cache,  # type: ignore[arg-type]
+        )
+        self._preview_manager.attach_render_queue(
+            session_id, queue=queue, affected_keys=affected_keys
+        )
+
     def end_preview(self, session_id: str) -> None:
         self._preview_manager.end(session_id)
 
@@ -520,6 +608,45 @@ class WorldRestoreOrchestrator:
         self, session_id: str, rx: int, rz: int
     ) -> Optional[Path]:
         return self._preview_manager.get_tile_path(session_id, rx, rz)
+
+    async def request_preview_tile(
+        self, session_id: str, rx: int, rz: int, *, timeout: Optional[float] = None
+    ) -> Path:
+        """Resolve a preview tile, lazily rendering on first miss.
+
+        Fast path: returns the file path if the tile is already rendered.
+        Otherwise, enqueues a render request on the session's per-dimension
+        ``ServerRenderQueue`` and awaits its completion (subject to
+        ``timeout``, defaulting to ``config.mcmap.request_timeout_seconds``).
+
+        Raises ``PreviewSessionNotFoundError`` when the session is unknown,
+        ``FileNotFoundError`` when the tile lies outside the staged
+        affected-region set, and ``asyncio.TimeoutError`` on render timeout.
+        """
+        sess = self._preview_manager.get_session(session_id)
+        if sess is None:
+            raise PreviewSessionNotFoundError(session_id)
+
+        png = sess.base_dir / "tiles" / f"r.{rx}.{rz}.png"
+        if png.exists():
+            return png
+
+        queue = sess.render_queue
+        if queue is None:
+            raise FileNotFoundError(
+                f"preview tile ({rx}, {rz}) not available — render queue not attached"
+            )
+        if sess.affected_keys is not None and (rx, rz) not in sess.affected_keys:
+            raise FileNotFoundError(
+                f"preview tile ({rx}, {rz}) is outside the preview's affected region set"
+            )
+
+        effective_timeout = (
+            timeout
+            if timeout is not None
+            else float(dynamic_config.mcmap.request_timeout_seconds)
+        )
+        return await asyncio.wait_for(queue.request(rx, rz), timeout=effective_timeout)
 
     def get_preview_session_dir(self, session_id: str) -> Optional[Path]:
         """Expose the staged source/preview dirs for the tile-render endpoint."""

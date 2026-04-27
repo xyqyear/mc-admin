@@ -11,6 +11,7 @@ SSE streams use ``StreamingResponse`` framed as ``data: <json>\\n\\n`` blocks
 via a manual fetch + ``\\n\\n`` parser.
 """
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -380,17 +381,33 @@ async def get_preview_tile(
     rz: int,
     _: UserPublic = Depends(get_current_user),
 ) -> FileResponse:
-    """Serve a rendered preview tile."""
+    """Serve a preview tile, lazily rendering on first miss.
+
+    Mirrors the live-map tile endpoint: if the PNG is already on disk, returns
+    it directly; otherwise enqueues a render on the session's per-dimension
+    ``ServerRenderQueue`` and awaits completion (with the same
+    ``request_timeout_seconds`` budget). 503 on render timeout, 404 if the
+    session is gone or the requested region wasn't staged.
+    """
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
-    tile = orch.get_preview_tile(session_id, rx, rz)
-    if tile is None:
-        raise HTTPException(status_code=404, detail="Preview tile not available")
-    # Heartbeat the session — the frontend's tile fetches keep it alive.
+
+    # Heartbeat *before* awaiting render so the session doesn't TTL-expire
+    # mid-render, and so duplicate-tile-request bursts keep the session alive
+    # even when most of them coalesce onto the same in-flight Future.
     try:
         orch.heartbeat_preview(session_id)
     except PreviewSessionNotFoundError:
-        pass
+        raise HTTPException(status_code=404, detail="Preview session not found")
+
+    try:
+        tile = await orch.request_preview_tile(session_id, rx, rz)
+    except PreviewSessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Preview session not found")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Preview tile not available")
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Render timed out, retry")
     return FileResponse(
         str(tile),
         media_type="image/png",

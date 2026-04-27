@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { CheckCircle2, XCircle } from 'lucide-react'
 
 import {
@@ -112,10 +113,14 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   selection,
 }) => {
   const [state, setState] = useState<PreviewState>(initialState)
-  const containerRef = useRef<HTMLDivElement | null>(null)
+  // The map lives in both a ref (for synchronous teardown inside the
+  // container callback ref) and state (so the layer-attach and overlay
+  // effects re-run once the map is available).
   const mapRef = useRef<L.Map | null>(null)
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null)
   const layerRef = useRef<PreviewTileLayer | null>(null)
   const overlayRef = useRef<L.LayerGroup | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
   const { useEndPreview, useHeartbeatPreview } = useWorldRestoreMutations()
   const endPreview = useEndPreview(serverId)
@@ -168,42 +173,56 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     onError: (msg) => setState((prev) => ({ ...prev, error: msg })),
   })
 
-  // Mount Leaflet once the modal is open and we have at least one region.
-  useEffect(() => {
-    if (!open) return
-    if (!containerRef.current) return
-    if (mapRef.current) return
-    if (!affected.initialBlock) return
-    const map = L.map(containerRef.current, {
-      crs: L.CRS.Simple,
-      minZoom: -4,
-      maxZoom: 4,
-      zoom: 0,
-      center: blockToLatLng(
-        affected.initialBlock.bx,
-        affected.initialBlock.bz,
-      ),
-      attributionControl: false,
-      preferCanvas: true,
-    })
-    mapRef.current = map
-    overlayRef.current = L.layerGroup().addTo(map)
-    return () => {
-      map.remove()
-      mapRef.current = null
+  // Callback ref on the map container: mounts Leaflet when the div attaches
+  // and tears it down when it detaches. Reacting in the ref callback (rather
+  // than a useRef + useEffect pair) keeps mount/unmount tied to the DOM node
+  // lifecycle directly, which is what Leaflet needs.
+  const initial = affected.initialBlock
+  const containerRefCallback = useCallback(
+    (node: HTMLDivElement | null) => {
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
       overlayRef.current = null
       layerRef.current = null
-    }
-  }, [open, affected.initialBlock])
+      setMapInstance(null)
 
-  // Attach the preview tile layer once we know the session id. Aborting
-  // requests when the modal closes is handled inside PreviewTileLayer.
+      if (!node || !initial) return
+
+      const map = L.map(node, {
+        crs: L.CRS.Simple,
+        minZoom: -4,
+        maxZoom: 4,
+        zoom: 0,
+        center: blockToLatLng(initial.bx, initial.bz),
+        attributionControl: false,
+        preferCanvas: true,
+      })
+      mapRef.current = map
+      overlayRef.current = L.layerGroup().addTo(map)
+      setMapInstance(map)
+
+      // Re-measure on container size changes (dialog open animation, browser
+      // zoom, viewport resize) so Leaflet computes visible tiles against the
+      // actual rendered size.
+      const ro = new ResizeObserver(() => map.invalidateSize())
+      ro.observe(node)
+      resizeObserverRef.current = ro
+    },
+    [initial],
+  )
+
+  // Attach the preview tile layer once we know the session id and the map
+  // is initialized. Aborting requests when the modal closes is handled
+  // inside PreviewTileLayer.
   useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
+    if (!mapInstance) return
     if (!state.sessionId) return
     if (layerRef.current) {
-      map.removeLayer(layerRef.current)
+      mapInstance.removeLayer(layerRef.current)
     }
     const layer = new PreviewTileLayer({
       serverId,
@@ -216,13 +235,14 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       minNativeZoom: 0,
       maxNativeZoom: 0,
     })
-    layer.addTo(map)
+    layer.addTo(mapInstance)
     layerRef.current = layer
-  }, [serverId, state.sessionId, availableSet])
+  }, [serverId, state.sessionId, availableSet, mapInstance])
 
   // Selection overlay — paint the affected regions so the user can see the
   // boundary even before tiles finish loading.
   useEffect(() => {
+    if (!mapInstance) return
     const group = overlayRef.current
     if (!group) return
     group.clearLayers()
@@ -260,7 +280,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
         }).addTo(group)
       }
     }
-  }, [affected.regions, selection])
+  }, [affected.regions, selection, mapInstance])
 
   // Heartbeat while the preview is open. Silent on error — the page can
   // recover by re-opening the preview.
@@ -327,11 +347,22 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
             </div>
             <Progress value={state.percent} />
 
-            <div
-              ref={containerRef}
-              className="mt-2 h-[480px] w-full overflow-hidden rounded-md border"
-              style={{ background: 'var(--card)' }}
-            />
+            {/* Only mount Leaflet after the backend signals `ready`. Tiles are
+                rendered lazily on first request, so mounting earlier would
+                fire tile fetches before the per-session render queue is
+                attached and 404 them. */}
+            {/* `isolate` + `contain: paint` + `translate-z-0` keep the map's
+                repaints from bubbling out to the dialog's compositing layer.
+                Without this, the dialog overlay's `backdrop-blur` is
+                re-evaluated by the GPU on every Leaflet pan frame, which
+                makes panning visibly laggier than the live map. */}
+            {state.ready && (
+              <div
+                ref={containerRefCallback}
+                className="isolate mt-2 h-[480px] w-full translate-z-0 overflow-hidden rounded-md border [contain:paint]"
+                style={{ background: 'var(--card)' }}
+              />
+            )}
           </>
         )}
       </DialogContent>

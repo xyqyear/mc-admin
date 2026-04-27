@@ -38,7 +38,7 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 
 - Enterprise-grade Restic-based snapshot system with global and server-specific backups
 - Snapshot deletion and repository unlock functionality
-- World restore page with chunk-, region-, dimension-, and world-scope selection driven by an interactive map; on-demand preview that renders affected regions in a sandboxed working directory; one-click rollback from the per-restoration safety snapshot
+- World restore page with chunk-, region-, dimension-, and world-scope selection driven by an interactive map; on-demand preview that lazily renders affected regions in a sandboxed working directory (per-session `ServerRenderQueue` mirrors the live-map pipeline — batching, coalescing, cancellation); one-click rollback from the per-restoration safety snapshot
 - mcmap v0.3.0 powers both rendering and partial chunk replace/remove for region/chunk-level rollbacks
 - Per-server operation lock serializes backup vs restore operations and skips overlapping cron backups
 - Crash recovery flips interrupted restorations to a recoverable state on startup so the user can roll back from the safety snapshot
