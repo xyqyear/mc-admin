@@ -117,10 +117,11 @@ export const WorldRestoreSelectionPanel: React.FC<
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
-  // Snapshot creation — three scopes. Each one builds a different selection
-  // payload and confirms before firing.
+  // Manual snapshots only ever cover a whole dimension or the whole server —
+  // narrower scopes (regions / chunks) exist only as safety snapshots taken
+  // automatically before a rollback, and don't have a user-facing button.
   const startCreate = (
-    scope: 'world' | 'dimension' | 'regions' | 'chunks',
+    scope: 'world' | 'dimension',
     description: string,
   ) => {
     const sel = buildSelection({
@@ -218,27 +219,6 @@ export const WorldRestoreSelectionPanel: React.FC<
 
         <div className="space-y-2">
           <div className="font-medium">创建快照</div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start"
-            disabled={!layoutReady || !isComplete || createSnapshot.isPending}
-            onClick={() =>
-              startCreate(
-                mode === 'region' ? 'regions' : 'chunks',
-                mode === 'region'
-                  ? `将为选中的 ${stats.fullRegionCount} 个区域创建快照。`
-                  : `将为选中的 ${stats.chunkCount} 个区块创建快照。`,
-              )
-            }
-          >
-            {createSnapshot.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Camera className="mr-2 h-4 w-4" />
-            )}
-            选中范围
-          </Button>
           <Button
             variant="outline"
             size="sm"

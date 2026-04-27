@@ -14,7 +14,7 @@ via a manual fetch + ``\\n\\n`` parser.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -116,6 +116,21 @@ class ListEligibleSnapshotsResponse(BaseModel):
 class CreateSnapshotResponse(BaseModel):
     message: str
     snapshot: ResticSnapshotWithSummary
+
+
+class ManualSnapshotRequest(BaseModel):
+    """Request body for the manual snapshot endpoint.
+
+    Manual snapshots only ever cover a whole dimension or the whole server.
+    Region- and chunk-scope snapshots exist only as the safety snapshots taken
+    automatically inside ``begin_restore`` before a rollback — they have no
+    user-facing entry point. ``Literal`` here makes Pydantic reject the
+    narrower scopes at parse time (HTTP 422) instead of further down the call
+    stack.
+    """
+
+    type: Literal["world", "dimension"]
+    region_dir_relpath: Optional[str] = None
 
 
 class PreviewRequest(BaseModel):
@@ -232,10 +247,15 @@ async def eligible_snapshots(
 )
 async def create_snapshot(
     server_id: str,
-    selection: RestorationSelection,
+    request: ManualSnapshotRequest,
     user: UserPublic = Depends(get_current_user),
 ) -> CreateSnapshotResponse:
-    """Create a snapshot covering the selection paths.
+    """Create a manual snapshot at world or dimension scope.
+
+    Region- and chunk-scope snapshots are intentionally not exposed here:
+    they are only created automatically as safety snapshots before a
+    rollback. Pydantic rejects those scopes at parse time via the
+    ``ManualSnapshotRequest.type`` literal.
 
     Acquires the server's BACKUP lock for the duration. Returns 423 if the
     server is currently locked by another operation.
@@ -251,6 +271,10 @@ async def create_snapshot(
                 "holder": _holder_dict(holder) if holder else None,
             },
         )
+    selection = RestorationSelection(
+        type=RestorationType(request.type),
+        region_dir_relpath=request.region_dir_relpath,
+    )
     try:
         snapshot = await orch.create_snapshot(server_id, selection, user.id)
     except SelectionResolutionError as e:

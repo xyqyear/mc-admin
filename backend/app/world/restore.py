@@ -209,9 +209,13 @@ class WorldRestoreOrchestrator:
     ) -> ResticSnapshotWithSummary:
         """Create a restic snapshot covering the selection paths.
 
-        Acquires a BACKUP lock for the server. Used for ad-hoc world snapshots
-        (e.g. user clicking "Snapshot now" in the world-restore UI) — distinct
-        from cron-driven backups.
+        Acquires a BACKUP lock for the server. The HTTP-facing manual-snapshot
+        endpoint only forwards WORLD / DIMENSION scopes; the REGIONS / CHUNKS
+        branches remain reachable here so internal callers and tests can seed
+        partial-coverage snapshots (e.g. for eligibility-filter assertions).
+        Safety snapshots taken before a restore go through ``_restic.backup``
+        directly inside ``begin_restore`` rather than this method, since they
+        share the outer RESTORE lock.
         """
         paths = await self._resolve_paths_for_selection(server_id, selection)
         if not paths:
