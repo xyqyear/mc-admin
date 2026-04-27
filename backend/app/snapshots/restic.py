@@ -88,12 +88,7 @@ class ResticManager:
             args.append("--insecure-no-password")
         return args
 
-    async def backup(
-        self,
-        paths: List[Path],
-        uid: int | None = None,
-        gid: int | None = None,
-    ) -> ResticSnapshotWithSummary:
+    async def backup(self, paths: List[Path]) -> ResticSnapshotWithSummary:
         """
         Create a backup snapshot covering one or more paths.
 
@@ -101,8 +96,6 @@ class ResticManager:
 
         Args:
             paths: Absolute paths to back up
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             Created snapshot information with summary
@@ -123,7 +116,7 @@ class ResticManager:
                 "--json",
             ]
         )
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        result = await exec_command(*args, env=self.env)
 
         # Parse the backup result to get summary and snapshot_id
         lines = result.strip().split("\n")
@@ -149,7 +142,7 @@ class ResticManager:
 
         # Now get the full snapshot information using the snapshot_id
         args = self._add_password_args(["restic", "snapshots", snapshot_id, "--json"])
-        snapshots_result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        snapshots_result = await exec_command(*args, env=self.env)
 
         try:
             snapshots_list = json.loads(snapshots_result)
@@ -196,24 +189,19 @@ class ResticManager:
         )
 
     async def list_snapshots(
-        self,
-        path_filter: Optional[Path] = None,
-        uid: int | None = None,
-        gid: int | None = None,
+        self, path_filter: Optional[Path] = None
     ) -> List[ResticSnapshot]:
         """
         List all snapshots, optionally filtered by path
 
         Args:
             path_filter: Optional path to filter snapshots by
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             List of snapshots
         """
         args = self._add_password_args(["restic", "snapshots", "--json"])
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        result = await exec_command(*args, env=self.env)
 
         try:
             snapshots_data = json.loads(result)
@@ -261,10 +249,7 @@ class ResticManager:
         return snapshots
 
     async def find_snapshots_covering(
-        self,
-        paths: List[Path],
-        uid: int | None = None,
-        gid: int | None = None,
+        self, paths: List[Path]
     ) -> List[ResticSnapshot]:
         """
         Return snapshots that cover EVERY path in ``paths``.
@@ -278,8 +263,6 @@ class ResticManager:
 
         Args:
             paths: Absolute paths each snapshot must cover. Empty list is rejected.
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             Snapshots ordered newest-first.
@@ -290,7 +273,7 @@ class ResticManager:
             if not path.is_absolute():
                 raise ValueError("Paths must be absolute")
 
-        all_snapshots = await self.list_snapshots(uid=uid, gid=gid)
+        all_snapshots = await self.list_snapshots()
 
         resolved_paths = [p.resolve() for p in paths]
 
@@ -336,8 +319,6 @@ class ResticManager:
         snapshot_id: str,
         target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
-        uid: int | None = None,
-        gid: int | None = None,
     ) -> List[ResticRestorePreviewAction]:
         """
         Preview restore operation (dry run)
@@ -357,8 +338,6 @@ class ResticManager:
             include_paths: Optional list of paths to include (filter what gets restored).
                 Each path becomes a `--include` flag; matches are OR-combined.
                 Must be the original absolute snapshot paths (not target-mapped).
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             List of restore actions that would be performed
@@ -380,7 +359,7 @@ class ResticManager:
                 args.extend(["--include", str(include_path)])
 
         args = self._add_password_args(args)
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        result = await exec_command(*args, env=self.env)
 
         actions = []
         for line in result.strip().split("\n"):
@@ -420,8 +399,6 @@ class ResticManager:
         snapshot_id: str,
         target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
-        uid: int | None = None,
-        gid: int | None = None,
     ) -> None:
         """
         Restore snapshot
@@ -445,8 +422,6 @@ class ResticManager:
                 exclude when ``--delete`` is used; non-root targets do not have
                 this constraint. ``--delete`` is scoped to included roots — files
                 outside them (but under the target) are left untouched.
-            uid: User ID for command execution
-            gid: Group ID for command execution
         """
         args = [
             "restic",
@@ -462,23 +437,15 @@ class ResticManager:
                 args.extend(["--include", str(include_path)])
 
         args = self._add_password_args(args)
-        await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        await exec_command(*args, env=self.env)
 
-    async def forget_id(
-        self,
-        snapshot_id: str,
-        prune: bool = True,
-        uid: int | None = None,
-        gid: int | None = None,
-    ) -> str:
+    async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """
         Remove a specific snapshot by ID
 
         Args:
             snapshot_id: Snapshot ID to remove
             prune: Whether to run prune after forget (default: True)
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             Command output
@@ -490,7 +457,7 @@ class ResticManager:
             args.append("--prune")
 
         args = self._add_password_args(args)
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        result = await exec_command(*args, env=self.env)
         return result
 
     async def forget(
@@ -504,8 +471,6 @@ class ResticManager:
         keep_tag: Optional[List[str]] = None,
         keep_within: Optional[str] = None,
         prune: bool = True,
-        uid: int | None = None,
-        gid: int | None = None,
     ) -> str:
         """
         Remove snapshots according to retention policy
@@ -520,8 +485,6 @@ class ResticManager:
             keep_tag: Keep all snapshots which have all tags specified (can be specified multiple times)
             keep_within: Keep all snapshots having a timestamp within the specified duration of the latest snapshot
             prune: Whether to run prune after forget (default: True)
-            uid: User ID for command execution
-            gid: Group ID for command execution
 
         Returns:
             Command output
@@ -583,38 +546,18 @@ class ResticManager:
             args.append("--prune")
 
         args = self._add_password_args(args)
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
+        result = await exec_command(*args, env=self.env)
         return result
 
-    async def list_locks(self, uid: int | None = None, gid: int | None = None) -> str:
-        """
-        List all locks in the repository
-
-        Args:
-            uid: User ID for command execution
-            gid: Group ID for command execution
-
-        Returns:
-            Command output with lock information
-        """
+    async def list_locks(self) -> str:
+        """List all locks in the repository."""
         args = self._add_password_args(["restic", "list", "locks"])
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
-        return result
+        return await exec_command(*args, env=self.env)
 
-    async def unlock(self, uid: int | None = None, gid: int | None = None) -> str:
-        """
-        Remove stale locks from the repository
-
-        Args:
-            uid: User ID for command execution
-            gid: Group ID for command execution
-
-        Returns:
-            Command output
-        """
+    async def unlock(self) -> str:
+        """Remove stale locks from the repository."""
         args = self._add_password_args(["restic", "unlock"])
-        result = await exec_command(*args, uid=uid, gid=gid, env=self.env)
-        return result
+        return await exec_command(*args, env=self.env)
 
 
 # Singleton instance - only create if restic settings are available

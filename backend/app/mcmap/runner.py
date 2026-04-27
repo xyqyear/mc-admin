@@ -4,6 +4,12 @@ Each subcommand is exposed as an async context manager that yields an
 ``MCMapProcess`` exposing a JSON-event iterator and a ``terminate()`` method.
 The context manager guarantees the subprocess is killed (SIGTERM, then SIGKILL
 after a grace period) on exit, regardless of how the caller exits.
+
+Subprocesses run with the same privileges as the backend. When the backend
+runs as root, ``--chown UID:GID`` is appended so mcmap chowns every file/dir
+it creates or atomically replaces back to the data dir's owner. When not
+running as root, ``--chown`` is omitted (mcmap requires euid 0 to use it) and
+output files inherit the backend's uid/gid.
 """
 
 import asyncio
@@ -68,38 +74,34 @@ class MCMapProcess:
         return self._proc.returncode
 
 
-async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
-    """Spawn mcmap as the owner of ``owned_by`` (the server's data dir).
-
-    Uses ``preexec_fn`` to drop privileges in the child, matching the project
-    pattern in ``app/utils/exec.py``. Falls back to no privilege change if the
-    backend isn't running as a user able to setuid (typical for dev setups);
-    in that case files are written as the current user with a logged warning.
-    """
-    st = os.stat(owned_by)
-    target_uid = st.st_uid
-    target_gid = st.st_gid
-    current_uid = os.geteuid()
-
-    def demote():
-        if current_uid == 0 and target_uid != 0:
-            os.setgid(target_gid)
-            os.setuid(target_uid)
-
-    if current_uid != 0 and current_uid != target_uid:
+def _chown_args_for(owned_by: Path) -> List[str]:
+    """Return ``["--chown", "UID:GID"]`` when the backend runs as root, else []."""
+    if os.geteuid() != 0:
+        return []
+    try:
+        st = os.stat(owned_by)
+    except FileNotFoundError:
         logger.warning(
-            "mcmap: running as uid=%d but data dir owned by uid=%d; cannot drop privileges",
-            current_uid,
-            target_uid,
+            "mcmap: owned_by path %s does not exist; skipping --chown", owned_by
         )
+        return []
+    return ["--chown", f"{st.st_uid}:{st.st_gid}"]
 
+
+async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
+    """Spawn mcmap with the backend's privileges.
+
+    When running as root, ``--chown UID:GID`` (matching ``owned_by``'s owner)
+    is appended so mcmap's atomic file replacements end up owned by the
+    Minecraft data dir's uid/gid. When not running as root, mcmap writes as
+    the backend uid and ``--chown`` is omitted (it requires euid 0).
+    """
+    full_args: List[str] = ["--json", *args, *_chown_args_for(owned_by)]
     return await asyncio.create_subprocess_exec(
         str(settings.mcmap_binary_path),
-        "--json",
-        *args,
+        *full_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        preexec_fn=demote,
     )
 
 

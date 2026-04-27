@@ -264,7 +264,7 @@ app/
 │
 ├── mcmap/                  # Server map (mcmap CLI integration)
 │   ├── __init__.py         # Public exports: mcmap_manager, ServerMapCache, etc.
-│   ├── runner.py           # Async subprocess wrapper, NDJSON parsing, uid/gid demotion; render + replace_chunks + remove_chunks ctx managers
+│   ├── runner.py           # Async subprocess wrapper, NDJSON parsing, root-only `--chown UID:GID` propagation; render + replace_chunks + remove_chunks ctx managers
 │   ├── cache.py            # ServerMapCache: per-region paths and freshness checks
 │   ├── palette.py          # Palette hash + invalidation, mods dir discovery
 │   ├── queue.py            # ServerRenderQueue: refcount-coalesced batching with cancellation
@@ -545,7 +545,7 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 
 **Key design properties:**
 
-- **Subprocess ownership:** every mcmap invocation runs as the owner of the server's `data/` directory via `preexec_fn` (drops privileges only when the backend itself is root and the target uid differs).
+- **Subprocess ownership:** mcmap runs with the backend's privileges (no setuid). When the backend runs as root, `_chown_args_for(owned_by)` appends `--chown UID:GID` (resolved from `os.stat(data_path)`) so mcmap chowns every file/dir it creates or atomically replaces back to the data dir's owner. When not running as root, `--chown` is omitted (mcmap requires euid 0) and outputs land as the backend uid.
 - **Refcount-coalesced cancellation:** duplicate `(x, z)` requests share one `asyncio.Future`. The consumer `await` is wrapped in `asyncio.shield` so cancelling one consumer does not disturb others. When the last consumer for a key disconnects, the entry is dropped from the queue; if the running batch becomes empty, the mcmap subprocess is terminated (SIGTERM, then SIGKILL after 2 s).
 - **Hard dimension isolation:** the queue key includes `region_path`, so no `mcmap render` invocation can mix regions from different dimensions (PNGs always land in the correct subfolder).
 - **Region path is request-scoped** — never persisted in the database or config. Frontend tracks the selected dimension in component state and includes it on each tile fetch as a query parameter; `_resolve_region_path()` validates it stays inside `data/` and rejects traversal/absolute paths.
@@ -599,6 +599,10 @@ png_path = await asyncio.wait_for(queue.request(x, z), timeout=cfg.request_timeo
 - Sessions live under `restore_temp_dir/<session_id>/` (default `/tmp/mc-admin-world-restore/`). Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
 - Heartbeat-driven TTL (default 30 min). A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs.
 - Disk threshold guard: estimated cost is `affected_regions × 8 MiB × 2`; preview returns 507 with `{"free", "required"}` if the FS doesn't have headroom.
+
+**Subprocess ownership and staged trees:**
+
+- mcmap subcommands (`replace-chunks`, `remove-chunks`, `render`) run with the backend's privileges. When the backend is root, `_chown_args_for(data_path)` in `app.mcmap.runner` appends `--chown UID:GID` so mcmap chowns its outputs (atomic replacements of target MCAs and rendered tile PNGs) to the data dir's owner. There is no preexec demotion, so the subprocess can read restic-restored staging trees under `<session_dir>/source/` and the `_flow_chunks` tempdir directly — no separate chown step is required before merging.
 
 **Crash recovery:**
 

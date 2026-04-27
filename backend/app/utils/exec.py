@@ -3,7 +3,6 @@ Command execution utilities for running system commands and shell operations.
 """
 
 import asyncio
-import os
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -43,8 +42,6 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
 async def exec_command(
     command: str,
     *args: str,
-    uid: int | None = None,
-    gid: int | None = None,
     env: dict[str, str] = dict(),
     cwd: str | None = None,
     timeout: float | None = None,
@@ -55,8 +52,6 @@ async def exec_command(
     Args:
         command: Command to execute
         *args: Command arguments
-        uid: User ID to run command as
-        gid: Group ID to run command as
         env: Environment variables
         cwd: Working directory
         timeout: Maximum seconds to wait for the command. On expiry the
@@ -70,16 +65,9 @@ async def exec_command(
         RuntimeError: If command fails
         TimeoutError: If timeout is set and the command does not finish in time
     """
-
-    def demote():
-        if uid is not None and gid is not None:
-            os.setuid(uid)
-            os.setgid(gid)
-
     process = await asyncio.create_subprocess_exec(
         command,
         *args,
-        preexec_fn=demote,
         env=env,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
