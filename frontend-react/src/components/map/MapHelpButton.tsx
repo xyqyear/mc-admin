@@ -42,8 +42,8 @@ export const MapHelpButton: React.FC = () => {
             <section>
               <div className="mb-1 font-medium">添加选区</div>
               <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-                <li>Ctrl 或 Shift + 鼠标左键单击：添加光标处的区域 / 区块</li>
-                <li>Ctrl 或 Shift + 鼠标左键拖拽：框选添加</li>
+                <li>Ctrl + 鼠标左键单击：添加光标处的区域 / 区块</li>
+                <li>Ctrl + 鼠标左键拖拽：框选添加</li>
               </ul>
             </section>
             <section>

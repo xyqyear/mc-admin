@@ -364,8 +364,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   //
   // Interactions:
   //   • Plain left drag        : map pan (Leaflet's default, always enabled).
-  //   • Ctrl/Shift + click     : add the chunk/region under the cursor.
-  //   • Ctrl/Shift + drag      : additive rectangle selection.
+  //   • Ctrl + click     : add the chunk/region under the cursor.
+  //   • Ctrl + drag      : additive rectangle selection.
   //   • Right click            : remove the chunk/region under the cursor.
   //   • Right-button + drag    : subtractive rectangle selection.
   //   • Escape (map focused)   : clear selection.
@@ -489,7 +489,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     const onContainerMouseDown = (ev: MouseEvent) => {
       const isLeft = ev.button === 0
       const isRight = ev.button === 2
-      const isModifier = ev.shiftKey || ev.ctrlKey
+      const isModifier = ev.ctrlKey
       let mode: 'add' | 'remove' | null = null
       if (isLeft && isModifier) mode = 'add'
       else if (isRight) mode = 'remove'
