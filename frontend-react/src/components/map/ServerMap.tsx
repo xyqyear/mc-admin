@@ -669,7 +669,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   }
 
   return (
-    <div className={cn('relative h-full w-full', className)}>
+    <div className={cn('relative isolate h-full w-full', className)}>
       <div
         ref={containerRef}
         className="absolute inset-0"
