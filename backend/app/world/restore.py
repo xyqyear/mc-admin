@@ -239,8 +239,20 @@ class WorldRestoreOrchestrator:
     async def list_eligible_snapshots(
         self, server_id: str, selection: RestorationSelection
     ) -> list[ResticSnapshot]:
-        """Return snapshots that cover every path the selection resolves to."""
-        paths = await self._resolve_paths_for_selection(server_id, selection)
+        """Return snapshots that cover every path the selection resolves to.
+
+        Eligibility is checked against the MCA files only (and the world/
+        dimension dirs for those scopes). The MCC sidecar paths emitted by
+        ``_resolve_paths_for_selection`` are speculative include hints for
+        restic — they cover the case where a region happens to have overflow
+        chunks at the time of restore — but they are *not* required for a
+        snapshot to qualify. Restic only records paths that actually existed
+        at backup time, so most prior safety snapshots would carry zero or
+        few of these speculative MCC paths in their ``paths`` field. Asking
+        ``find_snapshots_covering`` to honor them filters out exactly the
+        snapshots the user is most likely to need (their own safety snapshots).
+        """
+        paths = await self._resolve_eligibility_paths(server_id, selection)
         if not paths:
             return []
         return await self._restic.find_snapshots_covering(paths)
@@ -950,6 +962,46 @@ class WorldRestoreOrchestrator:
 
         raise SelectionResolutionError(f"unsupported selection type: {selection.type}")
 
+    async def _resolve_eligibility_paths(
+        self, server_id: str, selection: RestorationSelection
+    ) -> list[Path]:
+        """Like ``_resolve_paths_for_selection`` but emits only the paths a
+        snapshot must cover to qualify — i.e. the MCA files for region/chunk
+        scopes, with no speculative MCC sidecars. See ``list_eligible_snapshots``
+        for the rationale.
+        """
+        instance = self._docker.get_instance(server_id)
+        data_path = instance.get_data_path()
+        roots = await discover_world_roots(data_path)
+        if not roots:
+            return []
+
+        if selection.type is RestorationType.WORLD:
+            return [root.path for root in roots]
+
+        if selection.region_dir_relpath is None:
+            raise SelectionResolutionError(
+                f"selection type '{selection.type.value}' requires region_dir_relpath"
+            )
+        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
+
+        if selection.type is RestorationType.DIMENSION:
+            paths = [dim.region_dir]
+            if dim.entities_dir is not None:
+                paths.append(dim.entities_dir)
+            if dim.poi_dir is not None:
+                paths.append(dim.poi_dir)
+            return paths
+
+        if selection.type is RestorationType.REGIONS:
+            return _expand_region_mca_paths(dim, selection.regions)
+
+        if selection.type is RestorationType.CHUNKS:
+            grouped = _group_chunks_by_region(selection.chunks)
+            return _expand_region_mca_paths(dim, list(grouped.keys()))
+
+        raise SelectionResolutionError(f"unsupported selection type: {selection.type}")
+
     # --- Server-state guard ---------------------------------------------
 
     async def _ensure_server_stopped(self, server_id: str) -> None:
@@ -1047,6 +1099,21 @@ def _expand_region_paths(
                 continue
             paths.append(live_dir / f"r.{rx}.{rz}.mca")
             paths.extend(_mcc_paths_for_region(live_dir, rx, rz))
+    return paths
+
+
+def _expand_region_mca_paths(
+    dim: DimensionInfo, regions: list[tuple[int, int]]
+) -> list[Path]:
+    """MCA-only variant of ``_expand_region_paths`` — used for snapshot
+    eligibility checks where speculative MCC sidecars would over-filter
+    (restic doesn't record paths that didn't exist at backup time)."""
+    paths: list[Path] = []
+    for (rx, rz) in regions:
+        for live_dir in (dim.region_dir, dim.entities_dir, dim.poi_dir):
+            if live_dir is None:
+                continue
+            paths.append(live_dir / f"r.{rx}.{rz}.mca")
     return paths
 
 

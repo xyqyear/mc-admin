@@ -337,6 +337,49 @@ async def test_chunks_scope_invokes_mcmap_and_completes(
     assert row.status is RestorationStatus.SUCCEEDED
 
 
+@pytest.mark.asyncio
+async def test_eligible_snapshots_includes_regions_safety_snapshot(
+    orchestrator, data_path
+):
+    """Regression: a regions-scope safety snapshot must show up in the
+    eligibility list for the same selection.
+
+    Previously ``list_eligible_snapshots`` resolved the regions scope to
+    MCA + 1024 speculative MCC sidecar paths and demanded full coverage of
+    every one. Restic only records paths that actually existed at backup
+    time, so a regions safety snapshot stores just the MCA — the MCC
+    requirement filtered the safety snapshot out, leaving the user with no
+    way to roll back from it via the UI.
+    """
+    selection = RestorationSelection(
+        type=RestorationType.REGIONS,
+        region_dir_relpath="world/region",
+        regions=[(0, 0)],
+    )
+    safety = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+
+    eligible = await orchestrator.list_eligible_snapshots("srv1", selection)
+    assert any(s.id == safety.id for s in eligible)
+
+
+@pytest.mark.asyncio
+async def test_eligible_snapshots_includes_chunks_safety_snapshot(
+    orchestrator, data_path
+):
+    """Same regression as the regions case but for the chunks scope:
+    eligibility resolution must compare against MCA paths only, otherwise
+    the per-chunk safety snapshot would be filtered out."""
+    selection = RestorationSelection(
+        type=RestorationType.CHUNKS,
+        region_dir_relpath="world/region",
+        chunks=[(3, 4)],  # in region (0, 0)
+    )
+    safety = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+
+    eligible = await orchestrator.list_eligible_snapshots("srv1", selection)
+    assert any(s.id == safety.id for s in eligible)
+
+
 @pytest.mark.skipif(not _mcmap_available(), reason="mcmap not installed")
 @pytest.mark.asyncio
 async def test_chunks_scope_remove_when_source_missing(
