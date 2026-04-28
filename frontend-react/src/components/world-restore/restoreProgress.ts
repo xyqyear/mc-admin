@@ -24,6 +24,7 @@ const STAGE_LABEL: Record<string, string> = {
   stage: '提取快照内容',
   merge_region: '合并区块',
   restore: '恢复文件',
+  invalidate_cache: '刷新地图缓存',
   complete: '完成',
   error: '错误',
 }

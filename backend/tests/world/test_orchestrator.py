@@ -613,5 +613,90 @@ async def test_world_scope_covers_all_roots(
     ).read_bytes() == _empty_mca() + b"\xfa\xce"
 
 
+# --- Tests: tile cache invalidation ----------------------------------------
+
+
+def _seed_tile_cache(data_path: Path, tiles: list[tuple[str, int, int]]) -> list[Path]:
+    """Materialize fake PNG tiles under ``data/.mcmap/tiles/<region_path>/`` and
+    return their paths (in order)."""
+    written: list[Path] = []
+    for region_path, x, z in tiles:
+        png = data_path / ".mcmap" / "tiles" / region_path / f"r.{x}.{z}.png"
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_bytes(b"fake-png")
+        written.append(png)
+    return written
+
+
+@pytest.mark.asyncio
+async def test_world_restore_invalidates_affected_tiles(
+    orchestrator, data_path
+):
+    """A WORLD restore must remove only the PNG tiles whose backing region MCA
+    was actually written, leaving untouched tiles in place."""
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+
+    # Seed tiles: r.0.0 + r.1.0 in the Overworld, r.0.0 in the Nether.
+    overworld_changed_tile, overworld_kept_tile, nether_kept_tile = _seed_tile_cache(
+        data_path,
+        [("world/region", 0, 0), ("world/region", 1, 0), ("world/DIM-1/region", 0, 0)],
+    )
+
+    # Mutate only r.0.0 in the Overworld so restic only restores that one.
+    (data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"corrupted")
+
+    events = []
+    async for ev in orchestrator.begin_restore(
+        server_id="srv1",
+        source_snapshot_id=snap.id,
+        selection=selection,
+        user_id=None,
+    ):
+        events.append(ev)
+
+    types = [e.event_type for e in events]
+    assert types[-1] == "complete"
+    assert "invalidate_cache" in types
+
+    # The tile whose MCA was rewritten is gone; untouched tiles remain.
+    assert not overworld_changed_tile.exists()
+    assert overworld_kept_tile.exists()
+    assert nether_kept_tile.exists()
+
+
+@pytest.mark.asyncio
+async def test_regions_restore_invalidates_only_selected_tiles(
+    orchestrator, data_path
+):
+    """REGIONS scope drives invalidation from the selection itself — even tiles
+    for regions the snapshot didn't actually need to write should still be
+    cleared, since the user explicitly restored that region."""
+    full = RestorationSelection(type=RestorationType.WORLD)
+    snap = await orchestrator.create_snapshot("srv1", full, user_id=None)
+
+    target_tile, neighbor_tile = _seed_tile_cache(
+        data_path, [("world/region", 0, 0), ("world/region", 1, 0)]
+    )
+
+    selection = RestorationSelection(
+        type=RestorationType.REGIONS,
+        region_dir_relpath="world/region",
+        regions=[(0, 0)],
+    )
+    events = []
+    async for ev in orchestrator.begin_restore(
+        server_id="srv1",
+        source_snapshot_id=snap.id,
+        selection=selection,
+        user_id=None,
+    ):
+        events.append(ev)
+
+    assert events[-1].event_type == "complete"
+    assert not target_tile.exists()
+    assert neighbor_tile.exists()
+
+
 # Silence "unused import" warnings.
 _ = shutil

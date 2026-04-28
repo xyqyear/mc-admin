@@ -74,6 +74,7 @@ class RestoreEvent(BaseModel):
         "stage",
         "merge_region",
         "restore",
+        "invalidate_cache",
         "complete",
         "error",
     ]
@@ -312,6 +313,7 @@ class WorldRestoreOrchestrator:
                 user_id=user_id,
             )
 
+            touched_items: list[str] = []
             try:
                 if selection.type is RestorationType.CHUNKS:
                     async for ev in self._flow_chunks(
@@ -326,6 +328,7 @@ class WorldRestoreOrchestrator:
                         source_snapshot_id=source_snapshot_id,
                         paths=paths,
                         restoration_id=restoration_id,
+                        touched_items=touched_items,
                     ):
                         yield ev
             except Exception as exc:
@@ -343,6 +346,17 @@ class WorldRestoreOrchestrator:
                     message=str(exc),
                 )
                 return
+
+            invalidated = await self._invalidate_map_cache(
+                server_id=server_id,
+                selection=selection,
+                touched_items=touched_items,
+            )
+            yield RestoreEvent(
+                event_type="invalidate_cache",
+                restoration_id=restoration_id,
+                message=f"invalidated {invalidated} map tile(s)",
+            )
 
             await self._update_restoration_row(
                 restoration_id, RestorationStatus.SUCCEEDED, None
@@ -664,19 +678,36 @@ class WorldRestoreOrchestrator:
         source_snapshot_id: str,
         paths: list[Path],
         restoration_id: str,
+        touched_items: list[str],
     ) -> AsyncGenerator[RestoreEvent, None]:
-        """In-place restic restore for world / dimension / regions scopes."""
+        """In-place restic restore for world / dimension / regions scopes.
+
+        Yields one ``restore`` event at the start and additional
+        ``restore`` events with ``percent`` set on each restic ``status``
+        update. ``touched_items`` is filled with the absolute paths of
+        files restic actually wrote (or deleted) — used by the caller to
+        compute PNG invalidations.
+        """
         yield RestoreEvent(
             event_type="restore",
             restoration_id=restoration_id,
             message=f"restoring {len(paths)} path(s) from snapshot {source_snapshot_id[:8]}",
+            percent=0.0,
         )
-        async for _ in self._restic.restore(
+        async for ev in self._restic.restore(
             snapshot_id=source_snapshot_id,
             target_path=Path("/"),
             include_paths=paths,
         ):
-            pass
+            if ev.kind == "status" and ev.percent_done is not None:
+                yield RestoreEvent(
+                    event_type="restore",
+                    restoration_id=restoration_id,
+                    percent=ev.percent_done * 100.0,
+                )
+            elif ev.kind == "file" and ev.action in ("updated", "restored", "deleted"):
+                if ev.item is not None:
+                    touched_items.append(ev.item)
 
     async def _flow_chunks(
         self,
@@ -727,13 +758,19 @@ class WorldRestoreOrchestrator:
                 event_type="stage",
                 restoration_id=restoration_id,
                 message=f"staging {len(grouped)} region(s) from snapshot {source_snapshot_id[:8]}",
+                percent=0.0,
             )
-            async for _ in self._restic.restore(
+            async for ev in self._restic.restore(
                 snapshot_id=source_snapshot_id,
                 target_path=stage_root,
                 include_paths=include_paths,
             ):
-                pass
+                if ev.kind == "status" and ev.percent_done is not None:
+                    yield RestoreEvent(
+                        event_type="stage",
+                        restoration_id=restoration_id,
+                        percent=ev.percent_done * 100.0,
+                    )
 
             total_jobs = len(grouped) * sum(
                 1 for live in live_subdirs.values() if live is not None
@@ -829,6 +866,52 @@ class WorldRestoreOrchestrator:
             raise MCMapError(
                 f"mcmap remove-chunks reported {terminal} for {len(chunks)} requested chunks"
             )
+
+    # --- Cache invalidation ---------------------------------------------
+
+    async def _invalidate_map_cache(
+        self,
+        *,
+        server_id: str,
+        selection: RestorationSelection,
+        touched_items: list[str],
+    ) -> int:
+        """Delete cached PNG tiles whose source MCA was modified by this restore.
+
+        - WORLD / DIMENSION (filesystem restore): derive affected regions
+          from ``touched_items`` (restic verbose_status output). This handles
+          arbitrary multi-root layouts because the cache key is just the
+          MCA's parent dir relpath under ``data_path``.
+        - REGIONS / CHUNKS: derive directly from the selection. Restic items
+          would also work for REGIONS but the selection is the source of
+          truth and avoids any parsing.
+        """
+        from . import png_invalidate
+
+        instance = self._docker.get_instance(server_id)
+        data_path = instance.get_data_path()
+
+        if selection.type in (RestorationType.WORLD, RestorationType.DIMENSION):
+            pngs = png_invalidate.pngs_for_restic_items(data_path, touched_items)
+        elif selection.type is RestorationType.REGIONS:
+            if selection.region_dir_relpath is None:
+                return 0
+            pngs = png_invalidate.pngs_for_regions(
+                data_path, selection.region_dir_relpath, set(selection.regions)
+            )
+        elif selection.type is RestorationType.CHUNKS:
+            if selection.region_dir_relpath is None:
+                return 0
+            grouped = _group_chunks_by_region(selection.chunks)
+            pngs = png_invalidate.pngs_for_regions(
+                data_path, selection.region_dir_relpath, set(grouped.keys())
+            )
+        else:
+            return 0
+
+        if not pngs:
+            return 0
+        return png_invalidate.delete_pngs(pngs)
 
     # --- Path resolution -------------------------------------------------
 

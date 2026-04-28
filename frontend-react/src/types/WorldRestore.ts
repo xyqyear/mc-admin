@@ -121,6 +121,7 @@ export type RestoreEventType =
   | 'stage'
   | 'merge_region'
   | 'restore'
+  | 'invalidate_cache'
   | 'complete'
   | 'error'
 
