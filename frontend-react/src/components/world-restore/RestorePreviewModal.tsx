@@ -67,42 +67,52 @@ function blockToLatLng(bx: number, bz: number): [number, number] {
   return [-bz, bx]
 }
 
-// Compute the affected-region set + initial map view from the selection.
+interface BlockBounds {
+  bxMin: number
+  bzMin: number
+  bxMax: number
+  bzMax: number
+}
+
+// Compute the affected-region set + selection bounding box from the selection.
 // For dimension/world scopes there are no affected regions yet — the modal
 // shows a "no regions to render" message rather than a blank black canvas.
+// `bounds` is the tightest block-aligned box around the selection (chunk-precise
+// for chunk selections, region-precise for region selections); the map uses it
+// to fitBounds so the rollback area is centered and zoomed to fit.
 function computeAffected(selection: RestorationSelection | null): {
   regions: Array<{ rx: number; rz: number }>
-  initialBlock: { bx: number; bz: number } | null
+  bounds: BlockBounds | null
 } {
-  if (!selection)
-    return { regions: [], initialBlock: null }
+  if (!selection) return { regions: [], bounds: null }
   if (selection.type === 'regions') {
     const regions = (selection.regions ?? []).map(([rx, rz]) => ({ rx, rz }))
-    if (regions.length === 0) return { regions: [], initialBlock: null }
-    const r0 = regions[0]
-    return {
-      regions,
-      initialBlock: {
-        bx: r0.rx * BLOCKS_PER_REGION + BLOCKS_PER_REGION / 2,
-        bz: r0.rz * BLOCKS_PER_REGION + BLOCKS_PER_REGION / 2,
-      },
+    if (regions.length === 0) return { regions: [], bounds: null }
+    let bxMin = Infinity, bzMin = Infinity, bxMax = -Infinity, bzMax = -Infinity
+    for (const { rx, rz } of regions) {
+      bxMin = Math.min(bxMin, rx * BLOCKS_PER_REGION)
+      bzMin = Math.min(bzMin, rz * BLOCKS_PER_REGION)
+      bxMax = Math.max(bxMax, (rx + 1) * BLOCKS_PER_REGION)
+      bzMax = Math.max(bzMax, (rz + 1) * BLOCKS_PER_REGION)
     }
+    return { regions, bounds: { bxMin, bzMin, bxMax, bzMax } }
   }
   if (selection.type === 'chunks') {
+    const chunks = selection.chunks ?? []
+    if (chunks.length === 0) return { regions: [], bounds: null }
     const set = new Set<`${number},${number}`>()
-    for (const [cx, cz] of selection.chunks ?? []) set.add(`${cx},${cz}`)
+    for (const [cx, cz] of chunks) set.add(`${cx},${cz}`)
     const regions = chunksToCoveredRegions(set)
-    if (regions.length === 0) return { regions: [], initialBlock: null }
-    const r0 = regions[0]
-    return {
-      regions,
-      initialBlock: {
-        bx: r0.rx * BLOCKS_PER_REGION + BLOCKS_PER_REGION / 2,
-        bz: r0.rz * BLOCKS_PER_REGION + BLOCKS_PER_REGION / 2,
-      },
+    let bxMin = Infinity, bzMin = Infinity, bxMax = -Infinity, bzMax = -Infinity
+    for (const [cx, cz] of chunks) {
+      bxMin = Math.min(bxMin, cx * 16)
+      bzMin = Math.min(bzMin, cz * 16)
+      bxMax = Math.max(bxMax, (cx + 1) * 16)
+      bzMax = Math.max(bzMax, (cz + 1) * 16)
     }
+    return { regions, bounds: { bxMin, bzMin, bxMax, bzMax } }
   }
-  return { regions: [], initialBlock: null }
+  return { regions: [], bounds: null }
 }
 
 export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
@@ -177,7 +187,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   // and tears it down when it detaches. Reacting in the ref callback (rather
   // than a useRef + useEffect pair) keeps mount/unmount tied to the DOM node
   // lifecycle directly, which is what Leaflet needs.
-  const initial = affected.initialBlock
+  const bounds = affected.bounds
   const containerRefCallback = useCallback(
     (node: HTMLDivElement | null) => {
       resizeObserverRef.current?.disconnect()
@@ -190,17 +200,20 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       layerRef.current = null
       setMapInstance(null)
 
-      if (!node || !initial) return
+      if (!node || !bounds) return
 
       const map = L.map(node, {
         crs: L.CRS.Simple,
         minZoom: -4,
         maxZoom: 4,
-        zoom: 0,
-        center: blockToLatLng(initial.bx, initial.bz),
         attributionControl: false,
         preferCanvas: true,
       })
+      const sw = blockToLatLng(bounds.bxMin, bounds.bzMax)
+      const ne = blockToLatLng(bounds.bxMax, bounds.bzMin)
+      // maxZoom: 2 keeps a single-chunk selection from zooming all the way to
+      // the map's max (4×) and losing the surrounding context.
+      map.fitBounds([sw, ne], { padding: [20, 20], maxZoom: 2 })
       mapRef.current = map
       overlayRef.current = L.layerGroup().addTo(map)
       setMapInstance(map)
@@ -212,7 +225,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       ro.observe(node)
       resizeObserverRef.current = ro
     },
-    [initial],
+    [bounds],
   )
 
   // Attach the preview tile layer once we know the session id and the map
@@ -319,7 +332,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        {!affected.initialBlock && selection && (
+        {!affected.bounds && selection && (
           <Alert>
             <AlertTitle>无可预览的区域</AlertTitle>
             <AlertDescription>
@@ -328,7 +341,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
           </Alert>
         )}
 
-        {affected.initialBlock && (
+        {affected.bounds && (
           <>
             <div className="flex items-center gap-2 text-sm">
               {state.error ? (
