@@ -40,11 +40,6 @@ interface WorldRestoreSelectionPanelProps {
   serverStopped: boolean
 }
 
-// Switching modes can lose data — chunk → region keeps only fully-covered
-// regions. We confirm before discarding chunks. Going region → chunk is safe;
-// the underlying ChunkKey set is unchanged.
-const REGION_FANOUT_WARN_THRESHOLD = 256
-
 export const WorldRestoreSelectionPanel: React.FC<
   WorldRestoreSelectionPanelProps
 > = ({
@@ -58,7 +53,6 @@ export const WorldRestoreSelectionPanel: React.FC<
   const stats = useMemo(() => computeSelectionStats(selection), [selection])
   const { confirm, confirmDialog } = useConfirm()
   const setMode = useWorldRestoreSelectionStore((s) => s.setMode)
-  const setSelection = useWorldRestoreSelectionStore((s) => s.setSelection)
   const { useCreateWorldSnapshot } = useWorldRestoreMutations()
   const createSnapshot = useCreateWorldSnapshot(serverId)
 
@@ -70,38 +64,11 @@ export const WorldRestoreSelectionPanel: React.FC<
   const [pickerSelection, setPickerSelection] =
     useState<RestorationSelection | null>(null)
 
+  // Mode switches always wipe the selection (the store's `setMode` handles
+  // the wipe). Chunk and region selections aren't bidirectionally convertible
+  // without surprise data loss, so we don't try.
   const handleModeChange = (next: WorldRestoreSelectionMode) => {
     if (next === mode) return
-    if (next === 'region' && stats.chunkCount > 0) {
-      const fullCount = stats.fullRegionCount
-      const dropped = stats.regionCount - fullCount
-      if (dropped > 0) {
-        confirm({
-          title: '切换到区域模式',
-          description: `当前选中 ${stats.chunkCount} 个区块，覆盖 ${stats.regionCount} 个区域，但只有 ${fullCount} 个区域被完整覆盖。切换后将丢弃未完整覆盖的 ${dropped} 个区域的部分选择。`,
-          confirmText: '继续切换',
-          variant: 'default',
-          onConfirm: () => {
-            setMode(serverId, next)
-            onModeChange(next)
-          },
-        })
-        return
-      }
-    }
-    if (next === 'chunk' && stats.fullRegionCount > REGION_FANOUT_WARN_THRESHOLD) {
-      confirm({
-        title: '切换到区块模式',
-        description: `当前选中 ${stats.fullRegionCount} 个区域（约 ${stats.fullRegionCount * 1024} 个区块），切换后大量区块将参与渲染，可能影响性能。`,
-        confirmText: '继续切换',
-        variant: 'default',
-        onConfirm: () => {
-          setMode(serverId, next)
-          onModeChange(next)
-        },
-      })
-      return
-    }
     setMode(serverId, next)
     onModeChange(next)
   }
@@ -146,8 +113,6 @@ export const WorldRestoreSelectionPanel: React.FC<
     setPickerSelection(sel)
     setPickerOpen(true)
   }
-
-  void setSelection
 
   return (
     <Card className="flex flex-col">
