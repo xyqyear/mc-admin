@@ -367,7 +367,6 @@ const ServerWorldRestore: React.FC = () => {
               selection={selection}
               mode={urlMode}
               onModeChange={handleModeChange}
-              onSelectionChange={handleSelectionChange}
               serverStopped={serverStopped}
             />
             <ServerStartHint serverId={serverId} status={statusQ.data} />

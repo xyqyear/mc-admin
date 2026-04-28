@@ -37,8 +37,6 @@ interface WorldRestoreSelectionPanelProps {
   // Mode toggle is URL-driven on the page; the panel only signals the change
   // up. The page persists URL + store.
   onModeChange: (mode: WorldRestoreSelectionMode) => void
-  // Mirrors what ServerWorldRestore wires from useWorldRestoreSelectionStore.
-  onSelectionChange: (next: Set<ChunkKey>) => void
   serverStopped: boolean
 }
 
@@ -55,7 +53,6 @@ export const WorldRestoreSelectionPanel: React.FC<
   selection,
   mode,
   onModeChange,
-  onSelectionChange,
   serverStopped,
 }) => {
   const stats = useMemo(() => computeSelectionStats(selection), [selection])
@@ -150,7 +147,6 @@ export const WorldRestoreSelectionPanel: React.FC<
     setPickerOpen(true)
   }
 
-  const clearSelection = () => onSelectionChange(new Set<ChunkKey>())
   void setSelection
 
   return (
@@ -188,33 +184,6 @@ export const WorldRestoreSelectionPanel: React.FC<
               按住 Ctrl 框选，右键取消。拖动可框选
             </TabsContent>
           </Tabs>
-        </div>
-
-        <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          <div className="font-medium mb-1">当前选区</div>
-          {hasSelection ? (
-            <div className="text-muted-foreground space-y-0.5 tabular-nums">
-              <div>
-                区块 <span className="text-foreground">{stats.chunkCount}</span> 个
-              </div>
-              <div>
-                覆盖区域 <span className="text-foreground">{stats.regionCount}</span> 个
-                （完整 <span className="text-foreground">{stats.fullRegionCount}</span> 个）
-              </div>
-            </div>
-          ) : (
-            <div className="text-muted-foreground">未选择任何区块</div>
-          )}
-          {hasSelection && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-2 h-7 px-2"
-              onClick={clearSelection}
-            >
-              清空选择
-            </Button>
-          )}
         </div>
 
         <div className="space-y-2">
