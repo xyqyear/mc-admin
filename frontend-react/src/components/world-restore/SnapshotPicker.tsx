@@ -25,7 +25,10 @@ import {
   initialProgress,
   type RestoreProgressState,
 } from './restoreProgress'
-import { RestorePreviewModal } from './RestorePreviewModal'
+import {
+  RestorePreviewModal,
+  type RestorePreviewRequest,
+} from './RestorePreviewModal'
 
 interface SnapshotPickerProps {
   open: boolean
@@ -63,10 +66,11 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   const [restoreState, setRestoreState] =
     useState<RestoreProgressState>(initialProgress)
 
-  // Preview modal — opened from a per-row "preview" button. Stores both the
-  // snapshot id and a snapshot of the current selection at click time so the
-  // modal can issue the SSE without the picker re-rendering the panel.
-  const [previewFor, setPreviewFor] = useState<string | null>(null)
+  // Preview modal — opened from a per-row "preview" button. Captures the
+  // selection at click time so the modal's SSE body is stable even if the
+  // page selection changes underneath.
+  const [previewReq, setPreviewReq] =
+    useState<RestorePreviewRequest | null>(null)
 
   useEventStream<RestoreEvent>({
     enabled: !!restoreFor && !restoreState.error && !restoreState.done,
@@ -221,7 +225,12 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setPreviewFor(s.id)}
+                            onClick={() =>
+                              setPreviewReq({
+                                sourceSnapshotId: s.id,
+                                selection,
+                              })
+                            }
                           >
                             <Eye className="mr-1 h-3.5 w-3.5" />
                             预览
@@ -259,13 +268,9 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
       </SheetContent>
       {confirmDialog}
       <RestorePreviewModal
-        open={!!previewFor}
-        onOpenChange={(o) => {
-          if (!o) setPreviewFor(null)
-        }}
         serverId={serverId}
-        sourceSnapshotId={previewFor}
-        selection={selection}
+        request={previewReq}
+        onClose={() => setPreviewReq(null)}
       />
     </Sheet>
   )

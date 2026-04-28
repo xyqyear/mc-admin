@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, RotateCcw, Undo2 } from 'lucide-react'
+import { Eye, Loader2, RotateCcw, Undo2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +29,10 @@ import {
   initialProgress,
   type RestoreProgressState,
 } from './restoreProgress'
+import {
+  RestorePreviewModal,
+  type RestorePreviewRequest,
+} from './RestorePreviewModal'
 
 interface RestorationHistoryDrawerProps {
   open: boolean
@@ -84,6 +88,13 @@ export const RestorationHistoryDrawer: React.FC<
   const [rollbackId, setRollbackId] = useState<string | null>(null)
   const [rollbackState, setRollbackState] =
     useState<RestoreProgressState>(initialProgress)
+
+  // Preview modal — opened from a per-row "preview" button. Previews the
+  // safety snapshot (the snapshot a rollback on this row would restore from)
+  // against the row's stored selection, so the user can see what reverting
+  // this entry would actually bring back.
+  const [previewReq, setPreviewReq] =
+    useState<RestorePreviewRequest | null>(null)
 
   useEventStream<RestoreEvent>({
     enabled: !!rollbackId && !rollbackState.error && !rollbackState.done,
@@ -219,6 +230,12 @@ export const RestorationHistoryDrawer: React.FC<
                   (row.status === 'succeeded' || row.status === 'interrupted') &&
                   !!row.safety_snapshot_id &&
                   row.safety_snapshot_exists
+                // Preview maps only support region/chunk scopes — dimension
+                // and world scopes have no per-region affected set to render.
+                const canPreview =
+                  canRollback &&
+                  (row.selection.type === 'regions' ||
+                    row.selection.type === 'chunks')
                 return (
                   <div
                     key={row.id}
@@ -242,6 +259,21 @@ export const RestorationHistoryDrawer: React.FC<
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        {canPreview && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setPreviewReq({
+                                sourceSnapshotId: row.safety_snapshot_id!,
+                                selection: row.selection,
+                              })
+                            }
+                          >
+                            <Eye className="mr-1 h-3.5 w-3.5" />
+                            预览
+                          </Button>
+                        )}
                         {canRollback && (
                           <Button
                             size="sm"
@@ -317,6 +349,11 @@ export const RestorationHistoryDrawer: React.FC<
         </div>
       </SheetContent>
       {confirmDialog}
+      <RestorePreviewModal
+        serverId={serverId}
+        request={previewReq}
+        onClose={() => setPreviewReq(null)}
+      />
     </Sheet>
   )
 }

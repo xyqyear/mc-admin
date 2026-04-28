@@ -27,12 +27,19 @@ import type {
 
 import { PreviewTileLayer } from './PreviewTileLayer'
 
+// A non-null `request` means "preview this snapshot+selection pair". Nulling
+// it triggers the dialog's close transition; callers don't manage `open`
+// separately. Both call sites (snapshot picker, history drawer) hold one of
+// these in state and clear it on close.
+export interface RestorePreviewRequest {
+  sourceSnapshotId: string
+  selection: RestorationSelection
+}
+
 interface RestorePreviewModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   serverId: string
-  sourceSnapshotId: string | null
-  selection: RestorationSelection | null
+  request: RestorePreviewRequest | null
+  onClose: () => void
 }
 
 interface PreviewState {
@@ -116,12 +123,20 @@ function computeAffected(selection: RestorationSelection | null): {
 }
 
 export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
-  open,
-  onOpenChange,
   serverId,
-  sourceSnapshotId,
-  selection,
+  request,
+  onClose,
 }) => {
+  const open = !!request
+  // Latch the active request so the dialog body keeps rendering through the
+  // close transition. The parent nulls `request` on close, which would
+  // otherwise blank the title/progress/map mid-animation.
+  const [latched, setLatched] = useState<RestorePreviewRequest | null>(request)
+  useEffect(() => {
+    if (request) setLatched(request)
+  }, [request])
+  const selection = latched?.selection ?? null
+
   const [state, setState] = useState<PreviewState>(initialState)
   // The map lives in both a ref (for synchronous teardown inside the
   // container callback ref) and state (so the layer-attach and overlay
@@ -142,20 +157,24 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     [affected.regions],
   )
 
-  // Reset state whenever the modal opens with a new snapshot/selection pair.
+  // Reset state whenever a fresh request comes in (new snapshot/selection or
+  // a re-open after close). Object identity is the trigger — callers create a
+  // new request object on each open click.
   useEffect(() => {
-    if (!open) return
+    if (!request) return
     setState(initialState)
-  }, [open, sourceSnapshotId])
+  }, [request])
 
   useEventStream<PreviewEvent>({
-    enabled: open && !!sourceSnapshotId && !!selection && !state.error,
+    enabled: !!request && !state.error,
     url: `/servers/${serverId}/world-restore/preview`,
     method: 'POST',
-    body:
-      open && sourceSnapshotId && selection
-        ? { source_snapshot_id: sourceSnapshotId, selection }
-        : undefined,
+    body: request
+      ? {
+          source_snapshot_id: request.sourceSnapshotId,
+          selection: request.selection,
+        }
+      : undefined,
     onEvent: (ev) => {
       const stageText = STAGE_LABEL[ev.event_type] ?? ev.event_type
       const text = ev.message ?? stageText
@@ -321,7 +340,12 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   }, [open])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose()
+      }}
+    >
       <DialogContent
         className="w-full max-w-4xl"
         showCloseButton={!!state.error || state.ready || !state.sessionId}
