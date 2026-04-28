@@ -212,11 +212,13 @@ export const RestorationHistoryDrawer: React.FC<
                 // The backend reports per-row snapshot existence by checking
                 // the restic repo at request time. If the safety snapshot has
                 // been deleted, rollback is impossible — hide the button.
+                // Rollback rows themselves are also rollback-able: their
+                // safety snapshot captures the state immediately before the
+                // rollback, which lets the user undo the rollback.
                 const canRollback =
                   (row.status === 'succeeded' || row.status === 'interrupted') &&
                   !!row.safety_snapshot_id &&
-                  row.safety_snapshot_exists &&
-                  !row.is_rollback
+                  row.safety_snapshot_exists
                 return (
                   <div
                     key={row.id}
