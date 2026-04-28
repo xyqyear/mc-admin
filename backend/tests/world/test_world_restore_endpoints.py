@@ -203,6 +203,11 @@ def _patch_router(orchestrator, fake_docker, lock, session_factory):
             patch.object(
                 world_restore_module, "get_async_session", session_factory
             ),
+            patch.object(
+                world_restore_module,
+                "restic_manager",
+                orchestrator._restic,
+            ),
             patch("app.dependencies.settings") as mock_dep_settings,
         ):
             mock_dep_settings.master_token = "test_master_token"

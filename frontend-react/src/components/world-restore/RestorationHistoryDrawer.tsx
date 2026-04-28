@@ -207,9 +207,13 @@ export const RestorationHistoryDrawer: React.FC<
               )}
               {rows.map((row) => {
                 const tone = STATUS_TONE[row.status]
+                // The backend reports per-row snapshot existence by checking
+                // the restic repo at request time. If the safety snapshot has
+                // been deleted, rollback is impossible — hide the button.
                 const canRollback =
                   (row.status === 'succeeded' || row.status === 'interrupted') &&
                   !!row.safety_snapshot_id &&
+                  row.safety_snapshot_exists &&
                   !row.is_rollback
                 return (
                   <div
@@ -267,6 +271,9 @@ export const RestorationHistoryDrawer: React.FC<
                         <span className="font-mono text-foreground">
                           {row.source_snapshot_id.slice(0, 8)}
                         </span>
+                        {!row.source_snapshot_exists && (
+                          <span className="ml-1 text-destructive">(已删除)</span>
+                        )}
                       </div>
                       <div>
                         安全快照：
@@ -275,10 +282,17 @@ export const RestorationHistoryDrawer: React.FC<
                             ? row.safety_snapshot_id.slice(0, 8)
                             : '—'}
                         </span>
+                        {row.safety_snapshot_id &&
+                          !row.safety_snapshot_exists && (
+                            <span className="ml-1 text-destructive">
+                              (已删除)
+                            </span>
+                          )}
                       </div>
                     </div>
                     {row.status === 'interrupted' &&
-                      !!row.safety_snapshot_id && (
+                      !!row.safety_snapshot_id &&
+                      row.safety_snapshot_exists && (
                         <Alert>
                           <AlertTitle className="text-sm">需要回滚</AlertTitle>
                           <AlertDescription className="text-xs">

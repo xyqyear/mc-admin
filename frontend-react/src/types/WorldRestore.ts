@@ -93,6 +93,11 @@ export interface RestorationResponse {
   type: RestorationType
   source_snapshot_id: string
   safety_snapshot_id: string | null
+  // Whether each referenced restic snapshot still exists. Backend fills
+  // these by intersecting row IDs against a fresh `restic snapshots` listing.
+  // When the safety snapshot is gone, the rollback button is hidden.
+  source_snapshot_exists: boolean
+  safety_snapshot_exists: boolean
   selection: RestorationSelection
   is_rollback: boolean
   initiated_by_user_id: number | null

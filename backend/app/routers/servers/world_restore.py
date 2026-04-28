@@ -34,7 +34,7 @@ from ...models import (
     RestorationType,
     UserPublic,
 )
-from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary
+from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, restic_manager
 from ...world import (
     SelectionResolutionError,
     ServerNotStoppedError,
@@ -154,6 +154,11 @@ class RestorationResponse(BaseModel):
     type: RestorationType
     source_snapshot_id: str
     safety_snapshot_id: Optional[str]
+    # Whether each referenced snapshot still exists in the restic repo. Filled
+    # at request time by listing restic snapshots once and intersecting IDs.
+    # Restorations whose safety snapshot is gone can no longer be rolled back.
+    source_snapshot_exists: bool
+    safety_snapshot_exists: bool
     selection: RestorationSelection
     is_rollback: bool
     initiated_by_user_id: Optional[int]
@@ -168,13 +173,35 @@ class ListRestorationsResponse(BaseModel):
     total: int
 
 
-def _restoration_to_response(row: Restoration) -> RestorationResponse:
+async def _existing_snapshot_ids() -> Optional[set[str]]:
+    """Snapshot IDs currently present in the restic repo, or ``None`` if
+    restic isn't configured (in which case existence checks are skipped and
+    historical rows are reported as still existing — they predate the deletion
+    we'd be flagging anyway)."""
+    if restic_manager is None:
+        return None
+    snapshots = await restic_manager.list_snapshots()
+    return {s.id for s in snapshots}
+
+
+def _restoration_to_response(
+    row: Restoration, existing_ids: Optional[set[str]]
+) -> RestorationResponse:
+    def _exists(snap_id: Optional[str]) -> bool:
+        if snap_id is None:
+            return False
+        if existing_ids is None:
+            return True
+        return snap_id in existing_ids
+
     return RestorationResponse(
         id=row.id,
         server_id=row.server_id,
         type=row.type,
         source_snapshot_id=row.source_snapshot_id,
         safety_snapshot_id=row.safety_snapshot_id,
+        source_snapshot_exists=_exists(row.source_snapshot_id),
+        safety_snapshot_exists=_exists(row.safety_snapshot_id),
         selection=RestorationSelection.model_validate_json(row.selection_json),
         is_rollback=row.is_rollback,
         initiated_by_user_id=row.initiated_by_user_id,
@@ -523,8 +550,9 @@ async def list_restorations(
             .scalars()
             .all()
         )
+    existing_ids = await _existing_snapshot_ids()
     return ListRestorationsResponse(
-        restorations=[_restoration_to_response(r) for r in rows],
+        restorations=[_restoration_to_response(r, existing_ids) for r in rows],
         total=int(total),
     )
 
@@ -547,7 +575,8 @@ async def get_restoration(
         ).scalar_one_or_none()
     if row is None or row.server_id != server_id:
         raise HTTPException(status_code=404, detail="Restoration not found")
-    return _restoration_to_response(row)
+    existing_ids = await _existing_snapshot_ids()
+    return _restoration_to_response(row, existing_ids)
 
 
 @router.post("/{server_id}/world-restore/restorations/{restoration_id}/rollback")
@@ -575,6 +604,12 @@ async def rollback_restoration(
         raise HTTPException(
             status_code=400,
             detail="Restoration has no safety snapshot to roll back to",
+        )
+    existing_ids = await _existing_snapshot_ids()
+    if existing_ids is not None and row.safety_snapshot_id not in existing_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Safety snapshot has been deleted; rollback is no longer possible",
         )
 
     if await _server_is_running(server_id):
