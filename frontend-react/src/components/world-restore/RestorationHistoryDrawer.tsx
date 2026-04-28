@@ -106,6 +106,7 @@ export const RestorationHistoryDrawer: React.FC<
     if (rollbackState.done) {
       toast.success('回滚完成')
       queryClient.invalidateQueries({ queryKey: queryKeys.worldRestore.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
     } else if (rollbackState.error) {
       toast.error('回滚失败', { description: rollbackState.error })
     }
@@ -143,6 +144,7 @@ export const RestorationHistoryDrawer: React.FC<
     setRollbackId(null)
     setRollbackState(initialProgress)
     queryClient.invalidateQueries({ queryKey: queryKeys.worldRestore.all })
+    queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }
 
   const rows = useMemo(

@@ -121,14 +121,19 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
     setRestoreState(initialProgress)
     onOpenChange(false)
     queryClient.invalidateQueries({ queryKey: queryKeys.worldRestore.all })
+    queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }
 
   // Successful restore → toast + force list refresh in the background but
-  // stay open so the user can read the log if they want.
+  // stay open so the user can read the log if they want. Also invalidate
+  // the map manifest so the tile layer picks up the new MCA mtimes (the
+  // backend deletes affected PNGs, and `?mt=` busts any stale browser
+  // cache after re-render).
   React.useEffect(() => {
     if (restoreState.done) {
       toast.success('恢复完成')
       queryClient.invalidateQueries({ queryKey: queryKeys.worldRestore.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
     } else if (restoreState.error) {
       toast.error('恢复失败', { description: restoreState.error })
     }
