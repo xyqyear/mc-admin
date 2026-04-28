@@ -56,7 +56,6 @@ from .locks import (
 )
 from .preview import PreviewMapCache, PreviewSessionManager, PreviewSessionNotFoundError
 
-
 SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
 
 CHUNKS_PER_REGION_AXIS = 32
@@ -260,7 +259,7 @@ class WorldRestoreOrchestrator:
         Steps:
           1. Acquire RESTORE lock.
           2. Verify the server is stopped.
-          3. Create a safety snapshot covering the same paths (skipped on rollback).
+          3. Create a safety snapshot covering the same paths.
           4. Insert a ``Restoration`` row with status=running.
           5. Dispatch to the scope-specific flow.
           6. Update the row to succeeded/failed.
@@ -289,21 +288,19 @@ class WorldRestoreOrchestrator:
                 message=f"starting {selection.type.value} restore",
             )
 
-            safety_snapshot_id: Optional[str] = None
-            if not is_rollback:
-                yield RestoreEvent(
-                    event_type="safety_snapshot",
-                    restoration_id=restoration_id,
-                    message="creating safety snapshot",
-                )
-                safety = await self._restic.backup(paths)
-                safety_snapshot_id = safety.id
-                yield RestoreEvent(
-                    event_type="safety_snapshot",
-                    restoration_id=restoration_id,
-                    safety_snapshot_id=safety_snapshot_id,
-                    message=f"safety snapshot {safety.short_id}",
-                )
+            yield RestoreEvent(
+                event_type="safety_snapshot",
+                restoration_id=restoration_id,
+                message="creating safety snapshot",
+            )
+            safety = await self._restic.backup(paths)
+            safety_snapshot_id = safety.id
+            yield RestoreEvent(
+                event_type="safety_snapshot",
+                restoration_id=restoration_id,
+                safety_snapshot_id=safety_snapshot_id,
+                message=f"safety snapshot {safety.short_id}",
+            )
 
             await self._insert_restoration_row(
                 restoration_id=restoration_id,
