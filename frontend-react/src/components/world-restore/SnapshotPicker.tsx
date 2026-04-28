@@ -232,9 +232,18 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                     </div>
                   </div>
                   {s.paths.length > 0 && (
-                    <div className="text-xs text-muted-foreground break-all">
-                      路径：{s.paths[0]}
-                      {s.paths.length > 1 && ` +${s.paths.length - 1}`}
+                    <div className="text-xs text-muted-foreground break-all space-y-0.5">
+                      <div>路径：</div>
+                      {s.paths.slice(0, 5).map((p) => (
+                        <div key={p} className="pl-3">
+                          {p}
+                        </div>
+                      ))}
+                      {s.paths.length > 5 && (
+                        <div className="pl-3">
+                          ……还有 {s.paths.length - 5} 条
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
