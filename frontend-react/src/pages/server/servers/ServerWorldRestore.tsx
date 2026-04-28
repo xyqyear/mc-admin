@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Map as MapIcon } from 'lucide-react'
+import { Map as MapIcon, RefreshCw } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -70,6 +70,14 @@ const ServerWorldRestore: React.FC = () => {
   const [initOpen, setInitOpen] = useState(false)
   const handleInitComplete = useCallback(() => {
     setInitOpen(false)
+    queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
+  }, [queryClient])
+
+  // Re-fetch the world manifest (existing MCAs + their mtimes). Refetching
+  // the regions query produces a new Map instance, which rebuilds the tile
+  // layer; updated mtimes flow into the `?mt=` cache-buster so any tiles
+  // whose source MCA changed are refetched (and re-rendered) end-to-end.
+  const handleRefreshMap = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
 
@@ -252,9 +260,19 @@ const ServerWorldRestore: React.FC = () => {
           dimensionOptions.length > 0 ? (
             <div className="flex items-center gap-2">
               {mapInitialized && (
-                <Button variant="outline" onClick={() => setInitOpen(true)}>
-                  重载渲染前置
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleRefreshMap}
+                    title="重新读取世界元数据并刷新瓦片"
+                  >
+                    <RefreshCw className="mr-1 h-4 w-4" />
+                    刷新地图
+                  </Button>
+                  <Button variant="outline" onClick={() => setInitOpen(true)}>
+                    重载渲染前置
+                  </Button>
+                </>
               )}
               <Select
                 value={dimensionRelpath ?? undefined}
