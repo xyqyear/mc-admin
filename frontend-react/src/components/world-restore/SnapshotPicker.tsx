@@ -210,14 +210,18 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPreviewFor(s.id)}
-                      >
-                        <Eye className="mr-1 h-3.5 w-3.5" />
-                        预览
-                      </Button>
+                      {selection &&
+                        selection.type !== 'world' &&
+                        selection.type !== 'dimension' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPreviewFor(s.id)}
+                          >
+                            <Eye className="mr-1 h-3.5 w-3.5" />
+                            预览
+                          </Button>
+                        )}
                       <Button
                         size="sm"
                         onClick={() => handleRowRestore(s.id, s.short_id)}
