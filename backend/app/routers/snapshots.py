@@ -1,11 +1,13 @@
 """Global snapshot management endpoints using restic"""
 
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import AsyncGenerator, List, Literal, Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
@@ -22,6 +24,7 @@ from ..snapshots import (
     restic_manager,
 )
 from ..system.resources import get_disk_info
+from ..world import png_invalidate
 
 router = APIRouter(
     prefix="/snapshots",
@@ -150,6 +153,28 @@ class RestoreRequest(BaseModel):
     snapshot_id: str
     server_id: Optional[str] = None
     paths: Optional[List[str]] = None
+
+
+class SnapshotRestoreEvent(BaseModel):
+    """SSE event emitted by ``POST /snapshots/restore``.
+
+    Mirrors ``app.world.restore.RestoreEvent`` so the frontend can reuse the
+    same progress reducer; only the safety_snapshot_id field differs in
+    semantics (it's a short id here, since this endpoint historically
+    surfaced short ids).
+    """
+
+    event_type: Literal[
+        "start",
+        "safety_snapshot",
+        "restore",
+        "invalidate_cache",
+        "complete",
+        "error",
+    ]
+    message: Optional[str] = None
+    percent: Optional[float] = None
+    safety_snapshot_id: Optional[str] = None
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -285,68 +310,160 @@ async def preview_global_restore(
         raise HTTPException(status_code=500, detail=error_msg)
 
 
+def _sse(payload: dict) -> bytes:
+    return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
+
+
+async def _invalidate_pngs_across_instances(items: list[str]) -> int:
+    """Walk every known docker MC instance and delete cached tiles for any
+    region MCAs the restore touched that fall under that instance's data dir.
+
+    Items outside any registered instance are ignored — the most common reason
+    is a restore covering paths that aren't Minecraft worlds at all.
+    """
+    if not items:
+        return 0
+    instances = await docker_mc_manager.get_all_instances()
+    total = 0
+    for instance in instances:
+        data_path = instance.get_data_path()
+        if not data_path.exists():
+            continue
+        pngs = png_invalidate.pngs_for_restic_items(data_path, items)
+        if pngs:
+            total += png_invalidate.delete_pngs(pngs)
+    return total
+
+
 @router.post("/restore")
 async def restore_global_snapshot(
     request: RestoreRequest, _: UserPublic = Depends(get_current_user)
 ):
-    """Restore snapshot with automatic pre-restore backup"""
-    try:
-        target_paths = _resolve_backup_paths(request.server_id, request.paths)
+    """Restore a snapshot, streaming progress as Server-Sent Events.
 
-        restic_manager = _get_restic_manager()
+    The flow is: safety snapshot → in-place restic restore (with byte
+    progress) → tile-cache invalidation → complete. Any failure terminates
+    the stream with an ``error`` event.
+    """
+    target_paths = _resolve_backup_paths(request.server_id, request.paths)
+    restic = _get_restic_manager()
 
-        # Create a safety snapshot covering every path being restored, in one snapshot
-        logger.info(
-            f"Creating safety snapshot before restore (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})"
-        )
+    async def event_gen() -> AsyncGenerator[bytes, None]:
         try:
-            safety_snapshot = await restic_manager.backup(target_paths)
+            yield _sse(
+                {
+                    "event_type": "start",
+                    "message": f"restoring snapshot {request.snapshot_id[:8]}",
+                }
+            )
+
+            yield _sse(
+                {
+                    "event_type": "safety_snapshot",
+                    "message": "creating safety snapshot",
+                }
+            )
+            try:
+                safety_snapshot = await restic.backup(target_paths)
+            except Exception as e:
+                logger.error(
+                    "Safety snapshot failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
+                    request.snapshot_id,
+                    request.server_id,
+                    request.paths,
+                    e,
+                    exc_info=True,
+                )
+                yield _sse(
+                    {
+                        "event_type": "error",
+                        "message": f"failed to create safety snapshot: {e}",
+                    }
+                )
+                return
+            yield _sse(
+                {
+                    "event_type": "safety_snapshot",
+                    "safety_snapshot_id": safety_snapshot.short_id,
+                    "message": f"safety snapshot {safety_snapshot.short_id}",
+                }
+            )
+
+            yield _sse(
+                {
+                    "event_type": "restore",
+                    "message": f"restoring {len(target_paths)} path(s)",
+                    "percent": 0.0,
+                }
+            )
+            touched_items: list[str] = []
+            try:
+                async for ev in restic.restore(
+                    snapshot_id=request.snapshot_id,
+                    target_path=Path("/"),
+                    include_paths=target_paths,
+                ):
+                    if ev.kind == "status" and ev.percent_done is not None:
+                        yield _sse(
+                            {
+                                "event_type": "restore",
+                                "percent": ev.percent_done * 100.0,
+                            }
+                        )
+                    elif ev.kind == "file" and ev.action in (
+                        "updated",
+                        "restored",
+                        "deleted",
+                    ):
+                        if ev.item is not None:
+                            touched_items.append(ev.item)
+            except Exception as e:
+                logger.error(
+                    "Restore failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
+                    request.snapshot_id,
+                    request.server_id,
+                    request.paths,
+                    e,
+                    exc_info=True,
+                )
+                yield _sse({"event_type": "error", "message": str(e)})
+                return
+
+            invalidated = await _invalidate_pngs_across_instances(touched_items)
+            yield _sse(
+                {
+                    "event_type": "invalidate_cache",
+                    "message": f"invalidated {invalidated} map tile(s)",
+                }
+            )
+
             paths_repr = ", ".join(str(p) for p in target_paths)
             logger.info(
-                f"Safety snapshot created: {safety_snapshot.short_id} before restoring to {paths_repr}"
+                "Restore completed: snapshot=%s safety_snapshot=%s server_id=%s paths=%s tiles=%d",
+                request.snapshot_id,
+                safety_snapshot.short_id,
+                request.server_id,
+                paths_repr,
+                invalidated,
+            )
+            yield _sse(
+                {
+                    "event_type": "complete",
+                    "message": f"restored snapshot {request.snapshot_id[:8]}",
+                    "safety_snapshot_id": safety_snapshot.short_id,
+                }
             )
         except Exception as e:
-            error_msg = f"Failed to create safety snapshot before restore: {str(e)}"
-            logger.error(
-                f"Safety snapshot creation failed: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
-                exc_info=True,
+            logger.exception(
+                "Restore stream failed (snapshot_id=%s)", request.snapshot_id
             )
-            raise HTTPException(
-                status_code=500,
-                detail=error_msg,
-            )
+            yield _sse({"event_type": "error", "message": str(e)})
 
-        # Perform restore — drain the streaming generator since this endpoint
-        # still returns a single JSON response. The SSE conversion happens in
-        # a follow-up commit.
-        async for _ in restic_manager.restore(
-            snapshot_id=request.snapshot_id,
-            target_path=Path("/"),
-            include_paths=target_paths,
-        ):
-            pass
-
-        paths_repr = ", ".join(str(p) for p in target_paths)
-        success_msg = (
-            f"Snapshot {request.snapshot_id} restored successfully to {paths_repr}"
-        )
-        logger.info(
-            f"Restore completed: {success_msg} (safety_snapshot_id={safety_snapshot.short_id}, server_id={request.server_id}, paths={request.paths})"
-        )
-        return {
-            "message": success_msg,
-            "safety_snapshot_id": safety_snapshot.short_id,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to restore snapshot: {str(e)}"
-        logger.error(
-            f"Restore error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=error_msg)
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.delete("/{snapshot_id}")

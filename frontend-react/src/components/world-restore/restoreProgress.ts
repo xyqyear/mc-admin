@@ -1,4 +1,11 @@
-import type { RestoreEvent } from '@/types/WorldRestore'
+// Minimal shape needed to drive the progress reducer. Both
+// world-restore RestoreEvent and snapshots SnapshotRestoreEvent satisfy it,
+// so the same reducer powers both flows.
+export interface RestoreProgressEvent {
+  event_type: string
+  message?: string
+  percent?: number
+}
 
 export interface RestoreProgressState {
   active: boolean
@@ -34,7 +41,7 @@ const STAGE_LABEL: Record<string, string> = {
 // across the two consumers.
 export function applyRestoreEvent(
   prev: RestoreProgressState,
-  ev: RestoreEvent,
+  ev: RestoreProgressEvent,
 ): RestoreProgressState {
   const stage = STAGE_LABEL[ev.event_type] ?? ev.event_type
   const text = ev.message ?? stage

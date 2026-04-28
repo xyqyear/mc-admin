@@ -40,16 +40,27 @@ interface ListSnapshotsResponse {
   snapshots: Snapshot[];
 }
 
-interface RestoreSnapshotRequest {
+interface SnapshotRestoreRequest {
   snapshot_id: string;
   server_id?: string;
   paths?: string[];
-  skip_safety_check?: boolean;  // 新增：控制是否跳过安全检查
 }
 
-interface RestoreSnapshotResponse {
-  message: string;
-  safety_snapshot_id?: string;
+// SSE event payload streamed by POST /snapshots/restore. Mirrors the world-
+// restore RestoreEvent shape so the same progress reducer can drive it.
+type SnapshotRestoreEventType =
+  | 'start'
+  | 'safety_snapshot'
+  | 'restore'
+  | 'invalidate_cache'
+  | 'complete'
+  | 'error'
+
+interface SnapshotRestoreEvent {
+  event_type: SnapshotRestoreEventType
+  message?: string
+  percent?: number
+  safety_snapshot_id?: string
 }
 
 interface DeleteSnapshotResponse {
@@ -107,12 +118,6 @@ export const snapshotApi = {
     return res.data;
   },
 
-  // 恢复快照（包含安全检查）
-  restoreSnapshot: async (data: RestoreSnapshotRequest): Promise<RestoreSnapshotResponse> => {
-    const res = await api.post<RestoreSnapshotResponse>("/snapshots/restore", data);
-    return res.data;
-  },
-
   // 预览快照恢复操作
   previewRestore: async (data: RestorePreviewRequest): Promise<RestorePreviewResponse> => {
     const res = await api.post<RestorePreviewResponse>("/snapshots/restore/preview", data);
@@ -154,8 +159,9 @@ export type {
   Snapshot,
   CreateSnapshotResponse,
   ListSnapshotsResponse,
-  RestoreSnapshotRequest,
-  RestoreSnapshotResponse,
+  SnapshotRestoreRequest,
+  SnapshotRestoreEvent,
+  SnapshotRestoreEventType,
   RestorePreviewRequest,
   RestorePreviewAction,
   RestorePreviewResponse,

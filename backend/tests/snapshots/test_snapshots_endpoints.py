@@ -8,12 +8,13 @@ directories and repositories to avoid affecting real data, with MC server direct
 IMPORTANT: These tests require restic to be installed on the system.
 """
 
+import json
 import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,32 @@ from fastapi.testclient import TestClient
 from app.main import api_app
 from app.snapshots import ResticManager
 from app.utils.exec import exec_command
+
+
+def _parse_sse_events(response) -> list[dict]:
+    """Parse a Server-Sent Events response body into a list of event dicts."""
+    events: list[dict] = []
+    for block in response.text.split("\n\n"):
+        for line in block.splitlines():
+            if line.startswith("data:"):
+                events.append(json.loads(line[5:].strip()))
+                break
+    return events
+
+
+def _restore_safety_snapshot_id(response) -> str:
+    """Extract the safety_snapshot_id from a successful /snapshots/restore SSE
+    stream. Asserts the stream completed without an error event."""
+    events = _parse_sse_events(response)
+    types = [e.get("event_type") for e in events]
+    assert "error" not in types, f"restore failed: events={events}"
+    assert types[-1] == "complete", f"restore did not complete: events={events}"
+    safety = next(
+        (e.get("safety_snapshot_id") for e in events if e.get("safety_snapshot_id")),
+        None,
+    )
+    assert safety is not None, f"no safety_snapshot_id in events: {events}"
+    return safety
 
 
 # Helper function to check if restic is available
@@ -218,6 +245,10 @@ def mock_snapshot_dependencies_setup(
 
         # Mock MC managers
         mock_manager.get_instance.return_value = instance
+        # The restore endpoint walks every known instance to invalidate map
+        # tiles after a restore — return the single test instance here so
+        # the await doesn't blow up on a bare MagicMock.
+        mock_manager.get_all_instances = AsyncMock(return_value=[instance])
         mock_file_manager.get_instance.return_value = instance
 
         yield
@@ -504,8 +535,7 @@ class TestSnapshotEndpoints:
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
-            assert "safety_snapshot_id" in restore_response.json()
-            assert restore_response.json()["safety_snapshot_id"] is not None
+            assert _restore_safety_snapshot_id(restore_response) is not None
 
             # Verify a new safety snapshot was created
             snapshots_after_restore = client.get(
@@ -642,17 +672,18 @@ class TestSnapshotEndpoints:
         server_id, instance = mock_instance
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            # Test restore with invalid snapshot ID
+            # Test restore with invalid snapshot ID — SSE stream still returns
+            # 200 but ends with an error event (the safety snapshot succeeds,
+            # then the restore itself fails when restic rejects the bogus id).
             invalid_restore_response = client.post(
                 "/snapshots/restore",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
             )
-            assert invalid_restore_response.status_code == 500
-            response_detail = invalid_restore_response.json()["detail"]
-            assert (
-                "Failed to restore" in response_detail or "invalid" in response_detail
-            )
+            assert invalid_restore_response.status_code == 200
+            events = _parse_sse_events(invalid_restore_response)
+            assert events[-1].get("event_type") == "error"
+            assert "invalid" in events[-1].get("message", "").lower()
 
             # Test preview with invalid snapshot ID
             invalid_preview_response = client.post(
@@ -759,7 +790,7 @@ class TestSnapshotEndpoints:
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
-            assert "safety_snapshot_id" in restore_response.json()
+            assert _restore_safety_snapshot_id(restore_response) is not None
 
             # Verify complete restoration using files API
             for file_path, expected_content in original_structure.items():
@@ -876,7 +907,7 @@ modified=true
                 },
             )
             assert restore_response.status_code == 200
-            assert "safety_snapshot_id" in restore_response.json()
+            assert _restore_safety_snapshot_id(restore_response) is not None
 
             # Verify plugins subdirectory was restored to original state
             plugins_restored_check = client.get(
@@ -1091,7 +1122,7 @@ modified=true
                 json={"snapshot_id": snapshot_id, "server_id": server_id},
             )
             assert restore_response.status_code == 200
-            assert "safety_snapshot_id" in restore_response.json()
+            assert _restore_safety_snapshot_id(restore_response) is not None
 
             # Verify restoration
             restored_props_response = client.get(
@@ -1253,7 +1284,7 @@ modified=true
                 },
             )
             assert restore_response.status_code == 200
-            assert "safety_snapshot_id" in restore_response.json()
+            assert _restore_safety_snapshot_id(restore_response) is not None
 
             # Intruders inside both included roots are gone
             assert not (

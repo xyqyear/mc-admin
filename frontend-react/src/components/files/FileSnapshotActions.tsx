@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Database,
   History,
@@ -37,72 +38,25 @@ import { DataTable } from '@/components/common/DataTable'
 import { SortableHeader } from '@/components/common/SortableHeader'
 import { StatusBadge, type BadgeTone } from '@/components/common/StatusBadge'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useEventStream } from '@/hooks/useEventStream'
 import { useSnapshotMutations } from '@/hooks/mutations/useSnapshotMutations'
 import { useSnapshotQueries } from '@/hooks/queries/base/useSnapshotQueries'
+import { queryKeys } from '@/utils/api'
 import { formatDateTime } from '@/utils/formatUtils'
 import { formatUtils } from '@/utils/serverUtils'
 import type { FileItem } from '@/types/Server'
-import type { Snapshot, RestorePreviewAction } from '@/hooks/api/snapshotApi'
+import type {
+  Snapshot,
+  RestorePreviewAction,
+  SnapshotRestoreEvent,
+} from '@/hooks/api/snapshotApi'
 
-// --- Safety Check Dialog ---
-
-interface SafetyCheckDialogProps {
-  open: boolean
-  onCancel: () => void
-  onCreateAndRestore: () => void
-  onContinueWithoutCreate: () => void
-  loading?: boolean
-  isServerMode?: boolean
-}
-
-const SafetyCheckDialog: React.FC<SafetyCheckDialogProps> = ({
-  open,
-  onCancel,
-  onCreateAndRestore,
-  onContinueWithoutCreate,
-  loading = false,
-  isServerMode = false,
-}) => (
-  <Dialog open={open} onOpenChange={(o) => !o && !loading && onCancel()}>
-    <DialogContent showCloseButton={false}>
-      <DialogHeader>
-        <DialogTitle>安全检查</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-4">
-        <p className="text-orange-600">
-          ⚠️ 检测到{isServerMode ? '整个服务器' : '该路径'}在过去1分钟内没有创建快照。
-        </p>
-        <p className="text-sm">
-          为了安全起见，建议您在回滚前先创建一个当前状态的快照。
-        </p>
-        <div className="bg-muted p-3 rounded-md text-sm">
-          <span className="text-muted-foreground">您可以选择：</span>
-          <ul className="mt-2 ml-4 list-disc space-y-1">
-            <li>创建快照并回滚：安全选项，创建备份后再执行回滚</li>
-            <li>继续回滚：直接执行回滚，不创建备份</li>
-          </ul>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onCancel} disabled={loading}>
-          取消
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={onContinueWithoutCreate}
-          disabled={loading}
-        >
-          {loading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-          继续回滚
-        </Button>
-        <Button onClick={onCreateAndRestore} disabled={loading}>
-          {loading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-          创建快照并回滚
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-)
+import { RestoreProgressCard } from '@/components/world-restore/RestoreProgressCard'
+import {
+  applyRestoreEvent,
+  initialProgress,
+  type RestoreProgressState,
+} from '@/components/world-restore/restoreProgress'
 
 // --- Snapshot Selection Dialog ---
 
@@ -117,6 +71,9 @@ interface SnapshotSelectionDialogProps {
   onPreview: (snapshotId: string) => void
   previewLoading: boolean
   isServerMode?: boolean
+  // When set, the selection table is replaced with the live progress card.
+  restoreState?: RestoreProgressState
+  onCloseAfterRestore?: () => void
 }
 
 const snapshotColumns: ColumnDef<Snapshot, any>[] = [
@@ -163,6 +120,8 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
   onPreview,
   previewLoading,
   isServerMode = false,
+  restoreState,
+  onCloseAfterRestore,
 }) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
@@ -215,8 +174,20 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
     }
   }, [open, table])
 
+  const showProgress =
+    !!restoreState && (restoreState.active || restoreState.done || !!restoreState.error)
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          // Block close while a restore is actively running.
+          if (restoreState?.active) return
+          onCancel()
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
@@ -227,13 +198,24 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <DataTable
-          table={table}
-          isLoading={loading}
-          rowLabel="个快照"
-          pageSizeOptions={[5, 10, 20, 50]}
-          emptyMessage={`没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照`}
-        />
+        {showProgress && restoreState ? (
+          <div className="space-y-3">
+            <RestoreProgressCard state={restoreState} />
+            {(restoreState.done || restoreState.error) && (
+              <DialogFooter>
+                <Button onClick={onCloseAfterRestore}>关闭</Button>
+              </DialogFooter>
+            )}
+          </div>
+        ) : (
+          <DataTable
+            table={table}
+            isLoading={loading}
+            rowLabel="个快照"
+            pageSizeOptions={[5, 10, 20, 50]}
+            emptyMessage={`没有找到包含${isServerMode ? '整个服务器' : '该路径'}的快照`}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -354,20 +336,26 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   isServerMode = false,
   onRefresh,
 }) => {
+  const queryClient = useQueryClient()
   const [isSnapshotDialogOpen, setIsSnapshotDialogOpen] = useState(false)
-  const [isSafetyCheckVisible, setIsSafetyCheckVisible] = useState(false)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('')
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<string | null>(null)
 
+  // SSE-driven restore state. Mirrors the world-restore SnapshotPicker pattern:
+  // `restoreFor` becomes non-null when the user clicks "回滚" — the
+  // useEventStream hook activates and feeds events into the reducer.
+  const [restoreFor, setRestoreFor] = useState<string | null>(null)
+  const [restoreState, setRestoreState] =
+    useState<RestoreProgressState>(initialProgress)
+
   const { confirm, confirmDialog } = useConfirm()
 
-  const { useCreateSnapshot, useRestoreSnapshot, usePreviewRestore } = useSnapshotMutations()
+  const { useCreateSnapshot, usePreviewRestore } = useSnapshotMutations()
   const { useSnapshotsForPath } = useSnapshotQueries()
 
   const createSnapshotMutation = useCreateSnapshot()
-  const restoreSnapshotMutation = useRestoreSnapshot()
   const previewRestoreMutation = usePreviewRestore()
 
   const actualPath = path || file?.path || '/'
@@ -378,6 +366,38 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     isLoading: isLoadingSnapshots,
     refetch: refetchSnapshots,
   } = useSnapshotsForPath(serverId, actualPath, false)
+
+  useEventStream<SnapshotRestoreEvent>({
+    enabled: !!restoreFor && !restoreState.error && !restoreState.done,
+    url: '/snapshots/restore',
+    method: 'POST',
+    body: restoreFor
+      ? {
+          snapshot_id: restoreFor,
+          server_id: serverId,
+          paths: [actualPath],
+        }
+      : undefined,
+    onEvent: (ev) => setRestoreState((prev) => applyRestoreEvent(prev, ev)),
+    onClose: () =>
+      setRestoreState((prev) =>
+        prev.done || prev.error
+          ? prev
+          : { ...prev, active: false, error: '连接中断' },
+      ),
+    onError: (msg) =>
+      setRestoreState((prev) => ({ ...prev, active: false, error: msg })),
+  })
+
+  React.useEffect(() => {
+    if (restoreState.done) {
+      toast.success(`已成功回滚 ${displayName}`)
+      queryClient.invalidateQueries({ queryKey: queryKeys.files.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.all })
+    } else if (restoreState.error) {
+      toast.error(`回滚失败: ${restoreState.error}`)
+    }
+  }, [restoreState.done, restoreState.error, displayName, queryClient])
 
   const handleBackup = () => {
     confirm({
@@ -400,49 +420,25 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     setIsSnapshotDialogOpen(true)
   }
 
-  const handleSnapshotRestore = async (snapshotId: string) => {
+  const handleSnapshotRestore = (snapshotId: string) => {
     setSelectedSnapshotId(snapshotId)
-
-    try {
-      await restoreSnapshotMutation.mutateAsync({
-        snapshot_id: snapshotId,
-        server_id: serverId,
-        paths: [actualPath],
-      })
-
-      toast.success(`已成功回滚 ${displayName}`)
-      setIsSnapshotDialogOpen(false)
-      onRefresh?.()
-    } catch (error: any) {
-      if (error?.message?.includes('no recent snapshot') || error?.message?.includes('1 minute')) {
-        setIsSnapshotDialogOpen(false)
-        setIsSafetyCheckVisible(true)
-      } else {
-        toast.error(`回滚失败: ${error?.message || '未知错误'}`)
-      }
-    }
+    setRestoreState({
+      active: true,
+      percent: 0,
+      message: '准备开始',
+      log: [],
+      done: false,
+      error: null,
+    })
+    setRestoreFor(snapshotId)
   }
 
-  const handleCreateAndRestore = async () => {
-    try {
-      await createSnapshotMutation.mutateAsync({
-        server_id: serverId,
-        paths: [actualPath],
-      })
-
-      await restoreSnapshotMutation.mutateAsync({
-        snapshot_id: selectedSnapshotId,
-        server_id: serverId,
-        paths: [actualPath],
-      })
-
-      toast.success(`已创建安全快照并成功回滚 ${displayName}`)
-      setIsSafetyCheckVisible(false)
-      setSelectedSnapshotId('')
-      onRefresh?.()
-    } catch (error: any) {
-      toast.error(`操作失败: ${error?.message || '未知错误'}`)
-    }
+  const handleCloseAfterRestore = () => {
+    setRestoreFor(null)
+    setRestoreState(initialProgress)
+    setSelectedSnapshotId('')
+    setIsSnapshotDialogOpen(false)
+    onRefresh?.()
   }
 
   const handlePreviewRestore = async (snapshotId: string) => {
@@ -463,24 +459,6 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     } catch (error: any) {
       toast.error(`预览失败: ${error?.message || '未知错误'}`)
       setIsPreviewVisible(false)
-    }
-  }
-
-  const handleContinueWithoutCreate = async () => {
-    try {
-      await restoreSnapshotMutation.mutateAsync({
-        snapshot_id: selectedSnapshotId,
-        server_id: serverId,
-        paths: [actualPath],
-        skip_safety_check: true,
-      })
-
-      toast.success(`已成功回滚 ${displayName}`)
-      setIsSafetyCheckVisible(false)
-      setSelectedSnapshotId('')
-      onRefresh?.()
-    } catch (error: any) {
-      toast.error(`回滚失败: ${error?.message || '未知错误'}`)
     }
   }
 
@@ -529,27 +507,22 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
       <SnapshotSelectionDialog
         open={isSnapshotDialogOpen}
-        onCancel={() => setIsSnapshotDialogOpen(false)}
+        onCancel={() => {
+          setIsSnapshotDialogOpen(false)
+          setRestoreFor(null)
+          setRestoreState(initialProgress)
+          setSelectedSnapshotId('')
+        }}
         snapshots={snapshots}
         loading={isLoadingSnapshots}
         onRestore={handleSnapshotRestore}
-        restoreLoading={restoreSnapshotMutation.isPending}
+        restoreLoading={restoreState.active}
         filePath={actualPath}
         onPreview={handlePreviewRestore}
         previewLoading={previewRestoreMutation.isPending}
         isServerMode={isServerMode}
-      />
-
-      <SafetyCheckDialog
-        open={isSafetyCheckVisible}
-        onCancel={() => {
-          setIsSafetyCheckVisible(false)
-          setSelectedSnapshotId('')
-        }}
-        onCreateAndRestore={handleCreateAndRestore}
-        onContinueWithoutCreate={handleContinueWithoutCreate}
-        loading={createSnapshotMutation.isPending || restoreSnapshotMutation.isPending}
-        isServerMode={isServerMode}
+        restoreState={restoreState}
+        onCloseAfterRestore={handleCloseAfterRestore}
       />
 
       <PreviewDialog

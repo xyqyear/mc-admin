@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   snapshotApi,
   type CreateSnapshotResponse,
-  type RestoreSnapshotResponse,
   type DeleteSnapshotResponse
 } from "@/hooks/api/snapshotApi";
 import { queryKeys } from "@/utils/api";
@@ -45,28 +44,6 @@ export const useSnapshotMutations = () => {
       onError: (error: any) => {
         const errorDetail = error?.message || "未知错误";
         toast.error(`快照创建失败: ${errorDetail}`);
-      },
-    });
-  };
-
-  // 恢复快照
-  const useRestoreSnapshot = () => {
-    return useMutation({
-      mutationFn: snapshotApi.restoreSnapshot,
-      onSuccess: (data: RestoreSnapshotResponse) => {
-        toast.success(data.message);
-
-        // 刷新文件列表和快照列表
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.files.all,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.all,
-        });
-      },
-      onError: (error: any) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`快照恢复失败: ${errorDetail}`);
       },
     });
   };
@@ -120,7 +97,6 @@ export const useSnapshotMutations = () => {
   return {
     useCreateGlobalSnapshot,
     useCreateSnapshot,
-    useRestoreSnapshot,
     usePreviewRestore,
     useDeleteSnapshot,
     useUnlockRepository,
