@@ -73,7 +73,11 @@ async def _ensure_server_exists(server_id: str) -> None:
 async def _server_is_running(server_id: str) -> bool:
     instance = docker_mc_manager.get_instance(server_id)
     status = await instance.get_status()
-    return status not in (MCServerStatus.REMOVED, MCServerStatus.EXISTS)
+    return status in (
+        MCServerStatus.RUNNING,
+        MCServerStatus.STARTING,
+        MCServerStatus.HEALTHY,
+    )
 
 
 def _holder_dict(holder) -> dict:

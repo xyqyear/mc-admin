@@ -872,7 +872,11 @@ class WorldRestoreOrchestrator:
     async def _ensure_server_stopped(self, server_id: str) -> None:
         instance = self._docker.get_instance(server_id)
         status = await instance.get_status()
-        if status not in (MCServerStatus.REMOVED, MCServerStatus.EXISTS):
+        if status in (
+            MCServerStatus.RUNNING,
+            MCServerStatus.STARTING,
+            MCServerStatus.HEALTHY,
+        ):
             raise ServerNotStoppedError(
                 f"server '{server_id}' must be stopped before restore (current status: {status.value})"
             )
