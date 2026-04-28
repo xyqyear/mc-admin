@@ -5,10 +5,12 @@ This module provides core restic functionality without knowledge of Minecraft se
 The actual server path resolution happens in the endpoint functions.
 """
 
+import asyncio
 import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -60,6 +62,83 @@ class ResticRestorePreviewAction(BaseModel):
     action: Optional[str] = None
     item: Optional[str] = None
     size: Optional[int] = None
+
+
+ResticRestoreFileAction = Literal["unchanged", "updated", "restored", "deleted"]
+
+
+class ResticRestoreEvent(BaseModel):
+    """Single parsed event from a streaming ``restic restore --json -vv`` run.
+
+    Three event kinds are emitted by ``ResticManager.restore``:
+
+    * ``status`` — periodic byte-progress update (``percent_done`` ∈ [0, 1]).
+    * ``file`` — per-file ledger entry (``action`` describes what restic did).
+    * ``summary`` — final tallies, emitted exactly once at end-of-stream.
+
+    Fields not relevant to a given kind are ``None``. The single-class shape
+    keeps the consumer side simple — callers dispatch on ``kind`` and read the
+    fields they care about.
+
+    For ``action="deleted"`` events ``item`` is the **target-mapped** path
+    (i.e. where the file actually was on disk); for all other actions ``item``
+    is the snapshot's recorded absolute path. With ``target_path=Path('/')``
+    (in-place restore) the two coincide.
+    """
+
+    kind: Literal["status", "file", "summary"]
+    # status fields
+    percent_done: Optional[float] = None
+    # status + summary shared
+    total_files: Optional[int] = None
+    files_restored: Optional[int] = None
+    files_skipped: Optional[int] = None
+    files_deleted: Optional[int] = None
+    total_bytes: Optional[int] = None
+    bytes_restored: Optional[int] = None
+    bytes_skipped: Optional[int] = None
+    # file fields
+    action: Optional[ResticRestoreFileAction] = None
+    item: Optional[str] = None
+    size: Optional[int] = None
+
+
+def _parse_restore_event(data: dict) -> Optional[ResticRestoreEvent]:
+    """Convert one decoded JSON line into a ``ResticRestoreEvent`` (or skip)."""
+    mt = data.get("message_type")
+    if mt == "status":
+        return ResticRestoreEvent(
+            kind="status",
+            percent_done=data.get("percent_done"),
+            total_files=data.get("total_files"),
+            files_restored=data.get("files_restored"),
+            files_skipped=data.get("files_skipped"),
+            total_bytes=data.get("total_bytes"),
+            bytes_restored=data.get("bytes_restored"),
+            bytes_skipped=data.get("bytes_skipped"),
+        )
+    if mt == "verbose_status":
+        action = data.get("action")
+        if action not in ("unchanged", "updated", "restored", "deleted"):
+            return None
+        return ResticRestoreEvent(
+            kind="file",
+            action=action,
+            item=data.get("item"),
+            size=data.get("size"),
+        )
+    if mt == "summary":
+        return ResticRestoreEvent(
+            kind="summary",
+            total_files=data.get("total_files"),
+            files_restored=data.get("files_restored"),
+            files_skipped=data.get("files_skipped"),
+            files_deleted=data.get("files_deleted") or 0,
+            total_bytes=data.get("total_bytes"),
+            bytes_restored=data.get("bytes_restored"),
+            bytes_skipped=data.get("bytes_skipped"),
+        )
+    return None
 
 
 class ResticManager:
@@ -399,15 +478,28 @@ class ResticManager:
         snapshot_id: str,
         target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
-    ) -> None:
+    ) -> AsyncGenerator[ResticRestoreEvent, None]:
         """
-        Restore snapshot
+        Restore a snapshot, yielding parsed events line-by-line.
 
-        Path mapping: each snapshot item at absolute path `S` lands at
+        Runs ``restic restore --json -vv`` and streams each NDJSON line back
+        as a ``ResticRestoreEvent``. Three event kinds appear:
+
+        * ``kind="status"`` — periodic progress (``percent_done`` ∈ [0, 1]).
+          Cadence is bytes-driven; large restores emit ~5–10 ticks.
+        * ``kind="file"`` — one entry per file restic touched (``action``:
+          ``unchanged`` / ``updated`` / ``restored`` / ``deleted``).
+        * ``kind="summary"`` — final totals, emitted exactly once.
+
+        Callers that don't need per-event data can drain the generator with
+        ``async for _ in mgr.restore(...): pass`` and rely on it raising on
+        non-zero exit.
+
+        Path mapping: each snapshot item at absolute path ``S`` lands at
         ``target_path / S.relative_to('/')``. With the default
-        ``target_path=Path('/')`` this collapses to `S` (in-place restore).
-        Use ``ResticManager.compute_restore_destination`` to predict where
-        a chosen include path will end up on disk. Restic auto-creates
+        ``target_path=Path('/')`` this collapses to ``S`` (in-place restore).
+        Use ``ResticManager.compute_restore_destination`` to predict where a
+        chosen include path will end up on disk. Restic auto-creates
         ``target_path`` if it does not exist.
 
         Args:
@@ -415,13 +507,18 @@ class ResticManager:
             target_path: Target path for restore. Defaults to ``Path('/')``
                 (in-place restore). When non-root, restic preserves each
                 item's original absolute hierarchy under this prefix.
-            include_paths: Optional list of paths to include (filter what gets restored).
-                Each path becomes a `--include` flag; matches are OR-combined.
-                Must be the original absolute snapshot paths (not target-mapped).
-                With ``--target /``, restic requires at least one include or
-                exclude when ``--delete`` is used; non-root targets do not have
-                this constraint. ``--delete`` is scoped to included roots — files
-                outside them (but under the target) are left untouched.
+            include_paths: Optional list of paths to include (filter what gets
+                restored). Each path becomes a ``--include`` flag; matches are
+                OR-combined. Must be the original absolute snapshot paths
+                (not target-mapped). With ``--target /``, restic requires at
+                least one include or exclude when ``--delete`` is used;
+                non-root targets do not have this constraint. ``--delete`` is
+                scoped to included roots — files outside them (but under the
+                target) are left untouched.
+
+        Raises:
+            RuntimeError: If restic exits with a non-zero status. The error
+                includes captured stderr to aid debugging.
         """
         args = [
             "restic",
@@ -430,6 +527,8 @@ class ResticManager:
             "--target",
             str(target_path),
             "--delete",
+            "--json",
+            "-vv",
         ]
 
         if include_paths:
@@ -437,7 +536,56 @@ class ResticManager:
                 args.extend(["--include", str(include_path)])
 
         args = self._add_password_args(args)
-        await exec_command(*args, env=self.env)
+
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            env=self.env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        # stderr is read concurrently so the pipe can't fill and deadlock the
+        # subprocess while we iterate stdout.
+        stderr_chunks: list[bytes] = []
+
+        async def _drain_stderr() -> None:
+            assert proc.stderr is not None
+            while True:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
+                    return
+                stderr_chunks.append(chunk)
+
+        drain_task = asyncio.create_task(_drain_stderr())
+        try:
+            assert proc.stdout is not None
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                event = _parse_restore_event(data)
+                if event is not None:
+                    yield event
+            await proc.wait()
+            await drain_task
+            if proc.returncode != 0:
+                stderr = b"".join(stderr_chunks).decode(errors="replace")
+                raise RuntimeError(
+                    f"restic restore failed (exit {proc.returncode}): {stderr}"
+                )
+        finally:
+            if proc.returncode is None:
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+            if not drain_task.done():
+                drain_task.cancel()
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """

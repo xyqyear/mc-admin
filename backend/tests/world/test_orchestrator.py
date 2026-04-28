@@ -513,7 +513,9 @@ async def test_restore_failure_marks_row_failed(
         if call_count["n"] == 1:
             # First call (during the restore flow) — fail.
             raise RuntimeError("simulated restic failure")
-        return await real_restore(*args, **kwargs)
+            yield  # pragma: no cover - keeps this an async generator
+        async for ev in real_restore(*args, **kwargs):
+            yield ev
 
     orchestrator._restic.restore = flaky_restore  # type: ignore[assignment]
     try:

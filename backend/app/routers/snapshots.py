@@ -316,12 +316,15 @@ async def restore_global_snapshot(
                 detail=error_msg,
             )
 
-        # Perform restore
-        await restic_manager.restore(
+        # Perform restore — drain the streaming generator since this endpoint
+        # still returns a single JSON response. The SSE conversion happens in
+        # a follow-up commit.
+        async for _ in restic_manager.restore(
             snapshot_id=request.snapshot_id,
             target_path=Path("/"),
             include_paths=target_paths,
-        )
+        ):
+            pass
 
         paths_repr = ", ".join(str(p) for p in target_paths)
         success_msg = (

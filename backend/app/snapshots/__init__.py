@@ -2,6 +2,8 @@
 
 from .restic import (
     ResticManager,
+    ResticRestoreEvent,
+    ResticRestoreFileAction,
     ResticRestorePreviewAction,
     ResticSnapshot,
     ResticSnapshotSummary,
@@ -11,6 +13,8 @@ from .restic import (
 
 __all__ = [
     "ResticManager",
+    "ResticRestoreEvent",
+    "ResticRestoreFileAction",
     "ResticRestorePreviewAction",
     "ResticSnapshot",
     "ResticSnapshotSummary",

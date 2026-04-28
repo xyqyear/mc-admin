@@ -419,11 +419,12 @@ class WorldRestoreOrchestrator:
                 message=f"preview staging from snapshot {source_snapshot_id[:8]}",
             )
             (session_dir / "source").mkdir(exist_ok=True)
-            await self._restic.restore(
+            async for _ in self._restic.restore(
                 snapshot_id=source_snapshot_id,
                 target_path=session_dir / "source",
                 include_paths=paths,
-            )
+            ):
+                pass
             yield PreviewEvent(
                 event_type="stage",
                 session_id=session_id,
@@ -670,11 +671,12 @@ class WorldRestoreOrchestrator:
             restoration_id=restoration_id,
             message=f"restoring {len(paths)} path(s) from snapshot {source_snapshot_id[:8]}",
         )
-        await self._restic.restore(
+        async for _ in self._restic.restore(
             snapshot_id=source_snapshot_id,
             target_path=Path("/"),
             include_paths=paths,
-        )
+        ):
+            pass
 
     async def _flow_chunks(
         self,
@@ -726,11 +728,12 @@ class WorldRestoreOrchestrator:
                 restoration_id=restoration_id,
                 message=f"staging {len(grouped)} region(s) from snapshot {source_snapshot_id[:8]}",
             )
-            await self._restic.restore(
+            async for _ in self._restic.restore(
                 snapshot_id=source_snapshot_id,
                 target_path=stage_root,
                 include_paths=include_paths,
-            )
+            ):
+                pass
 
             total_jobs = len(grouped) * sum(
                 1 for live in live_subdirs.values() if live is not None

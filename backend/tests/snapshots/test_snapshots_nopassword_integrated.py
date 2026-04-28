@@ -20,6 +20,15 @@ from app.snapshots import ResticManager
 from app.utils.exec import exec_command
 
 
+async def _drain_restore(gen):
+    """Drain a streaming restic restore generator (returns the summary event, if any)."""
+    summary = None
+    async for ev in gen:
+        if ev.kind == "summary":
+            summary = ev
+    return summary
+
+
 # Helper function to check if restic is available
 def check_restic_available():
     """Check if restic command is available"""
@@ -172,10 +181,12 @@ class TestResticManagerNoPasswordIntegrated:
         assert (temp_backup_dir_no_password / "extra_file.txt").exists()
 
         # Perform in-place restore
-        await manager.restore(
-            snapshot_id=snapshot.id,
-            target_path=Path("/"),  # Root for in-place restore
-            include_paths=[temp_backup_dir_no_password],
+        await _drain_restore(
+            manager.restore(
+                snapshot_id=snapshot.id,
+                target_path=Path("/"),  # Root for in-place restore
+                include_paths=[temp_backup_dir_no_password],
+            )
         )
 
         # Verify restoration

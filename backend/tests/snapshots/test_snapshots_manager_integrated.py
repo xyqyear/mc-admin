@@ -20,6 +20,15 @@ from app.snapshots import ResticManager
 from app.utils.exec import exec_command
 
 
+async def _drain_restore(gen):
+    """Drain a streaming restic restore generator (returns the summary event, if any)."""
+    summary = None
+    async for ev in gen:
+        if ev.kind == "summary":
+            summary = ev
+    return summary
+
+
 # Helper function to check if restic is available
 def check_restic_available():
     """Check if restic command is available"""
@@ -151,10 +160,12 @@ class TestResticManagerIntegrated:
             restore_path = Path(restore_dir)
 
             # Restore snapshot
-            await manager.restore(
-                snapshot_id=snapshot.id,
-                target_path=restore_path,
-                include_paths=[temp_backup_dir],
+            await _drain_restore(
+                manager.restore(
+                    snapshot_id=snapshot.id,
+                    target_path=restore_path,
+                    include_paths=[temp_backup_dir],
+                )
             )
 
             # Verify restored content matches original
@@ -236,10 +247,12 @@ class TestResticManagerIntegrated:
         assert (temp_backup_dir / "extra_file.txt").exists()
 
         # Perform in-place restore
-        await manager.restore(
-            snapshot_id=snapshot.id,
-            target_path=Path("/"),  # Root for in-place restore
-            include_paths=[temp_backup_dir],
+        await _drain_restore(
+            manager.restore(
+                snapshot_id=snapshot.id,
+                target_path=Path("/"),  # Root for in-place restore
+                include_paths=[temp_backup_dir],
+            )
         )
 
         # Verify restoration
@@ -311,10 +324,12 @@ class TestResticManagerIntegrated:
             with tempfile.TemporaryDirectory() as restore_dir:
                 restore_path = Path(restore_dir)
 
-                await manager.restore(
-                    snapshot_id=created_snapshot.id,
-                    target_path=restore_path,
-                    include_paths=[temp_backup_dir],
+                await _drain_restore(
+                    manager.restore(
+                        snapshot_id=created_snapshot.id,
+                        target_path=restore_path,
+                        include_paths=[temp_backup_dir],
+                    )
                 )
 
                 # Verify content matches the version when snapshot was created
@@ -362,10 +377,12 @@ class TestResticManagerIntegrated:
 
         # Test invalid snapshot ID
         with pytest.raises(RuntimeError):
-            await manager.restore(
-                snapshot_id="invalid-snapshot-id-123",
-                target_path=Path("/tmp"),
-                include_paths=[temp_backup_dir],
+            await _drain_restore(
+                manager.restore(
+                    snapshot_id="invalid-snapshot-id-123",
+                    target_path=Path("/tmp"),
+                    include_paths=[temp_backup_dir],
+                )
             )
 
         # Test backup of non-existent path
@@ -421,10 +438,12 @@ class TestResticManagerIntegrated:
             with tempfile.TemporaryDirectory() as restore_dir:
                 restore_path = Path(restore_dir)
 
-                await restic_manager.restore(
-                    snapshot_id=snapshot.id,
-                    target_path=restore_path,
-                    include_paths=[test_dir],
+                await _drain_restore(
+                    restic_manager.restore(
+                        snapshot_id=snapshot.id,
+                        target_path=restore_path,
+                        include_paths=[test_dir],
+                    )
                 )
 
                 # Verify large file was restored correctly
@@ -472,10 +491,12 @@ class TestResticManagerIntegrated:
             assert any(str(dir_b) in item for item in preview_items)
 
             # In-place restore both at once
-            await manager.restore(
-                snapshot_id=snapshot.id,
-                target_path=Path("/"),
-                include_paths=[dir_a, dir_b],
+            await _drain_restore(
+                manager.restore(
+                    snapshot_id=snapshot.id,
+                    target_path=Path("/"),
+                    include_paths=[dir_a, dir_b],
+                )
             )
 
             assert (dir_a / "a.txt").read_text() == "alpha original"
@@ -515,9 +536,11 @@ class TestResticManagerIntegrated:
         (temp_backup_dir / "intruder.txt").write_text("should be deleted")
 
         # No target_path passed — default Path("/") applies
-        await manager.restore(
-            snapshot_id=snapshot.id,
-            include_paths=[temp_backup_dir],
+        await _drain_restore(
+            manager.restore(
+                snapshot_id=snapshot.id,
+                include_paths=[temp_backup_dir],
+            )
         )
 
         assert (temp_backup_dir / "test_file1.txt").read_text() == original
@@ -536,10 +559,12 @@ class TestResticManagerIntegrated:
         with tempfile.TemporaryDirectory(prefix="restic_target_") as staging_str:
             staging = Path(staging_str)
 
-            await manager.restore(
-                snapshot_id=snapshot.id,
-                target_path=staging,
-                include_paths=[temp_backup_dir],
+            await _drain_restore(
+                manager.restore(
+                    snapshot_id=snapshot.id,
+                    target_path=staging,
+                    include_paths=[temp_backup_dir],
+                )
             )
 
             # Source files are untouched (target was non-root)
