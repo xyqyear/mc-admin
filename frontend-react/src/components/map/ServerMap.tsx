@@ -163,6 +163,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       zoom: initial?.zoom ?? 0,
       center: initial ? blockToLatLng(initial.cx, initial.cz) : [0, 0],
       attributionControl: false,
+      zoomControl: false,
       preferCanvas: true,
     })
     mapRef.current = map

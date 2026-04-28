@@ -207,6 +207,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
         minZoom: -4,
         maxZoom: 4,
         attributionControl: false,
+        zoomControl: false,
         preferCanvas: true,
       })
       const sw = blockToLatLng(bounds.bxMin, bounds.bzMax)
