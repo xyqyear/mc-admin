@@ -102,13 +102,14 @@ def test_pngs_for_regions_dedupes(fake_world: Path):
     assert len(pngs) == 1
 
 
-def test_delete_pngs_removes_existing_and_skips_missing(fake_world: Path):
+@pytest.mark.asyncio
+async def test_delete_pngs_removes_existing_and_skips_missing(fake_world: Path):
     pngs = {
         _png(fake_world, "world/region/r.0.0.png"),
         _png(fake_world, "world_creative/region/r.0.0.png"),
         _png(fake_world, "world/region/r.99.99.png"),  # never existed
     }
-    removed = png_invalidate.delete_pngs(pngs)
+    removed = await png_invalidate.delete_pngs(pngs)
     assert removed == 2
     assert not _png(fake_world, "world/region/r.0.0.png").exists()
     assert not _png(fake_world, "world_creative/region/r.0.0.png").exists()

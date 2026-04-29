@@ -13,6 +13,7 @@ from app.minecraft.instance import MCInstance
 
 from ..background_tasks.types import TaskProgress
 from ..config import settings
+from . import async_fs
 from .exec import exec_command_stream
 
 
@@ -109,7 +110,7 @@ async def create_server_archive_stream(
     Raises:
         HTTPException: If archive creation fails
     """
-    archive_base_path = settings.archive_path.resolve()
+    archive_base_path = await async_fs.resolve(settings.archive_path)
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
     archive_filename = _generate_archive_filename(instance.get_name(), relative_path)

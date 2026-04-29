@@ -49,10 +49,10 @@ class CreateArchiveResponse(BaseModel):
     task_id: str
 
 
-def _get_archive_base_path() -> Path:
+async def _get_archive_base_path() -> Path:
     """Get the base path for archive files."""
     # Ensure archive directory exists
-    settings.archive_path.mkdir(parents=True, exist_ok=True)
+    await aioos.makedirs(settings.archive_path, exist_ok=True)
     return settings.archive_path
 
 
@@ -62,7 +62,7 @@ async def list_archive_files(
     path: str = "/", _: UserPublic = Depends(get_current_user)
 ):
     """List files and directories in the archive"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     items = await get_file_items(base_path, path)
 
     return FileListResponse(items=items, current_path=path)
@@ -71,7 +71,7 @@ async def list_archive_files(
 @router.get("/download")
 async def download_archive_file(path: str, _: UserPublic = Depends(get_current_user)):
     """Download a specific archive file"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     file_path = base_path / path.lstrip("/")
 
     # Validate file exists and is a file (not a directory)
@@ -96,7 +96,7 @@ async def upload_archive_file(
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload a file to the archive"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     filename = await upload_file(base_path, path, file, allow_overwrite=allow_overwrite)
 
     return {"message": f"Archive file '{filename}' uploaded successfully"}
@@ -108,7 +108,7 @@ async def create_archive_file_or_directory(
     _: UserPublic = Depends(get_current_user),
 ):
     """Create a new file or directory in the archive"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     message = await create_file_or_directory(base_path, create_request)
 
     return {"message": message}
@@ -119,7 +119,7 @@ async def delete_archive_file_or_directory(
     path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Delete an archive file or directory"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     message = await delete_file_or_directory(base_path, path)
 
     return {"message": message}
@@ -131,7 +131,7 @@ async def rename_archive_file_or_directory(
     _: UserPublic = Depends(get_current_user),
 ):
     """Rename an archive file or directory"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     message = await rename_file_or_directory(base_path, rename_request)
 
     return {"message": message}
@@ -140,7 +140,7 @@ async def rename_archive_file_or_directory(
 @router.get("/sha256", response_model=SHA256Response)
 async def get_archive_file_sha256(path: str, _: UserPublic = Depends(get_current_user)):
     """Calculate SHA256 hash of a specific archive file"""
-    base_path = _get_archive_base_path()
+    base_path = await _get_archive_base_path()
     file_path = base_path / path.lstrip("/")
 
     # Validate file exists and is a file (not a directory)

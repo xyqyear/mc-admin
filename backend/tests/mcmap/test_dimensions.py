@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from app.routers.servers.map import _discover_dimensions, _label_for_region_path
 
 
@@ -23,7 +25,8 @@ def test_label_fallback_to_path():
     assert _label_for_region_path("custom/dimension/foo") == "custom/dimension/foo"
 
 
-def test_discover_skips_mcmap_cache_dir():
+@pytest.mark.asyncio
+async def test_discover_skips_mcmap_cache_dir():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
         # Real region
@@ -34,13 +37,14 @@ def test_discover_skips_mcmap_cache_dir():
         cache_region = data / ".mcmap" / "tiles" / "world" / "region"
         cache_region.mkdir(parents=True)
         (cache_region / "r.0.0.mca").write_bytes(b"")  # would falsely match
-        results = _discover_dimensions(data)
+        results = await _discover_dimensions(data)
         paths = {r.region_path for r in results}
         assert "world/region" in paths
         assert not any(p.startswith(".mcmap") for p in paths)
 
 
-def test_discover_finds_multiple_dimensions():
+@pytest.mark.asyncio
+async def test_discover_finds_multiple_dimensions():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
         for sub, n in [
@@ -51,7 +55,7 @@ def test_discover_finds_multiple_dimensions():
             (data / sub).mkdir(parents=True)
             for i in range(n):
                 (data / sub / f"r.{i}.0.mca").write_bytes(b"")
-        results = _discover_dimensions(data)
+        results = await _discover_dimensions(data)
         by_path = {r.region_path: r for r in results}
         assert by_path["world/region"].mca_count == 3
         assert by_path["world/region"].label == "Overworld"
@@ -61,7 +65,8 @@ def test_discover_finds_multiple_dimensions():
         assert by_path["world_the_end/DIM1/region"].label == "End"
 
 
-def test_discover_ignores_non_mca_files_and_negative_coords():
+@pytest.mark.asyncio
+async def test_discover_ignores_non_mca_files_and_negative_coords():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
         region = data / "world" / "region"
@@ -70,17 +75,19 @@ def test_discover_ignores_non_mca_files_and_negative_coords():
         (region / "r.-1.-1.mca").write_bytes(b"")  # negative coords valid
         (region / "level.dat").write_bytes(b"")
         (region / "r.foo.bar.mca").write_bytes(b"")  # malformed name
-        results = _discover_dimensions(data)
+        results = await _discover_dimensions(data)
         assert len(results) == 1
         assert results[0].mca_count == 2
 
 
-def test_discover_empty_data_dir():
+@pytest.mark.asyncio
+async def test_discover_empty_data_dir():
     with tempfile.TemporaryDirectory() as d:
-        assert _discover_dimensions(Path(d)) == []
+        assert await _discover_dimensions(Path(d)) == []
 
 
-def test_discover_skips_entities_and_poi_siblings():
+@pytest.mark.asyncio
+async def test_discover_skips_entities_and_poi_siblings():
     """`entities/` and `poi/` are siblings of `region/` inside a dimension and
     also contain r.X.Z.mca files (entity / POI data), but they are not
     renderable map terrain and must not appear as dimensions."""
@@ -89,12 +96,13 @@ def test_discover_skips_entities_and_poi_siblings():
         for sub in ["world/region", "world/entities", "world/poi"]:
             (data / sub).mkdir(parents=True)
             (data / sub / "r.0.0.mca").write_bytes(b"")
-        results = _discover_dimensions(data)
+        results = await _discover_dimensions(data)
         paths = {r.region_path for r in results}
         assert paths == {"world/region"}
 
 
-def test_discover_skips_entities_and_poi_in_other_dimensions():
+@pytest.mark.asyncio
+async def test_discover_skips_entities_and_poi_in_other_dimensions():
     """Same exclusion applies to nether/end dimension folders."""
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
@@ -111,7 +119,7 @@ def test_discover_skips_entities_and_poi_in_other_dimensions():
         ]:
             (data / sub).mkdir(parents=True)
             (data / sub / "r.0.0.mca").write_bytes(b"")
-        results = _discover_dimensions(data)
+        results = await _discover_dimensions(data)
         paths = {r.region_path for r in results}
         assert paths == {
             "world/region",

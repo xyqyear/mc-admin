@@ -3,17 +3,7 @@ Command execution utilities for running system commands and shell operations.
 """
 
 import asyncio
-import shutil
 from collections.abc import AsyncGenerator
-from pathlib import Path
-
-from asyncer import asyncify
-
-
-@asyncify
-def async_rmtree(path: Path):
-    """Asynchronously remove a directory tree."""
-    shutil.rmtree(path)
 
 
 _TERMINATE_GRACE_SECONDS = 2.0

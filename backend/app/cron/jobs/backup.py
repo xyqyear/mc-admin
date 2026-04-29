@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, List, Optional, cast
 
+import aiofiles.os as aioos
 import httpx
 from pydantic import Field, field_validator, model_validator
 
@@ -10,6 +11,7 @@ from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
 from ...minecraft import docker_mc_manager
 from ...snapshots import restic_manager
+from ...utils import async_fs
 from ...world import (
     GLOBAL_LOCK_KEY,
     LockHolder,
@@ -149,7 +151,7 @@ async def _send_uptimekuma_notification(
         context.log(f"Uptime Kuma 通知响应状态码非 200: {response.status_code}")
 
 
-def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
+async def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
     """
     Resolve the actual backup path based on server_id and path parameters
 
@@ -163,17 +165,17 @@ def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
 
     if not server_id and not path:
         # Backup entire servers directory
-        return settings.server_path.resolve()
+        return await async_fs.resolve(settings.server_path)
     elif server_id and not path:
         # Backup specific server directory
         instance = docker_mc_manager.get_instance(server_id)
-        return instance.get_project_path().resolve()
+        return await async_fs.resolve(instance.get_project_path())
     elif server_id and path:
         # Backup specific path within server's data directory
         instance = docker_mc_manager.get_instance(server_id)
         data_path = instance.get_data_path()
         target_path = data_path / path.lstrip("/")
-        return target_path.resolve()
+        return await async_fs.resolve(target_path)
     else:
         raise ValueError("不能在未指定server_id的情况下指定路径")
 
@@ -224,7 +226,7 @@ async def backup_cronjob(context: ExecutionContext):
             restic_manager_local = _get_restic_manager()
 
             # Resolve backup path
-            backup_path = _resolve_backup_path(params.server_id, params.path)
+            backup_path = await _resolve_backup_path(params.server_id, params.path)
 
             # Log backup start
             if params.server_id:
@@ -238,7 +240,7 @@ async def backup_cronjob(context: ExecutionContext):
                 context.log("开始备份所有服务器")
 
             # Verify backup path exists
-            if not backup_path.exists():
+            if not await aioos.path.exists(backup_path):
                 raise RuntimeError(f"备份路径不存在: {backup_path}")
 
             # Create backup

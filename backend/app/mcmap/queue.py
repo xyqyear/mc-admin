@@ -137,7 +137,7 @@ class ServerRenderQueue:
             self._cache.mca_path(self._region_path, p.x, p.z) for p in batch
         ]
         out_dir = self._cache.tiles_dir(self._region_path)
-        self._cache.ensure_dir(out_dir)
+        await self._cache.ensure_dir(out_dir)
         self._running_batch = {(p.x, p.z): p for p in batch}
 
         try:

@@ -357,7 +357,7 @@ async def test_preview_sse_stream_emits_ready(
 async def test_preview_heartbeat_and_delete(
     http: AsyncClient, orchestrator
 ):
-    session_dir = orchestrator._preview_manager.create_session("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1")
     sid = session_dir.name
 
     r = await http.post(
@@ -387,7 +387,7 @@ async def test_preview_heartbeat_and_delete(
 async def test_preview_tile_404_when_missing(
     http: AsyncClient, orchestrator
 ):
-    session_dir = orchestrator._preview_manager.create_session("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1")
     sid = session_dir.name
     r = await http.get(
         f"/api/servers/srv1/world-restore/preview/{sid}/tile/0/0.png",
@@ -400,7 +400,7 @@ async def test_preview_tile_404_when_missing(
 async def test_preview_tile_serves_png_when_present(
     http: AsyncClient, orchestrator
 ):
-    session_dir = orchestrator._preview_manager.create_session("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1")
     sid = session_dir.name
     tiles = session_dir / "tiles"
     tiles.mkdir()

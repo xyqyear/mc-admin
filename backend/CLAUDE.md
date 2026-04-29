@@ -253,6 +253,9 @@ app/
 │   └── restic.py           # ResticManager
 │
 ├── utils/
+│   ├── async_fs.py         # Canonical to_thread wrappers: rmtree/copy2/copytree/move/disk_usage/copyfileobj/chown/chmod/iterdir/resolve/touch/extract_skin_avatar
+│   ├── exec.py             # Async subprocess helpers (exec_command, exec_command_stream)
+│   ├── system.py           # psutil wrappers (process CPU/memory) via asyncio.to_thread
 │   ├── compression.py      # 7z compression (async generator for background tasks)
 │   └── decompression.py    # Archive extraction (async generator for background tasks)
 │
@@ -708,6 +711,16 @@ async def get_user(db: AsyncSession = Depends(get_db)):
 **Models**: User, Server, ServerTemplate, DefaultVariableConfig, Player, PlayerSession, PlayerChat, PlayerAchievement, CronJob, CronJobExecution, DynamicConfig, ServerHeartbeat, Restoration
 
 **Migrations**: Use Alembic for schema changes (only needed for existing table modifications, not new tables)
+
+## Filesystem & System I/O
+
+Never block the event loop. In `async def`:
+
+- **aiofiles direct** when it covers the call: `aiofiles.open`, `aiofiles.os.{stat,makedirs,unlink,rename,listdir,...}`, `aiofiles.os.path.{exists,isdir,isfile,samefile,...}`.
+- **`app.utils.async_fs`** for everything else (`rmtree`, `copy2`, `copytree`, `move`, `disk_usage`, `copyfileobj`, `chown`, `chmod`, `iterdir`, `resolve`, `touch`, `extract_skin_avatar`). It wraps each call in `asyncio.to_thread`.
+- **Subprocess**: `asyncio.create_subprocess_exec`, or `app.utils.exec.{exec_command,exec_command_stream}`.
+
+Adding a new wrapper to `async_fs`: only when aiofiles has no equivalent. Use `asyncio.to_thread` directly — don't reintroduce `asyncer.asyncify`.
 
 ## Testing Guidelines
 

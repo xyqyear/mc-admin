@@ -3,7 +3,8 @@ from pathlib import Path
 import aiofiles.os as aioos
 import pytest_asyncio
 
-from app.utils.exec import async_rmtree, exec_command
+from app.utils import async_fs
+from app.utils.exec import exec_command
 
 TEST_ROOT_PATH = Path("/tmp/test_temp_dir")
 
@@ -46,10 +47,10 @@ def create_mc_server_compose_yaml(
 @pytest_asyncio.fixture  # type: ignore
 async def teardown():
     if await aioos.path.exists(TEST_ROOT_PATH):
-        await async_rmtree(TEST_ROOT_PATH)
+        await async_fs.rmtree(TEST_ROOT_PATH)
     await aioos.makedirs(TEST_ROOT_PATH)
     containers_to_remove = list[str]()
     yield containers_to_remove
     for container_name in containers_to_remove:
         await exec_command("docker", "rm", "-f", container_name)
-    await async_rmtree(TEST_ROOT_PATH)
+    await async_fs.rmtree(TEST_ROOT_PATH)

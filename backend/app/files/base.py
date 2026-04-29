@@ -9,14 +9,13 @@ import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
+from ..utils import async_fs
 from .types import (
     CreateFileRequest,
     FileItem,
     RenameFileRequest,
 )
 from .utils import (
-    _rmtree_async,
-    _touch_async,
     makedirs_with_ownership,
     set_file_ownership,
 )
@@ -158,7 +157,7 @@ async def create_file_or_directory(
         await aioos.mkdir(target_path)
         message = f"Directory '{create_request.name}' created successfully"
     elif create_request.type == "file":
-        await _touch_async(target_path)
+        await async_fs.touch(target_path)
         message = f"File '{create_request.name}' created successfully"
     else:
         raise HTTPException(
@@ -182,7 +181,7 @@ async def delete_file_or_directory(base_path: Path, path: str) -> str:
         await aioos.unlink(target_path)
         message = f"File '{target_path.name}' deleted successfully"
     elif await aioos.path.isdir(target_path):
-        await _rmtree_async(target_path)
+        await async_fs.rmtree(target_path)
         message = f"Directory '{target_path.name}' deleted successfully"
     else:
         raise HTTPException(status_code=400, detail="Invalid path")

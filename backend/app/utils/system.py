@@ -2,26 +2,24 @@
 System monitoring utilities for process CPU and memory usage.
 """
 
+import asyncio
+
 import psutil
-from asyncer import asyncify
 from psutil import NoSuchProcess, Process
 
 # Global process object cache for efficiency
 process_obj_cache = dict[int, Process]()
 
 
-@asyncify
-def get_process_memory_usage(pid: int) -> int:
-    """
-    Get the memory usage of a process by its PID in bytes.
+async def get_process_memory_usage(pid: int) -> int:
+    """Get the memory usage of a process by its PID in bytes (RSS).
 
-    Args:
-        pid: Process ID
-
-    Returns:
-        Memory usage in bytes (RSS - Resident Set Size)
-        Returns 0 if process doesn't exist
+    Returns 0 if the process does not exist.
     """
+    return await asyncio.to_thread(_memory_usage_sync, pid)
+
+
+def _memory_usage_sync(pid: int) -> int:
     try:
         process = process_obj_cache.get(pid, psutil.Process(pid))
         process_obj_cache[pid] = process
@@ -30,20 +28,16 @@ def get_process_memory_usage(pid: int) -> int:
         return 0
 
 
-@asyncify
-def get_process_cpu_usage(pid: int) -> float:
+async def get_process_cpu_usage(pid: int) -> float:
+    """Get the CPU usage of a process by its PID as a percentage (0.0-100.0).
+
+    Note: blocks for 1 second on the worker thread to compute the delta.
+    Returns 0.0 if the process does not exist.
     """
-    Get the CPU usage of a process by its PID in percentage.
+    return await asyncio.to_thread(_cpu_usage_sync, pid)
 
-    Note: This function blocks for 1 second to calculate CPU usage.
 
-    Args:
-        pid: Process ID
-
-    Returns:
-        CPU usage as percentage (0.0-100.0)
-        Returns 0.0 if process doesn't exist
-    """
+def _cpu_usage_sync(pid: int) -> float:
     try:
         process = process_obj_cache.get(pid, psutil.Process(pid))
         process_obj_cache[pid] = process

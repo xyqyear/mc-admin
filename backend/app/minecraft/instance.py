@@ -9,9 +9,10 @@ import aiofiles.os as aioos
 import yaml
 
 from ..dynamic_config import config
-from ..files.utils import _chown_async, get_uid_gid
+from ..files.utils import get_uid_gid
 from ..logger import logger
-from ..utils.exec import async_rmtree, exec_command
+from ..utils import async_fs
+from ..utils.exec import exec_command
 from ..utils.system import get_process_cpu_usage
 from .compose import MCComposeFile, ServerType
 from .docker.cgroup import (
@@ -221,9 +222,9 @@ class MCInstance:
         # Set ownership to match the servers_path directory
         uid, gid = await get_uid_gid(self._servers_path)
         if uid is not None and gid is not None:
-            await _chown_async(self._project_path, uid, gid)
-            await _chown_async(self.get_data_path(), uid, gid)
-            await _chown_async(compose_file_path, uid, gid)
+            await async_fs.chown(self._project_path, uid, gid)
+            await async_fs.chown(self.get_data_path(), uid, gid)
+            await async_fs.chown(compose_file_path, uid, gid)
 
     async def update_compose_file(self, compose_yaml: str) -> None:
         """
@@ -257,7 +258,7 @@ class MCInstance:
     async def remove(self) -> None:
         if await self._compose_manager.created():
             raise RuntimeError(f"Cannot remove server {self._name} while it is created")
-        await async_rmtree(self._project_path)
+        await async_fs.rmtree(self._project_path)
 
     async def up(self) -> None:
         await self._compose_manager.up_detached()

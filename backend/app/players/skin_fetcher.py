@@ -2,15 +2,14 @@
 
 import asyncio
 import base64
-import io
 import json
 from typing import Optional, Tuple
 
 import httpx
-from PIL import Image
 
 from ..dynamic_config import config
 from ..logger import log_exception, logger
+from ..utils import async_fs
 
 
 class SkinFetcher:
@@ -89,36 +88,16 @@ class SkinFetcher:
 
             skin_bytes = response.content
 
-            # Extract avatar from skin
-            avatar_bytes = self._extract_avatar(skin_bytes)
-
-            if avatar_bytes is None:
-                logger.error(f"Failed to extract avatar for player {uuid_clean}")
+            # Extract avatar from skin (PIL is CPU-bound; off-load to a thread)
+            try:
+                avatar_bytes = await async_fs.extract_skin_avatar(skin_bytes)
+            except Exception as e:
+                logger.error(
+                    f"Failed to extract avatar for player {uuid_clean}: {e}"
+                )
                 return None
 
             return (skin_bytes, avatar_bytes)
-
-    @log_exception("Error extracting avatar: ")
-    def _extract_avatar(self, skin_bytes: bytes) -> Optional[bytes]:
-        """Extract player avatar from skin image.
-
-        Args:
-            skin_bytes: Full skin PNG bytes
-
-        Returns:
-            Avatar PNG bytes (16x16), or None if failed
-        """
-        # Load skin image
-        skin_image = Image.open(io.BytesIO(skin_bytes))
-
-        # Extract head region (8x8 to 16x16 on the skin texture)
-        # The face is located at (8, 8) with size (8, 8)
-        avatar = skin_image.crop((8, 8, 16, 16))
-
-        # Convert to PNG bytes
-        output = io.BytesIO()
-        avatar.save(output, format="PNG")
-        return output.getvalue()
 
 
 skin_fetcher = SkinFetcher()

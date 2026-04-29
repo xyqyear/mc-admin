@@ -3,10 +3,11 @@
 import asyncio
 import json
 import re
-import shutil
+import stat as _stat
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Tuple
 
+import aiofiles.os as aioos
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -25,6 +26,7 @@ from ...mcmap import (
 from ...mcmap import runner as mcmap_runner
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
+from ...utils import async_fs
 
 router = APIRouter(prefix="/servers", tags=["map"])
 
@@ -38,19 +40,19 @@ async def _get_data_path(server_id: str) -> Path:
     return instance.get_data_path()
 
 
-def _resolve_region_path(data_path: Path, region_path: str) -> Path:
+async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
     """Validate that region_path resolves to a directory strictly inside data_path."""
     if not region_path or region_path.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid region path")
-    resolved = (data_path / region_path).resolve()
-    base = data_path.resolve()
+    resolved = await async_fs.resolve(data_path / region_path)
+    base = await async_fs.resolve(data_path)
     try:
         resolved.relative_to(base)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid region path")
     if resolved == base:
         raise HTTPException(status_code=400, detail="Invalid region path")
-    if not resolved.is_dir():
+    if not await aioos.path.isdir(resolved):
         raise HTTPException(status_code=404, detail="Region directory not found")
     return resolved
 
@@ -67,26 +69,27 @@ def _label_for_region_path(region_path: str) -> str:
     return region_path
 
 
-def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
+async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
     cache_dir_name = ".mcmap"
     results: List[DimensionInfo] = []
-    if not data_path.is_dir():
+    if not await aioos.path.isdir(data_path):
         return results
 
-    def walk(d: Path) -> None:
+    async def walk(d: Path) -> None:
         try:
-            entries = list(d.iterdir())
+            entries = await async_fs.iterdir(d)
         except (PermissionError, OSError):
             return
         # Only directories named exactly "region" hold the renderable terrain
         # MCAs. Sibling folders like "entities" and "poi" also contain
         # r.X.Z.mca files but represent entity/POI data, not the world map.
         if d.name == "region":
-            mca_count = sum(
-                1
-                for entry in entries
-                if entry.is_file() and REGION_FILE_RE.match(entry.name)
-            )
+            mca_count = 0
+            for entry in entries:
+                if not REGION_FILE_RE.match(entry.name):
+                    continue
+                if await aioos.path.isfile(entry):
+                    mca_count += 1
             if mca_count > 0:
                 rel = d.relative_to(data_path).as_posix()
                 results.append(
@@ -98,21 +101,23 @@ def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
                 )
             return
         for entry in entries:
-            if entry.is_dir() and entry.name != cache_dir_name:
-                walk(entry)
+            if entry.name == cache_dir_name:
+                continue
+            if await aioos.path.isdir(entry):
+                await walk(entry)
 
-    walk(data_path)
+    await walk(data_path)
     results.sort(key=lambda d: d.region_path)
     return results
 
 
-def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
+async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
     # Each entry is `(x, z, mtime)`. The mtime is the MCA file's mtime in
     # whole epoch seconds; the frontend appends it as `?mt=` on tile URLs so
     # the browser HTTP cache busts automatically on regeneration.
     coords: List[Tuple[int, int, int]] = []
     try:
-        entries = list(region_dir.iterdir())
+        entries = await async_fs.iterdir(region_dir)
     except (PermissionError, OSError):
         return coords
     for entry in entries:
@@ -120,14 +125,15 @@ def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
         if not m:
             continue
         try:
-            st = entry.stat()
+            st = await aioos.stat(entry)
         except OSError:
             continue
         # Skip zero-byte MCAs: fastanvil cannot parse them, mcmap reports
         # `UnexpectedEof` and the tile would never render. Excluding them from
         # the manifest lets the frontend short-circuit to a blank tile without
-        # an HTTP round-trip.
-        if not entry.is_file() or st.st_size == 0:
+        # an HTTP round-trip. Also skip non-regular entries (e.g. dirs that
+        # happen to match the r.X.Z.mca name).
+        if not _stat.S_ISREG(st.st_mode) or st.st_size == 0:
             continue
         coords.append((int(m.group(1)), int(m.group(2)), int(st.st_mtime)))
     coords.sort()
@@ -154,15 +160,15 @@ async def get_status(
 
     palette_current = False
     if version is not None:
-        mods_dir = discover_mods_dir(data_path)
+        mods_dir = await discover_mods_dir(data_path)
         try:
-            palette_current = palette_is_current(cache, version, mods_dir)
+            palette_current = await palette_is_current(cache, version, mods_dir)
         except OSError:
             palette_current = False
 
     return MapStatus(
-        client_jar_present=cache.client_jar.exists(),
-        palette_present=cache.palette_json.exists(),
+        client_jar_present=await aioos.path.exists(cache.client_jar),
+        palette_present=await aioos.path.exists(cache.palette_json),
         palette_current=palette_current,
         version=version,
     )
@@ -173,7 +179,7 @@ async def get_dimensions(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ) -> List[DimensionInfo]:
     data_path = await _get_data_path(server_id)
-    return _discover_dimensions(data_path)
+    return await _discover_dimensions(data_path)
 
 
 # Region manifest: list of (x, z, mtime) triples for every r.X.Z.mca in the
@@ -187,8 +193,8 @@ async def get_regions(
     _: UserPublic = Depends(get_current_user),
 ) -> List[Tuple[int, int, int]]:
     data_path = await _get_data_path(server_id)
-    region_dir = _resolve_region_path(data_path, region)
-    return _list_regions(region_dir)
+    region_dir = await _resolve_region_path(data_path, region)
+    return await _list_regions(region_dir)
 
 
 def _sse(event_obj: dict) -> bytes:
@@ -201,7 +207,7 @@ async def _initialize_stream(
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
-    cache.ensure_dir(cache.cache_dir)
+    await cache.ensure_dir(cache.cache_dir)
 
     try:
         compose = await instance.get_compose_obj()
@@ -217,7 +223,7 @@ async def _initialize_stream(
         return
 
     # Stage 1: client jar
-    if cache.client_jar.exists():
+    if await aioos.path.exists(cache.client_jar):
         yield _sse(
             {"stage": "client", "phase": "done", "percent": 100, "cached": True}
         )
@@ -284,8 +290,8 @@ async def _initialize_stream(
             return
 
     # Stage 2: palette
-    mods_dir = discover_mods_dir(data_path)
-    if palette_is_current(cache, version, mods_dir):
+    mods_dir = await discover_mods_dir(data_path)
+    if await palette_is_current(cache, version, mods_dir):
         yield _sse(
             {"stage": "palette", "phase": "done", "percent": 100, "cached": True}
         )
@@ -327,7 +333,7 @@ async def _initialize_stream(
                             }
                         )
                 elif event.get("type") == "result":
-                    write_palette_hash(cache, version, mods_dir)
+                    await write_palette_hash(cache, version, mods_dir)
                     yield _sse(
                         {
                             "stage": "palette",
@@ -396,19 +402,19 @@ async def get_tile(
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
 
-    if not cache.palette_json.exists():
+    if not await aioos.path.exists(cache.palette_json):
         raise HTTPException(
             status_code=409, detail="Map not initialized — call /initialize first"
         )
 
-    _resolve_region_path(data_path, region)
+    await _resolve_region_path(data_path, region)
     cfg = config.mcmap
 
-    state = cache.is_fresh(region, x, z)
+    state = await cache.is_fresh(region, x, z)
     if state == "missing_mca":
         raise HTTPException(status_code=404, detail="Region not present")
     if state == "fresh":
-        return _png_response(cache.png_path(region, x, z))
+        return await _png_response(cache.png_path(region, x, z))
 
     queue = await mcmap_manager.get_queue(server_id, region, cache)
     try:
@@ -419,23 +425,24 @@ async def get_tile(
         raise HTTPException(status_code=503, detail="Render timed out, retry")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Region not present")
-    return _png_response(png)
+    return await _png_response(png)
 
 
-def _png_response(png: Path) -> FileResponse:
+async def _png_response(png: Path) -> FileResponse:
     # Tile URLs carry the source MCA's mtime as `?mt=`, so any regeneration
     # produces a new URL; the cached response can sit forever (`max-age=1y`)
     # without going stale. `private` keeps it out of shared proxies — the
     # response body is gated by per-user JWT — and `Vary: Authorization`
     # prevents one user's cached response from being reused under a different
     # token. ETag stays as a fallback for the hard-reload (revalidate) path.
+    st = await aioos.stat(png)
     return FileResponse(
         str(png),
         media_type="image/png",
         headers={
             "Cache-Control": "private, max-age=31536000",
             "Vary": "Authorization",
-            "ETag": f'"{int(png.stat().st_mtime)}"',
+            "ETag": f'"{int(st.st_mtime)}"',
         },
     )
 
@@ -447,9 +454,9 @@ async def clear_dimension_cache(
     _: UserPublic = Depends(get_current_user),
 ) -> dict:
     data_path = await _get_data_path(server_id)
-    _resolve_region_path(data_path, region)
+    await _resolve_region_path(data_path, region)
     cache = ServerMapCache(data_path=data_path)
     tiles = cache.tiles_dir(region)
-    if tiles.exists():
-        shutil.rmtree(tiles)
+    if await aioos.path.exists(tiles):
+        await async_fs.rmtree(tiles)
     return {"cleared": region}

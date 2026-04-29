@@ -22,9 +22,10 @@ from app.minecraft import DockerMCManager
 from app.minecraft.instance import MCInstance
 from app.utils.exec import exec_command
 
+from app.utils import async_fs
+
 from .fixtures.test_utils import (
     TEST_ROOT_PATH,
-    async_rmtree,
     create_mc_server_compose_yaml,
 )
 
@@ -33,13 +34,13 @@ from .fixtures.test_utils import (
 async def teardown_session():
     """Session-scoped teardown fixture for cleaning up containers and directories"""
     if await aioos.path.exists(TEST_ROOT_PATH):
-        await async_rmtree(TEST_ROOT_PATH)
+        await async_fs.rmtree(TEST_ROOT_PATH)
     await aioos.makedirs(TEST_ROOT_PATH)
     containers_to_remove = list[str]()
     yield containers_to_remove
     for container_name in containers_to_remove:
         await exec_command("docker", "rm", "-f", container_name)
-    await async_rmtree(TEST_ROOT_PATH)
+    await async_fs.rmtree(TEST_ROOT_PATH)
 
 
 @pytest.fixture(scope="session")

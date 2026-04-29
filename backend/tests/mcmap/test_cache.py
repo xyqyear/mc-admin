@@ -4,6 +4,8 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from app.mcmap.cache import ServerMapCache
 
 
@@ -27,22 +29,25 @@ def test_cache_paths():
     )
 
 
-def test_is_fresh_missing_mca():
+@pytest.mark.asyncio
+async def test_is_fresh_missing_mca():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
-        assert cache.is_fresh("world/region", 0, 0) == "missing_mca"
+        assert await cache.is_fresh("world/region", 0, 0) == "missing_mca"
 
 
-def test_is_fresh_missing_png():
+@pytest.mark.asyncio
+async def test_is_fresh_missing_png():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         mca.write_bytes(b"x")
-        assert cache.is_fresh("world/region", 0, 0) == "missing_png"
+        assert await cache.is_fresh("world/region", 0, 0) == "missing_png"
 
 
-def test_is_fresh_zero_byte_mca_treated_as_missing():
+@pytest.mark.asyncio
+async def test_is_fresh_zero_byte_mca_treated_as_missing():
     """0-byte MCAs are unrenderable; freshness must report `missing_mca` so
     the tile endpoint short-circuits to 404 instead of queuing a doomed render."""
     with tempfile.TemporaryDirectory() as d:
@@ -50,10 +55,11 @@ def test_is_fresh_zero_byte_mca_treated_as_missing():
         mca = cache.mca_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         mca.write_bytes(b"")
-        assert cache.is_fresh("world/region", 0, 0) == "missing_mca"
+        assert await cache.is_fresh("world/region", 0, 0) == "missing_mca"
 
 
-def test_is_fresh_fresh_when_mtimes_match():
+@pytest.mark.asyncio
+async def test_is_fresh_fresh_when_mtimes_match():
     """mcmap renders with `--preserve-mtime`, so a PNG that matches its
     source MCA's mtime exactly is current."""
     with tempfile.TemporaryDirectory() as d:
@@ -66,10 +72,11 @@ def test_is_fresh_fresh_when_mtimes_match():
         png.write_bytes(b"")
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
         os.utime(mca, (1_700_000_000.0, 1_700_000_000.0))
-        assert cache.is_fresh("world/region", 0, 0) == "fresh"
+        assert await cache.is_fresh("world/region", 0, 0) == "fresh"
 
 
-def test_is_fresh_stale_when_mca_newer():
+@pytest.mark.asyncio
+async def test_is_fresh_stale_when_mca_newer():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
@@ -80,10 +87,11 @@ def test_is_fresh_stale_when_mca_newer():
         png.write_bytes(b"")
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
         os.utime(mca, (1_700_000_001.0, 1_700_000_001.0))
-        assert cache.is_fresh("world/region", 0, 0) == "stale"
+        assert await cache.is_fresh("world/region", 0, 0) == "stale"
 
 
-def test_is_fresh_stale_when_png_newer():
+@pytest.mark.asyncio
+async def test_is_fresh_stale_when_png_newer():
     """Any divergence — even a PNG newer than the MCA — forces a re-render."""
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
@@ -95,4 +103,4 @@ def test_is_fresh_stale_when_png_newer():
         png.write_bytes(b"")
         os.utime(mca, (1_700_000_000.0, 1_700_000_000.0))
         os.utime(png, (1_700_000_001.0, 1_700_000_001.0))
-        assert cache.is_fresh("world/region", 0, 0) == "stale"
+        assert await cache.is_fresh("world/region", 0, 0) == "stale"

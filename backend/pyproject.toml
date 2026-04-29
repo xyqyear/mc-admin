@@ -12,7 +12,6 @@ dependencies = [
     "pydantic-settings>=2.11.0,<3",
     "sqlalchemy>=2.0.44,<3",
     "aiosqlite~=0.22.0",
-    "asyncer==0.0.12",
     "python-multipart==0.0.21",
     "pip>=25.2,<26",
     "uvicorn[standard]~=0.40.0",

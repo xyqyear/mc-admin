@@ -22,11 +22,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
+
+import aiofiles.os as aioos
+
+from ..utils import async_fs
 
 if TYPE_CHECKING:
     from ..mcmap.queue import ServerRenderQueue
@@ -93,8 +96,8 @@ class PreviewMapCache:
     def png_path(self, _region_path: str, x: int, z: int) -> Path:
         return self.tiles_root / f"r.{x}.{z}.png"
 
-    def ensure_dir(self, target: Path) -> None:
-        target.mkdir(parents=True, exist_ok=True)
+    async def ensure_dir(self, target: Path) -> None:
+        await aioos.makedirs(target, exist_ok=True)
 
 
 def _utcnow() -> datetime:
@@ -122,28 +125,32 @@ class PreviewSessionManager:
         self._server_to_session: dict[str, str] = {}
         self._janitor_task: Optional[asyncio.Task] = None
         self._now: Callable[[], datetime] = _utcnow
+        # One-shot at startup; fine to be sync. Calling code is __init__ so
+        # making it async would require a separate factory.
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Session lifecycle ------------------------------------------------
 
-    def create_session(self, server_id: str, *, affected_regions: int = 0) -> Path:
+    async def create_session(
+        self, server_id: str, *, affected_regions: int = 0
+    ) -> Path:
         """Create a new session directory for ``server_id`` and tear down the prior
         session for the same server (if any). Returns the session dir.
 
         Raises ``PreviewDiskGuardError`` if estimated requirement exceeds free space.
         """
         required = max(affected_regions, 1) * AVG_REGION_BYTES * 2
-        free = self.disk_free_bytes()
+        free = await self.disk_free_bytes()
         if free < required:
             raise PreviewDiskGuardError(free=free, required=required)
 
         prior = self._server_to_session.get(server_id)
         if prior is not None:
-            self.end(prior)
+            await self.end(prior)
 
         session_id = secrets.token_hex(16)
         session_dir = self.base_dir / session_id
-        session_dir.mkdir(parents=True, exist_ok=False)
+        await aioos.makedirs(session_dir, exist_ok=False)
         self._sessions[session_id] = _Session(
             session_id=session_id,
             server_id=server_id,
@@ -160,7 +167,7 @@ class PreviewSessionManager:
             raise PreviewSessionNotFoundError(session_id)
         sess.last_seen = self._now()
 
-    def end(self, session_id: str) -> None:
+    async def end(self, session_id: str) -> None:
         """Tear down a session. Idempotent — never fails if session is already gone."""
         sess = self._sessions.pop(session_id, None)
         if sess is None:
@@ -172,7 +179,7 @@ class PreviewSessionManager:
         existing = self._server_to_session.get(sess.server_id)
         if existing == session_id:
             self._server_to_session.pop(sess.server_id, None)
-        shutil.rmtree(sess.base_dir, ignore_errors=True)
+        await async_fs.rmtree(sess.base_dir, ignore_errors=True)
 
     def get_active_for_server(self, server_id: str) -> Optional[str]:
         return self._server_to_session.get(server_id)
@@ -184,12 +191,12 @@ class PreviewSessionManager:
         sess = self._sessions.get(session_id)
         return sess.base_dir if sess else None
 
-    def get_tile_path(self, session_id: str, rx: int, rz: int) -> Optional[Path]:
+    async def get_tile_path(self, session_id: str, rx: int, rz: int) -> Optional[Path]:
         sess = self._sessions.get(session_id)
         if sess is None:
             return None
         candidate = sess.base_dir / "tiles" / f"r.{rx}.{rz}.png"
-        return candidate if candidate.exists() else None
+        return candidate if await aioos.path.exists(candidate) else None
 
     def attach_render_queue(
         self,
@@ -215,38 +222,39 @@ class PreviewSessionManager:
 
     # --- Disk + janitor --------------------------------------------------
 
-    def disk_free_bytes(self) -> int:
-        return shutil.disk_usage(self.base_dir).free
+    async def disk_free_bytes(self) -> int:
+        usage = await async_fs.disk_usage(self.base_dir)
+        return usage.free
 
     def _ttl(self) -> timedelta:
         return timedelta(seconds=self.ttl_seconds)
 
-    def reap_stale(self) -> list[str]:
+    async def reap_stale(self) -> list[str]:
         """End every session whose ``last_seen`` is older than the TTL. Returns
         the session_ids that were ended.
         """
         cutoff = self._now() - self._ttl()
         stale = [sid for sid, s in self._sessions.items() if s.last_seen < cutoff]
         for sid in stale:
-            self.end(sid)
+            await self.end(sid)
         return stale
 
-    def reap_orphan_dirs(self) -> list[Path]:
+    async def reap_orphan_dirs(self) -> list[Path]:
         """Delete subdirectories of ``base_dir`` that don't correspond to a known
         session — these are orphans from a crashed prior process or a manual
         leftover. Returns the deleted paths.
         """
-        if not self.base_dir.exists():
+        if not await aioos.path.exists(self.base_dir):
             return []
         known = {s.session_id for s in self._sessions.values()}
         deleted: list[Path] = []
-        for child in self.base_dir.iterdir():
-            if not child.is_dir():
+        for child in await async_fs.iterdir(self.base_dir):
+            if not await aioos.path.isdir(child):
                 continue
             if child.name in known:
                 continue
             try:
-                shutil.rmtree(child, ignore_errors=True)
+                await async_fs.rmtree(child, ignore_errors=True)
                 deleted.append(child)
             except OSError:
                 logger.exception("preview: failed to remove orphan %s", child)
@@ -257,8 +265,8 @@ class PreviewSessionManager:
         while True:
             try:
                 await asyncio.sleep(self.janitor_interval_seconds)
-                self.reap_stale()
-                self.reap_orphan_dirs()
+                await self.reap_stale()
+                await self.reap_orphan_dirs()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -280,4 +288,3 @@ class PreviewSessionManager:
             await task
         except (asyncio.CancelledError, Exception):
             pass
-

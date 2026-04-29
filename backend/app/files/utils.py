@@ -2,16 +2,14 @@
 Utility functions for file operations including session management and async helpers.
 """
 
-import os
-import shutil
 import time
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
 
 from aiofiles import os as aioos
-from asyncer import asyncify
 
+from ..utils import async_fs
 from .types import UploadSession
 
 # Global upload session storage
@@ -71,25 +69,6 @@ def create_upload_session(conflicts, reusable: bool = False) -> str:
     return session_id
 
 
-# Async utility functions
-@asyncify
-def _rmtree_async(path: Path):
-    """Asynchronously remove a directory tree."""
-    shutil.rmtree(path)
-
-
-@asyncify
-def _touch_async(path: Path):
-    """Asynchronously create an empty file."""
-    Path.touch(path)
-
-
-@asyncify
-def _chown_async(path: Path, uid: int, gid: int):
-    """Asynchronously change ownership of a file or directory."""
-    os.chown(path, uid, gid)
-
-
 async def get_uid_gid(path: Path) -> tuple[int, int]:
     """Get the UID and GID of the specified path."""
     stat_info = await aioos.stat(path)
@@ -99,7 +78,7 @@ async def get_uid_gid(path: Path) -> tuple[int, int]:
 async def set_file_ownership(file_path: Path, base_path: Path) -> None:
     """Set file ownership to match base directory ownership"""
     uid, gid = await get_uid_gid(base_path)
-    await _chown_async(file_path, uid, gid)
+    await async_fs.chown(file_path, uid, gid)
 
 
 async def makedirs_with_ownership(target_dir: Path, base_path: Path) -> None:
@@ -126,4 +105,4 @@ async def makedirs_with_ownership(target_dir: Path, base_path: Path) -> None:
 
         for dir_path in dirs_to_create:
             await aioos.makedirs(dir_path, exist_ok=True)
-            await _chown_async(dir_path, uid, gid)
+            await async_fs.chown(dir_path, uid, gid)

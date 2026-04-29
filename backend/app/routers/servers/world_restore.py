@@ -399,7 +399,7 @@ async def end_preview(
     """Tear down a preview session. Idempotent."""
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
-    orch.end_preview(session_id)
+    await orch.end_preview(session_id)
 
 
 @router.get(

@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, List, Optional
 
+import aiofiles.os as aioos
+
 from ..config import settings
 from ..logger import logger
 
@@ -74,12 +76,12 @@ class MCMapProcess:
         return self._proc.returncode
 
 
-def _chown_args_for(owned_by: Path) -> List[str]:
+async def _chown_args_for(owned_by: Path) -> List[str]:
     """Return ``["--chown", "UID:GID"]`` when the backend runs as root, else []."""
     if os.geteuid() != 0:
         return []
     try:
-        st = os.stat(owned_by)
+        st = await aioos.stat(owned_by)
     except FileNotFoundError:
         logger.warning(
             "mcmap: owned_by path %s does not exist; skipping --chown", owned_by
@@ -96,7 +98,7 @@ async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
     Minecraft data dir's uid/gid. When not running as root, mcmap writes as
     the backend uid and ``--chown`` is omitted (it requires euid 0).
     """
-    full_args: List[str] = ["--json", *args, *_chown_args_for(owned_by)]
+    full_args: List[str] = ["--json", *args, *await _chown_args_for(owned_by)]
     return await asyncio.create_subprocess_exec(
         str(settings.mcmap_binary_path),
         *full_args,

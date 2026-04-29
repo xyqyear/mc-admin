@@ -24,6 +24,7 @@ from ..snapshots import (
     restic_manager,
 )
 from ..system.resources import get_disk_info
+from ..utils import async_fs
 from ..world import png_invalidate
 
 router = APIRouter(
@@ -104,7 +105,7 @@ def _get_restic_manager():
     return restic_manager
 
 
-def _resolve_backup_paths(
+async def _resolve_backup_paths(
     server_id: Optional[str], paths: Optional[List[str]]
 ) -> List[Path]:
     """
@@ -119,16 +120,16 @@ def _resolve_backup_paths(
     """
     if not server_id and not paths:
         # Backup entire servers directory
-        return [settings.server_path.resolve()]
+        return [await async_fs.resolve(settings.server_path)]
     elif server_id and not paths:
         # Backup specific server directory
         instance = docker_mc_manager.get_instance(server_id)
-        return [instance.get_project_path().resolve()]
+        return [await async_fs.resolve(instance.get_project_path())]
     elif server_id and paths:
         # Backup specific paths within server's data directory
         instance = docker_mc_manager.get_instance(server_id)
         data_path = instance.get_data_path()
-        return [(data_path / p.lstrip("/")).resolve() for p in paths]
+        return [await async_fs.resolve(data_path / p.lstrip("/")) for p in paths]
     else:
         error_msg = "Cannot specify paths without server_id"
         logger.error(
@@ -201,7 +202,7 @@ async def create_global_snapshot(
         # Check if current time is in restricted backup periods
         await _check_backup_time_restriction()
 
-        backup_paths = _resolve_backup_paths(request.server_id, request.paths)
+        backup_paths = await _resolve_backup_paths(request.server_id, request.paths)
 
         for backup_path in backup_paths:
             if not await aioos.path.exists(backup_path):
@@ -247,7 +248,7 @@ async def list_global_snapshots(
         if server_id:
             # Listing filters by a single path; reuse multi-path resolver and take the
             # single resolved root.
-            resolved = _resolve_backup_paths(
+            resolved = await _resolve_backup_paths(
                 server_id, [path] if path else None
             )
             filter_path = resolved[0]
@@ -278,7 +279,7 @@ async def preview_global_restore(
 ):
     """Preview restore operation (dry run)"""
     try:
-        target_paths = _resolve_backup_paths(request.server_id, request.paths)
+        target_paths = await _resolve_backup_paths(request.server_id, request.paths)
 
         restic_manager = _get_restic_manager()
         actions = await restic_manager.restore_preview(
@@ -327,11 +328,11 @@ async def _invalidate_pngs_across_instances(items: list[str]) -> int:
     total = 0
     for instance in instances:
         data_path = instance.get_data_path()
-        if not data_path.exists():
+        if not await aioos.path.exists(data_path):
             continue
         pngs = png_invalidate.pngs_for_restic_items(data_path, items)
         if pngs:
-            total += png_invalidate.delete_pngs(pngs)
+            total += await png_invalidate.delete_pngs(pngs)
     return total
 
 
@@ -345,7 +346,7 @@ async def restore_global_snapshot(
     progress) → tile-cache invalidation → complete. Any failure terminates
     the stream with an ``error`` event.
     """
-    target_paths = _resolve_backup_paths(request.server_id, request.paths)
+    target_paths = await _resolve_backup_paths(request.server_id, request.paths)
     restic = _get_restic_manager()
 
     async def event_gen() -> AsyncGenerator[bytes, None]:

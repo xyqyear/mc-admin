@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from ..background_tasks.types import TaskProgress
 from ..config import settings
 from ..files.utils import get_uid_gid
-from .exec import async_rmtree, exec_command, exec_command_stream
+from . import async_fs
+from .exec import exec_command, exec_command_stream
 
 
 class DecompressionStepResult(BaseModel):
@@ -107,8 +108,8 @@ async def extract_minecraft_server(
     Raises:
         HTTPException: If extraction fails
     """
-    archive_path = str(Path(archive_path).resolve())
-    target_path = str(Path(target_path).resolve())
+    archive_path = str(await async_fs.resolve(Path(archive_path)))
+    target_path = str(await async_fs.resolve(Path(target_path)))
 
     def step_progress(step: str) -> TaskProgress:
         start, _ = STEP_PROGRESS[step]
@@ -213,7 +214,7 @@ async def extract_minecraft_server(
         for item in await aioos.listdir(target_path):
             item_path = Path(target_path) / item
             if await aioos.path.isdir(str(item_path)):
-                await async_rmtree(item_path)
+                await async_fs.rmtree(item_path)
             else:
                 await aioos.remove(str(item_path))
 
@@ -253,7 +254,7 @@ async def extract_minecraft_server(
         await aioos.remove(archive_path)
 
         # Remove temporary directory
-        await async_rmtree(Path(temp_dir))
+        await async_fs.rmtree(Path(temp_dir))
     except Exception as e:
         error_msg = str(e)
         if "Permission denied" in error_msg:

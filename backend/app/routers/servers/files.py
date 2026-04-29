@@ -29,6 +29,7 @@ from ...files import (
 )
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
+from ...utils import async_fs
 
 router = APIRouter(
     prefix="/servers",
@@ -279,7 +280,7 @@ async def search_server_files(
         search_path = base_path / path.lstrip("/")
         search_path_str = "/" + path.lstrip("/")
 
-    search_path = search_path.resolve()
+    search_path = await async_fs.resolve(search_path)
     # Perform search
     results = await search_files(search_path, search_request)
 

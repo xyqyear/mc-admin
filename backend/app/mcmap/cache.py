@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Literal
 
+import aiofiles.os as aioos
+
 from ..logger import logger
+from ..utils import async_fs
 
 FreshnessState = Literal["fresh", "stale", "missing_mca", "missing_png"]
 
@@ -47,10 +50,10 @@ class ServerMapCache:
     def png_path(self, region_path: str, x: int, z: int) -> Path:
         return self.tiles_dir(region_path) / f"r.{x}.{z}.png"
 
-    def is_fresh(self, region_path: str, x: int, z: int) -> FreshnessState:
+    async def is_fresh(self, region_path: str, x: int, z: int) -> FreshnessState:
         mca = self.mca_path(region_path, x, z)
         try:
-            mca_st = mca.stat()
+            mca_st = await aioos.stat(mca)
         except FileNotFoundError:
             return "missing_mca"
         # Zero-byte MCAs cannot be parsed (fastanvil raises UnexpectedEof on
@@ -59,16 +62,18 @@ class ServerMapCache:
         if mca_st.st_size == 0:
             return "missing_mca"
         png = self.png_path(region_path, x, z)
-        if not png.exists():
+        try:
+            png_st = await aioos.stat(png)
+        except FileNotFoundError:
             return "missing_png"
         # mcmap renders with `--preserve-mtime`, so a PNG that matches its
         # source MCA's mtime exactly is current; any divergence means the
         # MCA was modified after rendering and the tile must be regenerated.
-        if mca_st.st_mtime == png.stat().st_mtime:
+        if mca_st.st_mtime == png_st.st_mtime:
             return "fresh"
         return "stale"
 
-    def chown_to_data_owner(self, path: Path) -> None:
+    async def chown_to_data_owner(self, path: Path) -> None:
         """Chown ``path`` to match ``data_path`` ownership.
 
         No-op when the backend is not running as root (typical for dev), or
@@ -77,15 +82,15 @@ class ServerMapCache:
         if os.geteuid() != 0:
             return
         try:
-            st = os.stat(self.data_path)
+            st = await aioos.stat(self.data_path)
         except FileNotFoundError:
             return
         try:
-            os.chown(path, st.st_uid, st.st_gid)
+            await async_fs.chown(path, st.st_uid, st.st_gid)
         except OSError as e:
             logger.warning("mcmap: failed to chown %s: %s", path, e)
 
-    def ensure_dir(self, target: Path) -> None:
+    async def ensure_dir(self, target: Path) -> None:
         """Create ``target`` (with parents) and chown each newly created level
         under ``data_path`` to the data dir's owner.
 
@@ -101,13 +106,13 @@ class ServerMapCache:
 
         to_create: List[Path] = []
         p = target
-        while not p.exists() and p != self.data_path:
+        while not await aioos.path.exists(p) and p != self.data_path:
             to_create.append(p)
             if p.parent == p:
                 break
             p = p.parent
 
-        target.mkdir(parents=True, exist_ok=True)
+        await aioos.makedirs(target, exist_ok=True)
 
         for created in reversed(to_create):
-            self.chown_to_data_owner(created)
+            await self.chown_to_data_owner(created)

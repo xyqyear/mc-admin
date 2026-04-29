@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-import shutil
 import tempfile
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
@@ -30,6 +29,8 @@ from typing import (
     Optional,
 )
 
+import aiofiles
+import aiofiles.os as aioos
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,7 @@ from ..mcmap.cache import ServerMapCache
 from ..mcmap.queue import ServerRenderQueue
 from ..mcmap.types import MCMapError
 from ..minecraft import DockerMCManager, MCServerStatus
+from ..utils import async_fs
 from ..models import (
     Restoration,
     RestorationSelection,
@@ -159,9 +161,11 @@ def _mcc_paths_for_region(
     return paths
 
 
-def _stage_destination(stage_dir: Path, live_path: Path) -> Path:
+async def _stage_destination(stage_dir: Path, live_path: Path) -> Path:
     """Where ``live_path`` will land under ``stage_dir`` after a restic restore."""
-    return ResticManager.compute_restore_destination(stage_dir, live_path.resolve())
+    return ResticManager.compute_restore_destination(
+        stage_dir, await async_fs.resolve(live_path)
+    )
 
 
 # --- Orchestrator -----------------------------------------------------------
@@ -433,7 +437,7 @@ class WorldRestoreOrchestrator:
             )
 
         affected_regions = _count_affected_regions(selection)
-        session_dir = self._preview_manager.create_session(
+        session_dir = await self._preview_manager.create_session(
             server_id, affected_regions=affected_regions
         )
         session_id = session_dir.name
@@ -444,7 +448,7 @@ class WorldRestoreOrchestrator:
                 session_id=session_id,
                 message=f"preview staging from snapshot {source_snapshot_id[:8]}",
             )
-            (session_dir / "source").mkdir(exist_ok=True)
+            await aioos.makedirs(session_dir / "source", exist_ok=True)
             async for _ in self._restic.restore(
                 snapshot_id=source_snapshot_id,
                 target_path=session_dir / "source",
@@ -480,7 +484,7 @@ class WorldRestoreOrchestrator:
                 message="preview ready",
             )
         except Exception as exc:
-            self._preview_manager.end(session_id)
+            await self._preview_manager.end(session_id)
             yield PreviewEvent(
                 event_type="error",
                 session_id=session_id,
@@ -521,25 +525,28 @@ class WorldRestoreOrchestrator:
                 if live_dir is None:
                     continue
                 live_mca = live_dir / f"r.{rx}.{rz}.mca"
-                staged_mca = _stage_destination(session_dir / "source", live_mca)
-                preview_subdir = _stage_destination(preview_dir, live_dir)
-                preview_subdir.mkdir(parents=True, exist_ok=True)
+                staged_mca = await _stage_destination(
+                    session_dir / "source", live_mca
+                )
+                preview_subdir = await _stage_destination(preview_dir, live_dir)
+                await aioos.makedirs(preview_subdir, exist_ok=True)
                 preview_mca = preview_subdir / f"r.{rx}.{rz}.mca"
 
-                if live_mca.exists():
-                    shutil.copy2(live_mca, preview_mca)
-                if staged_mca.exists():
-                    if not preview_mca.exists():
+                if await aioos.path.exists(live_mca):
+                    await async_fs.copy2(live_mca, preview_mca)
+                if await aioos.path.exists(staged_mca):
+                    if not await aioos.path.exists(preview_mca):
                         # Live had no copy of this region but snapshot does — start
                         # the preview from an empty file to give mcmap a target.
-                        preview_mca.write_bytes(b"\x00" * 8192)
+                        async with aiofiles.open(preview_mca, "wb") as f:
+                            await f.write(b"\x00" * 8192)
                     await self._merge_replace(
                         source_mca=staged_mca,
                         target_mca=preview_mca,
                         chunks=local_chunks,
                         owned_by=data_path,
                     )
-                elif preview_mca.exists():
+                elif await aioos.path.exists(preview_mca):
                     await self._merge_remove(
                         target_mca=preview_mca,
                         chunks=local_chunks,
@@ -576,7 +583,7 @@ class WorldRestoreOrchestrator:
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
         cache = ServerMapCache(data_path=data_path)
-        if not cache.palette_json.exists():
+        if not await aioos.path.exists(cache.palette_json):
             raise RestoreError(
                 "Cannot render preview: live map palette is not initialized; "
                 "open the world map page and run initialization first."
@@ -594,18 +601,18 @@ class WorldRestoreOrchestrator:
             source_root = session_dir / "source"
             affected_iter = list(set(selection.regions))
 
-        staged_region_dir = _stage_destination(source_root, live_region_dir)
+        staged_region_dir = await _stage_destination(source_root, live_region_dir)
         affected_keys: set[tuple[int, int]] = set()
         for (rx, rz) in affected_iter:
             mca = staged_region_dir / f"r.{rx}.{rz}.mca"
-            if mca.exists():
+            if await aioos.path.exists(mca):
                 affected_keys.add((rx, rz))
 
         if not affected_keys:
             return
 
         tiles_dir = session_dir / "tiles"
-        tiles_dir.mkdir(parents=True, exist_ok=True)
+        await aioos.makedirs(tiles_dir, exist_ok=True)
 
         preview_cache = PreviewMapCache(
             palette_json=cache.palette_json,
@@ -622,16 +629,16 @@ class WorldRestoreOrchestrator:
             session_id, queue=queue, affected_keys=affected_keys
         )
 
-    def end_preview(self, session_id: str) -> None:
-        self._preview_manager.end(session_id)
+    async def end_preview(self, session_id: str) -> None:
+        await self._preview_manager.end(session_id)
 
     def heartbeat_preview(self, session_id: str) -> None:
         self._preview_manager.heartbeat(session_id)
 
-    def get_preview_tile(
+    async def get_preview_tile(
         self, session_id: str, rx: int, rz: int
     ) -> Optional[Path]:
-        return self._preview_manager.get_tile_path(session_id, rx, rz)
+        return await self._preview_manager.get_tile_path(session_id, rx, rz)
 
     async def request_preview_tile(
         self, session_id: str, rx: int, rz: int, *, timeout: Optional[float] = None
@@ -652,7 +659,7 @@ class WorldRestoreOrchestrator:
             raise PreviewSessionNotFoundError(session_id)
 
         png = sess.base_dir / "tiles" / f"r.{rx}.{rz}.png"
-        if png.exists():
+        if await aioos.path.exists(png):
             return png
 
         queue = sess.render_queue
@@ -794,8 +801,8 @@ class WorldRestoreOrchestrator:
                     if live_dir is None:
                         continue
                     live_mca = live_dir / f"r.{rx}.{rz}.mca"
-                    staged_mca = _stage_destination(stage_root, live_mca)
-                    if staged_mca.exists():
+                    staged_mca = await _stage_destination(stage_root, live_mca)
+                    if await aioos.path.exists(staged_mca):
                         await self._merge_replace(
                             source_mca=staged_mca,
                             target_mca=live_mca,
@@ -803,7 +810,7 @@ class WorldRestoreOrchestrator:
                             owned_by=data_path,
                         )
                     else:
-                        if not live_mca.exists():
+                        if not await aioos.path.exists(live_mca):
                             done += 1
                             continue
                         await self._merge_remove(
@@ -923,7 +930,7 @@ class WorldRestoreOrchestrator:
 
         if not pngs:
             return 0
-        return png_invalidate.delete_pngs(pngs)
+        return await png_invalidate.delete_pngs(pngs)
 
     # --- Path resolution -------------------------------------------------
 

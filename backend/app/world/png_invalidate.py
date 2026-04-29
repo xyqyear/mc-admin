@@ -29,6 +29,8 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+import aiofiles.os as aioos
+
 from ..mcmap.cache import ServerMapCache
 
 _MCA_RE = re.compile(r"^r\.(-?\d+)\.(-?\d+)\.mca$")
@@ -87,12 +89,12 @@ def pngs_for_regions(
     return {cache.png_path(region_dir_relpath, rx, rz) for rx, rz in regions}
 
 
-def delete_pngs(pngs: Iterable[Path]) -> int:
+async def delete_pngs(pngs: Iterable[Path]) -> int:
     """Best-effort delete the given PNG files. Returns count actually removed."""
     removed = 0
     for png in pngs:
         try:
-            png.unlink()
+            await aioos.unlink(png)
             removed += 1
         except FileNotFoundError:
             continue

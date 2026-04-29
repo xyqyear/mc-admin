@@ -15,6 +15,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel
 
 from ..config import settings
+from ..utils import async_fs
 from ..utils.exec import exec_command
 
 
@@ -310,13 +311,16 @@ class ResticManager:
         if path_filter is not None:
             filtered_snapshots = []
 
+            resolved_filter = await async_fs.resolve(path_filter)
             for snapshot in snapshots:
                 # Check if any of the snapshot paths is a parent or equal to filter_path
                 for snapshot_path in snapshot.paths:
-                    snapshot_path_obj = Path(snapshot_path)
+                    snapshot_path_resolved = await async_fs.resolve(
+                        Path(snapshot_path)
+                    )
                     try:
                         # Check if filter_path is equal to or child of snapshot_path
-                        path_filter.resolve().relative_to(snapshot_path_obj.resolve())
+                        resolved_filter.relative_to(snapshot_path_resolved)
                         filtered_snapshots.append(snapshot)
                         break
                     except ValueError:
@@ -354,13 +358,20 @@ class ResticManager:
 
         all_snapshots = await self.list_snapshots()
 
-        resolved_paths = [p.resolve() for p in paths]
+        resolved_paths = [await async_fs.resolve(p) for p in paths]
+
+        # Pre-resolve every snapshot's recorded paths once so the inner loop
+        # stays pure path-math (no syscalls).
+        resolved_snapshot_paths: dict[str, list[Path]] = {}
+        for snap in all_snapshots:
+            resolved_snapshot_paths[snap.id] = [
+                await async_fs.resolve(Path(p)) for p in snap.paths
+            ]
 
         def covers(snapshot: ResticSnapshot, target: Path) -> bool:
-            for snapshot_path in snapshot.paths:
-                snap = Path(snapshot_path).resolve()
+            for snap_path in resolved_snapshot_paths[snapshot.id]:
                 try:
-                    target.relative_to(snap)
+                    target.relative_to(snap_path)
                     return True
                 except ValueError:
                     continue
