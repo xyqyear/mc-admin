@@ -37,7 +37,6 @@ def _mcmap_cfg(batch_size=4, thread_count=2):
     cfg = Mock()
     cfg.batch_size = batch_size
     cfg.thread_count = thread_count
-    cfg.stale_timeout_seconds = 60
     cfg.request_timeout_seconds = 30
     return cfg
 

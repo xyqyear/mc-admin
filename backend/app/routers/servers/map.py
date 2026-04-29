@@ -404,7 +404,7 @@ async def get_tile(
     _resolve_region_path(data_path, region)
     cfg = config.mcmap
 
-    state = cache.is_fresh(region, x, z, cfg.stale_timeout_seconds)
+    state = cache.is_fresh(region, x, z)
     if state == "missing_mca":
         raise HTTPException(status_code=404, detail="Region not present")
     if state == "fresh":

@@ -540,7 +540,7 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 **Pipeline:**
 
 1. Per-server `/initialize` (SSE) downloads the Minecraft client `.jar` (`mcmap download-client`) and builds the block→color palette (`mcmap gen-palette modern`). Palette currency is tracked by a SHA256 hash of `version + sorted(mod_jar_filenames)` — written to `data/.mcmap/palette.hash` and re-checked on each request.
-2. Tile requests `(x, z, region_path)` check freshness: if `mca.mtime - png.mtime < stale_timeout_seconds`, the cached PNG is served directly. Otherwise the request is enqueued.
+2. Tile requests `(x, z, region_path)` check freshness: rendered PNGs are stamped with their source MCA's mtime via `mcmap render --preserve-mtime`, so `mca.mtime == png.mtime` means the tile is current and the cached PNG is served directly. Any divergence (or a missing PNG) enqueues a re-render.
 3. A per-`(server, region_path)` `ServerRenderQueue` batches up to `batch_size` regions into a single `mcmap render --split --preserve-mtime -j N` invocation, resolves each waiter as the corresponding `region` event arrives in the NDJSON stream, and falls back to `RenderError` for any region that the subprocess never emitted (e.g. terminated mid-render).
 
 **Key design properties:**
@@ -554,7 +554,7 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 **Settings:**
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`)
-- Dynamic (`mcmap` schema): `stale_timeout_seconds`, `batch_size`, `thread_count`, `request_timeout_seconds`
+- Dynamic (`mcmap` schema): `batch_size`, `thread_count`, `request_timeout_seconds`
 - Dynamic (`snapshots.world_restore` schema): `restore_temp_dir`, `temp_disk_threshold_bytes`, `preview_session_ttl_seconds`, `preview_janitor_interval_seconds`
 
 **Endpoints (mounted under `/api/servers/{server_id}/map/`):**

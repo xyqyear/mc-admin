@@ -30,7 +30,7 @@ def test_cache_paths():
 def test_is_fresh_missing_mca():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
-        assert cache.is_fresh("world/region", 0, 0, 60) == "missing_mca"
+        assert cache.is_fresh("world/region", 0, 0) == "missing_mca"
 
 
 def test_is_fresh_missing_png():
@@ -39,7 +39,7 @@ def test_is_fresh_missing_png():
         mca = cache.mca_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         mca.write_bytes(b"x")
-        assert cache.is_fresh("world/region", 0, 0, 60) == "missing_png"
+        assert cache.is_fresh("world/region", 0, 0) == "missing_png"
 
 
 def test_is_fresh_zero_byte_mca_treated_as_missing():
@@ -50,10 +50,12 @@ def test_is_fresh_zero_byte_mca_treated_as_missing():
         mca = cache.mca_path("world/region", 0, 0)
         mca.parent.mkdir(parents=True)
         mca.write_bytes(b"")
-        assert cache.is_fresh("world/region", 0, 0, 60) == "missing_mca"
+        assert cache.is_fresh("world/region", 0, 0) == "missing_mca"
 
 
-def test_is_fresh_fresh_when_within_threshold():
+def test_is_fresh_fresh_when_mtimes_match():
+    """mcmap renders with `--preserve-mtime`, so a PNG that matches its
+    source MCA's mtime exactly is current."""
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
@@ -62,13 +64,12 @@ def test_is_fresh_fresh_when_within_threshold():
         png.parent.mkdir(parents=True)
         mca.write_bytes(b"x")
         png.write_bytes(b"")
-        # PNG older than MCA by 30s; threshold 60s → fresh
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
-        os.utime(mca, (1_700_000_030.0, 1_700_000_030.0))
-        assert cache.is_fresh("world/region", 0, 0, 60) == "fresh"
+        os.utime(mca, (1_700_000_000.0, 1_700_000_000.0))
+        assert cache.is_fresh("world/region", 0, 0) == "fresh"
 
 
-def test_is_fresh_stale_when_beyond_threshold():
+def test_is_fresh_stale_when_mca_newer():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
@@ -77,7 +78,21 @@ def test_is_fresh_stale_when_beyond_threshold():
         png.parent.mkdir(parents=True)
         mca.write_bytes(b"x")
         png.write_bytes(b"")
-        # MCA newer than PNG by 90s; threshold 60s → stale
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
-        os.utime(mca, (1_700_000_090.0, 1_700_000_090.0))
-        assert cache.is_fresh("world/region", 0, 0, 60) == "stale"
+        os.utime(mca, (1_700_000_001.0, 1_700_000_001.0))
+        assert cache.is_fresh("world/region", 0, 0) == "stale"
+
+
+def test_is_fresh_stale_when_png_newer():
+    """Any divergence — even a PNG newer than the MCA — forces a re-render."""
+    with tempfile.TemporaryDirectory() as d:
+        cache = ServerMapCache(data_path=Path(d))
+        mca = cache.mca_path("world/region", 0, 0)
+        png = cache.png_path("world/region", 0, 0)
+        mca.parent.mkdir(parents=True)
+        png.parent.mkdir(parents=True)
+        mca.write_bytes(b"x")
+        png.write_bytes(b"")
+        os.utime(mca, (1_700_000_000.0, 1_700_000_000.0))
+        os.utime(png, (1_700_000_001.0, 1_700_000_001.0))
+        assert cache.is_fresh("world/region", 0, 0) == "stale"

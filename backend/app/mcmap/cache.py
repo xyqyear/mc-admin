@@ -47,9 +47,7 @@ class ServerMapCache:
     def png_path(self, region_path: str, x: int, z: int) -> Path:
         return self.tiles_dir(region_path) / f"r.{x}.{z}.png"
 
-    def is_fresh(
-        self, region_path: str, x: int, z: int, stale_timeout: int
-    ) -> FreshnessState:
+    def is_fresh(self, region_path: str, x: int, z: int) -> FreshnessState:
         mca = self.mca_path(region_path, x, z)
         try:
             mca_st = mca.stat()
@@ -63,7 +61,10 @@ class ServerMapCache:
         png = self.png_path(region_path, x, z)
         if not png.exists():
             return "missing_png"
-        if mca_st.st_mtime - png.stat().st_mtime < stale_timeout:
+        # mcmap renders with `--preserve-mtime`, so a PNG that matches its
+        # source MCA's mtime exactly is current; any divergence means the
+        # MCA was modified after rendering and the tile must be regenerated.
+        if mca_st.st_mtime == png.stat().st_mtime:
             return "fresh"
         return "stale"
 
