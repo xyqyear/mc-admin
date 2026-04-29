@@ -82,9 +82,6 @@ interface ServerStartHintProps {
   status: ServerStatus | undefined
 }
 
-// Friendlier nudge after a successful restore — tells the user the world is
-// back and offers to start the server again. Rendered in the page footer
-// area below the map; tolerant of unknown status (returns nothing).
 export const ServerStartHint: React.FC<ServerStartHintProps> = ({
   serverId,
   status,
@@ -92,17 +89,18 @@ export const ServerStartHint: React.FC<ServerStartHintProps> = ({
   const { useServerOperation } = useServerMutations()
   const op = useServerOperation()
 
-  if (!status) return null
-  if (!serverStatusUtils.isOperationAvailable('start', status)) return null
+  if (status !== 'CREATED' && status !== 'EXISTS') return null
+
+  const action = status === 'CREATED' ? 'start' : 'up'
 
   return (
     <Alert>
       <AlertDescription className="flex items-center justify-between gap-3">
-        <span>恢复完成后可以重新启动服务器。</span>
+        <span>服务器已停止，可在此处启动。</span>
         <Button
           size="sm"
           disabled={op.isPending}
-          onClick={() => op.mutate({ action: 'start', serverId })}
+          onClick={() => op.mutate({ action, serverId })}
         >
           {op.isPending ? (
             <Spinner className="mr-2 size-4" />
