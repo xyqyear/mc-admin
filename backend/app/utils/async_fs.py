@@ -97,12 +97,8 @@ async def disk_usage(path: Path | str) -> shutil._ntuple_diskusage:
     return await asyncio.to_thread(shutil.disk_usage, path)
 
 
-async def copyfileobj(src: IO[bytes], dst: IO[bytes], length: Optional[int] = None) -> None:
-    """Copy file object data without loading into memory."""
-    if length is None:
-        await asyncio.to_thread(shutil.copyfileobj, src, dst)
-    else:
-        await asyncio.to_thread(shutil.copyfileobj, src, dst, length)
+async def copyfileobj(src: IO[bytes], dst: IO[bytes], length: int = 16 * 1024) -> None:
+    await asyncio.to_thread(shutil.copyfileobj, src, dst, length)
 
 
 # ---------------------------------------------------------------------------

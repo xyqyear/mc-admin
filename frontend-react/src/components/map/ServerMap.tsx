@@ -132,6 +132,12 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   useEffect(() => {
     selectionModeRef.current = selectionMode
   }, [selectionMode])
+  // Latest-selection ref so the drag-finish closure reads the current set
+  // without re-registering pointer listeners on every selection change.
+  const selectionRef = useRef(selection)
+  useEffect(() => {
+    selectionRef.current = selection
+  }, [selection])
   // Hover outline state — lifted to refs so a mode-change effect can clear
   // a stale rectangle without waiting for the next mousemove.
   const hoverRectRef = useRef<L.Rectangle | null>(null)
@@ -543,7 +549,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       if (!onSelectionChange || !start || !last) return
       const cells = cellsCovered(start, last)
       if (cells.size === 0) return
-      const next = new Set<ChunkKey>(selection ?? [])
+      const next = new Set<ChunkKey>(selectionRef.current ?? [])
       if (mode === 'remove') {
         for (const k of cells) next.delete(k)
       } else {
@@ -654,7 +660,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       dragState.start = null
       dragState.last = null
     }
-  }, [selectionMode, selection, onSelectionChange])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionRef is a stable ref
+  }, [selectionMode, onSelectionChange])
 
   // Background follows the Card's `bg-card` token so the empty areas around
   // tiles match the surrounding theme in both light and dark modes. Inline

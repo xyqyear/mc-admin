@@ -34,6 +34,7 @@ import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 import { queryKeys } from '@/utils/api'
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
+const EMPTY_SELECTION = new Set<ChunkKey>()
 
 function parseInitialView(params: URLSearchParams): ServerMapView | undefined {
   if (!params.has('z') && !params.has('cx') && !params.has('cz')) return undefined
@@ -248,7 +249,7 @@ const ServerWorldRestore: React.FC = () => {
   }
 
   const selectionMode: SelectionMode = urlMode
-  const selection = selectionState?.selection ?? new Set<ChunkKey>()
+  const selection = selectionState?.selection ?? EMPTY_SELECTION
 
   return (
     <div className="flex flex-col gap-4 h-full">

@@ -53,18 +53,10 @@ export function useEventStream<TEvent>(
   const onCloseRef = useRef(opts.onClose)
   const onErrorRef = useRef(opts.onError)
   const onResponseRef = useRef(opts.onResponse)
-  useEffect(() => {
-    onEventRef.current = opts.onEvent
-  }, [opts.onEvent])
-  useEffect(() => {
-    onCloseRef.current = opts.onClose
-  }, [opts.onClose])
-  useEffect(() => {
-    onErrorRef.current = opts.onError
-  }, [opts.onError])
-  useEffect(() => {
-    onResponseRef.current = opts.onResponse
-  }, [opts.onResponse])
+  onEventRef.current = opts.onEvent
+  onCloseRef.current = opts.onClose
+  onErrorRef.current = opts.onError
+  onResponseRef.current = opts.onResponse
 
   const abortRef = useRef<AbortController | null>(null)
 

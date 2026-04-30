@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Eye, RotateCcw } from 'lucide-react'
@@ -143,10 +143,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
     }
   }, [restoreState.done, restoreState.error, queryClient])
 
-  const headerSubtitle = useMemo(() => {
-    if (!selection) return ''
-    return SCOPE_LABEL[selection.type] ?? selection.type
-  }, [selection])
+  const headerSubtitle = selection ? (SCOPE_LABEL[selection.type] ?? selection.type) : ''
 
   return (
     <Sheet

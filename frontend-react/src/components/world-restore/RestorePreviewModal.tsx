@@ -18,7 +18,7 @@ import { useWorldRestoreMutations } from '@/hooks/mutations/useWorldRestoreMutat
 import {
   BLOCKS_PER_REGION,
   chunksToCoveredRegions,
-  chunkKeyToCoord,
+
 } from '@/components/map/coords'
 import type {
   PreviewEvent,
@@ -302,9 +302,8 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       // the threshold the region rectangles above are sufficient.
       const renderer = L.canvas()
       for (const [cx, cz] of selection.chunks ?? []) {
-        const c = chunkKeyToCoord(`${cx},${cz}`)
-        const sw = blockToLatLng(c.cx * 16, (c.cz + 1) * 16)
-        const ne = blockToLatLng((c.cx + 1) * 16, c.cz * 16)
+        const sw = blockToLatLng(cx * 16, (cz + 1) * 16)
+        const ne = blockToLatLng((cx + 1) * 16, cz * 16)
         L.rectangle([sw, ne], {
           renderer,
           color: '#3b82f6',

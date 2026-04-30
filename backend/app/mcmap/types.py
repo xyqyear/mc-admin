@@ -69,7 +69,3 @@ class ChunkOpResultEvent(BaseModel):
 
 class MCMapError(Exception):
     """Raised when mcmap reports a failure (render, replace, remove, ...)."""
-
-
-# Backward-compatible alias retained so existing imports continue to work.
-RenderError = MCMapError

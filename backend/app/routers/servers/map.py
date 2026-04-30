@@ -416,7 +416,7 @@ async def get_tile(
     if state == "fresh":
         return await _png_response(cache.png_path(region, x, z))
 
-    queue = await mcmap_manager.get_queue(server_id, region, cache)
+    queue = mcmap_manager.get_queue(server_id, region, cache)
     try:
         png = await asyncio.wait_for(
             queue.request(x, z), timeout=cfg.request_timeout_seconds

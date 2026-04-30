@@ -253,11 +253,8 @@ class PreviewSessionManager:
                 continue
             if child.name in known:
                 continue
-            try:
-                await async_fs.rmtree(child, ignore_errors=True)
-                deleted.append(child)
-            except OSError:
-                logger.exception("preview: failed to remove orphan %s", child)
+            await async_fs.rmtree(child, ignore_errors=True)
+            deleted.append(child)
         return deleted
 
     async def janitor_loop(self) -> None:

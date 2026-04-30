@@ -77,7 +77,7 @@ async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
         await asyncio.sleep(0.01)
         # Resolve via queue internals: simulate the worker getting a region event.
         # Easier: just terminate the hanging proc → worker will fall through to
-        # the defensive "did not complete" branch and set RenderError.
+        # the defensive "did not complete" branch and set MCMapError.
         await proc.terminate()
 
     with (
@@ -99,7 +99,7 @@ async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
         # Drive termination to make the test finish
         asyncio.create_task(driver())
         with pytest.raises(Exception):
-            # c2 sees RenderError because proc terminated without emitting event
+            # c2 sees MCMapError because proc terminated without emitting event
             await asyncio.wait_for(c2, timeout=2.0)
 
 

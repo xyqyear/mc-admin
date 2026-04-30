@@ -46,10 +46,10 @@ RUN apk add --no-cache \
     fd \
     coreutils
 
-ARG MCMAP_VERSION=v0.4.2
+ARG MCMAP_VERSION=v0.4.3
 RUN curl -L "https://github.com/xyqyear/mcmap/releases/download/${MCMAP_VERSION}/mcmap-${MCMAP_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
       -o /tmp/mcmap.tar.gz \
- && tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin \
+ && tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin --strip-components=1 \
  && chmod +x /usr/local/bin/mcmap \
  && rm /tmp/mcmap.tar.gz
 

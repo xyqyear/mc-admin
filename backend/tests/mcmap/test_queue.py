@@ -158,7 +158,7 @@ async def test_missing_status_raises_filenotfound(cache_and_queue):
 
 
 async def test_error_status_raises_render_error(cache_and_queue):
-    from app.mcmap.types import RenderError
+    from app.mcmap.types import MCMapError
 
     cache, queue = cache_and_queue
     fake_render, _ = _patched_runner(
@@ -169,14 +169,14 @@ async def test_error_status_raises_render_error(cache_and_queue):
         patch("app.mcmap.queue.config") as config_mock,
     ):
         config_mock.mcmap = _mcmap_cfg()
-        with pytest.raises(RenderError):
+        with pytest.raises(MCMapError):
             await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
 
 async def test_missing_event_for_requested_region_raises(cache_and_queue):
     """If mcmap exits without emitting a region event for some mcas, those
-    futures must be resolved with RenderError, not hang forever."""
-    from app.mcmap.types import RenderError
+    futures must be resolved with MCMapError, not hang forever."""
+    from app.mcmap.types import MCMapError
 
     cache, queue = cache_and_queue
     fake_render, _ = _patched_runner(
@@ -198,4 +198,4 @@ async def test_missing_event_for_requested_region_raises(cache_and_queue):
         )
         # First one resolves, second one errors out
         assert isinstance(results[0], Path)
-        assert isinstance(results[1], RenderError)
+        assert isinstance(results[1], MCMapError)

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Eye, Loader2, RotateCcw, Undo2 } from 'lucide-react'
@@ -158,10 +158,7 @@ export const RestorationHistoryDrawer: React.FC<
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }
 
-  const rows = useMemo(
-    () => restorationsQ.data?.restorations ?? [],
-    [restorationsQ.data],
-  )
+  const rows = restorationsQ.data?.restorations ?? []
 
   return (
     <Sheet

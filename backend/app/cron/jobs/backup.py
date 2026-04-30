@@ -196,23 +196,6 @@ async def backup_cronjob(context: ExecutionContext):
 
     lock_key = params.server_id if params.server_id else GLOBAL_LOCK_KEY
 
-    if server_operation_lock.is_locked(lock_key):
-        current = server_operation_lock.get_holder(lock_key)
-        if current is not None:
-            skip_msg = (
-                f"跳过备份: 服务器 '{lock_key}' 被 {current.kind.value} 占用"
-                f" ({current.description}, 起始 {current.started_at.isoformat()})"
-            )
-        else:
-            skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
-        context.log(skip_msg)
-        if params.uptimekuma_url and params.uptimekuma_url.strip():
-            running_time = time.time() - start_time
-            await _send_uptimekuma_notification(
-                context, params.uptimekuma_url, True, f"skipped: {skip_msg}", running_time
-            )
-        return
-
     holder = LockHolder(
         kind=ServerOperationKind.BACKUP,
         started_at=datetime.now(timezone.utc),
@@ -221,7 +204,23 @@ async def backup_cronjob(context: ExecutionContext):
     )
 
     try:
-        async with server_operation_lock.acquire(lock_key, holder):
+        async with server_operation_lock.try_acquire(lock_key, holder) as acquired:
+            if not acquired:
+                current = server_operation_lock.get_holder(lock_key)
+                if current is not None:
+                    skip_msg = (
+                        f"跳过备份: 服务器 '{lock_key}' 被 {current.kind.value} 占用"
+                        f" ({current.description}, 起始 {current.started_at.isoformat()})"
+                    )
+                else:
+                    skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
+                context.log(skip_msg)
+                if params.uptimekuma_url and params.uptimekuma_url.strip():
+                    running_time = time.time() - start_time
+                    await _send_uptimekuma_notification(
+                        context, params.uptimekuma_url, True, f"skipped: {skip_msg}", running_time
+                    )
+                return
             # Get restic manager
             restic_manager_local = _get_restic_manager()
 

@@ -57,6 +57,22 @@ class ServerOperationLock:
             self._holders.pop(server_id, None)
             lock.release()
 
+    @asynccontextmanager
+    async def try_acquire(
+        self, server_id: str, holder: LockHolder
+    ) -> AsyncIterator[bool]:
+        lock = self._lock_for(server_id)
+        if lock.locked():
+            yield False
+        else:
+            await lock.acquire()
+            try:
+                self._holders[server_id] = holder
+                yield True
+            finally:
+                self._holders.pop(server_id, None)
+                lock.release()
+
     def is_locked(self, server_id: str) -> bool:
         lock = self._locks.get(server_id)
         return lock is not None and lock.locked()

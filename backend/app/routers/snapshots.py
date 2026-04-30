@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Literal, Optional
+from typing import AsyncGenerator, List, Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
@@ -92,15 +92,10 @@ async def _check_backup_time_restriction():
 
 
 def _get_restic_manager():
-    """Get configured restic manager instance"""
     if not restic_manager:
-        error_msg = (
-            "Restic is not configured. Please add restic settings to config.toml"
-        )
-        logger.error(f"Snapshot operation failed: {error_msg}")
         raise HTTPException(
             status_code=500,
-            detail=error_msg,
+            detail="Restic is not configured. Please add restic settings to config.toml",
         )
     return restic_manager
 
@@ -156,28 +151,6 @@ class RestoreRequest(BaseModel):
     paths: Optional[List[str]] = None
 
 
-class SnapshotRestoreEvent(BaseModel):
-    """SSE event emitted by ``POST /snapshots/restore``.
-
-    Mirrors ``app.world.restore.RestoreEvent`` so the frontend can reuse the
-    same progress reducer; only the safety_snapshot_id field differs in
-    semantics (it's a short id here, since this endpoint historically
-    surfaced short ids).
-    """
-
-    event_type: Literal[
-        "start",
-        "safety_snapshot",
-        "restore",
-        "invalidate_cache",
-        "complete",
-        "error",
-    ]
-    message: Optional[str] = None
-    percent: Optional[float] = None
-    safety_snapshot_id: Optional[str] = None
-
-
 class CreateSnapshotResponse(BaseModel):
     message: str
     snapshot: ResticSnapshotWithSummary
@@ -198,41 +171,24 @@ async def create_global_snapshot(
     request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
 ):
     """Create a snapshot covering one or more paths (or a server, or all servers)"""
-    try:
-        # Check if current time is in restricted backup periods
-        await _check_backup_time_restriction()
+    await _check_backup_time_restriction()
 
-        backup_paths = await _resolve_backup_paths(request.server_id, request.paths)
+    backup_paths = await _resolve_backup_paths(request.server_id, request.paths)
 
-        for backup_path in backup_paths:
-            if not await aioos.path.exists(backup_path):
-                error_msg = f"Path not found: {backup_path}"
-                logger.error(
-                    f"Snapshot creation failed: {error_msg} (server_id={request.server_id}, paths={request.paths})"
-                )
-                raise HTTPException(status_code=404, detail=error_msg)
+    for backup_path in backup_paths:
+        if not await aioos.path.exists(backup_path):
+            raise HTTPException(status_code=404, detail=f"Path not found: {backup_path}")
 
-        restic_manager = _get_restic_manager()
-        snapshot = await restic_manager.backup(backup_paths)
+    restic_manager = _get_restic_manager()
+    snapshot = await restic_manager.backup(backup_paths)
 
-        paths_repr = ", ".join(str(p) for p in backup_paths)
-        logger.info(
-            f"Snapshot created successfully: {snapshot.short_id} for {paths_repr} (server_id={request.server_id}, paths={request.paths})"
-        )
-        return CreateSnapshotResponse(
-            message=f"Snapshot created successfully for {len(backup_paths)} path(s)",
-            snapshot=snapshot,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to create snapshot: {str(e)}"
-        logger.error(
-            f"Snapshot creation error: {error_msg} (server_id={request.server_id}, paths={request.paths})",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=error_msg)
+    logger.info(
+        "Snapshot created: %s (server_id=%s)", snapshot.short_id, request.server_id
+    )
+    return CreateSnapshotResponse(
+        message=f"Snapshot created successfully for {len(backup_paths)} path(s)",
+        snapshot=snapshot,
+    )
 
 
 @router.get("", response_model=ListSnapshotsResponse)
@@ -242,35 +198,18 @@ async def list_global_snapshots(
     _: UserPublic = Depends(get_current_user),
 ):
     """List all snapshots, or snapshots that touch the specified server/path"""
-    try:
-        restic_manager = _get_restic_manager()
+    restic_manager = _get_restic_manager()
 
-        if server_id:
-            # Listing filters by a single path; reuse multi-path resolver and take the
-            # single resolved root.
-            resolved = await _resolve_backup_paths(
-                server_id, [path] if path else None
-            )
-            filter_path = resolved[0]
-        else:
-            filter_path = None
-
-        snapshots = await restic_manager.list_snapshots(path_filter=filter_path)
-
-        logger.info(
-            f"Listed {len(snapshots)} snapshots (server_id={server_id}, path={path})"
+    if server_id:
+        resolved = await _resolve_backup_paths(
+            server_id, [path] if path else None
         )
-        return ListSnapshotsResponse(snapshots=snapshots)
+        filter_path = resolved[0]
+    else:
+        filter_path = None
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to list snapshots: {str(e)}"
-        logger.error(
-            f"Snapshot listing error: {error_msg} (server_id={server_id}, path={path})",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=error_msg)
+    snapshots = await restic_manager.list_snapshots(path_filter=filter_path)
+    return ListSnapshotsResponse(snapshots=snapshots)
 
 
 @router.post("/restore/preview", response_model=RestorePreviewResponse)
@@ -278,37 +217,21 @@ async def preview_global_restore(
     request: RestorePreviewRequest, _: UserPublic = Depends(get_current_user)
 ):
     """Preview restore operation (dry run)"""
-    try:
-        target_paths = await _resolve_backup_paths(request.server_id, request.paths)
+    target_paths = await _resolve_backup_paths(request.server_id, request.paths)
 
-        restic_manager = _get_restic_manager()
-        actions = await restic_manager.restore_preview(
-            snapshot_id=request.snapshot_id,
-            target_path=Path("/"),  # Restore in-place
-            include_paths=target_paths,
-        )
+    restic_manager = _get_restic_manager()
+    actions = await restic_manager.restore_preview(
+        snapshot_id=request.snapshot_id,
+        target_path=Path("/"),
+        include_paths=target_paths,
+    )
 
-        # Create summary
-        updated_count = sum(1 for a in actions if a.action == "updated")
-        deleted_count = sum(1 for a in actions if a.action == "deleted")
-        restored_count = sum(1 for a in actions if a.action == "restored")
+    updated_count = sum(1 for a in actions if a.action == "updated")
+    deleted_count = sum(1 for a in actions if a.action == "deleted")
+    restored_count = sum(1 for a in actions if a.action == "restored")
 
-        summary = f"预览结果：{updated_count} 个文件更新，{deleted_count} 个文件删除，{restored_count} 个文件恢复"
-
-        logger.info(
-            f"Restore preview completed for snapshot {request.snapshot_id}: {summary} (server_id={request.server_id}, paths={request.paths})"
-        )
-        return RestorePreviewResponse(actions=actions, preview_summary=summary)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to preview restore: {str(e)}"
-        logger.error(
-            f"Restore preview error: {error_msg} (snapshot_id={request.snapshot_id}, server_id={request.server_id}, paths={request.paths})",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=error_msg)
+    summary = f"预览结果：{updated_count} 个文件更新，{deleted_count} 个文件删除，{restored_count} 个文件恢复"
+    return RestorePreviewResponse(actions=actions, preview_summary=summary)
 
 
 def _sse(payload: dict) -> bytes:
@@ -470,25 +393,10 @@ async def restore_global_snapshot(
 @router.delete("/{snapshot_id}")
 async def delete_snapshot(snapshot_id: str, _: UserPublic = Depends(get_current_user)):
     """Delete a specific snapshot by ID"""
-    try:
-        restic_manager = _get_restic_manager()
-
-        # Delete the snapshot
-        await restic_manager.forget_id(snapshot_id=snapshot_id, prune=True)
-
-        success_msg = f"Snapshot {snapshot_id} deleted successfully"
-        logger.info(f"Snapshot deleted: {snapshot_id}")
-        return {"message": success_msg}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to delete snapshot: {str(e)}"
-        logger.error(
-            f"Snapshot deletion error: {error_msg} (snapshot_id={snapshot_id})",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=error_msg)
+    restic_manager = _get_restic_manager()
+    await restic_manager.forget_id(snapshot_id=snapshot_id, prune=True)
+    logger.info("Snapshot deleted: %s", snapshot_id)
+    return {"message": f"Snapshot {snapshot_id} deleted successfully"}
 
 
 # Backup repository disk usage models
@@ -502,13 +410,9 @@ class BackupRepositoryUsage(BaseModel):
 async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user)):
     """Get backup repository disk usage information"""
     if not settings.restic or not settings.restic.repository_path:
-        error_msg = (
-            "Restic is not configured. Please add restic settings to config.toml"
-        )
-        logger.error(f"Repository usage query failed: {error_msg}")
         raise HTTPException(
             status_code=500,
-            detail=error_msg,
+            detail="Restic is not configured. Please add restic settings to config.toml",
         )
 
     repository_path = Path(settings.restic.repository_path)
@@ -534,35 +438,15 @@ class UnlockResponse(BaseModel):
 @router.get("/locks", response_model=ListLocksResponse)
 async def list_locks(_: UserPublic = Depends(get_current_user)):
     """List all locks in the repository"""
-    try:
-        restic_manager = _get_restic_manager()
-        locks_output = await restic_manager.list_locks()
-
-        logger.info("Listed locks in repository")
-        return ListLocksResponse(locks=locks_output)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to list locks: {str(e)}"
-        logger.error(f"Lock listing error: {error_msg}", exc_info=True)
-        raise HTTPException(status_code=500, detail=error_msg)
+    restic_manager = _get_restic_manager()
+    locks_output = await restic_manager.list_locks()
+    return ListLocksResponse(locks=locks_output)
 
 
 @router.post("/unlock", response_model=UnlockResponse)
 async def unlock_repository(_: UserPublic = Depends(get_current_user)):
     """Remove stale locks from the repository"""
-    try:
-        restic_manager = _get_restic_manager()
-        unlock_output = await restic_manager.unlock()
-
-        success_msg = "Repository unlocked successfully"
-        logger.info("Repository unlocked")
-        return UnlockResponse(message=success_msg, output=unlock_output)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Failed to unlock repository: {str(e)}"
-        logger.error(f"Unlock error: {error_msg}", exc_info=True)
-        raise HTTPException(status_code=500, detail=error_msg)
+    restic_manager = _get_restic_manager()
+    unlock_output = await restic_manager.unlock()
+    logger.info("Repository unlocked")
+    return UnlockResponse(message="Repository unlocked successfully", output=unlock_output)

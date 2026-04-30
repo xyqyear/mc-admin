@@ -1,8 +1,8 @@
 import type { ChunkKey } from '@/types/MapTypes'
 import {
   chunkKeyToCoord,
-  chunksToCoveredRegions,
   chunksToFullyCoveredRegions,
+  computeRegionCoverage,
 } from '@/components/map/coords'
 import type { RestorationSelection } from '@/types/WorldRestore'
 
@@ -58,9 +58,10 @@ export interface SelectionStats {
 export function computeSelectionStats(
   selection: Set<ChunkKey>,
 ): SelectionStats {
+  const { covered, fullyCovered } = computeRegionCoverage(selection)
   return {
     chunkCount: selection.size,
-    regionCount: chunksToCoveredRegions(selection).length,
-    fullRegionCount: chunksToFullyCoveredRegions(selection).length,
+    regionCount: covered,
+    fullRegionCount: fullyCovered,
   }
 }

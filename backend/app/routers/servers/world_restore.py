@@ -13,14 +13,14 @@ via a manual fetch + ``\\n\\n`` parser.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 
 from ... import world as world_subsystem
 from ...db.database import get_async_session
@@ -518,16 +518,12 @@ async def begin_restore(
 )
 async def list_restorations(
     server_id: str,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     _: UserPublic = Depends(get_current_user),
 ) -> ListRestorationsResponse:
     """Paginated history for this server, newest-first."""
     await _ensure_server_exists(server_id)
-    if limit < 1 or limit > 200:
-        raise HTTPException(status_code=400, detail="limit must be in [1, 200]")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be >= 0")
 
     async with get_async_session() as session:
         total = (
@@ -657,10 +653,6 @@ async def mark_running_restorations_interrupted() -> int:
 
     Returns the number of rows updated. Factored out for testability.
     """
-    from datetime import timezone as _tz
-
-    from sqlalchemy import update
-
     async with get_async_session() as session:
         result = await session.execute(
             update(Restoration)
@@ -668,7 +660,7 @@ async def mark_running_restorations_interrupted() -> int:
             .values(
                 status=RestorationStatus.INTERRUPTED,
                 error_message="server restarted before completion",
-                finished_at=datetime.now(_tz.utc),
+                finished_at=datetime.now(timezone.utc),
             )
         )
         await session.commit()

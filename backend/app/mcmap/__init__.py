@@ -13,7 +13,6 @@ from .types import (
     InitEvent,
     MapStatus,
     MCMapError,
-    RenderError,
 )
 
 __all__ = [
@@ -27,5 +26,4 @@ __all__ = [
     "MapStatus",
     "InitEvent",
     "MCMapError",
-    "RenderError",
 ]

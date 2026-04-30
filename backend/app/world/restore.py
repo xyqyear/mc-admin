@@ -21,6 +21,7 @@ from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import (
+    Any,
     AsyncContextManager,
     AsyncGenerator,
     Callable,
@@ -484,6 +485,7 @@ class WorldRestoreOrchestrator:
                 message="preview ready",
             )
         except Exception as exc:
+            logger.exception("preview failed for server=%s", server_id)
             await self._preview_manager.end(session_id)
             yield PreviewEvent(
                 event_type="error",
@@ -828,6 +830,29 @@ class WorldRestoreOrchestrator:
                         percent=(done / total_jobs) * 100.0 if total_jobs else 100.0,
                     )
 
+    async def _run_chunk_op(
+        self,
+        *,
+        op_name: str,
+        ctx_manager: Any,
+        count_key: str,
+        expected_count: int,
+    ) -> None:
+        async with ctx_manager as proc:
+            terminal: Optional[dict] = None
+            async for event in proc:
+                etype = event.get("type")
+                if etype == "result":
+                    terminal = event
+                elif etype == "error":
+                    raise MCMapError(event.get("message", f"{op_name} failed"))
+        if proc.returncode != 0:
+            raise MCMapError(f"mcmap {op_name} exited with {proc.returncode}")
+        if terminal is None or terminal.get(count_key) != expected_count:
+            raise MCMapError(
+                f"mcmap {op_name} reported {terminal} for {expected_count} requested chunks"
+            )
+
     async def _merge_replace(
         self,
         *,
@@ -836,27 +861,17 @@ class WorldRestoreOrchestrator:
         chunks: list[tuple[int, int]],
         owned_by: Path,
     ) -> None:
-        async with mcmap_runner.replace_chunks(
-            source_mca=source_mca,
-            target_mca=target_mca,
-            chunks=chunks,
-            owned_by=owned_by,
-        ) as proc:
-            terminal: Optional[dict] = None
-            async for event in proc:
-                etype = event.get("type")
-                if etype == "result":
-                    terminal = event
-                elif etype == "error":
-                    raise MCMapError(event.get("message", "replace_chunks failed"))
-        if proc.returncode != 0:
-            raise MCMapError(
-                f"mcmap replace-chunks exited with {proc.returncode} (target={target_mca})"
-            )
-        if terminal is None or terminal.get("replaced") != len(chunks):
-            raise MCMapError(
-                f"mcmap replace-chunks reported {terminal} for {len(chunks)} requested chunks"
-            )
+        await self._run_chunk_op(
+            op_name="replace-chunks",
+            ctx_manager=mcmap_runner.replace_chunks(
+                source_mca=source_mca,
+                target_mca=target_mca,
+                chunks=chunks,
+                owned_by=owned_by,
+            ),
+            count_key="replaced",
+            expected_count=len(chunks),
+        )
 
     async def _merge_remove(
         self,
@@ -865,26 +880,16 @@ class WorldRestoreOrchestrator:
         chunks: list[tuple[int, int]],
         owned_by: Path,
     ) -> None:
-        async with mcmap_runner.remove_chunks(
-            target_mca=target_mca,
-            chunks=chunks,
-            owned_by=owned_by,
-        ) as proc:
-            terminal: Optional[dict] = None
-            async for event in proc:
-                etype = event.get("type")
-                if etype == "result":
-                    terminal = event
-                elif etype == "error":
-                    raise MCMapError(event.get("message", "remove_chunks failed"))
-        if proc.returncode != 0:
-            raise MCMapError(
-                f"mcmap remove-chunks exited with {proc.returncode} (target={target_mca})"
-            )
-        if terminal is None or terminal.get("removed") != len(chunks):
-            raise MCMapError(
-                f"mcmap remove-chunks reported {terminal} for {len(chunks)} requested chunks"
-            )
+        await self._run_chunk_op(
+            op_name="remove-chunks",
+            ctx_manager=mcmap_runner.remove_chunks(
+                target_mca=target_mca,
+                chunks=chunks,
+                owned_by=owned_by,
+            ),
+            count_key="removed",
+            expected_count=len(chunks),
+        )
 
     # --- Cache invalidation ---------------------------------------------
 
@@ -934,8 +939,12 @@ class WorldRestoreOrchestrator:
 
     # --- Path resolution -------------------------------------------------
 
-    async def _resolve_paths_for_selection(
-        self, server_id: str, selection: RestorationSelection
+    async def _resolve_paths_core(
+        self,
+        server_id: str,
+        selection: RestorationSelection,
+        *,
+        include_mcc: bool,
     ) -> list[Path]:
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
@@ -960,54 +969,29 @@ class WorldRestoreOrchestrator:
                 paths.append(dim.poi_dir)
             return paths
 
+        expand = _expand_region_paths if include_mcc else _expand_region_mca_paths
+
         if selection.type is RestorationType.REGIONS:
-            return _expand_region_paths(dim, selection.regions)
+            return expand(dim, selection.regions)
 
         if selection.type is RestorationType.CHUNKS:
             grouped = _group_chunks_by_region(selection.chunks)
-            return _expand_region_paths(dim, list(grouped.keys()))
+            return expand(dim, list(grouped.keys()))
 
         raise SelectionResolutionError(f"unsupported selection type: {selection.type}")
+
+    async def _resolve_paths_for_selection(
+        self, server_id: str, selection: RestorationSelection
+    ) -> list[Path]:
+        return await self._resolve_paths_core(server_id, selection, include_mcc=True)
 
     async def _resolve_eligibility_paths(
         self, server_id: str, selection: RestorationSelection
     ) -> list[Path]:
-        """Like ``_resolve_paths_for_selection`` but emits only the paths a
-        snapshot must cover to qualify — i.e. the MCA files for region/chunk
-        scopes, with no speculative MCC sidecars. See ``list_eligible_snapshots``
-        for the rationale.
+        """Like ``_resolve_paths_for_selection`` but without speculative MCC
+        sidecars — only the MCA files a snapshot must cover to qualify.
         """
-        instance = self._docker.get_instance(server_id)
-        data_path = instance.get_data_path()
-        roots = await discover_world_roots(data_path)
-        if not roots:
-            return []
-
-        if selection.type is RestorationType.WORLD:
-            return [root.path for root in roots]
-
-        if selection.region_dir_relpath is None:
-            raise SelectionResolutionError(
-                f"selection type '{selection.type.value}' requires region_dir_relpath"
-            )
-        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
-
-        if selection.type is RestorationType.DIMENSION:
-            paths = [dim.region_dir]
-            if dim.entities_dir is not None:
-                paths.append(dim.entities_dir)
-            if dim.poi_dir is not None:
-                paths.append(dim.poi_dir)
-            return paths
-
-        if selection.type is RestorationType.REGIONS:
-            return _expand_region_mca_paths(dim, selection.regions)
-
-        if selection.type is RestorationType.CHUNKS:
-            grouped = _group_chunks_by_region(selection.chunks)
-            return _expand_region_mca_paths(dim, list(grouped.keys()))
-
-        raise SelectionResolutionError(f"unsupported selection type: {selection.type}")
+        return await self._resolve_paths_core(server_id, selection, include_mcc=False)
 
     # --- Server-state guard ---------------------------------------------
 
@@ -1129,7 +1113,7 @@ def _count_affected_regions(selection: RestorationSelection) -> int:
     if selection.type is RestorationType.REGIONS:
         return len(selection.regions)
     if selection.type is RestorationType.CHUNKS:
-        return len({(c[0] // 32, c[1] // 32) for c in selection.chunks})
+        return len({(c[0] // CHUNKS_PER_REGION_AXIS, c[1] // CHUNKS_PER_REGION_AXIS) for c in selection.chunks})
     # WORLD/DIMENSION are ambiguous — caller has to scan disk for an exact count.
     # Use a conservative default so the disk guard doesn't trip on typical setups.
     return 16

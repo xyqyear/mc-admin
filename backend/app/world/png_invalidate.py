@@ -31,6 +31,7 @@ from typing import Iterable
 
 import aiofiles.os as aioos
 
+from ..logger import logger
 from ..mcmap.cache import ServerMapCache
 
 _MCA_RE = re.compile(r"^r\.(-?\d+)\.(-?\d+)\.mca$")
@@ -99,5 +100,6 @@ async def delete_pngs(pngs: Iterable[Path]) -> int:
         except FileNotFoundError:
             continue
         except OSError:
+            logger.warning("failed to delete tile %s", png, exc_info=True)
             continue
     return removed

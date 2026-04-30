@@ -159,7 +159,7 @@ class ResticManager:
 
         # Set up environment variables
         self.env = {"RESTIC_REPOSITORY": repository_path}
-        if password is not None and self.use_password:
+        if self.use_password:
             self.env["RESTIC_PASSWORD"] = password
 
     def _add_password_args(self, args: list[str]) -> list[str]:

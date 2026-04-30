@@ -133,3 +133,25 @@ export function chunksToCoveredRegions(
   }
   return [...seen.values()]
 }
+
+// Single-pass region coverage: returns both covered and fully-covered counts.
+export function computeRegionCoverage(
+  chunks: Set<`${number},${number}`>
+): { covered: number; fullyCovered: number } {
+  const full = CHUNKS_PER_REGION * CHUNKS_PER_REGION
+  const counts = new Map<string, number>()
+  for (const k of chunks) {
+    const c = chunkKeyToCoord(k)
+    const rx = Math.floor(c.cx / CHUNKS_PER_REGION)
+    const rz = Math.floor(c.cz / CHUNKS_PER_REGION)
+    const rk = `${rx},${rz}`
+    counts.set(rk, (counts.get(rk) ?? 0) + 1)
+  }
+  let covered = 0
+  let fullyCovered = 0
+  for (const count of counts.values()) {
+    covered++
+    if (count === full) fullyCovered++
+  }
+  return { covered, fullyCovered }
+}

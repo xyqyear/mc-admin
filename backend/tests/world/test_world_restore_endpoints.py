@@ -577,4 +577,4 @@ async def test_list_restorations_validates_pagination(http: AsyncClient):
         headers=_auth(),
         params={"limit": 0},
     )
-    assert r.status_code == 400
+    assert r.status_code == 422

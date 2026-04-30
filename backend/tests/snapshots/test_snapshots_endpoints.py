@@ -685,16 +685,14 @@ class TestSnapshotEndpoints:
             assert events[-1].get("event_type") == "error"
             assert "invalid" in events[-1].get("message", "").lower()
 
-            # Test preview with invalid snapshot ID
-            invalid_preview_response = client.post(
-                "/snapshots/restore/preview",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
-            )
-            assert invalid_preview_response.status_code == 500
-            assert (
-                "Failed to preview restore" in invalid_preview_response.json()["detail"]
-            )
+            # Test preview with invalid snapshot ID — restic raises RuntimeError
+            # which the global handler converts to 500.
+            with pytest.raises(RuntimeError):
+                client.post(
+                    "/snapshots/restore/preview",
+                    headers={"Authorization": "Bearer test_master_token"},
+                    json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
+                )
 
     @pytest.mark.asyncio
     async def test_unauthorized_access(
