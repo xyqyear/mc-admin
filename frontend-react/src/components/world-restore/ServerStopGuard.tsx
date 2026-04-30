@@ -1,16 +1,9 @@
 import React from 'react'
-import { Play, Square } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
-import { useServerMutations } from '@/hooks/mutations/useServerMutations'
-import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog'
 import type { ServerStatus } from '@/types/ServerInfo'
-import { serverStatusUtils } from '@/utils/serverUtils'
 
 interface ServerStopGuardProps {
-  serverId: string
   status: ServerStatus | undefined
 }
 
@@ -30,85 +23,16 @@ const isStopped = (status: ServerStatus | undefined): boolean =>
   status === 'EXISTS' || status === 'CREATED' || status === 'REMOVED'
 
 export const ServerStopGuard: React.FC<ServerStopGuardProps> = ({
-  serverId,
   status,
 }) => {
-  const { useServerOperation } = useServerMutations()
-  const op = useServerOperation()
-  const { showConfirm, confirmDialog } = useServerOperationConfirm()
-
   if (!status) return null
   if (isStopped(status)) return null
 
-  const canStop = serverStatusUtils.isOperationAvailable('stop', status)
-
   return (
-    <>
-      <Alert variant="destructive">
-        <AlertTitle>服务器运行中，无法恢复</AlertTitle>
-        <AlertDescription className="flex items-center justify-between gap-3">
-          <span>
-            状态：{STATUS_LABEL[status]}。世界恢复需要先停止服务器，避免在恢复过程中产生写入冲突。
-          </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={op.isPending || !canStop}
-            onClick={() =>
-              showConfirm({
-                operation: 'stop',
-                serverName: serverId,
-                serverId,
-                onConfirm: (action, sid) => op.mutate({ action, serverId: sid }),
-              })
-            }
-          >
-            {op.isPending ? (
-              <Spinner className="mr-2 size-4" />
-            ) : (
-              <Square className="mr-2 h-4 w-4" />
-            )}
-            停止服务器
-          </Button>
-        </AlertDescription>
-      </Alert>
-      {confirmDialog}
-    </>
-  )
-}
-
-interface ServerStartHintProps {
-  serverId: string
-  status: ServerStatus | undefined
-}
-
-export const ServerStartHint: React.FC<ServerStartHintProps> = ({
-  serverId,
-  status,
-}) => {
-  const { useServerOperation } = useServerMutations()
-  const op = useServerOperation()
-
-  if (status !== 'CREATED' && status !== 'EXISTS') return null
-
-  const action = status === 'CREATED' ? 'start' : 'up'
-
-  return (
-    <Alert>
-      <AlertDescription className="flex items-center justify-between gap-3">
-        <span>服务器已停止，可在此处启动。</span>
-        <Button
-          size="sm"
-          disabled={op.isPending}
-          onClick={() => op.mutate({ action, serverId })}
-        >
-          {op.isPending ? (
-            <Spinner className="mr-2 size-4" />
-          ) : (
-            <Play className="mr-2 h-4 w-4" />
-          )}
-          启动服务器
-        </Button>
+    <Alert variant="destructive">
+      <AlertTitle>服务器运行中，无法恢复</AlertTitle>
+      <AlertDescription>
+        状态：{STATUS_LABEL[status]}。世界恢复需要先停止服务器，避免在恢复过程中产生写入冲突。
       </AlertDescription>
     </Alert>
   )

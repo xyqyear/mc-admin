@@ -10,6 +10,7 @@ import { Tabs as TabsPrimitive } from '@base-ui/react/tabs'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import {
   Tabs,
   TabsContent,
@@ -241,6 +242,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             <HistoryIcon className="mr-2 h-4 w-4" />
             查看恢复历史
           </Button>
+          <Separator />
           <div className="flex items-start gap-2 text-xs text-muted-foreground">
             <ClipboardList className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>

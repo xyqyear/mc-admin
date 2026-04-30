@@ -19,12 +19,10 @@ import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
 import MapHelpButton from '@/components/map/MapHelpButton'
 import MapInitDialog from '@/components/dialogs/MapInitDialog'
 import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
-import {
-  ServerStopGuard,
-  ServerStartHint,
-} from '@/components/world-restore/ServerStopGuard'
+import { ServerStopGuard } from '@/components/world-restore/ServerStopGuard'
 import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
 import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
+import ServerOperationButtons from '@/components/server/ServerOperationButtons'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import {
   useWorldRestoreSelectionStore,
@@ -58,8 +56,9 @@ const ServerWorldRestore: React.FC = () => {
   const [initialView] = useState(() => parseInitialView(searchParams))
 
   const layoutQ = useWorldLayout(serverId)
-  const { useServerStatus } = useServerQueries()
+  const { useServerStatus, useServerInfo } = useServerQueries()
   const statusQ = useServerStatus(serverId)
+  const serverInfoQ = useServerInfo(serverId)
   const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false
 
   const queryClient = useQueryClient()
@@ -258,46 +257,54 @@ const ServerWorldRestore: React.FC = () => {
         icon={<MapIcon className="w-5 h-5" />}
         serverTag={serverId}
         actions={
-          dimensionOptions.length > 0 ? (
-            <div className="flex items-center gap-2">
-              {mapInitialized && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleRefreshMap}
-                    title="重新读取世界元数据并刷新瓦片"
-                  >
-                    <RefreshCw className="mr-1 h-4 w-4" />
-                    刷新地图
-                  </Button>
-                  <Button variant="outline" onClick={() => setInitOpen(true)}>
-                    重载渲染前置
-                  </Button>
-                </>
-              )}
-              <Select
-                value={dimensionRelpath ?? undefined}
-                onValueChange={(v) => {
-                  if (typeof v === 'string') handleDimensionChange(v)
-                }}
-                itemToStringLabel={(v) =>
-                  dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
-                }
-              >
-                <SelectTrigger className="w-[260px]">
-                  <SelectValue placeholder="选择维度" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dimensionOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <MapHelpButton />
-            </div>
-          ) : null
+          <div className="flex items-center gap-2">
+            {dimensionOptions.length > 0 && (
+              <>
+                {mapInitialized && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleRefreshMap}
+                      title="重新读取世界元数据并刷新瓦片"
+                    >
+                      <RefreshCw className="mr-1 h-4 w-4" />
+                      刷新地图
+                    </Button>
+                    <Button variant="outline" onClick={() => setInitOpen(true)}>
+                      重载渲染前置
+                    </Button>
+                  </>
+                )}
+                <Select
+                  value={dimensionRelpath ?? undefined}
+                  onValueChange={(v) => {
+                    if (typeof v === 'string') handleDimensionChange(v)
+                  }}
+                  itemToStringLabel={(v) =>
+                    dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
+                  }
+                >
+                  <SelectTrigger className="w-[260px]">
+                    <SelectValue placeholder="选择维度" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dimensionOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <MapHelpButton />
+              </>
+            )}
+            <ServerOperationButtons
+              serverId={serverId}
+              serverName={serverInfoQ.data?.name ?? serverId}
+              status={statusQ.data}
+              showReturnButton={false}
+            />
+          </div>
         }
       />
 
@@ -354,10 +361,10 @@ const ServerWorldRestore: React.FC = () => {
         </Card>
       )}
 
-      <ServerStopGuard serverId={serverId} status={statusQ.data} />
+      <ServerStopGuard status={statusQ.data} />
 
       {mapInitialized && (
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_360px] gap-4">
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4">
           <Card className="overflow-hidden">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
@@ -388,7 +395,6 @@ const ServerWorldRestore: React.FC = () => {
               onModeChange={handleModeChange}
               serverStopped={serverStopped}
             />
-            <ServerStartHint serverId={serverId} status={statusQ.data} />
           </div>
         </div>
       )}
