@@ -18,6 +18,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
 import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
 import ServerStateTag from '@/components/overview/ServerStateTag';
+import { serverStatusUtils } from '@/utils/serverUtils';
 
 type ConsoleStatus =
   | { type: 'loading' }
@@ -41,7 +42,7 @@ const ServerConsole: React.FC = () => {
 
   const canConnectWebSocket = useMemo(() => {
     if (!serverStatus || !id || serverInfoLoading || serverInfoError) return false;
-    return serverStatus !== 'REMOVED' && serverStatus !== 'EXISTS';
+    return serverStatusUtils.isRunning(serverStatus);
   }, [serverStatus, id, serverInfoLoading, serverInfoError]);
 
   const {
