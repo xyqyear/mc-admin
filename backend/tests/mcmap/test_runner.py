@@ -140,5 +140,53 @@ async def test_download_client_args_passed_through(fake_owned_dir):
     assert events[-1]["type"] == "result"
 
 
+async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
+    fake = _write_fake_mcmap(
+        "#!/bin/sh\n"
+        'echo "$@" > "$0.args"\n'
+        'echo \'{"type":"result"}\'\n'
+    )
+    out = fake_owned_dir / "palette.json"
+    level_dat = fake_owned_dir / "world" / "level.dat"
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        async with runner.gen_palette(
+            packs=[fake_owned_dir / "client.jar"],
+            output=out,
+            level_dat=level_dat,
+            owned_by=fake_owned_dir,
+        ) as proc:
+            _ = [e async for e in proc]
+        assert proc.returncode == 0
+    args_text = Path(str(fake) + ".args").read_text()
+    fake.unlink()
+    Path(str(fake) + ".args").unlink()
+    assert "gen-palette" in args_text
+    assert "modern" not in args_text.split()
+    assert "--level-dat" in args_text
+    assert str(level_dat) in args_text
+
+
+async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
+    fake = _write_fake_mcmap(
+        "#!/bin/sh\n"
+        'echo "$@" > "$0.args"\n'
+        'echo \'{"type":"result"}\'\n'
+    )
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        async with runner.gen_palette(
+            packs=[fake_owned_dir / "client.jar"],
+            output=fake_owned_dir / "palette.json",
+            level_dat=None,
+            owned_by=fake_owned_dir,
+        ) as proc:
+            _ = [e async for e in proc]
+        assert proc.returncode == 0
+    args_text = Path(str(fake) + ".args").read_text()
+    fake.unlink()
+    Path(str(fake) + ".args").unlink()
+    assert "gen-palette" in args_text
+    assert "--level-dat" not in args_text
+
+
 # Silence "unused import" for sys; keep available for diagnosing test failures
 _ = sys

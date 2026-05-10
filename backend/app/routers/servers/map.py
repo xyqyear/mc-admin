@@ -18,6 +18,7 @@ from ...mcmap import (
     DimensionInfo,
     MapStatus,
     ServerMapCache,
+    discover_level_dat,
     discover_mods_dir,
     mcmap_manager,
     palette_is_current,
@@ -303,10 +304,14 @@ async def _initialize_stream(
     if mods_dir is not None:
         packs.append(mods_dir)
     packs.append(cache.client_jar)
+    level_dat = await discover_level_dat(data_path)
 
     try:
-        async with mcmap_runner.gen_palette_modern(
-            packs, cache.palette_json, owned_by=data_path
+        async with mcmap_runner.gen_palette(
+            packs,
+            cache.palette_json,
+            level_dat=level_dat,
+            owned_by=data_path,
         ) as proc:
             async for event in proc:
                 if event.get("type") == "progress":

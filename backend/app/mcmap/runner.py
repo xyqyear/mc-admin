@@ -113,10 +113,16 @@ async def download_client(
 
 
 @asynccontextmanager
-async def gen_palette_modern(
-    packs: List[Path], output: Path, *, owned_by: Path
+async def gen_palette(
+    packs: List[Path],
+    output: Path,
+    *,
+    level_dat: Optional[Path],
+    owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    args: List[str] = ["gen-palette", "modern", "-o", str(output)]
+    args: List[str] = ["gen-palette", "-o", str(output)]
+    if level_dat is not None:
+        args.extend(["--level-dat", str(level_dat)])
     for pack in packs:
         args.extend(["-p", str(pack)])
     async with _run(args, owned_by) as p:

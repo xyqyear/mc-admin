@@ -8,6 +8,7 @@ import pytest
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.palette import (
     compute_palette_hash,
+    discover_level_dat,
     discover_mods_dir,
     palette_is_current,
     write_palette_hash,
@@ -118,3 +119,39 @@ async def test_discover_mods_dir():
         # With at least one jar
         (data / "mods" / "x.jar").write_bytes(b"")
         assert await discover_mods_dir(data) == data / "mods"
+
+
+@pytest.mark.asyncio
+async def test_discover_level_dat_default_world():
+    with tempfile.TemporaryDirectory() as d:
+        data = Path(d)
+        # No world dir at all
+        assert await discover_level_dat(data) is None
+        # world/ exists but no level.dat
+        (data / "world").mkdir()
+        assert await discover_level_dat(data) is None
+        # default location populated
+        (data / "world" / "level.dat").write_bytes(b"stub")
+        assert await discover_level_dat(data) == data / "world" / "level.dat"
+
+
+@pytest.mark.asyncio
+async def test_discover_level_dat_honors_level_name():
+    with tempfile.TemporaryDirectory() as d:
+        data = Path(d)
+        (data / "server.properties").write_text("level-name=custom_world\n")
+        (data / "custom_world").mkdir()
+        (data / "custom_world" / "level.dat").write_bytes(b"stub")
+        assert (
+            await discover_level_dat(data)
+            == data / "custom_world" / "level.dat"
+        )
+
+
+@pytest.mark.asyncio
+async def test_discover_level_dat_missing_level_name_falls_back():
+    with tempfile.TemporaryDirectory() as d:
+        data = Path(d)
+        # level-name points at a dir that doesn't exist
+        (data / "server.properties").write_text("level-name=missing\n")
+        assert await discover_level_dat(data) is None
