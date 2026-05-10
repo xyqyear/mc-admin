@@ -1,13 +1,3 @@
-"""Server lifecycle module: bundled create/remove orchestrators + sync primitives.
-
-Public API:
-- create_server_full, remove_server_full: bundled create/remove operations
-- adopt_server_partial, deactivate_server_partial: sync-driven partial operations
-- validate_adoption, preview_deactivation: side-effect-free helpers for sync
-- Pydantic specs/results: CreateServerSpec, CreateServerResult, RemoveServerResult,
-  SyncResult, SyncDryRunEntry, SyncEntryError
-"""
-
 from .orchestrators import (
     adopt_server_partial,
     create_server_full,

@@ -1,14 +1,8 @@
 """Server lifecycle orchestrators.
 
-Each orchestrator chains the primitives needed for a high-level operation
-(create, remove, sync-driven adopt/deactivate). Rollback uses compensation,
-not SQL transactions — see types.py and the comment at create_server_full
-for the model.
-
-Implicit contract: between the filesystem write in create_server_full and
-the trigger of rollback, no phase brings containers up. If a future change
-adds a "create + start" combined flow, the rollback must be revised because
-instance.remove() raises when instance.created() is true.
+Rollback uses compensation, not SQL transactions. Implicit contract: between the
+filesystem write in create_server_full and the trigger of rollback, no phase
+brings containers up — instance.remove() raises when instance.created() is true.
 """
 
 import json
@@ -43,11 +37,7 @@ from .types import CreateServerResult, CreateServerSpec, RemoveServerResult
 async def _resolve_yaml_and_metadata(
     db: AsyncSession, spec: CreateServerSpec
 ) -> tuple[str, Optional[TemplateSnapshot], Optional[dict]]:
-    """Validate the spec and resolve YAML content + optional template metadata.
-
-    Pure: no filesystem or DB side effects. Raises HTTPException on
-    user-facing validation failure.
-    """
+    """Resolve YAML + optional template metadata from the spec. No side effects."""
     if spec.yaml_content and spec.template_id:
         raise HTTPException(
             status_code=400,
@@ -63,7 +53,6 @@ async def _resolve_yaml_and_metadata(
     if spec.yaml_content is not None:
         return spec.yaml_content, None, None
 
-    # Template mode
     if spec.variable_values is None:
         raise HTTPException(
             status_code=400,
@@ -106,12 +95,7 @@ async def _resolve_yaml_and_metadata(
 async def create_server_full(
     db: AsyncSession, server_id: str, spec: CreateServerSpec
 ) -> CreateServerResult:
-    """Create a server in one bundled operation: filesystem + DB row + log
-    monitor + optional restart schedule + DNS update.
-
-    Any failure after the filesystem write triggers compensation in reverse
-    order. DNS failures are best-effort and do not roll back.
-    """
+    """Bundled create: filesystem + DB row + log monitor + optional restart schedule + DNS."""
     yaml_content, snapshot, vars_dict = await _resolve_yaml_and_metadata(db, spec)
 
     instance = docker_mc_manager.get_instance(server_id)
@@ -212,13 +196,7 @@ async def create_server_full(
 async def remove_server_full(
     db: AsyncSession, server_id: str
 ) -> RemoveServerResult:
-    """Remove a server in one bundled operation: refuse if containers up,
-    cancel-and-wait background tasks, cancel restart cronjobs, close
-    sessions, stop log monitor, mark row REMOVED, rmtree, update DNS.
-
-    Once past the containers-up gate, partial failures are not rolled back —
-    removal is destructive by design.
-    """
+    """Bundled remove. Once past the containers-up gate, partial failures don't roll back."""
     instance = docker_mc_manager.get_instance(server_id)
     if await instance.created():
         raise HTTPException(
@@ -257,17 +235,9 @@ async def remove_server_full(
 async def adopt_server_partial(
     db: AsyncSession, server_id: str, *, game_port: int, rcon_port: int
 ) -> CreateServerResult:
-    """For directories that exist on disk but have no ACTIVE Server row.
-
-    Validation is performed by the caller (sync endpoint) via
-    validate_adoption — this function trusts that the compose has already
-    been validated and the ports are not in conflict.
-
-    NOTE: adopted rows are direct-mode only. We cannot infer template_id or
-    template_snapshot from a compose file alone. The sync UI must surface
-    this so OWNER users are not surprised that their adopted server has no
-    template binding.
-    """
+    # Adopted rows are direct-mode only: template binding can't be inferred
+    # from a compose file. Caller (sync endpoint) is responsible for prior
+    # validation via validate_adoption.
     await create_server_record(db, server_id)
 
     try:
@@ -286,12 +256,8 @@ async def adopt_server_partial(
 async def deactivate_server_partial(
     db: AsyncSession, server_id: str
 ) -> RemoveServerResult:
-    """For ACTIVE rows whose directory no longer exists on disk.
-
-    Skips Phase 0 (no container to check) and the filesystem rmtree.
-    Still cancels + waits for background tasks because a task may have
-    been mid-write when the directory vanished.
-    """
+    # Still cancel+wait on background tasks: one may be mid-write against a
+    # directory that has since vanished.
     cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
 
     now = datetime.now(timezone.utc)

@@ -1,207 +1,35 @@
-# MC Admin - Minecraft Server Management Platform
+# MC Admin
 
-## Project Overview
+Web platform for managing Minecraft servers via Docker Compose. Two components:
 
-MC Admin is a comprehensive web-based platform for managing Minecraft servers using Docker containers. The system provides enterprise-grade server management with real-time monitoring, automated backups, player tracking, DNS management, and scheduled task automation.
+- `backend/` — FastAPI + SQLAlchemy 2.0 async (see `backend/CLAUDE.md`)
+- `frontend-react/` — React 19 + TanStack Query (see `frontend-react/CLAUDE.md`)
 
-**Architecture:**
+Everything ships as a single Docker image (`Dockerfile` at the repo root); the backend serves the built frontend as static files in production.
 
-- **Backend**: FastAPI + Python 3.13+ with SQLAlchemy 2.0 async, SQLite database, Alembic migrations
-- **Frontend**: React 19 + TypeScript + shadcn/ui (base-ui primitives) + Tailwind CSS v4 + TanStack Query v5
-- **Container Management**: Integrated Docker Compose management with lifecycle control
-- **Authentication**: Dual auth system (JWT + WebSocket login codes + Master token)
-- **Real-time**: WebSocket support for console streaming and live updates via docker-py attach
-- **Package Management**: uv (backend) + pnpm (frontend)
+## Prerequisites
 
-## Core Capabilities
+Beyond what `pyproject.toml` / `package.json` declare:
 
-**Server Management:**
+- Docker Engine + Docker Compose on the host (the backend manages user MC servers via docker-compose)
+- Restic — invoked as a subprocess for snapshots; the Docker image bundles it
+- `mcmap` binary — pinned by `MCMAP_VERSION` in `Dockerfile`. For local dev, download a release and set `mcmap_binary_path` in `backend/config.toml`.
 
-- Complete Minecraft server lifecycle (create, start, stop, monitor, delete)
-- Bundled create/remove orchestrators on the backend — frontend issues a
-  single round-trip per create or remove (compose + DB row + restart
-  schedule + DNS update), with compensation-based rollback on failure
-- Filesystem ↔ database reconciler (`POST /api/servers/sync`, OWNER-only)
-  for adopting orphaned directories and deactivating stale rows, with a
-  dry-run preview and an empty-filesystem safety guard
-- Background-task cancel-and-wait integrated into remove so rmtree cannot
-  race against an in-flight `ARCHIVE_EXTRACT`
-- Docker Compose configuration management with Monaco editor integration
-- Real-time console streaming with direct container attach via WebSocket
-- Resource monitoring (CPU, memory, disk, network) via cgroup v2
-- Template system for reusable server configurations with typed variables
-- Bidirectional conversion between template mode and direct editing mode
-- File management with Monaco editor, deep search, multi-file/folder drag-and-drop upload
-- SNBT file editing with syntax highlighting
-
-**Backup & Recovery:**
-
-- Enterprise-grade Restic-based snapshot system with global and server-specific backups
-- Snapshot deletion and repository unlock functionality
-- World restore page with chunk-, region-, dimension-, and world-scope selection driven by an interactive map; on-demand preview that lazily renders affected regions in a sandboxed working directory (per-session `ServerRenderQueue` mirrors the live-map pipeline — batching, coalescing, cancellation); one-click rollback from the per-restoration safety snapshot
-- mcmap v0.3.0 powers both rendering and partial chunk replace/remove for region/chunk-level rollbacks
-- Per-server operation lock serializes backup vs restore operations and skips overlapping cron backups
-- Crash recovery flips interrupted restorations to a recoverable state on startup so the user can roll back from the safety snapshot
-- Archive management with compression/decompression (ZIP, TAR, TAR.GZ, 7z)
-- SHA256 verification for archive integrity
-- Server population from archives
-- Automated backup scheduling with retention policies
-- Time-based snapshot restrictions to prevent conflicts
-
-**Player Management:**
-
-- Real-time player tracking with direct function call architecture
-- Session records and online status monitoring via Query protocol or RCON as fallback
-- Chat message tracking and achievement records
-- Player skin management with automatic updates via Mojang API
-- Crash recovery and data synchronization
-- Player detail viewer with statistics and history
-- Integration with server overview for online player display
-
-**DNS & Network:**
-
-- Integrated DNS management with DNSPod and Huawei Cloud support
-- Automatic DNS record updates during server operations
-- Router configuration management for MC routing
-- Server address mapping and domain management
-- DNS status monitoring and change detection
-
-**Automation & Scheduling:**
-
-- APScheduler-based cron job system with visual expression builder
-- Automated backup jobs with Uptime Kuma notifications
-- Server restart scheduling with conflict detection
-- Job execution history and status monitoring
-- Database persistence with automatic recovery on startup
-
-**Monitoring & Logging:**
-
-- Real-time log monitoring and parsing with watchfiles
-- Operation audit system with structured JSON logging and rotation
-- Server tracker for lifecycle event monitoring
-- Heartbeat system for crash detection and recovery
-- Dynamic log parser configuration
-
-**Configuration & Tools:**
-
-- Dynamic configuration system with schema migration and web-based management
-- Download manager with progress tracking and cancellation support
-- Version update notifications with configurable reminders
-- Development debug tools (dev-only)
-- JSON schema-driven forms for configuration
-
-## Development Environment
-
-**Prerequisites:**
-
-- Python 3.13+ with uv
-- Node.js 18+ with pnpm
-- Docker Engine + Docker Compose
-- Restic (automatically managed)
-- mcmap binary (installed in the Docker image; for local dev, point `mcmap_binary_path` at a downloaded release)
-
-**Quick Start:**
-
-Backend:
+## Quick start
 
 ```bash
-cd backend
-uv sync         # Install dependencies
-# Configure config.toml (see backend/CLAUDE.md)
-uv run alembic upgrade head  # Apply database migrations
+# backend
+cd backend && uv sync && uv run alembic upgrade head
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+
+# frontend
+cd frontend-react && pnpm install && pnpm dev   # port 3000
 ```
 
-Frontend:
+Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.ts`).
 
-```bash
-cd frontend-react
-pnpm install
-pnpm dev  # Runs on port 3000
-```
+## Cross-component conventions
 
-## Tech Stack Summary
-
-**Backend:**
-
-- FastAPI + Uvicorn, SQLAlchemy 2.0 async + SQLite + aiosqlite
-- Alembic for database migrations (autogenerate support)
-- JWT (joserfc) + OAuth2 authentication
-- Pydantic v2 for validation and settings (TOML + env support)
-- psutil for system monitoring, cgroup v2 for container metrics
-- APScheduler for task scheduling with async support
-- Watchdog for file monitoring
-- httpx for async HTTP requests
-- pwdlib for password hashing
-- aiofiles for async file operations
-- docker-py for container management and console streaming
-
-**Frontend:**
-
-- React 19 + TypeScript 5 + Vite 5
-- shadcn/ui (built on `@base-ui/react` primitives) + Lucide icons + @rjsf/shadcn
-- Tailwind CSS v4 with CSS-only config, OKLCH color space, `tw-animate-css`
-- sonner for toast notifications
-- TanStack React Query v5 (three-layer architecture) + TanStack Table v8
-- Zustand v4 for state management with persistence
-- Monaco Editor v0.52 with YAML schema validation
-- React Router v6 with lazy loading
-- Axios with interceptors and auto-retry
-- react-error-boundary for error handling
-- xterm.js for terminal emulation
-- Leaflet 1.9 with `CRS.Simple` for the world-restore page (embedded selection map) and the world-restore preview modal (custom `GridLayer` for authed tile fetches)
-
-## External Documentation
-
-**Use Context7 MCP tool for library documentation:**
-
-Backend: `/tiangolo/fastapi`, `/websites/sqlalchemy-en-20`, `/pydantic/pydantic`, `/restic/restic`
-Frontend: `/facebook/react`, `/shadcn-ui/ui`, `/mui/base-ui`, `/tailwindlabs/tailwindcss`, `/tanstack/query`, `/microsoft/monaco-editor`
-
-Use `mcp__context7__resolve-library-id` first, then `mcp__context7__get-library-docs` with specific topics.
-
-## Maintenance Instructions
-
-**CRITICAL FOR FUTURE SESSIONS:**
-
-When making significant changes, update the appropriate CLAUDE.md files:
-
-1. **This file (mc-admin/CLAUDE.md)**: Update for project-wide architectural changes, new major features, or technology stack updates
-2. **backend/CLAUDE.md**: Update for backend-specific changes (API endpoints, database models, integrated modules, testing patterns)
-3. **frontend-react/CLAUDE.md**: Update for frontend-specific changes (components, hooks, state management, UI patterns)
-
-**Before updating any CLAUDE.md:**
-
-1. Check git history: `git log --oneline --follow -- CLAUDE.md | head -5`
-2. Compare changes since last update: `git diff <last_commit>..HEAD --name-status`
-3. Review all changes to ensure complete documentation coverage
-
-**When writing CLAUDE.md updates:**
-
-1. Write complete, self-contained documentation (not incremental patches)
-2. Avoid temporal language like "Recent changes" or "New additions"
-3. Integrate information naturally into existing structure
-4. Ensure consistency between all three CLAUDE.md files
-5. Reflect actual codebase state (what IS, not what WAS)
-
-**Examples of changes requiring updates:**
-
-- New major systems (player tracking, DNS management, file search, log monitoring, event system)
-- API endpoint additions or restructuring
-- Database schema changes and migrations
-- Authentication/authorization changes
-- New WebSocket features or real-time capabilities
-- Build process or deployment changes
-- Test structure reorganization
-- Frontend architecture changes (new hooks, state patterns)
-- UI/UX enhancements (new components, modals)
-- Version management and update notifications
-- External dependency updates or replacements
-- New integrated modules or subsystems
-
-These CLAUDE.md files are automatically loaded into Claude's context. Keep them accurate, concise, and focused on development-relevant information that reflects actual implementation.
-
-**Component-Specific Documentation:**
-
-- Detailed backend information: `backend/CLAUDE.md`
-- Detailed frontend information: `frontend-react/CLAUDE.md`
+- All three CLAUDE.md files describe **current** state; never write changelog-style notes ("recently added X", "previously did Y", "now uses Z").
+- Long-form design background — business logic, invariants, lifecycle ordering, component graphs — lives in `backend/docs/` and `frontend-react/docs/`. Each `docs/<topic>.md` is self-contained, current-state, no changelog. CLAUDE.md carries day-to-day rules and points at the doc.
+- `.claude/` holds historical artifacts (plans, migration notes, agent sessions). Don't extend these for new design work — write to `docs/` instead.

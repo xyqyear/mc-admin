@@ -82,12 +82,7 @@ async def get_cronjobs_by_status(
 async def get_active_restart_cronjobs_for_server(
     session: AsyncSession, server_id: str
 ) -> List[CronJob]:
-    """Return active restart_server cron jobs whose params_json.server_id matches.
-
-    Uses SQLite's json_extract to query into the opaque params_json column.
-    Only restart_server jobs are returned — backup jobs are admin state and
-    are never auto-cancelled by server lifecycle code.
-    """
+    # Restart jobs only — backup jobs are admin state and survive recreation.
     result = await session.execute(
         select(CronJob).where(
             CronJob.identifier == "restart_server",

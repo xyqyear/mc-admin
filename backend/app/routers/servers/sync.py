@@ -1,13 +1,4 @@
-"""Server sync endpoint: reconcile filesystem ↔ DB using lifecycle primitives.
-
-Detects two divergence cases:
-- fs_only: directories present on disk with no ACTIVE Server row -> adopt
-- db_only: ACTIVE Server rows with no directory on disk        -> deactivate
-
-Dry-run mode returns a preview without mutations. Apply mode runs the same
-validation pass plus the partial orchestrators. A single DNS update runs at
-the end of the batch.
-"""
+"""POST /api/servers/sync: reconcile filesystem ↔ ACTIVE Server rows."""
 
 import asyncio
 
@@ -44,15 +35,9 @@ _sync_lock = asyncio.Lock()
 
 
 class SyncRequest(BaseModel):
-    """Body for POST /api/servers/sync.
-
-    - dry_run=True returns a preview without mutations.
-    - force=True bypasses the empty-filesystem safety guard. Use when a
-      filesystem read legitimately returns zero servers and you want every
-      stale ACTIVE row deactivated anyway.
-    """
-
     dry_run: bool = False
+    # force=true bypasses the empty-filesystem safety guard that would
+    # otherwise refuse to deactivate every row when the mount has failed.
     force: bool = False
 
 
@@ -62,11 +47,8 @@ async def sync_servers(
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(RequireRole(UserRole.OWNER)),
 ) -> SyncResult:
-    """Reconcile filesystem state with the active servers in the database.
-
-    Owner-only. Rejects (409) on concurrent calls rather than waiting on the
-    lock — a fast 409 is better UX on an HTTP worker than an indefinite hang.
-    """
+    # Reject concurrent calls with 409 rather than queueing on the lock —
+    # a fast 409 beats an indefinite hang on an HTTP worker.
     if _sync_lock.locked():
         raise HTTPException(
             status_code=409, detail="另一个同步任务正在进行中"

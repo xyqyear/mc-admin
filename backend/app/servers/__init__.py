@@ -1,9 +1,3 @@
-"""Server database operations and utilities for MC Admin.
-
-Provides CRUD operations for server records, port conflict checking,
-rebuild tasks, and the lifecycle module (bundled create/remove, sync).
-"""
-
 from .crud import (
     create_server_record,
     get_active_server_by_id,
