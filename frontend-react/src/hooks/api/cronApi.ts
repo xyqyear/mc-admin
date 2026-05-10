@@ -1,7 +1,6 @@
 import { api } from '@/utils/api'
 import { RJSFSchema } from '@rjsf/utils'
 
-// Types based on backend API response models
 export interface RegisteredCronJob {
   identifier: string
   description: string
@@ -16,7 +15,7 @@ export interface CronJob {
   second?: string
   params: Record<string, any>
   execution_count: number
-  status: string // 'active' | 'paused' | 'cancelled' (lowercase from backend)
+  status: string // lowercase 'active' | 'paused' | 'cancelled'
   created_at: string
   updated_at: string
 }
@@ -26,7 +25,7 @@ export interface CronJobExecution {
   started_at?: string
   ended_at?: string
   duration_ms?: number
-  status: string // 'running' | 'completed' | 'failed' | 'cancelled' (lowercase from backend)
+  status: string // lowercase 'running' | 'completed' | 'failed' | 'cancelled'
   messages: string[]
 }
 
@@ -60,15 +59,12 @@ export interface UpdateCronJobResponse {
   message: string
 }
 
-// API functions
 export const cronApi = {
-  // Get all registered cron job types
   getRegisteredCronJobs: async (): Promise<RegisteredCronJob[]> => {
     const response = await api.get('/cron/registered')
     return response.data
   },
 
-  // Get all cron jobs with optional filtering
   getAllCronJobs: async (params?: {
     identifier?: string
     status?: string[]
@@ -90,43 +86,36 @@ export const cronApi = {
     return response.data
   },
 
-  // Create a new cron job
   createCronJob: async (request: CreateCronJobRequest): Promise<CreateCronJobResponse> => {
     const response = await api.post('/cron/', request)
     return response.data
   },
 
-  // Update an existing cron job
   updateCronJob: async (cronjobId: string, request: UpdateCronJobRequest): Promise<UpdateCronJobResponse> => {
     const response = await api.put(`/cron/${cronjobId}`, request)
     return response.data
   },
 
-  // Get specific cron job details
   getCronJob: async (cronjobId: string): Promise<CronJob> => {
     const response = await api.get(`/cron/${cronjobId}`)
     return response.data
   },
 
-  // Pause a cron job
   pauseCronJob: async (cronjobId: string): Promise<{ message: string }> => {
     const response = await api.post(`/cron/${cronjobId}/pause`)
     return response.data
   },
 
-  // Resume a cron job
   resumeCronJob: async (cronjobId: string): Promise<{ message: string }> => {
     const response = await api.post(`/cron/${cronjobId}/resume`)
     return response.data
   },
 
-  // Cancel a cron job
   cancelCronJob: async (cronjobId: string): Promise<{ message: string }> => {
     const response = await api.delete(`/cron/${cronjobId}`)
     return response.data
   },
 
-  // Get cron job execution history
   getCronJobExecutions: async (
     cronjobId: string,
     limit: number = 50
@@ -137,13 +126,8 @@ export const cronApi = {
     return response.data
   },
 
-  // Get next run time for a cron job
   getCronJobNextRunTime: async (cronjobId: string): Promise<CronJobNextRunTime> => {
     const response = await api.get(`/cron/${cronjobId}/next-run-time`)
     return response.data
   }
 }
-
-// Note: Since backend doesn't have a list all cron jobs endpoint yet,
-// we'll need to add this when it becomes available
-// For now, we can work with individual job management

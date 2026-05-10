@@ -1,6 +1,5 @@
 import { api } from "@/utils/api";
 
-// Request and response types
 interface LoginRequest {
   username: string;
   password: string;
@@ -12,7 +11,6 @@ interface LoginResponse {
 }
 
 export const authApi = {
-  // Traditional password-based login
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
     const formData = new FormData();
     formData.append("grant_type", "password");
@@ -29,5 +27,4 @@ export const authApi = {
   },
 };
 
-// Export types for use in other modules
 export type { LoginRequest, LoginResponse };

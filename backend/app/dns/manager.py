@@ -1,9 +1,4 @@
-"""
-Simplified DNS Manager
-
-A lightweight DNS management system that directly integrates with DockerMCManager
-to synchronize DNS records and MC Router configurations without background tasks.
-"""
+"""DNS manager: syncs DNS records and MC Router routes against the live server list."""
 
 import asyncio
 import hashlib
@@ -23,16 +18,12 @@ from .types import AddRecordT
 
 
 class AddressInfo(NamedTuple):
-    """Address information for DNS records"""
-
     type: Literal["A", "AAAA", "CNAME"]
     host: str
     port: int
 
 
 class DNSRecord(NamedTuple):
-    """Abstract DNS record representation"""
-
     sub_domain: str
     record_type: str
     value: str
@@ -40,39 +31,31 @@ class DNSRecord(NamedTuple):
 
 
 class RouteEntry(NamedTuple):
-    """MC Router route entry"""
-
     server_address: str
     backend: str
 
 
 class SimpleDNSManager:
-    """
-    Simplified DNS manager that provides a single update() API.
+    """Sync DNS records and MC Router routes from ACTIVE Server rows.
 
-    Server discovery is DB-driven: only servers with an ACTIVE row in the
-    `Server` table are announced. Per-server compose reads are isolated in
-    try/except so one missing or unreadable compose cannot poison the whole
-    reconciliation tick.
+    Per-server compose reads are isolated so one drifted row can't poison
+    the whole reconciliation tick.
     """
 
     def __init__(self):
         self._dns_client: DNSClient | None = None
         self._mc_router_client: MCRouterClient | None = None
-        # Use singleton instance directly
         self._docker_manager = docker_mc_manager
         self._update_lock = asyncio.Lock()
         self._last_config_hash: str | None = None
 
     async def initialize(self):
-        """Initialize the DNS manager with current configuration"""
         dns_config = config.dns
 
         if not dns_config.enabled:
             logger.info("DNS manager is disabled in configuration")
             return
 
-        # Initialize DNS client
         if dns_config.dns.type == "dnspod":
             self._dns_client = DNSPodClient(
                 dns_config.dns.domain,
@@ -89,54 +72,28 @@ class SimpleDNSManager:
         else:
             raise ValueError(f"Unsupported DNS provider: {dns_config.dns.type}")
 
-        # Initialize DNS client
         if not self._dns_client.is_initialized():
             await self._dns_client.init()
 
-        # Initialize MC Router client
         self._mc_router_client = MCRouterClient(dns_config.mc_router_base_url)
 
-        # Docker manager already initialized in __init__
-
-        # Update configuration hash to current state
         self._last_config_hash = self._calculate_config_hash(dns_config)
 
         logger.info("Simplified DNS manager initialized successfully")
 
     def _calculate_config_hash(self, dns_config) -> str:
-        """
-        Calculate hash of key configuration fields that affect client initialization.
-
-        Only includes configuration fields that would require reinitializing
-        DNS or MC Router clients if changed.
-
-        Args:
-            dns_config: DNS configuration object
-
-        Returns:
-            MD5 hash of key configuration fields
-        """
+        """Hash of fields whose changes require reinitializing the DNS/Router clients."""
         key_config = {
             "enabled": dns_config.enabled,
             "dns": dns_config.dns.model_dump() if dns_config.dns else None,
             "mc_router_base_url": dns_config.mc_router_base_url,
         }
 
-        # Use sorted JSON to ensure consistent hash calculation
         config_str = json.dumps(key_config, sort_keys=True)
         return hashlib.md5(config_str.encode()).hexdigest()
 
     async def _ensure_up_to_date_config(self):
-        """
-        Ensure DNS manager is using the latest configuration.
-
-        Checks if key configuration fields have changed since last initialization
-        and automatically reinitializes clients if needed. This enables dynamic
-        configuration updates without manual intervention.
-
-        Raises:
-            Exception: If reinitialization fails
-        """
+        """Reinitialize clients if relevant config fields changed since last init."""
         dns_config = config.dns
         current_hash = self._calculate_config_hash(dns_config)
 
@@ -156,25 +113,9 @@ class SimpleDNSManager:
             logger.info("DNS manager reinitialized successfully due to config change")
 
     async def _get_target_records_and_routes(self, db: AsyncSession):
-        """
-        Get target DNS records and routes based on current server state and configuration.
-
-        Enumerates servers from the DB (active rows only). For each row, reads
-        the compose in parallel to extract the game port. Per-server failures
-        are logged and skipped so a single missing compose does not break the
-        whole tick. DNS records and routes are keyed by `row.server_id`, the
-        canonical DB identifier — not the compose project name — so the DNS
-        layout stays consistent with what the rest of the system addresses.
-
-        Returns:
-            Tuple of (dns_records, routes, addresses, servers) or (None, None, None, None) if no data
-
-        Raises:
-            Exception: If there's an error getting server info or generating records
-        """
-        # Deferred import: app.servers eagerly imports app.servers.lifecycle,
-        # which imports app.dns — top-level import here would create a cycle.
+        # Deferred import avoids the app.servers.lifecycle → app.dns cycle.
         from ..servers.crud import get_active_servers
+
 
         if self._dns_client is None:
             raise RuntimeError("DNS manager not initialized. Call initialize() first.")
@@ -202,13 +143,11 @@ class SimpleDNSManager:
                 continue
             servers[row.server_id] = result
 
-        # Get addresses from configuration
         addresses = self._get_addresses_from_config(dns_config.addresses)
 
         if not addresses or not servers:
             return None, None, None, None
 
-        # Generate target DNS records and routes
         target_dns_records = self._generate_dns_records(
             addresses,
             list(servers.keys()),
@@ -226,16 +165,7 @@ class SimpleDNSManager:
         return target_dns_records, target_routes, addresses, servers
 
     async def update(self, db: AsyncSession):
-        """
-        Update DNS records and MC Router configurations based on current server state.
-
-        This method:
-        1. Ensures configuration is up-to-date (auto-reinitializes if config changed)
-        2. Enumerates active servers from the DB and reads their ports
-        3. Combines with address configuration to generate records
-        4. Updates DNS and MC Router with complete lists
-        """
-        # Ensure we're using the latest configuration
+        """Reconcile DNS records and MC Router routes with the current server state."""
         await self._ensure_up_to_date_config()
 
         if (
@@ -248,7 +178,6 @@ class SimpleDNSManager:
         async with self._update_lock:
             logger.info("Starting DNS update...")
 
-            # Get target records and routes
             (
                 dns_records,
                 routes,
@@ -265,7 +194,6 @@ class SimpleDNSManager:
             )
 
             try:
-                # Update DNS and MC Router in parallel
                 await asyncio.gather(
                     self._update_dns_records(dns_records),
                     self._update_mc_router(routes),
@@ -279,7 +207,6 @@ class SimpleDNSManager:
     def _get_addresses_from_config(
         self, addresses_config: list
     ) -> Dict[str, AddressInfo]:
-        """Extract addresses from configuration"""
         addresses = {}
 
         for addr_config in addresses_config:
@@ -299,17 +226,14 @@ class SimpleDNSManager:
         managed_sub_domain: str,
         dns_ttl: int,
     ) -> List[DNSRecord]:
-        """Generate complete list of DNS records"""
         records = []
 
         for address_name, address_info in addresses.items():
-            # Generate base address record (A/AAAA/CNAME)
             if address_name == "*":
                 sub_domain_base = managed_sub_domain
             else:
                 sub_domain_base = f"{address_name}.{managed_sub_domain}"
 
-            # Wildcard record for this address
             records.append(
                 DNSRecord(
                     sub_domain=f"*.{sub_domain_base}",
@@ -319,7 +243,6 @@ class SimpleDNSManager:
                 )
             )
 
-            # SRV records for each server
             for server_name in server_list:
                 domain = (
                     self._dns_client.get_domain() if self._dns_client else "localhost"
@@ -345,7 +268,6 @@ class SimpleDNSManager:
         managed_sub_domain: str,
         domain: str,
     ) -> List[RouteEntry]:
-        """Generate complete list of MC Router routes"""
         routes = []
 
         for server_name, server_port in servers.items():
@@ -365,11 +287,9 @@ class SimpleDNSManager:
         return routes
 
     async def _update_dns_records(self, target_records: List[DNSRecord]):
-        """Update DNS records to match target state"""
         if not self._dns_client:
             return
 
-        # Convert target records to the format expected by DNS client
         target_add_records = [
             AddRecordT(
                 sub_domain=record.sub_domain,
@@ -380,44 +300,27 @@ class SimpleDNSManager:
             for record in target_records
         ]
 
-        # Let the DNS client handle the diffing and updates
-        # Pass managed_sub_domain to ensure only relevant records are updated
+        # Pass managed_sub_domain so the DNS client only diffs records under our scope.
         dns_config = config.dns
         await self._dns_client.update_records(
             target_add_records, dns_config.managed_sub_domain
         )
 
     async def _update_mc_router(self, target_routes: List[RouteEntry]):
-        """Update MC Router with target routes"""
         if not self._mc_router_client:
             return
 
-        # Convert to the format expected by MC Router client
         routes_dict = {route.server_address: route.backend for route in target_routes}
 
         logger.info(f"Updating MC Router with {len(routes_dict)} routes")
         await self._mc_router_client.override_routes(routes_dict)
 
     async def close(self):
-        """Clean up resources"""
         if self._mc_router_client:
             await self._mc_router_client.close()
 
     async def get_current_diff(self, db: AsyncSession):
-        """
-        Get the current differences between expected and actual DNS/Router state.
-
-        Returns a dictionary containing:
-        - dns_diff: RecordDiff with DNS record differences
-        - router_diff: Dict with router route differences
-
-        Raises:
-            RuntimeError: If DNS manager is not initialized
-            Exception: If there's an error getting server info, generating records, or calculating diff
-
-        This is useful for status checks and UI display of pending changes.
-        """
-        # Ensure we're using the latest configuration
+        """Compute the pending changes against DNS provider and MC Router for UI display."""
         await self._ensure_up_to_date_config()
 
         if (
@@ -429,7 +332,6 @@ class SimpleDNSManager:
 
         dns_config = config.dns
 
-        # Get target records and routes (may raise exception)
         (
             target_dns_records,
             target_routes,
@@ -440,7 +342,6 @@ class SimpleDNSManager:
         if target_dns_records is None or target_routes is None:
             raise ValueError("No addresses or servers found for diff calculation")
 
-        # Calculate DNS diff
         target_add_records = [
             AddRecordT(
                 sub_domain=record.sub_domain,
@@ -454,7 +355,6 @@ class SimpleDNSManager:
             target_add_records, dns_config.managed_sub_domain
         )
 
-        # Calculate Router diff
         target_routes_dict = {
             route.server_address: route.backend for route in target_routes
         }
@@ -464,7 +364,6 @@ class SimpleDNSManager:
 
     @property
     def is_initialized(self) -> bool:
-        """Check if the manager is initialized"""
         return (
             self._dns_client is not None
             and self._mc_router_client is not None
@@ -472,5 +371,4 @@ class SimpleDNSManager:
         )
 
 
-# Global instance
 simple_dns_manager = SimpleDNSManager()

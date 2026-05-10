@@ -47,7 +47,6 @@ const ArchiveRenameDialog: React.FC<ArchiveRenameDialogProps> = ({
     defaultValues: { new_name: '' },
   })
 
-  // Sync form value when file changes
   const prevFileRef = React.useRef<ArchiveFileItem | null>(null)
   if (file && file !== prevFileRef.current) {
     prevFileRef.current = file
@@ -71,7 +70,7 @@ const ArchiveRenameDialog: React.FC<ArchiveRenameDialogProps> = ({
       })
       handleClose()
     } catch {
-      // Error is handled by mutation
+      // Mutation hook surfaces the error.
     }
   }
 

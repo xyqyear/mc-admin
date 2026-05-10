@@ -32,7 +32,6 @@ import VariableEditDialog from "./VariableEditDialog"
 import { useConfirm } from "@/hooks/useConfirm"
 import type { VariableFormData } from "./variableSchemas"
 
-// Re-export for backwards compatibility
 export type { VariableFormData } from "./variableSchemas"
 
 interface VariableDefinitionFormProps {
@@ -67,7 +66,6 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
   const [editingIndex, setEditingIndex] = useState<number>(-1)
   const [editingData, setEditingData] = useState<Partial<VariableFormData> | undefined>()
 
-  // Stable key counter for dnd-kit
   const keyCounter = useRef(0)
   const keyMapRef = useRef(new WeakMap<VariableFormData, string>())
 

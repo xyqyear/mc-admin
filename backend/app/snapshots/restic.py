@@ -1,9 +1,4 @@
-"""
-Restic operations module for snapshot management.
-
-This module provides core restic functionality without knowledge of Minecraft servers.
-The actual server path resolution happens in the endpoint functions.
-"""
+"""Core restic operations. Server-path resolution lives in the endpoint layer."""
 
 import asyncio
 import json
@@ -20,8 +15,6 @@ from ..utils.exec import exec_command
 
 
 class ResticSnapshot(BaseModel):
-    """Pydantic model for restic snapshot data"""
-
     time: datetime
     paths: List[str]
     hostname: str
@@ -32,8 +25,6 @@ class ResticSnapshot(BaseModel):
 
 
 class ResticSnapshotSummary(BaseModel):
-    """Pydantic model for snapshot summary data"""
-
     backup_start: Optional[datetime] = None
     backup_end: Optional[datetime] = None
     files_new: Optional[int] = None
@@ -51,14 +42,10 @@ class ResticSnapshotSummary(BaseModel):
 
 
 class ResticSnapshotWithSummary(ResticSnapshot):
-    """Extended snapshot model with optional summary"""
-
     summary: Optional[ResticSnapshotSummary] = None
 
 
 class ResticRestorePreviewAction(BaseModel):
-    """Pydantic model for restore preview action"""
-
     message_type: str
     action: Optional[str] = None
     item: Optional[str] = None
@@ -69,28 +56,17 @@ ResticRestoreFileAction = Literal["unchanged", "updated", "restored", "deleted"]
 
 
 class ResticRestoreEvent(BaseModel):
-    """Single parsed event from a streaming ``restic restore --json -vv`` run.
+    """One parsed line from streaming ``restic restore --json -vv``.
 
-    Three event kinds are emitted by ``ResticManager.restore``:
+    Kinds: ``status`` (periodic ``percent_done`` ∈ [0, 1]),
+    ``file`` (per-file action), ``summary`` (final tallies, once).
 
-    * ``status`` — periodic byte-progress update (``percent_done`` ∈ [0, 1]).
-    * ``file`` — per-file ledger entry (``action`` describes what restic did).
-    * ``summary`` — final tallies, emitted exactly once at end-of-stream.
-
-    Fields not relevant to a given kind are ``None``. The single-class shape
-    keeps the consumer side simple — callers dispatch on ``kind`` and read the
-    fields they care about.
-
-    For ``action="deleted"`` events ``item`` is the **target-mapped** path
-    (i.e. where the file actually was on disk); for all other actions ``item``
-    is the snapshot's recorded absolute path. With ``target_path=Path('/')``
-    (in-place restore) the two coincide.
+    For ``action="deleted"`` ``item`` is the target-mapped on-disk path; for
+    other actions ``item`` is the snapshot's recorded absolute path.
     """
 
     kind: Literal["status", "file", "summary"]
-    # status fields
     percent_done: Optional[float] = None
-    # status + summary shared
     total_files: Optional[int] = None
     files_restored: Optional[int] = None
     files_skipped: Optional[int] = None
@@ -98,7 +74,6 @@ class ResticRestoreEvent(BaseModel):
     total_bytes: Optional[int] = None
     bytes_restored: Optional[int] = None
     bytes_skipped: Optional[int] = None
-    # file fields
     action: Optional[ResticRestoreFileAction] = None
     item: Optional[str] = None
     size: Optional[int] = None
@@ -143,43 +118,23 @@ def _parse_restore_event(data: dict) -> Optional[ResticRestoreEvent]:
 
 
 class ResticManager:
-    """Core restic operations manager"""
-
     def __init__(self, repository_path: str, password: str | None = None):
-        """
-        Initialize restic manager with repository and optional password
-
-        Args:
-            repository_path: Path to restic repository
-            password: Repository password (None or empty string for no password)
-        """
+        """``password=None`` or empty string means the repository is unprotected."""
         self.repository_path = repository_path
         self.password = password
         self.use_password = password is not None and password.strip() != ""
 
-        # Set up environment variables
         self.env = {"RESTIC_REPOSITORY": repository_path}
         if self.use_password:
             self.env["RESTIC_PASSWORD"] = password
 
     def _add_password_args(self, args: list[str]) -> list[str]:
-        """Add password-related arguments to restic command"""
         if not self.use_password:
             args.append("--insecure-no-password")
         return args
 
     async def backup(self, paths: List[Path]) -> ResticSnapshotWithSummary:
-        """
-        Create a backup snapshot covering one or more paths.
-
-        All paths are captured into a single snapshot.
-
-        Args:
-            paths: Absolute paths to back up
-
-        Returns:
-            Created snapshot information with summary
-        """
+        """Capture all given absolute paths into a single snapshot."""
         if not paths:
             raise ValueError("At least one path must be provided for restic backup")
         for path in paths:
@@ -198,12 +153,10 @@ class ResticManager:
         )
         result = await exec_command(*args, env=self.env)
 
-        # Parse the backup result to get summary and snapshot_id
         lines = result.strip().split("\n")
         summary_data = None
         snapshot_id = None
 
-        # Look for the summary line which contains backup stats and snapshot_id
         for line in reversed(lines):
             try:
                 data = json.loads(line)
@@ -220,7 +173,6 @@ class ResticManager:
                 "Could not parse snapshot data from restic backup output"
             )
 
-        # Now get the full snapshot information using the snapshot_id
         args = self._add_password_args(["restic", "snapshots", snapshot_id, "--json"])
         snapshots_result = await exec_command(*args, env=self.env)
 
@@ -232,9 +184,8 @@ class ResticManager:
         if not snapshots_list or not isinstance(snapshots_list, list):
             raise RuntimeError("Expected snapshots list from restic")
 
-        snapshot_info = snapshots_list[0]  # Should have exactly one snapshot
+        snapshot_info = snapshots_list[0]
 
-        # Create summary object from backup summary data
         summary = ResticSnapshotSummary(
             backup_start=datetime.fromisoformat(
                 summary_data["backup_start"].replace("Z", "+00:00")
@@ -256,7 +207,6 @@ class ResticManager:
             total_bytes_processed=summary_data.get("total_bytes_processed"),
         )
 
-        # Convert to our model using snapshot info + summary
         return ResticSnapshotWithSummary(
             time=datetime.fromisoformat(snapshot_info["time"].replace("Z", "+00:00")),
             paths=snapshot_info["paths"],
@@ -271,15 +221,7 @@ class ResticManager:
     async def list_snapshots(
         self, path_filter: Optional[Path] = None
     ) -> List[ResticSnapshot]:
-        """
-        List all snapshots, optionally filtered by path
-
-        Args:
-            path_filter: Optional path to filter snapshots by
-
-        Returns:
-            List of snapshots
-        """
+        """Return all snapshots; with ``path_filter`` keep only those covering it."""
         args = self._add_password_args(["restic", "snapshots", "--json"])
         result = await exec_command(*args, env=self.env)
 
@@ -291,7 +233,6 @@ class ResticManager:
         if not isinstance(snapshots_data, list):
             raise RuntimeError("Expected snapshots to be a list")
 
-        # Convert to our models
         snapshots = []
         for snapshot_data in snapshots_data:
             snapshot = ResticSnapshot(
@@ -307,24 +248,20 @@ class ResticManager:
             )
             snapshots.append(snapshot)
 
-        # Filter snapshots if path_filter is provided
         if path_filter is not None:
             filtered_snapshots = []
 
             resolved_filter = await async_fs.resolve(path_filter)
             for snapshot in snapshots:
-                # Check if any of the snapshot paths is a parent or equal to filter_path
                 for snapshot_path in snapshot.paths:
                     snapshot_path_resolved = await async_fs.resolve(
                         Path(snapshot_path)
                     )
                     try:
-                        # Check if filter_path is equal to or child of snapshot_path
                         resolved_filter.relative_to(snapshot_path_resolved)
                         filtered_snapshots.append(snapshot)
                         break
                     except ValueError:
-                        # filter_path is not relative to snapshot_path, continue
                         continue
 
             return filtered_snapshots
@@ -334,22 +271,7 @@ class ResticManager:
     async def find_snapshots_covering(
         self, paths: List[Path]
     ) -> List[ResticSnapshot]:
-        """
-        Return snapshots that cover EVERY path in ``paths``.
-
-        A snapshot 'covers' a path P when at least one of its recorded paths
-        is an ancestor of P (or equal to it). All input paths must be covered
-        by the same snapshot for it to qualify.
-
-        Used by world-restore eligibility filtering — distinct contract from
-        ``list_snapshots(path_filter=...)`` which filters loosely.
-
-        Args:
-            paths: Absolute paths each snapshot must cover. Empty list is rejected.
-
-        Returns:
-            Snapshots ordered newest-first.
-        """
+        """Snapshots whose recorded paths ancestor-match *every* input path; newest-first."""
         if not paths:
             raise ValueError("At least one path must be provided")
         for path in paths:
@@ -360,8 +282,7 @@ class ResticManager:
 
         resolved_paths = [await async_fs.resolve(p) for p in paths]
 
-        # Pre-resolve every snapshot's recorded paths once so the inner loop
-        # stays pure path-math (no syscalls).
+        # Pre-resolve once so the inner loop stays pure path-math (no syscalls).
         resolved_snapshot_paths: dict[str, list[Path]] = {}
         for snap in all_snapshots:
             resolved_snapshot_paths[snap.id] = [
@@ -385,20 +306,10 @@ class ResticManager:
 
     @staticmethod
     def compute_restore_destination(target_path: Path, snapshot_path: Path) -> Path:
-        """
-        Compute where a snapshot item will land after `restic restore --target target_path`.
+        """Where a snapshot item lands under ``--target target_path``.
 
-        Mirrors restic's path-prefixing: the snapshot's absolute path is preserved
-        under the target. With ``target_path=Path('/')`` the result equals
-        ``snapshot_path`` (in-place restore).
-
-        Args:
-            target_path: The ``--target`` value passed to ``restore``
-            snapshot_path: An absolute path inside the snapshot (e.g. an include
-                path or a preview action's ``item``)
-
-        Returns:
-            Final on-disk path of the restored item.
+        Restic preserves the absolute path under the target, so with
+        ``target_path=Path('/')`` the result equals ``snapshot_path``.
         """
         if not snapshot_path.is_absolute():
             raise ValueError("snapshot_path must be absolute")
@@ -410,27 +321,10 @@ class ResticManager:
         target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
     ) -> List[ResticRestorePreviewAction]:
-        """
-        Preview restore operation (dry run)
+        """Dry-run restore: returns the would-be actions.
 
-        Path mapping: each snapshot item at absolute path `S` is reported with
-        its original absolute path in the action `item` field, but on a real
-        restore would land at ``target_path / S.relative_to('/')``. With the
-        default ``target_path=Path('/')`` this collapses to `S` (in-place).
-        Use ``ResticManager.compute_restore_destination`` to translate an
-        action's `item` into the final on-disk location for a non-root target.
-
-        Args:
-            snapshot_id: Snapshot ID to restore
-            target_path: Target path for restore. Defaults to ``Path('/')``
-                (in-place restore). When non-root, restic preserves each
-                item's original absolute hierarchy under this prefix.
-            include_paths: Optional list of paths to include (filter what gets restored).
-                Each path becomes a `--include` flag; matches are OR-combined.
-                Must be the original absolute snapshot paths (not target-mapped).
-
-        Returns:
-            List of restore actions that would be performed
+        Action ``item`` is the snapshot's original absolute path; use
+        ``compute_restore_destination`` to map it to the on-disk location.
         """
         args = [
             "restic",
@@ -459,7 +353,6 @@ class ResticManager:
             try:
                 action_data = json.loads(line)
             except json.JSONDecodeError:
-                # Skip lines that aren't valid JSON
                 continue
 
             action = ResticRestorePreviewAction(
@@ -470,12 +363,10 @@ class ResticManager:
             )
             actions.append(action)
 
-        # Filter actions: include updated, deleted, and restored operations
-        # Only exclude restored operations with zero size
+        # Drop zero-size "restored" actions (directory entries restic reports but doesn't really restore).
         filtered_actions = []
         for action in actions:
             if action.action in ["updated", "deleted", "restored"]:
-                # Exclude restored operations with zero or None size
                 if action.action == "restored" and (
                     action.size is None or action.size == 0
                 ):
@@ -490,46 +381,14 @@ class ResticManager:
         target_path: Path = Path("/"),
         include_paths: Optional[List[Path]] = None,
     ) -> AsyncGenerator[ResticRestoreEvent, None]:
-        """
-        Restore a snapshot, yielding parsed events line-by-line.
+        """Run ``restic restore --json -vv`` and yield ``ResticRestoreEvent`` per NDJSON line.
 
-        Runs ``restic restore --json -vv`` and streams each NDJSON line back
-        as a ``ResticRestoreEvent``. Three event kinds appear:
+        ``include_paths`` are absolute snapshot paths (not target-mapped).
+        With ``--target /`` restic requires at least one include/exclude
+        because ``--delete`` is always passed. ``--delete`` is scoped to
+        included roots, leaving siblings under ``target_path`` untouched.
 
-        * ``kind="status"`` — periodic progress (``percent_done`` ∈ [0, 1]).
-          Cadence is bytes-driven; large restores emit ~5–10 ticks.
-        * ``kind="file"`` — one entry per file restic touched (``action``:
-          ``unchanged`` / ``updated`` / ``restored`` / ``deleted``).
-        * ``kind="summary"`` — final totals, emitted exactly once.
-
-        Callers that don't need per-event data can drain the generator with
-        ``async for _ in mgr.restore(...): pass`` and rely on it raising on
-        non-zero exit.
-
-        Path mapping: each snapshot item at absolute path ``S`` lands at
-        ``target_path / S.relative_to('/')``. With the default
-        ``target_path=Path('/')`` this collapses to ``S`` (in-place restore).
-        Use ``ResticManager.compute_restore_destination`` to predict where a
-        chosen include path will end up on disk. Restic auto-creates
-        ``target_path`` if it does not exist.
-
-        Args:
-            snapshot_id: Snapshot ID to restore
-            target_path: Target path for restore. Defaults to ``Path('/')``
-                (in-place restore). When non-root, restic preserves each
-                item's original absolute hierarchy under this prefix.
-            include_paths: Optional list of paths to include (filter what gets
-                restored). Each path becomes a ``--include`` flag; matches are
-                OR-combined. Must be the original absolute snapshot paths
-                (not target-mapped). With ``--target /``, restic requires at
-                least one include or exclude when ``--delete`` is used;
-                non-root targets do not have this constraint. ``--delete`` is
-                scoped to included roots — files outside them (but under the
-                target) are left untouched.
-
-        Raises:
-            RuntimeError: If restic exits with a non-zero status. The error
-                includes captured stderr to aid debugging.
+        Raises ``RuntimeError`` (with captured stderr) on non-zero exit.
         """
         args = [
             "restic",
@@ -554,8 +413,7 @@ class ResticManager:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        # stderr is read concurrently so the pipe can't fill and deadlock the
-        # subprocess while we iterate stdout.
+        # Drain stderr concurrently to keep the pipe from filling and deadlocking restic.
         stderr_chunks: list[bytes] = []
 
         async def _drain_stderr() -> None:
@@ -599,19 +457,9 @@ class ResticManager:
                 drain_task.cancel()
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
-        """
-        Remove a specific snapshot by ID
-
-        Args:
-            snapshot_id: Snapshot ID to remove
-            prune: Whether to run prune after forget (default: True)
-
-        Returns:
-            Command output
-        """
+        """Remove the snapshot ``snapshot_id``; prune the repo afterwards by default."""
         args = ["restic", "forget", snapshot_id]
 
-        # Add prune option if enabled
         if prune:
             args.append("--prune")
 
@@ -631,27 +479,7 @@ class ResticManager:
         keep_within: Optional[str] = None,
         prune: bool = True,
     ) -> str:
-        """
-        Remove snapshots according to retention policy
-
-        Args:
-            keep_last: Keep the n last (most recent) snapshots
-            keep_hourly: For the last n hours which have one or more snapshots, keep only the most recent one for each hour
-            keep_daily: For the last n days which have one or more snapshots, keep only the most recent one for each day
-            keep_weekly: For the last n weeks which have one or more snapshots, keep only the most recent one for each week
-            keep_monthly: For the last n months which have one or more snapshots, keep only the most recent one for each month
-            keep_yearly: For the last n years which have one or more snapshots, keep only the most recent one for each year
-            keep_tag: Keep all snapshots which have all tags specified (can be specified multiple times)
-            keep_within: Keep all snapshots having a timestamp within the specified duration of the latest snapshot
-            prune: Whether to run prune after forget (default: True)
-
-        Returns:
-            Command output
-
-        Raises:
-            ValueError: If no retention policy is specified
-        """
-        # Check that at least one retention policy is specified
+        """Apply restic ``forget`` retention rules. Raises ``ValueError`` if all are empty."""
         retention_params = [
             keep_last,
             keep_hourly,
@@ -674,7 +502,6 @@ class ResticManager:
 
         args = ["restic", "forget", "--group-by", ""]
 
-        # Add retention policy arguments
         if keep_last is not None:
             args.extend(["--keep-last", str(keep_last)])
 
@@ -700,7 +527,6 @@ class ResticManager:
         if keep_within is not None:
             args.extend(["--keep-within", keep_within])
 
-        # Add prune option if enabled
         if prune:
             args.append("--prune")
 
@@ -709,17 +535,14 @@ class ResticManager:
         return result
 
     async def list_locks(self) -> str:
-        """List all locks in the repository."""
         args = self._add_password_args(["restic", "list", "locks"])
         return await exec_command(*args, env=self.env)
 
     async def unlock(self) -> str:
-        """Remove stale locks from the repository."""
         args = self._add_password_args(["restic", "unlock"])
         return await exec_command(*args, env=self.env)
 
 
-# Singleton instance - only create if restic settings are available
 restic_manager = None
 if settings.restic:
     restic_manager = ResticManager(

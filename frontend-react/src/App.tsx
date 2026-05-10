@@ -9,7 +9,6 @@ import { useVersionCheck } from '@/hooks/useVersionCheck'
 import { useTokenStore } from '@/stores/useTokenStore'
 import { toast } from 'sonner'
 
-// Lazy load pages for better performance
 const Login = React.lazy(() => import('@/pages/Login'))
 const Home = React.lazy(() => import('@/pages/Home'))
 const Overview = React.lazy(() => import('@/pages/Overview'))
@@ -32,7 +31,6 @@ const DefaultVariables = React.lazy(() => import('@/pages/templates/DefaultVaria
 
 
 
-// Protected route wrapper using React Router 6 outlet pattern
 function ProtectedRoutes() {
   const token = useTokenStore((state) => state.token)
 
@@ -49,7 +47,6 @@ function ProtectedRoutes() {
   )
 }
 
-// Auth route wrapper (redirects to home if already authenticated)
 function AuthRoutes() {
   const token = useTokenStore((state) => state.token)
 
@@ -63,7 +60,6 @@ function AuthRoutes() {
 function App() {
   const { shouldShowDialog, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
 
-  // Global error handler
   const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)
     toast.error('Application Error', {
@@ -75,7 +71,6 @@ function App() {
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleError}>
       <Routes>
-        {/* Public routes */}
         <Route element={<AuthRoutes />}>
           <Route path="/login" element={
             <Suspense fallback={<LoadingSpinner fullscreen />}>
@@ -84,7 +79,6 @@ function App() {
           } />
         </Route>
 
-        {/* Protected routes with nested structure */}
         <Route element={<ProtectedRoutes />}>
           <Route path="/" element={<Home />} />
           <Route path="/overview" element={<Overview />} />
@@ -113,11 +107,9 @@ function App() {
           </Route>
         </Route>
 
-        {/* Catch all route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Version Update Dialog - 只在登录后的页面显示 */}
       <VersionUpdateDialog
         open={shouldShowDialog}
         onClose={handleClose}

@@ -18,5 +18,4 @@ export const systemApi = {
   },
 };
 
-// Export types for use in other modules
 export type { SystemInfo, SystemDiskUsage };

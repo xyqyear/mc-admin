@@ -33,8 +33,6 @@ import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/h
 import { useUpdateDNS, useRefreshDNSData } from '@/hooks/mutations/useDnsMutations'
 import type { DNSRecord } from '@/types/Dns'
 
-// --- Column definitions ---
-
 const dnsRecordsColumns: ColumnDef<DNSRecord, any>[] = [
   {
     accessorKey: 'sub_domain',
@@ -105,19 +103,15 @@ const routerRoutesColumns: ColumnDef<RouterRouteRow, any>[] = [
   },
 ]
 
-// --- Main component ---
-
 const DnsManagement: React.FC = () => {
   const navigate = useNavigate()
 
-  // Queries
   const { data: dnsEnabled, isLoading: enabledLoading } = useDNSEnabled()
   const isDNSEnabled = dnsEnabled?.enabled ?? false
   const { data: dnsStatus, isLoading: statusLoading, error: statusError } = useDNSStatus(isDNSEnabled)
   const { data: dnsRecords, isLoading: recordsLoading, error: recordsError } = useDNSRecords(isDNSEnabled)
   const { data: routerRoutes, isLoading: routesLoading, error: routesError } = useRouterRoutes(isDNSEnabled)
 
-  // Mutations
   const updateDNSMutation = useUpdateDNS()
   const refreshDataMutation = useRefreshDNSData()
 
@@ -137,7 +131,6 @@ const DnsManagement: React.FC = () => {
     navigate('/config?module=dns')
   }
 
-  // Router routes table data
   const routerRoutesData = useMemo(() => {
     if (!routerRoutes) return []
     return Object.entries(routerRoutes).map(([server_address, backend]) => ({
@@ -147,7 +140,6 @@ const DnsManagement: React.FC = () => {
     }))
   }, [routerRoutes])
 
-  // TanStack Table instances
   const [dnsPagination, setDnsPagination] = useState({ pageIndex: 0, pageSize: 20 })
   const [routesPagination, setRoutesPagination] = useState({ pageIndex: 0, pageSize: 20 })
 
@@ -173,7 +165,6 @@ const DnsManagement: React.FC = () => {
     getRowId: (row) => row.key,
   })
 
-  // Helper function to check if there are actual changes
   const hasActualChanges = (status: any) => {
     if (!status) return false
 
@@ -192,7 +183,6 @@ const DnsManagement: React.FC = () => {
     return hasDnsChanges || hasRouterChanges
   }
 
-  // Status indicator
   const renderStatusIndicator = () => {
     if (statusLoading || enabledLoading) {
       return (
@@ -245,7 +235,6 @@ const DnsManagement: React.FC = () => {
     )
   }
 
-  // Render errors
   const renderErrors = () => {
     if (!statusError) return null
 
@@ -265,7 +254,6 @@ const DnsManagement: React.FC = () => {
     )
   }
 
-  // Render differences
   const renderDifferences = () => {
     if (!dnsStatus || !hasActualChanges(dnsStatus)) return null
 
@@ -433,7 +421,6 @@ const DnsManagement: React.FC = () => {
       {renderDifferences()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* DNS Records */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader className="pb-3">
@@ -470,7 +457,6 @@ const DnsManagement: React.FC = () => {
           </Card>
         </div>
 
-        {/* Router Routes */}
         <div>
           <Card>
             <CardHeader className="pb-3">

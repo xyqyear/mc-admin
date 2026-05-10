@@ -1,6 +1,5 @@
 import type { RJSFSchema, UiSchema } from "@rjsf/utils";
 
-// Single variable JSON Schema (extracted from the former array schema's `items`)
 export const singleVariableSchema: RJSFSchema = {
   type: "object",
   required: ["type", "name", "display_name"],
@@ -145,7 +144,6 @@ export const singleVariableUiSchema: UiSchema = {
   },
 };
 
-// Internal form data type (matches rjsf output)
 export interface VariableFormData {
   type: "int" | "float" | "string" | "enum" | "bool";
   name: string;

@@ -1,6 +1,4 @@
-"""
-Utility for compressing Minecraft server files and directories.
-"""
+"""7z compression of Minecraft server files."""
 
 import re
 from collections.abc import AsyncGenerator
@@ -18,16 +16,6 @@ from .exec import exec_command_stream
 
 
 def _sanitize_filename_part(part: str) -> str:
-    """
-    Sanitize a filename part by replacing filesystem-sensitive characters.
-
-    Args:
-        part: The string to sanitize
-
-    Returns:
-        Sanitized string safe for filesystem use
-    """
-    # Replace filesystem-sensitive characters
     replacements = {
         "/": "_",
         "\\": "_",
@@ -45,10 +33,8 @@ def _sanitize_filename_part(part: str) -> str:
     for char, replacement in replacements.items():
         sanitized = sanitized.replace(char, replacement)
 
-    # Remove leading/trailing dots and spaces
     sanitized = sanitized.strip(". ")
 
-    # Ensure it's not empty
     if not sanitized:
         sanitized = "unknown"
 
@@ -58,37 +44,20 @@ def _sanitize_filename_part(part: str) -> str:
 def _generate_archive_filename(
     server_name: str, relative_path: Optional[str] = None
 ) -> str:
-    """
-    Generate a filename for the compressed archive.
-
-    Args:
-        server_name: The name of the server
-        relative_path: Optional relative path within the server
-
-    Returns:
-        Generated filename with timestamp and sanitized components
-    """
-    # Get current timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Sanitize server name
     safe_server_name = _sanitize_filename_part(server_name)
 
-    # Build filename components
     filename_parts = [safe_server_name]
 
     if relative_path and relative_path != "/":
-        # Sanitize and add path component
-        # Remove leading/trailing slashes and split into parts
         path_parts = [part for part in relative_path.strip("/").split("/") if part]
         if path_parts:
             safe_path = "_".join(_sanitize_filename_part(part) for part in path_parts)
             filename_parts.append(safe_path)
 
-    # Add timestamp
     filename_parts.append(timestamp)
 
-    # Join with underscores and add .7z extension
     filename = "_".join(filename_parts) + ".7z"
 
     return filename
@@ -97,19 +66,7 @@ def _generate_archive_filename(
 async def create_server_archive_stream(
     instance: MCInstance, relative_path: Optional[str] = None
 ) -> AsyncGenerator[TaskProgress, None]:
-    """
-    Create a compressed archive of server files, yielding progress updates.
-
-    Args:
-        instance: MCInstance for the server
-        relative_path: Optional relative path within the server to compress
-
-    Yields:
-        TaskProgress with progress percentage and messages
-
-    Raises:
-        HTTPException: If archive creation fails
-    """
+    """Create a 7z archive of an instance's files, yielding ``TaskProgress`` updates."""
     archive_base_path = await async_fs.resolve(settings.archive_path)
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
@@ -134,8 +91,7 @@ async def create_server_archive_stream(
 
     yield TaskProgress(progress=0, message="Starting compression...")
 
-    # Use custom delimiters for 7z progress output
-    # 7z uses \r and \x08 (backspace) to update progress on the same line
+    # 7z rewrites the progress line with \r and \x08 between updates.
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
     try:

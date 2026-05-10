@@ -32,25 +32,16 @@ export interface SuccessResponse {
   message: string
 }
 
-/**
- * List all registered configuration modules with their schema information
- */
 export const listAllModules = async (): Promise<ConfigModuleList> => {
   const response = await api.get('/config/modules')
   return response.data
 }
 
-/**
- * Get configuration data for a specific module
- */
 export const getModuleConfig = async (moduleName: string): Promise<ConfigData> => {
   const response = await api.get(`/config/modules/${moduleName}`)
   return response.data
 }
 
-/**
- * Update configuration for a specific module
- */
 export const updateModuleConfig = async (
   moduleName: string,
   configData: Record<string, any>
@@ -61,25 +52,16 @@ export const updateModuleConfig = async (
   return response.data
 }
 
-/**
- * Get schema information for a specific module
- */
 export const getModuleSchema = async (moduleName: string): Promise<ConfigModuleInfo> => {
   const response = await api.get(`/config/modules/${moduleName}/schema`)
   return response.data
 }
 
-/**
- * Reset configuration for a module to default values
- */
 export const resetModuleConfig = async (moduleName: string): Promise<ConfigUpdateResponse> => {
   const response = await api.post(`/config/modules/${moduleName}/reset`)
   return response.data
 }
 
-/**
- * Health check endpoint for the dynamic configuration system
- */
 export const configHealthCheck = async (): Promise<SuccessResponse> => {
   const response = await api.get('/config/health')
   return response.data

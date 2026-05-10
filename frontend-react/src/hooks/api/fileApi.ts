@@ -6,15 +6,14 @@ import type {
 } from "@/types/Server";
 import { api } from "@/utils/api";
 
-// File search types
 export interface FileSearchRequest {
   regex: string;
   ignore_case?: boolean;
   search_subfolders?: boolean;
   min_size?: number;
   max_size?: number;
-  newer_than?: string; // ISO datetime string
-  older_than?: string;  // ISO datetime string
+  newer_than?: string;
+  older_than?: string;
 }
 
 export interface SearchFileItem {
@@ -22,7 +21,7 @@ export interface SearchFileItem {
   path: string;
   type: "file" | "directory";
   size: number;
-  modified_at: string; // ISO datetime string
+  modified_at: string;
 }
 
 export interface FileSearchResponse {
@@ -32,7 +31,6 @@ export interface FileSearchResponse {
   search_path: string;
 }
 
-// Multi-file upload types
 export interface FileStructureItem {
   path: string;
   name: string;
@@ -68,16 +66,16 @@ export interface OverwritePolicy {
 
 export interface UploadFileResult {
   status: "success" | "failed" | "skipped";
-  reason?: string; // Error message for failed, reason for skipped ("exists", "no_decision")
+  // For failed: error message. For skipped: "exists" or "no_decision".
+  reason?: string;
 }
 
 export interface MultiFileUploadResult {
   message: string;
-  results: Record<string, UploadFileResult>; // Key is file path, value is result
+  results: Record<string, UploadFileResult>;
 }
 
 export const fileApi = {
-  // List files and directories
   listFiles: async (
     serverId: string,
     path: string = "/"
@@ -88,7 +86,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Get file content
   getFileContent: async (
     serverId: string,
     path: string
@@ -99,7 +96,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Update file content
   updateFileContent: async (
     serverId: string,
     path: string,
@@ -113,7 +109,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Download file with progress tracking and cancellation support
   downloadFileWithProgress: async (
     serverId: string,
     path: string,
@@ -125,15 +120,14 @@ export const fileApi = {
     const response = await api.get(`/servers/${serverId}/files/download`, {
       params: { path },
       responseType: "blob",
-      timeout: 3600000, // 1 hour timeout for downloads
-      signal, // 支持取消
+      timeout: 3600000,
+      signal,
       onDownloadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
 
-          // 计算下载速度
           const currentTime = Date.now()
-          const elapsedTime = (currentTime - startTime) / 1000 // 秒
+          const elapsedTime = (currentTime - startTime) / 1000
           const speed = elapsedTime > 0 ? progressEvent.loaded / elapsedTime : 0
 
           onProgress({
@@ -149,7 +143,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Upload file
   uploadFile: async (
     serverId: string,
     path: string,
@@ -166,13 +159,12 @@ export const fileApi = {
         headers: {
           "Content-Type": "multipart/form-data",
         },
-        timeout: 1800000, // 30 minutes timeout for uploads
+        timeout: 1800000,
       }
     );
     return response.data;
   },
 
-  // Create file or directory
   createFileOrDirectory: async (
     serverId: string,
     createRequest: CreateFileRequest
@@ -184,7 +176,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Delete file or directory
   deleteFileOrDirectory: async (
     serverId: string,
     path: string
@@ -195,7 +186,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Rename file or directory
   renameFileOrDirectory: async (
     serverId: string,
     renameRequest: RenameFileRequest
@@ -207,7 +197,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Multi-file upload: Check for conflicts
   checkUploadConflicts: async (
     serverId: string,
     path: string,
@@ -221,7 +210,6 @@ export const fileApi = {
     return response.data;
   },
 
-  // Multi-file upload: Set overwrite policy
   setUploadPolicy: async (
     serverId: string,
     sessionId: string,
@@ -236,7 +224,8 @@ export const fileApi = {
     return response.data;
   },
 
-  // Multi-file upload: Upload multiple files with chunking for large file sets
+  // Chunks files into batches when count exceeds the per-request limit;
+  // progress is normalized across all chunks so the caller sees one curve.
   uploadMultipleFiles: async (
     serverId: string,
     sessionId: string,
@@ -245,17 +234,15 @@ export const fileApi = {
     onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
     abortSignal?: AbortSignal
   ): Promise<MultiFileUploadResult> => {
-    const CHUNK_SIZE = 1000; // Maximum files per request
+    const CHUNK_SIZE = 1000;
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
     let totalLoaded = 0;
 
-    // Initialize combined results
     const combinedResults: MultiFileUploadResult = {
       message: "Files uploaded successfully",
       results: {}
     };
 
-    // If files count is within limit, upload directly
     if (files.length <= CHUNK_SIZE) {
       const formData = new FormData();
       files.forEach(file => {
@@ -270,7 +257,7 @@ export const fileApi = {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-          timeout: 1800000, // 30 minutes timeout for uploads
+          timeout: 1800000,
           signal: abortSignal,
           onUploadProgress: (progressEvent) => {
             if (onProgress && progressEvent.total) {
@@ -287,13 +274,11 @@ export const fileApi = {
       return response.data;
     }
 
-    // Split files into chunks for large file sets
     const chunks: File[][] = [];
     for (let i = 0; i < files.length; i += CHUNK_SIZE) {
       chunks.push(files.slice(i, i + CHUNK_SIZE));
     }
 
-    // Upload each chunk sequentially
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex];
       const chunkSize = chunk.reduce((sum, file) => sum + file.size, 0);
@@ -311,17 +296,13 @@ export const fileApi = {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-          timeout: 1800000, // 30 minutes timeout for uploads
+          timeout: 1800000,
           signal: abortSignal,
           onUploadProgress: (progressEvent) => {
             if (onProgress && progressEvent.total) {
-              // 当前chunk的上传进度
               const chunkProgress = progressEvent.loaded / progressEvent.total;
-              // 当前chunk在总体中的比例
               const chunkRatio = chunkSize / totalSize;
-              // 之前chunks已完成的比例
               const previousProgress = totalLoaded / totalSize;
-              // 全局进度 = 之前完成的 + 当前chunk进度 * 当前chunk占比
               const globalProgress = previousProgress + (chunkProgress * chunkRatio);
               const globalLoaded = Math.round(globalProgress * totalSize);
               const percent = Math.round(globalProgress * 100);
@@ -336,17 +317,14 @@ export const fileApi = {
         }
       );
 
-      // Merge results from this chunk
       Object.assign(combinedResults.results, chunkResponse.data.results);
 
-      // Update total loaded for next chunk
       totalLoaded += chunkSize;
     }
 
     return combinedResults;
   },
 
-  // Search files
   searchFiles: async (
     serverId: string,
     path: string = "/",

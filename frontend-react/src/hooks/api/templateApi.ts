@@ -1,6 +1,5 @@
 import { api } from "@/utils/api";
 
-// Variable definition types
 export type VariableType = "int" | "float" | "string" | "enum" | "bool";
 
 export interface IntVariableDefinition {
@@ -57,7 +56,6 @@ export type VariableDefinition =
   | EnumVariableDefinition
   | BoolVariableDefinition;
 
-// Template types
 export interface TemplateListItem {
   id: number;
   name: string;
@@ -88,7 +86,6 @@ export interface AvailablePorts {
   used_ports: number[];
 }
 
-// Request types
 export interface TemplateCreateRequest {
   name: string;
   description?: string;
@@ -103,7 +100,6 @@ export interface TemplateUpdateRequest {
   variable_definitions?: VariableDefinition[];
 }
 
-// Template config types (for template-created servers)
 export interface TemplateConfigResponse {
   server_id: string;
   template_id: number;
@@ -126,12 +122,10 @@ export interface TemplateConfigPreviewResponse {
   template_id: number | null;
 }
 
-// Default variables types
 export interface DefaultVariablesResponse {
   variable_definitions: VariableDefinition[];
 }
 
-// Response types for mode conversion
 export interface ConvertToDirectResponse {
   success: boolean;
 }
@@ -160,25 +154,21 @@ export interface CheckConversionResponse {
 }
 
 export const templateApi = {
-  // List all templates
   getTemplates: async (): Promise<TemplateListItem[]> => {
     const res = await api.get<TemplateListItem[]>("/templates/");
     return res.data;
   },
 
-  // Get template details
   getTemplate: async (id: number): Promise<Template> => {
     const res = await api.get<Template>(`/templates/${id}`);
     return res.data;
   },
 
-  // Create a new template
   createTemplate: async (request: TemplateCreateRequest): Promise<Template> => {
     const res = await api.post<Template>("/templates/", request);
     return res.data;
   },
 
-  // Update an existing template
   updateTemplate: async (
     id: number,
     request: TemplateUpdateRequest
@@ -187,24 +177,20 @@ export const templateApi = {
     return res.data;
   },
 
-  // Delete a template
   deleteTemplate: async (id: number): Promise<void> => {
     await api.delete(`/templates/${id}`);
   },
 
-  // Get JSON Schema for template variables
   getTemplateSchema: async (id: number): Promise<TemplateSchema> => {
     const res = await api.get<TemplateSchema>(`/templates/${id}/schema`);
     return res.data;
   },
 
-  // Get available ports for new server
   getAvailablePorts: async (): Promise<AvailablePorts> => {
     const res = await api.get<AvailablePorts>("/templates/ports/available");
     return res.data;
   },
 
-  // Preview rendered YAML
   previewRenderedYaml: async (
     id: number,
     variableValues: Record<string, unknown>
@@ -216,7 +202,6 @@ export const templateApi = {
     return res.data.rendered_yaml;
   },
 
-  // Check if server is template-based
   getServerTemplatePreview: async (
     serverId: string
   ): Promise<TemplateConfigPreviewResponse> => {
@@ -226,7 +211,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Get template config for a template-created server
   getServerTemplateConfig: async (
     serverId: string
   ): Promise<TemplateConfigResponse> => {
@@ -236,7 +220,7 @@ export const templateApi = {
     return res.data;
   },
 
-  // Update template config for a template-created server (returns task_id for tracking rebuild progress)
+  // Returns a task_id; rebuild progress is polled via the task API.
   updateServerTemplateConfig: async (
     serverId: string,
     variableValues: Record<string, unknown>
@@ -248,7 +232,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Get default variables configuration
   getDefaultVariables: async (): Promise<DefaultVariablesResponse> => {
     const res = await api.get<DefaultVariablesResponse>(
       "/templates/default-variables"
@@ -256,7 +239,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Update default variables configuration
   updateDefaultVariables: async (
     variables: VariableDefinition[]
   ): Promise<DefaultVariablesResponse> => {
@@ -267,7 +249,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Convert server to direct editing mode
   convertToDirectMode: async (
     serverId: string
   ): Promise<ConvertToDirectResponse> => {
@@ -277,7 +258,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Extract variables from compose file using a template
   extractVariables: async (
     serverId: string,
     templateId: number
@@ -289,7 +269,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Convert server to template mode
   convertToTemplateMode: async (
     serverId: string,
     templateId: number,
@@ -302,7 +281,6 @@ export const templateApi = {
     return res.data;
   },
 
-  // Check if conversion requires rebuild
   checkConversion: async (
     serverId: string,
     templateId: number,
@@ -316,7 +294,6 @@ export const templateApi = {
   },
 };
 
-// Export types
 export type {
   TemplateListItem as TemplateListItemType,
   Template as TemplateType,

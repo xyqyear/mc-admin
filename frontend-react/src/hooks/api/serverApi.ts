@@ -7,7 +7,6 @@ import type {
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
 import { api } from "@/utils/api";
 
-// Backend API response types (matching backend Pydantic models)
 interface ServerListItem {
   id: string;
   name: string;
@@ -94,13 +93,11 @@ interface RestartScheduleResponse {
 }
 
 export const serverApi = {
-  // 获取所有服务器基础信息 (仅包含配置信息，不包含状态或运行时数据)
   getServers: async (): Promise<ServerListItem[]> => {
     const res = await api.get<ServerListItem[]>("/servers/");
     return res.data;
   },
 
-  // 获取单个服务器详细配置信息
   getServerInfo: async (id: string): Promise<ServerInfo> => {
     const res = await api.get<{
       id: string;
@@ -113,27 +110,25 @@ export const serverApi = {
       javaVersion: number;
     }>(`/servers/${id}`);
 
-    // Transform backend response to match frontend ServerInfo type
     return {
       id: res.data.id,
       name: res.data.name,
-      path: `/servers/${id}`, // Default path
-      javaVersion: res.data.javaVersion, // Default Java version
+      path: `/servers/${id}`,
+      javaVersion: res.data.javaVersion,
       maxMemoryBytes: res.data.maxMemoryBytes,
       serverType: res.data.serverType.toUpperCase() as any,
       gameVersion: res.data.gameVersion,
       gamePort: res.data.gamePort,
-      rconPort: res.data.rconPort, // Use real RCON port from backend
+      rconPort: res.data.rconPort,
     };
   },
 
-  // 获取单个服务器状态
   getServerStatus: async (id: string): Promise<ServerStatus> => {
     const res = await api.get<ServerStatusResponse>(`/servers/${id}/status`);
     return res.data.status;
   },
 
-  // 获取单个服务器CPU百分比 (在RUNNING/STARTING/HEALTHY状态下可用)
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
   getServerCpuPercent: async (
     id: string,
   ): Promise<{ cpuPercentage: number }> => {
@@ -145,7 +140,7 @@ export const serverApi = {
     };
   },
 
-  // 获取单个服务器内存使用量 (在RUNNING/STARTING/HEALTHY状态下可用)
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
   getServerMemory: async (
     id: string,
   ): Promise<{ memoryUsageBytes: number }> => {
@@ -155,20 +150,19 @@ export const serverApi = {
     };
   },
 
-  // 获取单个服务器玩家列表 (仅在HEALTHY状态下可用)
-  // DEPRECATED: Use playerApi.getServerOnlinePlayers instead for full player info with avatars
+  // DEPRECATED: prefer playerApi.getServerOnlinePlayers (returns avatar/uuid).
+  // Backend requires HEALTHY status.
   getServerPlayers: async (id: string): Promise<string[]> => {
     const res = await api.get<ServerPlayersResponse>(`/servers/${id}/players`);
     return res.data.onlinePlayers;
   },
 
-  // 获取单个服务器I/O统计信息 (在RUNNING/STARTING/HEALTHY状态下可用)
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
   getServerIOStats: async (id: string): Promise<ServerIOStatsResponse> => {
     const res = await api.get<ServerIOStatsResponse>(`/servers/${id}/iostats`);
     return res.data;
   },
 
-  // 获取单个服务器磁盘使用信息 (始终可用，不依赖服务器状态)
   getServerDiskUsage: async (id: string): Promise<ServerDiskUsageResponse> => {
     const res = await api.get<ServerDiskUsageResponse>(
       `/servers/${id}/disk-usage`,
@@ -176,15 +170,12 @@ export const serverApi = {
     return res.data;
   },
 
-  // 服务器操作 (统一的操作API)
-  serverOperation: async (id: string, action: string): Promise<unknown> => {
-    const res = await api.post(`/servers/${id}/operations`, {
+  serverOperation: async (id: string, action: string): Promise<void> => {
+    await api.post(`/servers/${id}/operations`, {
       action,
     } as ServerOperationRequest);
-    return res.data;
   },
 
-  // 删除服务器：返回结构化的 RemoveServerResult（统计取消的计划/会话数）
   removeServerFull: async (id: string): Promise<RemoveServerResult> => {
     const res = await api.post<RemoveServerResult>(
       `/servers/${id}/operations`,
@@ -193,7 +184,6 @@ export const serverApi = {
     return res.data;
   },
 
-  // 便捷的操作方法 (保持向后兼容)
   startServer: async (id: string): Promise<void> => {
     await serverApi.serverOperation(id, "start");
   },
@@ -218,13 +208,12 @@ export const serverApi = {
     await serverApi.serverOperation(id, "remove");
   },
 
-  // Compose文件API
   getComposeFile: async (id: string): Promise<string> => {
     const res = await api.get<ComposeConfigResponse>(`/servers/${id}/compose`);
     return res.data.yaml_content;
   },
 
-  // 更新Compose文件 (returns task_id for tracking rebuild progress)
+  // Returns a task_id; rebuild progress is polled via the task API.
   updateComposeFile: async (id: string, yamlContent: string): Promise<ComposeUpdateResponse> => {
     const res = await api.post<ComposeUpdateResponse>(`/servers/${id}/compose`, {
       yaml_content: yamlContent,
@@ -232,7 +221,6 @@ export const serverApi = {
     return res.data;
   },
 
-  // 创建新服务器（可选打包 restart_schedule，单次请求完成创建+重启计划+DNS）
   createServer: async (
     serverId: string,
     request: CreateServerRequest,
@@ -250,7 +238,6 @@ export const serverApi = {
     return res.data;
   },
 
-  // 填充服务器数据
   populateServer: async (
     serverId: string,
     archiveFilename: string,
@@ -264,7 +251,6 @@ export const serverApi = {
     return res.data;
   },
 
-  // 重启计划管理API
   createOrUpdateRestartSchedule: async (
     serverId: string,
     customCron?: string,
@@ -306,17 +292,16 @@ export const serverApi = {
     await api.post(`/servers/${serverId}/restart-schedule/resume`);
   },
 
-  // 批量获取服务器状态
+  // The list endpoint omits status, so fan out per server. A single failure
+  // must not poison the rest, so map errors to null and filter later.
   getAllServerStatuses: async (
     serverIds: string[],
   ): Promise<Record<string, ServerStatus>> => {
-    // Since servers endpoint no longer includes status, fetch each server status individually
     const statusPromises = serverIds.map(async (id) => {
       try {
         const status = await serverApi.getServerStatus(id);
         return { id, status };
       } catch {
-        // If a server status fails, return null status to avoid breaking the whole request
         return { id, status: null };
       }
     });
@@ -334,7 +319,6 @@ export const serverApi = {
   },
 };
 
-// Export types for use in other modules
 export type {
   ComposeUpdateResponse,
   CreateServerRequest,

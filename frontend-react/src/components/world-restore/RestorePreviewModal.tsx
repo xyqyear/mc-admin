@@ -27,10 +27,8 @@ import type {
 
 import { PreviewTileLayer } from './PreviewTileLayer'
 
-// A non-null `request` means "preview this snapshot+selection pair". Nulling
-// it triggers the dialog's close transition; callers don't manage `open`
-// separately. Both call sites (snapshot picker, history drawer) hold one of
-// these in state and clear it on close.
+// A non-null `request` means "preview this snapshot+selection pair"; nulling
+// it triggers the dialog's close transition.
 export interface RestorePreviewRequest {
   sourceSnapshotId: string
   selection: RestorationSelection
@@ -81,12 +79,8 @@ interface BlockBounds {
   bzMax: number
 }
 
-// Compute the affected-region set + selection bounding box from the selection.
-// For dimension/world scopes there are no affected regions yet — the modal
-// shows a "no regions to render" message rather than a blank black canvas.
-// `bounds` is the tightest block-aligned box around the selection (chunk-precise
-// for chunk selections, region-precise for region selections); the map uses it
-// to fitBounds so the rollback area is centered and zoomed to fit.
+// Dimension/world scopes have no affected regions; modal shows a "no regions"
+// message instead of a blank canvas. `bounds` drives map fitBounds.
 function computeAffected(selection: RestorationSelection | null): {
   regions: Array<{ rx: number; rz: number }>
   bounds: BlockBounds | null
@@ -129,8 +123,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
 }) => {
   const open = !!request
   // Latch the active request so the dialog body keeps rendering through the
-  // close transition. The parent nulls `request` on close, which would
-  // otherwise blank the title/progress/map mid-animation.
+  // close transition; nulling `request` would otherwise blank mid-animation.
   const [latched, setLatched] = useState<RestorePreviewRequest | null>(request)
   useEffect(() => {
     if (request) setLatched(request)
@@ -138,9 +131,8 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   const selection = latched?.selection ?? null
 
   const [state, setState] = useState<PreviewState>(initialState)
-  // The map lives in both a ref (for synchronous teardown inside the
-  // container callback ref) and state (so the layer-attach and overlay
-  // effects re-run once the map is available).
+  // Map lives in both a ref (for synchronous teardown in the container ref
+  // callback) and state (so layer/overlay effects re-run once it's available).
   const mapRef = useRef<L.Map | null>(null)
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null)
   const layerRef = useRef<PreviewTileLayer | null>(null)
@@ -157,9 +149,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     [affected.regions],
   )
 
-  // Reset state whenever a fresh request comes in (new snapshot/selection or
-  // a re-open after close). Object identity is the trigger — callers create a
-  // new request object on each open click.
+  // Object identity is the trigger; callers create a new request on each open.
   useEffect(() => {
     if (!request) return
     setState(initialState)
@@ -202,10 +192,8 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     onError: (msg) => setState((prev) => ({ ...prev, error: msg })),
   })
 
-  // Callback ref on the map container: mounts Leaflet when the div attaches
-  // and tears it down when it detaches. Reacting in the ref callback (rather
-  // than a useRef + useEffect pair) keeps mount/unmount tied to the DOM node
-  // lifecycle directly, which is what Leaflet needs.
+  // Mount/unmount in the ref callback (not useEffect) keeps Leaflet's
+  // lifecycle tied directly to the DOM node attaching/detaching.
   const bounds = affected.bounds
   const containerRefCallback = useCallback(
     (node: HTMLDivElement | null) => {
@@ -231,16 +219,13 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       })
       const sw = blockToLatLng(bounds.bxMin, bounds.bzMax)
       const ne = blockToLatLng(bounds.bxMax, bounds.bzMin)
-      // maxZoom: 2 keeps a single-chunk selection from zooming all the way to
-      // the map's max (4×) and losing the surrounding context.
+      // maxZoom: 2 keeps single-chunk selections from zooming past surrounding context.
       map.fitBounds([sw, ne], { padding: [20, 20], maxZoom: 2 })
       mapRef.current = map
       overlayRef.current = L.layerGroup().addTo(map)
       setMapInstance(map)
 
-      // Re-measure on container size changes (dialog open animation, browser
-      // zoom, viewport resize) so Leaflet computes visible tiles against the
-      // actual rendered size.
+      // Re-measure on container resizes so Leaflet's tile math matches actual size.
       const ro = new ResizeObserver(() => map.invalidateSize())
       ro.observe(node)
       resizeObserverRef.current = ro
@@ -248,9 +233,6 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     [bounds],
   )
 
-  // Attach the preview tile layer once we know the session id and the map
-  // is initialized. Aborting requests when the modal closes is handled
-  // inside PreviewTileLayer.
   useEffect(() => {
     if (!mapInstance) return
     if (!state.sessionId) return
@@ -272,8 +254,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     layerRef.current = layer
   }, [serverId, state.sessionId, availableSet, mapInstance])
 
-  // Selection overlay — paint the affected regions so the user can see the
-  // boundary even before tiles finish loading.
+  // Paint affected regions so the boundary is visible before tiles load.
   useEffect(() => {
     if (!mapInstance) return
     const group = overlayRef.current
@@ -298,8 +279,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       }
     }
     if (selection.type === 'chunks' && (selection.chunks?.length ?? 0) <= 5_000) {
-      // Use the fine-grained chunk overlay only for smaller selections; past
-      // the threshold the region rectangles above are sufficient.
+      // Past 5k chunks the region rectangles above are sufficient.
       const renderer = L.canvas()
       for (const [cx, cz] of selection.chunks ?? []) {
         const sw = blockToLatLng(cx * 16, (cz + 1) * 16)
@@ -314,8 +294,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     }
   }, [affected.regions, selection, mapInstance])
 
-  // Heartbeat while the preview is open. Silent on error — the page can
-  // recover by re-opening the preview.
+  // Silent on error; the page can recover by re-opening the preview.
   useEffect(() => {
     if (!open) return
     if (!state.sessionId) return
@@ -326,15 +305,14 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     return () => window.clearInterval(id)
   }, [open, state.sessionId, heartbeat])
 
-  // End the preview session when the dialog closes. Fire-and-forget; if the
-  // request never lands, the janitor reaps the session by TTL.
+  // Fire-and-forget end on close; if it doesn't land, the janitor reaps by TTL.
   useEffect(() => {
     if (open) return
     const sid = state.sessionId
     if (!sid) return
     endPreview.mutate(sid)
     setState(initialState)
-    // Intentionally limit deps — we only want to fire on close transitions.
+    // Limit deps so this only fires on close transitions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -384,15 +362,10 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
             </div>
             <Progress value={state.percent} />
 
-            {/* Only mount Leaflet after the backend signals `ready`. Tiles are
-                rendered lazily on first request, so mounting earlier would
-                fire tile fetches before the per-session render queue is
-                attached and 404 them. */}
-            {/* `isolate` + `contain: paint` + `translate-z-0` keep the map's
-                repaints from bubbling out to the dialog's compositing layer.
-                Without this, the dialog overlay's `backdrop-blur` is
-                re-evaluated by the GPU on every Leaflet pan frame, which
-                makes panning visibly laggier than the live map. */}
+            {/* Mount only after `ready`; earlier tile fetches 404 because the
+                per-session render queue isn't attached yet. `isolate` +
+                `contain: paint` + `translate-z-0` stop pan repaints from
+                re-evaluating the dialog overlay's `backdrop-blur` per frame. */}
             {state.ready && (
               <div
                 ref={containerRefCallback}

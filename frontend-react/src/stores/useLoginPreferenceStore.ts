@@ -30,6 +30,5 @@ export const useLoginPreferenceStore = create<LoginPreferenceStore>()(
   )
 );
 
-// Selector hooks for better performance
 export const useLoginPreference = () =>
   useLoginPreferenceStore((state) => state.loginPreference);

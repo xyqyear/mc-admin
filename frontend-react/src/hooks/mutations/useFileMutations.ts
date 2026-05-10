@@ -16,20 +16,17 @@ export const useFileMutations = (serverId: string | undefined) => {
   const { executeDownload } = useDownloadManager();
 
   const invalidateFileList = () => {
-    // Invalidate all file-related queries for this server
     queryClient.invalidateQueries({
       queryKey: queryKeys.files.lists(serverId || ""),
     });
   };
 
-  // 更新文件内容
   const useUpdateFile = () => {
     return useMutation({
       mutationFn: ({ path, content }: { path: string; content: string }) =>
         fileApi.updateFileContent(serverId!, path, content),
       onSuccess: () => {
         toast.success("文件更新成功");
-        // Invalidate all file caches for this server, including list and content.
         invalidateFileList();
       },
       onError: (error: any) => {
@@ -38,7 +35,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 上传文件
   const useUploadFile = () => {
     return useMutation({
       mutationFn: ({ path, file }: { path: string; file: File }) =>
@@ -53,7 +49,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 创建文件或目录
   const useCreateFile = () => {
     return useMutation({
       mutationFn: (createRequest: CreateFileRequest) =>
@@ -70,7 +65,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 删除文件或目录
   const useDeleteFile = () => {
     return useMutation({
       mutationFn: (path: string) =>
@@ -85,7 +79,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 批量删除文件或目录
   const useBulkDeleteFiles = () => {
     return useMutation({
       mutationFn: async (paths: string[]) => {
@@ -112,7 +105,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 重命名文件或目录
   const useRenameFile = () => {
     return useMutation({
       mutationFn: (renameRequest: RenameFileRequest) =>
@@ -127,7 +119,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 多文件上传: 检查冲突
   const useCheckUploadConflicts = () => {
     return useMutation({
       mutationFn: ({ path, uploadRequest }: { path: string; uploadRequest: MultiFileUploadRequest }) =>
@@ -138,7 +129,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 多文件上传: 设置覆盖策略
   const useSetUploadPolicy = () => {
     return useMutation({
       mutationFn: ({ sessionId, policy, reusable }: { sessionId: string; policy: OverwritePolicy; reusable?: boolean }) =>
@@ -149,7 +139,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 多文件上传: 执行上传
   const useUploadMultipleFiles = () => {
     return useMutation({
       mutationFn: ({
@@ -180,7 +169,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  // 下载文件 (非mutations，但是文件操作相关)
   const downloadFile = async (path: string, filename: string) => {
     if (!serverId) return;
 
@@ -193,7 +181,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     );
   };
 
-  // 搜索文件
   const useSearchFiles = () => {
     return useMutation({
       mutationFn: ({ path = "/", searchRequest }: { path?: string; searchRequest: FileSearchRequest }) =>

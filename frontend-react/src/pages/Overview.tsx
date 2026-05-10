@@ -210,7 +210,6 @@ const Overview: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* System overview cards */}
       <div className="grid gap-3 sm:gap-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
         <div className="h-60 flex min-w-50">
           <ServerCountCard totalServers={serverNum} runningServers={runningServers} />
@@ -276,7 +275,6 @@ const Overview: React.FC = () => {
         </div>
       </div>
 
-      {/* Error alert */}
       {isError && (
         <Alert variant="destructive">
           <AlertTitle>加载数据失败</AlertTitle>
@@ -291,7 +289,6 @@ const Overview: React.FC = () => {
         </Alert>
       )}
 
-      {/* Server table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

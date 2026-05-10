@@ -130,7 +130,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
       onCancel()
       onSuccess?.()
     } catch {
-      // Error handled by mutation
+      // Mutation hook surfaces the error.
     }
   }
 
@@ -148,7 +148,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-          {/* Job Type Selection */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">选择任务类型</CardTitle>
@@ -178,7 +177,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </CardContent>
           </Card>
 
-          {/* Restart-Backup Conflict Warning */}
           {selectedJobType === 'restart_server' && (
             <Alert>
               <AlertTitle>重启时间冲突提醒</AlertTitle>
@@ -194,7 +192,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </Alert>
           )}
 
-          {/* Basic Configuration */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">基本配置</CardTitle>
@@ -223,7 +220,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </CardContent>
           </Card>
 
-          {/* Cron Expression Configuration */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">调度配置</CardTitle>
@@ -239,7 +235,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </CardContent>
           </Card>
 
-          {/* Job Parameters */}
           {selectedJobSchema && (
             <Card>
               <CardHeader className="pb-3">

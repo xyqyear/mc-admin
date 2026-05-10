@@ -12,7 +12,6 @@ TEST_ROOT_PATH = Path("/tmp/test_temp_dir")
 def create_mc_server_compose_yaml(
     server_name: str, game_port: int, rcon_port: int
 ) -> str:
-    """Create a YAML string for a Minecraft server compose configuration"""
     return f"""services:
   mc:
     image: itzg/minecraft-server:java25

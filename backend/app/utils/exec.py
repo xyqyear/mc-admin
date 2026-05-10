@@ -1,6 +1,4 @@
-"""
-Command execution utilities for running system commands and shell operations.
-"""
+"""Async subprocess helpers."""
 
 import asyncio
 from collections.abc import AsyncGenerator
@@ -36,24 +34,9 @@ async def exec_command(
     cwd: str | None = None,
     timeout: float | None = None,
 ) -> str:
-    """
-    Execute command with arguments asynchronously.
-
-    Args:
-        command: Command to execute
-        *args: Command arguments
-        env: Environment variables
-        cwd: Working directory
-        timeout: Maximum seconds to wait for the command. On expiry the
-            subprocess is terminated (SIGTERM, then SIGKILL after a short
-            grace period) and TimeoutError is raised. None means no timeout.
-
-    Returns:
-        Command output as string
-
-    Raises:
-        RuntimeError: If command fails
-        TimeoutError: If timeout is set and the command does not finish in time
+    """Run ``command`` and return stdout. Raises ``RuntimeError`` on non-zero exit
+    or ``TimeoutError`` when ``timeout`` expires; the subprocess is killed
+    (SIGTERM then SIGKILL after a grace) before either is raised.
     """
     process = await asyncio.create_subprocess_exec(
         command,
@@ -99,22 +82,11 @@ async def exec_command_stream(
     cwd: str | None = None,
     delimiters: set[int] | None = None,
 ) -> AsyncGenerator[str, None]:
-    """
-    Execute command and yield stdout segments as they arrive.
+    """Stream stdout segments from ``command``.
 
-    Args:
-        command: Command to execute
-        *args: Command arguments
-        cwd: Working directory
-        delimiters: Set of byte values to use as segment delimiters.
-            If None, uses line-based reading (splits on newline).
-            For 7z progress output, use {ord('\\r'), ord('\\n'), ord('\\x08')}.
-
-    Yields:
-        Segments from stdout as they arrive (split by delimiters)
-
-    Raises:
-        RuntimeError: If command fails
+    ``delimiters=None`` yields whole lines. Pass a set of byte values (e.g.
+    ``{ord('\\r'), ord('\\n'), ord('\\x08')}`` for 7z progress) to split on
+    arbitrary control bytes. Raises ``RuntimeError`` on non-zero exit.
     """
     process = await asyncio.create_subprocess_exec(
         command,
@@ -128,11 +100,9 @@ async def exec_command_stream(
         raise RuntimeError("Failed to capture stdout")
 
     if delimiters is None:
-        # Default line-based reading
         async for line in process.stdout:
             yield line.decode()
     else:
-        # Custom delimiter-based reading for real-time progress
         buffer = b""
         while True:
             byte = await process.stdout.read(1)
@@ -146,7 +116,6 @@ async def exec_command_stream(
             else:
                 buffer += byte
 
-        # Yield remaining buffer
         if buffer:
             yield buffer.decode(errors="replace")
 

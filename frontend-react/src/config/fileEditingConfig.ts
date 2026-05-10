@@ -1,28 +1,9 @@
-/**
- * File Editing Configuration
- *
- * Centralized configuration for file editing features including:
- * - Language detection and Monaco Editor configuration
- * - File override warnings for Docker Compose conflicts
- * - Editable file type definitions
- */
-
-// ========================================================================================
-// Types and Interfaces
-// ========================================================================================
-
-/**
- * Language configuration for Monaco Editor
- */
 export interface LanguageConfig {
   language: string;
   supportsValidation: boolean;
   description: string;
 }
 
-/**
- * Configuration for files that can be overridden by compose settings
- */
 export interface ComposeOverrideWarning {
   shouldWarn: boolean;
   title: string;
@@ -31,16 +12,7 @@ export interface ComposeOverrideWarning {
   severity: "warning" | "info" | "error";
 }
 
-// ========================================================================================
-// Language Mapping Configuration
-// ========================================================================================
-
-/**
- * Language mapping based on file extensions
- * Prioritizes configuration files with syntax validation support
- */
 export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
-  // JSON variants
   ".json": { language: "json", supportsValidation: true, description: "JSON" },
   ".json5": {
     language: "json",
@@ -53,14 +25,12 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "JSON with Comments",
   },
 
-  // YAML variants
   ".yaml": { language: "yaml", supportsValidation: true, description: "YAML" },
   ".yml": { language: "yaml", supportsValidation: true, description: "YAML" },
 
-  // TOML (fallback to ini since Monaco doesn't have native TOML support)
+  // Monaco has no native TOML mode; ini is the closest fallback.
   ".toml": { language: "ini", supportsValidation: false, description: "TOML" },
 
-  // Configuration files (INI-style)
   ".ini": {
     language: "ini",
     supportsValidation: false,
@@ -82,7 +52,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Configuration File",
   },
 
-  // Properties files
   ".properties": {
     language: "properties",
     supportsValidation: false,
@@ -94,7 +63,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Environment Variables",
   },
 
-  // Programming languages
   ".js": {
     language: "javascript",
     supportsValidation: true,
@@ -126,13 +94,11 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "JavaScript React",
   },
 
-  // Markup languages
   ".html": { language: "html", supportsValidation: true, description: "HTML" },
   ".htm": { language: "html", supportsValidation: true, description: "HTML" },
   ".xml": { language: "xml", supportsValidation: true, description: "XML" },
   ".svg": { language: "xml", supportsValidation: true, description: "SVG" },
 
-  // Stylesheet languages
   ".css": { language: "css", supportsValidation: true, description: "CSS" },
   ".scss": {
     language: "scss",
@@ -142,7 +108,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
   ".sass": { language: "sass", supportsValidation: true, description: "Sass" },
   ".less": { language: "less", supportsValidation: true, description: "Less" },
 
-  // Shell scripts
   ".sh": {
     language: "shell",
     supportsValidation: false,
@@ -164,7 +129,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Fish Script",
   },
 
-  // Markdown
   ".md": {
     language: "markdown",
     supportsValidation: false,
@@ -176,17 +140,14 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Markdown",
   },
 
-  // Log files
   ".log": {
     language: "log",
     supportsValidation: false,
     description: "Log File",
   },
 
-  // SQL
   ".sql": { language: "sql", supportsValidation: true, description: "SQL" },
 
-  // Python
   ".py": {
     language: "python",
     supportsValidation: true,
@@ -198,11 +159,9 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Python",
   },
 
-  // Java
   ".java": { language: "java", supportsValidation: true, description: "Java" },
   ".class": { language: "java", supportsValidation: true, description: "Java" },
 
-  // C/C++
   ".c": { language: "c", supportsValidation: true, description: "C" },
   ".cpp": { language: "cpp", supportsValidation: true, description: "C++" },
   ".cxx": { language: "cpp", supportsValidation: true, description: "C++" },
@@ -214,17 +173,13 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "C++ Header",
   },
 
-  // Go
   ".go": { language: "go", supportsValidation: true, description: "Go" },
 
-  // Rust
   ".rs": { language: "rust", supportsValidation: true, description: "Rust" },
 
-  // PHP
   ".php": { language: "php", supportsValidation: true, description: "PHP" },
   ".phtml": { language: "php", supportsValidation: true, description: "PHP" },
 
-  // Ruby
   ".rb": { language: "ruby", supportsValidation: true, description: "Ruby" },
   ".gemfile": {
     language: "ruby",
@@ -232,7 +187,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Ruby Gemfile",
   },
 
-  // Other text formats
   ".txt": {
     language: "text",
     supportsValidation: false,
@@ -244,7 +198,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
     description: "Plain Text",
   },
 
-  // Minecraft data formats
   ".snbt": {
     language: "snbt",
     supportsValidation: false,
@@ -252,14 +205,6 @@ export const LANGUAGE_MAP: Record<string, LanguageConfig> = {
   },
 };
 
-// ========================================================================================
-// File Editability Configuration
-// ========================================================================================
-
-/**
- * Set of editable file extensions
- * Files with these extensions can be edited in the frontend
- */
 export const EDITABLE_EXTENSIONS = new Set([
   ".yaml",
   ".yml",
@@ -279,13 +224,6 @@ export const EDITABLE_EXTENSIONS = new Set([
   ".snbt",
 ]);
 
-// ========================================================================================
-// Compose Override Warning Configuration
-// ========================================================================================
-
-/**
- * Configuration for files that can be overridden by Docker Compose settings
- */
 export const COMPOSE_OVERRIDE_WARNINGS: Record<string, ComposeOverrideWarning> =
 {
   "server.properties": {
@@ -379,13 +317,6 @@ export const COMPOSE_OVERRIDE_WARNINGS: Record<string, ComposeOverrideWarning> =
   },
 };
 
-// ========================================================================================
-// Monaco Editor Options Configuration
-// ========================================================================================
-
-/**
- * Gets Monaco Editor configuration options for a specific language
- */
 export function getLanguageEditorOptions(language: string): any {
   const baseOptions = {
     formatOnPaste: true,
@@ -505,16 +436,6 @@ export function getLanguageEditorOptions(language: string): any {
   }
 }
 
-// ========================================================================================
-// Utility Functions
-// ========================================================================================
-
-/**
- * Detects the Monaco Editor language based on file name or path
- *
- * @param fileName - The name of the file (can include path)
- * @returns Language configuration with language ID and validation support info
- */
 export function detectFileLanguage(fileName: string): LanguageConfig {
   if (!fileName) {
     return {
@@ -524,10 +445,8 @@ export function detectFileLanguage(fileName: string): LanguageConfig {
     };
   }
 
-  // Normalize the filename
   const normalizedName = fileName.toLowerCase();
 
-  // Check for file extensions
   const dotIndex = normalizedName.lastIndexOf(".");
   if (dotIndex > -1) {
     const extension = normalizedName.substring(dotIndex);
@@ -536,7 +455,6 @@ export function detectFileLanguage(fileName: string): LanguageConfig {
     }
   }
 
-  // Default to plain text
   return {
     language: "text",
     supportsValidation: false,
@@ -544,12 +462,6 @@ export function detectFileLanguage(fileName: string): LanguageConfig {
   };
 }
 
-/**
- * Checks if a file can be overridden by compose settings and returns warning info
- *
- * @param fileName - The name of the file (can include path)
- * @returns Warning configuration if the file can be overridden
- */
 export function getComposeOverrideWarning(
   fileName: string
 ): ComposeOverrideWarning {
@@ -578,12 +490,6 @@ export function getComposeOverrideWarning(
   };
 }
 
-/**
- * Checks if a file is editable based on its extension
- *
- * @param fileName - The name of the file (can include path)
- * @returns True if the file is editable, false otherwise
- */
 export function isFileEditable(fileName: string): boolean {
   if (!fileName) {
     return false;
@@ -597,6 +503,5 @@ export function isFileEditable(fileName: string): boolean {
     return EDITABLE_EXTENSIONS.has(extension);
   }
 
-  // Default: not editable if no extension
   return false;
 }

@@ -111,7 +111,6 @@ const TreeNodeRow: React.FC<{
   const hasChildren = !!node.children?.length
   const isChecked = checkedSet.has(node.key)
 
-  // For directories, compute checked state from children
   const childLeafKeys = useMemo(() => node.children ? getLeafKeys([node]) : [], [node])
   const dirChecked = hasChildren
     ? childLeafKeys.length > 0 && childLeafKeys.every(k => checkedSet.has(k))
@@ -119,7 +118,6 @@ const TreeNodeRow: React.FC<{
   const dirIndeterminate = hasChildren && !dirChecked && childLeafKeys.some(k => checkedSet.has(k))
 
   const handleDirCheck = (checked: boolean) => {
-    // Toggle all leaf children
     childLeafKeys.forEach(k => onCheckChange(k, checked))
   }
 

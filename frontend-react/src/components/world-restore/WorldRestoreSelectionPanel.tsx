@@ -35,8 +35,7 @@ interface WorldRestoreSelectionPanelProps {
   regionDirRelpath: string | null
   selection: Set<ChunkKey>
   mode: WorldRestoreSelectionMode
-  // Mode toggle is URL-driven on the page; the panel only signals the change
-  // up. The page persists URL + store.
+  // Mode toggle is URL-driven; the panel only signals the change up.
   onModeChange: (mode: WorldRestoreSelectionMode) => void
   serverStopped: boolean
 }
@@ -57,34 +56,26 @@ export const WorldRestoreSelectionPanel: React.FC<
   const { useCreateWorldSnapshot } = useWorldRestoreMutations()
   const createSnapshot = useCreateWorldSnapshot(serverId)
 
-  // Snapshot picker / history drawer open state. Keeping the handles here
-  // means the side panel can show its own buttons without leaking dialog
-  // state to the page.
   const [pickerOpen, setPickerOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pickerSelection, setPickerSelection] =
     useState<RestorationSelection | null>(null)
 
-  // Mode switches always wipe the selection (the store's `setMode` handles
-  // the wipe). Chunk and region selections aren't bidirectionally convertible
-  // without surprise data loss, so we don't try.
+  // Chunk ↔ region isn't safely bidirectional, so `setMode` wipes the selection.
   const handleModeChange = (next: WorldRestoreSelectionMode) => {
     if (next === mode) return
     setMode(serverId, next)
     onModeChange(next)
   }
 
-  // Layout is "ready" once a dimension has been resolved — every dimension
-  // implies a world root and the WORLD scope no longer needs a per-root
-  // identifier (it spans every valid root on the server).
+  // WORLD scope spans every valid root, so no per-root identifier is needed.
   const dimensionReady = !!regionDirRelpath
   const layoutReady = dimensionReady
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
-  // Manual snapshots only ever cover a whole dimension or the whole server —
-  // narrower scopes (regions / chunks) exist only as safety snapshots taken
-  // automatically before a rollback, and don't have a user-facing button.
+  // Manual snapshots cover only dimension/world; narrower scopes are taken
+  // automatically as safety snapshots before a rollback.
   const startCreate = (
     scope: 'world' | 'dimension',
     description: string,

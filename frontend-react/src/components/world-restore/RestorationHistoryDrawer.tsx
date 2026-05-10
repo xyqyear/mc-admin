@@ -89,10 +89,8 @@ export const RestorationHistoryDrawer: React.FC<
   const [rollbackState, setRollbackState] =
     useState<RestoreProgressState>(initialProgress)
 
-  // Preview modal — opened from a per-row "preview" button. Previews the
-  // safety snapshot (the snapshot a rollback on this row would restore from)
-  // against the row's stored selection, so the user can see what reverting
-  // this entry would actually bring back.
+  // Previews the row's safety snapshot against its stored selection, so the
+  // user can see what reverting this entry would bring back.
   const [previewReq, setPreviewReq] =
     useState<RestorePreviewRequest | null>(null)
 
@@ -217,18 +215,13 @@ export const RestorationHistoryDrawer: React.FC<
               )}
               {rows.map((row) => {
                 const tone = STATUS_TONE[row.status]
-                // The backend reports per-row snapshot existence by checking
-                // the restic repo at request time. If the safety snapshot has
-                // been deleted, rollback is impossible — hide the button.
-                // Rollback rows themselves are also rollback-able: their
-                // safety snapshot captures the state immediately before the
-                // rollback, which lets the user undo the rollback.
+                // Rollback rows are themselves rollback-able: their safety
+                // snapshot captures the pre-rollback state, undoing the rollback.
                 const canRollback =
                   (row.status === 'succeeded' || row.status === 'interrupted') &&
                   !!row.safety_snapshot_id &&
                   row.safety_snapshot_exists
-                // Preview maps only support region/chunk scopes — dimension
-                // and world scopes have no per-region affected set to render.
+                // Dimension/world scopes have no per-region affected set.
                 const canPreview =
                   canRollback &&
                   (row.selection.type === 'regions' ||

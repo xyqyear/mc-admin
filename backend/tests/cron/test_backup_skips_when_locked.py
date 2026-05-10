@@ -41,7 +41,6 @@ async def test_backup_skips_when_server_lock_is_held():
         # Should return without raising and without invoking restic.
         await backup_cronjob(context)
 
-    # The skip log line is captured in context.messages.
     joined = "\n".join(context.messages)
     assert "跳过备份" in joined
     assert server_id in joined

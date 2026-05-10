@@ -103,7 +103,6 @@ const TreeNodeRow: React.FC<{
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
 
-  // Build a FileItem for the icon
   const nodeItem: SearchFileItem = useMemo(() => {
     if (node.isLeaf) {
       const found = searchResults.find(r => r.path === node.key)
@@ -168,7 +167,6 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
   const treeData = useMemo(() => buildTreeData(searchResults, currentRegex), [searchResults, currentRegex])
 
-  // Auto-expand all when search results change
   useEffect(() => {
     if (searchResults.length > 0) {
       setExpandedKeys(new Set(getAllKeys(treeData)))

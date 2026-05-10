@@ -21,7 +21,7 @@ async def start_player_system() -> None:
     from .heartbeat import heartbeat_manager
     from .player_syncer import player_syncer
 
-    # Start heartbeat first (includes crash detection)
+    # Heartbeat starts first; it owns crash recovery for the rest of the system.
     await heartbeat_manager.start()
 
     server_ids: list[str] = []
@@ -44,7 +44,6 @@ async def start_player_system() -> None:
                 exc_info=True,
             )
 
-    # Start RCON validation loop
     await player_syncer.start()
 
     logger.info("Player monitoring system started successfully")

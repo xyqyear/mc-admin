@@ -28,17 +28,15 @@ export const useTokenStore = create<TokenStore>()(
     {
       name: "mc-admin-token",
       storage: createJSONStorage(() => localStorage),
-      // Version for migration handling
       version: 1,
     }
   )
 );
 
-// Selector hooks for better performance
 export const useIsAuthenticated = () =>
   useTokenStore((state) => state.isAuthenticated());
 
 export const useToken = () => useTokenStore((state) => state.token);
 
-// Legacy compatibility - deprecated, use useIsAuthenticated instead
+/** @deprecated Use useIsAuthenticated. */
 export const useHasToken = useIsAuthenticated;

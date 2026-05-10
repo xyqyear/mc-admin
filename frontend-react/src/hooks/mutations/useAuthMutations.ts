@@ -9,7 +9,6 @@ export const useAuthMutations = () => {
   const { setToken } = useTokenStore();
   const navigate = useNavigate();
 
-  // Traditional password-based login mutation
   const useLogin = () => {
     return useMutation({
       mutationFn: (credentials: LoginRequest) => authApi.login(credentials),

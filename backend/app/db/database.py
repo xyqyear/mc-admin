@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from ..config import settings
 from ..models import Base
 
-# Create async SQLAlchemy engine
-# For SQLite, we need to use aiosqlite driver
+# SQLite needs the aiosqlite driver for async access.
 async_database_url = re.sub(
     r"^sqlite:///", "sqlite+aiosqlite:///", settings.database_url
 )
@@ -29,16 +28,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_async_session():
-    """Get an async database session context manager for use outside of FastAPI dependency injection.
-
-    Usage:
-        async with get_async_session() as session:
-            # Use session here
-    """
+    """Async session context manager for use outside FastAPI dependency injection."""
     return AsyncSessionLocal()
 
 
 async def init_db():
-    """Initialize database tables asynchronously."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

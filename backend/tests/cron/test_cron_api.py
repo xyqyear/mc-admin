@@ -1,9 +1,4 @@
-"""
-Test cron job management API endpoints.
-
-This test validates the REST API endpoints for cron job management,
-using TestClient to simulate HTTP requests.
-"""
+"""Cron job management REST API tests via TestClient."""
 
 import tempfile
 from pathlib import Path
@@ -21,15 +16,12 @@ from .test_cron_manager import test_cron_manager, test_cron_registry
 
 @pytest.fixture(scope="function")
 async def test_db():
-    """Create a test database for testing."""
-    # Create temporary database file
     temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
     temp_db.close()
 
     database_url = f"sqlite+aiosqlite:///{temp_db.name}"
     engine = create_async_engine(database_url, echo=False)
 
-    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -41,7 +33,6 @@ async def test_db():
         expire_on_commit=False,
     )
 
-    # Patch database sessions
     import app.cron.manager as manager_module
     import app.db.database as db_module
 
@@ -55,7 +46,6 @@ async def test_db():
     original_get_session = manager_module.get_async_session
     manager_module.get_async_session = get_test_session
 
-    # Patch global cron manager and registry with test versions
     import app.routers.cron as cron_router_module
 
     original_cron_manager = cron_router_module.cron_manager
@@ -64,15 +54,12 @@ async def test_db():
     cron_router_module.cron_manager = test_cron_manager
     cron_router_module.cron_registry = test_cron_registry
 
-    # Initialize cron manager with test database
     await test_cron_manager.initialize()
 
     yield TestSessionLocal
 
-    # Cleanup
     await test_cron_manager.shutdown()
 
-    # Restore original sessions and managers
     db_module.AsyncSessionLocal = original_db_session
     manager_module.get_async_session = original_get_session
     cron_router_module.cron_manager = original_cron_manager
@@ -84,8 +71,6 @@ async def test_db():
 
 @pytest.fixture
 def client():
-    """Create a test client for API testing."""
-    # Mock settings to set up master token
     with patch("app.dependencies.settings") as mock_settings:
         mock_settings.master_token = "test_master_token"
         client = TestClient(app, raise_server_exceptions=False)
@@ -94,43 +79,35 @@ def client():
 
 @pytest.fixture
 async def authenticated_headers():
-    """Get authentication headers for API requests."""
-    # Use master token for authentication in tests
     return {"Authorization": "Bearer test_master_token"}
 
 
 class TestCronJobAPI:
-    """Test cron job management API endpoints."""
-
     def test_list_registered_cronjobs(self, test_db, client, authenticated_headers):
-        """Test listing all registered cron job types."""
         response = client.get("/api/cron/registered", headers=authenticated_headers)
 
         assert response.status_code == 200
         data = response.json()
 
         assert isinstance(data, list)
-        assert len(data) >= 1  # Should have at least the test_cronjob
+        assert len(data) >= 1
 
-        # Find the test_cronjob
         test_cronjob = next(
             (cronjob for cronjob in data if cronjob["identifier"] == "test_cronjob"),
             None,
         )
         assert test_cronjob is not None
 
-        assert test_cronjob["description"] == "简单的测试定时任务"
+        assert test_cronjob["description"] == "Simple test cron job"
         assert "parameter_schema" in test_cronjob
         assert isinstance(test_cronjob["parameter_schema"], dict)
 
-        # Verify schema contains expected properties
         schema = test_cronjob["parameter_schema"]
         assert "properties" in schema
         assert "message" in schema["properties"]
         assert "delay_seconds" in schema["properties"]
 
     def test_create_cronjob_success(self, test_db, client, authenticated_headers):
-        """Test successful cron job creation."""
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "API Test CronJob",
@@ -155,7 +132,6 @@ class TestCronJobAPI:
     def test_create_cronjob_with_custom_id(
         self, test_db, client, authenticated_headers
     ):
-        """Test cron job creation with custom cronjob_id."""
         custom_cronjob_id = "my_custom_api_cronjob"
 
         cronjob_data = {
@@ -177,7 +153,6 @@ class TestCronJobAPI:
     def test_create_cronjob_invalid_identifier(
         self, test_db, client, authenticated_headers
     ):
-        """Test cron job creation with invalid identifier."""
         cronjob_data = {
             "identifier": "nonexistent_cronjob",
             "cron": "0 0 * * *",
@@ -194,13 +169,12 @@ class TestCronJobAPI:
     def test_create_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
     ):
-        """Test cron job creation with invalid parameters."""
         cronjob_data = {
             "identifier": "test_cronjob",
             "cron": "0 0 * * *",
             "params": {
                 "message": "Valid message",
-                "delay_seconds": "invalid_number",  # Should be integer
+                "delay_seconds": "invalid_number",
             },
         }
 
@@ -212,8 +186,6 @@ class TestCronJobAPI:
         assert "Invalid parameters" in response.json()["detail"]
 
     def test_get_cronjob_success(self, test_db, client, authenticated_headers):
-        """Test getting cron job configuration."""
-        # First create a cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Get Test CronJob",
@@ -227,7 +199,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Then get the cron job
         response = client.get(f"/api/cron/{cronjob_id}", headers=authenticated_headers)
 
         assert response.status_code == 200
@@ -246,7 +217,6 @@ class TestCronJobAPI:
         assert "execution_count" in data
 
     def test_get_cronjob_not_found(self, test_db, client, authenticated_headers):
-        """Test getting non-existent cron job."""
         response = client.get(
             "/api/cron/nonexistent_cronjob", headers=authenticated_headers
         )
@@ -255,8 +225,6 @@ class TestCronJobAPI:
         assert "not found" in response.json()["detail"]
 
     def test_pause_cronjob(self, test_db, client, authenticated_headers):
-        """Test pausing a cron job."""
-        # Create cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Pause Test CronJob",
@@ -269,7 +237,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Pause cron job
         response = client.post(
             f"/api/cron/{cronjob_id}/pause", headers=authenticated_headers
         )
@@ -277,15 +244,12 @@ class TestCronJobAPI:
         assert response.status_code == 200
         assert "paused successfully" in response.json()["message"]
 
-        # Verify cron job is paused
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "paused"
 
     def test_resume_cronjob(self, test_db, client, authenticated_headers):
-        """Test resuming a paused cron job."""
-        # Create and pause cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Resume Test CronJob",
@@ -300,7 +264,6 @@ class TestCronJobAPI:
 
         client.post(f"/api/cron/{cronjob_id}/pause", headers=authenticated_headers)
 
-        # Resume cron job
         response = client.post(
             f"/api/cron/{cronjob_id}/resume", headers=authenticated_headers
         )
@@ -308,15 +271,12 @@ class TestCronJobAPI:
         assert response.status_code == 200
         assert "resumed successfully" in response.json()["message"]
 
-        # Verify cron job is active
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "active"
 
     def test_cancel_cronjob(self, test_db, client, authenticated_headers):
-        """Test canceling a cron job."""
-        # Create cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Cancel Test CronJob",
@@ -329,7 +289,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Cancel cron job
         response = client.delete(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -337,19 +296,16 @@ class TestCronJobAPI:
         assert response.status_code == 200
         assert "cancelled successfully" in response.json()["message"]
 
-        # Verify cron job is cancelled
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "cancelled"
 
     def test_get_cronjob_executions_empty(self, test_db, client, authenticated_headers):
-        """Test getting execution history for cron job with no executions."""
-        # Create cron job that won't execute immediately
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Execution History Test",
-            "cron": "0 0 1 1 *",  # January 1st midnight (won't execute soon)
+            "cron": "0 0 1 1 *",
             "params": {"message": "History test", "delay_seconds": 0},
         }
 
@@ -358,7 +314,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Get executions
         response = client.get(
             f"/api/cron/{cronjob_id}/executions", headers=authenticated_headers
         )
@@ -366,13 +321,10 @@ class TestCronJobAPI:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
-        # Might be empty or have executions depending on timing
 
     def test_get_cronjob_executions_with_limit(
         self, test_db, client, authenticated_headers
     ):
-        """Test getting execution history with limit parameter."""
-        # Create cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Execution Limit Test",
@@ -385,7 +337,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Get executions with limit
         response = client.get(
             f"/api/cron/{cronjob_id}/executions?limit=10", headers=authenticated_headers
         )
@@ -396,10 +347,8 @@ class TestCronJobAPI:
         assert len(data) <= 10
 
     def test_api_error_handling(self, test_db, client, authenticated_headers):
-        """Test API error handling for various edge cases."""
         nonexistent_cronjob_id = "nonexistent_cronjob_id"
 
-        # Test operations on non-existent cron job
         test_cases = [
             ("GET", f"/api/cron/{nonexistent_cronjob_id}", 404),
             ("POST", f"/api/cron/{nonexistent_cronjob_id}/pause", 500),
@@ -425,12 +374,11 @@ class TestCronJobAPI:
     def test_create_cronjob_with_second_field(
         self, test_db, client, authenticated_headers
     ):
-        """Test creating cron job with second field specified."""
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Second Field Test",
             "cron": "* * * * *",
-            "second": "*/10",  # Every 10 seconds
+            "second": "*/10",
             "params": {"message": "Second field test", "delay_seconds": 0},
         }
 
@@ -441,7 +389,6 @@ class TestCronJobAPI:
         assert response.status_code == 200
         cronjob_id = response.json()["cronjob_id"]
 
-        # Verify second field is stored
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -450,13 +397,11 @@ class TestCronJobAPI:
     def test_comprehensive_cronjob_lifecycle_via_api(
         self, test_db, client, authenticated_headers
     ):
-        """Test complete cron job lifecycle through API endpoints."""
-        # 1. Create cron job
         cronjob_data = {
             "identifier": "test_cronjob",
             "cronjob_id": "lifecycle_test_cronjob",
             "name": "Lifecycle Test CronJob",
-            "cron": "*/30 * * * *",  # Every 30 minutes
+            "cron": "*/30 * * * *",
             "params": {"message": "Lifecycle test cronjob", "delay_seconds": 1},
         }
 
@@ -467,7 +412,6 @@ class TestCronJobAPI:
 
         cronjob_id = "lifecycle_test_cronjob"
 
-        # 2. Get cron job details
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -475,64 +419,53 @@ class TestCronJobAPI:
         cronjob_details = get_response.json()
         assert cronjob_details["status"] == "active"
 
-        # 3. Pause cron job
         pause_response = client.post(
             f"/api/cron/{cronjob_id}/pause", headers=authenticated_headers
         )
         assert pause_response.status_code == 200
 
-        # Verify paused
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "paused"
 
-        # 4. Resume cron job
         resume_response = client.post(
             f"/api/cron/{cronjob_id}/resume", headers=authenticated_headers
         )
         assert resume_response.status_code == 200
 
-        # Verify active
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "active"
 
-        # 5. Get execution history
         executions_response = client.get(
             f"/api/cron/{cronjob_id}/executions", headers=authenticated_headers
         )
         assert executions_response.status_code == 200
 
-        # 6. Cancel cron job
         cancel_response = client.delete(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert cancel_response.status_code == 200
 
-        # Verify cancelled
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "cancelled"
 
-        # 7. Try to resume cancelled cron job (should work - recovery behavior)
+        # Re-creating with the same id recovers the cancelled job.
         recovery_response = client.post(
             "/api/cron/", json=cronjob_data, headers=authenticated_headers
         )
         assert recovery_response.status_code == 200
 
-        # CronJob should be active again
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
         assert get_response.json()["status"] == "active"
 
     def test_list_cronjobs_with_filters(self, test_db, client, authenticated_headers):
-        """Test listing cron jobs with filtering options."""
-        # Create multiple cron jobs with different statuses and identifiers
-        # Job 1: active test job
         response1 = client.post(
             "/api/cron/",
             json={
@@ -549,7 +482,6 @@ class TestCronJobAPI:
         assert response1.status_code == 200
         cronjob_id1 = response1.json()["cronjob_id"]
 
-        # Job 2: test job that we'll pause
         response2 = client.post(
             "/api/cron/",
             json={
@@ -563,7 +495,6 @@ class TestCronJobAPI:
         assert response2.status_code == 200
         cronjob_id2 = response2.json()["cronjob_id"]
 
-        # Job 3: test job with different name
         response3 = client.post(
             "/api/cron/",
             json={
@@ -577,84 +508,75 @@ class TestCronJobAPI:
         assert response3.status_code == 200
         cronjob_id3 = response3.json()["cronjob_id"]
 
-        # Pause job 2
         pause_response = client.post(
             f"/api/cron/{cronjob_id2}/pause", headers=authenticated_headers
         )
         assert pause_response.status_code == 200
 
-        # Cancel job 3
         cancel_response = client.delete(
             f"/api/cron/{cronjob_id3}", headers=authenticated_headers
         )
         assert cancel_response.status_code == 200
 
-        # Test 1: Get all jobs (default filter: active and paused)
         response = client.get("/api/cron/", headers=authenticated_headers)
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 2  # Only active and paused jobs
+        assert len(jobs) == 2
         job_ids = [job["cronjob_id"] for job in jobs]
         assert cronjob_id1 in job_ids
         assert cronjob_id2 in job_ids
         assert cronjob_id3 not in job_ids
 
-        # Test 2: Filter by identifier
         response = client.get(
             "/api/cron/?identifier=test_cronjob", headers=authenticated_headers
         )
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 2  # Both test jobs
+        assert len(jobs) == 2
         for job in jobs:
             assert job["identifier"] == "test_cronjob"
 
-        # Test 3: Filter by status - only active
         response = client.get("/api/cron/?status=active", headers=authenticated_headers)
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 1  # Only active job
+        assert len(jobs) == 1
         assert jobs[0]["cronjob_id"] == cronjob_id1
         assert jobs[0]["status"] == "active"
 
-        # Test 4: Filter by status - only paused
         response = client.get("/api/cron/?status=paused", headers=authenticated_headers)
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 1  # Only paused job
+        assert len(jobs) == 1
         assert jobs[0]["cronjob_id"] == cronjob_id2
         assert jobs[0]["status"] == "paused"
 
-        # Test 5: Filter by status - cancelled
         response = client.get(
             "/api/cron/?status=cancelled", headers=authenticated_headers
         )
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 1  # Only cancelled job
+        assert len(jobs) == 1
         assert jobs[0]["cronjob_id"] == cronjob_id3
         assert jobs[0]["status"] == "cancelled"
 
-        # Test 6: Filter by multiple statuses
         response = client.get(
             "/api/cron/?status=active&status=cancelled", headers=authenticated_headers
         )
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 2  # Active and cancelled jobs
+        assert len(jobs) == 2
         job_ids = [job["cronjob_id"] for job in jobs]
         assert cronjob_id1 in job_ids
         assert cronjob_id3 in job_ids
         assert cronjob_id2 not in job_ids
 
-        # Test 7: Combine identifier and status filters
         response = client.get(
             "/api/cron/?identifier=test_cronjob&status=active",
             headers=authenticated_headers,
         )
         assert response.status_code == 200
         jobs = response.json()
-        assert len(jobs) == 1  # Only active test job
+        assert len(jobs) == 1
         assert jobs[0]["cronjob_id"] == cronjob_id1
         assert jobs[0]["identifier"] == "test_cronjob"
         assert jobs[0]["status"] == "active"
@@ -662,8 +584,6 @@ class TestCronJobAPI:
     def test_resume_cronjob_status_validation(
         self, test_db, client, authenticated_headers
     ):
-        """Test that resume validates job status correctly."""
-        # Create a cron job
         response = client.post(
             "/api/cron/",
             json={
@@ -677,14 +597,13 @@ class TestCronJobAPI:
         assert response.status_code == 200
         cronjob_id = response.json()["cronjob_id"]
 
-        # Test 1: Try to resume an already active job
+        # Resuming an already-active job should fail.
         resume_response = client.post(
             f"/api/cron/{cronjob_id}/resume", headers=authenticated_headers
         )
         assert resume_response.status_code == 500
         assert "already active" in resume_response.json()["detail"]
 
-        # Test 2: Pause the job, then resume should work
         pause_response = client.post(
             f"/api/cron/{cronjob_id}/pause", headers=authenticated_headers
         )
@@ -695,7 +614,6 @@ class TestCronJobAPI:
         )
         assert resume_response.status_code == 200
 
-        # Test 3: Cancel the job, then resume should work
         cancel_response = client.delete(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -706,7 +624,6 @@ class TestCronJobAPI:
         )
         assert resume_response.status_code == 200
 
-        # Verify the job is now active
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -714,8 +631,6 @@ class TestCronJobAPI:
         assert get_response.json()["status"] == "active"
 
     def test_update_cronjob_success(self, test_db, client, authenticated_headers):
-        """Test successful cron job update."""
-        # First create a cron job
         create_data = {
             "identifier": "test_cronjob",
             "name": "Original Test Job",
@@ -729,11 +644,10 @@ class TestCronJobAPI:
         assert create_response.status_code == 200
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Update the cron job
         update_data = {
             "identifier": "test_cronjob",
-            "cron": "0 12 * * *",  # Different cron expression
-            "second": "30",  # Add second field
+            "cron": "0 12 * * *",
+            "second": "30",
             "params": {"message": "Updated message", "delay_seconds": 10},
         }
 
@@ -743,7 +657,6 @@ class TestCronJobAPI:
         assert update_response.status_code == 200
         assert "updated successfully" in update_response.json()["message"]
 
-        # Verify the cron job was updated
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -752,7 +665,7 @@ class TestCronJobAPI:
         updated_job = get_response.json()
         assert updated_job["cronjob_id"] == cronjob_id
         assert updated_job["identifier"] == "test_cronjob"
-        assert updated_job["name"] == "Original Test Job"  # Name should not change
+        assert updated_job["name"] == "Original Test Job"
         assert updated_job["cron"] == "0 12 * * *"
         assert updated_job["second"] == "30"
         assert updated_job["params"]["message"] == "Updated message"
@@ -760,7 +673,6 @@ class TestCronJobAPI:
         assert updated_job["status"] == "active"
 
     def test_update_cronjob_not_found(self, test_db, client, authenticated_headers):
-        """Test updating non-existent cron job."""
         update_data = {
             "identifier": "test_cronjob",
             "cron": "0 12 * * *",
@@ -778,8 +690,6 @@ class TestCronJobAPI:
     def test_update_cronjob_invalid_identifier(
         self, test_db, client, authenticated_headers
     ):
-        """Test updating cron job with invalid identifier."""
-        # First create a cron job
         create_data = {
             "identifier": "test_cronjob",
             "name": "Test Job",
@@ -792,7 +702,6 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Try to update with invalid identifier
         update_data = {
             "identifier": "nonexistent_cronjob",
             "cron": "0 12 * * *",
@@ -808,8 +717,6 @@ class TestCronJobAPI:
     def test_update_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
     ):
-        """Test updating cron job with invalid parameters."""
-        # First create a cron job
         create_data = {
             "identifier": "test_cronjob",
             "name": "Test Job",
@@ -822,13 +729,12 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Try to update with invalid parameters
         update_data = {
             "identifier": "test_cronjob",
             "cron": "0 12 * * *",
             "params": {
                 "message": "Valid message",
-                "delay_seconds": "invalid_number",  # Should be integer
+                "delay_seconds": "invalid_number",
             },
         }
 
@@ -841,8 +747,6 @@ class TestCronJobAPI:
     def test_update_cronjob_scheduler_integration(
         self, test_db, client, authenticated_headers
     ):
-        """Test that updating an active cron job properly updates the scheduler."""
-        # Create an active cron job
         create_data = {
             "identifier": "test_cronjob",
             "name": "Scheduler Test Job",
@@ -855,10 +759,9 @@ class TestCronJobAPI:
         )
         cronjob_id = create_response.json()["cronjob_id"]
 
-        # Update the cron job with new schedule
         update_data = {
             "identifier": "test_cronjob",
-            "cron": "0 6 * * *",  # Different time
+            "cron": "0 6 * * *",
             "params": {"message": "Updated", "delay_seconds": 0},
         }
 
@@ -867,7 +770,6 @@ class TestCronJobAPI:
         )
         assert response.status_code == 200
 
-        # Verify the job is still active and updated
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
         )
@@ -880,10 +782,7 @@ class TestCronJobAPI:
 
 
 class TestCronJobAPIAuthentication:
-    """Test API authentication requirements."""
-
     def test_endpoints_require_authentication(self, client):
-        """Test that all endpoints require proper authentication."""
         endpoints = [
             ("GET", "/api/cron/registered"),
             ("POST", "/api/cron/"),
@@ -904,8 +803,6 @@ class TestCronJobAPIAuthentication:
             else:
                 continue
 
-            # Should require authentication (exact behavior depends on auth implementation)
-            # This might be 401 Unauthorized or 403 Forbidden
             assert response.status_code in [401, 403, 422], (
                 f"{method} {endpoint} should require authentication"
             )

@@ -16,27 +16,20 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 
 class JwtClaims(BaseModel):
-    sub: str  # username
+    sub: str
     user_id: int
     username: str
     role: str
     created_at: str
-    exp: datetime  # expiration time
+    exp: datetime
 
 
 class TokenValidationError(Exception):
-    """Intermediate exception for token validation errors"""
     pass
 
 
 def _validate_token_and_get_user(token: str) -> UserPublic:
-    """
-    Common token validation logic for both HTTP and WebSocket authentication.
-
-    Raises:
-        TokenValidationError: If token validation fails
-    """
-    # Allow master token to act as a privileged SYSTEM user
+    """Validate a token (master or JWT) and return the corresponding user."""
     if token == settings.master_token:
         logger.info("Master token used; acting as SYSTEM user")
         return get_system_user()
@@ -68,10 +61,6 @@ def _validate_token_and_get_user(token: str) -> UserPublic:
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
-    """
-    HTTP authentication dependency.
-    Validates JWT token from Authorization header.
-    """
     try:
         return _validate_token_and_get_user(token)
     except TokenValidationError as e:
@@ -103,11 +92,7 @@ def verify_master_token(authorization: Annotated[str, Header()]):
 
 
 def get_websocket_user(token: Annotated[str | None, Query()] = None) -> UserPublic:
-    """
-    WebSocket authentication dependency.
-    Extracts JWT token from query parameter and validates it.
-    Note: WebSocket parameter should not be included in dependencies.
-    """
+    """Validate a JWT token from query parameter for WebSocket connections."""
     if token is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
@@ -118,11 +103,7 @@ def get_websocket_user(token: Annotated[str | None, Query()] = None) -> UserPubl
 
 
 def get_system_user() -> UserPublic:
-    """Return a synthetic OWNER user representing system actions.
-
-    This user is not persisted to the database and is used when the master token
-    is presented in place of a JWT bearer token.
-    """
+    """Synthetic OWNER user used when the master token is presented; not persisted."""
     return UserPublic(
         id=0, username="SYSTEM", role=UserRole.OWNER, created_at=datetime.now()
     )

@@ -111,7 +111,6 @@ const Snapshots: React.FC = () => {
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
-  // Unlock dialog state
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false)
   const [locksInfo, setLocksInfo] = useState<string>('')
   const [unlockOutput, setUnlockOutput] = useState<string>('')
@@ -289,7 +288,6 @@ const Snapshots: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Unlock repository dialog */}
       <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
         <DialogContent className="sm:max-w-175">
           <DialogHeader>

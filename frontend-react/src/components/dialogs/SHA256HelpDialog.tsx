@@ -42,7 +42,6 @@ const SHA256HelpDialog: React.FC<SHA256HelpDialogProps> = ({
               <CardTitle className="text-sm">Windows 系统操作步骤</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Step 1 */}
               <div className="flex gap-3">
                 <div className="flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground h-6 w-6 text-xs font-medium">1</div>
                 <div className="space-y-2">
@@ -63,7 +62,6 @@ const SHA256HelpDialog: React.FC<SHA256HelpDialogProps> = ({
                 </div>
               </div>
 
-              {/* Step 2 */}
               <div className="flex gap-3">
                 <div className="flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground h-6 w-6 text-xs font-medium">2</div>
                 <div className="space-y-2">
@@ -77,7 +75,6 @@ const SHA256HelpDialog: React.FC<SHA256HelpDialogProps> = ({
                 </div>
               </div>
 
-              {/* Step 3 */}
               <div className="flex gap-3">
                 <div className="flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground h-6 w-6 text-xs font-medium">3</div>
                 <div className="space-y-2">
@@ -92,7 +89,6 @@ const SHA256HelpDialog: React.FC<SHA256HelpDialogProps> = ({
                 </div>
               </div>
 
-              {/* Step 4 */}
               <div className="flex gap-3">
                 <div className="flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground h-6 w-6 text-xs font-medium">4</div>
                 <div className="space-y-2">

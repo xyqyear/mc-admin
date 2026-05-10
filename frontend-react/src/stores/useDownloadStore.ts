@@ -6,13 +6,15 @@ export interface DownloadTask {
   fileName: string
   serverId?: string
   status: 'downloading' | 'completed' | 'error' | 'cancelled'
-  progress: number // 0-100
+  /** 0-100 */
+  progress: number
   startTime: number
   endTime?: number
   error?: string
   size?: number
   downloadedSize?: number
-  speed?: number // bytes per second
+  /** bytes per second */
+  speed?: number
   abortController?: AbortController
 }
 
@@ -96,19 +98,19 @@ export const useDownloadStore = create<DownloadState>()(
     }),
     {
       name: 'download-store',
-      // 只持久化任务基本信息，不持久化 AbortController
+      // AbortController is non-serializable and only meaningful in-process;
+      // an in-flight download cannot be resumed across reloads, so mark it cancelled.
       partialize: (state) => ({
         tasks: state.tasks.map(task => ({
           ...task,
-          abortController: undefined, // 不持久化AbortController
-          status: task.status === 'downloading' ? 'cancelled' as const : task.status, // 重启时取消进行中的任务
+          abortController: undefined,
+          status: task.status === 'downloading' ? 'cancelled' as const : task.status,
         }))
       }),
     }
   )
 )
 
-// 导出选择器钩子以优化性能
 export const useDownloadTasks = () => useDownloadStore(state => state.tasks)
 export const useActiveDownloadTasks = () => useDownloadStore(state =>
   state.tasks.filter(task => task.status === 'downloading')

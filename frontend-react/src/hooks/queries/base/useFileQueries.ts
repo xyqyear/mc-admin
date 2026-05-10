@@ -10,7 +10,7 @@ export const useFileList = (
     queryKey: [...queryKeys.files.list(serverId || "", path)],
     queryFn: () => fileApi.listFiles(serverId!, path),
     enabled: !!serverId,
-    staleTime: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
   });
 };
@@ -23,7 +23,7 @@ export const useFileContent = (
     queryKey: [...queryKeys.files.content(serverId || "", path || "")],
     queryFn: () => fileApi.getFileContent(serverId!, path!),
     enabled: !!serverId && !!path,
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 1000 * 60,
   });
 };
 

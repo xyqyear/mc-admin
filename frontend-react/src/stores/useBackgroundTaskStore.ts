@@ -96,9 +96,9 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>()(
     {
       name: 'background-task-store',
       partialize: (state) => ({
+        // Tasks left running across reloads cannot be resumed; persist them as cancelled.
         tasks: state.tasks.map((task) => ({
           ...task,
-          // Convert running/pending to cancelled on app restart
           status:
             task.status === 'running' || task.status === 'pending'
               ? ('cancelled' as const)
@@ -109,7 +109,6 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>()(
   )
 )
 
-// Selector hooks for performance optimization
 export const useBackgroundTasks = () =>
   useBackgroundTaskStore((state) => state.tasks)
 

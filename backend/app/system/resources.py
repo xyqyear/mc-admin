@@ -1,6 +1,4 @@
-"""System resource metrics. Sync stdlib calls (psutil + shutil) are off-loaded
-to a worker thread via ``asyncio.to_thread`` so they don't block the event loop.
-"""
+"""System resource metrics. Sync psutil/shutil calls run via ``asyncio.to_thread``."""
 
 import asyncio
 import dataclasses
@@ -23,12 +21,12 @@ class CPULoad:
 
 
 async def get_cpu_percent() -> float:
-    """Get CPU usage percentage (1-second sampling window)."""
+    """CPU usage percentage over a 1-second sampling window."""
     return await asyncio.to_thread(psutil.cpu_percent, 1)
 
 
 async def get_cpu_load() -> CPULoad:
-    """Get CPU load averages for 1, 5, and 15 minutes."""
+    """CPU load averages for 1, 5, and 15 minutes."""
     return await asyncio.to_thread(_cpu_load_sync)
 
 
@@ -37,7 +35,7 @@ def _cpu_load_sync() -> CPULoad:
 
 
 async def get_memory_info() -> SpaceInfo:
-    """Get memory usage information in bytes."""
+    """Memory usage in bytes."""
     return await asyncio.to_thread(_memory_info_sync)
 
 
@@ -47,7 +45,7 @@ def _memory_info_sync() -> SpaceInfo:
 
 
 async def get_disk_info(path) -> SpaceInfo:
-    """Get disk space information for specified path in bytes."""
+    """Disk space for ``path`` in bytes."""
     return await asyncio.to_thread(_disk_info_sync, path)
 
 

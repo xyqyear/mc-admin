@@ -1,6 +1,5 @@
-// Minimal shape needed to drive the progress reducer. Both
-// world-restore RestoreEvent and snapshots SnapshotRestoreEvent satisfy it,
-// so the same reducer powers both flows.
+// Both world-restore RestoreEvent and snapshots SnapshotRestoreEvent satisfy
+// this shape, so the same reducer powers both flows.
 export interface RestoreProgressEvent {
   event_type: string
   message?: string
@@ -36,9 +35,6 @@ const STAGE_LABEL: Record<string, string> = {
   error: '错误',
 }
 
-// Pure-function reducer used by both the snapshot picker and the history
-// drawer when consuming the restore SSE. Keeps event handling consistent
-// across the two consumers.
 export function applyRestoreEvent(
   prev: RestoreProgressState,
   ev: RestoreProgressEvent,

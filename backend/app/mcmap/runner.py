@@ -1,15 +1,9 @@
-"""Async wrapper around mcmap subprocess invocations.
+"""Async context-manager wrappers around mcmap subprocess invocations.
 
-Each subcommand is exposed as an async context manager that yields an
-``MCMapProcess`` exposing a JSON-event iterator and a ``terminate()`` method.
-The context manager guarantees the subprocess is killed (SIGTERM, then SIGKILL
-after a grace period) on exit, regardless of how the caller exits.
-
-Subprocesses run with the same privileges as the backend. When the backend
-runs as root, ``--chown UID:GID`` is appended so mcmap chowns every file/dir
-it creates or atomically replaces back to the data dir's owner. When not
-running as root, ``--chown`` is omitted (mcmap requires euid 0 to use it) and
-output files inherit the backend's uid/gid.
+The context manager guarantees SIGTERM (then SIGKILL after a grace) on exit.
+When the backend runs as root, ``--chown UID:GID`` is appended so mcmap
+chowns its outputs back to the data dir's owner; mcmap requires euid 0 for
+``--chown``, so it is omitted otherwise.
 """
 
 import asyncio
@@ -91,13 +85,6 @@ async def _chown_args_for(owned_by: Path) -> List[str]:
 
 
 async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
-    """Spawn mcmap with the backend's privileges.
-
-    When running as root, ``--chown UID:GID`` (matching ``owned_by``'s owner)
-    is appended so mcmap's atomic file replacements end up owned by the
-    Minecraft data dir's uid/gid. When not running as root, mcmap writes as
-    the backend uid and ``--chown`` is omitted (it requires euid 0).
-    """
     full_args: List[str] = ["--json", *args, *await _chown_args_for(owned_by)]
     return await asyncio.create_subprocess_exec(
         str(settings.mcmap_binary_path),
@@ -212,5 +199,4 @@ async def remove_chunks(
 
 
 def parse_event_for_test(line: bytes) -> Any:
-    """Test helper: parse a single NDJSON line. Exposed for tests only."""
     return json.loads(line.strip())

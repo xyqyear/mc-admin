@@ -10,14 +10,13 @@ import { toast } from "sonner";
 export const useSnapshotMutations = () => {
   const queryClient = useQueryClient();
 
-  // 创建全局快照
   const useCreateGlobalSnapshot = () => {
     return useMutation({
       mutationFn: snapshotApi.createGlobalSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
-        // 刷新所有快照相关查询（包含仓库占用）
+        // Snapshot creation also affects repository usage; invalidate the whole tree.
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.all,
         });
@@ -29,14 +28,12 @@ export const useSnapshotMutations = () => {
     });
   };
 
-  // 创建文件/文件夹快照
   const useCreateSnapshot = () => {
     return useMutation({
       mutationFn: snapshotApi.createSnapshot,
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
-        // 刷新所有快照相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.all,
         });
@@ -48,7 +45,6 @@ export const useSnapshotMutations = () => {
     });
   };
 
-  // 预览快照恢复
   const usePreviewRestore = () => {
     return useMutation({
       mutationFn: snapshotApi.previewRestore,
@@ -59,14 +55,12 @@ export const useSnapshotMutations = () => {
     });
   };
 
-  // 删除快照
   const useDeleteSnapshot = () => {
     return useMutation({
       mutationFn: snapshotApi.deleteSnapshot,
       onSuccess: (data: DeleteSnapshotResponse) => {
         toast.success(data.message);
 
-        // 刷新所有快照相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.all,
         });
@@ -78,7 +72,6 @@ export const useSnapshotMutations = () => {
     });
   };
 
-  // 解锁仓库
   const useUnlockRepository = () => {
     return useMutation({
       mutationFn: snapshotApi.unlockRepository,

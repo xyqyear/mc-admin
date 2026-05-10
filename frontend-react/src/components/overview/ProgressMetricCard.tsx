@@ -8,7 +8,7 @@ interface ProgressMetricCardProps {
 }
 
 const getProgressColor = (percentage: number) => {
-  // Map 0-100% to hue 120 (green) → 60 (yellow) → 0 (red)
+  // Hue 120 (green) → 60 (yellow) → 0 (red).
   const hue = Math.max(0, 120 - (percentage / 100) * 120)
   return `hsl(${hue}, 80%, 50%)`
 }
@@ -20,15 +20,13 @@ const CircularProgress: React.FC<{ value: number; size?: number }> = ({
   const strokeWidth = 8
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
-  // Dashboard style: 3/4 circle (270 degrees)
+  // Dashboard style: 3/4 circle starting from bottom-left.
   const dashTotal = circumference * 0.75
   const dashOffset = dashTotal - (dashTotal * Math.min(value, 100)) / 100
-  // Rotate to start from bottom-left (135 degrees)
   const rotation = 135
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {/* Background track */}
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -41,7 +39,6 @@ const CircularProgress: React.FC<{ value: number; size?: number }> = ({
         strokeLinecap="round"
         transform={`rotate(${rotation} ${size / 2} ${size / 2})`}
       />
-      {/* Progress arc */}
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -55,7 +52,6 @@ const CircularProgress: React.FC<{ value: number; size?: number }> = ({
         transform={`rotate(${rotation} ${size / 2} ${size / 2})`}
         className="transition-all duration-300"
       />
-      {/* Center text */}
       <text
         x={size / 2}
         y={size / 2}

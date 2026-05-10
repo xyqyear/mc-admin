@@ -8,7 +8,8 @@ export interface DNSRecord {
 
 export interface DNSRecordDiff {
   records_to_add: DNSRecord[]
-  records_to_remove: string[] // Record IDs
+  /** Record IDs */
+  records_to_remove: string[]
   records_to_update: DNSRecord[]
 }
 

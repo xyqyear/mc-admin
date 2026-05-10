@@ -33,32 +33,25 @@ const ServerNew: React.FC = () => {
 
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
 
-  // Template mode state
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
 
-  // Traditional mode state (lifted from child)
   const [serverName, setServerName] = useState('')
   const [serverNameError, setServerNameError] = useState('')
   const [composeContent, setComposeContent] = useState('')
 
-  // Archive selection state
   const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false)
   const [selectedArchiveFile, setSelectedArchiveFile] = useState<string | null>(null)
 
-  // Populate progress state
   const [populateTaskId, setPopulateTaskId] = useState<string | null>(null)
   const [isPopulateProgressDialogOpen, setIsPopulateProgressDialogOpen] = useState(false)
   const [createdServerId, setCreatedServerId] = useState<string | null>(null)
 
-  // Restart schedule state
   const [enableRestartSchedule, setEnableRestartSchedule] = useState(true)
 
-  // Queries for template validation
   const { data: templateSchema } = useTemplateSchema(selectedTemplateId)
   const { data: availablePorts } = useAvailablePorts(creationMode === 'template')
 
-  // Mutations
   const { useCreateServer, usePopulateServer } = useServerMutations()
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()

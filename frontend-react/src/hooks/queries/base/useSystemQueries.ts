@@ -4,45 +4,44 @@ import { queryKeys } from "@/utils/api";
 import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
 export const useSystemQueries = () => {
-  // 系统信息 (中等频率更新，不包含CPU百分比)
   const useSystemInfo = (options?: UseQueryOptions<SystemInfo>) => {
     return useQuery({
       queryKey: queryKeys.system.info(),
       queryFn: systemApi.getSystemInfo,
-      refetchInterval: 10000, // 10秒刷新系统信息
-      staleTime: 5000, // 5秒
+      refetchInterval: 10000,
+      staleTime: 5000,
       ...options,
     });
   };
 
-  // 系统CPU百分比 (较慢更新，因为需要1-2秒计算时间)
+  // Backend computes CPU% over a short sampling window (~1-2s), so polling
+  // tighter than ~3s would show stale or noisy data.
   const useSystemCpuPercent = (
     options?: UseQueryOptions<{ cpuPercentage: number }>
   ) => {
     return useQuery({
       queryKey: queryKeys.system.cpuPercent(),
       queryFn: systemApi.getSystemCpuPercent,
-      refetchInterval: 3000, // 3秒刷新CPU百分比（比其他系统信息慢）
-      staleTime: 3000, // 3秒
+      refetchInterval: 3000,
+      staleTime: 3000,
       ...options,
     });
   };
 
-  // 系统磁盘使用情况 (独立接口，中等频率更新)
   const useSystemDiskUsage = (options?: UseQueryOptions<SystemDiskUsage>) => {
     return useQuery({
       queryKey: queryKeys.system.diskUsage(),
       queryFn: systemApi.getSystemDiskUsage,
-      refetchInterval: 30000, // 30秒刷新磁盘使用情况
-      staleTime: 15000, // 15秒
+      refetchInterval: 30000,
+      staleTime: 15000,
       ...options,
     });
   };
 
 
   return {
-    useSystemInfo, // 系统信息 (更新后的版本，不包含磁盘使用信息)
-    useSystemCpuPercent, // 系统CPU百分比 (分离后的接口)
-    useSystemDiskUsage, // 系统磁盘使用情况 (新的独立接口)
+    useSystemInfo,
+    useSystemCpuPercent,
+    useSystemDiskUsage,
   };
 };

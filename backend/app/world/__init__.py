@@ -26,19 +26,12 @@ from .restore import (
 )
 
 
-# The singleton is built at FastAPI lifespan startup (after dynamic config has
-# been initialized) by ``initialize_world_restore_orchestrator``. Routers
-# access it via attribute lookup on this module so they always observe the
-# latest binding.
+# Built at lifespan startup; routers do attribute lookup so they observe the latest binding.
 world_restore_orchestrator: Optional[WorldRestoreOrchestrator] = None
 
 
 def initialize_world_restore_orchestrator() -> Optional[WorldRestoreOrchestrator]:
-    """Build the orchestrator singleton from current dependencies.
-
-    Idempotent: returns the existing singleton if already built. Returns
-    ``None`` if restic is not configured (no repository).
-    """
+    """Build the orchestrator singleton; ``None`` if restic isn't configured. Idempotent."""
     global world_restore_orchestrator
     if world_restore_orchestrator is not None:
         return world_restore_orchestrator

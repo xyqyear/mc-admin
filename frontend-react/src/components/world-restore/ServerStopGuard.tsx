@@ -16,9 +16,7 @@ const STATUS_LABEL: Record<ServerStatus, string> = {
   HEALTHY: '健康',
 }
 
-// Restore is only allowed when the container is *not* up. The backend re-checks
-// inside the lock (returns 409), but a pre-flight banner is friendlier and
-// gives the user a one-click stop.
+// Backend re-checks inside the lock (409); the banner is a pre-flight UX nudge.
 const isStopped = (status: ServerStatus | undefined): boolean =>
   status === 'EXISTS' || status === 'CREATED' || status === 'REMOVED'
 

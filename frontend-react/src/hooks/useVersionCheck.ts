@@ -23,33 +23,30 @@ export function useVersionCheck(): VersionCheckResult {
       const lastSeenVersion = localStorage.getItem(VERSION_STORAGE_KEY)
       const remindTimeStr = localStorage.getItem(REMIND_TIME_STORAGE_KEY)
 
-      // 如果这是首次访问，设置当前版本但不显示弹窗
+      // First visit: record the current version silently — no upgrade dialog.
       if (!lastSeenVersion) {
         localStorage.setItem(VERSION_STORAGE_KEY, currentVersion)
         return
       }
 
-      // 检查是否有新版本
       if (compareVersions(currentVersion, lastSeenVersion) > 0) {
-        // 如果设置了稍后提醒，检查时间是否已过
+        // "Remind later" suppresses the dialog for one hour.
         if (remindTimeStr) {
           const remindTime = new Date(remindTimeStr).getTime()
           const now = new Date().getTime()
-          const oneHour = 60 * 60 * 1000 // 1小时的毫秒数
+          const oneHour = 60 * 60 * 1000
 
-          // 如果还没到提醒时间，不显示弹窗
           if (now < remindTime + oneHour) {
             return
           }
         }
 
-        // 显示版本更新弹窗
         setFromVersion(lastSeenVersion)
         setShouldShowDialog(true)
       }
     }
 
-    // 延迟执行检查，确保页面加载完成
+    // Defer past initial render so the dialog doesn't fight layout.
     const timer = setTimeout(checkVersion, 1000)
 
     return () => clearTimeout(timer)
@@ -60,14 +57,12 @@ export function useVersionCheck(): VersionCheckResult {
   }
 
   const handleClose = () => {
-    // 用户点击"明白了"，保存最新版本并清除提醒时间
     localStorage.setItem(VERSION_STORAGE_KEY, currentVersion)
     localStorage.removeItem(REMIND_TIME_STORAGE_KEY)
     setShouldShowDialog(false)
   }
 
   const handleRemindLater = () => {
-    // 用户点击"稍后提醒我"，保存当前时间
     localStorage.setItem(REMIND_TIME_STORAGE_KEY, new Date().toISOString())
     setShouldShowDialog(false)
   }

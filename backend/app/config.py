@@ -10,7 +10,6 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-# meta settings
 _CONFIG_PATH = os.getenv("MC_ADMIN_CONFIG", "config.toml")
 _ENV_PATH = os.getenv("MC_ADMIN_ENV", ".env")
 
@@ -25,7 +24,7 @@ class AuditSettings(BaseModel):
     enabled: bool = True
     log_file: str = "operations.log"
     log_request_body: bool = True
-    max_body_size: int = 10240  # 10KB
+    max_body_size: int = 10240
     sensitive_fields: list[str] = ["password", "token", "secret", "key"]
 
 
@@ -67,7 +66,6 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        # Source order: init args > OS env > .env > config.toml > secrets
         return (
             init_settings,
             env_settings,
@@ -77,4 +75,4 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()  # type: ignore We want the app to fail if the settings are not loaded correctly
+settings = Settings()  # type: ignore

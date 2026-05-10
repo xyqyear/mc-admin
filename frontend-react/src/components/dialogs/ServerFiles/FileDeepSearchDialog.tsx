@@ -160,7 +160,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
 
       toast.success(`找到 ${searchResponse.total_count} 个匹配结果`)
     } catch {
-      // mutation handles error display
+      // Mutation hook surfaces the error.
     }
   }
 
@@ -192,7 +192,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
           <DialogTitle>高级搜索</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {/* Search form */}
           <div className="space-y-4">
             <Field>
               <FieldLabel htmlFor="search-regex">搜索模式</FieldLabel>
@@ -232,7 +231,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
               </div>
             </div>
 
-            {/* File size filters */}
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="search-min-size">最小文件大小</FieldLabel>
@@ -297,7 +295,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
               </Field>
             </div>
 
-            {/* Date range filters */}
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="search-newer-than">修改时间（从）</FieldLabel>
@@ -319,7 +316,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
               </Field>
             </div>
 
-            {/* Action buttons */}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleReset}>重置</Button>
               <Button
@@ -335,7 +331,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
             </div>
           </div>
 
-          {/* Search results */}
           {searchPerformed && (
             <Card>
               <CardHeader className="pb-2">

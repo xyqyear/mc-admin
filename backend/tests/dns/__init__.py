@@ -1,3 +1,0 @@
-"""
-DNS management system tests.
-"""

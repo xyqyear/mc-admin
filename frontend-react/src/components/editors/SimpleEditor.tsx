@@ -48,7 +48,6 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
       indentation: true,
       bracketPairs: true
     },
-    // Merge with user-provided options
     ...options
   }
 

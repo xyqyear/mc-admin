@@ -14,7 +14,6 @@ import { toast } from "sonner";
 export const useServerMutations = () => {
   const queryClient = useQueryClient();
 
-  // 服务器操作基础mutation
   const useServerOperation = () => {
     return useMutation({
       mutationFn: async ({
@@ -36,7 +35,6 @@ export const useServerMutations = () => {
           case "down":
             return serverApi.downServer(serverId);
           case "remove":
-            // 后端会原子化地取消重启计划、关闭会话、删除目录，并触发 DNS 更新
             return serverApi.removeServerFull(serverId);
           default:
             throw new Error(`Unknown action: ${action}`);
@@ -55,9 +53,9 @@ export const useServerMutations = () => {
           toast.success(`服务器 ${serverId} ${action} 操作完成`);
         }
 
-        // 延迟1秒后触发所有相关数据的重新更新
+        // Container state takes a moment to settle after the operation lands;
+        // refetching immediately tends to capture the pre-action state.
         setTimeout(() => {
-          // 失效单个服务器的所有相关缓存
           queryClient.invalidateQueries({
             queryKey: queryKeys.serverInfos.detail(serverId),
           });
@@ -71,13 +69,11 @@ export const useServerMutations = () => {
             queryKey: queryKeys.players.serverOnline(serverId),
           });
 
-          // 失效系统信息，因为服务器状态变化可能影响系统资源使用
+          // Server lifecycle changes affect host-level resource usage.
           queryClient.invalidateQueries({ queryKey: queryKeys.system.info() });
 
-          // 失效兼容的servers查询
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
 
-          // 如果是删除操作，也要失效重启计划查询和DNS查询
           if (action === "remove") {
             queryClient.invalidateQueries({
               queryKey: queryKeys.restartSchedule.detail(serverId),
@@ -99,7 +95,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // Compose文件更新
   const useUpdateCompose = (serverId: string) => {
     return useMutation({
       mutationFn: async (yamlContent: string) => {
@@ -115,7 +110,7 @@ export const useServerMutations = () => {
     });
   };
 
-  // 服务器数据填充 (returns task_id for background task tracking)
+  // Returns task_id; populate progress is polled via the task API.
   const usePopulateServer = () => {
     return useMutation({
       mutationFn: async ({ serverId, archiveFilename }: { serverId: string; archiveFilename: string }) => {
@@ -130,8 +125,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // 创建新服务器 — 可一次性附带 restart_schedule，
-  // 后端会在同一个请求里创建服务器、配置重启计划、并触发 DNS 更新
   const useCreateServer = () => {
     return useMutation({
       mutationFn: async ({
@@ -161,7 +154,7 @@ export const useServerMutations = () => {
             : `服务器 "${serverId}" 创建成功!`,
         );
 
-        // 延迟1秒后失效相关缓存
+        // Allow the backend to finish wiring up the new server before refetching.
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
           if (result.restart_cronjob_id) {
@@ -179,7 +172,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // 文件系统 ↔ 数据库 同步 (OWNER-only)
   const useSyncServers = () => {
     return useMutation({
       mutationFn: async (request: SyncRequest = {}): Promise<SyncResult> => {
@@ -195,7 +187,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // 创建或更新重启计划
   const useCreateOrUpdateRestartSchedule = () => {
     return useMutation({
       mutationFn: async ({
@@ -210,12 +201,10 @@ export const useServerMutations = () => {
       onSuccess: (_, { serverId }) => {
         toast.success(`服务器 "${serverId}" 重启计划配置成功`);
 
-        // 失效重启计划相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.restartSchedule.detail(serverId),
         });
 
-        // 失效所有cron查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.cron.all,
         });
@@ -226,7 +215,6 @@ export const useServerMutations = () => {
     });
   };
 
-  // 删除重启计划
   const useDeleteRestartSchedule = (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
     return useMutation({
@@ -238,12 +226,10 @@ export const useServerMutations = () => {
           toast.success(`服务器 "${serverId}" 重启计划已删除`);
         }
 
-        // 失效重启计划相关查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.restartSchedule.detail(serverId),
         });
 
-        // 失效所有cron查询
         queryClient.invalidateQueries({
           queryKey: queryKeys.cron.all,
         });

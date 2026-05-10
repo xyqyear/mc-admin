@@ -14,7 +14,6 @@ import {
 export const useTemplateMutations = () => {
   const queryClient = useQueryClient();
 
-  // Create template
   const useCreateTemplate = () => {
     return useMutation({
       mutationFn: (request: TemplateCreateRequest) =>
@@ -36,7 +35,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Update template
   const useUpdateTemplate = () => {
     return useMutation({
       mutationFn: ({
@@ -57,7 +55,7 @@ export const useTemplateMutations = () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.schema(id),
         });
-        // Invalidate all server template configs so has_template_update is refreshed
+        // Refresh has_template_update on dependent server configs.
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.serverConfigs(),
         });
@@ -73,7 +71,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Delete template
   const useDeleteTemplate = () => {
     return useMutation({
       mutationFn: (id: number) => templateApi.deleteTemplate(id),
@@ -82,7 +79,7 @@ export const useTemplateMutations = () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.list(),
         });
-        // Invalidate all server template configs so template_deleted is refreshed
+        // Refresh template_deleted on dependent server configs.
         queryClient.invalidateQueries({
           queryKey: queryKeys.templates.serverConfigs(),
         });
@@ -93,7 +90,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Preview rendered YAML
   const usePreviewRenderedYaml = () => {
     return useMutation({
       mutationFn: ({
@@ -114,7 +110,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Check whether template conversion requires rebuild
   const useCheckConversion = () => {
     return useMutation<
       CheckConversionResponse,
@@ -130,7 +125,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Update server template config
   const useUpdateServerTemplateConfig = () => {
     return useMutation({
       mutationFn: ({
@@ -155,7 +149,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Update default variables
   const useUpdateDefaultVariables = () => {
     return useMutation({
       mutationFn: (variables: VariableDefinition[]) =>
@@ -173,7 +166,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Convert to direct mode
   const useConvertToDirectMode = () => {
     return useMutation({
       mutationFn: (serverId: string) => templateApi.convertToDirectMode(serverId),
@@ -193,7 +185,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Extract variables from compose
   const useExtractVariables = () => {
     return useMutation<
       ExtractVariablesResponse,
@@ -209,7 +200,6 @@ export const useTemplateMutations = () => {
     });
   };
 
-  // Convert to template mode
   const useConvertToTemplateMode = () => {
     return useMutation({
       mutationFn: ({

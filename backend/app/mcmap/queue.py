@@ -47,9 +47,8 @@ class ServerRenderQueue:
         self._running_proc: Optional[runner.MCMapProcess] = None
 
     def shutdown(self) -> None:
-        """Tear down the queue: cancel the worker, fail outstanding requests,
-        terminate any running mcmap subprocess. Idempotent and synchronous —
-        callers don't await teardown.
+        """Cancel the worker, fail outstanding requests, terminate any running
+        mcmap subprocess. Idempotent and synchronous — callers don't await it.
         """
         if self._worker_task is not None and not self._worker_task.done():
             self._worker_task.cancel()
@@ -88,8 +87,7 @@ class ServerRenderQueue:
             self._worker_task = asyncio.create_task(self._worker())
 
     def _mark_cancelled(self, key: Key) -> None:
-        """Last consumer for key disconnected. Drop it from pending and, if
-        the active batch becomes empty, terminate the mcmap subprocess."""
+        """Drop ``key`` from pending; terminate the subprocess if the active batch is now empty."""
         req = self._pending.pop(key, None)
         if req is not None:
             req.cancelled = True
@@ -185,8 +183,7 @@ class ServerRenderQueue:
             self._running_proc = None
             self._running_batch = None
 
-        # Defensive: anything in the batch that never received a region event
-        # (e.g. subprocess was terminated mid-render).
+        # Catch entries that never received a region event (e.g. subprocess terminated mid-render).
         for p in batch:
             if (p.x, p.z) in self._pending and not p.future.done():
                 self._pending.pop((p.x, p.z), None)

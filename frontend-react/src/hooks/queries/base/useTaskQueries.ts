@@ -11,7 +11,6 @@ export const taskQueryKeys = {
 export const useTaskQueries = () => {
   const queryClient = useQueryClient()
 
-  // Get all tasks
   const useTasks = (params?: {
     status?: BackgroundTask['status']
     server_id?: string
@@ -23,25 +22,24 @@ export const useTaskQueries = () => {
       queryFn: () => taskApi.getTasks(params),
       staleTime: 1000,
       refetchOnMount: 'always',
+      // Tight 1s polling while any task is active, otherwise back off to 10s
+      // to avoid burning requests on an idle task center.
       refetchInterval: () => {
-        // Check active tasks cache to determine polling frequency
         const activeTasksData = queryClient.getQueryData<BackgroundTask[]>(
           taskQueryKeys.active()
         )
         const hasActiveFromCache = activeTasksData && activeTasksData.length > 0
-        // Poll every 1 second if there are active tasks, otherwise every 10 seconds
         return hasActiveFromCache ? 1000 : 10000
       },
     })
   }
 
-  // Get active tasks with dynamic polling
   const useActiveTasks = () => {
     return useQuery({
       queryKey: taskQueryKeys.active(),
       queryFn: taskApi.getActiveTasks,
+      // Same back-off rationale as useTasks above.
       refetchInterval: (query) => {
-        // Poll every 1 second if there are active tasks, otherwise 10 seconds
         const hasActive = query.state.data && query.state.data.length > 0
         return hasActive ? 1000 : 10000
       },
@@ -50,17 +48,15 @@ export const useTaskQueries = () => {
     })
   }
 
-  // Get single task
   const useTask = (taskId: string) => {
     return useQuery({
       queryKey: taskQueryKeys.detail(taskId),
       queryFn: () => taskApi.getTask(taskId),
       enabled: !!taskId,
+      // Stop polling once the task reaches a terminal state.
       refetchInterval: (query) => {
         const task = query.state.data
-        // If no data yet, poll to get initial data
         if (!task) return 2000
-        // Poll every 2 seconds for running/pending tasks
         if (task.status === 'running' || task.status === 'pending') {
           return 2000
         }

@@ -1,13 +1,12 @@
 import type { User, UserCreate } from "@/types/User";
 import { api } from "@/utils/api";
 
-// Get current user info
 export const getCurrentUser = async (): Promise<User> => {
   const response = await api.get("/user/me");
   return response.data;
 };
 
-// Admin endpoints - require OWNER role
+// OWNER-only endpoints below.
 export const getAllUsers = async (): Promise<User[]> => {
   const response = await api.get("/admin/users");
   return response.data;

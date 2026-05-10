@@ -1,7 +1,6 @@
 import { useTokenStore } from "@/stores/useTokenStore";
 import axios, { AxiosError, AxiosResponse } from "axios";
 
-// Types for better error handling
 export interface ApiError {
   message: string;
   status?: number;
@@ -14,11 +13,7 @@ export interface ApiResponse<T = any> {
   success: boolean;
 }
 
-/**
- * 获取API基础URL，支持相对路径和协议转换
- * @param ws 是否为WebSocket URL，如果为true则将http替换为ws，https替换为wss
- * @returns 处理后的完整URL
- */
+// When `ws` is true, swap http(s) for ws(s) so the same origin works for WebSocket URLs.
 export const getApiBaseUrl = (ws: boolean = false): string => {
   let baseUrl = window.location.origin + "/api"
 
@@ -31,16 +26,14 @@ export const getApiBaseUrl = (ws: boolean = false): string => {
   return baseUrl;
 };
 
-// Create axios instance with better defaults
 export const api = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 60000, // Increased timeout for larger operations
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Token management with better error handling
 const getAuthToken = () => {
   try {
     return useTokenStore.getState().token;
@@ -50,7 +43,6 @@ const getAuthToken = () => {
   }
 };
 
-// Request interceptor with improved auth handling
 api.interceptors.request.use(
   (config) => {
     const token = getAuthToken();
@@ -65,15 +57,13 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor with comprehensive error handling
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     const status = error.response?.status;
 
-    // Handle different error types
     if (status === 401) {
-      // Clear token and let the app handle redirect through router
+      // Clear the token; the router-level auth wrapper handles the redirect.
       try {
         useTokenStore.getState().clearToken();
       } catch (e) {
@@ -81,7 +71,6 @@ api.interceptors.response.use(
       }
     }
 
-    // Create standardized error object
     const apiError: ApiError = {
       message:
         (error.response?.data as any)?.detail ||
@@ -96,13 +85,12 @@ api.interceptors.response.use(
   }
 );
 
-// Utility function for sleep (useful for demos/testing)
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-// Query key factory for consistent cache keys
+// Single source of truth for React Query cache keys. Hooks and invalidations
+// must always reference these factories so prefix-invalidation works.
 export const queryKeys = {
-  // 系统级别
   system: {
     all: ["system"] as const,
     info: () => [...queryKeys.system.all, "info"] as const,
@@ -110,14 +98,12 @@ export const queryKeys = {
     diskUsage: () => [...queryKeys.system.all, "disk-usage"] as const,
   },
 
-  // 服务器配置 (相对静态，长缓存)
   serverInfos: {
     all: ["serverInfos"] as const,
     detail: (id: string) =>
       [...queryKeys.serverInfos.all, "detail", id] as const,
   },
 
-  // 服务器运行时 (动态，短缓存)
   serverRuntimes: {
     all: ["serverRuntimes"] as const,
     detail: (id: string) =>
@@ -131,7 +117,6 @@ export const queryKeys = {
       [...queryKeys.serverRuntimes.detail(id), "disk"] as const,
   },
 
-  // 服务器状态 (中等频率更新)
   serverStatuses: {
     all: ["serverStatuses"] as const,
     detail: (id: string) =>
@@ -140,7 +125,6 @@ export const queryKeys = {
       [...queryKeys.serverStatuses.all, "batch", ids] as const,
   },
 
-  // 玩家相关
   players: {
     all: ["players"] as const,
     list: (filters?: { online_only?: boolean; server_id?: string }) =>
@@ -158,13 +142,11 @@ export const queryKeys = {
       [...queryKeys.players.all, playerDbId, "achievements", serverId] as const,
   },
 
-  // Compose文件
   compose: {
     all: ["compose"] as const,
     detail: (id: string) => [...queryKeys.compose.all, "detail", id] as const,
   },
 
-  // 文件管理
   files: {
     all: ["files"] as const,
     lists: (serverId: string) => [...queryKeys.files.all, serverId] as const,
@@ -174,23 +156,19 @@ export const queryKeys = {
       [...queryKeys.files.all, serverId, "content", path] as const,
   },
 
-  // 用户管理
   user: {
     all: ["user"] as const,
     me: () => [...queryKeys.user.all, "me"] as const,
   },
 
-  // 管理员功能
   admin: {
     all: ["admin"] as const,
     users: () => [...queryKeys.admin.all, "users"] as const,
   },
 
-  // 服务器列表
   all: ["api"] as const,
   servers: () => [...queryKeys.all, "servers"] as const,
 
-  // 快照管理
   snapshots: {
     all: ["snapshots"] as const,
     global: () => [...queryKeys.snapshots.all, "global"] as const,
@@ -200,14 +178,12 @@ export const queryKeys = {
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
 
-  // 压缩包管理
   archive: {
     all: ["archive"] as const,
     files: (path: string) => [...queryKeys.archive.all, "files", path] as const,
     sha256: (path: string) => [...queryKeys.archive.all, "sha256", path] as const,
   },
 
-  // 动态配置管理
   config: {
     all: ["config"] as const,
     modules: () => [...queryKeys.config.all, "modules"] as const,
@@ -215,7 +191,6 @@ export const queryKeys = {
     moduleSchema: (moduleName: string) => [...queryKeys.config.all, "schema", moduleName] as const,
   },
 
-  // Cron 任务管理
   cron: {
     all: ["cron"] as const,
     list: (filters?: { identifier?: string; status?: string[] }) =>
@@ -227,13 +202,11 @@ export const queryKeys = {
     nextRunTime: (cronjobId: string) => [...queryKeys.cron.all, "next-run-time", cronjobId] as const,
   },
 
-  // 重启计划管理
   restartSchedule: {
     all: ["restartSchedule"] as const,
     detail: (serverId: string) => [...queryKeys.restartSchedule.all, "detail", serverId] as const,
   },
 
-  // DNS 管理
   dns: {
     all: ["dns"] as const,
     status: () => [...queryKeys.dns.all, "status"] as const,
@@ -242,7 +215,7 @@ export const queryKeys = {
     routes: () => [...queryKeys.dns.all, "routes"] as const,
   },
 
-  // 服务器地图 (mcmap) — init status + region manifest, used by 地图回档.
+  // mcmap init status + region manifest, consumed by the world-restore page.
   map: {
     all: ["map"] as const,
     status: (serverId: string) => [...queryKeys.map.all, "status", serverId] as const,
@@ -250,7 +223,6 @@ export const queryKeys = {
       [...queryKeys.map.all, "regions", serverId, region] as const,
   },
 
-  // 世界恢复 (world-restore)
   worldRestore: {
     all: ["world-restore"] as const,
     layout: (serverId: string) =>
@@ -263,7 +235,6 @@ export const queryKeys = {
       [...queryKeys.worldRestore.all, "restoration", serverId, id] as const,
   },
 
-  // 模板管理
   templates: {
     all: ["templates"] as const,
     list: () => [...queryKeys.templates.all, "list"] as const,

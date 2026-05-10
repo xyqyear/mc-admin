@@ -1,12 +1,9 @@
-// 重新导出新的类型定义，保持向后兼容
 export type { ServerInfo, ServerStatus, ServerType } from "@/types/ServerInfo";
 export type {
   ServerFullInfo,
   ServerRuntime,
   SystemInfo
 } from "@/types/ServerRuntime";
-
-// 保持现有的类型定义以兼容老代码
 
 export interface Backup {
   id: string;
@@ -30,7 +27,8 @@ export interface FileItem {
   path: string;
   type: "file" | "directory";
   size: number;
-  modified_at: number; // Unix timestamp as number
+  /** Unix epoch seconds. */
+  modified_at: number;
 }
 
 export interface FileListResponse {

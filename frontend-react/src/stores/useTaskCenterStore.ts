@@ -21,7 +21,6 @@ export const useTaskCenterStore = create<TaskCenterState>()((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
 }))
 
-// Selector hooks
 export const useTaskCenterOpen = () =>
   useTaskCenterStore((state) => state.isOpen)
 

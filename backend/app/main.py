@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
 
 api_app = FastAPI(root_path="/api")
 
-# 添加操作审计中间件（注意顺序：后添加的中间件先执行）
+# Middlewares execute in reverse-added order, so audit runs first.
 api_app.add_middleware(OperationAuditMiddleware)
 
 api_app.add_middleware(
@@ -131,7 +131,6 @@ api_app.include_router(config_router)
 api_app.include_router(tasks.router)
 api_app.include_router(templates.router)
 
-# Player management routers
 api_app.include_router(players.router)
 api_app.include_router(sessions.router)
 api_app.include_router(sessions.server_router)
@@ -142,14 +141,13 @@ api_app.include_router(achievements.server_router)
 api_app.include_router(statistics.router)
 api_app.include_router(statistics.server_router)
 
-# Server routers
-# IMPORTANT: server_sync must be registered BEFORE server_create so that
-# POST /servers/sync is matched before the catch-all POST /servers/{server_id}.
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
 api_app.include_router(server_players.router)
 api_app.include_router(server_compose.router)
 api_app.include_router(server_operations.router)
+# server_sync must be registered before server_create so POST /servers/sync
+# matches before the catch-all POST /servers/{server_id}.
 api_app.include_router(server_sync.router)
 api_app.include_router(server_create.router)
 api_app.include_router(server_populate.router)
@@ -162,7 +160,6 @@ api_app.include_router(server_template_migration.router)
 api_app.include_router(server_world_restore.router)
 
 
-# Global exception handler for API app
 @api_app.exception_handler(Exception)
 async def api_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
@@ -179,7 +176,8 @@ async def api_exception_handler(request: Request, exc: Exception):
         return await http_exception_handler(request, exc)
 
 
-# Custom validation error handler to return simple {"detail": str} format
+# Flatten Pydantic's verbose error array into a single "detail" string for
+# response-format parity with HTTPException.
 @api_app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = exc.errors()
@@ -216,7 +214,6 @@ async def robots_txt():
         return await f.read()
 
 
-# 支持 SPA 的前端路由
 templates = Jinja2Templates(directory=settings.static_path.resolve())
 
 

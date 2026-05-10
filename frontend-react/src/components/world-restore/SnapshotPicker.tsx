@@ -59,16 +59,12 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   const queryClient = useQueryClient()
   const eligibleQ = useEligibleSnapshots(serverId, open ? selection : null)
 
-  // Active restore SSE — when a snapshot row is restored, we kick off a stream
-  // and render a progress card in place of the list. The selection stays the
-  // same; the user can dismiss the sheet on success.
   const [restoreFor, setRestoreFor] = useState<string | null>(null)
   const [restoreState, setRestoreState] =
     useState<RestoreProgressState>(initialProgress)
 
-  // Preview modal — opened from a per-row "preview" button. Captures the
-  // selection at click time so the modal's SSE body is stable even if the
-  // page selection changes underneath.
+  // Captures the selection at click time so the modal's SSE body is stable
+  // even if the page selection changes underneath.
   const [previewReq, setPreviewReq] =
     useState<RestorePreviewRequest | null>(null)
 
@@ -82,8 +78,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
         : undefined,
     onEvent: (ev) => setRestoreState((prev) => applyRestoreEvent(prev, ev)),
     onClose: () => {
-      // Stream closed without an explicit complete event. Shouldn't happen
-      // in practice — the orchestrator always emits one — but defend anyway.
+      // Defend against close without an explicit complete event.
       setRestoreState((prev) =>
         prev.done || prev.error
           ? prev
@@ -128,11 +123,8 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }
 
-  // Successful restore → toast + force list refresh in the background but
-  // stay open so the user can read the log if they want. Also invalidate
-  // the map manifest so the tile layer picks up the new MCA mtimes (the
-  // backend deletes affected PNGs, and `?mt=` busts any stale browser
-  // cache after re-render).
+  // Map invalidation refreshes the manifest so the tile layer picks up new
+  // MCA mtimes; backend deletes affected PNGs and `?mt=` busts browser cache.
   React.useEffect(() => {
     if (restoreState.done) {
       toast.success('恢复完成')

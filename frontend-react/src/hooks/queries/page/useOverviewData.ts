@@ -8,7 +8,9 @@ import { queryKeys } from "@/utils/api";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-// 🎯 总览页面专用的组合hooks - 使用批量查询避免动态hooks问题
+// Batches per-server queries via useQueries to keep hook count stable as the
+// server list grows; a single useQuery for statuses avoids dynamic-hook errors
+// when the list shrinks.
 export const useOverviewData = () => {
   const { useServers } = useServerQueries();
   const { useSystemInfo, useSystemCpuPercent, useSystemDiskUsage } =
@@ -21,31 +23,28 @@ export const useOverviewData = () => {
   const systemDiskQuery = useSystemDiskUsage();
   const backupRepositoryQuery = useBackupRepositoryUsage();
 
-  // 基础数据 - 使用 useMemo 避免在每次渲染时创建新的对象引用
   const serversData = useMemo(() => serversQuery.data || [], [serversQuery.data]);
   const serverNum = serversData.length;
 
-  // 使用稳定的服务器ID列表
   const serverIds = useMemo(() => serversData.map((s) => s.id), [serversData]);
+  // Sorted ID list keeps the queryKey stable across reorderings.
   const sortedServerIds = useMemo(() => [...serverIds].sort(), [serverIds]);
 
-  // 批量获取所有服务器状态 - 使用单个查询避免动态hooks
   const statusesQuery = useQuery({
     queryKey: queryKeys.serverStatuses.batch(sortedServerIds),
     queryFn: () => serverApi.getAllServerStatuses(serverIds),
     enabled: serverIds.length > 0,
-    refetchInterval: 5000, // 5秒刷新状态
-    staleTime: 2000, // 2秒
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 
   const serverStatuses = useMemo(() => statusesQuery.data || {}, [statusesQuery.data]);
 
-  // 计算运行中的服务器数量
   const runningServers = Object.values(serverStatuses).filter((status) =>
     ["RUNNING", "STARTING", "HEALTHY"].includes(status)
   ).length;
 
-  // 获取健康服务器的玩家数据 - 只为健康的服务器获取
+  // Player listing requires a fully started server; only HEALTHY qualifies.
   const healthyServerIds = useMemo(
     () =>
       Object.entries(serverStatuses)
@@ -54,12 +53,11 @@ export const useOverviewData = () => {
     [serverStatuses]
   );
 
-  // 使用新的玩家API获取完整的在线玩家信息
   const playersQueries = useQueries({
     queries: healthyServerIds.map((id) => ({
       queryKey: queryKeys.players.serverOnline(id),
       queryFn: () => playerApi.getServerOnlinePlayers(id),
-      refetchInterval: 10000, // 10秒刷新玩家数据(与新API的策略一致)
+      refetchInterval: 10000,
       staleTime: 5000,
       retry: (failureCount: number, error: any) => {
         if (error?.response?.status === 409) return false;
@@ -68,7 +66,6 @@ export const useOverviewData = () => {
     })),
   });
 
-  // 获取运行中服务器的资源数据
   const runningServerIds = useMemo(
     () =>
       Object.entries(serverStatuses)
@@ -79,12 +76,11 @@ export const useOverviewData = () => {
     [serverStatuses]
   );
 
-  // 获取运行中服务器的CPU数据
   const cpuQueries = useQueries({
     queries: runningServerIds.map((id) => ({
       queryKey: queryKeys.serverRuntimes.cpu(id),
       queryFn: () => serverApi.getServerCpuPercent(id),
-      refetchInterval: 5000, // 5秒刷新CPU数据（较慢）
+      refetchInterval: 5000,
       staleTime: 2000,
       retry: (failureCount: number, error: any) => {
         if (error?.response?.status === 409) return false;
@@ -93,12 +89,11 @@ export const useOverviewData = () => {
     })),
   });
 
-  // 获取运行中服务器的内存数据
   const memoryQueries = useQueries({
     queries: runningServerIds.map((id) => ({
       queryKey: queryKeys.serverRuntimes.memory(id),
       queryFn: () => serverApi.getServerMemory(id),
-      refetchInterval: 3000, // 3秒刷新内存数据（较快）
+      refetchInterval: 3000,
       staleTime: 1000,
       retry: (failureCount: number, error: any) => {
         if (error?.response?.status === 409) return false;
@@ -107,12 +102,11 @@ export const useOverviewData = () => {
     })),
   });
 
-  // 获取所有服务器的磁盘使用情况
   const diskUsageQueries = useQueries({
     queries: serverIds.map((id) => ({
       queryKey: queryKeys.serverRuntimes.disk(id),
       queryFn: () => serverApi.getServerDiskUsage(id),
-      refetchInterval: 30000, // 30秒刷新磁盘数据
+      refetchInterval: 30000,
       staleTime: 15000,
       retry: (failureCount: number, error: any) => {
         if (error?.response?.status === 404) return false;
@@ -121,38 +115,33 @@ export const useOverviewData = () => {
     })),
   });
 
-  // 构建运行时数据映射
   const serverRuntimeData = useMemo(() => {
     const data: Record<
       string,
       {
         cpu?: { cpuPercentage: number };
         memory?: { memoryUsageBytes: number };
-        players?: string[]; // 保持兼容性,只存储玩家名称
+        players?: string[];
         diskUsage?: ServerDiskUsageResponse;
       }
     > = {};
 
-    // 收集玩家数据 - 从新API的完整数据中提取玩家名称
     healthyServerIds.forEach((id, index) => {
       if (!data[id]) data[id] = {};
       const onlinePlayers = playersQueries[index]?.data || [];
       data[id].players = onlinePlayers.map(player => player.current_name);
     });
 
-    // 收集CPU数据
     runningServerIds.forEach((id, index) => {
       if (!data[id]) data[id] = {};
       data[id].cpu = cpuQueries[index]?.data;
     });
 
-    // 收集内存数据
     runningServerIds.forEach((id, index) => {
       if (!data[id]) data[id] = {};
       data[id].memory = memoryQueries[index]?.data;
     });
 
-    // 收集磁盘数据
     serverIds.forEach((id, index) => {
       if (!data[id]) data[id] = {};
       data[id].diskUsage = diskUsageQueries[index]?.data;
@@ -169,7 +158,6 @@ export const useOverviewData = () => {
     diskUsageQueries,
   ]);
 
-  // 计算在线玩家总数
   const onlinePlayerNum = useMemo(
     () =>
       Object.values(serverRuntimeData).reduce(
@@ -179,7 +167,6 @@ export const useOverviewData = () => {
     [serverRuntimeData]
   );
 
-  // 构建完整的服务器数据（用于表格显示）
   const enrichedServers = useMemo(
     () =>
       serversData.map((server) => ({
@@ -197,7 +184,6 @@ export const useOverviewData = () => {
     [serversData, serverStatuses, serverRuntimeData]
   );
 
-  // 查询状态
   const isStatusLoading = statusesQuery.isLoading;
   const isCpuLoading = cpuQueries.some((q) => q.isLoading);
   const isMemoryLoading = memoryQueries.some((q) => q.isLoading);
@@ -211,21 +197,18 @@ export const useOverviewData = () => {
   const isDiskError = diskUsageQueries.some((q) => q.isError);
 
   return {
-    // 原始数据
     servers: serversData,
-    enrichedServers, // 包含所有运行时数据的完整服务器列表
+    enrichedServers,
     serverStatuses,
     systemInfo: systemQuery.data,
     systemCpuPercent: systemCpuQuery.data?.cpuPercentage,
-    systemDiskUsage: systemDiskQuery.data, // 新的系统磁盘使用信息
-    backupRepositoryUsage: backupRepositoryQuery.data, // 新的备份仓库使用信息
+    systemDiskUsage: systemDiskQuery.data,
+    backupRepositoryUsage: backupRepositoryQuery.data,
 
-    // 统计数据
     serverNum,
     runningServers,
     onlinePlayerNum,
 
-    // 查询状态
     isLoading: serversQuery.isLoading || systemQuery.isLoading,
     isStatusLoading,
     isCpuLoading,
@@ -233,8 +216,8 @@ export const useOverviewData = () => {
     isPlayersLoading,
     isDiskLoading,
     isSystemCpuLoading: systemCpuQuery.isLoading,
-    isSystemDiskLoading: systemDiskQuery.isLoading, // 新的系统磁盘使用加载状态
-    isBackupRepositoryLoading: backupRepositoryQuery.isLoading, // 新的备份仓库加载状态
+    isSystemDiskLoading: systemDiskQuery.isLoading,
+    isBackupRepositoryLoading: backupRepositoryQuery.isLoading,
     isError: serversQuery.isError || systemQuery.isError,
     isStatusError,
     isCpuError,
@@ -242,17 +225,16 @@ export const useOverviewData = () => {
     isPlayersError,
     isDiskError,
     isSystemCpuError: systemCpuQuery.isError,
-    isSystemDiskError: systemDiskQuery.isError, // 新的系统磁盘使用错误状态
-    isBackupRepositoryError: backupRepositoryQuery.isError, // 新的备份仓库错误状态
+    isSystemDiskError: systemDiskQuery.isError,
+    isBackupRepositoryError: backupRepositoryQuery.isError,
     error: serversQuery.error || systemQuery.error,
 
-    // 刷新方法
     refetch: () => {
       serversQuery.refetch();
       systemQuery.refetch();
       systemCpuQuery.refetch();
-      systemDiskQuery.refetch(); // 新的系统磁盘使用刷新
-      backupRepositoryQuery.refetch(); // 新的备份仓库刷新
+      systemDiskQuery.refetch();
+      backupRepositoryQuery.refetch();
       statusesQuery.refetch();
       cpuQueries.forEach((q) => q.refetch());
       memoryQueries.forEach((q) => q.refetch());

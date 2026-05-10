@@ -13,21 +13,19 @@ from .tracking import process_player_join, process_player_left
 
 
 class PlayerSyncer:
-    """Synchronizes player online status using RCON queries."""
+    """Periodically reconcile DB online state with RCON ``list``."""
 
     def __init__(self):
         self._task: Optional[asyncio.Task] = None
         self._stop_flag = False
 
     async def start(self) -> None:
-        """Start player syncer."""
         logger.info("Starting player syncer...")
         self._stop_flag = False
         self._task = asyncio.create_task(self._validate_loop())
         logger.info("Player syncer started")
 
     async def stop(self) -> None:
-        """Stop player syncer."""
         logger.info("Stopping player syncer...")
         self._stop_flag = True
 
@@ -41,7 +39,6 @@ class PlayerSyncer:
         logger.info("Player syncer stopped")
 
     async def _validate_loop(self) -> None:
-        """Validation loop."""
         while not self._stop_flag:
             await self.validate_all_servers()
             await asyncio.sleep(
@@ -50,7 +47,6 @@ class PlayerSyncer:
 
     @log_exception("Error validating all servers: ")
     async def validate_all_servers(self) -> None:
-        """Validate player status on all active servers."""
         async with get_async_session() as session:
             active_servers = await get_active_servers_map(session)
 
@@ -62,7 +58,6 @@ class PlayerSyncer:
 
     @log_exception("Error validating server {server_id}: ")
     async def _validate_server(self, server_id: str, server_db_id: int) -> None:
-        """Validate player status on a single server."""
         instance = docker_mc_manager.get_instance(server_id)
 
         status = await instance.get_status()
@@ -82,11 +77,9 @@ class PlayerSyncer:
                 session, server_db_id
             )
 
-            # Find discrepancies
             falsely_online = db_online_names - online_player_names
             falsely_offline = online_player_names - db_online_names
 
-            # Correct false positives (marked online but not in RCON)
             if falsely_online:
                 logger.warning(
                     f"Correcting {len(falsely_online)} falsely online players on {server_id}: {falsely_online}"
@@ -94,7 +87,6 @@ class PlayerSyncer:
                 for player_name in falsely_online:
                     await process_player_left(server_id, player_name)
 
-            # Correct false negatives (online in RCON but not in DB)
             if falsely_offline:
                 logger.warning(
                     f"Correcting {len(falsely_offline)} falsely offline players on {server_id}: {falsely_offline}"

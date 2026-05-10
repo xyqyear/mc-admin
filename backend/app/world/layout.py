@@ -1,10 +1,4 @@
-"""World layout discovery for Minecraft servers.
-
-Discovers world roots and dimension directories on disk in a way that handles
-both vanilla single-world layouts and Bukkit/Paper multi-world layouts. The
-public surface is consumed by the world-restore subsystem to map a user's
-selection to filesystem paths and to drive the eligibility filter on snapshots.
-"""
+"""World root + dimension discovery; supports vanilla and Bukkit/Paper multi-world layouts."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,8 +20,6 @@ MCMAP_DIR_NAME = ".mcmap"
 
 @dataclass(frozen=True)
 class DimensionInfo:
-    """A single dimension under a world root."""
-
     region_dir: Path
     entities_dir: Optional[Path]
     poi_dir: Optional[Path]
@@ -36,8 +28,6 @@ class DimensionInfo:
 
 @dataclass(frozen=True)
 class WorldRoot:
-    """A top-level world directory that contains one or more dimensions."""
-
     name: str
     path: Path
     dimensions: list[DimensionInfo]
@@ -90,11 +80,9 @@ def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
 
 
 async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
-    """Find every dimension under a world root.
+    """A dimension is a dir whose ``region/`` holds at least one ``r.X.Z.mca``.
 
-    A dimension is identified by a `region/` directory containing at least one
-    `r.X.Z.mca` file. We check the world root itself (Overworld) and one level
-    of immediate children (DIM-1, DIM1, custom dims).
+    Checks the root itself (Overworld) plus one level of children (DIM-1, DIM1, custom).
     """
     candidates: list[Path] = [world_root]
     try:
@@ -128,21 +116,7 @@ async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
 
 
 async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
-    """Discover every world root under a server's data path.
-
-    Algorithm:
-      1. Read `server.properties` to get `level-name` (default "world").
-      2. The primary world root is `data_path / level-name`. If it does not
-         exist, fall back to `data_path / "world"`.
-      3. Discover peer world roots by scanning `data_path`'s immediate
-         children for directories containing a top-level `level.dat`.
-      4. For each world root, find dimension directories: any subdirectory
-         (or the root itself) whose `region/` contains `r.X.Z.mca` files.
-      5. Skip `data_path/.mcmap` everywhere.
-
-    Returns world roots sorted by name; each root's dimensions sorted by
-    label.
-    """
+    """Find world roots under ``data_path``: primary from ``level-name`` plus peers with ``level.dat``."""
     if not await aioos.path.isdir(data_path):
         return []
 

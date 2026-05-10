@@ -214,7 +214,6 @@ const UserManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Create user dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>

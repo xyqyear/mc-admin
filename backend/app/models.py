@@ -12,7 +12,7 @@ from sqlalchemy.types import TypeDecorator
 
 
 class TZDatetime(TypeDecorator):
-    """Custom DateTime type that ensures timezone-aware datetimes."""
+    """DateTime that rejects naive values on bind and assumes UTC on read."""
 
     impl = DateTime(timezone=True)
 
@@ -27,14 +27,11 @@ class TZDatetime(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         if value is not None and value.tzinfo is None:
-            # Assume UTC if no timezone info is present
             return value.replace(tzinfo=timezone.utc)
         return value
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """SQLAlchemy declarative base for all ORM models with async support."""
-
     pass
 
 
@@ -44,8 +41,6 @@ class UserRole(str, Enum):
 
 
 class User(Base):
-    """User table ORM model."""
-
     __tablename__ = "user"
 
     id: Mapped[Optional[int]] = mapped_column(primary_key=True)
@@ -59,32 +54,23 @@ class User(Base):
     )
 
 
-# Pydantic models for request/response serialization
 class UserBase(BaseModel):
-    """Base Pydantic model for User."""
-
     username: str
     role: UserRole = UserRole.ADMIN
 
 
 class UserPublic(UserBase):
-    """Public User model for API responses."""
-
     id: int
     created_at: datetime
 
 
 class UserCreate(BaseModel):
-    """User creation model with validation."""
-
     username: str = PydanticField(min_length=3, max_length=50)
     password: str
     role: UserRole = UserRole.ADMIN
 
 
 class DynamicConfig(Base):
-    """Dynamic configuration table for modular configuration management."""
-
     __tablename__ = "dynamic_config"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -96,20 +82,13 @@ class DynamicConfig(Base):
     )
 
 
-# Cron System Enums and Models
-
-
 class CronJobStatus(str, Enum):
-    """CronJob status enumeration for the cron management system."""
-
     ACTIVE = "active"
     PAUSED = "paused"
     CANCELLED = "cancelled"
 
 
 class ExecutionStatus(str, Enum):
-    """Execution status enumeration for cron job execution records."""
-
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -117,8 +96,6 @@ class ExecutionStatus(str, Enum):
 
 
 class CronJob(Base):
-    """CronJob configuration table for the cron management system."""
-
     __tablename__ = "cronjob"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -141,8 +118,6 @@ class CronJob(Base):
 
 
 class CronJobExecution(Base):
-    """CronJob execution record table for tracking cron job execution history."""
-
     __tablename__ = "cronjob_execution"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -155,19 +130,12 @@ class CronJobExecution(Base):
     messages_json: Mapped[str] = mapped_column(TEXT, default="[]")
 
 
-# Server Tracking System Models
-
-
 class ServerStatus(str, Enum):
-    """Server status enumeration."""
-
     ACTIVE = "active"
     REMOVED = "removed"
 
 
 class Server(Base):
-    """Server instance tracking table."""
-
     __tablename__ = "server"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -175,7 +143,6 @@ class Server(Base):
     status: Mapped[ServerStatus] = mapped_column(
         SQLAlchemyEnum(ServerStatus), default=ServerStatus.ACTIVE
     )
-    # Template support fields
     template_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     template_snapshot_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
     variable_values_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
@@ -188,8 +155,6 @@ class Server(Base):
 
 
 class ServerTemplate(Base):
-    """Server template table for template-based server creation."""
-
     __tablename__ = "server_template"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -206,10 +171,7 @@ class ServerTemplate(Base):
 
 
 class SystemHeartbeat(Base):
-    """System heartbeat table for crash detection.
-
-    This table only contains one record that is updated on each heartbeat.
-    """
+    """Single-row table whose timestamp is bumped on each heartbeat for crash detection."""
 
     __tablename__ = "system_heartbeat"
 
@@ -219,12 +181,7 @@ class SystemHeartbeat(Base):
     )
 
 
-# Player Management System Models
-
-
 class Player(Base):
-    """Player table for tracking all players."""
-
     __tablename__ = "player"
 
     player_db_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -239,14 +196,10 @@ class Player(Base):
 
 
 class PlayerSession(Base):
-    """Player gaming session records."""
-
     __tablename__ = "player_session"
     __table_args__ = (
-        # Composite indexes for efficient time-based queries
         Index("idx_player_session_player_time", "player_db_id", "joined_at"),
         Index("idx_player_session_server_time", "server_db_id", "joined_at"),
-        # Indexes for efficient online player queries
         Index("idx_player_session_server_online", "server_db_id", "left_at"),
         Index(
             "idx_player_session_player_server_online",
@@ -254,7 +207,6 @@ class PlayerSession(Base):
             "server_db_id",
             "left_at",
         ),
-        # Index for efficient last_seen queries (online check and latest session)
         Index("idx_player_session_player_left_at", "player_db_id", "left_at"),
     )
 
@@ -267,11 +219,8 @@ class PlayerSession(Base):
 
 
 class PlayerChatMessage(Base):
-    """Player chat messages."""
-
     __tablename__ = "player_chat_message"
     __table_args__ = (
-        # Composite indexes for efficient time-based queries
         Index("idx_player_chat_player_time", "player_db_id", "sent_at"),
         Index("idx_player_chat_server_time", "server_db_id", "sent_at"),
     )
@@ -284,8 +233,6 @@ class PlayerChatMessage(Base):
 
 
 class PlayerAchievement(Base):
-    """Player achievements."""
-
     __tablename__ = "player_achievement"
     __table_args__ = (
         Index(
@@ -295,7 +242,6 @@ class PlayerAchievement(Base):
             "achievement_name",
             unique=True,
         ),
-        # Time-based indexes for recent achievements queries
         Index("idx_player_achievement_time", "earned_at"),
         Index("idx_player_achievement_player_time", "player_db_id", "earned_at"),
         Index("idx_player_achievement_server_time", "server_db_id", "earned_at"),
@@ -308,15 +254,8 @@ class PlayerAchievement(Base):
     earned_at: Mapped[datetime] = mapped_column(TZDatetime())
 
 
-# Default Variable Configuration
-
-
 class DefaultVariableConfig(Base):
-    """Default variable configuration for template creation.
-
-    Stores default variables that are pre-filled when creating new templates.
-    Only one row exists in this table.
-    """
+    """Single-row table holding default variables pre-filled when creating templates."""
 
     __tablename__ = "default_variable_config"
 
@@ -325,9 +264,6 @@ class DefaultVariableConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TZDatetime(), default=lambda: datetime.now(timezone.utc)
     )
-
-
-# World Restore System Models
 
 
 class RestorationType(str, Enum):
@@ -340,8 +276,6 @@ class RestorationType(str, Enum):
 
 
 class RestorationStatus(str, Enum):
-    """Lifecycle state of a restoration."""
-
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -349,11 +283,7 @@ class RestorationStatus(str, Enum):
 
 
 class Restoration(Base):
-    """Restoration history table.
-
-    Flat: rollbacks create new rows pointing at a prior safety snapshot via
-    ``source_snapshot_id``. ``is_rollback=true`` distinguishes them.
-    """
+    """Restoration history. Rollbacks are flat rows distinguished by ``is_rollback``."""
 
     __tablename__ = "restoration"
 
@@ -376,18 +306,12 @@ class Restoration(Base):
 
 
 class RestorationSelection(BaseModel):
-    """Pydantic model describing what's being snapshotted/restored.
-
-    Persisted as JSON in ``Restoration.selection_json`` and exchanged with the
-    frontend. ``chunks`` holds absolute chunk coords; the orchestrator groups
-    them by region at execution time.
-    """
+    """What is being snapshotted/restored. ``chunks`` holds absolute chunk coords."""
 
     type: RestorationType
-    # Required for DIMENSION / REGIONS / CHUNKS scopes; ignored for WORLD.
-    # The relpath is under the server's data/ dir, e.g. "world/region",
-    # "world_creative/region/DIM-1". It uniquely identifies a dimension
-    # across all world roots because the world root dir name is its prefix.
+    # Required for DIMENSION/REGIONS/CHUNKS; ignored for WORLD. Path relative
+    # to the server's data/ dir (e.g. "world/region"); the world root dir name
+    # is its prefix, so it uniquely identifies a dimension across roots.
     region_dir_relpath: Optional[str] = None
     regions: list[Tuple[int, int]] = PydanticField(default_factory=list)
     chunks: list[Tuple[int, int]] = PydanticField(default_factory=list)

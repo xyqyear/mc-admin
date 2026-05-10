@@ -123,7 +123,7 @@ const DynamicConfig: React.FC = () => {
             setFormData(result.updated_config)
           }
         } catch {
-          // Error toast handled by mutation's onError
+          // Mutation hook surfaces the error.
         }
       },
     })
@@ -159,7 +159,7 @@ const DynamicConfig: React.FC = () => {
       })
       setSubmitDialogData(null)
     } catch {
-      // Error toast handled by mutation's onError
+      // Mutation hook surfaces the error.
     }
   }
 
@@ -316,7 +316,6 @@ const DynamicConfig: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Submit confirm dialog */}
       <Dialog
         open={!!submitDialogData}
         onOpenChange={(open) => {
@@ -381,7 +380,6 @@ const DynamicConfig: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Compare dialog */}
       <Dialog open={isCompareVisible} onOpenChange={setIsCompareVisible}>
         <DialogContent className="sm:max-w-350">
           <DialogHeader>

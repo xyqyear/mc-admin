@@ -20,7 +20,6 @@ def get_password_hash(password: str):
 
 
 def get_token_expiry(expires_delta: timedelta | None = None) -> datetime:
-    """Calculate JWT token expiration time"""
     if expires_delta:
         return datetime.now(timezone.utc) + expires_delta
     else:
@@ -30,9 +29,7 @@ def get_token_expiry(expires_delta: timedelta | None = None) -> datetime:
 
 
 def create_access_token(jwt_claims):
-    # Convert JwtClaims to dict (already includes exp)
     claims = jwt_claims.model_dump()
-    # Convert datetime to timestamp for JWT
     if isinstance(claims.get("exp"), datetime):
         claims["exp"] = claims["exp"].timestamp()
     encoded_jwt = jwt.encode(

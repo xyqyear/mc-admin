@@ -15,12 +15,11 @@ FreshnessState = Literal["fresh", "stale", "missing_mca", "missing_png"]
 
 @dataclass
 class ServerMapCache:
-    """Path resolver and freshness checker for a server's `data/.mcmap/` tree.
+    """Path resolver and freshness checker for a server's ``data/.mcmap/`` tree.
 
-    Also brokers ownership: the mcmap subprocess runs demoted to the data
-    dir's uid/gid, so any directories or files the backend creates inside
-    `.mcmap/` must be chowned to that same owner — otherwise the demoted
-    subprocess can't write into them.
+    Brokers ownership: backend-created dirs/files inside ``.mcmap/`` are
+    chowned to the data dir's owner so the demoted mcmap subprocess can
+    write into them.
     """
 
     data_path: Path
@@ -56,9 +55,7 @@ class ServerMapCache:
             mca_st = await aioos.stat(mca)
         except FileNotFoundError:
             return "missing_mca"
-        # Zero-byte MCAs cannot be parsed (fastanvil raises UnexpectedEof on
-        # the header read). Treat them as absent so the tile endpoint short-
-        # circuits to 404 without ever queuing an mcmap render.
+        # Zero-byte MCAs make fastanvil raise UnexpectedEof on header read; treat as absent.
         if mca_st.st_size == 0:
             return "missing_mca"
         png = self.png_path(region_path, x, z)
@@ -66,19 +63,14 @@ class ServerMapCache:
             png_st = await aioos.stat(png)
         except FileNotFoundError:
             return "missing_png"
-        # mcmap renders with `--preserve-mtime`, so a PNG that matches its
-        # source MCA's mtime exactly is current; any divergence means the
-        # MCA was modified after rendering and the tile must be regenerated.
+        # mcmap stamps PNGs with their source MCA's mtime via `--preserve-mtime`;
+        # exact match means the tile is current.
         if mca_st.st_mtime == png_st.st_mtime:
             return "fresh"
         return "stale"
 
     async def chown_to_data_owner(self, path: Path) -> None:
-        """Chown ``path`` to match ``data_path`` ownership.
-
-        No-op when the backend is not running as root (typical for dev), or
-        when ``data_path`` itself is missing.
-        """
+        """Chown ``path`` to match ``data_path``; no-op unless the backend runs as root."""
         if os.geteuid() != 0:
             return
         try:
@@ -91,11 +83,10 @@ class ServerMapCache:
             logger.warning("mcmap: failed to chown %s: %s", path, e)
 
     async def ensure_dir(self, target: Path) -> None:
-        """Create ``target`` (with parents) and chown each newly created level
-        under ``data_path`` to the data dir's owner.
+        """Create ``target`` (with parents) and chown new levels under ``data_path``.
 
-        ``target`` must live inside ``data_path``; the chown walk stops there
-        so we never touch directories outside the server's data tree.
+        ``target`` must live inside ``data_path`` so the chown walk never
+        touches directories outside the server's data tree.
         """
         try:
             target.relative_to(self.data_path)

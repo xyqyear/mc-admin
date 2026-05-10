@@ -6,11 +6,8 @@ import {
 } from '@/components/map/coords'
 import type { RestorationSelection } from '@/types/WorldRestore'
 
-// Build the backend RestorationSelection payload from the page's selection
-// state. The `scope` argument lets the caller pick a coarser grain than the
-// current selection — e.g. "create snapshot of the whole dimension" reuses
-// the current dimension but discards the chunks/regions arrays. World scope
-// covers every valid world root on the server, so it carries no relpath.
+// `scope` lets callers pick a coarser grain than the current selection;
+// world scope spans every valid world root and carries no relpath.
 export function buildSelection(args: {
   scope: 'world' | 'dimension' | 'regions' | 'chunks'
   regionDirRelpath: string | null
@@ -36,7 +33,6 @@ export function buildSelection(args: {
       regions,
     }
   }
-  // chunks
   const chunks: Array<[number, number]> = []
   for (const k of selection) {
     const c = chunkKeyToCoord(k)

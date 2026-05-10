@@ -58,8 +58,6 @@ import {
   type RestoreProgressState,
 } from '@/components/world-restore/restoreProgress'
 
-// --- Snapshot Selection Dialog ---
-
 interface SnapshotSelectionDialogProps {
   open: boolean
   onCancel: () => void
@@ -167,7 +165,6 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
     initialState: { pagination: { pageSize: 10 } },
   })
 
-  // Reset pagination when dialog opens
   React.useEffect(() => {
     if (open) {
       table.setPageIndex(0)
@@ -220,8 +217,6 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
     </Dialog>
   )
 }
-
-// --- Preview Dialog ---
 
 interface PreviewDialogProps {
   open: boolean
@@ -319,8 +314,6 @@ const PreviewDialog: React.FC<PreviewDialogProps> = ({
   </Dialog>
 )
 
-// --- Main Component ---
-
 interface FileSnapshotActionsProps {
   file?: FileItem
   serverId: string
@@ -343,9 +336,8 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<string | null>(null)
 
-  // SSE-driven restore state. Mirrors the world-restore SnapshotPicker pattern:
-  // `restoreFor` becomes non-null when the user clicks "回滚" — the
-  // useEventStream hook activates and feeds events into the reducer.
+  // `restoreFor` becomes non-null on rollback click; useEventStream activates
+  // and feeds events into the reducer.
   const [restoreFor, setRestoreFor] = useState<string | null>(null)
   const [restoreState, setRestoreState] =
     useState<RestoreProgressState>(initialProgress)

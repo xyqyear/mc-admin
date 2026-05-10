@@ -63,11 +63,9 @@ class LoginCodeManager:
         if websocket is None:
             return False
 
-        # 用户登录时 id 不应该为 None
         if user.id is None:
             return False
 
-        # 使用 JwtClaims 创建 JWT 数据
         jwt_claims = JwtClaims(
             sub=user.username,
             user_id=user.id,

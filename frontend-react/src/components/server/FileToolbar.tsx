@@ -49,7 +49,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
 }) => {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Navigate to parent */}
       {currentPath !== '/' && (
         <Button variant="outline" onClick={onNavigateToParent}>
           <ArrowUp className="mr-2 h-4 w-4" />
@@ -57,7 +56,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
         </Button>
       )}
 
-      {/* Root-only buttons */}
       {currentPath === '/' && (
         <>
           <FileSnapshotActions
@@ -91,7 +89,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
         </>
       )}
 
-      {/* Common buttons */}
       <Button variant="outline" onClick={onUpload}>
         <Upload className="mr-2 h-4 w-4" />
         上传文件
@@ -102,7 +99,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
       </Button>
       <RefreshButton onClick={onRefresh} isRefreshing={isLoadingFiles} />
 
-      {/* Bulk delete */}
       {selectedFiles.length > 0 && (
         <Button
           variant="destructive"

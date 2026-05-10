@@ -43,23 +43,17 @@ import { formatFileSize, formatDate, naturalCompare } from '@/utils/formatUtils'
 import { usePageDragUpload } from '@/hooks/usePageDragUpload'
 import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
 
-// --- Main component ---
-
 const ArchiveManagement: React.FC = () => {
   const { confirm, confirmDialog } = useConfirm()
 
-  // Archive management hooks
   const { useArchiveFileList, useArchiveSHA256 } = useArchiveQueries()
   const { useDeleteItem, downloadFile } = useArchiveMutations()
 
-  // Query data
   const { data: fileData, isLoading, isFetching, refetch } = useArchiveFileList()
   const archiveFiles = useMemo(() => fileData?.items || [], [fileData?.items])
 
-  // Mutation hooks
   const deleteItemMutation = useDeleteItem()
 
-  // Local state
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
   const [dragDropFiles, setDragDropFiles] = useState<File[] | undefined>(undefined)
@@ -69,13 +63,11 @@ const ArchiveManagement: React.FC = () => {
   const [sha256Result, setSha256Result] = useState<{ fileName: string; hash: string } | null>(null)
   const [sha256HelpVisible, setSha256HelpVisible] = useState(false)
 
-  // Table state
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'modified_at', desc: true },
   ])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
 
-  // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
     accept: '.zip,.7z',
     onFileDrop: (files) => {
@@ -88,7 +80,6 @@ const ArchiveManagement: React.FC = () => {
     },
   })
 
-  // SHA256 query
   const sha256Query = useArchiveSHA256(sha256Path, !!sha256Path)
 
   React.useEffect(() => {
@@ -110,7 +101,6 @@ const ArchiveManagement: React.FC = () => {
     }
   }, [sha256Query.error, sha256Path])
 
-  // File operations
   const handleDownload = async (file: ArchiveFileItem) => {
     await downloadFile(file.path, file.name)
   }
@@ -163,8 +153,6 @@ const ArchiveManagement: React.FC = () => {
       toast.error('刷新失败')
     }
   }
-
-  // --- Column definitions ---
 
   const columns: ColumnDef<ArchiveFileItem, any>[] = [
     {
@@ -337,7 +325,6 @@ const ArchiveManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Info alert */}
       <Alert>
         <AlertTitle>
           <div className="flex items-center justify-between">
@@ -358,7 +345,6 @@ const ArchiveManagement: React.FC = () => {
         </AlertDescription>
       </Alert>
 
-      {/* Dialogs */}
       <ArchiveUploadDialog
         open={isUploadDialogOpen}
         onClose={() => { setIsUploadDialogOpen(false); setDragDropFiles(undefined) }}

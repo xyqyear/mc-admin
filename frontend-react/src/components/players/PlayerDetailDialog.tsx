@@ -68,8 +68,6 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}分钟`;
 };
 
-// --- Data table helper ---
-
 function PlayerTabTable<TData>({
   columns,
   data,
@@ -100,8 +98,6 @@ function PlayerTabTable<TData>({
     />
   );
 }
-
-// --- Column definitions ---
 
 const sessionColumns: ColumnDef<SessionInfo, any>[] = [
   {
@@ -186,8 +182,6 @@ const achievementColumns: ColumnDef<AchievementInfo, any>[] = [
   },
 ];
 
-// --- Skin preview dialog ---
-
 const SkinPreviewDialog: React.FC<{
   skinBase64: string;
   open: boolean;
@@ -210,8 +204,6 @@ const SkinPreviewDialog: React.FC<{
     </div>
   );
 };
-
-// --- Main component ---
 
 export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
   uuid,
@@ -299,16 +291,13 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                 </TabsTrigger>
               </TabsList>
 
-              {/* Overview tab */}
               <TabsContent value="overview" className="space-y-4 mt-4">
-                {/* Basic info */}
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">基本信息</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-start gap-6">
-                      {/* Avatar and skin */}
                       <div className="flex flex-col items-center gap-2">
                         <MCAvatar
                           avatarBase64={player.avatar_base64}
@@ -333,7 +322,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                         />
                       </div>
 
-                      {/* Details */}
                       <dl className="flex-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                         <dt className="text-muted-foreground">玩家名称</dt>
                         <dd className="font-semibold text-lg">{player.current_name}</dd>
@@ -372,7 +360,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                   </CardContent>
                 </Card>
 
-                {/* Stats */}
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">统计数据</CardTitle>
@@ -411,7 +398,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                   </CardContent>
                 </Card>
 
-                {/* Session stats */}
                 {sessionStats && (
                   <Card>
                     <CardHeader className="pb-3">
@@ -451,7 +437,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                 )}
               </TabsContent>
 
-              {/* Sessions tab */}
               <TabsContent value="sessions" className="mt-4">
                 <PlayerTabTable
                   columns={sessionColumns}
@@ -461,7 +446,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                 />
               </TabsContent>
 
-              {/* Chat tab */}
               <TabsContent value="chat" className="mt-4">
                 <PlayerTabTable
                   columns={chatColumns}
@@ -471,7 +455,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
                 />
               </TabsContent>
 
-              {/* Achievements tab */}
               <TabsContent value="achievements" className="mt-4">
                 <PlayerTabTable
                   columns={achievementColumns}

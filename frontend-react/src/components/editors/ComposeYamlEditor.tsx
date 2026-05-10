@@ -32,7 +32,6 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
   const yamlDisposableRef = useRef<IDisposable | null>(null)
   const [editorHeight, setEditorHeight] = useState<number>(minHeight)
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (yamlDisposableRef.current) {
@@ -65,7 +64,6 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
       console.error('Failed to configure monaco-yaml:', error)
     }
 
-    // Auto-height: listen to content size changes
     if (autoHeight) {
       const updateHeight = () => {
         const contentHeight = editor.getContentHeight()

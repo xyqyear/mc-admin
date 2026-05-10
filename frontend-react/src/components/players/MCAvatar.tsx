@@ -2,24 +2,12 @@ import React from 'react';
 import { User } from 'lucide-react';
 
 interface MCAvatarProps {
-  /** Base64 编码的头像图片 */
   avatarBase64?: string | null;
-  /** 头像尺寸（像素） */
   size?: number;
-  /** 自定义类名 */
   className?: string;
-  /** 玩家名称（用于 alt 文本） */
   playerName?: string;
 }
 
-/**
- * Minecraft 玩家头像组件
- *
- * 特点：
- * - 正方形显示（不是圆形）
- * - 使用 nearest-neighbor 插值算法（image-rendering: pixelated）避免模糊
- * - 适合显示像素风格的 Minecraft 皮肤头像
- */
 export const MCAvatar: React.FC<MCAvatarProps> = ({
   avatarBase64,
   size = 48,
@@ -44,7 +32,7 @@ export const MCAvatar: React.FC<MCAvatarProps> = ({
           alt={`${playerName}的头像`}
           className="w-full h-full"
           style={{
-            imageRendering: 'pixelated', // 使用最近邻插值，保持像素风格
+            imageRendering: 'pixelated',
           }}
         />
       ) : (

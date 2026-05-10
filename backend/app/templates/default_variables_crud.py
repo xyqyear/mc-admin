@@ -15,7 +15,6 @@ from .models import (
     serialize_variable_definitions,
 )
 
-# Default variables that are pre-filled when creating new templates
 DEFAULT_VARIABLES: list[VariableDefinition] = [
     StringVariableDefinition(
         name="name",
@@ -61,14 +60,7 @@ DEFAULT_VARIABLES: list[VariableDefinition] = [
 
 
 async def _ensure_default_config(db: AsyncSession) -> DefaultVariableConfig:
-    """Ensure default variable config exists, creating it with defaults if not.
-
-    Args:
-        db: Database session
-
-    Returns:
-        The existing or newly created config record
-    """
+    """Return the singleton row, creating it with ``DEFAULT_VARIABLES`` if missing."""
     result = await db.execute(
         select(DefaultVariableConfig).where(DefaultVariableConfig.id == 1)
     )
@@ -88,17 +80,6 @@ async def _ensure_default_config(db: AsyncSession) -> DefaultVariableConfig:
 
 
 async def get_default_variables(db: AsyncSession) -> list[VariableDefinition]:
-    """Get default variable configuration.
-
-    Returns the list of default variables that are pre-filled when creating new templates.
-    If no configuration exists, creates one with default values.
-
-    Args:
-        db: Database session
-
-    Returns:
-        List of variable definitions
-    """
     config = await _ensure_default_config(db)
     return deserialize_variable_definitions_json(config.variable_definitions_json)
 
@@ -107,17 +88,7 @@ async def update_default_variables(
     db: AsyncSession,
     variables: list[VariableDefinition],
 ) -> list[VariableDefinition]:
-    """Update default variable configuration.
-
-    Creates or updates the default variable configuration.
-
-    Args:
-        db: Database session
-        variables: List of variable definitions to save
-
-    Returns:
-        The saved list of variable definitions
-    """
+    """Upsert the singleton config row and return the persisted definitions."""
     result = await db.execute(
         select(DefaultVariableConfig).where(DefaultVariableConfig.id == 1)
     )

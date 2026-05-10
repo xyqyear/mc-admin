@@ -47,8 +47,6 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}分钟`;
 };
 
-// --- Column definitions ---
-
 const columns: ColumnDef<PlayerSummary, any>[] = [
   {
     id: 'player',
@@ -174,7 +172,6 @@ const PlayerManagement: React.FC = () => {
     }
   };
 
-  // Client-side search filter
   const filteredPlayers = useMemo(() => {
     if (!filters.search) return allPlayers;
     const searchLower = filters.search.toLowerCase();
@@ -194,7 +191,6 @@ const PlayerManagement: React.FC = () => {
     [servers]
   );
 
-  // Build columns with the action cell closure
   const tableColumns = useMemo<ColumnDef<PlayerSummary, any>[]>(() => {
     return columns.map(col => {
       if (col.id === 'actions') {

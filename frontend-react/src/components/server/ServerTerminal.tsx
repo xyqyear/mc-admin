@@ -28,7 +28,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
   className = "h-full",
   height
 }, ref) => {
-  // XTerm configuration
   const terminalOptions: ITerminalOptions = useMemo(() => ({
     theme: {
       background: '#000000',
@@ -55,7 +54,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
   const terminalRef = terminal.ref;
   const terminalInstance = terminal.instance;
 
-  // Handle WebSocket messages
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (!terminalInstance) return;
 
@@ -82,14 +80,12 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance]);
 
-  // Handle terminal data input - send raw keystrokes directly
   const handleTerminalData = useCallback((data: string) => {
     if (onSendInput) {
       onSendInput(data);
     }
   }, [onSendInput]);
 
-  // Exposed methods
   const terminalMethods = useMemo(() => ({
     clear: () => {
       if (terminalInstance) {
@@ -117,7 +113,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
 
   useImperativeHandle(ref, () => terminalMethods, [terminalMethods]);
 
-  // Set up terminal data listener
   useEffect(() => {
     if (terminalInstance) {
       const disposable = terminalInstance.onData(handleTerminalData);
@@ -127,7 +122,7 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance, handleTerminalData]);
 
-  // Configure custom key event handler for Ctrl+C and Ctrl+V browser default behavior
+  // Let browser handle Ctrl+C / Ctrl+V (copy/paste) instead of xterm.
   useEffect(() => {
     if (terminalInstance) {
       terminalInstance.attachCustomKeyEventHandler((event) => {
@@ -139,7 +134,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance]);
 
-  // Auto-resize terminal using ResizeObserver for container size changes
   useEffect(() => {
     if (fitAddon && terminalInstance && terminalRef.current) {
       setTimeout(() => fitAddon.fit(), 0);
@@ -155,7 +149,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [fitAddon, terminalInstance, terminalRef]);
 
-  // Listen for terminal resize events and notify parent
   useEffect(() => {
     if (terminalInstance && onResize) {
       const disposable = terminalInstance.onResize(({ cols, rows }) => {
@@ -167,7 +160,6 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     }
   }, [terminalInstance, onResize]);
 
-  // Notify parent when component is ready
   useEffect(() => {
     if (terminalInstance && onReady) {
       onReady(terminalMethods);

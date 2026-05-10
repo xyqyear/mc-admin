@@ -1,7 +1,6 @@
 import type { VariableDefinition } from "@/hooks/api/templateApi";
 import type { VariableFormData } from "./variableSchemas";
 
-// Helper to convert API variables to form data format
 export const convertToFormData = (variables: VariableDefinition[]): VariableFormData[] => {
   return variables.map((v) => ({
     type: v.type,
@@ -17,7 +16,6 @@ export const convertToFormData = (variables: VariableDefinition[]): VariableForm
   })) as VariableFormData[];
 };
 
-// Helper to convert form data to API format
 export const convertToApiFormat = (variables: VariableFormData[]): VariableDefinition[] => {
   const includeDefault = (value: unknown) =>
     value !== undefined && value !== null ? { default: value } : {};

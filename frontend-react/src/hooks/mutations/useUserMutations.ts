@@ -10,7 +10,6 @@ export const useCreateUser = () => {
   return useMutation({
     mutationFn: (userData: UserCreate) => userApi.createUser(userData),
     onSuccess: (data) => {
-      // Invalidate and refetch users list
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
       toast.success(`用户 ${data.username} 创建成功`);
     },
@@ -27,7 +26,6 @@ export const useDeleteUser = () => {
   return useMutation({
     mutationFn: (userId: number) => userApi.deleteUser(userId),
     onSuccess: () => {
-      // Invalidate and refetch users list
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
       toast.success("用户删除成功");
     },

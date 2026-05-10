@@ -1,7 +1,6 @@
 import type { BackupRepositoryUsage } from "@/types/ServerRuntime";
 import { api } from "@/utils/api";
 
-// Snapshot management types
 interface SnapshotSummary {
   backup_start: string;
   backup_end: string;
@@ -95,7 +94,6 @@ interface RestorePreviewResponse {
 }
 
 export const snapshotApi = {
-  // 列出所有快照（可按路径过滤）
   getAllSnapshots: async (params?: {
     server_id?: string;
     path?: string;
@@ -109,7 +107,6 @@ export const snapshotApi = {
     return res.data.snapshots;
   },
 
-  // 创建快照（全局或一组路径）
   createSnapshot: async (params?: {
     server_id?: string;
     paths?: string[];
@@ -118,43 +115,36 @@ export const snapshotApi = {
     return res.data;
   },
 
-  // 预览快照恢复操作
   previewRestore: async (data: RestorePreviewRequest): Promise<RestorePreviewResponse> => {
     const res = await api.post<RestorePreviewResponse>("/snapshots/restore/preview", data);
     return res.data;
   },
 
-  // 创建全局快照（向后兼容）
   createGlobalSnapshot: async (): Promise<CreateSnapshotResponse> => {
     return snapshotApi.createSnapshot();
   },
 
-  // 获取备份仓库使用情况
   getBackupRepositoryUsage: async (): Promise<BackupRepositoryUsage> => {
     const res = await api.get<BackupRepositoryUsage>("/snapshots/repository-usage");
     return res.data;
   },
 
-  // 删除快照
   deleteSnapshot: async (snapshotId: string): Promise<DeleteSnapshotResponse> => {
     const res = await api.delete<DeleteSnapshotResponse>(`/snapshots/${snapshotId}`);
     return res.data;
   },
 
-  // 列出锁
   listLocks: async (): Promise<ListLocksResponse> => {
     const res = await api.get<ListLocksResponse>("/snapshots/locks");
     return res.data;
   },
 
-  // 解锁仓库
   unlockRepository: async (): Promise<UnlockResponse> => {
     const res = await api.post<UnlockResponse>("/snapshots/unlock");
     return res.data;
   },
 };
 
-// Export types for use in other modules
 export type {
   Snapshot,
   CreateSnapshotResponse,

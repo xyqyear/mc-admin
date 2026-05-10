@@ -2,10 +2,8 @@
 // app/models.py (Restoration*) and app/world/restore.py (PreviewEvent,
 // RestoreEvent), plus the response models in app/routers/servers/world_restore.py.
 
-// Mirrors the backend ResticSnapshot pydantic model. Kept local to this module
-// because snapshotApi.ts defines its own (intentionally not exported) shape; we
-// duplicate the minimum fields rather than reorganizing the snapshot types in
-// this session.
+// Mirrors the backend ResticSnapshot model. Local copy because snapshotApi.ts
+// keeps its own shape unexported.
 export interface ResticSnapshotSummary {
   backup_start?: string
   backup_end?: string

@@ -1,4 +1,3 @@
-// GitHub 项目配置
 export const GITHUB_REPO = 'xyqyear/mc-admin'
 export const GITHUB_ISSUE_URL_TEMPLATE = `https://github.com/${GITHUB_REPO}/issues/{id}`
 
@@ -530,7 +529,6 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-// 自动获取版本配置中的最大版本作为当前版本
 export const currentVersion = versionUpdates.length > 0
   ? versionUpdates.reduce((latest, update) =>
     compareVersions(update.version, latest.version) > 0 ? update : latest

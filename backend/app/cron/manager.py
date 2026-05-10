@@ -1,6 +1,4 @@
-"""
-Cron Manager - Core cron job management and scheduling functionality.
-"""
+"""APScheduler-backed cron job manager with SQLAlchemy persistence."""
 
 import asyncio
 import json
@@ -20,36 +18,22 @@ from .types import CronJobConfig, CronJobExecutionRecord, ExecutionContext
 
 
 class CronManager:
-    """
-    Core cron job management class.
-
-    Handles cron job creation, scheduling, execution monitoring, and lifecycle
-    management using APScheduler for scheduling and SQLAlchemy for persistence.
-    """
-
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
         self._initialized = False
 
     async def initialize(self) -> None:
-        """
-        Initialize the cron manager and recover cron jobs from database.
-        """
+        """Start the scheduler and recover active jobs from the database."""
         if self._initialized:
             return
 
-        # Start the scheduler
         self.scheduler.start()
 
-        # Recover cron jobs from database
         await self._recover_cronjobs_from_database()
 
         self._initialized = True
 
     async def shutdown(self) -> None:
-        """
-        Shutdown the cron manager and scheduler.
-        """
         if self.scheduler.running:
             self.scheduler.shutdown()
 
@@ -62,28 +46,10 @@ class CronManager:
         name: Optional[str] = None,
         second: Optional[str] = None,
     ) -> str:
-        """
-        Create a new cron job or recover an existing cancelled cron job.
-
-        Args:
-            identifier: CronJob identifier (must be registered)
-            params: CronJob parameters (BaseConfigSchema instance)
-            cron: Cron expression for scheduling (5 fields)
-            cronjob_id: Optional cron job ID (auto-generated if not provided)
-            name: Optional cron job name (defaults to identifier)
-            second: Optional second field for precise scheduling
-
-        Returns:
-            CronJob ID of the created/recovered cron job
-
-        Raises:
-            ValueError: If identifier is not registered
-        """
-        # Validate identifier is registered
+        """Create a new cron job, or revive an existing cancelled one."""
         if not cron_registry.is_registered(identifier):
             raise ValueError(f"CronJob identifier '{identifier}' not registered")
 
-        # Generate or use provided cronjob_id
         if cronjob_id is None:
             cronjob_id = f"{identifier}_{secrets.token_urlsafe(8)}"
 
@@ -113,7 +79,6 @@ class CronManager:
                     params_json=params.model_dump_json(),
                 )
 
-        # Submit to scheduler
         await self._submit_cronjob_to_scheduler(
             cronjob_id, identifier, params, cron, second
         )
@@ -128,20 +93,6 @@ class CronManager:
         cron: str,
         second: Optional[str] = None,
     ) -> None:
-        """
-        Update an existing cron job configuration.
-
-        Args:
-            cronjob_id: The ID of the cron job to update
-            identifier: The cron job type identifier
-            params: Job-specific parameters (validated against registered schema)
-            cron: Standard cron expression (5 fields: minute hour day month weekday)
-            second: Optional second field for more precise scheduling
-
-        Raises:
-            ValueError: If identifier is not registered or cron job not found
-        """
-        # Validate identifier is registered
         if not cron_registry.is_registered(identifier):
             raise ValueError(f"CronJob identifier '{identifier}' not registered")
 
@@ -162,7 +113,7 @@ class CronManager:
                 params_json=params.model_dump_json(),
             )
 
-        # If the job is currently active, remove from scheduler and re-add with new config
+        # Re-register the trigger only when the job is currently active.
         if current_status == CronJobStatus.ACTIVE:
             if self.scheduler.get_job(cronjob_id):
                 self.scheduler.remove_job(cronjob_id)
@@ -172,12 +123,6 @@ class CronManager:
             )
 
     async def pause_cronjob(self, cronjob_id: str) -> None:
-        """
-        Pause a cron job.
-
-        Args:
-            cronjob_id: CronJob ID to pause
-        """
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -193,17 +138,11 @@ class CronManager:
                 session, cronjob_id, status=CronJobStatus.PAUSED
             )
 
-        # Remove from scheduler
         if self.scheduler.get_job(cronjob_id):
             self.scheduler.remove_job(cronjob_id)
 
     async def resume_cronjob(self, cronjob_id: str) -> None:
-        """
-        Resume a paused or cancelled cron job.
-
-        Args:
-            cronjob_id: CronJob ID to resume
-        """
+        """Resume a paused or cancelled cron job."""
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -217,7 +156,6 @@ class CronManager:
                 session, cronjob_id, status=CronJobStatus.ACTIVE
             )
 
-            # Get schema class and deserialize params
             schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
             if not schema_cls:
                 raise ValueError(
@@ -226,7 +164,6 @@ class CronManager:
 
             params = schema_cls.model_validate_json(cronjob_row.params_json)
 
-        # Re-submit to scheduler
         await self._submit_cronjob_to_scheduler(
             cronjob_id,
             cronjob_row.identifier,
@@ -236,12 +173,7 @@ class CronManager:
         )
 
     async def cancel_cronjob(self, cronjob_id: str) -> None:
-        """
-        Cancel a cron job (soft delete).
-
-        Args:
-            cronjob_id: CronJob ID to cancel
-        """
+        """Soft-delete a cron job."""
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -255,27 +187,16 @@ class CronManager:
                 session, cronjob_id, status=CronJobStatus.CANCELLED
             )
 
-        # Remove from scheduler
         if self.scheduler.get_job(cronjob_id):
             self.scheduler.remove_job(cronjob_id)
 
     async def get_cronjob_config(self, cronjob_id: str) -> Optional[CronJobConfig]:
-        """
-        Get cron job configuration.
-
-        Args:
-            cronjob_id: CronJob ID
-
-        Returns:
-            CronJobConfig instance or None if not found
-        """
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
                 return None
 
-            # Get schema class and deserialize params
             schema_cls = cron_registry.get_schema_class(cronjob_row.identifier)
             if not schema_cls:
                 return None
@@ -301,17 +222,6 @@ class CronManager:
         status: Optional[List[CronJobStatus]] = None,
         name: Optional[str] = None,
     ) -> List[CronJobConfig]:
-        """
-        Get all cron job configurations with optional filtering.
-
-        Args:
-            identifier: Optional job type identifier to filter by
-            status: Optional list of job statuses to filter by
-            name: Optional job name to filter by
-
-        Returns:
-            List of CronJobConfig instances
-        """
         async with get_async_session() as session:
             cronjob_rows = await crud.get_all_cronjobs(
                 session, identifier=identifier, status=status, name=name
@@ -348,16 +258,6 @@ class CronManager:
     async def get_execution_history(
         self, cronjob_id: str, limit: int = 50
     ) -> List[CronJobExecutionRecord]:
-        """
-        Get cron job execution history.
-
-        Args:
-            cronjob_id: CronJob ID
-            limit: Maximum number of records to return
-
-        Returns:
-            List of CronJobExecutionRecord dataclasses
-        """
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -382,18 +282,7 @@ class CronManager:
             ]
 
     async def get_next_run_time(self, cronjob_id: str) -> Optional[datetime]:
-        """
-        Get the next scheduled run time for a cron job.
-
-        Args:
-            cronjob_id: CronJob ID
-
-        Returns:
-            Next run time as datetime or None if job not found/not running
-
-        Raises:
-            ValueError: If cron job not found or not in active state
-        """
+        """Raises ``ValueError`` if the job is missing or not active."""
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -403,7 +292,6 @@ class CronManager:
             if cronjob_row.status != CronJobStatus.ACTIVE:
                 raise ValueError(f"CronJob {cronjob_id} is not in active state")
 
-        # Get the job from scheduler
         scheduler_job = self.scheduler.get_job(cronjob_id)
         if scheduler_job is None:
             raise ValueError(f"CronJob {cronjob_id} not found in scheduler")
@@ -418,31 +306,18 @@ class CronManager:
         cron: str,
         second: Optional[str] = None,
     ) -> None:
-        """
-        Submit a cron job to the APScheduler.
-
-        Args:
-            cronjob_id: CronJob ID
-            identifier: CronJob identifier
-            params: CronJob parameters
-            cron: Cron expression (5 fields: minute hour day month day_of_week)
-            second: Optional second field for more precise scheduling
-        """
-        # Get the cron job function
         cronjob_registration = cron_registry.get_cronjob(identifier)
         if not cronjob_registration:
             raise ValueError(f"CronJob identifier '{identifier}' not registered")
 
         cronjob_function = cronjob_registration.function
 
-        # Parse cron expression and validate
         cron_parts = cron.strip().split()
         if len(cron_parts) != 5:
             raise ValueError(
                 "Cron expression must have exactly 5 fields (minute hour day month day_of_week)"
             )
 
-        # Create cron trigger with optional second parameter
         trigger = CronTrigger(
             second=second,
             minute=cron_parts[0],
@@ -452,7 +327,6 @@ class CronManager:
             day_of_week=cron_parts[4],
         )
 
-        # Add job to scheduler
         self.scheduler.add_job(
             self._execute_cronjob_wrapper,
             trigger=trigger,
@@ -468,16 +342,7 @@ class CronManager:
         params: BaseConfigSchema,
         cronjob_function,
     ) -> None:
-        """
-        CronJob execution wrapper that handles context management and recording.
-
-        Args:
-            cronjob_id: CronJob ID
-            identifier: CronJob identifier
-            params: CronJob parameters
-            cronjob_function: The actual cron job function to execute
-        """
-        # Use timestamp + random to avoid collisions
+        """Run ``cronjob_function`` with execution context, recording the outcome."""
         timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
         random_suffix = secrets.token_urlsafe(4)
         execution_id = f"{timestamp}_{random_suffix}"
@@ -492,7 +357,6 @@ class CronManager:
         )
 
         try:
-            # Execute the cron job function
             await cronjob_function(context)
             context.status = ExecutionStatus.COMPLETED
         except asyncio.CancelledError:
@@ -503,14 +367,12 @@ class CronManager:
             context.status = ExecutionStatus.FAILED
             context.log(f"CronJob execution failed: {str(e)}")
         finally:
-            # Record execution completion
             context.ended_at = datetime.now(timezone.utc)
             if context.ended_at and context.started_at:
                 context.duration_ms = int(
                     (context.ended_at - context.started_at).total_seconds() * 1000
                 )
 
-            # Save execution record and update count
             async with get_async_session() as session:
                 await crud.create_execution_record(
                     session, context.to_execution_record()
@@ -519,9 +381,6 @@ class CronManager:
                 await crud.increment_execution_count(session, cronjob_id)
 
     async def _recover_cronjobs_from_database(self) -> None:
-        """
-        Recover active cron jobs from database on startup.
-        """
         async with get_async_session() as session:
             active_cronjobs = await crud.get_cronjobs_by_status(
                 session, CronJobStatus.ACTIVE

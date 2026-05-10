@@ -1,20 +1,8 @@
 """Per-server world-restore preview session lifecycle.
 
-A *preview* is a time-bounded staging area in /tmp where snapshot MCAs (and
-optionally chunk-merged MCAs, for the CHUNKS scope) are rendered to PNG tiles
-the frontend can display alongside the live map. Each server may have at most
-one active preview session at a time.
-
-Responsibilities of this module:
-  - Create and tear down session directories.
-  - Track ``last_seen`` timestamps; heartbeat on tile fetches/explicit ping.
-  - Run a janitor loop that reaps stale sessions and orphan dirs.
-  - Refuse new sessions when free disk space is below a threshold.
-  - Be entirely thread-/cancellation-safe; ``end`` is idempotent.
-
-The orchestrator (``app/world/restore.py``) owns a ``PreviewSessionManager``
-instance and uses it to drive ``begin_preview`` / ``heartbeat_preview`` /
-``end_preview`` / ``get_preview_tile``. Endpoints are added in Session 3.
+Sessions stage snapshot MCAs (and chunk-merged copies for CHUNKS scope) to
+``/tmp`` and render them to PNGs. At most one active session per server.
+Heartbeat-driven TTL with a janitor loop reaping stale sessions and orphans.
 """
 
 from __future__ import annotations
@@ -36,9 +24,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TTL_SECONDS = 600  # 10 minutes
+DEFAULT_TTL_SECONDS = 600
 DEFAULT_JANITOR_INTERVAL_SECONDS = 60
-AVG_REGION_BYTES = 8 * 1024 * 1024  # ~8 MiB per region — heuristic for disk guard
+AVG_REGION_BYTES = 8 * 1024 * 1024
 
 
 class PreviewDiskGuardError(RuntimeError):
@@ -69,17 +57,12 @@ class _Session:
 
 @dataclass
 class PreviewMapCache:
-    """Path resolver shaped like ``ServerMapCache`` for preview tile rendering.
+    """``ServerMapCache``-shaped resolver for preview rendering.
 
-    Mimics the bits of ``ServerMapCache`` that ``ServerRenderQueue`` reaches
-    into (``mca_path`` / ``tiles_dir`` / ``png_path`` / ``palette_json`` /
-    ``data_path`` / ``ensure_dir``), but rooted at a session's staged-MCA
-    directory and a session-local tiles output. Reusing the queue keeps tile
-    coalescing, batching, and cancellation identical to the live map.
-
-    ``data_path`` points at the live world's data dir so mcmap's ``--chown``
-    targets the data-dir owner (rendered PNGs in /tmp inherit that uid/gid).
-    ``palette_json`` reuses the live world's palette — no per-preview palette.
+    Implements the surface ``ServerRenderQueue`` reaches into, rooted at a
+    session's staged MCAs and a session-local tiles dir. ``data_path``
+    points at the live world's data dir so mcmap's ``--chown`` targets the
+    data-dir owner; ``palette_json`` reuses the live world's palette.
     """
 
     palette_json: Path
@@ -105,12 +88,7 @@ def _utcnow() -> datetime:
 
 
 class PreviewSessionManager:
-    """Manages /tmp preview session directories, heartbeats, and the janitor loop.
-
-    Construction takes the base directory (created on first use) and a TTL.
-    The manager itself is *not* an async context manager — janitor lifecycle
-    is exposed via ``start_janitor`` / ``stop_janitor``.
-    """
+    """Manage ``/tmp`` preview session dirs, heartbeats, and the janitor loop."""
 
     def __init__(
         self,
@@ -125,19 +103,14 @@ class PreviewSessionManager:
         self._server_to_session: dict[str, str] = {}
         self._janitor_task: Optional[asyncio.Task] = None
         self._now: Callable[[], datetime] = _utcnow
-        # One-shot at startup; fine to be sync. Calling code is __init__ so
-        # making it async would require a separate factory.
         self.base_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- Session lifecycle ------------------------------------------------
 
     async def create_session(
         self, server_id: str, *, affected_regions: int = 0
     ) -> Path:
-        """Create a new session directory for ``server_id`` and tear down the prior
-        session for the same server (if any). Returns the session dir.
+        """Tear down any prior session for ``server_id`` and create a fresh dir.
 
-        Raises ``PreviewDiskGuardError`` if estimated requirement exceeds free space.
+        Raises ``PreviewDiskGuardError`` if free space is below the heuristic.
         """
         required = max(affected_regions, 1) * AVG_REGION_BYTES * 2
         free = await self.disk_free_bytes()
@@ -168,14 +141,13 @@ class PreviewSessionManager:
         sess.last_seen = self._now()
 
     async def end(self, session_id: str) -> None:
-        """Tear down a session. Idempotent — never fails if session is already gone."""
+        """Idempotent teardown."""
         sess = self._sessions.pop(session_id, None)
         if sess is None:
             return
         if sess.render_queue is not None:
             sess.render_queue.shutdown()
-        # Drop the server→session pointer only if it still points at this session
-        # (a concurrent create_session may have replaced it).
+        # Don't clobber a server→session pointer a concurrent create_session may have replaced.
         existing = self._server_to_session.get(sess.server_id)
         if existing == session_id:
             self._server_to_session.pop(sess.server_id, None)
@@ -205,22 +177,15 @@ class PreviewSessionManager:
         queue: "ServerRenderQueue",
         affected_keys: set[tuple[int, int]],
     ) -> None:
-        """Register a lazy-render queue for ``session_id`` and the (rx, rz) keys
-        whose MCAs were staged. Tile requests for keys outside this set should
-        be rejected as 404 — the queue would otherwise spawn an mcmap render
-        for a missing region and the subprocess would emit ``missing``.
-        """
+        """Bind ``queue`` and the staged (rx, rz) set; callers must 404 keys outside it."""
         sess = self._sessions.get(session_id)
         if sess is None:
             raise PreviewSessionNotFoundError(session_id)
-        # If a prior queue is somehow attached (e.g. a re-staging on the same
-        # session), tear it down first so its worker doesn't outlive us.
+        # Re-staging on the same session: shut down the prior worker first.
         if sess.render_queue is not None:
             sess.render_queue.shutdown()
         sess.render_queue = queue
         sess.affected_keys = set(affected_keys)
-
-    # --- Disk + janitor --------------------------------------------------
 
     async def disk_free_bytes(self) -> int:
         usage = await async_fs.disk_usage(self.base_dir)
@@ -230,9 +195,7 @@ class PreviewSessionManager:
         return timedelta(seconds=self.ttl_seconds)
 
     async def reap_stale(self) -> list[str]:
-        """End every session whose ``last_seen`` is older than the TTL. Returns
-        the session_ids that were ended.
-        """
+        """End sessions whose ``last_seen`` is older than the TTL; return their ids."""
         cutoff = self._now() - self._ttl()
         stale = [sid for sid, s in self._sessions.items() if s.last_seen < cutoff]
         for sid in stale:
@@ -240,10 +203,7 @@ class PreviewSessionManager:
         return stale
 
     async def reap_orphan_dirs(self) -> list[Path]:
-        """Delete subdirectories of ``base_dir`` that don't correspond to a known
-        session — these are orphans from a crashed prior process or a manual
-        leftover. Returns the deleted paths.
-        """
+        """Delete child dirs of ``base_dir`` not tracked in ``_sessions``; return their paths."""
         if not await aioos.path.exists(self.base_dir):
             return []
         known = {s.session_id for s in self._sessions.values()}
@@ -258,7 +218,7 @@ class PreviewSessionManager:
         return deleted
 
     async def janitor_loop(self) -> None:
-        """Run forever; cancel the task to stop. Safe against transient errors."""
+        """Reap stale sessions and orphan dirs forever; tolerant of transient errors."""
         while True:
             try:
                 await asyncio.sleep(self.janitor_interval_seconds)

@@ -6,13 +6,11 @@ import { queryKeys } from '@/utils/api'
 export const useCronMutations = () => {
   const queryClient = useQueryClient()
 
-  // Create cron job mutation
   const useCreateCronJob = () => {
     return useMutation({
       mutationFn: (request: CreateCronJobRequest) => cronApi.createCronJob(request),
       onSuccess: (data) => {
         toast.success(`任务创建成功: ${data.cronjob_id}`)
-        // Invalidate relevant queries
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
         queryClient.invalidateQueries({ queryKey: queryKeys.restartSchedule.all })
       },
@@ -22,14 +20,12 @@ export const useCronMutations = () => {
     })
   }
 
-  // Update cron job mutation
   const useUpdateCronJob = () => {
     return useMutation({
       mutationFn: ({ cronjobId, request }: { cronjobId: string; request: UpdateCronJobRequest }) =>
         cronApi.updateCronJob(cronjobId, request),
       onSuccess: (_, { cronjobId }) => {
         toast.success('任务更新成功')
-        // Invalidate job detail query and job list
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
@@ -41,13 +37,11 @@ export const useCronMutations = () => {
     })
   }
 
-  // Pause cron job mutation
   const usePauseCronJob = () => {
     return useMutation({
       mutationFn: (cronjobId: string) => cronApi.pauseCronJob(cronjobId),
       onSuccess: (_, cronjobId) => {
         toast.success('任务已暂停')
-        // Invalidate job detail query and job list
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
@@ -59,13 +53,11 @@ export const useCronMutations = () => {
     })
   }
 
-  // Resume cron job mutation
   const useResumeCronJob = () => {
     return useMutation({
       mutationFn: (cronjobId: string) => cronApi.resumeCronJob(cronjobId),
       onSuccess: (_, cronjobId) => {
         toast.success('任务已恢复')
-        // Invalidate job detail query and job list
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })
@@ -77,13 +69,11 @@ export const useCronMutations = () => {
     })
   }
 
-  // Cancel cron job mutation
   const useCancelCronJob = () => {
     return useMutation({
       mutationFn: (cronjobId: string) => cronApi.cancelCronJob(cronjobId),
       onSuccess: (_, cronjobId) => {
         toast.success('任务已取消')
-        // Invalidate job detail query and job list
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.detail(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.nextRunTime(cronjobId) })
         queryClient.invalidateQueries({ queryKey: queryKeys.cron.all })

@@ -1,6 +1,5 @@
 import { api } from '@/utils/api'
 
-// Types based on backend API response models
 export interface PlayerSummary {
   player_db_id: number
   uuid: string
@@ -72,9 +71,7 @@ export interface AchievementInfo {
   earned_at: string
 }
 
-// API functions
 export const playerApi = {
-  // Get all players summary with optional filters
   getAllPlayers: async (params?: {
     online_only?: boolean
     server_id?: string
@@ -96,35 +93,29 @@ export const playerApi = {
     return response.data
   },
 
-  // Get player detail by UUID
   getPlayerByUUID: async (uuid: string): Promise<PlayerDetailResponse> => {
     const response = await api.get(`/players/uuid/${uuid}`)
     return response.data
   },
 
-  // Get player detail by name
   getPlayerByName: async (name: string): Promise<PlayerDetailResponse> => {
     const response = await api.get(`/players/name/${name}`)
     return response.data
   },
 
-  // Get player avatar image URL
   getPlayerAvatarUrl: (playerDbId: number): string => {
     return `/players/${playerDbId}/avatar`
   },
 
-  // Get player skin image URL
   getPlayerSkinUrl: (playerDbId: number): string => {
     return `/players/${playerDbId}/skin`
   },
 
-  // Refresh player skin
   refreshPlayerSkin: async (playerDbId: number): Promise<{ message: string }> => {
     const response = await api.post(`/players/${playerDbId}/refresh-skin`)
     return response.data
   },
 
-  // Get player sessions
   getPlayerSessions: async (
     playerDbId: number,
     params?: {
@@ -161,7 +152,6 @@ export const playerApi = {
     return response.data
   },
 
-  // Get player session statistics
   getPlayerSessionStats: async (
     playerDbId: number,
     period: 'all' | 'week' | 'month' | 'year' = 'all'
@@ -172,13 +162,11 @@ export const playerApi = {
     return response.data
   },
 
-  // Get server online players
   getServerOnlinePlayers: async (serverId: string): Promise<OnlinePlayerInfo[]> => {
     const response = await api.get(`/servers/${serverId}/online-players`)
     return response.data
   },
 
-  // Get player chat history
   getPlayerChat: async (
     playerDbId: number,
     params?: {
@@ -220,7 +208,6 @@ export const playerApi = {
     return response.data
   },
 
-  // Get player achievements
   getPlayerAchievements: async (
     playerDbId: number,
     serverId?: string

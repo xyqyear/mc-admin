@@ -1,5 +1,3 @@
-"""Snapshots module for restic-based snapshot management"""
-
 from .restic import (
     ResticManager,
     ResticRestoreEvent,

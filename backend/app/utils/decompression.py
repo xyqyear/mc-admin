@@ -1,6 +1,4 @@
-"""
-Utility for decompressing and extracting Minecraft server files.
-"""
+"""Decompression and extraction of Minecraft server archives."""
 
 import re
 from collections.abc import AsyncGenerator
@@ -18,8 +16,6 @@ from .exec import exec_command, exec_command_stream
 
 
 class DecompressionStepResult(BaseModel):
-    """Result for each decompression step."""
-
     step: Literal[
         "archiveFileCheck",
         "serverPropertiesCheck",
@@ -33,15 +29,14 @@ class DecompressionStepResult(BaseModel):
     message: str
 
 
-# Progress mapping for extraction steps
 STEP_PROGRESS = {
-    "archiveFileCheck": (0, 5),  # 0-5%
-    "serverPropertiesCheck": (5, 10),  # 5-10%
-    "decompress": (10, 80),  # 10-80% (bulk of time)
-    "chown": (80, 85),  # 80-85%
-    "findPath": (85, 90),  # 85-90%
-    "mv": (90, 95),  # 90-95%
-    "remove": (95, 100),  # 95-100%
+    "archiveFileCheck": (0, 5),
+    "serverPropertiesCheck": (5, 10),
+    "decompress": (10, 80),
+    "chown": (80, 85),
+    "findPath": (85, 90),
+    "mv": (90, 95),
+    "remove": (95, 100),
 }
 
 STEP_NAMES = {
@@ -59,20 +54,8 @@ async def extract_archive_stream(
     archive_path: str,
     output_dir: str,
 ) -> AsyncGenerator[int, None]:
-    """
-    Extract archive with real-time progress updates.
-
-    Args:
-        archive_path: Path to the archive file
-        output_dir: Directory to extract to
-
-    Yields:
-        int: Progress percentage (0-100)
-
-    Raises:
-        RuntimeError: If extraction fails
-    """
-    # 7z uses \r and \x08 to update progress on same line
+    """Yield 7z extraction progress percentages (0-100)."""
+    # 7z rewrites the progress line with \r and \x08 between updates.
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
     async for segment in exec_command_stream(
@@ -80,7 +63,7 @@ async def extract_archive_stream(
         "x",
         archive_path,
         f"-o{output_dir}",
-        "-bsp1",  # Enable progress output
+        "-bsp1",
         delimiters=progress_delimiters,
     ):
         match = re.search(r"^\s*(\d+)%", segment)
@@ -92,22 +75,7 @@ async def extract_minecraft_server(
     archive_path: str,
     target_path: str,
 ) -> AsyncGenerator[TaskProgress, None]:
-    """
-    Extract Minecraft server archive with progress updates.
-
-    Yields TaskProgress for each step. The decompress step (10-80%)
-    provides granular progress via extract_archive_stream.
-
-    Args:
-        archive_path: Path to the archive file
-        target_path: Path where server files should be extracted
-
-    Yields:
-        TaskProgress: Progress updates for each step
-
-    Raises:
-        HTTPException: If extraction fails
-    """
+    """Extract a server archive into ``target_path``, yielding ``TaskProgress`` per step."""
     archive_path = str(await async_fs.resolve(Path(archive_path)))
     target_path = str(await async_fs.resolve(Path(target_path)))
 
@@ -116,16 +84,13 @@ async def extract_minecraft_server(
         return TaskProgress(progress=start, message=f"{STEP_NAMES[step]}...")
 
     def map_decompress_progress(percent: int) -> int:
-        """Map 0-100 from extract to 10-80 overall progress."""
         start, end = STEP_PROGRESS["decompress"]
         return start + (percent * (end - start)) // 100
 
-    # Step 1: Check if archive exists (0%)
     yield step_progress("archiveFileCheck")
     if not await aioos.path.exists(archive_path):
         raise RuntimeError(f"压缩包不存在: {archive_path}")
 
-    # Step 2: Check for server.properties in archive (5%)
     yield step_progress("serverPropertiesCheck")
     try:
         output = await exec_command(
@@ -153,7 +118,6 @@ async def extract_minecraft_server(
     if "server.properties" not in output:
         raise RuntimeError("压缩包中未找到server.properties文件")
 
-    # Step 3: Extract archive (10-80%) - with granular progress
     yield step_progress("decompress")
     temp_dir = f"{archive_path}.dir"
     try:
@@ -174,7 +138,6 @@ async def extract_minecraft_server(
         else:
             raise RuntimeError("解压过程中发生错误")
 
-    # Step 4: Change ownership (80%)
     yield step_progress("chown")
     try:
         await exec_command(
@@ -190,7 +153,6 @@ async def extract_minecraft_server(
         else:
             raise RuntimeError("更改文件所有权时发生错误")
 
-    # Step 5: Find server.properties path (85%)
     yield step_progress("findPath")
     try:
         find_output = await exec_command(
@@ -209,7 +171,6 @@ async def extract_minecraft_server(
     server_properties_path = Path(find_output.strip())
     server_dir = server_properties_path.parent
 
-    # Clean up existing data directory
     if await aioos.path.exists(target_path):
         for item in await aioos.listdir(target_path):
             item_path = Path(target_path) / item
@@ -218,13 +179,10 @@ async def extract_minecraft_server(
             else:
                 await aioos.remove(str(item_path))
 
-    # Step 6: Move files (90%)
     yield step_progress("mv")
     try:
-        # Ensure target directory exists
         await aioos.makedirs(target_path, exist_ok=True)
 
-        # Move all files from server directory to target
         await exec_command(
             "find",
             str(server_dir),
@@ -247,13 +205,10 @@ async def extract_minecraft_server(
         else:
             raise RuntimeError("移动服务器文件时发生错误")
 
-    # Step 7: Cleanup (95%)
     yield step_progress("remove")
     try:
-        # Remove original archive
         await aioos.remove(archive_path)
 
-        # Remove temporary directory
         await async_fs.rmtree(Path(temp_dir))
     except Exception as e:
         error_msg = str(e)
@@ -262,5 +217,4 @@ async def extract_minecraft_server(
         else:
             raise RuntimeError("清理临时文件时发生错误")
 
-    # Complete (100%)
     yield TaskProgress(progress=100, message="服务器填充完成", result={"success": True})

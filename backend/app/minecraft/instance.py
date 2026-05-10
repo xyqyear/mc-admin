@@ -30,14 +30,14 @@ ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 class MCServerStatus(str, Enum):
-    """Minecraft server status levels in hierarchical order"""
+    """Hierarchical lifecycle states for a Minecraft server."""
 
-    REMOVED = "REMOVED"  # Server directory/config doesn't exist
-    EXISTS = "EXISTS"  # Server config exists but container not created
-    CREATED = "CREATED"  # Container created but not running
-    RUNNING = "RUNNING"  # Container is running but may not be healthy
-    STARTING = "STARTING"  # Container is starting
-    HEALTHY = "HEALTHY"  # Container is running and healthy
+    REMOVED = "REMOVED"
+    EXISTS = "EXISTS"
+    CREATED = "CREATED"
+    RUNNING = "RUNNING"
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,6 @@ class MCServerRunningInfo:
 
     @property
     def disk_usage_percentage(self) -> float:
-        """Calculate disk usage percentage"""
         if self.disk_total_bytes == 0:
             return 0.0
         return (self.disk_usage_bytes / self.disk_total_bytes) * 100
@@ -74,15 +73,12 @@ class MCServerRunningInfo:
 
 @dataclass(frozen=True)
 class DiskSpaceInfo:
-    """Disk space information for server data directory"""
-
     used_bytes: int
     total_bytes: int
     available_bytes: int
 
     @property
     def usage_percentage(self) -> float:
-        """Calculate disk usage percentage"""
         if self.total_bytes == 0:
             return 0.0
         return (self.used_bytes / self.total_bytes) * 100
@@ -105,7 +101,6 @@ class MCInstance:
         return self._compose_manager
 
     def get_data_path(self) -> Path:
-        """Get the data path for the server instance."""
         return self._project_path / "data"
 
     async def get_compose_file_path(self) -> Path | None:
@@ -136,15 +131,10 @@ class MCInstance:
         return ServerProperties.from_server_properties(server_properties_content)
 
     def _verify_compose_yaml(self, compose_yaml: str) -> bool:
-        """
-        验证YAML字符串是否符合Minecraft服务器要求
-
-        将YAML字符串转换为MCComposeFile对象并验证。
-        """
+        """Validate that the YAML parses as a Minecraft compose file matching ``self._name``."""
         try:
             compose_dict = yaml.load(compose_yaml, Loader=yaml.CLoader)
             compose_obj = ComposeFile.from_dict(compose_dict)
-            # MCComposeFile初始化成功 = 格式验证通过
             mc_compose = MCComposeFile(compose_obj)
             if mc_compose.get_server_name() != self._name:
                 raise ValueError(
@@ -155,15 +145,7 @@ class MCInstance:
             return False
 
     async def get_compose_file(self) -> str:
-        """
-        Get the current compose file content as a YAML string
-
-        Returns:
-            str: The current compose file content
-
-        Raises:
-            FileNotFoundError: If compose doesn't exist for this server
-        """
+        """Read the compose file as a YAML string. Raises ``FileNotFoundError`` if missing."""
         compose_file_path = await self.get_compose_file_path()
         if compose_file_path is None:
             raise FileNotFoundError(
@@ -181,7 +163,6 @@ class MCInstance:
             )
         compose_obj = await ComposeFile.async_from_file(compose_file_path)
 
-        # Validate using MCComposeFile
         mc_compose = MCComposeFile(compose_obj)
         if mc_compose.get_server_name() != self._name:
             raise FileNotFoundError(
@@ -191,17 +172,7 @@ class MCInstance:
         return mc_compose
 
     async def create(self, compose_yaml: str) -> None:
-        """
-        create a new directory for the server and write the compose file to it
-        it also creates a data directory for the server
-
-        Args:
-            compose_yaml: Docker compose configuration as YAML string
-
-        Raises:
-            ValueError: If YAML is invalid or doesn't meet Minecraft server requirements
-            FileExistsError: If compose file already exists for this server
-        """
+        """Write a new compose file plus an empty ``data/`` dir for this server."""
         if not self._verify_compose_yaml(compose_yaml):
             raise ValueError(
                 "Invalid compose YAML or doesn't meet Minecraft server requirements"
@@ -219,7 +190,7 @@ class MCInstance:
 
         await aioos.makedirs(self.get_data_path(), exist_ok=True)
 
-        # Set ownership to match the servers_path directory
+        # Match the servers_path owner so the runtime container can read/write everything.
         uid, gid = await get_uid_gid(self._servers_path)
         if uid is not None and gid is not None:
             await async_fs.chown(self._project_path, uid, gid)
@@ -227,17 +198,7 @@ class MCInstance:
             await async_fs.chown(compose_file_path, uid, gid)
 
     async def update_compose_file(self, compose_yaml: str) -> None:
-        """
-        Update the compose file for the server with a new YAML configuration
-
-        Args:
-            compose_yaml: Docker compose configuration as YAML string
-
-        Raises:
-            RuntimeError: If server is currently created/running
-            ValueError: If YAML is invalid or doesn't meet Minecraft server requirements
-            FileNotFoundError: If compose file doesn't exist for this server
-        """
+        """Overwrite the compose file. Server must be down (not in created/running state)."""
         if await self.created():
             raise RuntimeError(f"Cannot update server {self._name} while it is created")
         if not self._verify_compose_yaml(compose_yaml):
@@ -251,7 +212,6 @@ class MCInstance:
                 f"Could not find compose file for server {self._name}"
             )
 
-        # Write YAML string directly to file
         async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
             await file.write(compose_yaml)
 
@@ -276,16 +236,12 @@ class MCInstance:
         await self._compose_manager.restart()
 
     async def exists(self) -> bool:
-        """
-        exists means that the server has a compose file
-        """
+        """The server has a compose file."""
         compose_file_path = await self.get_compose_file_path()
         return compose_file_path is not None
 
     async def created(self) -> bool:
-        """
-        created means that the container has been created but it is not running
-        """
+        """The container has been created but is not running."""
         return await self._compose_manager.created()
 
     async def running(self) -> bool:
@@ -298,17 +254,7 @@ class MCInstance:
         return await self._compose_manager.healthy("mc")
 
     async def get_status(self) -> MCServerStatus:
-        """
-        Get the current status of the Minecraft server
-
-        Returns the highest status level that the server has achieved.
-        Status levels are hierarchical - if a server is healthy, it's also
-        running, created, and exists.
-
-        Returns:
-            MCServerStatus: The current server status
-        """
-        # Check in reverse hierarchical order (highest to lowest)
+        """Highest reached lifecycle state; states are inclusive (HEALTHY implies RUNNING)."""
         if not await self.exists():
             return MCServerStatus.REMOVED
 
@@ -333,19 +279,10 @@ class MCInstance:
             await asyncio.sleep(0.5)
 
     async def get_disk_space_info(self) -> DiskSpaceInfo:
-        """
-        获取服务器数据目录的完整磁盘空间信息
-
-        Returns:
-            DiskSpaceInfo: Contains used, total, and available disk space in bytes
-
-        Raises:
-            RuntimeError: If data directory does not exist
-        """
+        """Used/total/available bytes for the server's data dir."""
         if not await aioos.path.exists(self.get_data_path()):
             raise RuntimeError(f"Data directory does not exist for server {self._name}")
 
-        # Get used space with du command
         du_result = await exec_command("du", "-sb", str(self.get_data_path()))
         du_usage_str = du_result.split()[0]
         try:
@@ -353,20 +290,16 @@ class MCInstance:
         except ValueError:
             used_bytes = 0
 
-        # Get filesystem information with df command
         df_result = await exec_command("df", "-B1", str(self.get_data_path()))
-        # df output format: Filesystem 1B-blocks Used Available Use% Mounted on
-        # We want the second line with the actual data
         df_lines = df_result.strip().split("\n")
         if len(df_lines) < 2:
             raise RuntimeError(
                 f"Unable to get filesystem info for {self.get_data_path()}"
             )
 
-        # Parse df output - handle case where filesystem name might be on separate line
+        # Long filesystem names wrap onto their own line in df output.
         df_data_line = df_lines[1]
         if len(df_lines) > 2 and not df_data_line.strip().split()[0].isdigit():
-            # Filesystem name is on separate line, data is on next line
             df_data_line = df_lines[2] if len(df_lines) > 2 else df_lines[1]
 
         df_parts = df_data_line.strip().split()
@@ -374,8 +307,8 @@ class MCInstance:
             raise RuntimeError(f"Unable to parse df output: {df_result}")
 
         try:
-            total_bytes = int(df_parts[1])  # 1B-blocks (total)
-            available_bytes = int(df_parts[3])  # Available
+            total_bytes = int(df_parts[1])
+            available_bytes = int(df_parts[3])
         except ValueError:
             raise RuntimeError(f"Unable to parse df output numbers: {df_result}")
 
@@ -386,12 +319,7 @@ class MCInstance:
         )
 
     async def get_server_info(self):
-        """
-        获取服务器信息
-
-        使用MCComposeFile进行强类型访问，一旦MCComposeFile创建成功，
-        就意味着所有必需的字段都已经验证并且类型正确。
-        """
+        """Strongly-typed view of the server compose; ``MCComposeFile`` enforces validity."""
         mc_compose = await self.get_compose_obj()
 
         return MCServerInfo(
@@ -406,15 +334,7 @@ class MCInstance:
         )
 
     async def list_players_query(self) -> list[str]:
-        """
-        List players using query protocol.
-
-        Returns:
-            List of player names
-
-        Raises:
-            Exception: If server.properties cannot be read, query is not enabled, or query fails
-        """
+        """Query the server's UDP query port for the player list."""
         server_properties = await self.get_server_properties()
 
         if not server_properties.enable_query:
@@ -437,12 +357,6 @@ class MCInstance:
         return [player.strip() for player in result.split("\n") if player.strip()]
 
     async def _list_players_rcon(self) -> list[str]:
-        """
-        List players using RCON protocol.
-
-        Returns:
-            List of player names
-        """
         players = await self.send_command_rcon("list")
         if ":" not in players:
             return []
@@ -452,34 +366,22 @@ class MCInstance:
         ]
 
     async def list_players(self) -> list[str]:
-        """
-        List players. First tries query protocol if enabled, falls back to RCON.
-
-        Returns:
-            List of player names
-        """
-        # Try query protocol first
+        """Try the query protocol first; fall back to RCON ``list``."""
         try:
             return await self.list_players_query()
         except Exception as e:
             logger.debug(f"Query protocol failed for server {self._name}: {e}")
 
-        # Fall back to RCON
         return await self._list_players_rcon()
 
     async def send_command_rcon(self, command: str) -> str:
-        """
-        this method will send a command to the server using rcon
-            we are actually just using rcon-cli provided by itzg/minecraft-server
-            to get rid of extra dependencies
-        """
+        """Run ``command`` via the container's ``rcon-cli`` (provided by itzg/minecraft-server)."""
         if not await self.healthy():
             raise RuntimeError(f"Server {self._name} is not healthy")
         result = await self._compose_manager.exec("mc", "rcon-cli", command)
         return ANSI_ESCAPE_PATTERN.sub("", result).strip()
 
     async def get_container_id(self) -> str:
-        """Get the Docker container ID for the mc service."""
         if not await self.created():
             raise RuntimeError(f"Server {self._name} is not created")
 
@@ -496,7 +398,7 @@ class MCInstance:
         return container_id
 
     async def get_pid(self) -> int:
-        """Get the Java process PID from the Docker container using docker compose top"""
+        """Locate the container's Java process PID via ``docker compose top``."""
         result = await self._compose_manager.run_compose_command("top")
 
         lines = result.strip().split("\n")
@@ -528,21 +430,17 @@ class MCInstance:
         raise RuntimeError(f"Could not find Java process PID for server {self._name}")
 
     async def get_memory_usage(self) -> MemoryStats:
-        """Get memory usage statistics from cgroup for the container."""
         container_id = await self.get_container_id()
         return await read_memory_stats(container_id)
 
     async def get_cpu_percentage(self) -> float:
-        """Get CPU usage percentage for the container process."""
         pid = await self.get_pid()
         return await get_process_cpu_usage(pid)
 
     async def get_disk_io(self) -> BlockIOStats:
-        """Get disk I/O statistics from cgroup for the container."""
         container_id = await self.get_container_id()
         return await read_block_io_stats(container_id)
 
     async def get_network_io(self) -> NetworkStats:
-        """Get network I/O statistics for the container process."""
         pid = await self.get_pid()
         return await read_container_network_stats(pid)

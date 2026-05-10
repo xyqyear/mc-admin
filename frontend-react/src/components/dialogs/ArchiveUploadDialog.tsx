@@ -27,7 +27,6 @@ import { formatUtils } from '@/utils/serverUtils'
 interface ArchiveUploadDialogProps {
   open: boolean
   onClose: () => void
-  /** Pre-populated files from drag-and-drop */
   initialFiles?: File[]
 }
 
@@ -43,7 +42,6 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({
   const [allowOverwrite, setAllowOverwrite] = useState(false)
   const [sha256HelpVisible, setSha256HelpVisible] = useState(false)
 
-  // Upload progress tracking
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadSpeed, setUploadSpeed] = useState('0 B/s')
   const [isUploading, setIsUploading] = useState(false)
@@ -51,12 +49,11 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({
   const uploadAbortController = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Sync initial files when dialog opens with drag-drop files
   const prevInitialFilesRef = useRef<File[] | undefined>(undefined)
   if (open && initialFiles && initialFiles !== prevInitialFilesRef.current) {
     prevInitialFilesRef.current = initialFiles
-    // Use functional setter to avoid stale closure; this runs during render
-    // which is fine since it's guarded by the ref check
+    // Setting state during render is safe here because the ref guard ensures
+    // it only runs once per `initialFiles` identity change.
     setUploadFiles(initialFiles)
   }
   if (!open && prevInitialFilesRef.current) {

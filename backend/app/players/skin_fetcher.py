@@ -13,8 +13,6 @@ from ..utils import async_fs
 
 
 class SkinFetcher:
-    """Fetches player skins from Mojang API."""
-
     def __init__(self):
         self.session_server_url = (
             "https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"
@@ -22,23 +20,13 @@ class SkinFetcher:
 
     @log_exception("Error fetching player skin for {uuid}: ")
     async def fetch_player_skin(self, uuid: str) -> Optional[Tuple[bytes, bytes]]:
-        """Fetch player skin and avatar from Mojang API.
-
-        Args:
-            uuid: Player UUID (without dashes)
-
-        Returns:
-            Tuple of (skin_data, avatar_data) as PNG bytes, or None if failed
-        """
-        # Add rate limiting delay
+        """Return ``(skin_png, avatar_png)`` for ``uuid``, or ``None`` on failure."""
         await asyncio.sleep(config.players.skin_fetcher.rate_limit_delay_seconds)
 
-        # Format UUID (ensure no dashes)
         uuid_clean = uuid.replace("-", "")
 
         request_timeout = config.players.skin_fetcher.request_timeout_seconds
         async with httpx.AsyncClient(timeout=request_timeout) as client:
-            # Get player profile
             url = self.session_server_url.format(uuid=uuid_clean)
             try:
                 response = await client.get(url)
@@ -58,7 +46,6 @@ class SkinFetcher:
 
             profile_data = response.json()
 
-            # Extract texture data
             textures_base64 = None
             for prop in profile_data.get("properties", []):
                 if prop.get("name") == "textures":
@@ -69,17 +56,14 @@ class SkinFetcher:
                 logger.warning(f"No textures found for player {uuid_clean}")
                 return None
 
-            # Decode texture data
             textures_json = base64.b64decode(textures_base64).decode("utf-8")
             textures = json.loads(textures_json)
 
-            # Get skin URL
             skin_url = textures.get("textures", {}).get("SKIN", {}).get("url")
             if not skin_url:
                 logger.warning(f"No skin URL found for player {uuid_clean}")
                 return None
 
-            # Download skin
             response = await client.get(skin_url)
 
             if response.status_code != 200:
@@ -88,7 +72,7 @@ class SkinFetcher:
 
             skin_bytes = response.content
 
-            # Extract avatar from skin (PIL is CPU-bound; off-load to a thread)
+            # PIL is CPU-bound — keep the avatar extraction off the event loop.
             try:
                 avatar_bytes = await async_fs.extract_skin_avatar(skin_bytes)
             except Exception as e:

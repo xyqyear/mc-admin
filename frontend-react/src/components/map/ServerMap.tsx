@@ -21,9 +21,8 @@ import { ServerMapTileLayer } from './ServerMapTileLayer'
 
 const REGION_OVERLAY_THRESHOLD = 5_000
 
-// Selection tool — the canonical input on every device. On desktop, Ctrl-drag
-// and right-click still work as power-user shortcuts regardless of the active
-// tool; on touch the tool is the only way to express intent.
+// Selection tool — the canonical input on every device. Desktop Ctrl-drag and
+// right-click still work on top; on touch the tool is the only intent signal.
 export type SelectionTool = 'pan' | 'add' | 'erase'
 
 export interface ServerMapOverlay {
@@ -40,10 +39,8 @@ export interface ServerMapView {
 export interface ServerMapProps {
   serverId: string
   regionPath: string
-  // Manifest of existing regions for this dimension keyed by `${x},${z}`,
-  // mapped to the source MCA's mtime (epoch seconds). The tile layer uses
-  // it to skip HTTP requests for non-existent regions and to cache-bust
-  // tile URLs when the underlying MCA is regenerated.
+  // Manifest keyed by `${x},${z}` mapped to MCA mtime (epoch seconds). The
+  // tile layer skips HTTP for absent regions and uses mtime as cache-buster.
   regions: ReadonlyMap<string, number>
   selectionMode?: SelectionMode
   selection?: Set<ChunkKey>
@@ -54,9 +51,7 @@ export interface ServerMapProps {
   onViewChange?: (view: ServerMapView) => void
 }
 
-// Block-space → leaflet (lat, lng): with CRS.Simple, lat = -y (south) and
-// lng = x. We use 1 block = 1 unit. Tile (rx, ry) covers blocks
-// [rx*512 .. rx*512+512) horizontally and [ry*512 .. ry*512+512) on the z axis.
+// CRS.Simple convention: lat = -z, lng = x, 1 block = 1 unit.
 type LatLngPair = [number, number]
 
 function blockToLatLng(bx: number, bz: number): LatLngPair {
@@ -95,10 +90,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   const tileLayerRef = useRef<ServerMapTileLayer | null>(null)
   const overlayLayerRef = useRef<L.LayerGroup | null>(null)
   const selectionLayerRef = useRef<L.LayerGroup | null>(null)
-  // Drag-rect selection (Ctrl+drag adds, right-button-drag removes).
-  // State lives in refs so mousemove can update the ghost rectangle without
-  // triggering React re-renders. The hover-frame handler in the init effect
-  // also reads `active` to suppress the hover overlay during drags.
+  // Drag-rect selection state in refs so mousemove can update the ghost
+  // without re-rendering; hover handler reads `active` to skip during drags.
   const dragGhostRef = useRef<L.Rectangle | null>(null)
   const dragStateRef = useRef<{
     active: boolean
@@ -115,50 +108,42 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   })
   // Capture initialView at first render so prop changes don't reset the map.
   const initialViewRef = useRef(initialView)
-  // Always-fresh callback ref so the map listener closure stays stable.
+  // Latest-value refs read by handlers bound in the once-only init effect, so
+  // those handlers track current props without resubscribing.
   const onViewChangeRef = useRef(onViewChange)
   useEffect(() => {
     onViewChangeRef.current = onViewChange
   }, [onViewChange])
-  // Latest-regions ref so handlers registered in the once-only init effect
-  // can probe the manifest without resubscribing on every manifest refetch.
   const regionsRef = useRef(regions)
   useEffect(() => {
     regionsRef.current = regions
   }, [regions])
-  // Same bridge for selectionMode: the hover handler is bound once at init,
-  // but its granularity (chunk vs region) needs to follow the current mode.
   const selectionModeRef = useRef(selectionMode)
   useEffect(() => {
     selectionModeRef.current = selectionMode
   }, [selectionMode])
-  // Latest-selection ref so the drag-finish closure reads the current set
-  // without re-registering pointer listeners on every selection change.
   const selectionRef = useRef(selection)
   useEffect(() => {
     selectionRef.current = selection
   }, [selection])
-  // Hover outline state — lifted to refs so a mode-change effect can clear
-  // a stale rectangle without waiting for the next mousemove.
+  // Refs so a mode-change effect can clear a stale rect without waiting for
+  // the next mousemove.
   const hoverRectRef = useRef<L.Rectangle | null>(null)
   const lastHoverKeyRef = useRef<string | null>(null)
-  // Selection tool. Drives single-finger / plain-left gesture intent so the
-  // map is usable on touch devices (no Ctrl, no right click). Defaults to
-  // pan; users switch to add/erase via the on-map toolbar.
+  // Drives single-finger / plain-left gesture intent (touch has no Ctrl /
+  // right click). Users switch via the on-map toolbar.
   const [tool, setTool] = useState<SelectionTool>('pan')
   const toolRef = useRef(tool)
   useEffect(() => {
     toolRef.current = tool
   }, [tool])
-  // Coarse pointers (touch / pen) don't benefit from a hover preview — skip
-  // the hover handler entirely on those devices to avoid stuck rectangles
-  // from synthesized mousemove on tap.
+  // Skip hover preview on coarse pointers (touch/pen) — synthesized mousemove
+  // on tap can leave stuck rectangles otherwise.
   const isCoarsePointer = useMemo(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false
     return window.matchMedia('(pointer: coarse)').matches
   }, [])
 
-  // Initialize the leaflet map exactly once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     const initial = initialViewRef.current
@@ -176,10 +161,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     overlayLayerRef.current = L.layerGroup().addTo(map)
     selectionLayerRef.current = L.layerGroup().addTo(map)
 
-    // Bound after L.map() so init events fired during construction don't leak
-    // out as a phantom view-change. moveend covers both pan completion and the
-    // tail of a zoom; we still listen to zoomend for keyboard / button zooms
-    // that complete without changing the center.
+    // Bound after L.map() so construction-time events don't leak as phantom
+    // view-changes. zoomend covers keyboard/button zooms with no center change.
     const emitView = () => {
       const cb = onViewChangeRef.current
       if (!cb) return
@@ -193,10 +176,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     map.on('moveend', emitView)
     map.on('zoomend', emitView)
 
-    // Live block-coordinate readout for the cursor position. Implemented as a
-    // Leaflet control with direct DOM updates (no React re-renders on every
-    // mousemove). The map's mousemove event provides world coords via
-    // e.latlng — in CRS.Simple, lng = block X and -lat = block Z.
+    // Cursor block-coord readout via direct DOM updates (no per-mousemove rerender).
     class CoordControl extends L.Control {
       private cleanup?: () => void
       constructor() {
@@ -219,9 +199,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
           const bz = Math.round(-e.latlng.lat)
           const rx = Math.floor(e.latlng.lng / BLOCKS_PER_REGION)
           const rz = Math.floor(-e.latlng.lat / BLOCKS_PER_REGION)
-          // Only prepend the MCA name when the region actually exists on
-          // disk; over empty grid cells the readout falls back to plain
-          // block coords so we don't advertise files that aren't there.
+          // Prepend the MCA filename only over existing regions.
           const mca = regionsRef.current.has(`${rx},${rz}`)
             ? `r.${rx}.${rz}.mca   `
             : ''
@@ -244,15 +222,11 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
     new CoordControl().addTo(map)
 
-    // Translucent frame around the cell currently under the cursor. The cell
-    // is region-sized in region mode and chunk-sized in chunk mode; in both
-    // cases the hover is gated on the parent region existing in the manifest
-    // so we don't advertise tiles that aren't there. The lastHoverKey gate
-    // keeps every sub-pixel mousemove from churning rectangles.
+    // Hover frame around the cursor cell, gated on parent region existing
+    // in the manifest. lastHoverKey gate prevents churning on sub-pixel moves.
     const hoverGroup = L.layerGroup().addTo(map)
     const onHoverMove = (e: L.LeafletMouseEvent) => {
-      // Suppress the hover frame while a drag-rect selection is in progress —
-      // the drag ghost is the relevant feedback during that gesture.
+      // Drag ghost is the relevant feedback during that gesture.
       if (dragStateRef.current.active) {
         if (hoverRectRef.current) {
           hoverRectRef.current.remove()
@@ -303,18 +277,13 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       map.on('mouseout', onHoverOut)
     }
 
-    // Suppress the browser context menu so right-click drag can subtract from
-    // the selection. This is wired once at init regardless of selectionMode —
-    // the selection effect decides whether to act on right-button events.
+    // Right-click drag must subtract from selection, so suppress the menu.
     const onContextMenu = (e: L.LeafletMouseEvent) => {
       e.originalEvent.preventDefault()
     }
     map.on('contextmenu', onContextMenu)
 
-    // Allow keyboard interactions (Escape clears selection). Leaflet keeps the
-    // container focusable when `keyboard: true` (default), but tabIndex makes
-    // the focus path explicit; without it, browsers won't fire keydown on the
-    // div until the user manually clicks inside.
+    // tabIndex makes the container focusable so keydown fires before a click.
     const container = containerRef.current
     if (container) {
       container.tabIndex = 0
@@ -336,22 +305,16 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       hoverRectRef.current = null
       lastHoverKeyRef.current = null
     }
-    // isCoarsePointer is memoized with [] deps — it never changes after mount,
-    // so listing it as a dep keeps lint happy without re-running this effect.
+    // isCoarsePointer is memoized with [] deps so this effect never re-runs.
   }, [isCoarsePointer])
 
-  // When the selection mode flips, drop any existing hover frame so the next
-  // mousemove redraws at the new granularity instead of leaving a stale
-  // region-sized (or chunk-sized) rectangle on screen.
+  // Drop the hover rect on mode flip so the next mousemove redraws fresh.
   useEffect(() => {
     hoverRectRef.current?.remove()
     hoverRectRef.current = null
     lastHoverKeyRef.current = null
   }, [selectionMode])
 
-  // Rebuild the tile layer when serverId, regionPath, or the regions manifest
-  // changes. The manifest is captured by reference inside the layer, so a new
-  // Set instance from a refetch swaps it cleanly.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -365,10 +328,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       regions,
       noWrap: true,
       keepBuffer: 2,
-      // mcmap produces a single tile resolution (one PNG per region). Pin a
-      // native zoom so Leaflet auto-scales the same tiles across zoom levels
-      // instead of requesting a new pyramid per zoom. min/maxZoom must cover
-      // the map's full range or the layer hides itself outside it.
+      // mcmap emits a single resolution; pin native zoom so Leaflet scales
+      // the same tiles across all zoom levels.
       minZoom: -4,
       maxZoom: 4,
       minNativeZoom: 0,
@@ -378,7 +339,6 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     tileLayerRef.current = layer
   }, [serverId, regionPath, regions])
 
-  // Mount overlays.
   useEffect(() => {
     const map = mapRef.current
     const group = overlayLayerRef.current
@@ -390,16 +350,9 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
   }, [overlays])
 
-  // Repaint selection overlay.
-  //
-  // In region mode we draw one rectangle per fully-covered region (the gesture
-  // can only ever produce full regions, so any partial residue from a prior
-  // mode-switch is intentionally not rendered — it's not selectable here).
-  //
-  // In chunk mode we draw one rectangle per chunk, with a per-region perf
-  // fallback past REGION_OVERLAY_THRESHOLD: with 5k+ chunks the canvas
-  // renderer churns one path per chunk. The underlying chunk set remains
-  // authoritative; only the visualization degrades.
+  // Region mode renders fully-covered regions only; chunk mode falls back to
+  // region rectangles past REGION_OVERLAY_THRESHOLD for canvas perf. The
+  // underlying chunk set stays authoritative; only the visualization degrades.
   useEffect(() => {
     const group = selectionLayerRef.current
     if (!group) return
@@ -439,32 +392,16 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     }
   }, [selection, selectionMode])
 
-  // Selection handling.
+  // Tool decides drag behavior on every device. Desktop also honors Ctrl-drag
+  // (add), right-button-drag (remove), and Escape (clear).
   //
-  // The on-map toolbar is the canonical input — its active tool decides what
-  // a single-finger drag / plain-left drag does:
-  //   • pan  : nothing here; Leaflet's default pan + zoom apply.
-  //   • add  : drag = additive rectangle, tap = add the cell under the cursor.
-  //   • erase: drag = subtractive rectangle, tap = remove the cell under the cursor.
+  // Listening at the container's capture phase + preventDefault on pointerdown
+  // suppresses Leaflet's drag handler so it never starts a pan — without
+  // calling `map.dragging.disable()`, which would leave Leaflet wedged on
+  // mid-gesture unmount. On touch, a secondary pointer aborts our gesture;
+  // its touchstart still reaches Leaflet so pinch-zoom takes over cleanly.
   //
-  // Desktop power-user shortcuts work on top of any tool:
-  //   • Ctrl + left-click / drag : add (regardless of tool).
-  //   • Right-button click / drag: remove (regardless of tool).
-  //   • Escape (map focused)     : clear selection.
-  //
-  // We listen to pointer events at the container's capture phase so the path
-  // is uniform across mouse / touch / pen. preventDefault on pointerdown
-  // suppresses the synthesized mousedown / touchstart that Leaflet's drag
-  // handler binds to — so Leaflet never sees the gesture and never starts a
-  // pan. We never call `map.dragging.disable()`; if the component unmounts
-  // mid-gesture, no Leaflet handler is left wedged.
-  //
-  // On touch, a second pointer arriving mid-drag aborts our gesture. The
-  // 2nd touchstart still reaches Leaflet (we only stopped propagation on
-  // the first finger's pointerdown), so pinch-zoom takes over cleanly.
-  //
-  // The drag ghost updates under requestAnimationFrame so a high-frequency
-  // pointermove stream produces at most one rectangle setBounds per frame.
+  // Drag-ghost updates run under requestAnimationFrame to coalesce moves.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -474,9 +411,8 @@ export const ServerMap: React.FC<ServerMapProps> = ({
 
     const dragState = dragStateRef.current
 
-    // Block-aligned bounding box of the latlng pair, snapped to chunk or region
-    // granularity according to selectionMode. Single-point gestures (a click)
-    // collapse to one cell.
+    // Block-aligned box snapped to chunk or region granularity; clicks
+    // collapse to a single cell.
     const cellsCovered = (a: L.LatLng, b: L.LatLng): Set<ChunkKey> => {
       const minBx = Math.min(a.lng, b.lng)
       const maxBx = Math.max(a.lng, b.lng)
@@ -569,9 +505,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     let detachWindow: (() => void) | null = null
 
     const onContainerPointerDown = (ev: PointerEvent) => {
-      // Only the primary pointer kicks off a gesture. Secondary touches hit
-      // a separate listener that aborts the in-progress drag so Leaflet's
-      // pinch-zoom can take over.
+      // Secondary touches abort via a separate listener (pinch-zoom takes over).
       if (!ev.isPrimary) return
       const tool = toolRef.current
       const isMouse = ev.pointerType === 'mouse'
@@ -582,7 +516,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         if (isLeft && (ev.ctrlKey || tool === 'add')) mode = 'add'
         else if (isRight || (isLeft && tool === 'erase')) mode = 'remove'
       } else {
-        // Touch / pen: no Ctrl, no right click — tool is the only signal.
+        // Touch / pen: tool is the only signal.
         if (tool === 'add') mode = 'add'
         else if (tool === 'erase') mode = 'remove'
       }
@@ -619,10 +553,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         cancelDrag()
         detachWindow?.()
       }
-      // For touch only: if a second pointer lands while the first is still
-      // dragging, abort. The 2nd finger's touchstart wasn't suppressed (we
-      // only preventDefaulted the first), so Leaflet sees a 2-touch gesture
-      // and starts pinch-zoom from there.
+      // Touch only: a second pointer mid-drag aborts so Leaflet pinch-zooms.
       const onSecondaryPointerDown = (e: PointerEvent) => {
         if (e.pointerId === pointerId) return
         if (isMouse) return
@@ -663,10 +594,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionRef is a stable ref
   }, [selectionMode, onSelectionChange])
 
-  // Background follows the Card's `bg-card` token so the empty areas around
-  // tiles match the surrounding theme in both light and dark modes. Inline
-  // style beats Leaflet's `.leaflet-container { background: #ddd }` on
-  // specificity without needing a global CSS override.
+  // Inline `bg-card` overrides Leaflet's default `.leaflet-container` background.
   const mapStyle = useMemo(
     () => ({ background: 'var(--card)' }),
     [],

@@ -15,17 +15,15 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
   const dragCounterRef = useRef(0)
 
   useEffect(() => {
-    // 递归获取文件夹中的所有文件
     const getAllFilesFromDirectory = async (item: any): Promise<File[]> => {
       const files: File[] = []
 
       if (item.isFile) {
         return new Promise((resolve) => {
           item.file((originalFile: File) => {
-            // 获取相对路径（移除前导斜杠）
+            // Strip the leading "/" so the relative path can be used as the upload key.
             const relativePath = item.fullPath.substring(1)
 
-            // 创建新的 File 对象，将 name 设置为完整路径
             const fileWithPath = new File([originalFile], relativePath, {
               type: originalFile.type,
               lastModified: originalFile.lastModified
@@ -52,7 +50,7 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
               files.push(...entryFiles)
             }
 
-            // 继续读取更多条目（Chrome限制每次只能读取100个）
+            // Chrome's readEntries returns at most 100 entries per call; loop until empty.
             await readEntries()
           }
 
@@ -107,29 +105,24 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
 
       let allFiles: File[] = []
 
-      // 处理拖拽的项目（支持文件夹和文件的混合）
       if (e.dataTransfer?.items && allowDirectories) {
         setIsScanning(true)
 
         try {
           const items = e.dataTransfer.items;
 
-          // 使用 Promise.all 并行处理所有项目
           const filePromises: Promise<File[]>[] = []
 
           for (let i = 0; i < items.length; i++) {
             const item = items[i]
             const entry = item.webkitGetAsEntry();
             if (entry) {
-              // 将每个项目的处理添加到 Promise 数组
               filePromises.push(getAllFilesFromDirectory(entry))
             }
           }
 
-          // 等待所有项目处理完成
           const fileArrays = await Promise.all(filePromises)
 
-          // 合并所有文件
           fileArrays.forEach(files => {
             allFiles.push(...files)
           })
@@ -138,12 +131,11 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
         }
 
       } else {
-        // 传统文件处理（不支持文件夹时）
         const files = Array.from(e.dataTransfer?.files || [])
 
         if (files.length === 0) return
 
-        // 检查是否包含文件夹（只在不允许文件夹时检查）
+        // Browsers expose dropped folders as zero-byte, empty-MIME entries; reject when only files are accepted.
         if (!allowDirectories) {
           const hasDirectories = files.some(file => file.size === 0 && file.type === '')
           if (hasDirectories && onError) {
@@ -157,20 +149,16 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
 
       if (allFiles.length === 0) return
 
-      // 过滤文件类型
       let validFiles = allFiles
       if (accept) {
         const acceptedTypes = accept.split(',').map(type => type.trim())
         validFiles = allFiles.filter(file => {
           return acceptedTypes.some(acceptedType => {
             if (acceptedType.startsWith('.')) {
-              // 扩展名匹配
               return file.name.toLowerCase().endsWith(acceptedType.toLowerCase())
             } else if (acceptedType.includes('/')) {
-              // MIME 类型匹配
               return file.type === acceptedType
             } else if (acceptedType.endsWith('/*')) {
-              // 通配符匹配，如 image/*
               const mainType = acceptedType.split('/')[0]
               return file.type.startsWith(mainType + '/')
             }
@@ -178,7 +166,6 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
           })
         })
 
-        // 如果有不支持的文件格式
         if (validFiles.length < allFiles.length && onError) {
           if (accept === '.zip,.7z') {
             onError('仅支持7z或zip格式的压缩文件')
@@ -190,7 +177,6 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
         }
       }
 
-      // 如果不支持多文件，只取第一个
       if (!multiple && validFiles.length > 0) {
         validFiles = [validFiles[0]]
       }
@@ -200,7 +186,6 @@ export function usePageDragUpload(options: UsePageDragUploadOptions = {}) {
       }
     }
 
-    // 绑定到document
     document.addEventListener('dragenter', handleDragEnter)
     document.addEventListener('dragleave', handleDragLeave)
     document.addEventListener('dragover', handleDragOver)

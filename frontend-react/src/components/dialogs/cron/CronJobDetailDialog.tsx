@@ -202,7 +202,6 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
 
                 {jobDetail && (
                   <>
-                    {/* Basic Info */}
                     <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-sm">基本信息</CardTitle>
@@ -245,7 +244,6 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                       </CardContent>
                     </Card>
 
-                    {/* Schedule Config */}
                     <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-sm">调度配置</CardTitle>
@@ -272,7 +270,6 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                       </CardContent>
                     </Card>
 
-                    {/* Job Params */}
                     <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-sm">任务参数</CardTitle>

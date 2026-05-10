@@ -152,7 +152,7 @@ const ConvertModeDialog: React.FC<ConvertModeDialogProps> = ({
       setRequiresRebuild(checkResult.requires_rebuild)
       setCurrentStep(2)
     } catch {
-      // Errors handled in mutation hooks
+      // Mutation hooks surface the errors.
     } finally {
       setPreviewLoading(false)
     }
@@ -194,7 +194,6 @@ const ConvertModeDialog: React.FC<ConvertModeDialogProps> = ({
   const isUpdateMode = currentMode === 'update'
   const isWizardMode = currentMode === 'direct' || currentMode === 'update'
 
-  // Template -> Direct: Simple confirmation
   if (currentMode === 'template') {
     return (
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -228,7 +227,6 @@ const ConvertModeDialog: React.FC<ConvertModeDialogProps> = ({
     )
   }
 
-  // Direct -> Template / Update: Multi-step wizard
   if (!isWizardMode) return null
 
   const steps = ['选择模板', '调整变量', '确认差异']

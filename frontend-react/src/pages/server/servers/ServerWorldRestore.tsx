@@ -73,10 +73,8 @@ const ServerWorldRestore: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
 
-  // Re-fetch the world manifest (existing MCAs + their mtimes). Refetching
-  // the regions query produces a new Map instance, which rebuilds the tile
-  // layer; updated mtimes flow into the `?mt=` cache-buster so any tiles
-  // whose source MCA changed are refetched (and re-rendered) end-to-end.
+  // Refetch builds a new Map instance → rebuilds tile layer → mtimes flow
+  // into the `?mt=` cache-buster so changed MCAs re-render end-to-end.
   const handleRefreshMap = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
@@ -88,12 +86,8 @@ const ServerWorldRestore: React.FC = () => {
   const setStoreDimension = useWorldRestoreSelectionStore((s) => s.setDimension)
   const setStoreMode = useWorldRestoreSelectionStore((s) => s.setMode)
 
-  // Resolve the selected dimension's region_dir from the layout response. The
-  // map tile layer needs the *region directory* path (e.g.
-  // `world/region`), which is the `region_dir_relpath` the backend returns;
-  // for the existing /map endpoint we send it as the `region` query param.
-  // The relpath alone identifies a (root, dim) pair uniquely because every
-  // root is named in the first path segment.
+  // The relpath alone identifies a (root, dim) pair because every root's
+  // name is the first path segment.
   const { rootList, currentDimension, currentRoot } = useMemo(() => {
     const roots = layoutQ.data?.world_roots ?? []
     if (roots.length === 0) {
@@ -113,7 +107,6 @@ const ServerWorldRestore: React.FC = () => {
         }
       }
     }
-    // Fall back to the first root's Overworld (or first dimension).
     const root = roots[0]
     const dim =
       root.dimensions.find((d) => d.label === 'Overworld') ??
@@ -127,8 +120,7 @@ const ServerWorldRestore: React.FC = () => {
     return relpathOf(currentDimension.region_dir, currentRoot.path)
   }, [currentDimension, currentRoot])
 
-  // Seed URL with default dim once the layout loads. Replace, no history
-  // entries.
+  // Seed default dim into URL once layout loads. Replace, no history entries.
   useEffect(() => {
     if (!currentRoot || !currentDimension) return
     const wantedRel = relpathOf(currentDimension.region_dir, currentRoot.path)
@@ -143,7 +135,7 @@ const ServerWorldRestore: React.FC = () => {
     )
   }, [currentRoot, currentDimension, dimensionRelpath, setSearchParams])
 
-  // Reflect URL → store. The store wipes the selection when dim changes.
+  // The store wipes the selection when dim changes.
   useEffect(() => {
     if (!serverId) return
     setStoreDimension(serverId, dimensionRelpath)
@@ -212,7 +204,7 @@ const ServerWorldRestore: React.FC = () => {
         (prev) => {
           const params = new URLSearchParams(prev)
           params.set('dim', dimRelpath)
-          // Drop view params — different dimensions have different extents.
+          // Different dimensions have different extents.
           params.delete('z')
           params.delete('cx')
           params.delete('cz')
@@ -409,11 +401,9 @@ const ServerWorldRestore: React.FC = () => {
   )
 }
 
-// region_dir is returned as an absolute path; the existing /map/regions
-// endpoint expects a relpath under data/. Strip the server's data path prefix
-// using the world root path as the cut point: the layout response gives us
-// `path = <data>/<world_root>` and `region_dir = <data>/<world_root>/<...>`,
-// so the data-relative path is `<world_root>/<region_dir tail>`.
+// /map/regions expects a relpath under data/, but region_dir is absolute. Cut
+// at the world root: layout gives `path = <data>/<world_root>` so the relpath
+// is `<world_root>/<region_dir tail>`.
 function relpathOf(regionDir: string, worldRootPath: string): string {
   const sep = '/'
   const rootBase = worldRootPath.split(sep).pop() ?? ''

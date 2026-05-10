@@ -89,7 +89,6 @@ const ServerFiles: React.FC = () => {
 
   const { useTask } = useTaskQueries()
 
-  // Local state
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -120,7 +119,6 @@ const ServerFiles: React.FC = () => {
   const [isDeepSearchDialogOpen, setIsDeepSearchDialogOpen] = useState(false)
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
 
-  // Page drag upload
   const { isDragging, isScanning } = usePageDragUpload({
     onFileDrop: (files) => {
       setSelectedUploadFiles(files)
@@ -166,7 +164,6 @@ const ServerFiles: React.FC = () => {
     setInputSearchTerm(searchQuery)
   }, [searchQuery])
 
-  // Watch for compression task completion
   useEffect(() => {
     if (!compressionTask || !compressionTaskId) return
 
@@ -188,7 +185,6 @@ const ServerFiles: React.FC = () => {
     }
   }, [compressionTask, compressionTaskId, queryClient])
 
-  // Ctrl+F to focus search
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
@@ -475,7 +471,6 @@ const ServerFiles: React.FC = () => {
 
       <Card>
         <CardContent className="space-y-4">
-          {/* Breadcrumb and Search */}
           <div className="flex items-center justify-between gap-4">
             <FileBreadcrumb
               currentPath={currentPath}

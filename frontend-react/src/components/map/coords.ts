@@ -1,12 +1,7 @@
-// Pure-function coordinate conversions for the server map.
-//
-// Minecraft world space is measured in *blocks*. A *chunk* is 16 x 16 blocks.
-// A *region* is 32 x 32 chunks = 512 x 512 blocks. mcmap renders one PNG per
-// region at 512 px wide (1 block = 1 px). We use Leaflet's CRS.Simple with a
-// tile size of 512 so leaflet's tile coordinates map 1:1 to region coordinates.
-//
-// In Leaflet's grid coordinates, y grows downward — which matches Minecraft's
-// z axis directly, so leaflet (x, y) == region (x, z).
+// World units: chunk = 16x16 blocks, region = 32x32 chunks = 512x512 blocks.
+// mcmap renders one 512px PNG per region (1 block = 1 px). With CRS.Simple
+// tileSize=512, leaflet tile (x, y) == region (x, z) since leaflet y grows
+// downward, matching Minecraft's z axis.
 
 export const BLOCKS_PER_CHUNK = 16
 export const CHUNKS_PER_REGION = 32
@@ -73,7 +68,6 @@ export function chunkKeyToCoord(k: `${number},${number}`): ChunkCoord {
   return { cx, cz }
 }
 
-// Iterate all chunks within a block-aligned bounding box (inclusive).
 export function* chunksInBlockBox(
   min: BlockCoord,
   max: BlockCoord
@@ -87,7 +81,6 @@ export function* chunksInBlockBox(
   }
 }
 
-// Enumerate the 1024 chunks (32x32) inside a single region.
 export function regionToChunkKeys(r: RegionCoord): `${number},${number}`[] {
   const out: `${number},${number}`[] = []
   const cxBase = r.rx * CHUNKS_PER_REGION
@@ -100,8 +93,7 @@ export function regionToChunkKeys(r: RegionCoord): `${number},${number}`[] {
   return out
 }
 
-// Group chunks by region; only return regions whose 1024 chunks are all present.
-// Used by the chunk → region mode-switch filter.
+// Returns only regions whose 1024 chunks are all present in `chunks`.
 export function chunksToFullyCoveredRegions(
   chunks: Set<`${number},${number}`>
 ): RegionCoord[] {
@@ -119,9 +111,7 @@ export function chunksToFullyCoveredRegions(
     .map((e) => e.region)
 }
 
-// Distinct regions covered by any of the chunks in `chunks` (full or partial).
-// Used by the selection panel to show the affected region count and by the
-// region-overlay performance fallback.
+// Distinct regions covered by any chunk in `chunks` (full or partial).
 export function chunksToCoveredRegions(
   chunks: Set<`${number},${number}`>
 ): RegionCoord[] {
@@ -134,7 +124,6 @@ export function chunksToCoveredRegions(
   return [...seen.values()]
 }
 
-// Single-pass region coverage: returns both covered and fully-covered counts.
 export function computeRegionCoverage(
   chunks: Set<`${number},${number}`>
 ): { covered: number; fullyCovered: number } {

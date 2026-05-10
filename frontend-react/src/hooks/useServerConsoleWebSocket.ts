@@ -2,14 +2,12 @@ import { useTokenStore } from "@/stores/useTokenStore";
 import { getApiBaseUrl } from "@/utils/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// WebSocket消息类型
 export interface WebSocketMessage {
   type: "log" | "error" | "info";
   content?: string;
   message?: string;
 }
 
-// WebSocket连接状态
 export type ConnectionState =
   | "DISCONNECTED"
   | "CONNECTING"
@@ -17,9 +15,9 @@ export type ConnectionState =
   | "ERROR"
   | "RETRYING";
 
-// 重试配置常量
 const MAX_RETRY_COUNT = 5;
-const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避延迟
+// Exponential back-off; each index corresponds to the n-th retry.
+const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000];
 
 export interface UseServerConsoleWebSocketReturn {
   connectionState: ConnectionState;
@@ -40,7 +38,6 @@ export const useServerConsoleWebSocket = (
 ): UseServerConsoleWebSocketReturn => {
   const { token } = useTokenStore();
 
-  // WebSocket refs
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
@@ -49,26 +46,24 @@ export const useServerConsoleWebSocket = (
     new Set(),
   );
 
-  // State
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("DISCONNECTED");
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // Use refs to break circular dependencies
+  // connect/scheduleReconnect reference each other; refs break the cycle so
+  // useCallback dependencies stay stable.
   const connectWebSocketRef = useRef<(cols: number, rows: number) => void>(undefined);
   const scheduleReconnectRef = useRef<() => void>(undefined);
 
-  // 构建WebSocket URL
   const buildWebSocketUrl = useCallback(
     (cols: number, rows: number) => {
       if (!serverId || !token) return null;
-      const baseUrl = getApiBaseUrl(true); // true for WebSocket
+      const baseUrl = getApiBaseUrl(true);
       return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
     },
     [serverId, token],
   );
 
-  // 断开WebSocket
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -76,45 +71,39 @@ export const useServerConsoleWebSocket = (
     }
 
     if (wsRef.current) {
-      // 避免触发onclose事件导致重连
       const ws = wsRef.current;
       wsRef.current = null;
 
-      // 移除事件监听器以避免竞争条件
+      // Drop handlers before close() so onclose can't trigger a reconnect race.
       ws.onopen = null;
       ws.onmessage = null;
       ws.onclose = null;
       ws.onerror = null;
 
-      // 如果连接还在进行中，直接关闭
       if (
         ws.readyState === WebSocket.CONNECTING ||
         ws.readyState === WebSocket.OPEN
       ) {
-        ws.close(1000); // 正常关闭
+        ws.close(1000);
       }
     }
 
     setConnectionState("DISCONNECTED");
   }, []);
 
-  // WebSocket消息处理
   const handleWebSocketMessage = useCallback(
     (event: MessageEvent) => {
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
 
-        // 调用所有注册的回调函数
         messageCallbacksRef.current.forEach((callback) => {
           callback(message);
         });
 
-        // 处理特定的消息类型
         switch (message.type) {
           case "error":
             if (message.message) {
               setLastError(message.message);
-              // 错误时断开连接并重试
               disconnect();
               if (scheduleReconnectRef.current) {
                 scheduleReconnectRef.current();
@@ -129,10 +118,8 @@ export const useServerConsoleWebSocket = (
     [disconnect],
   );
 
-  // 连接WebSocket
   const connect = useCallback(
     (cols: number, rows: number) => {
-      // 如果已经有连接在进行中或已连接，先断开
       if (
         wsRef.current &&
         (wsRef.current.readyState === WebSocket.CONNECTING ||
@@ -145,7 +132,6 @@ export const useServerConsoleWebSocket = (
         return;
       }
 
-      // Store size for reconnection
       lastSizeRef.current = { cols, rows };
 
       const wsUrl = buildWebSocketUrl(cols, rows);
@@ -159,10 +145,10 @@ export const useServerConsoleWebSocket = (
 
       try {
         const ws = new WebSocket(wsUrl);
-        wsRef.current = ws; // 立即设置引用
+        wsRef.current = ws;
 
         ws.onopen = () => {
-          // 检查连接是否仍然有效
+          // Stale handler firing for a superseded socket — drop it.
           if (wsRef.current !== ws) {
             ws.close();
             return;
@@ -176,7 +162,6 @@ export const useServerConsoleWebSocket = (
         ws.onmessage = handleWebSocketMessage;
 
         ws.onclose = (event) => {
-          // 检查这是否是当前活动的连接
           if (wsRef.current !== ws) {
             return;
           }
@@ -185,7 +170,7 @@ export const useServerConsoleWebSocket = (
           wsRef.current = null;
           setConnectionState("DISCONNECTED");
 
-          // 如果不是手动断开，尝试重连
+          // 1000/1001 indicate a clean close; anything else is treated as a recoverable failure.
           if (event.code !== 1000 && event.code !== 1001) {
             if (scheduleReconnectRef.current) {
               scheduleReconnectRef.current();
@@ -194,7 +179,6 @@ export const useServerConsoleWebSocket = (
         };
 
         ws.onerror = (error) => {
-          // 检查这是否是当前活动的连接
           if (wsRef.current !== ws) {
             return;
           }
@@ -219,7 +203,6 @@ export const useServerConsoleWebSocket = (
       return;
     }
 
-    // Need stored size for reconnection
     if (!lastSizeRef.current) {
       setConnectionState("ERROR");
       setLastError("Cannot reconnect: no terminal size available");
@@ -240,11 +223,9 @@ export const useServerConsoleWebSocket = (
     }, delay);
   }, []);
 
-  // Update refs after callbacks are defined
   connectWebSocketRef.current = connect;
   scheduleReconnectRef.current = scheduleReconnect;
 
-  // Send raw input data
   const sendInput = useCallback((data: string) => {
     if (
       !wsRef.current ||
@@ -266,7 +247,6 @@ export const useServerConsoleWebSocket = (
     }
   }, []);
 
-  // Send resize command to adjust container TTY size
   const sendResize = useCallback((cols: number, rows: number) => {
     if (
       !wsRef.current ||
@@ -290,7 +270,6 @@ export const useServerConsoleWebSocket = (
     }
   }, []);
 
-  // 注册消息监听器
   const onMessage = useCallback(
     (callback: (message: WebSocketMessage) => void) => {
       messageCallbacksRef.current.add(callback);
@@ -298,7 +277,6 @@ export const useServerConsoleWebSocket = (
     [],
   );
 
-  // 移除消息监听器
   const removeMessageListener = useCallback(
     (callback: (message: WebSocketMessage) => void) => {
       messageCallbacksRef.current.delete(callback);
@@ -306,7 +284,7 @@ export const useServerConsoleWebSocket = (
     [],
   );
 
-  // 管理WebSocket连接 - auto-connect using stored size if canConnect is true
+  // Auto-connect using the last known terminal size whenever canConnect flips on.
   useEffect(() => {
     if (canConnect && lastSizeRef.current) {
       const { cols, rows } = lastSizeRef.current;
@@ -327,7 +305,6 @@ export const useServerConsoleWebSocket = (
     };
   }, [canConnect, connect, disconnect]);
 
-  // 当服务器ID变化时重置状态
   useEffect(() => {
     retryCountRef.current = 0;
     setLastError(null);
