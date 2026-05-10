@@ -2,7 +2,7 @@ FROM node:24-alpine AS frontend-build
 
 WORKDIR /frontend
 
-COPY frontend-react/package.json frontend-react/pnpm-lock.yaml ./
+COPY frontend-react/package.json frontend-react/pnpm-lock.yaml frontend-react/pnpm-workspace.yaml ./
 RUN npm install -g pnpm@11.0.9 && pnpm install --frozen-lockfile
 
 COPY frontend-react/ ./
