@@ -17,6 +17,29 @@ def async_rmtree(path: Path):
     shutil.rmtree(path)
 
 
+_TERMINATE_GRACE_SECONDS = 2.0
+
+
+async def _kill_process(process: asyncio.subprocess.Process) -> None:
+    """SIGTERM, wait up to _TERMINATE_GRACE_SECONDS, then SIGKILL."""
+    if process.returncode is not None:
+        return
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
+        return
+    except asyncio.TimeoutError:
+        pass
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    await process.wait()
+
+
 async def exec_command(
     command: str,
     *args: str,
@@ -24,6 +47,7 @@ async def exec_command(
     gid: int | None = None,
     env: dict[str, str] = dict(),
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> str:
     """
     Execute command with arguments asynchronously.
@@ -35,12 +59,16 @@ async def exec_command(
         gid: Group ID to run command as
         env: Environment variables
         cwd: Working directory
+        timeout: Maximum seconds to wait for the command. On expiry the
+            subprocess is terminated (SIGTERM, then SIGKILL after a short
+            grace period) and TimeoutError is raised. None means no timeout.
 
     Returns:
         Command output as string
 
     Raises:
         RuntimeError: If command fails
+        TimeoutError: If timeout is set and the command does not finish in time
     """
 
     def demote():
@@ -58,7 +86,23 @@ async def exec_command(
         stderr=asyncio.subprocess.PIPE,
     )
 
-    stdout, stderr = await process.communicate()
+    try:
+        if timeout is None:
+            stdout, stderr = await process.communicate()
+        else:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=timeout
+            )
+    except asyncio.TimeoutError:
+        await _kill_process(process)
+        raise TimeoutError(
+            f"Command timed out after {timeout}s: {command} {' '.join(args)}"
+        )
+    except BaseException:
+        # Cancellation must not orphan the child process.
+        await _kill_process(process)
+        raise
+
     if stdout is None:  # type: ignore
         stdout = b""
     if stderr is None:  # type: ignore

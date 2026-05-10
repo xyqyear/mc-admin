@@ -189,8 +189,7 @@ class DNSPodClient(DNSClient):
         req = request_info.constructor()
         req.from_json_string(json.dumps(params))
 
-        loop = asyncio.get_running_loop()
-        response_object = await loop.run_in_executor(None, request_info.api_call, req)
+        response_object = await asyncio.to_thread(request_info.api_call, req)
 
         response_json = response_object.to_json_string()
         response = json.loads(response_json)

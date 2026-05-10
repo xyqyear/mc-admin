@@ -16,6 +16,10 @@ from ..minecraft import MCInstance
 # Default number of history log lines to fetch
 HISTORY_LOG_LINES = 10000
 
+# A stalled client otherwise back-pressures the docker attach socket and
+# stalls the container's stdout pipe.
+SEND_TIMEOUT_SECONDS = 30.0
+
 
 class ConsoleWebSocketHandler:
     """Handler for a single WebSocket console connection to a Minecraft server."""
@@ -51,17 +55,22 @@ class ConsoleWebSocketHandler:
         except Exception as e:
             await self._handle_connection_error(e)
         finally:
-            self._cleanup()
+            await self._cleanup()
 
     async def _initialize_connection(self, cols: int, rows: int):
         """Initialize connection with Docker attach socket."""
-        self._docker_client = docker.APIClient(base_url="unix://var/run/docker.sock")
+        self._docker_client = await asyncio.to_thread(
+            docker.APIClient, base_url="unix://var/run/docker.sock"
+        )
         self._container_id = await self.instance.get_container_id()
 
         await self._send_history_logs(self._container_id)
 
-        self._socket = self._docker_client.attach_socket(
-            self._container_id,
+        docker_client = self._docker_client
+        container_id = self._container_id
+        self._socket = await asyncio.to_thread(
+            docker_client.attach_socket,
+            container_id,
             params={
                 "stdin": 1,
                 "stdout": 1,
@@ -81,18 +90,14 @@ class ConsoleWebSocketHandler:
     async def _send_history_logs(self, container_id: str):
         """Fetch and send history logs from container."""
         assert self._docker_client is not None  # Set in _initialize_connection
-        docker_client = self._docker_client  # Capture for lambda
+        docker_client = self._docker_client
         try:
-            # Use run_in_executor since docker-py logs() is blocking
-            loop = asyncio.get_running_loop()
-            logs_bytes = await loop.run_in_executor(
-                None,
-                lambda: docker_client.logs(
-                    container_id,
-                    stdout=True,
-                    stderr=True,
-                    tail=HISTORY_LOG_LINES,
-                ),
+            logs_bytes = await asyncio.to_thread(
+                docker_client.logs,
+                container_id,
+                stdout=True,
+                stderr=True,
+                tail=HISTORY_LOG_LINES,
             )
 
             logs_content = logs_bytes.decode("utf-8", errors="replace")
@@ -190,12 +195,8 @@ class ConsoleWebSocketHandler:
             return
 
         try:
-            docker_client = self._docker_client
-            container_id = self._container_id
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: docker_client.resize(container_id, rows, cols),
+            await asyncio.to_thread(
+                self._docker_client.resize, self._container_id, rows, cols
             )
         except Exception as e:
             print(f"Failed to resize TTY: {e}")
@@ -218,9 +219,20 @@ class ConsoleWebSocketHandler:
 
     @log_exception("Failed to send data over WebSocket")
     async def _send_dict(self, data: dict):
-        await self.websocket.send_text(json.dumps(data))
+        try:
+            await asyncio.wait_for(
+                self.websocket.send_text(json.dumps(data)),
+                timeout=SEND_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            self._closed = True
+            try:
+                await self.websocket.close()
+            except Exception:
+                pass
+            raise
 
-    def _cleanup(self):
+    async def _cleanup(self):
         """Clean up resources."""
         self._closed = True
 
@@ -228,16 +240,18 @@ class ConsoleWebSocketHandler:
             self._read_task.cancel()
             self._read_task = None
 
-        if self._socket:
+        socket = self._socket
+        self._socket = None
+        if socket is not None:
             try:
-                self._socket.close()
+                await asyncio.to_thread(socket.close)
             except Exception:
                 pass
-            self._socket = None
 
-        if self._docker_client:
+        docker_client = self._docker_client
+        self._docker_client = None
+        if docker_client is not None:
             try:
-                self._docker_client.close()
+                await asyncio.to_thread(docker_client.close)
             except Exception:
                 pass
-            self._docker_client = None

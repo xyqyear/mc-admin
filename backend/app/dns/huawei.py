@@ -107,10 +107,9 @@ class HuaweiDNSClient(DNSClient):
         try to call api for retry_times times
         :raises TencentCloudSDKException: if failed to call api for retry_times times
         """
-        loop = asyncio.get_running_loop()
         for i in range(retry_times):
             try:
-                return await loop.run_in_executor(None, request_callable, *args)
+                return await asyncio.to_thread(request_callable, *args)
             except exceptions.ClientRequestException as e:
                 logger.debug(f"Failed to call {request_callable.__name__} api")
                 if i == retry_times - 1:
