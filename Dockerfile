@@ -47,9 +47,9 @@ RUN apk add --no-cache \
 
 WORKDIR /data
 
-COPY backend/ /app/
-COPY --from=backend-venv /app/.venv /app/.venv
-COPY --from=frontend-build /frontend/dist /app/static
+COPY --link backend/ /app/
+COPY --link --from=backend-venv /app/.venv /app/.venv
+COPY --link --from=frontend-build /frontend/dist /app/static
 
 RUN mkdir -p /data
 
