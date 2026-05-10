@@ -499,6 +499,16 @@ export const versionUpdates: VersionUpdate[] = [
     fixes: [
       '修复 useConfirm 确认对话框在异步确认时闪烁的问题',
     ]
+  },
+  {
+    version: '3.0.1',
+    date: '2026-05-10',
+    title: '控制台连接问题修复',
+    description: '修复控制台页面卡住和服务器停止时仍尝试连接的问题。',
+    fixes: [
+      '修复控制台页面在客户端响应缓慢时卡住的问题',
+      '修复服务器已停止时前端仍尝试连接控制台 WebSocket 的问题',
+    ]
   }
 ]
 
