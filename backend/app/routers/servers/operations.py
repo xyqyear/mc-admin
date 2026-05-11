@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,8 +6,7 @@ from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
-from ...log_monitor import log_monitor
-from ...servers.crud import mark_server_removed
+from ...servers.lifecycle import RemoveServerResult, remove_server_full
 
 router = APIRouter(
     prefix="/servers",
@@ -18,7 +15,7 @@ router = APIRouter(
 
 
 class ServerOperation(BaseModel):
-    action: str  # start, stop, restart, up, down
+    action: str  # start, stop, restart, up, down, remove
 
 
 @router.post("/{server_id}/operations")
@@ -28,10 +25,14 @@ async def server_operation(
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(get_current_user),
 ):
-    """Perform operations on a server (start, stop, restart, up, down)"""
+    """Perform operations on a server (start, stop, restart, up, down, remove).
+
+    For action=remove, returns a RemoveServerResult with counts of cancelled
+    cronjobs and closed sessions. For other actions, returns a simple
+    message object.
+    """
     instance = docker_mc_manager.get_instance(server_id)
 
-    # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
@@ -48,12 +49,8 @@ async def server_operation(
     elif action == "down":
         await instance.down()
     elif action == "remove":
-        # Stop log monitoring before removal
-        await log_monitor.stop_watching(server_id)
-        # Mark server as removed in database
-        await mark_server_removed(db, server_id, datetime.now(timezone.utc))
-        # Remove the server files
-        await instance.remove()
+        result: RemoveServerResult = await remove_server_full(db, server_id)
+        return result
     else:
         raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")
 

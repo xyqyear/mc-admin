@@ -22,7 +22,6 @@ import ArchiveSelectionDialog from '@/components/dialogs/ArchiveSelectionDialog'
 import PopulateProgressDialog from '@/components/dialogs/PopulateProgressDialog'
 import { TemplateCreationMode, TraditionalCreationMode } from '@/components/server/ServerNew'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
-import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
 import { useTemplateSchema, useAvailablePorts } from '@/hooks/queries/base/useTemplateQueries'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
@@ -60,11 +59,9 @@ const ServerNew: React.FC = () => {
   const { data: availablePorts } = useAvailablePorts(creationMode === 'template')
 
   // Mutations
-  const { useCreateServer, usePopulateServer, useCreateOrUpdateRestartSchedule } = useServerMutations()
+  const { useCreateServer, usePopulateServer } = useServerMutations()
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
-  const createRestartScheduleMutation = useCreateOrUpdateRestartSchedule()
-  const autoUpdateDNS = useAutoUpdateDNS()
 
   useEffect(() => {
     if (templateSchema?.json_schema) {
@@ -99,15 +96,6 @@ const ServerNew: React.FC = () => {
     toast.info('已移除压缩包选择')
   }
 
-  const triggerDNSUpdateAndNavigate = async () => {
-    try {
-      await autoUpdateDNS.mutateAsync()
-    } catch (dnsError: any) {
-      console.warn('DNS自动更新失败:', dnsError)
-    }
-    navigate('/overview')
-  }
-
   const validateServerName = (): boolean => {
     if (!serverName.trim()) {
       setServerNameError('请输入服务器名称')
@@ -127,6 +115,8 @@ const ServerNew: React.FC = () => {
 
   const handleCreate = async () => {
     try {
+      let createdName: string
+
       if (creationMode === 'template') {
         if (!selectedTemplateId) {
           toast.error('请选择一个模板')
@@ -143,34 +133,9 @@ const ServerNew: React.FC = () => {
           serverId: templateServerName,
           templateId: selectedTemplateId,
           variableValues: templateFormData,
+          restartSchedule: enableRestartSchedule ? {} : null,
         })
-
-        if (enableRestartSchedule) {
-          try {
-            await createRestartScheduleMutation.mutateAsync({
-              serverId: templateServerName,
-            })
-          } catch {
-            // Restart schedule creation failed, but don't block the flow
-          }
-        }
-
-        if (selectedArchiveFile) {
-          try {
-            const result = await populateServerMutation.mutateAsync({
-              serverId: templateServerName,
-              archiveFilename: selectedArchiveFile,
-            })
-            setCreatedServerId(templateServerName)
-            setPopulateTaskId(result.task_id)
-            setIsPopulateProgressDialogOpen(true)
-          } catch (populateError: any) {
-            toast.warning(`服务器 "${templateServerName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
-            await triggerDNSUpdateAndNavigate()
-          }
-        } else {
-          await triggerDNSUpdateAndNavigate()
-        }
+        createdName = templateServerName
       } else {
         if (!validateServerName()) return
         if (!composeContent.trim()) {
@@ -181,34 +146,26 @@ const ServerNew: React.FC = () => {
         await createServerMutation.mutateAsync({
           serverId: serverName,
           yamlContent: composeContent,
+          restartSchedule: enableRestartSchedule ? {} : null,
         })
+        createdName = serverName
+      }
 
-        if (enableRestartSchedule) {
-          try {
-            await createRestartScheduleMutation.mutateAsync({
-              serverId: serverName,
-            })
-          } catch {
-            // Restart schedule creation failed, but don't block the flow
-          }
+      if (selectedArchiveFile) {
+        try {
+          const result = await populateServerMutation.mutateAsync({
+            serverId: createdName,
+            archiveFilename: selectedArchiveFile,
+          })
+          setCreatedServerId(createdName)
+          setPopulateTaskId(result.task_id)
+          setIsPopulateProgressDialogOpen(true)
+        } catch (populateError: any) {
+          toast.warning(`服务器 "${createdName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
+          navigate('/overview')
         }
-
-        if (selectedArchiveFile) {
-          try {
-            const result = await populateServerMutation.mutateAsync({
-              serverId: serverName,
-              archiveFilename: selectedArchiveFile,
-            })
-            setCreatedServerId(serverName)
-            setPopulateTaskId(result.task_id)
-            setIsPopulateProgressDialogOpen(true)
-          } catch (populateError: any) {
-            toast.warning(`服务器 "${serverName}" 创建成功，但数据填充失败: ${populateError.message || '未知错误'}`)
-            await triggerDNSUpdateAndNavigate()
-          }
-        } else {
-          await triggerDNSUpdateAndNavigate()
-        }
+      } else {
+        navigate('/overview')
       }
     } catch (error: any) {
       console.error('创建服务器过程中出错:', error)
@@ -219,7 +176,7 @@ const ServerNew: React.FC = () => {
     setIsPopulateProgressDialogOpen(false)
     setPopulateTaskId(null)
     toast.success(`服务器 "${createdServerId}" 创建并填充完成!`)
-    await triggerDNSUpdateAndNavigate()
+    navigate('/overview')
   }
 
   const handlePopulateClose = () => {
@@ -228,7 +185,7 @@ const ServerNew: React.FC = () => {
     navigate('/overview')
   }
 
-  const isLoading = createServerMutation.isPending || populateServerMutation.isPending || createRestartScheduleMutation.isPending
+  const isLoading = createServerMutation.isPending || populateServerMutation.isPending
 
   const isTemplateFormValid = !!selectedTemplateId && !!templateSchema?.json_schema &&
     validator.isValid(templateSchema.json_schema as RJSFSchema, templateFormData, templateSchema.json_schema as RJSFSchema)
@@ -378,11 +335,9 @@ const ServerNew: React.FC = () => {
               )}
               {createServerMutation.isPending
                 ? '创建中...'
-                : createRestartScheduleMutation.isPending
-                  ? '配置重启计划中...'
-                  : populateServerMutation.isPending
-                    ? '填充数据中...'
-                    : '创建服务器'}
+                : populateServerMutation.isPending
+                  ? '填充数据中...'
+                  : '创建服务器'}
             </Button>
           </div>
         </CardContent>

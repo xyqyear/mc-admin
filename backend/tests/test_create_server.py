@@ -193,20 +193,32 @@ def test_client_with_temp_path(temp_server_path, test_db):
         with patch("app.config.settings.master_token", "test-master-token"):
             # Create real mc_manager with temporary server path
             real_mc_manager = DockerMCManager(temp_server_path)
-            # Patch docker_mc_manager in both create.py and port_utils.py
-            with patch("app.routers.servers.create.docker_mc_manager", real_mc_manager):
-                with patch("app.servers.port_utils.docker_mc_manager", real_mc_manager):
+            # Patch docker_mc_manager wherever it is imported
+            with patch(
+                "app.servers.lifecycle.orchestrators.docker_mc_manager",
+                real_mc_manager,
+            ):
+                with patch(
+                    "app.servers.port_utils.docker_mc_manager", real_mc_manager
+                ):
                     with patch(
                         "app.servers.port_utils.get_system_used_ports",
                         return_value=set(),
                     ):
                         # Mock log_monitor.start_server to avoid log monitor issues
                         with patch(
-                            "app.routers.servers.create.log_monitor.start_server",
+                            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
                             new_callable=AsyncMock,
                         ):
-                            client = TestClient(api_app, raise_server_exceptions=False)
-                            yield client
+                            # Mock DNS update so tests don't hit the manager
+                            with patch(
+                                "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
+                                new_callable=AsyncMock,
+                            ):
+                                client = TestClient(
+                                    api_app, raise_server_exceptions=False
+                                )
+                                yield client
 
     # Clean up dependency override
     api_app.dependency_overrides.pop(get_db, None)
@@ -236,9 +248,10 @@ class TestCreateServerSuccess:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "服务器 'test-server' 创建成功"
+        assert data["server_id"] == "test-server"
         assert data["game_port"] == 25565
         assert data["rcon_port"] == 25575
+        assert data["restart_cronjob_id"] is None
 
     def test_no_conflicts_with_different_ports(self, test_client_with_temp_path):
         """Test that servers with different ports can be created successfully."""
@@ -261,7 +274,7 @@ class TestCreateServerSuccess:
 
         assert response2.status_code == 200
         data = response2.json()
-        assert data["message"] == "服务器 'server-unique-2' 创建成功"
+        assert data["server_id"] == "server-unique-2"
         assert data["game_port"] == 25566
         assert data["rcon_port"] == 25576
 
@@ -479,7 +492,7 @@ class TestPortExtractionUtility:
 
     def test_extract_ports_valid_yaml(self):
         """Test extracting ports from valid YAML."""
-        from app.routers.servers.create import extract_ports_from_yaml
+        from app.servers.port_utils import extract_ports_from_yaml
 
         game_port, rcon_port = extract_ports_from_yaml(VALID_YAML_BASIC)
         assert game_port == 25565
@@ -493,7 +506,7 @@ class TestPortExtractionUtility:
         """Test extracting ports from invalid YAML."""
         from yaml.scanner import ScannerError
 
-        from app.routers.servers.create import extract_ports_from_yaml
+        from app.servers.port_utils import extract_ports_from_yaml
 
         with pytest.raises(ValueError) as exc_info:
             extract_ports_from_yaml(INVALID_YAML_NO_VERSION)

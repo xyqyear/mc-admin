@@ -37,26 +37,25 @@ class RestartScheduleRequest(BaseModel):
     )
 
 
-@router.post("/{server_id}/restart-schedule", response_model=RestartScheduleResponse)
-async def create_or_update_restart_schedule(
+async def schedule_auto_restart(
     server_id: str,
-    request: RestartScheduleRequest = RestartScheduleRequest(),
-    current_user: UserPublic = Depends(get_current_user),
-):
-    """
-    Create or update a restart schedule for a server.
+    request: RestartScheduleRequest,
+) -> RestartScheduleResponse:
+    """Create or update a restart schedule for a server.
 
-    - If a restart schedule already exists, it will be updated and resumed
-    - If no schedule exists, a new one will be created
-    - If custom_cron is not provided, uses the automatic conflict-free time slot finder
+    Shared helper used by both the standalone restart-schedule endpoint and
+    the bundled lifecycle create flow. Returns the new/updated schedule's
+    response payload. Raises HTTPException on failure.
+
+    - If a restart schedule already exists, it is updated and resumed.
+    - If no schedule exists, a new one is created.
+    - If custom_cron is not provided, uses the automatic conflict-free
+      time slot finder.
     """
-    # Generate restart schedule name
     schedule_name = f"restart-{server_id}"
 
-    # Determine cron expression
     if request.custom_cron:
         cron_expr = request.custom_cron
-        # Parse time from cron for display
         cron_parts = cron_expr.strip().split()
         if len(cron_parts) >= 2:
             minute, hour = cron_parts[0], cron_parts[1]
@@ -64,7 +63,6 @@ async def create_or_update_restart_schedule(
         else:
             scheduled_time = "Custom"
     else:
-        # Use automatic scheduling to avoid conflicts
         cron_expr = await restart_scheduler.generate_restart_cron(
             exclude_server_id=server_id
         )
@@ -73,20 +71,16 @@ async def create_or_update_restart_schedule(
         )
         scheduled_time = f"{hour:02d}:{minute:02d}"
 
-    # Create server restart parameters
     params = ServerRestartParams(server_id=server_id)
 
-    # Check if restart schedule already exists
     existing_jobs = await cron_manager.get_all_cronjobs(
         identifier="restart_server", name=schedule_name
     )
 
     if existing_jobs:
-        # Update existing schedule
         existing_job = existing_jobs[0]
         cronjob_id = existing_job.cronjob_id
 
-        # Update the cron job configuration
         await cron_manager.update_cronjob(
             cronjob_id=cronjob_id,
             identifier="restart_server",
@@ -94,11 +88,9 @@ async def create_or_update_restart_schedule(
             cron=cron_expr,
         )
 
-        # Resume if it's not active
         if existing_job.status != CronJobStatus.ACTIVE:
             await cron_manager.resume_cronjob(cronjob_id)
     else:
-        # Create new restart schedule
         cronjob_id = await cron_manager.create_cronjob(
             identifier="restart_server",
             params=params,
@@ -106,7 +98,6 @@ async def create_or_update_restart_schedule(
             name=schedule_name,
         )
 
-    # Get the updated job config to return current status
     job_config = await cron_manager.get_cronjob_config(cronjob_id)
     if not job_config:
         raise HTTPException(
@@ -114,13 +105,11 @@ async def create_or_update_restart_schedule(
             detail="Failed to retrieve created/updated restart schedule",
         )
 
-    # Get next run time if job is active
     next_run_datetime = None
     if job_config.status == CronJobStatus.ACTIVE:
         try:
             next_run_datetime = await cron_manager.get_next_run_time(cronjob_id)
         except ValueError:
-            # Job might not be active yet
             pass
 
     next_run_time = (
@@ -136,6 +125,22 @@ async def create_or_update_restart_schedule(
         next_run_time=next_run_time,
         scheduled_time=scheduled_time,
     )
+
+
+@router.post("/{server_id}/restart-schedule", response_model=RestartScheduleResponse)
+async def create_or_update_restart_schedule(
+    server_id: str,
+    request: RestartScheduleRequest = RestartScheduleRequest(),
+    current_user: UserPublic = Depends(get_current_user),
+):
+    """
+    Create or update a restart schedule for a server.
+
+    - If a restart schedule already exists, it will be updated and resumed
+    - If no schedule exists, a new one will be created
+    - If custom_cron is not provided, uses the automatic conflict-free time slot finder
+    """
+    return await schedule_auto_restart(server_id, request)
 
 
 @router.get(

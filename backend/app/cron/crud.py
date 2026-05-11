@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import CronJob, CronJobExecution, CronJobStatus
@@ -75,6 +75,25 @@ async def get_cronjobs_by_status(
 ) -> List[CronJob]:
     result = await session.execute(
         select(CronJob).where(CronJob.status == status)
+    )
+    return list(result.scalars().all())
+
+
+async def get_active_restart_cronjobs_for_server(
+    session: AsyncSession, server_id: str
+) -> List[CronJob]:
+    """Return active restart_server cron jobs whose params_json.server_id matches.
+
+    Uses SQLite's json_extract to query into the opaque params_json column.
+    Only restart_server jobs are returned — backup jobs are admin state and
+    are never auto-cancelled by server lifecycle code.
+    """
+    result = await session.execute(
+        select(CronJob).where(
+            CronJob.identifier == "restart_server",
+            CronJob.status == CronJobStatus.ACTIVE,
+            func.json_extract(CronJob.params_json, "$.server_id") == server_id,
+        )
     )
     return list(result.scalars().all())
 

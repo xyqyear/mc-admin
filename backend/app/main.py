@@ -48,6 +48,7 @@ from .routers.servers import players as server_players
 from .routers.servers import populate as server_populate
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
+from .routers.servers import sync as server_sync
 from .routers.servers import template_config as server_template_config
 from .routers.servers import template_migration as server_template_migration
 
@@ -118,11 +119,14 @@ api_app.include_router(statistics.router)
 api_app.include_router(statistics.server_router)
 
 # Server routers
+# IMPORTANT: server_sync must be registered BEFORE server_create so that
+# POST /servers/sync is matched before the catch-all POST /servers/{server_id}.
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
 api_app.include_router(server_players.router)
 api_app.include_router(server_compose.router)
 api_app.include_router(server_operations.router)
+api_app.include_router(server_sync.router)
 api_app.include_router(server_create.router)
 api_app.include_router(server_populate.router)
 api_app.include_router(server_console.router)

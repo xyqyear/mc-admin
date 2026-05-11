@@ -1,3 +1,9 @@
+import type {
+  CreateServerResult,
+  RemoveServerResult,
+  SyncRequest,
+  SyncResult,
+} from "@/types/lifecycle";
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
 import { api } from "@/utils/api";
 
@@ -58,10 +64,15 @@ interface ComposeUpdateResponse {
   task_id: string;
 }
 
+interface RestartScheduleRequestBody {
+  custom_cron?: string | null;
+}
+
 interface CreateServerRequest {
   yaml_content?: string;
   template_id?: number;
   variable_values?: Record<string, unknown>;
+  restart_schedule?: RestartScheduleRequestBody | null;
 }
 
 interface PopulateServerRequest {
@@ -166,10 +177,20 @@ export const serverApi = {
   },
 
   // 服务器操作 (统一的操作API)
-  serverOperation: async (id: string, action: string): Promise<void> => {
-    await api.post(`/servers/${id}/operations`, {
+  serverOperation: async (id: string, action: string): Promise<unknown> => {
+    const res = await api.post(`/servers/${id}/operations`, {
       action,
     } as ServerOperationRequest);
+    return res.data;
+  },
+
+  // 删除服务器：返回结构化的 RemoveServerResult（统计取消的计划/会话数）
+  removeServerFull: async (id: string): Promise<RemoveServerResult> => {
+    const res = await api.post<RemoveServerResult>(
+      `/servers/${id}/operations`,
+      { action: "remove" } as ServerOperationRequest,
+    );
+    return res.data;
   },
 
   // 便捷的操作方法 (保持向后兼容)
@@ -211,12 +232,22 @@ export const serverApi = {
     return res.data;
   },
 
-  // 创建新服务器
+  // 创建新服务器（可选打包 restart_schedule，单次请求完成创建+重启计划+DNS）
   createServer: async (
     serverId: string,
     request: CreateServerRequest,
-  ): Promise<void> => {
-    await api.post(`/servers/${serverId}`, request);
+  ): Promise<CreateServerResult> => {
+    const res = await api.post<CreateServerResult>(
+      `/servers/${serverId}`,
+      request,
+    );
+    return res.data;
+  },
+
+  // 服务器文件系统 ↔ 数据库 同步 (OWNER-only)
+  syncServers: async (request: SyncRequest = {}): Promise<SyncResult> => {
+    const res = await api.post<SyncResult>(`/servers/sync`, request);
+    return res.data;
   },
 
   // 填充服务器数据

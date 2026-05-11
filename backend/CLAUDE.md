@@ -157,13 +157,14 @@ app/
 │   └── servers/
 │       ├── compose.py      # Docker Compose config
 │       ├── create.py       # Server creation (template + traditional modes)
-│       ├── operations.py   # Start/stop/restart
+│       ├── operations.py   # Start/stop/restart/remove (remove returns RemoveServerResult)
 │       ├── resources.py    # Resource monitoring
 │       ├── players.py      # Online player list
 │       ├── files.py        # File management
 │       ├── console.py      # WebSocket console endpoint
 │       ├── populate.py     # Archive population
-│       ├── restart_schedule.py
+│       ├── restart_schedule.py  # CRUD + reusable schedule_auto_restart helper
+│       ├── sync.py         # POST /servers/sync (OWNER-only fs↔DB reconciler)
 │       ├── template_config.py     # Template config read/update for existing servers
 │       └── template_migration.py  # Mode conversion (template ↔ direct)
 │
@@ -226,6 +227,15 @@ app/
 │   └── jobs/               # Job implementations
 │       ├── backup.py       # Backup job with Uptime Kuma
 │       └── restart.py      # Server restart job
+│
+├── servers/                # Server core (DB, ports, lifecycle)
+│   ├── crud.py             # Server row CRUD (append-only with REMOVED tombstones)
+│   ├── port_utils.py       # Port conflict detection
+│   ├── rebuild.py          # SERVER_REBUILD background task
+│   └── lifecycle/          # Bundled create/remove + filesystem↔DB sync
+│       ├── types.py        # Pydantic specs (CreateServerSpec, RemoveServerResult, SyncResult)
+│       ├── primitives.py   # cancel_and_wait_for_tasks, cron lookups, validate_adoption
+│       └── orchestrators.py # create_server_full, remove_server_full, adopt/deactivate
 │
 ├── minecraft/              # Minecraft Docker management
 │   ├── manager.py          # DockerMCManager
@@ -359,6 +369,43 @@ if config.snapshots.time_restriction.enabled:
 - Web-based management interface
 - JSON schema generation for frontend forms
 
+### Server Lifecycle Module
+
+**Bundled create/remove + filesystem↔DB reconciliation** in `app/servers/lifecycle/`.
+The lifecycle module owns the multi-step orchestration that used to be spread
+across the frontend's chained requests.
+
+- `create_server_full(db, server_id, spec)` — validates request, writes the
+  compose tree, inserts the `Server` row, starts the log monitor, optionally
+  creates a restart cron job from the bundled `RestartScheduleRequest`, and
+  triggers a single DNS update at the tail. Any failure after the filesystem
+  write triggers compensation in reverse order (cancel cronjob → stop log
+  monitor → mark row REMOVED → rmtree). DNS update failures are non-fatal.
+- `remove_server_full(db, server_id)` — refuses with 409 if containers are
+  still running (uses public `instance.created()`), then cancels and
+  **waits** for background tasks via `cancel_and_wait_for_tasks` (closes the
+  rmtree race against in-flight `ARCHIVE_EXTRACT`), cancels restart cronjobs
+  (NOT backup jobs — those are admin state), closes open player sessions,
+  stops the log monitor, marks the row REMOVED, rmtrees the directory, and
+  triggers DNS update.
+- `adopt_server_partial` and `deactivate_server_partial` — primitives used by
+  the sync endpoint. Adopted rows are direct-mode only (template binding
+  cannot be inferred from a compose file).
+- `validate_adoption(db, server_id)` — side-effect-free; shared between the
+  sync dry-run preview and the apply path so the two cannot diverge.
+
+**Lifecycle is NOT transactional.** Each underlying primitive issues its own
+commit. Rollback is by compensation, documented at the top of `orchestrators.py`.
+Lifecycle code accesses only public APIs of `MCInstance` (no `_compose_manager`
+reach-arounds).
+
+**Sync endpoint** (`POST /api/servers/sync`, OWNER-only): reconciles
+filesystem directories vs `ACTIVE` `Server` rows. Supports `dry_run=true`
+(preview only) and `force=true` (bypass the empty-filesystem safety guard
+that prevents accidentally deactivating every row when the mount fails).
+Concurrent calls return 409 immediately rather than waiting on the internal
+`asyncio.Lock`. A single DNS update runs at the end of each apply batch.
+
 ### Background Task System
 
 **In-memory async task manager** for long-running operations:
@@ -366,6 +413,9 @@ if config.snapshots.time_restriction.enabled:
 - Singleton `BackgroundTaskManager` with submit/cancel/query API
 - Tasks are async generators yielding `TaskProgress` (progress, message, result)
 - Supports cancellation, error handling, and result data
+- `get_tasks_by_server_id(server_id)` and `get_future(task_id)` expose the
+  per-server task list and the underlying `asyncio.Future` so callers can
+  cancel-and-wait (used by the server lifecycle module before rmtree)
 - REST API at `/api/tasks/` for listing, polling, cancelling, and cleanup
 - Used by archive compression, server population (extraction)
 
@@ -462,7 +512,8 @@ values, warnings = TemplateManager.extract_variables_from_compose(
 **User**: `/api/user/` - profile management
 **Admin**: `/api/admin/` - user management (OWNER only)
 **System**: `/api/system/info` - system metrics
-**Servers**: `/api/servers/` - CRUD, status, operations, resources, players, WebSocket console
+**Servers**: `/api/servers/` - CRUD (bundles restart_schedule), status, operations (remove returns `RemoveServerResult`), resources, players, WebSocket console
+**Server Sync**: `POST /api/servers/sync` - OWNER-only filesystem↔DB reconciler (`dry_run`, `force`)
 **Files**: `/api/servers/{id}/files/` - CRUD, upload, search, multi-upload
 **Snapshots**: `/api/snapshots/`, `/api/servers/{id}/snapshots/` - backup management, deletion, unlock
 **Archives**: `/api/archives/` - upload, list, delete, SHA256, compress (background task)
@@ -518,7 +569,7 @@ tests/
 ├── server_tracker/    # Server tracker tests
 ├── background_tasks/  # Background task manager tests
 ├── templates/         # Template manager, API, default variables, YAML utils tests
-├── servers/           # Server creation (template mode), template config tests
+├── servers/           # Server creation (template mode), template config, lifecycle, sync tests
 └── fixtures/          # Test utilities
 ```
 

@@ -1,5 +1,12 @@
 import { serverApi } from "@/hooks/api/serverApi";
 import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
+import type {
+  CreateServerResult,
+  RemoveServerResult,
+  RestartScheduleRequest,
+  SyncRequest,
+  SyncResult,
+} from "@/types/lifecycle";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -16,7 +23,7 @@ export const useServerMutations = () => {
       }: {
         action: string;
         serverId: string;
-      }) => {
+      }): Promise<unknown> => {
         switch (action) {
           case "start":
             return serverApi.startServer(serverId);
@@ -29,14 +36,24 @@ export const useServerMutations = () => {
           case "down":
             return serverApi.downServer(serverId);
           case "remove":
-            // Only remove the server, restart schedule deletion will be handled at page level
-            return serverApi.serverOperation(serverId, "remove");
+            // 后端会原子化地取消重启计划、关闭会话、删除目录，并触发 DNS 更新
+            return serverApi.removeServerFull(serverId);
           default:
             throw new Error(`Unknown action: ${action}`);
         }
       },
-      onSuccess: (_, { action, serverId }) => {
-        toast.success(`服务器 ${serverId} ${action} 操作完成`);
+      onSuccess: (data, { action, serverId }) => {
+        if (action === "remove") {
+          const result = data as RemoveServerResult;
+          const cronCount = result.cancelled_restart_cronjob_ids.length;
+          toast.success(
+            cronCount > 0
+              ? `服务器 ${serverId} 删除完成（同时取消了 ${cronCount} 个重启计划）`
+              : `服务器 ${serverId} 删除完成`,
+          );
+        } else {
+          toast.success(`服务器 ${serverId} ${action} 操作完成`);
+        }
 
         // 延迟1秒后触发所有相关数据的重新更新
         setTimeout(() => {
@@ -60,10 +77,16 @@ export const useServerMutations = () => {
           // 失效兼容的servers查询
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
 
-          // 如果是删除操作，也要失效重启计划查询
-          if (action === 'remove') {
+          // 如果是删除操作，也要失效重启计划查询和DNS查询
+          if (action === "remove") {
             queryClient.invalidateQueries({
               queryKey: queryKeys.restartSchedule.detail(serverId),
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cron.all,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.dns.all,
             });
           }
         }, 1000);
@@ -107,7 +130,8 @@ export const useServerMutations = () => {
     });
   };
 
-  // 创建新服务器
+  // 创建新服务器 — 可一次性附带 restart_schedule，
+  // 后端会在同一个请求里创建服务器、配置重启计划、并触发 DNS 更新
   const useCreateServer = () => {
     return useMutation({
       mutationFn: async ({
@@ -115,29 +139,58 @@ export const useServerMutations = () => {
         yamlContent,
         templateId,
         variableValues,
+        restartSchedule,
       }: {
         serverId: string;
         yamlContent?: string;
         templateId?: number;
         variableValues?: Record<string, unknown>;
-      }) => {
+        restartSchedule?: RestartScheduleRequest | null;
+      }): Promise<CreateServerResult> => {
         return serverApi.createServer(serverId, {
           yaml_content: yamlContent,
           template_id: templateId,
           variable_values: variableValues,
+          restart_schedule: restartSchedule ?? undefined,
         });
       },
-      onSuccess: (_, { serverId }) => {
-        toast.success(`服务器 "${serverId}" 创建成功!`);
+      onSuccess: (result, { serverId }) => {
+        toast.success(
+          result.restart_cronjob_id
+            ? `服务器 "${serverId}" 创建成功并已配置重启计划`
+            : `服务器 "${serverId}" 创建成功!`,
+        );
 
         // 延迟1秒后失效相关缓存
         setTimeout(() => {
-          // 失效服务器列表
           queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+          if (result.restart_cronjob_id) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.restartSchedule.detail(serverId),
+            });
+            queryClient.invalidateQueries({ queryKey: queryKeys.cron.all });
+          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.dns.all });
         }, 1000);
       },
       onError: (error: Error, { serverId }) => {
         toast.error(`创建服务器 "${serverId}" 失败: ${error.message}`);
+      },
+    });
+  };
+
+  // 文件系统 ↔ 数据库 同步 (OWNER-only)
+  const useSyncServers = () => {
+    return useMutation({
+      mutationFn: async (request: SyncRequest = {}): Promise<SyncResult> => {
+        return serverApi.syncServers(request);
+      },
+      onSuccess: (result) => {
+        if (result.applied) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+          queryClient.invalidateQueries({ queryKey: queryKeys.dns.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.cron.all });
+        }
       },
     });
   };
@@ -210,5 +263,6 @@ export const useServerMutations = () => {
     useCreateServer,
     useCreateOrUpdateRestartSchedule,
     useDeleteRestartSchedule,
+    useSyncServers,
   };
 };

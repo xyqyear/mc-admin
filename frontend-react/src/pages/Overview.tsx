@@ -1,6 +1,5 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import {
   Play,
   Square,
@@ -10,6 +9,7 @@ import {
   ChevronDown,
   LayoutDashboard,
   Terminal,
+  ArrowRightLeft,
 } from 'lucide-react'
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -33,8 +33,10 @@ import ServerStateTag from '@/components/overview/ServerStateTag'
 import type { ServerStatus } from '@/types/Server'
 import { useOverviewData } from '@/hooks/queries/page/useOverviewData'
 import { useServerMutations } from '@/hooks/mutations/useServerMutations'
-import { useAutoUpdateDNS } from '@/hooks/mutations/useDnsMutations'
+import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
+import { UserRole } from '@/types/User'
 import { serverStatusUtils } from '@/utils/serverUtils'
+import SyncWithFilesystemDialog from '@/components/dialogs/SyncWithFilesystemDialog'
 import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog'
 import { useConfirm } from '@/hooks/useConfirm'
 
@@ -63,10 +65,13 @@ const Overview: React.FC = () => {
     refetch,
   } = useOverviewData()
 
-  const { useServerOperation, useDeleteRestartSchedule } = useServerMutations()
+  const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
-  const deleteRestartScheduleMutation = useDeleteRestartSchedule({ silent: true })
-  const autoUpdateDNS = useAutoUpdateDNS()
+
+  const { data: currentUser } = useCurrentUser()
+  const isOwner = currentUser?.role === UserRole.OWNER
+
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false)
 
   const { showConfirm, confirmDialog } = useServerOperationConfirm()
   const { confirm: confirmStart, confirmDialog: startConfirmDialog } = useConfirm()
@@ -104,22 +109,9 @@ const Overview: React.FC = () => {
         serverId,
         onConfirm: async (action, serverIdParam) => {
           try {
+            // Backend bundles remove + cron cancellation + DNS update
+            // into a single round-trip — no chained requests needed.
             await serverOperationMutation.mutateAsync({ action, serverId: serverIdParam })
-
-            if (action === 'remove') {
-              try {
-                await deleteRestartScheduleMutation.mutateAsync(serverIdParam)
-                toast.success(`服务器 "${serverIdParam}" 重启计划删除成功`)
-              } catch (scheduleError: any) {
-                toast.warning(`服务器 "${serverIdParam}" 删除成功，但重启计划删除失败: ${scheduleError.message || '未知错误'}`)
-              }
-
-              try {
-                await autoUpdateDNS.mutateAsync()
-              } catch (dnsError: any) {
-                console.warn('DNS自动更新失败:', dnsError)
-              }
-            }
           } catch (error: any) {
             console.error('服务器操作失败:', error)
           }
@@ -304,10 +296,22 @@ const Overview: React.FC = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Minecraft 服务器</CardTitle>
-            <Button onClick={() => navigate('/server/new')}>
-              <Plus className="mr-1 h-4 w-4" />
-              创建服务器
-            </Button>
+            <div className="flex items-center gap-2">
+              {isOwner && (
+                <Button
+                  variant="outline"
+                  onClick={() => setIsSyncDialogOpen(true)}
+                  title="对比文件系统与数据库记录"
+                >
+                  <ArrowRightLeft className="mr-1 h-4 w-4" />
+                  与文件系统同步
+                </Button>
+              )}
+              <Button onClick={() => navigate('/server/new')}>
+                <Plus className="mr-1 h-4 w-4" />
+                创建服务器
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -448,6 +452,10 @@ const Overview: React.FC = () => {
 
       {confirmDialog}
       {startConfirmDialog}
+      <SyncWithFilesystemDialog
+        open={isSyncDialogOpen}
+        onClose={() => setIsSyncDialogOpen(false)}
+      />
     </div>
   )
 }

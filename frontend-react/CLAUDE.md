@@ -174,6 +174,7 @@ src/
 │       ├── SHA256HelpModal.tsx          # SHA256 help
 │       ├── ServerOperationConfirmModal.tsx # Server operation confirmation
 │       ├── ServerTemplateModal.tsx      # Existing server compose selection
+│       ├── SyncWithFilesystemDialog.tsx # Filesystem ↔ DB sync preview/apply (OWNER-only)
 │       └── ServerCompose/
 │           └── ComposeDiffModal.tsx     # YAML diff viewer (Monaco diff editor)
 │
@@ -269,7 +270,8 @@ src/
 │   ├── ServerRuntime.ts
 │   ├── MenuItem.ts
 │   ├── User.ts
-│   └── Dns.ts
+│   ├── Dns.ts
+│   └── lifecycle.ts         # Mirrors backend CreateServerResult / RemoveServerResult / SyncResult
 
 ├── utils/                   # Utilities
 │   ├── api.ts               # Axios config, query keys, interceptors
@@ -429,6 +431,29 @@ export const useServerDetailQueries = (serverId: string) => {
 - `useTaskCenterStore`: Panel open/tab state
 
 See `.claude/background-tasks-guide.md` for implementation guide.
+
+### Bundled Lifecycle Requests
+
+Server creation and removal each issue exactly **one** request to the
+backend:
+
+- `useCreateServer` posts `{ yaml_content | template_id+variable_values,
+  restart_schedule? }` to `POST /servers/{id}` and returns
+  `CreateServerResult`. Populate (archive extraction) remains a separate
+  follow-up request because it runs as a background task.
+- `useServerOperation({ action: "remove" })` posts to
+  `POST /servers/{id}/operations` and returns `RemoveServerResult`; the
+  backend bundles cron cancellation, session closure, log monitor stop,
+  rmtree, and DNS update into the same call.
+- `useSyncServers` powers `SyncWithFilesystemDialog`. It calls
+  `POST /servers/sync` with `{ dry_run: true }` to populate the preview,
+  then `{ dry_run: false }` to apply. On a 409 from the empty-filesystem
+  guard, the dialog offers a "强制应用" button that retries with
+  `{ force: true }`. OWNER-only — the trigger button in `Overview.tsx` is
+  gated by `useCurrentUser().role === UserRole.OWNER`.
+
+Type definitions live in `types/lifecycle.ts` (mirrors the backend's
+Pydantic models).
 
 ### Server Template System
 

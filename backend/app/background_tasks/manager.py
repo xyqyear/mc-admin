@@ -149,6 +149,19 @@ class BackgroundTaskManager:
             if t.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
         ]
 
+    def get_tasks_by_server_id(self, server_id: str) -> list[BackgroundTask]:
+        """Get all pending/running tasks associated with a server."""
+        return [
+            t
+            for t in self._tasks.values()
+            if t.server_id == server_id
+            and t.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+        ]
+
+    def get_future(self, task_id: str) -> asyncio.Future[TaskResult] | None:
+        """Get the Future for a task, allowing external code to await completion."""
+        return self._futures.get(task_id)
+
     def remove_task(self, task_id: str) -> bool:
         """Remove a completed task."""
         task = self._tasks.get(task_id)

@@ -772,6 +772,71 @@ class TestEdgeCases:
         assert task_result.data == large_data
 
 
+class TestTasksByServerIdAndGetFuture:
+    """Test get_tasks_by_server_id and get_future helpers."""
+
+    async def test_get_tasks_by_server_id_filters_correctly(self, task_manager):
+        started = asyncio.Event()
+
+        async def slow_task():
+            started.set()
+            yield TaskProgress(progress=0, message="working")
+            await asyncio.sleep(5)
+            yield TaskProgress(progress=100, message="done")
+
+        async def quick_task():
+            yield TaskProgress(progress=100, message="done")
+
+        task_manager.submit(
+            task_type=TaskType.ARCHIVE_EXTRACT,
+            name="slow-a",
+            task_generator=slow_task(),
+            server_id="server-a",
+        )
+        result_done = task_manager.submit(
+            task_type=TaskType.ARCHIVE_CREATE,
+            name="finished-a",
+            task_generator=quick_task(),
+            server_id="server-a",
+        )
+        task_manager.submit(
+            task_type=TaskType.ARCHIVE_EXTRACT,
+            name="slow-b",
+            task_generator=slow_task(),
+            server_id="server-b",
+        )
+
+        await result_done.awaitable  # one task is now completed
+        await started.wait()
+
+        a_tasks = task_manager.get_tasks_by_server_id("server-a")
+        # Only the still-running one for server-a should be returned
+        assert {t.name for t in a_tasks} == {"slow-a"}
+
+        b_tasks = task_manager.get_tasks_by_server_id("server-b")
+        assert {t.name for t in b_tasks} == {"slow-b"}
+
+        # Unknown server
+        assert task_manager.get_tasks_by_server_id("nope") == []
+
+    async def test_get_future_returns_submitted_future(self, task_manager):
+        async def simple_task():
+            yield TaskProgress(progress=100, message="Done")
+
+        result = task_manager.submit(
+            task_type=TaskType.ARCHIVE_CREATE,
+            name="future-test",
+            task_generator=simple_task(),
+        )
+
+        future = task_manager.get_future(result.task_id)
+        assert future is not None
+        assert future is result.awaitable
+
+    async def test_get_future_returns_none_for_unknown_task(self, task_manager):
+        assert task_manager.get_future("nope") is None
+
+
 class TestAwaitableSemantics:
     """Test awaitable semantics of submitted tasks."""
 

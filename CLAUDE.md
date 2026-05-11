@@ -18,6 +18,14 @@ MC Admin is a comprehensive web-based platform for managing Minecraft servers us
 **Server Management:**
 
 - Complete Minecraft server lifecycle (create, start, stop, monitor, delete)
+- Bundled create/remove orchestrators on the backend — frontend issues a
+  single round-trip per create or remove (compose + DB row + restart
+  schedule + DNS update), with compensation-based rollback on failure
+- Filesystem ↔ database reconciler (`POST /api/servers/sync`, OWNER-only)
+  for adopting orphaned directories and deactivating stale rows, with a
+  dry-run preview and an empty-filesystem safety guard
+- Background-task cancel-and-wait integrated into remove so rmtree cannot
+  race against an in-flight `ARCHIVE_EXTRACT`
 - Docker Compose configuration management with Monaco editor integration
 - Real-time console streaming with direct container attach via WebSocket
 - Resource monitoring (CPU, memory, disk, network) via cgroup v2

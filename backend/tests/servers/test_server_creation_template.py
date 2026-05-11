@@ -72,18 +72,27 @@ def test_client(temp_server_path, test_db):
     with patch("app.config.settings.server_path", temp_server_path):
         with patch("app.config.settings.master_token", "test-master-token"):
             real_mc_manager = DockerMCManager(temp_server_path)
-            with patch("app.routers.servers.create.docker_mc_manager", real_mc_manager):
+            with patch(
+                "app.servers.lifecycle.orchestrators.docker_mc_manager",
+                real_mc_manager,
+            ):
                 with patch("app.servers.port_utils.docker_mc_manager", real_mc_manager):
                     with patch(
                         "app.servers.port_utils.get_system_used_ports",
                         return_value=set(),
                     ):
                         with patch(
-                            "app.routers.servers.create.log_monitor.start_server",
+                            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
                             new_callable=AsyncMock,
                         ):
-                            client = TestClient(api_app, raise_server_exceptions=False)
-                            yield client
+                            with patch(
+                                "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
+                                new_callable=AsyncMock,
+                            ):
+                                client = TestClient(
+                                    api_app, raise_server_exceptions=False
+                                )
+                                yield client
 
     api_app.dependency_overrides.pop(get_db, None)
 
