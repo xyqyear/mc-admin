@@ -2,10 +2,14 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...db.database import get_db
 from ...dependencies import get_current_user
+from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
+from ...servers.crud import get_active_servers
 from .utils.server_list import ServerListItem, get_server_list_item
 
 router = APIRouter(
@@ -31,21 +35,35 @@ class ServerStatus(BaseModel):
 
 
 @router.get("/", response_model=list[ServerListItem])
-async def get_servers(_: UserPublic = Depends(get_current_user)):
-    """Get list of all servers with basic info only (no status or runtime data)"""
-    # Get all server instances
-    instances = await docker_mc_manager.get_all_instances()
+async def get_servers(
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    """Get list of all servers with basic info only (no status or runtime data).
 
-    if not instances:
+    Source of truth is the DB (`Server` rows with status=ACTIVE). Per-server
+    compose reads run in parallel via asyncio.gather; ACTIVE rows whose
+    compose has drifted away are filtered out with a per-row warning so the
+    operator can correlate the gap with the sync endpoint without UI silence.
+    """
+    active_rows = await get_active_servers(db)
+
+    if not active_rows:
         return []
 
-    # Gather all server data concurrently
+    instances = [docker_mc_manager.get_instance(row.server_id) for row in active_rows]
     server_data_tasks = [get_server_list_item(instance) for instance in instances]
 
-    servers = await asyncio.gather(*server_data_tasks, return_exceptions=True)
+    results = await asyncio.gather(*server_data_tasks, return_exceptions=True)
 
-    # Filter out any exceptions and return valid servers
-    valid_servers = [server for server in servers if not isinstance(server, Exception)]
+    valid_servers: list[ServerListItem] = []
+    for row, result in zip(active_rows, results):
+        if isinstance(result, Exception):
+            logger.warning(
+                f"GET /servers: skipping '{row.server_id}' (cannot read compose): {result}"
+            )
+            continue
+        valid_servers.append(result)
 
     return valid_servers
 

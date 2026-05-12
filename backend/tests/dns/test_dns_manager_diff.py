@@ -2,6 +2,7 @@
 Tests for DNS manager diff functionality
 """
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,36 @@ import pytest
 from app.dns.manager import SimpleDNSManager
 from app.dns.types import AddRecordT
 from app.dns.utils import RecordDiff
+
+
+@contextmanager
+def _patch_active_servers(mock_docker_manager, servers_data):
+    """Wire up the DB-driven server enumeration for a DNS manager test.
+
+    servers_data: iterable of (server_id, name, game_port). Each entry produces
+    a Server row in app.servers.crud.get_active_servers and a corresponding
+    MCInstance whose get_server_info() returns the matching name/port.
+    """
+    instances_by_sid: dict[str, MagicMock] = {}
+    rows = []
+    for sid, name, port in servers_data:
+        info = MagicMock()
+        info.name = name
+        info.game_port = port
+        inst = MagicMock()
+        inst.get_server_info = AsyncMock(return_value=info)
+        instances_by_sid[sid] = inst
+        row = MagicMock()
+        row.server_id = sid
+        rows.append(row)
+
+    mock_docker_manager.get_instance = MagicMock(
+        side_effect=lambda s: instances_by_sid[s]
+    )
+    with patch(
+        "app.servers.crud.get_active_servers", AsyncMock(return_value=rows)
+    ):
+        yield
 
 
 class TestDNSManagerDiff:
@@ -102,7 +133,7 @@ class TestDNSManagerDiff:
             ):
                 # Should raise RuntimeError instead of returning error dict
                 with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-                    await dns_manager.get_current_diff()
+                    await dns_manager.get_current_diff(AsyncMock())
 
     @pytest.mark.asyncio
     async def test_get_current_diff_no_servers_or_addresses(
@@ -119,19 +150,19 @@ class TestDNSManagerDiff:
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
 
-        # Mock no servers
-        mock_docker_manager.get_all_server_info.return_value = []
-
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
+            ),
+            _patch_active_servers(mock_docker_manager, []),
+        ):
+            # Should raise ValueError instead of returning error dict
+            with pytest.raises(
+                ValueError,
+                match="No addresses or servers found for diff calculation",
             ):
-                # Should raise ValueError instead of returning error dict
-                with pytest.raises(
-                    ValueError,
-                    match="No addresses or servers found for diff calculation",
-                ):
-                    await dns_manager.get_current_diff()
+                await dns_manager.get_current_diff(AsyncMock())
 
     @pytest.mark.asyncio
     async def test_get_current_diff_successful_calculation(
@@ -147,12 +178,6 @@ class TestDNSManagerDiff:
         dns_manager._dns_client = mock_dns_client
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
-
-        # Mock server info
-        mock_server_info = MagicMock()
-        mock_server_info.name = "testserver"
-        mock_server_info.game_port = 25565
-        mock_docker_manager.get_all_server_info.return_value = [mock_server_info]
 
         # Mock DNS diff result
         mock_dns_diff = RecordDiff(
@@ -174,11 +199,16 @@ class TestDNSManagerDiff:
         }
         mock_mc_router_client.get_routes_diff.return_value = mock_router_diff
 
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                dns_diff, router_diff = await dns_manager.get_current_diff()
+            ),
+            _patch_active_servers(
+                mock_docker_manager, [("testserver", "testserver", 25565)]
+            ),
+        ):
+            dns_diff, router_diff = await dns_manager.get_current_diff(AsyncMock())
 
         assert dns_diff == mock_dns_diff
         assert router_diff == mock_router_diff
@@ -212,20 +242,6 @@ class TestDNSManagerDiff:
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
 
-        # Mock server info
-        mock_server_info1 = MagicMock()
-        mock_server_info1.name = "server1"
-        mock_server_info1.game_port = 25565
-
-        mock_server_info2 = MagicMock()
-        mock_server_info2.name = "server2"
-        mock_server_info2.game_port = 25566
-
-        mock_docker_manager.get_all_server_info.return_value = [
-            mock_server_info1,
-            mock_server_info2,
-        ]
-
         # Mock empty DNS diff
         mock_dns_diff = RecordDiff(
             records_to_add=[], records_to_remove=[], records_to_update=[]
@@ -245,11 +261,17 @@ class TestDNSManagerDiff:
         }
         mock_mc_router_client.get_routes_diff.return_value = mock_router_diff
 
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                dns_diff, router_diff = await dns_manager.get_current_diff()
+            ),
+            _patch_active_servers(
+                mock_docker_manager,
+                [("server1", "server1", 25565), ("server2", "server2", 25566)],
+            ),
+        ):
+            dns_diff, router_diff = await dns_manager.get_current_diff(AsyncMock())
 
         assert dns_diff == mock_dns_diff
         assert router_diff == mock_router_diff
@@ -283,24 +305,23 @@ class TestDNSManagerDiff:
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
 
-        # Mock server info
-        mock_server_info = MagicMock()
-        mock_server_info.name = "testserver"
-        mock_server_info.game_port = 25565
-        mock_docker_manager.get_all_server_info.return_value = [mock_server_info]
-
         # Mock DNS diff to raise an exception
         mock_dns_client.get_records_diff.side_effect = Exception(
             "DNS connection failed"
         )
 
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                # Should raise exception immediately, not collect errors
-                with pytest.raises(Exception, match="DNS connection failed"):
-                    await dns_manager.get_current_diff()
+            ),
+            _patch_active_servers(
+                mock_docker_manager, [("testserver", "testserver", 25565)]
+            ),
+        ):
+            # Should raise exception immediately, not collect errors
+            with pytest.raises(Exception, match="DNS connection failed"):
+                await dns_manager.get_current_diff(AsyncMock())
 
     @pytest.mark.asyncio
     async def test_get_current_diff_router_error_handling(
@@ -317,12 +338,6 @@ class TestDNSManagerDiff:
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
 
-        # Mock server info
-        mock_server_info = MagicMock()
-        mock_server_info.name = "testserver"
-        mock_server_info.game_port = 25565
-        mock_docker_manager.get_all_server_info.return_value = [mock_server_info]
-
         # Mock successful DNS operation
         mock_dns_diff = RecordDiff(
             records_to_add=[], records_to_remove=[], records_to_update=[]
@@ -334,16 +349,21 @@ class TestDNSManagerDiff:
             "Router connection failed"
         )
 
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                # Should raise exception immediately, not collect errors
-                with pytest.raises(Exception, match="Router connection failed"):
-                    await dns_manager.get_current_diff()
+            ),
+            _patch_active_servers(
+                mock_docker_manager, [("testserver", "testserver", 25565)]
+            ),
+        ):
+            # Should raise exception immediately, not collect errors
+            with pytest.raises(Exception, match="Router connection failed"):
+                await dns_manager.get_current_diff(AsyncMock())
 
     @pytest.mark.asyncio
-    async def test_get_current_diff_general_error_handling(
+    async def test_get_current_diff_db_error_propagates(
         self,
         dns_manager,
         mock_dns_client,
@@ -351,21 +371,25 @@ class TestDNSManagerDiff:
         mock_docker_manager,
         mock_config,
     ):
-        """Test general error handling during diff calculation - should raise exception"""
-        # Set up manager with mocked clients
+        """A DB query failure during server enumeration propagates.
+
+        Per-server compose-read failures are tolerated (skipped with a warning),
+        but the active-servers query itself failing means we can't reason about
+        the desired state at all — surface that loudly.
+        """
         dns_manager._dns_client = mock_dns_client
         dns_manager._mc_router_client = mock_mc_router_client
         dns_manager._docker_manager = mock_docker_manager
 
-        # Mock server info to raise an exception
-        mock_docker_manager.get_all_server_info.side_effect = Exception(
-            "Docker connection failed"
-        )
-
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
+        with (
+            patch("app.dns.manager.config", mock_config),
+            patch.object(
                 dns_manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                # Should raise exception immediately, not collect errors
-                with pytest.raises(Exception, match="Docker connection failed"):
-                    await dns_manager.get_current_diff()
+            ),
+            patch(
+                "app.servers.crud.get_active_servers",
+                AsyncMock(side_effect=Exception("DB connection failed")),
+            ),
+        ):
+            with pytest.raises(Exception, match="DB connection failed"):
+                await dns_manager.get_current_diff(AsyncMock())

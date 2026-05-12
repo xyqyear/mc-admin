@@ -2,7 +2,8 @@
 Tests for the simplified DNS manager
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -11,6 +12,33 @@ from app.dns.manager import AddressInfo, SimpleDNSManager
 from app.dns.router import MCRouterClient
 from app.minecraft import MCServerInfo
 from app.minecraft.compose import ServerType
+
+
+@contextmanager
+def _patch_active_servers(mock_docker_manager, servers_data):
+    """Wire up DB-driven server enumeration for a DNS manager test.
+
+    servers_data: iterable of (server_id, MCServerInfo). Each entry produces a
+    Server row in app.servers.crud.get_active_servers and a matching MCInstance
+    whose get_server_info() returns the provided info.
+    """
+    instances_by_sid: dict[str, MagicMock] = {}
+    rows = []
+    for sid, info in servers_data:
+        inst = MagicMock()
+        inst.get_server_info = AsyncMock(return_value=info)
+        instances_by_sid[sid] = inst
+        row = MagicMock()
+        row.server_id = sid
+        rows.append(row)
+
+    mock_docker_manager.get_instance = MagicMock(
+        side_effect=lambda s: instances_by_sid[s]
+    )
+    with patch(
+        "app.servers.crud.get_active_servers", AsyncMock(return_value=rows)
+    ):
+        yield
 
 
 class MockDNSClient(DNSClient):
@@ -274,32 +302,28 @@ async def test_update_integration():
     # Setup mocks
     mock_dns_client = MockDNSClient()
     mock_router_client = MockMCRouterClient("http://localhost:26666")
-    mock_docker_manager = AsyncMock()
+    mock_docker_manager = MagicMock()
 
-    # Mock server info
-    server_info = [
-        MCServerInfo(
-            name="vanilla",
-            path="/servers/vanilla",
-            java_version=17,
-            max_memory_bytes=2048 * 1024 * 1024,
-            server_type=ServerType.VANILLA,
-            game_version="1.20.1",
-            game_port=25565,
-            rcon_port=25575,
-        ),
-        MCServerInfo(
-            name="modded",
-            path="/servers/modded",
-            java_version=17,
-            max_memory_bytes=4096 * 1024 * 1024,
-            server_type=ServerType.FORGE,
-            game_version="1.20.1",
-            game_port=25566,
-            rcon_port=25576,
-        ),
-    ]
-    mock_docker_manager.get_all_server_info.return_value = server_info
+    vanilla_info = MCServerInfo(
+        name="vanilla",
+        path="/servers/vanilla",
+        java_version=17,
+        max_memory_bytes=2048 * 1024 * 1024,
+        server_type=ServerType.VANILLA,
+        game_version="1.20.1",
+        game_port=25565,
+        rcon_port=25575,
+    )
+    modded_info = MCServerInfo(
+        name="modded",
+        path="/servers/modded",
+        java_version=17,
+        max_memory_bytes=4096 * 1024 * 1024,
+        server_type=ServerType.FORGE,
+        game_version="1.20.1",
+        game_port=25566,
+        rcon_port=25576,
+    )
 
     dns_manager._dns_client = mock_dns_client
     dns_manager._mc_router_client = mock_router_client
@@ -321,10 +345,16 @@ async def test_update_integration():
     # Mock the ensure_up_to_date_config method
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
-    with patch("app.dns.manager.config") as config_mock:
+    with (
+        patch("app.dns.manager.config") as config_mock,
+        _patch_active_servers(
+            mock_docker_manager,
+            [("vanilla", vanilla_info), ("modded", modded_info)],
+        ),
+    ):
         config_mock.dns = mock_config
 
-        await dns_manager.update()
+        await dns_manager.update(AsyncMock())
 
         # Verify DNS client was called with managed_sub_domain
         assert hasattr(mock_dns_client, "last_update_call")
@@ -344,8 +374,7 @@ async def test_update_no_servers():
 
     mock_dns_client = MockDNSClient()
     mock_router_client = MockMCRouterClient("http://localhost:26666")
-    mock_docker_manager = AsyncMock()
-    mock_docker_manager.get_all_server_info.return_value = []
+    mock_docker_manager = MagicMock()
 
     dns_manager._dns_client = mock_dns_client
     dns_manager._mc_router_client = mock_router_client
@@ -357,11 +386,14 @@ async def test_update_no_servers():
     mock_config = Mock()
     mock_config.addresses = []
 
-    with patch("app.dns.manager.config") as config_mock:
+    with (
+        patch("app.dns.manager.config") as config_mock,
+        _patch_active_servers(mock_docker_manager, []),
+    ):
         config_mock.dns = mock_config
 
         # Should not raise exception and should return early
-        await dns_manager.update()
+        await dns_manager.update(AsyncMock())
 
 
 @pytest.mark.asyncio
@@ -373,7 +405,7 @@ async def test_update_not_initialized():
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-        await dns_manager.update()
+        await dns_manager.update(AsyncMock())
 
 
 def test_get_addresses_from_config():
@@ -600,8 +632,7 @@ async def test_update_with_automatic_reinitialization():
     # Set up the manager to be "initialized"
     mock_dns_client = MockDNSClient()
     mock_router_client = MockMCRouterClient("http://localhost:26666")
-    mock_docker_manager = AsyncMock()
-    mock_docker_manager.get_all_server_info.return_value = []
+    mock_docker_manager = MagicMock()
 
     dns_manager._dns_client = mock_dns_client
     dns_manager._mc_router_client = mock_router_client
@@ -614,10 +645,148 @@ async def test_update_with_automatic_reinitialization():
     # Mock the ensure_up_to_date_config method
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
-    with patch("app.dns.manager.config") as config_mock:
+    with (
+        patch("app.dns.manager.config") as config_mock,
+        _patch_active_servers(mock_docker_manager, []),
+    ):
         config_mock.dns = mock_config
 
-        await dns_manager.update()
+        await dns_manager.update(AsyncMock())
 
         # Verify that ensure_up_to_date_config was called before the actual update
         dns_manager._ensure_up_to_date_config.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_dns_keyed_by_server_id_not_compose_name():
+    """REGRESSION: DNS records and routes must use `row.server_id` as the
+    canonical key, not the compose project name.
+
+    A server adopted by sync can legitimately have a compose `container_name`
+    that doesn't match its directory name (the server_id). Routes must follow
+    the DB identifier so the rest of the system can address them.
+    """
+    dns_manager = SimpleDNSManager()
+    mock_dns_client = MockDNSClient()
+    mock_router_client = MockMCRouterClient("http://localhost:26666")
+    mock_docker_manager = MagicMock()
+
+    drifted_info = MCServerInfo(
+        name="legacy-name",  # compose project name, diverged from server_id
+        path="/servers/survival",
+        java_version=17,
+        max_memory_bytes=2048 * 1024 * 1024,
+        server_type=ServerType.VANILLA,
+        game_version="1.20.1",
+        game_port=25577,
+        rcon_port=25587,
+    )
+
+    dns_manager._dns_client = mock_dns_client
+    dns_manager._mc_router_client = mock_router_client
+    dns_manager._docker_manager = mock_docker_manager
+
+    mock_address = Mock()
+    mock_address.type = "manual"
+    mock_address.name = "*"
+    mock_address.record_type = "A"
+    mock_address.value = "1.2.3.4"
+    mock_address.port = 25565
+    mock_config = Mock()
+    mock_config.addresses = [mock_address]
+    mock_config.managed_sub_domain = "mc"
+    mock_config.dns_ttl = 300
+
+    dns_manager._ensure_up_to_date_config = AsyncMock()
+
+    with (
+        patch("app.dns.manager.config") as config_mock,
+        _patch_active_servers(
+            mock_docker_manager, [("survival", drifted_info)]
+        ),
+    ):
+        config_mock.dns = mock_config
+        await dns_manager.update(AsyncMock())
+
+    # Route should use the server_id ("survival"), NOT the compose name ("legacy-name")
+    assert "survival.mc.example.com" in mock_router_client.routes
+    assert mock_router_client.routes["survival.mc.example.com"] == "localhost:25577"
+    assert "legacy-name.mc.example.com" not in mock_router_client.routes
+
+
+@pytest.mark.asyncio
+async def test_update_skips_row_with_unreadable_compose(caplog):
+    """A single ACTIVE row whose compose read fails must not poison the tick.
+
+    The row is dropped with a warning; the surviving row still produces routes.
+    """
+    import logging
+
+    dns_manager = SimpleDNSManager()
+    mock_dns_client = MockDNSClient()
+    mock_router_client = MockMCRouterClient("http://localhost:26666")
+    mock_docker_manager = MagicMock()
+
+    good_info = MCServerInfo(
+        name="good",
+        path="/servers/good",
+        java_version=17,
+        max_memory_bytes=2048 * 1024 * 1024,
+        server_type=ServerType.VANILLA,
+        game_version="1.20.1",
+        game_port=25565,
+        rcon_port=25575,
+    )
+
+    # Build instances by hand: one good, one whose get_server_info raises.
+    good_instance = MagicMock()
+    good_instance.get_server_info = AsyncMock(return_value=good_info)
+    bad_instance = MagicMock()
+    bad_instance.get_server_info = AsyncMock(
+        side_effect=FileNotFoundError("compose.yml missing")
+    )
+    instances = {"good": good_instance, "drifted": bad_instance}
+    mock_docker_manager.get_instance = MagicMock(side_effect=lambda s: instances[s])
+
+    good_row = MagicMock()
+    good_row.server_id = "good"
+    bad_row = MagicMock()
+    bad_row.server_id = "drifted"
+
+    dns_manager._dns_client = mock_dns_client
+    dns_manager._mc_router_client = mock_router_client
+    dns_manager._docker_manager = mock_docker_manager
+
+    mock_address = Mock()
+    mock_address.type = "manual"
+    mock_address.name = "*"
+    mock_address.record_type = "A"
+    mock_address.value = "1.2.3.4"
+    mock_address.port = 25565
+    mock_config = Mock()
+    mock_config.addresses = [mock_address]
+    mock_config.managed_sub_domain = "mc"
+    mock_config.dns_ttl = 300
+
+    dns_manager._ensure_up_to_date_config = AsyncMock()
+
+    with (
+        patch("app.dns.manager.config") as config_mock,
+        patch(
+            "app.servers.crud.get_active_servers",
+            AsyncMock(return_value=[good_row, bad_row]),
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        config_mock.dns = mock_config
+        await dns_manager.update(AsyncMock())
+
+    # The good row produced a route; the drifted one did not.
+    assert "good.mc.example.com" in mock_router_client.routes
+    assert "drifted.mc.example.com" not in mock_router_client.routes
+
+    # And a warning identifying the skipped server_id was logged.
+    assert any(
+        "drifted" in record.message and "cannot read compose" in record.message
+        for record in caplog.records
+    )

@@ -167,7 +167,7 @@ async def create_server_full(
             restart_cronjob_id = schedule.cronjob_id
 
         try:
-            await simple_dns_manager.update()
+            await simple_dns_manager.update(db)
         except Exception as e:
             logger.warning(f"dns update failed for {server_id}: {e}")
 
@@ -240,7 +240,7 @@ async def remove_server_full(
     await instance.remove()
 
     try:
-        await simple_dns_manager.update()
+        await simple_dns_manager.update(db)
     except Exception as e:
         logger.warning(
             f"dns update failed after removing {server_id}: {e}"

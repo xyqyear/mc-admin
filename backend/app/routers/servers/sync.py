@@ -159,7 +159,7 @@ async def sync_servers(
                 )
 
         try:
-            await simple_dns_manager.update()
+            await simple_dns_manager.update(db)
         except Exception as e:
             logger.warning(f"sync: dns update failed: {e}")
 

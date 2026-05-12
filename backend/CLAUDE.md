@@ -26,7 +26,6 @@ Backend REST API for the MC Admin Minecraft server management platform. Built wi
 - **Log Monitor** (app.log_monitor): Real-time log parsing with watchfiles, triggers player tracking directly
 - **File System** (app.files): Multi-file upload, search, conflict resolution
 - **Dynamic Config** (app.dynamic_config): Runtime configuration with schema migration
-- **Server Tracker** (app.server_tracker): Server lifecycle event monitoring
 - **Template System** (app.templates): Template-based server creation with typed variables
 - **WebSocket Console** (app.websocket): Direct container attach for real-time terminal
 - **Background Tasks** (app.background_tasks): Async task manager for long-running operations
@@ -182,9 +181,6 @@ app/
 │   ├── monitor.py          # LogMonitor singleton (watchfiles-based)
 │   └── parser.py           # LogParser (regex-based parsing)
 │
-├── server_tracker/         # Server lifecycle tracking
-│   └── tracker.py          # ServerTracker for server events
-│
 ├── files/                  # File operations
 │   ├── base.py             # Basic file CRUD
 │   ├── multi_file.py       # Multi-file upload with conflicts
@@ -288,7 +284,7 @@ app/
 - `skin_fetcher` (app.players.skin_fetcher) — Mojang API skin fetcher
 - `log_monitor` (app.log_monitor.monitor) — watchfiles-based log monitoring
 
-**Startup/shutdown** coordinated by `start_player_system()` / `stop_player_system()` in `app/players/__init__.py`, called from `main.py` lifespan.
+**Startup/shutdown** coordinated by `start_player_system()` / `stop_player_system()` in `app/players/__init__.py`, called from `main.py` lifespan. `start_player_system` enumerates servers from the DB (`get_active_servers`) — orphan filesystem directories are not auto-watched; the operator adopts them explicitly via the sync endpoint.
 
 **Database Models:**
 
@@ -349,6 +345,17 @@ await log_monitor.start_server("server1")
 - Router configuration management (MC routing)
 - DNS status monitoring and change detection
 
+**Server enumeration is DB-driven.** `SimpleDNSManager.update(db)` and
+`get_current_diff(db)` take an `AsyncSession`; they read the active server
+list from `Server` rows (status=ACTIVE), then per-server read each compose
+to extract its game port. Per-server compose-read failures are isolated in
+try/except — a single missing or unreadable compose logs a warning and is
+skipped, so one drifted row cannot poison the whole reconciliation tick.
+The DB query itself failing still propagates (callers cannot reason about
+the desired state). Callers in `app/main.py` (startup), `app/routers/dns.py`
+(update/status endpoints), `app/servers/lifecycle/orchestrators.py`, and
+`app/routers/servers/sync.py` all pass their existing session through.
+
 ### Dynamic Configuration
 
 **Schema-based runtime configuration**:
@@ -368,6 +375,27 @@ if config.snapshots.time_restriction.enabled:
 - Memory caching with DB sync
 - Web-based management interface
 - JSON schema generation for frontend forms
+
+### Server Discovery
+
+Server enumeration follows a deliberate split:
+
+- **DB is the source of truth for "servers we manage."** The overview list
+  (`GET /servers/`), DNS reconciliation, and the startup log-monitor loop
+  all enumerate via `get_active_servers(db)` and read each server's compose
+  per-entry. ACTIVE rows whose compose has drifted (file missing / unreadable)
+  are filtered out at the consumer (per-entry try/except for the overview;
+  warning-and-skip for DNS). The sync endpoint deactivates drifted rows.
+- **Filesystem is the source of truth for "what's actually on disk."** The
+  sync endpoint (`POST /servers/sync`) and port-conflict checks
+  (`port_utils.get_server_used_ports`, `GET /templates/ports/available`)
+  enumerate via `docker_mc_manager.get_all_server_names()` because port
+  collisions are a kernel/Docker reality and orphan directories must still
+  count.
+- **Single-server operations** that read/write compose or talk to Docker
+  (`compose.py`, `files.py`, `operations.py`, `resources.py`, etc.) keep
+  going through `docker_mc_manager.get_instance(server_id)`; they each
+  perform an explicit `instance.exists()` check and return 404 if missing.
 
 ### Server Lifecycle Module
 
@@ -566,7 +594,6 @@ tests/
 ├── cron/              # Cron job tests
 ├── snapshots/         # Snapshot tests
 ├── dynamic_config/    # Config system tests
-├── server_tracker/    # Server tracker tests
 ├── background_tasks/  # Background task manager tests
 ├── templates/         # Template manager, API, default variables, YAML utils tests
 ├── servers/           # Server creation (template mode), template config, lifecycle, sync tests

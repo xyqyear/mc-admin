@@ -10,6 +10,8 @@ import hashlib
 import json
 from typing import Dict, List, Literal, NamedTuple
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..dynamic_config import config
 from ..logger import logger
 from ..minecraft import docker_mc_manager
@@ -48,10 +50,10 @@ class SimpleDNSManager:
     """
     Simplified DNS manager that provides a single update() API.
 
-    This manager:
-    1. Uses DockerMCManager to get current server list and ports
-    2. Combines with configuration to generate DNS records and routes
-    3. Updates DNS client and MC Router with complete record/route lists
+    Server discovery is DB-driven: only servers with an ACTIVE row in the
+    `Server` table are announced. Per-server compose reads are isolated in
+    try/except so one missing or unreadable compose cannot poison the whole
+    reconciliation tick.
     """
 
     def __init__(self):
@@ -153,9 +155,16 @@ class SimpleDNSManager:
             self._last_config_hash = current_hash
             logger.info("DNS manager reinitialized successfully due to config change")
 
-    async def _get_target_records_and_routes(self):
+    async def _get_target_records_and_routes(self, db: AsyncSession):
         """
         Get target DNS records and routes based on current server state and configuration.
+
+        Enumerates servers from the DB (active rows only). For each row, reads
+        the compose in parallel to extract the game port. Per-server failures
+        are logged and skipped so a single missing compose does not break the
+        whole tick. DNS records and routes are keyed by `row.server_id`, the
+        canonical DB identifier — not the compose project name — so the DNS
+        layout stays consistent with what the rest of the system addresses.
 
         Returns:
             Tuple of (dns_records, routes, addresses, servers) or (None, None, None, None) if no data
@@ -163,14 +172,35 @@ class SimpleDNSManager:
         Raises:
             Exception: If there's an error getting server info or generating records
         """
+        # Deferred import: app.servers eagerly imports app.servers.lifecycle,
+        # which imports app.dns — top-level import here would create a cycle.
+        from ..servers.crud import get_active_servers
+
         if self._dns_client is None:
             raise RuntimeError("DNS manager not initialized. Call initialize() first.")
 
         dns_config = config.dns
 
-        # Get current server information
-        server_info_list = await self._docker_manager.get_all_server_info()
-        servers = {info.name: info.game_port for info in server_info_list}
+        active_rows = await get_active_servers(db)
+
+        async def _read_port(server_id: str) -> int:
+            instance = self._docker_manager.get_instance(server_id)
+            info = await instance.get_server_info()
+            return info.game_port
+
+        port_results = await asyncio.gather(
+            *(_read_port(row.server_id) for row in active_rows),
+            return_exceptions=True,
+        )
+
+        servers: Dict[str, int] = {}
+        for row, result in zip(active_rows, port_results):
+            if isinstance(result, BaseException):
+                logger.warning(
+                    f"DNS: skipping server '{row.server_id}' (cannot read compose): {result}"
+                )
+                continue
+            servers[row.server_id] = result
 
         # Get addresses from configuration
         addresses = self._get_addresses_from_config(dns_config.addresses)
@@ -195,13 +225,13 @@ class SimpleDNSManager:
 
         return target_dns_records, target_routes, addresses, servers
 
-    async def update(self):
+    async def update(self, db: AsyncSession):
         """
         Update DNS records and MC Router configurations based on current server state.
 
         This method:
         1. Ensures configuration is up-to-date (auto-reinitializes if config changed)
-        2. Gets server list and ports from DockerMCManager
+        2. Enumerates active servers from the DB and reads their ports
         3. Combines with address configuration to generate records
         4. Updates DNS and MC Router with complete lists
         """
@@ -224,7 +254,7 @@ class SimpleDNSManager:
                 routes,
                 addresses,
                 servers,
-            ) = await self._get_target_records_and_routes()
+            ) = await self._get_target_records_and_routes(db)
 
             if dns_records is None or routes is None:
                 logger.warning("No addresses or servers found, skipping DNS update")
@@ -373,7 +403,7 @@ class SimpleDNSManager:
         if self._mc_router_client:
             await self._mc_router_client.close()
 
-    async def get_current_diff(self):
+    async def get_current_diff(self, db: AsyncSession):
         """
         Get the current differences between expected and actual DNS/Router state.
 
@@ -405,7 +435,7 @@ class SimpleDNSManager:
             target_routes,
             _,
             _,
-        ) = await self._get_target_records_and_routes()
+        ) = await self._get_target_records_and_routes(db)
 
         if target_dns_records is None or target_routes is None:
             raise ValueError("No addresses or servers found for diff calculation")

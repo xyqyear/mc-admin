@@ -8,9 +8,15 @@ from ..logger import log_exception, logger
 
 @log_exception("Error starting player system: ")
 async def start_player_system() -> None:
-    """Start all player tracking subsystems in the correct order."""
+    """Start all player tracking subsystems in the correct order.
+
+    Server enumeration is DB-driven: only servers with an ACTIVE row in the
+    `Server` table are watched. Orphan filesystem directories are not
+    discovered here; the operator adopts them explicitly via the sync endpoint.
+    """
+    from ..db.database import get_async_session
     from ..log_monitor import log_monitor
-    from ..minecraft import docker_mc_manager
+    from ..servers.crud import get_active_servers
 
     from .heartbeat import heartbeat_manager
     from .player_syncer import player_syncer
@@ -18,17 +24,18 @@ async def start_player_system() -> None:
     # Start heartbeat first (includes crash detection)
     await heartbeat_manager.start()
 
-    # Start log monitoring for existing servers
-    servers = []
+    server_ids: list[str] = []
     try:
-        servers = await docker_mc_manager.get_all_server_names()
+        async with get_async_session() as db:
+            rows = await get_active_servers(db)
+            server_ids = [r.server_id for r in rows]
     except Exception as e:
         logger.error(
-            f"Error starting log monitoring for existing servers: {e}",
+            f"Error reading active servers for log monitoring: {e}",
             exc_info=True,
         )
 
-    for server_id in servers:
+    for server_id in server_ids:
         try:
             await log_monitor.start_server(server_id)
         except Exception as e:

@@ -58,7 +58,7 @@ class TestDNSBasicFunctionality:
             ):
                 # Should raise RuntimeError when not initialized
                 with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-                    await manager.get_current_diff()
+                    await manager.get_current_diff(AsyncMock())
 
     def test_record_diff_structure(self):
         """Test RecordDiff structure"""

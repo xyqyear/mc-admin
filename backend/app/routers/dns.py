@@ -8,7 +8,9 @@ from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..db.database import get_db
 from ..dependencies import RequireRole, get_current_user
 from ..dns.manager import simple_dns_manager
 from ..dynamic_config import config
@@ -103,19 +105,21 @@ async def _ensure_dns_manager_initialized() -> None:
 @router.post("/update", response_model=DNSUpdateResponse)
 async def update_dns(
     _: UserPublic = Depends(RequireRole((UserRole.ADMIN, UserRole.OWNER))),
+    db: AsyncSession = Depends(get_db),
 ) -> DNSUpdateResponse:
     """
     Trigger a DNS and MC Router update.
 
     This endpoint:
-    1. Gets current server list from DockerMCManager
-    2. Combines with configuration to generate DNS records and routes
-    3. Updates DNS provider and MC Router with complete lists
+    1. Enumerates active servers from the database
+    2. Reads each server's compose to extract its port
+    3. Combines with address configuration to generate records
+    4. Updates DNS provider and MC Router with complete lists
 
     Requires ADMIN role or higher.
     """
     await _ensure_dns_manager_initialized()
-    await simple_dns_manager.update()
+    await simple_dns_manager.update(db)
 
     return DNSUpdateResponse(
         success=True, message="DNS and MC Router updated successfully"
@@ -125,6 +129,7 @@ async def update_dns(
 @router.get("/status", response_model=DNSStatusResponse)
 async def get_dns_status(
     _: UserPublic = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> DNSStatusResponse:
     """
     Get DNS manager status including current differences between expected and actual state.
@@ -136,7 +141,7 @@ async def get_dns_status(
         HTTPException: If there's an error getting DNS status
     """
     await _ensure_dns_manager_initialized()
-    dns_diff, router_diff = await simple_dns_manager.get_current_diff()
+    dns_diff, router_diff = await simple_dns_manager.get_current_diff(db)
 
     # Convert DNS diff to response format
     dns_diff = DNSRecordDiff(

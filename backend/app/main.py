@@ -13,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 from .audit import OperationAuditMiddleware
 from .config import settings
 from .cron import cron_manager
-from .db.database import init_db
+from .db.database import get_async_session, init_db
 from .dns import simple_dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
@@ -64,7 +64,8 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing DNS and router manager module...")
     await simple_dns_manager.initialize()
     if simple_dns_manager.is_initialized:
-        await simple_dns_manager.update()
+        async with get_async_session() as db:
+            await simple_dns_manager.update(db)
 
     logger.info("Initializing cron management system...")
     await cron_manager.initialize()

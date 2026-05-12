@@ -18,7 +18,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -146,12 +146,27 @@ def mock_settings_and_auth(temp_dirs, test_db):
         patch("app.utils.decompression.settings") as mock_decomp_settings,
         patch("app.routers.servers.misc.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.files.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.create.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.operations.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.compose.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.players.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.resources.docker_mc_manager", real_mc_manager),
+        patch(
+            "app.servers.lifecycle.orchestrators.docker_mc_manager", real_mc_manager
+        ),
+        patch(
+            "app.servers.lifecycle.primitives.docker_mc_manager", real_mc_manager
+        ),
+        patch("app.servers.port_utils.docker_mc_manager", real_mc_manager),
+        patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
+        patch(
+            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
+            new_callable=AsyncMock,
+        ),
     ):
         # Configure all settings mocks
         for mock_settings_obj in [
@@ -275,7 +290,7 @@ services:
         assert create_response.status_code == 200, (
             f"Server creation failed: {create_response.json()}"
         )
-        assert "创建成功" in create_response.json()["message"]
+        assert create_response.json()["server_id"] == server_id
 
         # Verify server exists on filesystem
         server_dir = server_path / server_id
