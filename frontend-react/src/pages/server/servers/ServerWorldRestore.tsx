@@ -469,14 +469,7 @@ const ServerWorldRestore: React.FC = () => {
       <ServerStopGuard status={statusQ.data} />
 
       {(mapInitialized || layoutQ.isLoading) && (
-        <div
-          className={
-            'flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid ' +
-            (claimsAvailable
-              ? 'md:grid-cols-[1fr_270px]'
-              : 'md:grid-cols-[1fr_180px]')
-          }
-        >
+        <div className="flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px]">
           <Card className="overflow-hidden">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
