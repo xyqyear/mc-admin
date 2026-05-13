@@ -8,12 +8,6 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorldRestoreMutations } from '@/hooks/mutations/useWorldRestoreMutations'
@@ -88,11 +82,8 @@ export const WorldRestoreSelectionPanel: React.FC<
   }
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle>备份与恢复</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 px-4">
+    <>
+      <div className="flex flex-col gap-4">
         <div className="space-y-2">
           <div className="font-medium">创建快照</div>
           <Button
@@ -191,7 +182,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             </span>
           </div>
         </div>
-      </CardContent>
+      </div>
       {confirmDialog}
       <SnapshotPicker
         open={pickerOpen}
@@ -205,7 +196,7 @@ export const WorldRestoreSelectionPanel: React.FC<
         serverId={serverId}
         serverStopped={serverStopped}
       />
-    </Card>
+    </>
   )
 }
 

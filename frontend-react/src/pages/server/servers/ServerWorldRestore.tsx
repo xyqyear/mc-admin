@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/layout/PageHeader'
 import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
 import MapHelpButton from '@/components/map/MapHelpButton'
@@ -509,36 +509,54 @@ const ServerWorldRestore: React.FC = () => {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-3 min-w-0 md:min-h-0 md:overflow-y-auto md:[&>*]:shrink-0">
-            <WorldRestoreSelectionPanel
-              serverId={serverId}
-              regionDirRelpath={regionRelpath}
-              selection={selection}
-              mode={urlMode}
-              serverStopped={serverStopped}
-            />
-            {claimsAvailable && (
-              <Card className="flex flex-col py-3">
-                <CardContent className="flex flex-col px-3">
-                  <TeamClusterList
-                    data={claimsQ.data}
-                    isLoading={claimsQ.isLoading}
-                    isError={claimsQ.isError}
-                    currentDimRelpath={regionRelpath}
-                    mode={urlMode}
+          <div className="flex flex-col min-w-0 md:min-h-0 md:overflow-y-auto md:[&>*]:shrink-0">
+            <Card>
+              <CardContent>
+                {claimsAvailable ? (
+                  <Tabs defaultValue="backup" className="gap-4">
+                    <TabsList className="w-full">
+                      <TabsTrigger value="backup">备份与恢复</TabsTrigger>
+                      <TabsTrigger value="claims">领地列表</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="backup">
+                      <WorldRestoreSelectionPanel
+                        serverId={serverId}
+                        regionDirRelpath={regionRelpath}
+                        selection={selection}
+                        mode={urlMode}
+                        serverStopped={serverStopped}
+                      />
+                    </TabsContent>
+                    <TabsContent value="claims">
+                      <TeamClusterList
+                        data={claimsQ.data}
+                        isLoading={claimsQ.isLoading}
+                        isError={claimsQ.isError}
+                        currentDimRelpath={regionRelpath}
+                        mode={urlMode}
+                        selection={selection}
+                        overlayVisible={overlayVisible}
+                        onOverlayVisibleChange={setOverlayVisible}
+                        onRefresh={handleRefreshClaims}
+                        onClusterHover={highlightClusters}
+                        onClusterClick={handleClusterClick}
+                        onClusterSelect={handleClusterSelect}
+                        onTeamHover={highlightClusters}
+                        onTeamSelectInDim={handleTeamSelectInDim}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <WorldRestoreSelectionPanel
+                    serverId={serverId}
+                    regionDirRelpath={regionRelpath}
                     selection={selection}
-                    overlayVisible={overlayVisible}
-                    onOverlayVisibleChange={setOverlayVisible}
-                    onRefresh={handleRefreshClaims}
-                    onClusterHover={highlightClusters}
-                    onClusterClick={handleClusterClick}
-                    onClusterSelect={handleClusterSelect}
-                    onTeamHover={highlightClusters}
-                    onTeamSelectInDim={handleTeamSelectInDim}
+                    mode={urlMode}
+                    serverStopped={serverStopped}
                   />
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}

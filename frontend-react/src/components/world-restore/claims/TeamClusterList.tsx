@@ -138,7 +138,6 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <div className="text-sm font-medium">领地列表</div>
         <Badge variant="secondary" className="text-[10px] px-1.5">
           {data.detected_format ?? '?'}
         </Badge>
