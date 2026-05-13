@@ -31,6 +31,9 @@ interface WorldRestoreSelectionStore {
   byServer: Record<string, ServerSelectionState>
   getOrInit: (serverId: string) => ServerSelectionState
   setSelection: (serverId: string, selection: Set<ChunkKey>) => void
+  // Union into the existing selection — used by the FTB claims overlay to add
+  // a cluster's chunks without wiping the user's prior selection.
+  addToSelection: (serverId: string, keys: Set<ChunkKey>) => void
   setDimension: (serverId: string, dimension: string | null) => void
   setMode: (serverId: string, mode: WorldRestoreSelectionMode) => void
   clearForServer: (serverId: string) => void
@@ -58,6 +61,21 @@ export const useWorldRestoreSelectionStore = create<WorldRestoreSelectionStore>(
       set((state) => ({
         byServer: upsert(state, serverId, { selection }),
       })),
+
+    addToSelection: (serverId, keys) =>
+      set((state) => {
+        if (keys.size === 0) return state
+        const prev = state.byServer[serverId] ?? emptyState()
+        const next = new Set(prev.selection)
+        for (const k of keys) next.add(k)
+        if (next.size === prev.selection.size) return state
+        return {
+          byServer: {
+            ...state.byServer,
+            [serverId]: { ...prev, selection: next },
+          },
+        }
+      }),
 
     // Switching dimension wipes the selection — chunks aren't comparable
     // across dimensions.

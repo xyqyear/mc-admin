@@ -25,6 +25,11 @@ from sqlalchemy import desc, func, select, update
 from ... import world as world_subsystem
 from ...db.database import get_async_session
 from ...dependencies import get_current_user
+from ...ftb_claims import (
+    ClaimsResponse,
+    FtbExtractError,
+    extract_claims_for_server,
+)
 from ...logger import logger
 from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import (
@@ -246,6 +251,32 @@ async def get_layout(
     return WorldLayoutResponse(
         world_roots=[_world_root_to_response(r) for r in roots]
     )
+
+
+# --- FTB claims ------------------------------------------------------------
+
+
+@router.get(
+    "/{server_id}/world-restore/claims",
+    response_model=ClaimsResponse,
+)
+async def get_ftb_claims(
+    server_id: str,
+    _: UserPublic = Depends(get_current_user),
+) -> ClaimsResponse:
+    """Return FTB Utilities / FTB Chunks claim data for the server.
+
+    Extraction runs fresh on every call — no caching. When the world has no
+    detectable FTB data, returns ``{"available": false}`` with empty lists so
+    the frontend can hide the overlay UI without a separate status endpoint.
+    """
+    await _ensure_server_exists(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
+    data_path = instance.get_data_path()
+    try:
+        return await extract_claims_for_server(data_path)
+    except FtbExtractError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Eligible snapshots ----------------------------------------------------

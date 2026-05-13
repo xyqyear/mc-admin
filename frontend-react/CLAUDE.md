@@ -85,6 +85,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/server-lifecycle.md` — bundled create/remove round-trips, OWNER-only filesystem↔DB sync dialog, `types/lifecycle.ts`
 - `docs/server-map.md` — embedded Leaflet map, custom GridLayer for authed tiles, sparse manifest, cancellation cascade
 - `docs/world-restore-page.md` — URL-driven dim/mode, selection state, preview/restore/rollback flows, history drawer
+- `docs/ftb-claims-overlay.md` — opt-in claims overlay on the world-restore page, polygon clustering, team/cluster side panel, popover-driven selection
 
 Add a `docs/<topic>.md` whenever a new system has design rationale or a non-trivial component graph that doesn't fit on one line in this file. Each doc is self-contained and reflects current state — no changelog, no "previously…" notes.
 

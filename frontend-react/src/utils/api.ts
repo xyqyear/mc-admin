@@ -235,6 +235,12 @@ export const queryKeys = {
       [...queryKeys.worldRestore.all, "restoration", serverId, id] as const,
   },
 
+  ftbClaims: {
+    all: ["ftb-claims"] as const,
+    claims: (serverId: string) =>
+      [...queryKeys.ftbClaims.all, "claims", serverId] as const,
+  },
+
   templates: {
     all: ["templates"] as const,
     list: () => [...queryKeys.templates.all, "list"] as const,

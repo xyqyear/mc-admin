@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Map as MapIcon, RefreshCw } from 'lucide-react'
+import { Map as MapIcon, RefreshCw, Users } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,14 @@ import MapHelpButton from '@/components/map/MapHelpButton'
 import MapInitDialog from '@/components/dialogs/MapInitDialog'
 import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
 import { ServerStopGuard } from '@/components/world-restore/ServerStopGuard'
+import {
+  clusterToChunkKeys,
+  teamDimChunkKeys,
+} from '@/components/world-restore/claims/claimSelection'
+import { ClusterPopover } from '@/components/world-restore/claims/ClusterPopover'
+import { TeamClusterList } from '@/components/world-restore/claims/TeamClusterList'
+import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOverlay'
+import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
 import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
 import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
 import ServerOperationButtons from '@/components/server/ServerOperationButtons'
@@ -28,6 +36,7 @@ import {
   useWorldRestoreSelectionStore,
   type WorldRestoreSelectionMode,
 } from '@/stores/useWorldRestoreSelectionStore'
+import type { FtbClusterEntry, FtbTeamEntry } from '@/types/FtbClaims'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 import { queryKeys } from '@/utils/api'
 
@@ -53,6 +62,7 @@ const ServerWorldRestore: React.FC = () => {
 
   const dimensionRelpath = searchParams.get('dim') ?? null
   const urlMode = searchParams.get('mode') === 'chunk' ? 'chunk' : 'region'
+  const claimsEnabled = searchParams.get('claims') === '1'
   const [initialView] = useState(() => parseInitialView(searchParams))
 
   const layoutQ = useWorldLayout(serverId)
@@ -83,6 +93,7 @@ const ServerWorldRestore: React.FC = () => {
     s.byServer[serverId],
   )
   const setSelection = useWorldRestoreSelectionStore((s) => s.setSelection)
+  const addToSelection = useWorldRestoreSelectionStore((s) => s.addToSelection)
   const setStoreDimension = useWorldRestoreSelectionStore((s) => s.setDimension)
   const setStoreMode = useWorldRestoreSelectionStore((s) => s.setMode)
 
@@ -216,6 +227,100 @@ const ServerWorldRestore: React.FC = () => {
     [setSearchParams],
   )
 
+  // --- FTB claims overlay ---
+
+  const claimsQ = useFtbClaims(serverId, claimsEnabled)
+  const teams = useMemo<FtbTeamEntry[]>(
+    () => claimsQ.data?.teams ?? [],
+    [claimsQ.data],
+  )
+  const {
+    overlays: claimsOverlays,
+    popover: claimsPopover,
+    closePopover: closeClaimsPopover,
+    highlightClusters,
+    panToBlock,
+  } = useClaimsOverlay({
+    teams,
+    currentDimRelpath: regionRelpath,
+    enabled: claimsEnabled && !!claimsQ.data?.available,
+  })
+
+  const toggleClaims = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (claimsEnabled) next.delete('claims')
+        else next.set('claims', '1')
+        return next
+      },
+      { replace: true },
+    )
+    closeClaimsPopover()
+  }, [claimsEnabled, setSearchParams, closeClaimsPopover])
+
+  const handleRefreshClaims = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.ftbClaims.all })
+  }, [queryClient])
+
+  const handleClusterSelect = useCallback(
+    (cluster: FtbClusterEntry) => {
+      if (!serverId) return
+      // Cluster's dim must match the current dim — selection lives per dim.
+      if (cluster.region_dir_relpath !== regionRelpath) return
+      const keys = clusterToChunkKeys(cluster, urlMode)
+      addToSelection(serverId, keys)
+    },
+    [serverId, regionRelpath, urlMode, addToSelection],
+  )
+
+  const handleTeamSelectInDim = useCallback(
+    (team: FtbTeamEntry) => {
+      if (!serverId || !regionRelpath) return
+      const keys = teamDimChunkKeys(team, regionRelpath, urlMode)
+      addToSelection(serverId, keys)
+    },
+    [serverId, regionRelpath, urlMode, addToSelection],
+  )
+
+  const handleClusterClick = useCallback(
+    (cluster: FtbClusterEntry) => {
+      if (cluster.region_dir_relpath === regionRelpath) {
+        const [bx, bz] = cluster.centroid_block
+        panToBlock(bx, bz)
+        return
+      }
+      if (cluster.region_dir_relpath) {
+        // Cross-dim: switch dim (which wipes selection via the store/effect chain).
+        handleDimensionChange(cluster.region_dir_relpath)
+      }
+    },
+    [regionRelpath, panToBlock, handleDimensionChange],
+  )
+
+  const popoverContext = useMemo(() => {
+    if (!claimsPopover) return null
+    for (const team of teams) {
+      for (const cluster of team.clusters) {
+        if (cluster.id !== claimsPopover.clusterId) continue
+        const teamClustersInDim = team.clusters.filter(
+          (c) => c.region_dir_relpath === cluster.region_dir_relpath,
+        )
+        const teamChunksInDim = teamClustersInDim.reduce(
+          (s, c) => s + c.chunks.length,
+          0,
+        )
+        return {
+          team,
+          cluster,
+          teamChunksInDim,
+          clustersInDim: teamClustersInDim.length,
+        }
+      }
+    }
+    return null
+  }, [claimsPopover, teams])
+
   const dimensionOptions = useMemo(() => {
     if (!layoutQ.data) return []
     const multipleRoots = layoutQ.data.world_roots.length > 1
@@ -254,6 +359,14 @@ const ServerWorldRestore: React.FC = () => {
               <>
                 {mapInitialized && (
                   <>
+                    <Button
+                      variant={claimsEnabled ? 'default' : 'outline'}
+                      onClick={toggleClaims}
+                      title={claimsEnabled ? '隐藏 FTB 领地图层' : '显示 FTB 领地图层'}
+                    >
+                      <Users className="mr-1 h-4 w-4" />
+                      领地
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleRefreshMap}
@@ -356,7 +469,14 @@ const ServerWorldRestore: React.FC = () => {
       <ServerStopGuard status={statusQ.data} />
 
       {mapInitialized && (
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4">
+        <div
+          className={
+            'flex-1 min-h-0 grid grid-cols-1 gap-4 ' +
+            (claimsEnabled
+              ? 'md:grid-cols-[1fr_270px]'
+              : 'md:grid-cols-[1fr_180px]')
+          }
+        >
           <Card className="overflow-hidden">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
@@ -367,6 +487,7 @@ const ServerWorldRestore: React.FC = () => {
                   selectionMode={selectionMode}
                   selection={selection}
                   onSelectionChange={handleSelectionChange}
+                  overlays={claimsOverlays}
                   initialView={initialView}
                   onViewChange={handleViewChange}
                 />
@@ -387,8 +508,48 @@ const ServerWorldRestore: React.FC = () => {
               onModeChange={handleModeChange}
               serverStopped={serverStopped}
             />
+            {claimsEnabled && (
+              <Card className="flex flex-1 min-h-0 flex-col">
+                <CardContent className="flex flex-1 min-h-0 flex-col p-3">
+                  <TeamClusterList
+                    data={claimsQ.data}
+                    isLoading={claimsQ.isLoading}
+                    isError={claimsQ.isError}
+                    currentDimRelpath={regionRelpath}
+                    mode={urlMode}
+                    selection={selection}
+                    onRefresh={handleRefreshClaims}
+                    onClusterHover={highlightClusters}
+                    onClusterClick={handleClusterClick}
+                    onClusterSelect={handleClusterSelect}
+                    onTeamHover={highlightClusters}
+                    onTeamSelectInDim={handleTeamSelectInDim}
+                  />
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
+      )}
+
+      {claimsPopover && popoverContext && (
+        <ClusterPopover
+          team={popoverContext.team}
+          cluster={popoverContext.cluster}
+          anchorEl={claimsPopover.anchorEl}
+          mode={urlMode}
+          teamChunksInDim={popoverContext.teamChunksInDim}
+          clustersInDim={popoverContext.clustersInDim}
+          onClose={closeClaimsPopover}
+          onSelectCluster={() => {
+            handleClusterSelect(popoverContext.cluster)
+            closeClaimsPopover()
+          }}
+          onSelectTeamInDim={() => {
+            handleTeamSelectInDim(popoverContext.team)
+            closeClaimsPopover()
+          }}
+        />
       )}
 
       <MapInitDialog

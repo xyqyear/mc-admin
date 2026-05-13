@@ -68,49 +68,70 @@ async def _has_region_mca(region_dir: Path) -> bool:
 
 
 def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
-    """Map a dimension's region-parent dir to a human-readable label."""
+    """Map a dimension's region-parent dir to a human-readable label.
+
+    Direct children keep their short names (with special-cases for the vanilla
+    ``DIM-1``/``DIM1`` folders). Deeper-nested dims use their posix-style
+    relative path so labels stay unique across mod namespaces — modded layouts
+    look like ``dimensions/<modid>/<dim>/``.
+    """
     if region_parent == world_root:
         return OVERWORLD_LABEL
-    name = region_parent.name
-    if name == NETHER_DIR:
-        return NETHER_LABEL
-    if name == END_DIR:
-        return END_LABEL
-    return name
+    if region_parent.parent == world_root:
+        name = region_parent.name
+        if name == NETHER_DIR:
+            return NETHER_LABEL
+        if name == END_DIR:
+            return END_LABEL
+        return name
+    return region_parent.relative_to(world_root).as_posix()
+
+
+DIMENSION_WALK_SKIP_NAMES = frozenset({"region", "entities", "poi", MCMAP_DIR_NAME})
+DIMENSION_WALK_MAX_DEPTH = 6
 
 
 async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
-    """A dimension is a dir whose ``region/`` holds at least one ``r.X.Z.mca``.
+    """A dimension is any directory whose ``region/`` holds at least one
+    ``r.X.Z.mca``. Walks the world root recursively to catch deeply nested
+    modded dimensions (1.16+ stores them at ``dimensions/<modid>/<dim>/``).
 
-    Checks the root itself (Overworld) plus one level of children (DIM-1, DIM1, custom).
+    ``region``/``entities``/``poi`` sidecars and the ``.mcmap`` cache are not
+    descended into — they never themselves contain nested dimensions.
     """
-    candidates: list[Path] = [world_root]
-    try:
-        entries = await aioos.listdir(world_root)
-    except OSError:
-        entries = []
-    for entry in sorted(entries):
-        if entry == MCMAP_DIR_NAME:
-            continue
-        child = world_root / entry
-        if await aioos.path.isdir(child):
-            candidates.append(child)
-
     dimensions: list[DimensionInfo] = []
-    for parent in candidates:
-        region_dir = parent / "region"
-        if not await _has_region_mca(region_dir):
-            continue
-        entities_dir = parent / "entities"
-        poi_dir = parent / "poi"
-        dimensions.append(
-            DimensionInfo(
-                region_dir=region_dir,
-                entities_dir=entities_dir if await aioos.path.isdir(entities_dir) else None,
-                poi_dir=poi_dir if await aioos.path.isdir(poi_dir) else None,
-                label=_label_for_dimension(world_root, parent),
+
+    async def visit(directory: Path, depth: int) -> None:
+        region_dir = directory / "region"
+        if await _has_region_mca(region_dir):
+            entities_dir = directory / "entities"
+            poi_dir = directory / "poi"
+            dimensions.append(
+                DimensionInfo(
+                    region_dir=region_dir,
+                    entities_dir=entities_dir
+                    if await aioos.path.isdir(entities_dir)
+                    else None,
+                    poi_dir=poi_dir if await aioos.path.isdir(poi_dir) else None,
+                    label=_label_for_dimension(world_root, directory),
+                )
             )
-        )
+
+        if depth >= DIMENSION_WALK_MAX_DEPTH:
+            return
+
+        try:
+            entries = await aioos.listdir(directory)
+        except OSError:
+            return
+        for entry in sorted(entries):
+            if entry in DIMENSION_WALK_SKIP_NAMES:
+                continue
+            child = directory / entry
+            if await aioos.path.isdir(child):
+                await visit(child, depth + 1)
+
+    await visit(world_root, 0)
     dimensions.sort(key=lambda d: d.label)
     return dimensions
 

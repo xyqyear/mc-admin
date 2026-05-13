@@ -127,6 +127,65 @@ async def test_missing_data_path_returns_empty():
 
 
 @pytest.mark.asyncio
+async def test_deeply_nested_modded_dimensions():
+    """1.16+ modded layouts store dims at ``dimensions/<modid>/<dim>/region/``;
+    the walker must descend that deep and label them by relative path."""
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "region" / "r.0.0.mca")
+        _touch(world / "DIM-1" / "region" / "r.0.0.mca")
+
+        _touch(world / "dimensions" / "allthemodium" / "mining" / "region" / "r.0.0.mca")
+        _touch(world / "dimensions" / "allthemodium" / "the_beyond" / "region" / "r.0.0.mca")
+        _touch(world / "dimensions" / "ad_astra" / "moon" / "region" / "r.0.0.mca")
+
+        # Non-dim siblings under the world root must not crash the walker.
+        _touch(world / "playerdata" / "uuid.dat")
+        _touch(world / "ftbchunks" / "data.snbt")
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        labels = {d.label for d in roots[0].dimensions}
+        assert labels == {
+            OVERWORLD_LABEL,
+            NETHER_LABEL,
+            "dimensions/allthemodium/mining",
+            "dimensions/allthemodium/the_beyond",
+            "dimensions/ad_astra/moon",
+        }
+
+        by_label = {d.label: d for d in roots[0].dimensions}
+        assert by_label["dimensions/allthemodium/mining"].region_dir == (
+            world / "dimensions" / "allthemodium" / "mining" / "region"
+        )
+
+
+@pytest.mark.asyncio
+async def test_walk_depth_bound_rejects_extreme_nesting():
+    """Beyond the depth bound we silently stop — a sanity guard, not a real
+    layout. Pinned so the bound doesn't quietly regress."""
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "region" / "r.0.0.mca")
+
+        # ``visit`` checks the dim BEFORE the depth guard, so a dim at exactly
+        # MAX_DEPTH is still recorded. Push the dim one level past that.
+        too_deep = world / "a" / "b" / "c" / "d" / "e" / "f" / "g"
+        _touch(too_deep / "region" / "r.0.0.mca")
+
+        roots = await discover_world_roots(data_path)
+        labels = [d.label for d in roots[0].dimensions]
+        assert labels == [OVERWORLD_LABEL]
+
+
+@pytest.mark.asyncio
 async def test_skips_mcmap_dir():
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
