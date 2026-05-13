@@ -1,10 +1,4 @@
-// React glue for the FTB claims overlay.
-//
-// Owns the popover state, imperative refs to the per-cluster polygons (so
-// hover highlights from the side panel don't trigger a Leaflet rebuild), and
-// the map reference captured the first time the overlay renders.
-
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type L from 'leaflet'
 
 import type { ServerMapOverlay } from '@/components/map/ServerMap'
@@ -26,6 +20,7 @@ export interface UseClaimsOverlayOptions {
   teams: FtbTeamEntry[]
   currentDimRelpath: string | null
   enabled: boolean
+  onRender?: (map: L.Map, dim: string | null) => void
 }
 
 export interface UseClaimsOverlayResult {
@@ -40,6 +35,7 @@ export function useClaimsOverlay({
   teams,
   currentDimRelpath,
   enabled,
+  onRender,
 }: UseClaimsOverlayOptions): UseClaimsOverlayResult {
   const refsRef = useRef<ClaimsLayerRefs>({
     polygonsByClusterId: new Map(),
@@ -49,6 +45,12 @@ export function useClaimsOverlay({
   const mapRef = useRef<L.Map | null>(null)
   const [popover, setPopover] = useState<PopoverState | null>(null)
   const popoverElRef = useRef<HTMLElement | null>(null)
+
+  // Mirror onRender into a ref so a non-stable caller identity doesn't rebuild the overlay.
+  const onRenderRef = useRef(onRender)
+  useEffect(() => {
+    onRenderRef.current = onRender
+  }, [onRender])
 
   const handleLabelClick = useCallback((clusterId: string, anchorEl: HTMLElement) => {
     popoverElRef.current = anchorEl
@@ -62,6 +64,8 @@ export function useClaimsOverlay({
         id: 'ftb-claims',
         render: (map) => {
           mapRef.current = map
+          // Pan before layers attach: see docs/ftb-claims-overlay.md.
+          onRenderRef.current?.(map, currentDimRelpath)
           return buildClaimsLayer({
             teams,
             currentDimRelpath,

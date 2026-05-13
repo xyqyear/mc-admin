@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Map as MapIcon, RefreshCw } from 'lucide-react'
@@ -83,8 +83,6 @@ const ServerWorldRestore: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
 
-  // Refetch builds a new Map instance → rebuilds tile layer → mtimes flow
-  // into the `?mt=` cache-buster so changed MCAs re-render end-to-end.
   const handleRefreshMap = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
@@ -97,8 +95,7 @@ const ServerWorldRestore: React.FC = () => {
   const setStoreDimension = useWorldRestoreSelectionStore((s) => s.setDimension)
   const setStoreMode = useWorldRestoreSelectionStore((s) => s.setMode)
 
-  // The relpath alone identifies a (root, dim) pair because every root's
-  // name is the first path segment.
+  // Relpath uniquely identifies (root, dim) because the root name is the first segment.
   const { rootList, currentDimension, currentRoot } = useMemo(() => {
     const roots = layoutQ.data?.world_roots ?? []
     if (roots.length === 0) {
@@ -236,6 +233,25 @@ const ServerWorldRestore: React.FC = () => {
     () => claimsQ.data?.teams ?? [],
     [claimsQ.data],
   )
+  const pendingPanRef = useRef<{
+    dimRelpath: string
+    bx: number
+    bz: number
+  } | null>(null)
+
+  // Cross-dim pan via overlay render; see docs/ftb-claims-overlay.md.
+  const handleOverlayRender = useCallback(
+    (map: L.Map, dim: string | null) => {
+      const pending = pendingPanRef.current
+      if (!pending || pending.dimRelpath !== dim) return
+      queueMicrotask(() => {
+        pendingPanRef.current = null
+      })
+      map.setView([-pending.bz, pending.bx], map.getZoom(), { animate: false })
+    },
+    [],
+  )
+
   const {
     overlays: claimsOverlays,
     popover: claimsPopover,
@@ -246,6 +262,7 @@ const ServerWorldRestore: React.FC = () => {
     teams,
     currentDimRelpath: regionRelpath,
     enabled: claimsAvailable && overlayVisible,
+    onRender: handleOverlayRender,
   })
 
   const handleRefreshClaims = useCallback(() => {
@@ -280,7 +297,12 @@ const ServerWorldRestore: React.FC = () => {
         return
       }
       if (cluster.region_dir_relpath) {
-        // Cross-dim: switch dim (which wipes selection via the store/effect chain).
+        const [bx, bz] = cluster.centroid_block
+        pendingPanRef.current = {
+          dimRelpath: cluster.region_dir_relpath,
+          bx,
+          bz,
+        }
         handleDimensionChange(cluster.region_dir_relpath)
       }
     },
@@ -542,16 +564,12 @@ const ServerWorldRestore: React.FC = () => {
   )
 }
 
-// /map/regions expects a relpath under data/, but region_dir is absolute. Cut
-// at the world root: layout gives `path = <data>/<world_root>` so the relpath
-// is `<world_root>/<region_dir tail>`.
 function relpathOf(regionDir: string, worldRootPath: string): string {
   const sep = '/'
   const rootBase = worldRootPath.split(sep).pop() ?? ''
   if (!rootBase) return regionDir
   const idx = regionDir.lastIndexOf(`${sep}${rootBase}${sep}`)
   if (idx < 0) {
-    // Region dir lives directly inside data/, no nesting.
     return `${rootBase}/${regionDir.split(sep).pop() ?? ''}`
   }
   return regionDir.slice(idx + 1)

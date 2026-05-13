@@ -104,12 +104,37 @@ A cluster row's "已选" badge is derived live from
 
 ## Cross-dim handling
 
-Clusters whose `region_dir_relpath !== currentDim` still appear in the team
-list under their team's expand panel, but greyed out. Clicking such a row
-calls `handleDimensionChange(cluster.region_dir_relpath)`, which switches
-dim via URL state; that flips the store and wipes the selection (matching
-the existing dim-picker UX). The cross-dim cluster doesn't get a Select
-button — switching dim takes a click, then re-selecting takes another.
+Clusters whose `region_dir_relpath !== currentDim` still appear in the
+team list under their team's expand panel, but greyed out. Clicking such
+a row calls `handleDimensionChange(cluster.region_dir_relpath)` (which
+switches dim via URL state, flipping the store and wiping the selection
+— matching the existing dim-picker UX) and stashes the cluster's
+centroid in `pendingPanRef`. The pan fires through `useClaimsOverlay`'s
+`onRender` callback: each time the overlay rebuilds its layers it
+invokes `onRender(map, currentDimRelpath)` from inside the
+`render(map)` body, **before** `buildClaimsLayer` adds any new layers
+to the map. The handler in `ServerWorldRestore` consumes `pendingPanRef`
+when the dim matches and calls `map.setView(..., { animate: false })`.
+
+Two things make this load-bearing:
+
+1. *Pan-before-add ordering.* In the cold-dim case `ServerMap` unmounts
+   and remounts with a fresh `L.Map`, and panning *after* the claim
+   layers (canvas-rendered force-loaded rects + divIcon label markers)
+   are attached has been observed to crash Leaflet's internal
+   `getPosition` lookup. Panning first means `setView` only updates the
+   tile layer; the about-to-be-added claim layers then position
+   themselves around the new center on add.
+2. *Microtask-deferred clear.* React StrictMode double-invokes mount
+   effects in dev: `map1` setup → cleanup → `map2` setup. If
+   `pendingPanRef.current = null` ran synchronously on the first
+   `render(map1)`, the second pass on `map2` (the actually-displayed
+   map) would see a null pending and skip the pan. Deferring the clear
+   with `queueMicrotask` keeps the ref set across both passes; the
+   microtask fires after the commit phase finishes.
+
+The cross-dim cluster doesn't get a Select button — switching dim takes
+a click, then re-selecting takes another.
 
 ## File map
 
