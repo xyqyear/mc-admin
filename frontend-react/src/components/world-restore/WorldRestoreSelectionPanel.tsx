@@ -108,7 +108,7 @@ export const WorldRestoreSelectionPanel: React.FC<
 
   return (
     <Card className="flex flex-col">
-      <CardContent className="flex flex-col gap-4 p-4">
+      <CardContent className="flex flex-col gap-4 px-4">
         <div>
           <div className="font-medium mb-2">选择模式</div>
           <Tabs

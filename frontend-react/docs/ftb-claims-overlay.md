@@ -1,34 +1,41 @@
 # FTB Claims Overlay (`components/world-restore/claims/`)
 
 A Leaflet overlay on the world-restore page that paints each FTB team's
-claimed chunks as a coloured polygon, with diagonal red hatch over
-force-loaded chunks and a clickable label pill at the top/bottom edge of
-each cluster. The side panel mirrors the same data as a two-level
-team→cluster list so admins can hover-highlight, click-pan, or
-select-by-cluster without ever clicking the map polygons themselves.
+claimed chunks as a coloured polygon, with a faint red rect and NW→SE
+diagonal hatching laid over each force-loaded chunk, plus a clickable
+label pill at the top/bottom edge of each cluster. The side panel
+mirrors the same data as a two-level team→cluster list so admins can
+hover-highlight, click-pan, or select-by-cluster without ever clicking
+the map polygons themselves.
 
-## URL state
+## Activation
 
-The overlay is opt-in: `?claims=1` on the world-restore page enables it.
-Without the flag, the query (`useFtbClaims`) stays disabled and the overlay
-isn't built. The "领地" button in the page header toggles the flag.
+Claims fetch fires as soon as the map is initialized (`useFtbClaims` is
+gated on `mapInitialized` — no point extracting before the map page is
+usable). When the response's `available` flag is true, the side panel
+renders and the map overlay is built; otherwise both stay hidden and the
+side column reverts to its 180 px width.
 
-When the overlay is active, the side panel widens from 180 px to 270 px to
-hold the team list. The toggle is replace-history, not push, so back-button
-navigation isn't polluted.
+The side-panel header carries a small Switch (to the right of the
+`detected_format` badge) that toggles map-overlay visibility without
+affecting the side panel itself. The toggle state lives in component
+state on the world-restore page and defaults to on.
+
+When claims are available, the side panel widens from 180 px to 270 px to
+hold the team list.
 
 ## Data flow
 
 ```
-useFtbClaims(serverId)  ──►  ClaimsResponse{ teams, dimensions, ... }
-                                  │
-                                  ▼
-                       useClaimsOverlay({ teams, currentDim, enabled })
-                                  │
-            ┌─────────────────────┼─────────────────────────────┐
-            ▼                     ▼                             ▼
-       overlays[]             popover                  highlightClusters / panToBlock
-     (ServerMap prop)    (ClusterPopover)              (imperative — used by side panel)
+useFtbClaims(serverId, mapInitialized)  ──►  ClaimsResponse{ teams, dimensions, ... }
+                                                  │
+                                                  ▼
+                                  useClaimsOverlay({ teams, currentDim, enabled: available })
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────────┐
+                    ▼                             ▼                             ▼
+               overlays[]                     popover                  highlightClusters / panToBlock
+             (ServerMap prop)            (ClusterPopover)              (imperative — used by side panel)
 ```
 
 `useClaimsOverlay` owns:
@@ -50,9 +57,15 @@ dimension (`region_dir_relpath`), and emits:
   computed by `computeBoundary.ts`'s edge walk. Stroke + 22% fill in the
   team's hashed palette colour. `bindTooltip` shows team name + counts on
   hover.
-- One `L.canvas`-rendered layer of `L.polyline` diagonal pairs per
-  force-loaded chunk — three NW→SE plus three NE→SW lines per chunk in red.
-  Reads as a hatched fill at every zoom level without needing an SVG pattern.
+- One `L.canvas`-rendered force-loaded layer per cluster, stacked on top
+  of the team polygon. Each force-loaded chunk gets a strokeless red
+  rectangle (`#ef4444` at 22% fill) for a gentle tint with a hard
+  perimeter against non-force-loaded neighbours, plus seven parallel
+  NW→SE diagonal lines at chunk-relative offsets
+  `[-12,-8,-4,0,4,8,12]` (`#ef4444` at 45% opacity). The 0 offset is
+  load-bearing — without it the chunk's main diagonal is empty, leaving a
+  visible gap every chunk; including it also makes diagonals continuous
+  across adjacent chunks' shared corners.
 - One `L.marker` per cluster carrying a `L.divIcon` label pill at the chosen
   edge (`pickLabelEdge.ts`: longest contiguous top-edge run, fallback to
   longest bottom-edge run). The pill is the only click target — polygons
@@ -64,10 +77,12 @@ Hover tooltips remain on the polygon for discoverability.
 
 ## Per-team colour
 
-`teamColors(teamId, type)` hashes `teamId` (FNV-1a) into a 14-hue palette and
-emits stroke / fill / fillStrong / text strings. Server-type teams collapse
-to neutral grey so they don't compete visually with player teams; "unknown"
-type lowers saturation. Stable across reloads.
+`teamColors(teamId, type)` hashes `teamId` (FNV-1a) into a 14-hue palette
+(orange-yellow through magenta-pink — red hues are skipped so the
+force-loaded red tint stays distinct on every team) and emits stroke /
+fill / fillStrong / text strings. Server-type teams collapse to neutral
+grey so they don't compete visually with player teams; "unknown" type
+lowers saturation. Stable across reloads.
 
 ## Selection mapping
 
@@ -111,11 +126,11 @@ components/world-restore/claims/
 └── useClaimsOverlay.ts    # owns refs, popover state, imperative methods
 ```
 
-The page glue in `pages/server/servers/ServerWorldRestore.tsx` is small: a
-button to toggle `?claims=1`, an extra `<Card>` around `<TeamClusterList>`
-in the side column, and the wired-up `<ClusterPopover>` at the bottom of the
-JSX tree. Everything else flows through `useClaimsOverlay` and the existing
-selection store.
+The page glue in `pages/server/servers/ServerWorldRestore.tsx` is small: an
+extra `<Card>` around `<TeamClusterList>` in the side column when
+`claimsQ.data?.available`, and the wired-up `<ClusterPopover>` at the bottom
+of the JSX tree. Everything else flows through `useClaimsOverlay` and the
+existing selection store.
 
 ## Performance
 
@@ -123,8 +138,8 @@ A typical modded world has 5–15 teams and a few hundred to ~2k claimed
 chunks. The boundary walk is O(chunks), polygon rendering is one SVG path
 per cluster (Leaflet's default SVG renderer), and the divIcon label
 markers number at most one per cluster — well under what Leaflet copes with
-fluently. Force-loaded hatches use the canvas renderer to keep many small
-polylines cheap.
+fluently. Force-loaded overlays (one rect + seven hatch lines per chunk)
+use the canvas renderer to keep the per-chunk shape count cheap.
 
 The overlay is rebuilt only when `teams` or `currentDim` change (not on
 hover). Hover effects mutate polygon styles imperatively, which is why

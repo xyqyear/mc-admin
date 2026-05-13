@@ -1,11 +1,12 @@
 // Build a Leaflet LayerGroup for the FTB claims overlay.
 //
-// The group contains, per cluster: one `L.polygon` (outline + fill), one
-// `L.divIcon` marker (label pill), and any number of small force-loaded hatch
-// polylines. The builder is called from inside ServerMap's overlays effect;
-// it returns the LayerGroup AND populates `polygonRefs` / `labelRefs` so the
-// React hook can mutate styles imperatively (highlight pulse) without
-// rebuilding the entire overlay on every hover.
+// The group contains, per cluster: one `L.polygon` (outline + team-coloured
+// fill), one `L.divIcon` marker (label pill), and a per-chunk
+// force-loaded layer (a faint red rect plus NW→SE diagonal hatching). The
+// builder is called from inside ServerMap's overlays effect; it returns
+// the LayerGroup AND populates `polygonRefs` / `labelRefs` so the React
+// hook can mutate styles imperatively (highlight pulse) without rebuilding
+// the entire overlay on every hover.
 
 import L from 'leaflet'
 
@@ -17,8 +18,8 @@ import type {
 
 import { computeBoundaryRings, type Ring } from './computeBoundary'
 import { pickLabelEdge } from './pickLabelEdge'
-import { teamColors } from './teamColors'
 import type { TeamColor } from './teamColors'
+import { teamColors } from './teamColors'
 
 // CRS.Simple: lat = -z, lng = x.
 const blockToLatLng = (bx: number, bz: number): L.LatLngExpression => [-bz, bx]
@@ -44,7 +45,7 @@ function clusterPolygon(
     weight: 1.5,
     opacity: 0.9,
     fillColor: color.stroke,
-    fillOpacity: 0.22,
+    fillOpacity: 0.2,
     interactive: true,
     bubblingMouseEvents: false,
   })
@@ -57,53 +58,67 @@ function clusterPolygon(
   return polygon
 }
 
-function forceLoadedHatch(
+// NW→SE diagonal offsets, in blocks of chunk-relative (z - x). Includes 0
+// (the chunk's main diagonal) so adjacent chunks' diagonals join at corners
+// instead of leaving a gap where the old `[-12,-8,-4,4,8,12]` set skipped it.
+const FORCE_LOAD_HATCH_OFFSETS = [-12, -8, -4, 0, 4, 8, 12] as const
+
+function forceLoadedOverlay(
   cluster: FtbClusterEntry,
 ): L.Layer | null {
   if (cluster.force_loaded.length === 0) return null
-  // Three diagonals per chunk; CSS pattern would be cleaner but requires a
-  // custom SVG renderer; this stays in the canvas path the rest of the page uses.
+  // Two stacked layers per force-loaded chunk: a strokeless red rectangle for
+  // an even tint, plus parallel NW→SE diagonals for extra texture. The
+  // rectangle gives a clear perimeter boundary against non-force-loaded
+  // neighbours; the diagonals make the force-loaded region read at a glance
+  // even when the underlying team polygon is dim.
   const renderer = L.canvas({ padding: 0.1 })
-  const lines: L.Polyline[] = []
+  const layers: L.Layer[] = []
   for (const [cx, cz] of cluster.force_loaded) {
     const x0 = cx * BLOCKS_PER_CHUNK
     const z0 = cz * BLOCKS_PER_CHUNK
     const x1 = x0 + BLOCKS_PER_CHUNK
     const z1 = z0 + BLOCKS_PER_CHUNK
-    for (const t of [0.25, 0.5, 0.75]) {
-      // A family of NW→SE diagonals offset along the cell. Each line spans
-      // one chunk; collectively they read as a hatched fill at all zoom levels.
-      const start: L.LatLngExpression = blockToLatLng(x0, z0 + t * BLOCKS_PER_CHUNK)
-      const end: L.LatLngExpression = blockToLatLng(
-        x0 + (1 - t) * BLOCKS_PER_CHUNK,
-        z1,
-      )
-      lines.push(
-        L.polyline([start, end], {
+    const ring: L.LatLngExpression[] = [
+      blockToLatLng(x0, z0),
+      blockToLatLng(x1, z0),
+      blockToLatLng(x1, z1),
+      blockToLatLng(x0, z1),
+    ]
+    layers.push(
+      L.polygon(ring, {
+        renderer,
+        stroke: false,
+        fillColor: '#ef4444',
+        fillOpacity: 0.2,
+        interactive: false,
+      }),
+    )
+    for (const k of FORCE_LOAD_HATCH_OFFSETS) {
+      let sx: number, sz: number, ex: number, ez: number
+      if (k >= 0) {
+        sx = x0
+        sz = z0 + k
+        ex = x1 - k
+        ez = z1
+      } else {
+        sx = x0 - k
+        sz = z0
+        ex = x1
+        ez = z1 + k
+      }
+      layers.push(
+        L.polyline([blockToLatLng(sx, sz), blockToLatLng(ex, ez)], {
           renderer,
           color: '#ef4444',
           weight: 1,
-          opacity: 0.7,
-          interactive: false,
-        }),
-      )
-      const start2: L.LatLngExpression = blockToLatLng(x0 + t * BLOCKS_PER_CHUNK, z0)
-      const end2: L.LatLngExpression = blockToLatLng(
-        x1,
-        z0 + (1 - t) * BLOCKS_PER_CHUNK,
-      )
-      lines.push(
-        L.polyline([start2, end2], {
-          renderer,
-          color: '#ef4444',
-          weight: 1,
-          opacity: 0.7,
+          opacity: 0.2,
           interactive: false,
         }),
       )
     }
   }
-  return L.layerGroup(lines)
+  return L.layerGroup(layers)
 }
 
 function clusterLabel(
@@ -213,8 +228,8 @@ export function buildClaimsLayer({
       refs.polygonsByClusterId.set(cluster.id, polygon)
       refs.teamIdByClusterId.set(cluster.id, team.id)
 
-      const hatch = forceLoadedHatch(cluster)
-      if (hatch) group.addLayer(hatch)
+      const forceOverlay = forceLoadedOverlay(cluster)
+      if (forceOverlay) group.addLayer(forceOverlay)
 
       const label = clusterLabel(cluster, team, color, onLabelClick)
       if (label) {

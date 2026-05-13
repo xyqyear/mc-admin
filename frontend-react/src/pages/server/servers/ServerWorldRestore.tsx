@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Map as MapIcon, RefreshCw, Users } from 'lucide-react'
+import { Map as MapIcon, RefreshCw } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
@@ -62,7 +63,6 @@ const ServerWorldRestore: React.FC = () => {
 
   const dimensionRelpath = searchParams.get('dim') ?? null
   const urlMode = searchParams.get('mode') === 'chunk' ? 'chunk' : 'region'
-  const claimsEnabled = searchParams.get('claims') === '1'
   const [initialView] = useState(() => parseInitialView(searchParams))
 
   const layoutQ = useWorldLayout(serverId)
@@ -229,7 +229,9 @@ const ServerWorldRestore: React.FC = () => {
 
   // --- FTB claims overlay ---
 
-  const claimsQ = useFtbClaims(serverId, claimsEnabled)
+  const claimsQ = useFtbClaims(serverId, mapInitialized)
+  const claimsAvailable = !!claimsQ.data?.available
+  const [overlayVisible, setOverlayVisible] = useState(true)
   const teams = useMemo<FtbTeamEntry[]>(
     () => claimsQ.data?.teams ?? [],
     [claimsQ.data],
@@ -243,21 +245,8 @@ const ServerWorldRestore: React.FC = () => {
   } = useClaimsOverlay({
     teams,
     currentDimRelpath: regionRelpath,
-    enabled: claimsEnabled && !!claimsQ.data?.available,
+    enabled: claimsAvailable && overlayVisible,
   })
-
-  const toggleClaims = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (claimsEnabled) next.delete('claims')
-        else next.set('claims', '1')
-        return next
-      },
-      { replace: true },
-    )
-    closeClaimsPopover()
-  }, [claimsEnabled, setSearchParams, closeClaimsPopover])
 
   const handleRefreshClaims = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.ftbClaims.all })
@@ -354,19 +343,16 @@ const ServerWorldRestore: React.FC = () => {
         icon={<MapIcon className="w-5 h-5" />}
         serverTag={serverId}
         actions={
-          <div className="flex items-center gap-2">
-            {dimensionOptions.length > 0 && (
+          <>
+            {layoutQ.isLoading ? (
+              <>
+                <Skeleton className="h-9 w-[120px]" />
+                <Skeleton className="h-9 w-[260px]" />
+              </>
+            ) : dimensionOptions.length > 0 ? (
               <>
                 {mapInitialized && (
                   <>
-                    <Button
-                      variant={claimsEnabled ? 'default' : 'outline'}
-                      onClick={toggleClaims}
-                      title={claimsEnabled ? '隐藏 FTB 领地图层' : '显示 FTB 领地图层'}
-                    >
-                      <Users className="mr-1 h-4 w-4" />
-                      领地
-                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleRefreshMap}
@@ -402,24 +388,16 @@ const ServerWorldRestore: React.FC = () => {
                 </Select>
                 <MapHelpButton />
               </>
-            )}
+            ) : null}
             <ServerOperationButtons
               serverId={serverId}
               serverName={serverInfoQ.data?.name ?? serverId}
               status={statusQ.data}
               showReturnButton={false}
             />
-          </div>
+          </>
         }
       />
-
-      {layoutQ.isLoading && (
-        <Card>
-          <CardContent className="py-8 flex justify-center">
-            <Spinner />
-          </CardContent>
-        </Card>
-      )}
 
       {layoutQ.isError && (
         <Alert variant="destructive">
@@ -468,11 +446,11 @@ const ServerWorldRestore: React.FC = () => {
 
       <ServerStopGuard status={statusQ.data} />
 
-      {mapInitialized && (
+      {(mapInitialized || layoutQ.isLoading) && (
         <div
           className={
             'flex-1 min-h-0 grid grid-cols-1 gap-4 ' +
-            (claimsEnabled
+            (claimsAvailable
               ? 'md:grid-cols-[1fr_270px]'
               : 'md:grid-cols-[1fr_180px]')
           }
@@ -491,7 +469,7 @@ const ServerWorldRestore: React.FC = () => {
                   initialView={initialView}
                   onViewChange={handleViewChange}
                 />
-              ) : regionsLoading ? (
+              ) : layoutQ.isLoading || regionsLoading ? (
                 <div className="h-[60vh] md:h-full flex items-center justify-center">
                   <Spinner />
                 </div>
@@ -508,9 +486,9 @@ const ServerWorldRestore: React.FC = () => {
               onModeChange={handleModeChange}
               serverStopped={serverStopped}
             />
-            {claimsEnabled && (
-              <Card className="flex flex-1 min-h-0 flex-col">
-                <CardContent className="flex flex-1 min-h-0 flex-col p-3">
+            {claimsAvailable && (
+              <Card className="flex flex-1 min-h-0 flex-col py-3">
+                <CardContent className="flex flex-1 min-h-0 flex-col px-3">
                   <TeamClusterList
                     data={claimsQ.data}
                     isLoading={claimsQ.isLoading}
@@ -518,6 +496,8 @@ const ServerWorldRestore: React.FC = () => {
                     currentDimRelpath={regionRelpath}
                     mode={urlMode}
                     selection={selection}
+                    overlayVisible={overlayVisible}
+                    onOverlayVisibleChange={setOverlayVisible}
                     onRefresh={handleRefreshClaims}
                     onClusterHover={highlightClusters}
                     onClusterClick={handleClusterClick}

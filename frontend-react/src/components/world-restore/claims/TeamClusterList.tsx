@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import type {
   FtbClaimsResponse,
@@ -32,6 +33,8 @@ interface TeamClusterListProps {
   currentDimRelpath: string | null
   mode: WorldRestoreSelectionMode
   selection: Set<ChunkKey>
+  overlayVisible: boolean
+  onOverlayVisibleChange: (visible: boolean) => void
   onRefresh: () => void
   onClusterHover: (clusterIds: Set<string> | null) => void
   onClusterClick: (cluster: FtbClusterEntry) => void
@@ -79,6 +82,8 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   currentDimRelpath,
   mode,
   selection,
+  overlayVisible,
+  onOverlayVisibleChange,
   onRefresh,
   onClusterHover,
   onClusterClick,
@@ -137,6 +142,13 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
         <Badge variant="secondary" className="text-[10px] px-1.5">
           {data.detected_format ?? '?'}
         </Badge>
+        <Switch
+          size="sm"
+          checked={overlayVisible}
+          onCheckedChange={onOverlayVisibleChange}
+          aria-label="切换领地图层显示"
+          title={overlayVisible ? '隐藏地图上的领地图层' : '显示地图上的领地图层'}
+        />
         <div className="flex-1" />
         <Button
           size="icon-sm"

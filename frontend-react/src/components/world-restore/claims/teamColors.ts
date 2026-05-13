@@ -1,10 +1,12 @@
 // Stable per-team palette. Hashing the team id picks one of 14 hues so the
 // same team paints the same color across reloads, dimensions, and devices.
+// Red hues are intentionally absent so the force-loaded tint stays visually
+// distinct on any team.
 
 import type { FtbTeamType } from '@/types/FtbClaims'
 
 const HUES = [
-  0, 25, 50, 90, 130, 165, 195, 220, 250, 280, 310, 340, 0, 15,
+  40, 55, 70, 90, 110, 135, 160, 180, 200, 220, 245, 270, 295, 315,
 ] as const
 
 function hashStringToInt(s: string): number {
