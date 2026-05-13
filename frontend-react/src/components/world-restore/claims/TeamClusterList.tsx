@@ -136,7 +136,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className="text-sm font-medium">领地列表</div>
         <Badge variant="secondary" className="text-[10px] px-1.5">
@@ -190,7 +190,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
       </Select>
 
       <div
-        className="flex-1 min-h-0 overflow-y-auto rounded border bg-background"
+        className="rounded border bg-background"
         onMouseLeave={() => {
           onClusterHover(null)
           onTeamHover(null)

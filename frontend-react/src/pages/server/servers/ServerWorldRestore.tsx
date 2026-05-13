@@ -469,7 +469,7 @@ const ServerWorldRestore: React.FC = () => {
       <ServerStopGuard status={statusQ.data} />
 
       {(mapInitialized || layoutQ.isLoading) && (
-        <div className="flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px]">
+        <div className="flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px] md:grid-rows-1">
           <Card className="overflow-hidden">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
@@ -492,7 +492,7 @@ const ServerWorldRestore: React.FC = () => {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-3 min-w-0">
+          <div className="flex flex-col gap-3 min-w-0 md:min-h-0 md:overflow-y-auto md:[&>*]:shrink-0">
             <WorldRestoreSelectionPanel
               serverId={serverId}
               regionDirRelpath={regionRelpath}
@@ -502,8 +502,8 @@ const ServerWorldRestore: React.FC = () => {
               serverStopped={serverStopped}
             />
             {claimsAvailable && (
-              <Card className="flex flex-1 min-h-0 flex-col py-3">
-                <CardContent className="flex flex-1 min-h-0 flex-col px-3">
+              <Card className="flex flex-col py-3">
+                <CardContent className="flex flex-col px-3">
                   <TeamClusterList
                     data={claimsQ.data}
                     isLoading={claimsQ.isLoading}
