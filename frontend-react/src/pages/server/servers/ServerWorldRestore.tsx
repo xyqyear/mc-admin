@@ -471,7 +471,7 @@ const ServerWorldRestore: React.FC = () => {
       {(mapInitialized || layoutQ.isLoading) && (
         <div
           className={
-            'flex-1 min-h-0 grid grid-cols-1 gap-4 ' +
+            'flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid ' +
             (claimsAvailable
               ? 'md:grid-cols-[1fr_270px]'
               : 'md:grid-cols-[1fr_180px]')
