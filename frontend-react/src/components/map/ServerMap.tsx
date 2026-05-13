@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Eraser, Hand, Plus, Trash2 } from 'lucide-react'
+import { Eraser, Hand, LocateFixed, Plus, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 
@@ -604,6 +605,12 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     onSelectionChange?.(new Set())
   }
 
+  const handleJump = (bx: number, bz: number) => {
+    const map = mapRef.current
+    if (!map) return
+    map.setView(blockToLatLng(bx, bz), map.getZoom(), { animate: true })
+  }
+
   return (
     <div className={cn('relative isolate h-full w-full', className)}>
       <div
@@ -612,6 +619,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
         style={mapStyle}
         data-testid="server-map"
       />
+      <CoordinateJumpControl onJump={handleJump} />
       {selectionMode !== 'none' && (
         <SelectionToolbar
           tool={tool}
@@ -620,6 +628,79 @@ export const ServerMap: React.FC<ServerMapProps> = ({
           canClear={!!selection && selection.size > 0}
         />
       )}
+    </div>
+  )
+}
+
+interface CoordinateJumpControlProps {
+  onJump: (bx: number, bz: number) => void
+}
+
+const CoordinateJumpControl: React.FC<CoordinateJumpControlProps> = ({
+  onJump,
+}) => {
+  const [xStr, setXStr] = useState('')
+  const [zStr, setZStr] = useState('')
+
+  const submit = () => {
+    if (xStr === '' || zStr === '') return
+    const x = Number(xStr)
+    const z = Number(zStr)
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return
+    onJump(x, z)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      submit()
+    }
+  }
+
+  return (
+    <div className="absolute top-2 left-2 z-1000 flex items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur supports-backdrop-filter:bg-background/80">
+      <Input
+        type="number"
+        step="1"
+        value={xStr}
+        onChange={(e) => setXStr(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="X"
+        aria-label="X 坐标"
+        className="h-7 w-20 px-2 text-xs"
+      />
+      <Input
+        type="number"
+        step="1"
+        value={zStr}
+        onChange={(e) => setZStr(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Z"
+        aria-label="Z 坐标"
+        className="h-7 w-20 px-2 text-xs"
+      />
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="跳转坐标"
+        title="跳转坐标"
+        onClick={submit}
+      >
+        <LocateFixed className="h-4 w-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="清空输入"
+        title="清空输入"
+        disabled={xStr === '' && zStr === ''}
+        onClick={() => {
+          setXStr('')
+          setZStr('')
+        }}
+      >
+        <X className="h-4 w-4" />
+      </Button>
     </div>
   )
 }
