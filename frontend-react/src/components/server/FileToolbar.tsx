@@ -48,7 +48,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   onRefreshSnapshot
 }) => {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <>
       {currentPath !== '/' && (
         <Button variant="outline" onClick={onNavigateToParent}>
           <ArrowUp className="mr-2 h-4 w-4" />
@@ -112,7 +112,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
           批量删除 ({selectedFiles.length})
         </Button>
       )}
-    </div>
+    </>
   )
 }
 
