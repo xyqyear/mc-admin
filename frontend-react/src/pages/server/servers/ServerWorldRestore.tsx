@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/layout/PageHeader'
 import ServerMap, { type ServerMapView } from '@/components/map/ServerMap'
 import MapHelpButton from '@/components/map/MapHelpButton'
@@ -386,6 +387,22 @@ const ServerWorldRestore: React.FC = () => {
                     <Button variant="outline" onClick={() => setInitOpen(true)}>
                       重载渲染前置
                     </Button>
+                    <Tabs
+                      value={urlMode}
+                      onValueChange={(v) => {
+                        if (v === 'chunk' || v === 'region')
+                          handleModeChange(v)
+                      }}
+                    >
+                      <TabsList>
+                        <TabsTrigger value="region" className="px-3">
+                          区域选择
+                        </TabsTrigger>
+                        <TabsTrigger value="chunk" className="px-3">
+                          区块选择
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
                   </>
                 )}
                 <Select
@@ -498,7 +515,6 @@ const ServerWorldRestore: React.FC = () => {
               regionDirRelpath={regionRelpath}
               selection={selection}
               mode={urlMode}
-              onModeChange={handleModeChange}
               serverStopped={serverStopped}
             />
             {claimsAvailable && (

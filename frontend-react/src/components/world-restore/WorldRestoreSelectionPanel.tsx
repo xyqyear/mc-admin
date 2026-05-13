@@ -6,23 +6,18 @@ import {
   Loader2,
   RotateCcw,
 } from 'lucide-react'
-import { Tabs as TabsPrimitive } from '@base-ui/react/tabs'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorldRestoreMutations } from '@/hooks/mutations/useWorldRestoreMutations'
-import {
-  type WorldRestoreSelectionMode,
-  useWorldRestoreSelectionStore,
-} from '@/stores/useWorldRestoreSelectionStore'
+import type { WorldRestoreSelectionMode } from '@/stores/useWorldRestoreSelectionStore'
 import type { ChunkKey } from '@/types/MapTypes'
 import type { RestorationSelection } from '@/types/WorldRestore'
 
@@ -35,7 +30,6 @@ interface WorldRestoreSelectionPanelProps {
   regionDirRelpath: string | null
   selection: Set<ChunkKey>
   mode: WorldRestoreSelectionMode
-  onModeChange: (mode: WorldRestoreSelectionMode) => void
   serverStopped: boolean
 }
 
@@ -46,12 +40,10 @@ export const WorldRestoreSelectionPanel: React.FC<
   regionDirRelpath,
   selection,
   mode,
-  onModeChange,
   serverStopped,
 }) => {
   const stats = useMemo(() => computeSelectionStats(selection), [selection])
   const { confirm, confirmDialog } = useConfirm()
-  const setMode = useWorldRestoreSelectionStore((s) => s.setMode)
   const { useCreateWorldSnapshot } = useWorldRestoreMutations()
   const createSnapshot = useCreateWorldSnapshot(serverId)
 
@@ -59,12 +51,6 @@ export const WorldRestoreSelectionPanel: React.FC<
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pickerSelection, setPickerSelection] =
     useState<RestorationSelection | null>(null)
-
-  const handleModeChange = (next: WorldRestoreSelectionMode) => {
-    if (next === mode) return
-    setMode(serverId, next)
-    onModeChange(next)
-  }
 
   const dimensionReady = !!regionDirRelpath
   const layoutReady = dimensionReady
@@ -103,41 +89,10 @@ export const WorldRestoreSelectionPanel: React.FC<
 
   return (
     <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle>备份与恢复</CardTitle>
+      </CardHeader>
       <CardContent className="flex flex-col gap-4 px-4">
-        <div>
-          <div className="font-medium mb-2">选择模式</div>
-          <Tabs
-            value={mode}
-            onValueChange={(v) => {
-              if (v === 'chunk' || v === 'region') handleModeChange(v)
-            }}
-          >
-            <TabsList className="w-full relative">
-              <TabsPrimitive.Indicator
-                className="absolute left-0 top-0 z-0 rounded-md bg-background shadow-sm pointer-events-none translate-x-(--active-tab-left) translate-y-(--active-tab-top) w-(--active-tab-width) h-(--active-tab-height) transition-[translate,width,height] duration-300 ease-out dark:bg-input/30 dark:border dark:border-input"
-              />
-              <TabsTrigger
-                value="region"
-                className="flex-1 relative z-10 data-active:bg-transparent data-active:shadow-none dark:data-active:bg-transparent dark:data-active:border-transparent"
-              >
-                区域选择
-              </TabsTrigger>
-              <TabsTrigger
-                value="chunk"
-                className="flex-1 relative z-10 data-active:bg-transparent data-active:shadow-none dark:data-active:bg-transparent dark:data-active:border-transparent"
-              >
-                区块选择
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="region" className="mt-2 text-xs text-muted-foreground">
-              按住 Ctrl 选择，右键取消。拖动可框选
-            </TabsContent>
-            <TabsContent value="chunk" className="mt-2 text-xs text-muted-foreground">
-              按住 Ctrl 框选，右键取消。拖动可框选
-            </TabsContent>
-          </Tabs>
-        </div>
-
         <div className="space-y-2">
           <div className="font-medium">创建快照</div>
           <Button
