@@ -1,5 +1,3 @@
-"""Pydantic types for server lifecycle orchestrators and sync endpoint."""
-
 from typing import Optional
 
 from pydantic import BaseModel

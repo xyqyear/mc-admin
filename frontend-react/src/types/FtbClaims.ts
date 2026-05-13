@@ -1,6 +1,4 @@
-// FTB claims types — mirror backend pydantic models in
-// app/ftb_claims/models.py exactly. ``ClaimsResponse.available`` is false when
-// the world has no detectable FTB data; all list fields are then empty.
+// Mirrors backend `app/ftb_claims/models.py`.
 
 export type FtbDetectedFormat =
   | 'snbt'
@@ -18,25 +16,18 @@ export interface FtbClaimMember {
 
 export interface FtbDimensionEntry {
   ftb_id: string
-  // Region-dir relpath under data/ when the dim resolves against the backend
-  // layout (e.g. ``"world/region"``, ``"world/DIM-1/region"``). ``null`` when
-  // the dim is referenced by FTB data but isn't part of the discovered layout.
   region_dir_relpath: string | null
   label: string | null
   exists_on_disk: boolean
 }
 
 export interface FtbClusterEntry {
-  // Stable id across reloads: ``{team_id}#{region_dir_relpath|_}#{index}``.
   id: string
   region_dir_relpath: string | null
   chunks: Array<[number, number]>
   force_loaded: Array<[number, number]>
-  // Block-space centroid (suitable for L.Map.panTo via blockToLatLng).
   centroid_block: [number, number]
-  // Inclusive chunk bounding box: minCx, minCz, maxCx, maxCz.
   bbox_chunk: [number, number, number, number]
-  // Regions touched by this cluster's chunks (deduplicated).
   regions: Array<[number, number]>
 }
 

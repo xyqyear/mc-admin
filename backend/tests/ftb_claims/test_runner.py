@@ -1,5 +1,3 @@
-"""Subprocess wrapping for the FTB-claims runner — uses fake mcmap scripts."""
-
 import os
 import stat
 import tempfile

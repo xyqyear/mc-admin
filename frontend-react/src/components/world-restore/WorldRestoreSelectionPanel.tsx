@@ -35,7 +35,6 @@ interface WorldRestoreSelectionPanelProps {
   regionDirRelpath: string | null
   selection: Set<ChunkKey>
   mode: WorldRestoreSelectionMode
-  // Mode toggle is URL-driven; the panel only signals the change up.
   onModeChange: (mode: WorldRestoreSelectionMode) => void
   serverStopped: boolean
 }
@@ -61,21 +60,17 @@ export const WorldRestoreSelectionPanel: React.FC<
   const [pickerSelection, setPickerSelection] =
     useState<RestorationSelection | null>(null)
 
-  // Chunk ↔ region isn't safely bidirectional, so `setMode` wipes the selection.
   const handleModeChange = (next: WorldRestoreSelectionMode) => {
     if (next === mode) return
     setMode(serverId, next)
     onModeChange(next)
   }
 
-  // WORLD scope spans every valid root, so no per-root identifier is needed.
   const dimensionReady = !!regionDirRelpath
   const layoutReady = dimensionReady
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
-  // Manual snapshots cover only dimension/world; narrower scopes are taken
-  // automatically as safety snapshots before a rollback.
   const startCreate = (
     scope: 'world' | 'dimension',
     description: string,

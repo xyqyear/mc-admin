@@ -1,5 +1,3 @@
-"""Server map (mcmap) module — per-server tile rendering with cancellation."""
-
 from .cache import ServerMapCache
 from .manager import mcmap_manager
 from .palette import (

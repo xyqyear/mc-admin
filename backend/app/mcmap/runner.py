@@ -1,11 +1,3 @@
-"""Async context-manager wrappers around mcmap subprocess invocations.
-
-The context manager guarantees SIGTERM (then SIGKILL after a grace) on exit.
-When the backend runs as root, ``--chown UID:GID`` is appended so mcmap
-chowns its outputs back to the data dir's owner; mcmap requires euid 0 for
-``--chown``, so it is omitted otherwise.
-"""
-
 import asyncio
 import json
 import os
@@ -22,8 +14,6 @@ TERMINATE_GRACE_SECONDS = 2.0
 
 
 class MCMapProcess:
-    """Live mcmap subprocess with event iteration and idempotent termination."""
-
     def __init__(self, proc: asyncio.subprocess.Process):
         self._proc = proc
         self._terminated = False
@@ -71,7 +61,6 @@ class MCMapProcess:
 
 
 async def _chown_args_for(owned_by: Path) -> List[str]:
-    """Return ``["--chown", "UID:GID"]`` when the backend runs as root, else []."""
     if os.geteuid() != 0:
         return []
     try:
@@ -167,7 +156,6 @@ async def replace_chunks(
     chunks: List[tuple[int, int]],
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    """Run ``mcmap replace-chunks`` for region-relative coords (0..31)."""
     if not chunks:
         raise ValueError("replace_chunks requires at least one chunk coord")
     args: List[str] = [
@@ -190,7 +178,6 @@ async def remove_chunks(
     chunks: List[tuple[int, int]],
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    """Run ``mcmap remove-chunks`` for region-relative coords (0..31)."""
     if not chunks:
         raise ValueError("remove_chunks requires at least one chunk coord")
     args: List[str] = [

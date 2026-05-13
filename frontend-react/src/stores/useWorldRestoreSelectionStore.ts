@@ -2,17 +2,6 @@ import { create } from 'zustand'
 
 import type { ChunkKey } from '@/types/MapTypes'
 
-// Per-server selection state for the world-restore page. Not persisted —
-// selection is transient and intentionally disappears on reload.
-//
-// `dimension` stores the dimension's `region_dir_relpath` (the same value the
-// backend expects on selection payloads). The relpath is unique across world
-// roots because the root directory name is its first path segment, so this
-// alone is enough to disambiguate selections in multi-world setups.
-//
-// `mode` is either `'chunk'` or `'region'`. Switching modes wipes the
-// selection rather than trying to convert between representations.
-
 export type WorldRestoreSelectionMode = 'chunk' | 'region'
 
 export interface ServerSelectionState {
@@ -31,8 +20,7 @@ interface WorldRestoreSelectionStore {
   byServer: Record<string, ServerSelectionState>
   getOrInit: (serverId: string) => ServerSelectionState
   setSelection: (serverId: string, selection: Set<ChunkKey>) => void
-  // Union into the existing selection — used by the FTB claims overlay to add
-  // a cluster's chunks without wiping the user's prior selection.
+  // Union new keys into the existing selection.
   addToSelection: (serverId: string, keys: Set<ChunkKey>) => void
   setDimension: (serverId: string, dimension: string | null) => void
   setMode: (serverId: string, mode: WorldRestoreSelectionMode) => void
@@ -77,8 +65,7 @@ export const useWorldRestoreSelectionStore = create<WorldRestoreSelectionStore>(
         }
       }),
 
-    // Switching dimension wipes the selection — chunks aren't comparable
-    // across dimensions.
+    // Wipes the selection — chunk keys aren't comparable across dimensions.
     setDimension: (serverId, dimension) =>
       set((state) => {
         const prev = state.byServer[serverId] ?? emptyState()

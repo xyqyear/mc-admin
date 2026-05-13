@@ -1,5 +1,3 @@
-"""Lifecycle primitives: cancel-and-wait, cron lookups, validation helpers."""
-
 import asyncio
 from datetime import datetime
 
@@ -25,9 +23,7 @@ from ..port_utils import check_port_conflicts
 async def cancel_and_wait_for_tasks(
     server_id: str, *, timeout: float = 30.0
 ) -> list[str]:
-    # BackgroundTaskManager.cancel() only sets a flag; tasks terminate at
-    # their next yield. Waiting on the Futures here closes the race against
-    # rmtree, which would otherwise hit FileNotFoundError mid-write.
+    # cancel() only sets a flag; awaiting futures closes the race against rmtree.
     tasks = task_manager.get_tasks_by_server_id(server_id)
     if not tasks:
         return []
@@ -55,7 +51,6 @@ async def cancel_and_wait_for_tasks(
 async def cancel_restart_cronjobs_for_server(
     db: AsyncSession, server_id: str
 ) -> list[str]:
-    # Restart jobs only — backup jobs are admin state and survive server recreation.
     jobs = await get_active_restart_cronjobs_for_server(db, server_id)
     cancelled: list[str] = []
     for job in jobs:
@@ -81,7 +76,6 @@ async def close_open_sessions(server_id: str, *, now: datetime) -> int:
 async def validate_adoption(
     db: AsyncSession, server_id: str
 ) -> tuple[int, int]:
-    """Side-effect-free; raises ValueError if the directory is not adoptable."""
     instance = docker_mc_manager.get_instance(server_id)
     try:
         compose_content = await instance.get_compose_file()
@@ -117,7 +111,6 @@ async def validate_adoption(
 async def preview_deactivation(
     db: AsyncSession, server_id: str
 ) -> tuple[int, int]:
-    """Return (restart_cronjob_count, open_session_count) for sync dry-run."""
     cronjobs = await get_active_restart_cronjobs_for_server(db, server_id)
     cronjob_count = len(cronjobs)
 

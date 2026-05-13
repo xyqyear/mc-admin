@@ -1,5 +1,3 @@
-"""World root + dimension discovery; supports vanilla and Bukkit/Paper multi-world layouts."""
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -34,7 +32,6 @@ class WorldRoot:
 
 
 async def _read_level_name(data_path: Path) -> str:
-    """Resolve `level-name` from server.properties; fall back to "world"."""
     properties_path = data_path / "server.properties"
     if not await aioos.path.exists(properties_path):
         return DEFAULT_LEVEL_NAME
@@ -54,7 +51,6 @@ async def _has_level_dat(directory: Path) -> bool:
 
 
 async def _has_region_mca(region_dir: Path) -> bool:
-    """True if `region_dir` exists and contains at least one r.X.Z.mca file."""
     if not await aioos.path.isdir(region_dir):
         return False
     try:
@@ -68,13 +64,7 @@ async def _has_region_mca(region_dir: Path) -> bool:
 
 
 def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
-    """Map a dimension's region-parent dir to a human-readable label.
-
-    Direct children keep their short names (with special-cases for the vanilla
-    ``DIM-1``/``DIM1`` folders). Deeper-nested dims use their posix-style
-    relative path so labels stay unique across mod namespaces — modded layouts
-    look like ``dimensions/<modid>/<dim>/``.
-    """
+    # Deep-nested modded dims fall through to posix-style relpath for uniqueness.
     if region_parent == world_root:
         return OVERWORLD_LABEL
     if region_parent.parent == world_root:
@@ -92,13 +82,6 @@ DIMENSION_WALK_MAX_DEPTH = 6
 
 
 async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
-    """A dimension is any directory whose ``region/`` holds at least one
-    ``r.X.Z.mca``. Walks the world root recursively to catch deeply nested
-    modded dimensions (1.16+ stores them at ``dimensions/<modid>/<dim>/``).
-
-    ``region``/``entities``/``poi`` sidecars and the ``.mcmap`` cache are not
-    descended into — they never themselves contain nested dimensions.
-    """
     dimensions: list[DimensionInfo] = []
 
     async def visit(directory: Path, depth: int) -> None:
@@ -137,7 +120,6 @@ async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
 
 
 async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
-    """Find world roots under ``data_path``: primary from ``level-name`` plus peers with ``level.dat``."""
     if not await aioos.path.isdir(data_path):
         return []
 

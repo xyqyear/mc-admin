@@ -1,18 +1,3 @@
-"""High-level FTB claims orchestration.
-
-Given a server's ``data_path``, this module:
-
-1. Runs ``mcmap extract-ftb-claims`` against the primary world root.
-2. Resolves each FTB-reported dim to a ``DimensionInfo`` from the backend's
-   world layout so the frontend gets a canonical ``region_dir_relpath`` it can
-   feed into the existing world-restore selection flow.
-3. Flood-fills each team's claims in each dim into stable clusters.
-4. Materializes everything as a ``ClaimsResponse``.
-
-There is no caching: the extractor is fast (a few hundred ms on real worlds)
-and the page is admin-only, so the simplicity is worth the cost.
-"""
-
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -35,15 +20,14 @@ _VALID_FORMATS = {"snbt", "per_team_nbt", "universe_dat", "latmod_json"}
 
 
 class NoFtbDataError(Exception):
-    """Raised when mcmap reports that the world has no FTB claim data."""
+    pass
 
 
 class FtbExtractError(Exception):
-    """Raised when mcmap fails for any other reason (missing dir, parse error)."""
+    pass
 
 
 async def _run_extract(world_dir: Path, data_path: Path) -> dict:
-    """Spawn mcmap and return the parsed ``data`` payload of the result event."""
     async with extract_ftb_claims(world_dir, owned_by=data_path) as proc:
         terminal: Optional[dict] = None
         async for event in proc:
@@ -73,14 +57,6 @@ def _resolve_dimensions(
     world_root: WorldRoot,
     data_path: Path,
 ) -> Tuple[List[ClaimDimensionEntry], Dict[str, Optional[str]]]:
-    """Map each FTB dim to a layout dimension.
-
-    Returns the list of ``ClaimDimensionEntry`` for the response plus a dict
-    keyed by FTB ``dim`` id mapping to the resolved ``region_dir_relpath`` (or
-    ``None`` when the dim isn't part of the backend's discovered layout). The
-    dict is what cluster grouping uses to attach a relpath to each cluster.
-    """
-    # Index the layout dims by their absolute region_dir for O(1) matches.
     layout_by_region_dir: Dict[Path, DimensionInfo] = {
         d.region_dir: d for d in world_root.dimensions
     }
@@ -124,12 +100,7 @@ def _resolve_dimensions(
 
 
 def _display_name(team: dict) -> str:
-    """Resolve the team's display name through the documented fallback chain.
-
-    pre-1.13 FTB families return ``name: null`` for teams, so we fall through
-    to the owner's name, the first member's name, and finally a prefix of
-    the team id (so the UI never renders an empty label).
-    """
+    # pre-1.13 FTB returns name=null; fall back to owner → first member → id prefix.
     name = team.get("name")
     if isinstance(name, str) and name.strip():
         return name.strip()
@@ -171,9 +142,6 @@ def _build_team_entry(
     owner_raw = raw_team.get("owner")
     claims_raw = raw_team.get("claims") or []
 
-    # Group this team's claims by FTB dim id, splitting into claims and
-    # force-loaded sets per dim. Unknown dims still get their own group so
-    # clusters can later be reported with ``region_dir_relpath=None``.
     by_dim_claims: Dict[str, List[Tuple[int, int]]] = {}
     by_dim_force: Dict[str, List[Tuple[int, int]]] = {}
     for claim in claims_raw:
@@ -238,7 +206,6 @@ def _shape_response(
         for t in raw_teams
         if isinstance(t, dict)
     ]
-    # Order teams by display name so the side panel is deterministic.
     teams.sort(key=lambda t: (t.display_name.lower(), t.id))
     return ClaimsResponse(
         available=True,
@@ -249,12 +216,6 @@ def _shape_response(
 
 
 async def extract_claims_for_server(data_path: Path) -> ClaimsResponse:
-    """Run extraction for one server and return a response model.
-
-    Returns ``ClaimsResponse(available=False)`` when no world roots are
-    discovered or when mcmap reports no FTB data. Any other mcmap failure
-    propagates as ``FtbExtractError``.
-    """
     roots = await discover_world_roots(data_path)
     if not roots:
         return ClaimsResponse(available=False)

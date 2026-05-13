@@ -24,8 +24,6 @@ interface ClusterPopoverProps {
   cluster: FtbClusterEntry
   anchorEl: HTMLElement
   mode: WorldRestoreSelectionMode
-  // Total chunks of this team inside the cluster's dim — derived in the parent
-  // because that's where the team list lives.
   teamChunksInDim: number
   clustersInDim: number
   onClose: () => void

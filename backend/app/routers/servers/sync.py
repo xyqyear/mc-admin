@@ -1,5 +1,3 @@
-"""POST /api/servers/sync: reconcile filesystem ↔ ACTIVE Server rows."""
-
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,8 +34,7 @@ _sync_lock = asyncio.Lock()
 
 class SyncRequest(BaseModel):
     dry_run: bool = False
-    # force=true bypasses the empty-filesystem safety guard that would
-    # otherwise refuse to deactivate every row when the mount has failed.
+    # Bypass the empty-filesystem safety guard (used when a mount has failed).
     force: bool = False
 
 
@@ -47,8 +44,6 @@ async def sync_servers(
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(RequireRole(UserRole.OWNER)),
 ) -> SyncResult:
-    # Reject concurrent calls with 409 rather than queueing on the lock —
-    # a fast 409 beats an indefinite hang on an HTTP worker.
     if _sync_lock.locked():
         raise HTTPException(
             status_code=409, detail="另一个同步任务正在进行中"

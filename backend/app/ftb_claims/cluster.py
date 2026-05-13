@@ -1,10 +1,3 @@
-"""Pure helpers: flood-fill chunks into clusters, derive cluster metadata.
-
-These functions never touch disk or subprocess state and are unit-testable in
-isolation. Inputs are simple ``(cx, cz)`` tuples and a set of force-loaded
-chunks; outputs are ``ClusterEntry`` instances ready for the response model.
-"""
-
 from collections import deque
 from typing import Iterable, List, Set, Tuple
 
@@ -14,12 +7,7 @@ from .models import ClusterEntry
 def _flood_fill_components(
     chunks: Set[Tuple[int, int]],
 ) -> List[List[Tuple[int, int]]]:
-    """Group chunks into 4-connected components.
-
-    Returns each component as a list of ``(cx, cz)``. Components are sorted by
-    their (minCz, minCx) bounding-box corner so output ordering is stable
-    across runs.
-    """
+    # Components sorted by (minCz, minCx) for stable output.
     remaining = set(chunks)
     components: List[List[Tuple[int, int]]] = []
     while remaining:
@@ -48,13 +36,6 @@ def build_clusters(
     claims: Iterable[Tuple[int, int]],
     force_loaded: Iterable[Tuple[int, int]],
 ) -> List[ClusterEntry]:
-    """Build all ``ClusterEntry`` objects for one team in one dimension.
-
-    ``claims`` and ``force_loaded`` are chunk coords. The cluster id encodes
-    ``team_id``, ``region_dir_relpath`` (or ``"_"`` when the dim doesn't
-    resolve), and the cluster index so it stays stable across reloads even
-    when the team has multiple disjoint clusters in the same dim.
-    """
     chunk_set: Set[Tuple[int, int]] = set(claims)
     if not chunk_set:
         return []
@@ -70,8 +51,7 @@ def build_clusters(
         sum_x = sum(cx for cx, _ in comp)
         sum_z = sum(cz for _, cz in comp)
         n = len(comp)
-        # Centroid is in block space, offset by half a chunk so it lands at the
-        # chunk's geometric center rather than its NW corner.
+        # Block-space centroid; +8 shifts from chunk NW corner to chunk center.
         centroid_x = (sum_x / n) * 16 + 8
         centroid_z = (sum_z / n) * 16 + 8
         regions = sorted({(cx >> 5, cz >> 5) for cx, cz in comp})

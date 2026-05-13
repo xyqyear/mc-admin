@@ -1,5 +1,3 @@
-"""Palette hash computation and invalidation check."""
-
 import hashlib
 from pathlib import Path
 from typing import Optional
@@ -15,7 +13,6 @@ DEFAULT_LEVEL_NAME = "world"
 
 
 async def compute_palette_hash(version: str, mods_dir: Optional[Path]) -> str:
-    """SHA256 over game version + sorted mod jar filenames."""
     parts = [version]
     if mods_dir is not None and await aioos.path.isdir(mods_dir):
         entries = await async_fs.iterdir(mods_dir)
@@ -46,7 +43,6 @@ async def write_palette_hash(
 
 
 async def discover_mods_dir(data_path: Path) -> Optional[Path]:
-    """Return data/mods if it exists and contains at least one .jar; else None."""
     mods = data_path / "mods"
     if not await aioos.path.isdir(mods):
         return None

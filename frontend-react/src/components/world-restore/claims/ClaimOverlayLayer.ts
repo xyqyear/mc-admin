@@ -1,13 +1,3 @@
-// Build a Leaflet LayerGroup for the FTB claims overlay.
-//
-// The group contains, per cluster: one `L.polygon` (outline + team-coloured
-// fill), one `L.divIcon` marker (label pill), and a per-chunk
-// force-loaded layer (a faint red rect plus NW→SE diagonal hatching). The
-// builder is called from inside ServerMap's overlays effect; it returns
-// the LayerGroup AND populates `polygonRefs` / `labelRefs` so the React
-// hook can mutate styles imperatively (highlight pulse) without rebuilding
-// the entire overlay on every hover.
-
 import L from 'leaflet'
 
 import { BLOCKS_PER_CHUNK } from '@/components/map/coords'
@@ -36,8 +26,7 @@ function clusterPolygon(
   hoverHtml: string,
 ): L.Polygon {
   const rings = computeBoundaryRings(cluster.chunks)
-  // Sort by length so the longest ring (presumed outer) leads; any later
-  // rings become holes. For simply-connected clusters there's only one ring.
+  // Longest ring leads as the outer; later rings become holes.
   rings.sort((a, b) => b.length - a.length)
   const latLngRings = rings.map(ringToLatLngs)
   const polygon = L.polygon(latLngRings as L.LatLngExpression[][], {
@@ -58,20 +47,13 @@ function clusterPolygon(
   return polygon
 }
 
-// NW→SE diagonal offsets, in blocks of chunk-relative (z - x). Includes 0
-// (the chunk's main diagonal) so adjacent chunks' diagonals join at corners
-// instead of leaving a gap where the old `[-12,-8,-4,4,8,12]` set skipped it.
+// Chunk-relative (z - x) offsets; 0 keeps diagonals continuous across chunk corners.
 const FORCE_LOAD_HATCH_OFFSETS = [-12, -8, -4, 0, 4, 8, 12] as const
 
 function forceLoadedOverlay(
   cluster: FtbClusterEntry,
 ): L.Layer | null {
   if (cluster.force_loaded.length === 0) return null
-  // Two stacked layers per force-loaded chunk: a strokeless red rectangle for
-  // an even tint, plus parallel NW→SE diagonals for extra texture. The
-  // rectangle gives a clear perimeter boundary against non-force-loaded
-  // neighbours; the diagonals make the force-loaded region read at a glance
-  // even when the underlying team polygon is dim.
   const renderer = L.canvas({ padding: 0.1 })
   const layers: L.Layer[] = []
   for (const [cx, cz] of cluster.force_loaded) {
@@ -129,12 +111,10 @@ function clusterLabel(
 ): L.Marker | null {
   const edge = pickLabelEdge(cluster.chunks)
   if (!edge) return null
-  // Sit a few blocks beyond the chunk edge so the pill never overlaps the polygon stroke.
+  // Offset outward so the pill doesn't overlap the polygon stroke.
   const outwardOffsetBlocks = edge.side === 'top' ? -2 : 2
   const anchorBz = edge.bz + outwardOffsetBlocks
   const labelText = escapeHtml(team.display_name)
-  // translateY shifts the label off the marker's lat/lng point; the CSS in
-  // claims.css handles the X centering and the pill styling.
   const translateY = edge.side === 'top' ? '-100%' : '0%'
   const html =
     `<div class="ftb-claim-label-anchor" ` +
@@ -158,8 +138,7 @@ function clusterLabel(
     if (!el) return
     const anchor = el.querySelector<HTMLElement>('.ftb-claim-label-anchor')
     if (!anchor) return
-    // Stop propagation so the click doesn't reach the map (which would start
-    // a pan or a selection drag depending on tool).
+    // Stop propagation so the click doesn't reach the map's pan/select handlers.
     const handler = (e: Event) => {
       e.stopPropagation()
       onClick(cluster.id, anchor)

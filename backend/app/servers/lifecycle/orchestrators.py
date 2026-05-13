@@ -1,10 +1,3 @@
-"""Server lifecycle orchestrators.
-
-Rollback uses compensation, not SQL transactions. Implicit contract: between the
-filesystem write in create_server_full and the trigger of rollback, no phase
-brings containers up — instance.remove() raises when instance.created() is true.
-"""
-
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -37,7 +30,6 @@ from .types import CreateServerResult, CreateServerSpec, RemoveServerResult
 async def _resolve_yaml_and_metadata(
     db: AsyncSession, spec: CreateServerSpec
 ) -> tuple[str, Optional[TemplateSnapshot], Optional[dict]]:
-    """Resolve YAML + optional template metadata from the spec. No side effects."""
     if spec.yaml_content and spec.template_id:
         raise HTTPException(
             status_code=400,
@@ -95,7 +87,6 @@ async def _resolve_yaml_and_metadata(
 async def create_server_full(
     db: AsyncSession, server_id: str, spec: CreateServerSpec
 ) -> CreateServerResult:
-    """Bundled create: filesystem + DB row + log monitor + optional restart schedule + DNS."""
     yaml_content, snapshot, vars_dict = await _resolve_yaml_and_metadata(db, spec)
 
     instance = docker_mc_manager.get_instance(server_id)
@@ -196,7 +187,7 @@ async def create_server_full(
 async def remove_server_full(
     db: AsyncSession, server_id: str
 ) -> RemoveServerResult:
-    """Bundled remove. Once past the containers-up gate, partial failures don't roll back."""
+    # Once past the containers-up gate, partial failures don't roll back.
     instance = docker_mc_manager.get_instance(server_id)
     if await instance.created():
         raise HTTPException(
@@ -235,9 +226,7 @@ async def remove_server_full(
 async def adopt_server_partial(
     db: AsyncSession, server_id: str, *, game_port: int, rcon_port: int
 ) -> CreateServerResult:
-    # Adopted rows are direct-mode only: template binding can't be inferred
-    # from a compose file. Caller (sync endpoint) is responsible for prior
-    # validation via validate_adoption.
+    # Direct-mode only: template binding can't be inferred from a compose file.
     await create_server_record(db, server_id)
 
     try:
@@ -256,8 +245,7 @@ async def adopt_server_partial(
 async def deactivate_server_partial(
     db: AsyncSession, server_id: str
 ) -> RemoveServerResult:
-    # Still cancel+wait on background tasks: one may be mid-write against a
-    # directory that has since vanished.
+    # Cancel+wait on background tasks; one may be mid-write against a vanished dir.
     cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
 
     now = datetime.now(timezone.utc)

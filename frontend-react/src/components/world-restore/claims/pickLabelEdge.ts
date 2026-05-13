@@ -1,21 +1,9 @@
-// Choose the best edge to place a cluster's label on.
-//
-// Walk the top row's outward-facing edges (cells whose north neighbor is not
-// in the cluster) and find the longest contiguous run of cx values. Repeat
-// for the bottom row. Prefer the top edge unless the bottom run is strictly
-// longer.
-//
-// Returns a block-space anchor (bx, bz) for placement plus a side hint so the
-// caller can offset the label above or below the chunk row.
-
 export type LabelSide = 'top' | 'bottom'
 
 export interface LabelEdge {
   side: LabelSide
-  // Block-space midpoint of the chosen edge run.
   bx: number
   bz: number
-  // Length of the run in chunks (useful for filtering tiny labels later).
   runLength: number
 }
 
@@ -29,7 +17,6 @@ function longestRunOnSide(
   chunks: Set<string>,
   side: LabelSide,
 ): Run | null {
-  // Group chunks by cz row.
   const rowMap = new Map<number, number[]>()
   for (const key of chunks) {
     const [cxStr, czStr] = key.split(',')
@@ -58,7 +45,6 @@ function longestRunOnSide(
       if (outward && (prev === null || cx === prev + 1)) {
         if (runStart === null) runStart = cx
       } else if (outward) {
-        // Gap between exposed cells in the same row — finalize and restart.
         finalize(prev!)
         runStart = cx
       } else {
@@ -87,8 +73,7 @@ export function pickLabelEdge(
     side = 'bottom'
   }
   if (!chosen) {
-    // Pathological: no outward-facing horizontal edge (e.g. ring-only cluster).
-    // Pick the centroid as a fallback.
+    // Ring-only cluster fallback: place at centroid.
     let sumX = 0
     let sumZ = 0
     for (const key of set) {

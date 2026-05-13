@@ -1,10 +1,3 @@
-// Per-mode mapping from cluster → set of chunk keys consumed by
-// useWorldRestoreSelectionStore.
-//
-// Chunk mode: select the cluster's chunks directly.
-// Region mode: expand each touched region to its full 1024 chunks, which is
-// what the selection store uses to express "this region is fully covered".
-
 import {
   CHUNKS_PER_REGION,
   chunkKey,
@@ -25,8 +18,8 @@ export function clusterToChunkKeys(
     }
     return out
   }
-  // Region mode: every region touched by any of the cluster's chunks expands
-  // to all 1024 chunks so chunksToFullyCoveredRegions sees it as covered.
+  // Region mode: expand each touched region to its full 1024 chunks so the
+  // selection store recognises it as fully covered.
   for (const [rx, rz] of cluster.regions) {
     for (const k of regionToChunkKeys({ rx, rz })) out.add(k)
   }
@@ -46,10 +39,6 @@ export function teamDimChunkKeys(
   return out
 }
 
-// "Fully selected" detector for a cluster — used by the side panel to show
-// the cluster's row as already covered. In chunk mode, all the cluster's
-// chunks must be present; in region mode, all the cluster's regions must be
-// fully covered in the current selection.
 export function isClusterFullySelected(
   cluster: FtbClusterEntry,
   selection: Set<ChunkKey>,

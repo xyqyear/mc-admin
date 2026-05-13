@@ -1,5 +1,3 @@
-"""Per-server map (mcmap) endpoints."""
-
 import asyncio
 import json
 import re
@@ -42,7 +40,6 @@ async def _get_data_path(server_id: str) -> Path:
 
 
 async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
-    """Validate that region_path resolves to a directory strictly inside data_path."""
     if not region_path or region_path.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid region path")
     resolved = await async_fs.resolve(data_path / region_path)
@@ -81,9 +78,7 @@ async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
             entries = await async_fs.iterdir(d)
         except (PermissionError, OSError):
             return
-        # Only directories named exactly "region" hold the renderable terrain
-        # MCAs. Sibling folders like "entities" and "poi" also contain
-        # r.X.Z.mca files but represent entity/POI data, not the world map.
+        # Only "region" holds terrain MCAs; entities/poi share the filename but are not renderable.
         if d.name == "region":
             mca_count = 0
             for entry in entries:
@@ -113,9 +108,7 @@ async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
 
 
 async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
-    # Each entry is `(x, z, mtime)`. The mtime is the MCA file's mtime in
-    # whole epoch seconds; the frontend appends it as `?mt=` on tile URLs so
-    # the browser HTTP cache busts automatically on regeneration.
+    # (x, z, mtime); mtime feeds tile URL `?mt=` for cache busting.
     coords: List[Tuple[int, int, int]] = []
     try:
         entries = await async_fs.iterdir(region_dir)
@@ -129,11 +122,7 @@ async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
             st = await aioos.stat(entry)
         except OSError:
             continue
-        # Skip zero-byte MCAs: fastanvil cannot parse them, mcmap reports
-        # `UnexpectedEof` and the tile would never render. Excluding them from
-        # the manifest lets the frontend short-circuit to a blank tile without
-        # an HTTP round-trip. Also skip non-regular entries (e.g. dirs that
-        # happen to match the r.X.Z.mca name).
+        # Skip zero-byte and non-regular entries — fastanvil can't parse them.
         if not _stat.S_ISREG(st.st_mode) or st.st_size == 0:
             continue
         coords.append((int(m.group(1)), int(m.group(2)), int(st.st_mtime)))
@@ -183,10 +172,6 @@ async def get_dimensions(
     return await _discover_dimensions(data_path)
 
 
-# Region manifest: list of (x, z, mtime) triples for every r.X.Z.mca in the
-# dimension. Frontend uses this to (1) skip HTTP requests for non-existent
-# tiles and (2) append the mtime to each tile URL so the browser HTTP cache
-# busts automatically when the MCA changes.
 @router.get("/{server_id}/map/regions", response_model=List[Tuple[int, int, int]])
 async def get_regions(
     server_id: str,
@@ -434,12 +419,7 @@ async def get_tile(
 
 
 async def _png_response(png: Path) -> FileResponse:
-    # Tile URLs carry the source MCA's mtime as `?mt=`, so any regeneration
-    # produces a new URL; the cached response can sit forever (`max-age=1y`)
-    # without going stale. `private` keeps it out of shared proxies — the
-    # response body is gated by per-user JWT — and `Vary: Authorization`
-    # prevents one user's cached response from being reused under a different
-    # token. ETag stays as a fallback for the hard-reload (revalidate) path.
+    # Tile URL carries mtime as `?mt=`; see docs/server-map.md for cache rationale.
     st = await aioos.stat(png)
     return FileResponse(
         str(png),

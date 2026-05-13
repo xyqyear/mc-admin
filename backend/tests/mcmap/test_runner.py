@@ -1,7 +1,3 @@
-"""Tests for runner.py — verifies subprocess wrapping, NDJSON event parsing,
-exit-code behavior, and idempotent termination using a fake shell binary.
-"""
-
 import os
 import stat
 import sys
@@ -15,7 +11,6 @@ from app.mcmap import runner
 
 
 def _write_fake_mcmap(content: str) -> Path:
-    """Write a fake mcmap script and make it executable. Returns path."""
     fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_mcmap_")
     os.close(fd)
     p = Path(path)
@@ -116,7 +111,6 @@ async def test_runner_terminates_on_context_exit_even_if_caller_breaks(
 
 
 async def test_download_client_args_passed_through(fake_owned_dir):
-    """Verify that the version + target are passed as positional args to mcmap."""
     fake = _write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'

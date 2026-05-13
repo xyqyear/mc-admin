@@ -1,5 +1,3 @@
-"""Tests for app.world.layout.discover_world_roots."""
-
 import tempfile
 from pathlib import Path
 
@@ -128,8 +126,6 @@ async def test_missing_data_path_returns_empty():
 
 @pytest.mark.asyncio
 async def test_deeply_nested_modded_dimensions():
-    """1.16+ modded layouts store dims at ``dimensions/<modid>/<dim>/region/``;
-    the walker must descend that deep and label them by relative path."""
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "world")
@@ -166,8 +162,6 @@ async def test_deeply_nested_modded_dimensions():
 
 @pytest.mark.asyncio
 async def test_walk_depth_bound_rejects_extreme_nesting():
-    """Beyond the depth bound we silently stop — a sanity guard, not a real
-    layout. Pinned so the bound doesn't quietly regress."""
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "world")

@@ -1,11 +1,3 @@
-"""End-to-end ``extract_claims_for_server`` test with a fake mcmap binary.
-
-Builds a real on-disk world layout (so ``discover_world_roots`` finds it),
-points the runner at a fake mcmap that emits a canned ``result`` event, and
-verifies the response payload: dim resolution, display-name fallback chain,
-cluster grouping per (team, dim), and the ``available=False`` branches.
-"""
-
 import json
 import os
 import stat
@@ -39,7 +31,6 @@ def _write_fake_mcmap_error(message: str) -> Path:
 
 
 def _build_minimal_world(data_path: Path) -> None:
-    """Create a vanilla overworld + nether layout so discover_world_roots finds it."""
     (data_path / "server.properties").write_text("level-name=world\n")
     world = data_path / "world"
     (world / "region").mkdir(parents=True)

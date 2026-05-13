@@ -1,5 +1,3 @@
-"""Pure flood-fill cluster correctness — no subprocess, no filesystem."""
-
 from app.ftb_claims.cluster import build_clusters
 
 

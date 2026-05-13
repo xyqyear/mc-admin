@@ -1,16 +1,3 @@
-"""Per-server world-restore endpoints.
-
-This router exposes the ``WorldRestoreOrchestrator`` over HTTP/SSE. It is
-mounted under ``/api/servers/{server_id}/world-restore/`` (the prefix used by
-sibling per-server routers — note that ``/servers`` is the router prefix and
-``{server_id}`` is part of each endpoint path). All endpoints require an
-authenticated user (``get_current_user`` — ADMIN+).
-
-SSE streams use ``StreamingResponse`` framed as ``data: <json>\\n\\n`` blocks
-(consistent with ``app/routers/servers/map.py``). The frontend consumes them
-via a manual fetch + ``\\n\\n`` parser.
-"""
-
 import asyncio
 import json
 from datetime import datetime, timezone
@@ -129,16 +116,7 @@ class CreateSnapshotResponse(BaseModel):
 
 
 class ManualSnapshotRequest(BaseModel):
-    """Request body for the manual snapshot endpoint.
-
-    Manual snapshots only ever cover a whole dimension or the whole server.
-    Region- and chunk-scope snapshots exist only as the safety snapshots taken
-    automatically inside ``begin_restore`` before a rollback — they have no
-    user-facing entry point. ``Literal`` here makes Pydantic reject the
-    narrower scopes at parse time (HTTP 422) instead of further down the call
-    stack.
-    """
-
+    # Region/chunk snapshots are only created automatically as safety snapshots.
     type: Literal["world", "dimension"]
     region_dir_relpath: Optional[str] = None
 
@@ -159,9 +137,6 @@ class RestorationResponse(BaseModel):
     type: RestorationType
     source_snapshot_id: str
     safety_snapshot_id: Optional[str]
-    # Whether each referenced snapshot still exists in the restic repo. Filled
-    # at request time by listing restic snapshots once and intersecting IDs.
-    # Restorations whose safety snapshot is gone can no longer be rolled back.
     source_snapshot_exists: bool
     safety_snapshot_exists: bool
     selection: RestorationSelection
@@ -179,10 +154,7 @@ class ListRestorationsResponse(BaseModel):
 
 
 async def _existing_snapshot_ids() -> Optional[set[str]]:
-    """Snapshot IDs currently present in the restic repo, or ``None`` if
-    restic isn't configured (in which case existence checks are skipped and
-    historical rows are reported as still existing — they predate the deletion
-    we'd be flagging anyway)."""
+    # None when restic is unconfigured — existence checks are then skipped.
     if restic_manager is None:
         return None
     snapshots = await restic_manager.list_snapshots()
@@ -240,7 +212,6 @@ def _world_root_to_response(root: WorldRoot) -> WorldRootResponse:
 async def get_layout(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ) -> WorldLayoutResponse:
-    """Return discovered world roots and their dimensions for the server."""
     await _ensure_server_exists(server_id)
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
@@ -264,12 +235,6 @@ async def get_ftb_claims(
     server_id: str,
     _: UserPublic = Depends(get_current_user),
 ) -> ClaimsResponse:
-    """Return FTB Utilities / FTB Chunks claim data for the server.
-
-    Extraction runs fresh on every call — no caching. When the world has no
-    detectable FTB data, returns ``{"available": false}`` with empty lists so
-    the frontend can hide the overlay UI without a separate status endpoint.
-    """
     await _ensure_server_exists(server_id)
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
@@ -291,7 +256,6 @@ async def eligible_snapshots(
     selection: RestorationSelection,
     _: UserPublic = Depends(get_current_user),
 ) -> ListEligibleSnapshotsResponse:
-    """Return snapshots that cover every path the selection resolves to."""
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
     try:
@@ -313,16 +277,6 @@ async def create_snapshot(
     request: ManualSnapshotRequest,
     user: UserPublic = Depends(get_current_user),
 ) -> CreateSnapshotResponse:
-    """Create a manual snapshot at world or dimension scope.
-
-    Region- and chunk-scope snapshots are intentionally not exposed here:
-    they are only created automatically as safety snapshots before a
-    rollback. Pydantic rejects those scopes at parse time via the
-    ``ManualSnapshotRequest.type`` literal.
-
-    Acquires the server's BACKUP lock for the duration. Returns 423 if the
-    server is currently locked by another operation.
-    """
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
     if world_subsystem.server_operation_lock.is_locked(server_id):
@@ -363,10 +317,6 @@ async def begin_preview(
     body: PreviewRequest,
     _: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Stream preview-staging events as Server-Sent Events.
-
-    Tears down any prior preview session for this server before starting.
-    """
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
 
@@ -409,7 +359,6 @@ async def heartbeat_preview(
     session_id: str,
     _: UserPublic = Depends(get_current_user),
 ) -> None:
-    """Refresh the session's last-seen timestamp."""
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
     try:
@@ -427,7 +376,6 @@ async def end_preview(
     session_id: str,
     _: UserPublic = Depends(get_current_user),
 ) -> None:
-    """Tear down a preview session. Idempotent."""
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
     await orch.end_preview(session_id)
@@ -443,20 +391,10 @@ async def get_preview_tile(
     rz: int,
     _: UserPublic = Depends(get_current_user),
 ) -> FileResponse:
-    """Serve a preview tile, lazily rendering on first miss.
-
-    Mirrors the live-map tile endpoint: if the PNG is already on disk, returns
-    it directly; otherwise enqueues a render on the session's per-dimension
-    ``ServerRenderQueue`` and awaits completion (with the same
-    ``request_timeout_seconds`` budget). 503 on render timeout, 404 if the
-    session is gone or the requested region wasn't staged.
-    """
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
 
-    # Heartbeat *before* awaiting render so the session doesn't TTL-expire
-    # mid-render, and so duplicate-tile-request bursts keep the session alive
-    # even when most of them coalesce onto the same in-flight Future.
+    # Heartbeat before awaiting render so coalesced bursts keep the session alive.
     try:
         orch.heartbeat_preview(session_id)
     except PreviewSessionNotFoundError:
@@ -489,12 +427,6 @@ async def begin_restore(
     body: RestoreRequest,
     user: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Stream the restore flow as SSE.
-
-    Returns 409 if the server is running, 423 if the server is currently
-    locked by another operation. Both checks happen *before* the SSE handshake
-    so the frontend sees a normal HTTP error response.
-    """
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
 
@@ -553,7 +485,6 @@ async def list_restorations(
     offset: int = Query(default=0, ge=0),
     _: UserPublic = Depends(get_current_user),
 ) -> ListRestorationsResponse:
-    """Paginated history for this server, newest-first."""
     await _ensure_server_exists(server_id)
 
     async with get_async_session() as session:
@@ -612,13 +543,10 @@ async def rollback_restoration(
     restoration_id: str,
     user: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Roll back a prior restoration by re-running with its safety snapshot."""
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
 
-    # Validate the row up-front so we can surface a 404/400 *before* the SSE
-    # handshake — the orchestrator's ``rollback`` would otherwise raise inside
-    # the generator after the response headers were sent.
+    # Validate up-front so 404/400 surfaces before the SSE handshake.
     async with get_async_session() as session:
         row = (
             await session.execute(
@@ -680,10 +608,7 @@ async def rollback_restoration(
 
 
 async def mark_running_restorations_interrupted() -> int:
-    """Flip any ``RUNNING`` restoration rows to ``INTERRUPTED`` on startup.
-
-    Returns the number of rows updated. Factored out for testability.
-    """
+    """Flip any RUNNING rows to INTERRUPTED on startup; returns row count."""
     async with get_async_session() as session:
         result = await session.execute(
             update(Restoration)

@@ -1,10 +1,3 @@
-"""Pydantic response models for the FTB claims feature.
-
-These mirror the shape returned by ``GET /servers/{id}/world-restore/claims``.
-``ClaimsResponse.available`` is ``False`` when mcmap cannot detect any FTB
-claim format in the world directory; in that case all list fields are empty.
-"""
-
 from typing import List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
@@ -26,14 +19,6 @@ class ClaimMember(BaseModel):
 
 
 class ClaimDimensionEntry(BaseModel):
-    """One FTB dimension mapped onto the backend's world layout.
-
-    ``region_dir_relpath`` and ``label`` are filled when the dim resolves to a
-    real on-disk dimension under the world root; otherwise both stay ``None``
-    (e.g. when the FTB data references a dimension whose region/ folder has no
-    ``.mca`` files).
-    """
-
     ftb_id: str
     region_dir_relpath: Optional[str] = None
     label: Optional[str] = None
@@ -41,14 +26,6 @@ class ClaimDimensionEntry(BaseModel):
 
 
 class ClusterEntry(BaseModel):
-    """A connected component of chunks owned by a single team in a single dim.
-
-    ``id`` is stable across reloads for the same input. ``regions`` deduplicates
-    the regions touched by the cluster's chunks; ``centroid_block`` is in block
-    space (suitable for ``L.Map.panTo`` after converting block-x/z to
-    Leaflet CRS.Simple lat/lng).
-    """
-
     id: str
     region_dir_relpath: Optional[str] = None
     chunks: List[Tuple[int, int]]

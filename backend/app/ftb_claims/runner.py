@@ -1,10 +1,3 @@
-"""Async context manager wrapping ``mcmap extract-ftb-claims``.
-
-Mirrors the pattern in ``app.mcmap.runner``: spawn with ``--json``, yield a
-wrapper that iterates NDJSON events, idempotent ``terminate()`` on exit,
-``--chown UID:GID`` appended when running as root.
-"""
-
 import asyncio
 import os
 from contextlib import asynccontextmanager
@@ -38,12 +31,6 @@ async def extract_ftb_claims(
     *,
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    """Run ``mcmap extract-ftb-claims --world <world_dir>``.
-
-    Format auto-detects (``--format auto``). The wrapper yields the live
-    subprocess; callers iterate it to consume the single terminal ``result``
-    or ``error`` event.
-    """
     args: List[str] = [
         "--json",
         "extract-ftb-claims",

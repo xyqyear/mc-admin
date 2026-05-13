@@ -1,5 +1,3 @@
-"""CRUD operations for CronJob and CronJobExecution models."""
-
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
@@ -82,7 +80,6 @@ async def get_cronjobs_by_status(
 async def get_active_restart_cronjobs_for_server(
     session: AsyncSession, server_id: str
 ) -> List[CronJob]:
-    # Restart jobs only — backup jobs are admin state and survive recreation.
     result = await session.execute(
         select(CronJob).where(
             CronJob.identifier == "restart_server",

@@ -1,5 +1,3 @@
-"""Tests for palette hash computation and invalidation."""
-
 import tempfile
 from pathlib import Path
 
@@ -29,7 +27,6 @@ async def test_hash_stable_under_same_inputs():
 
 @pytest.mark.asyncio
 async def test_hash_invariant_under_mod_iteration_order():
-    """Reordering files on disk shouldn't change the hash (sorted filenames)."""
     with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
         mods1 = Path(d1) / "mods"
         mods1.mkdir()

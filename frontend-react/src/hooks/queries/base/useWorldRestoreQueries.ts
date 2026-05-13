@@ -12,9 +12,6 @@ export const useWorldLayout = (serverId: string | undefined) =>
     staleTime: 30_000,
   })
 
-// Selection is part of the cache key by value (the queryKey factory
-// stringifies it via React Query's key serializer), so different selections
-// produce distinct cache entries.
 export const useEligibleSnapshots = (
   serverId: string | undefined,
   selection: RestorationSelection | null,
@@ -26,9 +23,6 @@ export const useEligibleSnapshots = (
     staleTime: 5_000,
   })
 
-// Lightly polls so an in-progress restoration appears in the history table
-// without manual refresh. The orchestrator finishes in seconds, so 5s is
-// short enough to feel live but cheap enough to leave running on the page.
 export const useRestorations = (serverId: string | undefined) =>
   useQuery({
     queryKey: queryKeys.worldRestore.history(serverId ?? ''),
