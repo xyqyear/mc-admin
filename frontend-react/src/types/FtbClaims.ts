@@ -1,11 +1,5 @@
 // Mirrors backend `app/ftb_claims/models.py`.
 
-export type FtbDetectedFormat =
-  | 'snbt'
-  | 'per_team_nbt'
-  | 'universe_dat'
-  | 'latmod_json'
-
 export type FtbTeamType = 'player' | 'party' | 'server' | 'unknown'
 
 export interface FtbClaimMember {
@@ -43,7 +37,6 @@ export interface FtbTeamEntry {
 
 export interface FtbClaimsResponse {
   available: boolean
-  detected_format: FtbDetectedFormat | null
   dimensions: FtbDimensionEntry[]
   teams: FtbTeamEntry[]
 }

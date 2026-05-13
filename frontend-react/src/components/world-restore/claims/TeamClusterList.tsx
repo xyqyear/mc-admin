@@ -138,9 +138,6 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-[10px] px-1.5">
-          {data.detected_format ?? '?'}
-        </Badge>
         <Switch
           size="sm"
           checked={overlayVisible}
@@ -148,6 +145,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
           aria-label="切换领地图层显示"
           title={overlayVisible ? '隐藏地图上的领地图层' : '显示地图上的领地图层'}
         />
+        <span className="text-xs text-muted-foreground">在地图上显示</span>
         <div className="flex-1" />
         <Button
           size="icon-sm"
