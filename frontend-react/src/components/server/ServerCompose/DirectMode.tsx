@@ -189,7 +189,7 @@ const DirectMode: React.FC<DirectModeProps> = ({
           </div>
           <p className="text-xs text-muted-foreground">此处的修改在点击提交并重建后才会生效，退出该页面将丢失未保存的更改。</p>
         </CardHeader>
-        <CardContent className="flex flex-col flex-1 min-h-0 !p-0">
+        <CardContent className="flex flex-col flex-1 min-h-0 p-0!">
           <ComposeYamlEditor
             key={editorKey}
             className="h-full"

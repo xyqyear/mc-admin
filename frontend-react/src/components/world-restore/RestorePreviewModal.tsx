@@ -369,7 +369,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
             {state.ready && (
               <div
                 ref={containerRefCallback}
-                className="isolate mt-2 h-[480px] w-full translate-z-0 overflow-hidden rounded-md border [contain:paint]"
+                className="isolate mt-2 h-120 w-full translate-z-0 overflow-hidden rounded-md border contain-[paint]"
                 style={{ background: 'var(--card)' }}
               />
             )}

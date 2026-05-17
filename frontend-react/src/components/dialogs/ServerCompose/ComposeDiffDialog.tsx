@@ -43,7 +43,7 @@ const ComposeDiffDialog: React.FC<ComposeDiffDialogProps> = ({
             <AlertTitle>差异对比视图</AlertTitle>
             <AlertDescription>{description}</AlertDescription>
           </Alert>
-          <div className="border rounded-md overflow-hidden h-[600px]">
+          <div className="border rounded-md overflow-hidden h-150">
             <MonacoDiffEditor
               key={`diff-${originalContent?.length || 0}-${modifiedContent?.length || 0}`}
               height="600px"

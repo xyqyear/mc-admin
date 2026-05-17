@@ -191,12 +191,12 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
           <code className="text-[13px]">{item.name || <span className="text-muted-foreground">-</span>}</code>
         </TableCell>
         <TableCell>{item.display_name || "-"}</TableCell>
-        <TableCell className="w-[90px]">
+        <TableCell className="w-22.5">
           {typeInfo ? (
             <Badge variant="outline" className={typeInfo.className}>{typeInfo.label}</Badge>
           ) : item.type}
         </TableCell>
-        <TableCell className="max-w-[200px] truncate">{formatDefault(item.default)}</TableCell>
+        <TableCell className="max-w-50 truncate">{formatDefault(item.default)}</TableCell>
         {showActions && (
           <TableCell className="w-20">
             <div className="flex items-center gap-1">
@@ -242,7 +242,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
       )}
 
       <div className="flex justify-between items-center mb-3 gap-3">
-        <div className="relative max-w-[300px] flex-1">
+        <div className="relative max-w-75 flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="搜索变量名或显示名称"
@@ -286,7 +286,7 @@ const VariableDefinitionForm: React.FC<VariableDefinitionFormProps> = ({
                     {showDragHandle && <TableHead className="w-10" />}
                     <TableHead>变量名</TableHead>
                     <TableHead>显示名称</TableHead>
-                    <TableHead className="w-[90px]">类型</TableHead>
+                    <TableHead className="w-22.5">类型</TableHead>
                     <TableHead>默认值</TableHead>
                     {showActions && <TableHead className="w-20">操作</TableHead>}
                   </TableRow>

@@ -78,7 +78,7 @@ export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
         <div className="flex flex-col gap-1">
           <span className="text-sm text-muted-foreground">在线状态</span>
           <Select value={onlineFilterValue} onValueChange={handleOnlineFilterChange}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-37.5">
               <SelectValue placeholder="全部">
                 {(value: string) => onlineLabels[value] ?? '全部'}
               </SelectValue>
@@ -94,7 +94,7 @@ export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
         <div className="flex flex-col gap-1">
           <span className="text-sm text-muted-foreground">服务器</span>
           <Select value={filters.server_id ?? ALL_VALUE} onValueChange={handleServerChange}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-50">
               <SelectValue placeholder="全部服务器">
                 {(value: string) => {
                   if (!value || value === ALL_VALUE) return '全部服务器';
@@ -113,7 +113,7 @@ export const PlayerFilters: React.FC<PlayerFiltersProps> = ({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+        <div className="flex flex-col gap-1 flex-1 min-w-50">
           <span className="text-sm text-muted-foreground">搜索玩家</span>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

@@ -26,7 +26,7 @@ export const LoadingSpinner = ({
     <div
       className={cn(
         'flex items-center justify-center',
-        fullscreen ? 'h-screen' : height ? '' : 'min-h-[400px]',
+        fullscreen ? 'h-screen' : height ? '' : 'min-h-100',
         className,
       )}
       style={height ? { height } : undefined}

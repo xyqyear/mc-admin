@@ -369,8 +369,8 @@ const ServerWorldRestore: React.FC = () => {
           <>
             {layoutQ.isLoading ? (
               <>
-                <Skeleton className="h-9 w-[120px]" />
-                <Skeleton className="h-9 w-[260px]" />
+                <Skeleton className="h-9 w-30" />
+                <Skeleton className="h-9 w-65" />
               </>
             ) : dimensionOptions.length > 0 ? (
               <>
@@ -414,7 +414,7 @@ const ServerWorldRestore: React.FC = () => {
                     dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
                   }
                 >
-                  <SelectTrigger className="w-[260px]">
+                  <SelectTrigger className="w-65">
                     <SelectValue placeholder="选择维度" />
                   </SelectTrigger>
                   <SelectContent>
@@ -509,7 +509,7 @@ const ServerWorldRestore: React.FC = () => {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col min-w-0 md:min-h-0 md:overflow-y-auto md:[&>*]:shrink-0">
+          <div className="flex flex-col min-w-0 md:min-h-0 md:overflow-y-auto md:*:shrink-0">
             <Card>
               <CardContent>
                 {claimsAvailable ? (
