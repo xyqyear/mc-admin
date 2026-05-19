@@ -30,6 +30,11 @@ from ...utils import async_fs
 router = APIRouter(prefix="/servers", tags=["map"])
 
 REGION_FILE_RE = re.compile(r"^r\.(-?\d+)\.(-?\d+)\.mca$")
+VANILLA_DIMENSION_REGION_LABELS = {
+    "dimensions/minecraft/overworld/region": "Overworld",
+    "dimensions/minecraft/the_nether/region": "Nether",
+    "dimensions/minecraft/the_end/region": "End",
+}
 
 
 async def _get_data_path(server_id: str) -> Path:
@@ -56,15 +61,21 @@ async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
 
 
 def _label_for_region_path(region_path: str) -> str:
-    parts = region_path.replace("\\", "/").rstrip("/").split("/")
+    normalized = region_path.replace("\\", "/").rstrip("/")
+    parts = normalized.split("/")
     if len(parts) >= 2 and parts[-1] == "region":
+        rel = "/".join(parts[-4:])
+        if rel in VANILLA_DIMENSION_REGION_LABELS:
+            return VANILLA_DIMENSION_REGION_LABELS[rel]
         if parts[-2] == "DIM-1":
             return "Nether"
         if parts[-2] == "DIM1":
             return "End"
-    if region_path.endswith("/region") or region_path == "region":
+        if len(parts) == 2:
+            return "Overworld"
+    if normalized == "region":
         return "Overworld"
-    return region_path
+    return normalized
 
 
 async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:

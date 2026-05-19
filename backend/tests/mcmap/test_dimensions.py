@@ -21,8 +21,27 @@ def test_label_for_end():
     assert _label_for_region_path("world_the_end/DIM1/region") == "End"
 
 
+def test_label_for_vanilla_dimension_directory_layout():
+    assert (
+        _label_for_region_path("world/dimensions/minecraft/overworld/region")
+        == "Overworld"
+    )
+    assert (
+        _label_for_region_path("world/dimensions/minecraft/the_nether/region")
+        == "Nether"
+    )
+    assert (
+        _label_for_region_path("world/dimensions/minecraft/the_end/region")
+        == "End"
+    )
+
+
 def test_label_fallback_to_path():
     assert _label_for_region_path("custom/dimension/foo") == "custom/dimension/foo"
+    assert (
+        _label_for_region_path("world/dimensions/example/custom/region")
+        == "world/dimensions/example/custom/region"
+    )
 
 
 @pytest.mark.asyncio
@@ -51,6 +70,7 @@ async def test_discover_finds_multiple_dimensions():
             ("world/region", 3),
             ("world_nether/DIM-1/region", 1),
             ("world_the_end/DIM1/region", 2),
+            ("world/dimensions/minecraft/the_nether/region", 4),
         ]:
             (data / sub).mkdir(parents=True)
             for i in range(n):
@@ -63,6 +83,8 @@ async def test_discover_finds_multiple_dimensions():
         assert by_path["world_nether/DIM-1/region"].label == "Nether"
         assert by_path["world_the_end/DIM1/region"].mca_count == 2
         assert by_path["world_the_end/DIM1/region"].label == "End"
+        assert by_path["world/dimensions/minecraft/the_nether/region"].mca_count == 4
+        assert by_path["world/dimensions/minecraft/the_nether/region"].label == "Nether"
 
 
 @pytest.mark.asyncio

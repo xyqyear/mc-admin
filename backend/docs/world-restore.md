@@ -11,7 +11,7 @@ Whole-world restores are blunt: a player who griefs one chunk forces the admin t
 `RestorationSelection` has four shapes, distinguished by `type`:
 
 - **WORLD** — restic restore against *every* valid world root on the server. Bukkit/Paper multi-world setups are covered in one operation; all dimensions of every root are included. Carries no `region_dir_relpath`.
-- **DIMENSION** — restic restore scoped to a single `region/`+`entities/`+`poi/` triple. The dimension is identified by `region_dir_relpath` (data-relative, e.g. `world/region`, `world_creative/region/DIM-1`).
+- **DIMENSION** — restic restore scoped to a single `region/`+`entities/`+`poi/` triple. The dimension is identified by `region_dir_relpath` (data-relative, e.g. `world/region`, `world/dimensions/minecraft/the_nether/region`, `world_creative/DIM-1/region`).
 - **REGIONS** — restic restore filtered to specific `r.X.Z.mca` files inside the dimension named by `region_dir_relpath`. Includes the matching `entities/` and `poi/` sidecars and `c.<absX>.<absZ>.mcc` overflow chunks for the affected region grid, so partial regions never desync.
 - **CHUNKS** — stage source MCAs from the snapshot into a tempdir, then run `mcmap replace-chunks` to splice the selected chunks into the live MCAs (or `remove-chunks` for chunks the snapshot didn't have). Same restic include-path expansion as REGIONS for entities/poi.
 
@@ -71,7 +71,7 @@ Dynamic (`snapshots.world_restore` schema): `restore_temp_dir`, `temp_disk_thres
 
 Mounted under `/api/servers/{server_id}/world-restore/`:
 
-- `GET /layout` — world roots + dimensions (Overworld/Nether/End label heuristic; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
+- `GET /layout` — world roots + dimensions (Overworld/Nether/End label heuristic for legacy and `dimensions/minecraft/*` layouts; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
 - `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
 - `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held
 - `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (start → stage → merge_region → render_progress → ready); returns `session_id` in the `ready` event

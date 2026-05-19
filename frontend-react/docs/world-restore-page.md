@@ -6,7 +6,7 @@
 
 The page state that survives reload — selected dimension, selection mode, map view — lives in the URL:
 
-- `?dim=<region_dir_relpath>` — which dimension's region folder is being inspected (e.g. `world/region`, `world_nether/DIM-1/region`)
+- `?dim=<region_dir_relpath>` — which dimension's region folder is being inspected (e.g. `world/region`, `world/dimensions/minecraft/the_nether/region`)
 - `?mode=region|chunk` — region-level or chunk-level selection
 - `?z`, `?cx`, `?cz` — Leaflet zoom + center, kept in sync via `onViewChange`
 
@@ -16,7 +16,7 @@ When no params are present, the page auto-selects the first world root's Overwor
 
 ### Why `?dim` carries the relpath, not separate root + dim
 
-The world root's directory name is the first segment of `region_dir_relpath` (`world/region`, `world_creative/region/DIM-1`, …). That makes the relpath unique across all roots on a server, so the URL doesn't need a separate `?root=` parameter. Multi-world Bukkit/Paper setups stay unambiguous with one string.
+The world root's directory name is the first segment of `region_dir_relpath` (`world/region`, `world/dimensions/minecraft/the_nether/region`, …). That makes the relpath unique across all roots on a server, so the URL doesn't need a separate `?root=` parameter. Multi-world Bukkit/Paper setups stay unambiguous with one string.
 
 ## Layout
 

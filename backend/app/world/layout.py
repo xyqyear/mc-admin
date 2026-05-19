@@ -14,6 +14,11 @@ OVERWORLD_LABEL = "Overworld"
 NETHER_LABEL = "Nether"
 END_LABEL = "End"
 MCMAP_DIR_NAME = ".mcmap"
+VANILLA_DIMENSION_LABELS = {
+    "dimensions/minecraft/overworld": OVERWORLD_LABEL,
+    "dimensions/minecraft/the_nether": NETHER_LABEL,
+    "dimensions/minecraft/the_end": END_LABEL,
+}
 
 
 @dataclass(frozen=True)
@@ -64,7 +69,6 @@ async def _has_region_mca(region_dir: Path) -> bool:
 
 
 def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
-    # Deep-nested modded dims fall through to posix-style relpath for uniqueness.
     if region_parent == world_root:
         return OVERWORLD_LABEL
     if region_parent.parent == world_root:
@@ -74,7 +78,8 @@ def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
         if name == END_DIR:
             return END_LABEL
         return name
-    return region_parent.relative_to(world_root).as_posix()
+    rel = region_parent.relative_to(world_root).as_posix()
+    return VANILLA_DIMENSION_LABELS.get(rel, rel)
 
 
 DIMENSION_WALK_SKIP_NAMES = frozenset({"region", "entities", "poi", MCMAP_DIR_NAME})

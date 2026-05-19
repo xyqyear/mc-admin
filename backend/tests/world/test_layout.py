@@ -57,6 +57,54 @@ async def test_vanilla_layout_with_three_dimensions():
 
 
 @pytest.mark.asyncio
+async def test_vanilla_dimension_directory_layout():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(
+            world
+            / "dimensions"
+            / "minecraft"
+            / "overworld"
+            / "region"
+            / "r.0.0.mca"
+        )
+        _touch(
+            world
+            / "dimensions"
+            / "minecraft"
+            / "the_nether"
+            / "region"
+            / "r.0.0.mca"
+        )
+        _touch(
+            world
+            / "dimensions"
+            / "minecraft"
+            / "the_end"
+            / "region"
+            / "r.0.0.mca"
+        )
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        by_label = {d.label: d for d in roots[0].dimensions}
+        assert set(by_label) == {OVERWORLD_LABEL, NETHER_LABEL, END_LABEL}
+        assert by_label[OVERWORLD_LABEL].region_dir == (
+            world / "dimensions" / "minecraft" / "overworld" / "region"
+        )
+        assert by_label[NETHER_LABEL].region_dir == (
+            world / "dimensions" / "minecraft" / "the_nether" / "region"
+        )
+        assert by_label[END_LABEL].region_dir == (
+            world / "dimensions" / "minecraft" / "the_end" / "region"
+        )
+
+
+@pytest.mark.asyncio
 async def test_paper_multi_world_layout():
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)

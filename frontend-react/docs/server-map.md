@@ -12,7 +12,7 @@ A Minecraft world is a 2D plane indexed by integer block coordinates, not a geog
 backend                     hooks                         component
 ───────                     ─────                         ─────────
 GET /map/status         →   useMapStatus
-GET /map/dimensions     →   useMapDimensions
+GET /map/dimensions     →   auto-discovered dimension labels for map clients
 GET /map/regions        →   useMapRegions          ┐
 POST /map/initialize    →   (SSE via useEventStream)
 GET /map/tiles/X/Z.png  →                          │

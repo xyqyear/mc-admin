@@ -18,7 +18,7 @@ data/.mcmap/
 └── tiles/<region_path>/    # rendered PNGs, mirroring r.X.Z.mca filenames
 ```
 
-`<region_path>` is the dimension's region folder relative to `data/`, e.g. `world/region`, `world_nether/DIM-1/region`, `world/DIM1/region`. Hard isolation by dimension (see "Render queue") keeps each dimension's tiles in its own subfolder.
+`<region_path>` is the dimension's region folder relative to `data/`, e.g. `world/region`, `world_nether/DIM-1/region`, `world/dimensions/minecraft/the_end/region`. Hard isolation by dimension (see "Render queue") keeps each dimension's tiles in its own subfolder.
 
 ## Initialization
 
@@ -72,7 +72,7 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
-- `GET /dimensions` — auto-discovered region folders (skipping `.mcmap/`); labels Overworld / Nether / End by path
+- `GET /dimensions` — auto-discovered region folders (skipping `.mcmap/`); labels Overworld / Nether / End for legacy and `dimensions/minecraft/*` paths
 - `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples for every existing `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
 - `POST /initialize` — two-stage SSE
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)
