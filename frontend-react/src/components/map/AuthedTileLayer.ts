@@ -17,7 +17,8 @@ export abstract class AuthedTileLayer extends L.GridLayer {
 
   protected abstract buildUrl(coords: L.Coords): string
   protected abstract shouldFetch(coords: L.Coords): boolean
-  protected buildParams(_coords: L.Coords): Record<string, unknown> | undefined {
+  protected buildParams(coords: L.Coords): Record<string, unknown> | undefined {
+    void coords
     return undefined
   }
 

@@ -592,7 +592,6 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       dragState.start = null
       dragState.last = null
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionRef is a stable ref
   }, [selectionMode, onSelectionChange])
 
   // Inline `bg-card` overrides Leaflet's default `.leaflet-container` background.
