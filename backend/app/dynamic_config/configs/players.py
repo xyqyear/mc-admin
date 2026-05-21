@@ -51,15 +51,6 @@ class SkinFetcherConfig(BaseConfigSchema):
         ),
     ] = 10
 
-    rate_limit_delay_seconds: Annotated[
-        float,
-        Field(
-            description="请求之间的延迟（秒），用于避免触发Mojang API速率限制",
-            ge=0.5,
-        ),
-    ] = 1.0
-
-
 class QueryConfig(BaseConfigSchema):
     """Query protocol configuration for player listing."""
 

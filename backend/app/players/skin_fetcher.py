@@ -1,6 +1,5 @@
 """Skin fetching from Mojang API."""
 
-import asyncio
 import base64
 import json
 from typing import Optional, Tuple
@@ -21,8 +20,6 @@ class SkinFetcher:
     @log_exception("Error fetching player skin for {uuid}: ")
     async def fetch_player_skin(self, uuid: str) -> Optional[Tuple[bytes, bytes]]:
         """Return ``(skin_png, avatar_png)`` for ``uuid``, or ``None`` on failure."""
-        await asyncio.sleep(config.players.skin_fetcher.rate_limit_delay_seconds)
-
         uuid_clean = uuid.replace("-", "")
 
         request_timeout = config.players.skin_fetcher.request_timeout_seconds

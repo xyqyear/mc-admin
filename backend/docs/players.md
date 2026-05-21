@@ -19,7 +19,7 @@ Each owns its own lifecycle and runs as a background task.
 
 - **`heartbeat_manager`** (`app.players.heartbeat`) — single-row `SystemHeartbeat` table, updated every `heartbeat_interval_seconds`. On startup, if `now - last_heartbeat >= crash_threshold_minutes`, treats it as a crash: closes every open session via `process_player_left()` (with a "crash" reason and the last-heartbeat timestamp) and calls `player_syncer.validate_all_servers()` to resync against RCON.
 - **`player_syncer`** (`app.players.player_syncer`) — periodic loop. For each `HEALTHY` server, runs RCON `list` and reconciles the result against open `PlayerSession` rows: false-online → `process_player_left`, false-offline → `process_player_join`.
-- **`skin_fetcher`** (`app.players.skin_fetcher`) — Mojang client. Hits `https://sessionserver.mojang.com/session/minecraft/profile/{uuid}`, decodes the textures property, downloads the SKIN PNG, and crops the 8×8 head into an avatar via `async_fs.extract_skin_avatar` (PIL, run off the loop). Rate-limited, handles 404/429/timeout.
+- **`skin_fetcher`** (`app.players.skin_fetcher`) — Mojang client. Hits `https://sessionserver.mojang.com/session/minecraft/profile/{uuid}`, decodes the textures property, downloads the SKIN PNG, and crops the 8×8 head into an avatar via `async_fs.extract_skin_avatar` (PIL, run off the loop). Handles 404/429/timeout.
 
 ## Lifecycle wiring
 

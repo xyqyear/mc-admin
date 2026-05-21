@@ -44,7 +44,7 @@ In `dynamic_config/configs/`:
 
 - `dns.py` — provider, credentials, managed sub-domain, auto-update flag
 - `snapshots.py` — retention, time restrictions, world-restore knobs (tmpdir, disk threshold, preview TTL, janitor interval)
-- `players.py` — heartbeat interval, crash threshold, syncer cadence
+- `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
 - `mcmap.py` — `batch_size`, `thread_count`, `request_timeout_seconds`
 
