@@ -252,8 +252,19 @@ async def test_get_layout_returns_world_roots(http: AsyncClient):
     assert len(data["world_roots"]) == 1
     root = data["world_roots"][0]
     assert root["name"] == "world"
-    labels = {d["label"] for d in root["dimensions"]}
-    assert labels == {"Overworld", "Nether"}
+    assert len(root["dimensions"]) == 2
+    assert all("label" not in d for d in root["dimensions"])
+
+
+@pytest.mark.asyncio
+async def test_get_dimension_labels_returns_dynamic_mapping(http: AsyncClient):
+    response = await http.get(
+        "/api/servers/srv1/world-restore/dimension-labels", headers=_auth()
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["dimension_labels"]["."] == "Overworld"
+    assert data["dimension_labels"]["DIM-1"] == "Nether"
 
 
 # --- Eligible snapshots ----------------------------------------------------

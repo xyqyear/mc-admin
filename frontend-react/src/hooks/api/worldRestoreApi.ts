@@ -1,6 +1,7 @@
 import { api } from '@/utils/api'
 import type {
   CreateSnapshotResponse,
+  DimensionLabelsResponse,
   ListEligibleSnapshotsResponse,
   ListRestorationsResponse,
   RestorationResponse,
@@ -15,6 +16,13 @@ export const worldRestoreApi = {
   getLayout: (serverId: string) =>
     api
       .get<WorldLayoutResponse>(`/servers/${serverId}/world-restore/layout`)
+      .then((r) => r.data),
+
+  getDimensionLabels: (serverId: string) =>
+    api
+      .get<DimensionLabelsResponse>(
+        `/servers/${serverId}/world-restore/dimension-labels`,
+      )
       .then((r) => r.data),
 
   eligibleSnapshots: (serverId: string, selection: RestorationSelection) =>

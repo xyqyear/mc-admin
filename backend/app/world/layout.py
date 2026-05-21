@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import settings
+from ..dynamic_config import config
 from ..minecraft.properties import ServerProperties
-from .dimension_labels import label_for_dimension_dir
 from .region_files import parse_region_filename
 
 DEFAULT_LEVEL_NAME = "world"
@@ -17,7 +17,6 @@ class DimensionInfo:
     region_dir: Path
     entities_dir: Optional[Path]
     poi_dir: Optional[Path]
-    label: str
 
 
 @dataclass(frozen=True)
@@ -77,10 +76,6 @@ def _scandir_sorted(directory: Path) -> list[os.DirEntry[str]]:
         return sorted(entries, key=lambda e: e.name)
 
 
-DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT = 4
-REGION_DIR_MAX_DEPTH_FROM_WORLD_ROOT = DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT + 1
-
-
 def _dimension_info(world_root: Path, directory: Path) -> Optional[DimensionInfo]:
     region_dir = directory / "region"
     if not _has_region_mca(region_dir):
@@ -91,7 +86,6 @@ def _dimension_info(world_root: Path, directory: Path) -> Optional[DimensionInfo
         region_dir=region_dir,
         entities_dir=entities_dir if entities_dir.is_dir() else None,
         poi_dir=poi_dir if poi_dir.is_dir() else None,
-        label=label_for_dimension_dir(world_root, directory),
     )
 
 
@@ -149,11 +143,17 @@ def _dimensions_from_region_dirs_sync(
             dimensions_by_dir[dimension_dir] = info
 
     dimensions = list(dimensions_by_dir.values())
-    dimensions.sort(key=lambda d: d.label)
+    dimensions.sort(
+        key=lambda d: (
+            d.region_dir.parent != world_root,
+            d.region_dir.parent.relative_to(world_root).as_posix(),
+        )
+    )
     return dimensions
 
 
 async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
+    region_dir_max_depth = config.world.dimension_max_depth_from_world_root + 1
     cmd = [
         str(settings.fd_binary_path),
         "--unrestricted",
@@ -163,7 +163,7 @@ async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
         "--type",
         "directory",
         "--max-depth",
-        str(REGION_DIR_MAX_DEPTH_FROM_WORLD_ROOT),
+        str(region_dir_max_depth),
         "^region$",
         str(world_root),
     ]

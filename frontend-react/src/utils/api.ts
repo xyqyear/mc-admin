@@ -227,6 +227,8 @@ export const queryKeys = {
     all: ["world-restore"] as const,
     layout: (serverId: string) =>
       [...queryKeys.worldRestore.all, "layout", serverId] as const,
+    dimensionLabels: (serverId: string) =>
+      [...queryKeys.worldRestore.all, "dimension-labels", serverId] as const,
     eligible: (serverId: string, selection: unknown) =>
       [...queryKeys.worldRestore.all, "eligible", serverId, selection] as const,
     history: (serverId: string) =>

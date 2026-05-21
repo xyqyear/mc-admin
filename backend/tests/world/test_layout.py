@@ -1,17 +1,15 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app.config import settings
-from app.world.dimension_labels import (
-    END_LABEL,
-    NETHER_LABEL,
-    OVERWORLD_LABEL,
-)
+from app.dynamic_config.configs.world import WorldConfig
+import app.world.layout as layout_module
 from app.world.layout import (
-    DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT,
     WorldLayoutDiscoveryError,
+    WorldRoot,
     discover_world_roots,
 )
 
@@ -23,6 +21,13 @@ def _touch(path: Path) -> None:
 
 def _write_properties(data_path: Path, level_name: str) -> None:
     (data_path / "server.properties").write_text(f"level-name={level_name}\n")
+
+
+def _by_dimension_path(root: WorldRoot):
+    return {
+        d.region_dir.parent.relative_to(root.path).as_posix(): d
+        for d in root.dimensions
+    }
 
 
 @pytest.mark.asyncio
@@ -46,19 +51,17 @@ async def test_vanilla_layout_with_three_dimensions():
         root = roots[0]
         assert root.name == "world"
         assert root.path == world
-        labels = [d.label for d in root.dimensions]
-        assert sorted(labels) == sorted([OVERWORLD_LABEL, NETHER_LABEL, END_LABEL])
-
-        by_label = {d.label: d for d in root.dimensions}
-        assert by_label[OVERWORLD_LABEL].region_dir == world / "region"
-        assert by_label[OVERWORLD_LABEL].entities_dir == world / "entities"
-        assert by_label[OVERWORLD_LABEL].poi_dir == world / "poi"
-        assert by_label[NETHER_LABEL].region_dir == world / "DIM-1" / "region"
-        assert by_label[NETHER_LABEL].entities_dir == world / "DIM-1" / "entities"
-        assert by_label[END_LABEL].region_dir == world / "DIM1" / "region"
+        by_path = _by_dimension_path(root)
+        assert set(by_path) == {".", "DIM-1", "DIM1"}
+        assert by_path["."].region_dir == world / "region"
+        assert by_path["."].entities_dir == world / "entities"
+        assert by_path["."].poi_dir == world / "poi"
+        assert by_path["DIM-1"].region_dir == world / "DIM-1" / "region"
+        assert by_path["DIM-1"].entities_dir == world / "DIM-1" / "entities"
+        assert by_path["DIM1"].region_dir == world / "DIM1" / "region"
         # End in this fixture has no entities/poi
-        assert by_label[END_LABEL].entities_dir is None
-        assert by_label[END_LABEL].poi_dir is None
+        assert by_path["DIM1"].entities_dir is None
+        assert by_path["DIM1"].poi_dir is None
 
 
 @pytest.mark.asyncio
@@ -96,15 +99,19 @@ async def test_vanilla_dimension_directory_layout():
         roots = await discover_world_roots(data_path)
 
         assert len(roots) == 1
-        by_label = {d.label: d for d in roots[0].dimensions}
-        assert set(by_label) == {OVERWORLD_LABEL, NETHER_LABEL, END_LABEL}
-        assert by_label[OVERWORLD_LABEL].region_dir == (
+        by_path = _by_dimension_path(roots[0])
+        assert set(by_path) == {
+            "dimensions/minecraft/overworld",
+            "dimensions/minecraft/the_nether",
+            "dimensions/minecraft/the_end",
+        }
+        assert by_path["dimensions/minecraft/overworld"].region_dir == (
             world / "dimensions" / "minecraft" / "overworld" / "region"
         )
-        assert by_label[NETHER_LABEL].region_dir == (
+        assert by_path["dimensions/minecraft/the_nether"].region_dir == (
             world / "dimensions" / "minecraft" / "the_nether" / "region"
         )
-        assert by_label[END_LABEL].region_dir == (
+        assert by_path["dimensions/minecraft/the_end"].region_dir == (
             world / "dimensions" / "minecraft" / "the_end" / "region"
         )
 
@@ -133,9 +140,9 @@ async def test_paper_multi_world_layout():
         assert names == sorted(["world", "world_nether", "world_the_end"])
 
         by_name = {r.name: r for r in roots}
-        assert [d.label for d in by_name["world"].dimensions] == [OVERWORLD_LABEL]
-        assert [d.label for d in by_name["world_nether"].dimensions] == [NETHER_LABEL]
-        assert [d.label for d in by_name["world_the_end"].dimensions] == [END_LABEL]
+        assert list(_by_dimension_path(by_name["world"])) == ["."]
+        assert list(_by_dimension_path(by_name["world_nether"])) == ["DIM-1"]
+        assert list(_by_dimension_path(by_name["world_the_end"])) == ["DIM1"]
 
 
 @pytest.mark.asyncio
@@ -150,7 +157,6 @@ async def test_pre_117_layout_has_no_entities_or_poi():
         roots = await discover_world_roots(data_path)
         assert len(roots) == 1
         overworld = roots[0].dimensions[0]
-        assert overworld.label == OVERWORLD_LABEL
         assert overworld.region_dir == world / "region"
         assert overworld.entities_dir is None
         assert overworld.poi_dir is None
@@ -169,9 +175,9 @@ async def test_legacy_custom_dimension_under_world_root():
         roots = await discover_world_roots(data_path)
 
         assert len(roots) == 1
-        by_label = {d.label: d for d in roots[0].dimensions}
-        assert set(by_label) == {OVERWORLD_LABEL, "DIM88"}
-        assert by_label["DIM88"].region_dir == world / "DIM88" / "region"
+        by_path = _by_dimension_path(roots[0])
+        assert set(by_path) == {".", "DIM88"}
+        assert by_path["DIM88"].region_dir == world / "DIM88" / "region"
 
 
 @pytest.mark.asyncio
@@ -231,17 +237,16 @@ async def test_deeply_nested_modded_dimensions():
         roots = await discover_world_roots(data_path)
 
         assert len(roots) == 1
-        labels = {d.label for d in roots[0].dimensions}
-        assert labels == {
-            OVERWORLD_LABEL,
-            NETHER_LABEL,
-            "allthemodium/mining",
-            "allthemodium/the_beyond",
-            "ad_astra/moon",
+        by_path = _by_dimension_path(roots[0])
+        assert set(by_path) == {
+            ".",
+            "DIM-1",
+            "dimensions/allthemodium/mining",
+            "dimensions/allthemodium/the_beyond",
+            "dimensions/ad_astra/moon",
         }
 
-        by_label = {d.label: d for d in roots[0].dimensions}
-        assert by_label["allthemodium/mining"].region_dir == (
+        assert by_path["dimensions/allthemodium/mining"].region_dir == (
             world / "dimensions" / "allthemodium" / "mining" / "region"
         )
 
@@ -268,10 +273,12 @@ async def test_deep_ftb_team_dimension_layout():
 
         assert len(roots) == 1
         dim = roots[0].dimensions[0]
-        assert dim.label == f"ftbteamdimensions/team/{team_id}"
         assert dim.region_dir == (
             world / "dimensions" / "ftbteamdimensions" / "team" / team_id / "region"
         )
+        assert _by_dimension_path(roots[0]) == {
+            f"dimensions/ftbteamdimensions/team/{team_id}": dim
+        }
 
 
 @pytest.mark.asyncio
@@ -284,13 +291,33 @@ async def test_walk_depth_bound_rejects_extreme_nesting():
         _touch(world / "region" / "r.0.0.mca")
 
         too_deep = world
-        for i in range(DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT + 2):
+        for i in range(WorldConfig().dimension_max_depth_from_world_root + 2):
             too_deep = too_deep / f"d{i}"
         _touch(too_deep / "region" / "r.0.0.mca")
 
         roots = await discover_world_roots(data_path)
-        labels = [d.label for d in roots[0].dimensions]
-        assert labels == [OVERWORLD_LABEL]
+        assert list(_by_dimension_path(roots[0])) == ["."]
+
+
+@pytest.mark.asyncio
+async def test_dimension_scan_depth_comes_from_config(monkeypatch):
+    monkeypatch.setattr(
+        layout_module,
+        "config",
+        SimpleNamespace(world=SimpleNamespace(dimension_max_depth_from_world_root=0)),
+    )
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "region" / "r.0.0.mca")
+        _touch(world / "DIM88" / "region" / "r.0.0.mca")
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        assert list(_by_dimension_path(roots[0])) == ["."]
 
 
 @pytest.mark.asyncio
@@ -306,8 +333,7 @@ async def test_data_root_cache_dir_is_not_a_world_root():
         roots = await discover_world_roots(data_path)
         assert len(roots) == 1
         assert roots[0].name == "world"
-        labels = [d.label for d in roots[0].dimensions]
-        assert labels == [OVERWORLD_LABEL]
+        assert list(_by_dimension_path(roots[0])) == ["."]
 
 
 @pytest.mark.asyncio

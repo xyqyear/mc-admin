@@ -60,7 +60,6 @@ export interface RestorationSelection {
 }
 
 export interface DimensionInfoResponse {
-  label: string
   region_dir: string
   entities_dir: string | null
   poi_dir: string | null
@@ -74,6 +73,10 @@ export interface WorldRootResponse {
 
 export interface WorldLayoutResponse {
   world_roots: WorldRootResponse[]
+}
+
+export interface DimensionLabelsResponse {
+  dimension_labels: Record<string, string>
 }
 
 export interface ListEligibleSnapshotsResponse {

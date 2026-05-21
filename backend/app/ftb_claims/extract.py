@@ -81,7 +81,6 @@ def _resolve_dimensions(
                 ClaimDimensionEntry(
                     ftb_id=ftb_id,
                     region_dir_relpath=rel,
-                    label=match.label,
                     exists_on_disk=True,
                 )
             )
@@ -91,7 +90,6 @@ def _resolve_dimensions(
                 ClaimDimensionEntry(
                     ftb_id=ftb_id,
                     region_dir_relpath=None,
-                    label=None,
                     exists_on_disk=exists_on_disk,
                 )
             )

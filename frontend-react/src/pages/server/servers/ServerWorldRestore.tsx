@@ -31,7 +31,10 @@ import { TeamClusterList } from '@/components/world-restore/claims/TeamClusterLi
 import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOverlay'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
-import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
+import {
+  useWorldDimensionLabels,
+  useWorldLayout,
+} from '@/hooks/queries/base/useWorldRestoreQueries'
 import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
 import ServerOperationButtons from '@/components/server/ServerOperationButtons'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
@@ -68,6 +71,7 @@ const ServerWorldRestore: React.FC = () => {
   const [initialView] = useState(() => parseInitialView(searchParams))
 
   const layoutQ = useWorldLayout(serverId)
+  const labelsQ = useWorldDimensionLabels(serverId)
   const { useServerStatus, useServerInfo } = useServerQueries()
   const statusQ = useServerStatus(serverId)
   const serverInfoQ = useServerInfo(serverId)
@@ -123,7 +127,7 @@ const ServerWorldRestore: React.FC = () => {
     }
     const root = roots[0]
     const dim =
-      root.dimensions.find((d) => d.label === 'Overworld') ??
+      root.dimensions.find((d) => dimensionPathOf(d.region_dir, root.path) === '.') ??
       root.dimensions[0] ??
       null
     return { rootList: roots, currentDimension: dim, currentRoot: root }
@@ -361,16 +365,23 @@ const ServerWorldRestore: React.FC = () => {
   const dimensionOptions = useMemo(() => {
     if (!layoutQ.data) return []
     const multipleRoots = layoutQ.data.world_roots.length > 1
+    const labels = labelsQ.data?.dimension_labels
     const out: Array<{ value: string; label: string }> = []
     for (const r of layoutQ.data.world_roots) {
       for (const d of r.dimensions) {
         const rel = relpathOf(d.region_dir, r.path)
-        const label = multipleRoots ? `${r.name} / ${d.label}` : d.label
+        const dimLabel = labelForDimension(d.region_dir, r.path, labels)
+        const label = multipleRoots ? `${r.name} / ${dimLabel}` : dimLabel
         out.push({ value: rel, label })
       }
     }
     return out
-  }, [layoutQ.data])
+  }, [layoutQ.data, labelsQ.data])
+
+  const dimensionLabelByRelpath = useMemo(
+    () => new Map(dimensionOptions.map((o) => [o.value, o.label])),
+    [dimensionOptions],
+  )
 
   if (!serverId) {
     return (
@@ -558,6 +569,7 @@ const ServerWorldRestore: React.FC = () => {
                         isLoading={claimsQ.isLoading}
                         isError={claimsQ.isError}
                         currentDimRelpath={regionRelpath}
+                        dimensionLabelByRelpath={dimensionLabelByRelpath}
                         mode={urlMode}
                         selection={selection}
                         overlayVisible={overlayVisible}
@@ -626,6 +638,28 @@ function relpathOf(regionDir: string, worldRootPath: string): string {
     return `${rootBase}/${regionDir.split(sep).pop() ?? ''}`
   }
   return regionDir.slice(idx + 1)
+}
+
+function dimensionPathOf(regionDir: string, worldRootPath: string): string {
+  const region = regionDir.replace(/\/+$/, '')
+  const root = worldRootPath.replace(/\/+$/, '')
+  const suffix = '/region'
+  const dimensionDir = region.endsWith(suffix)
+    ? region.slice(0, -suffix.length)
+    : region
+  if (dimensionDir === root) return '.'
+  const prefix = `${root}/`
+  if (dimensionDir.startsWith(prefix)) return dimensionDir.slice(prefix.length)
+  return dimensionDir.split('/').pop() ?? dimensionDir
+}
+
+function labelForDimension(
+  regionDir: string,
+  worldRootPath: string,
+  labels: Record<string, string> | undefined,
+): string {
+  const dimensionPath = dimensionPathOf(regionDir, worldRootPath)
+  return labels?.[dimensionPath] ?? dimensionPath.replace(/^dimensions\//, '')
 }
 
 export default ServerWorldRestore

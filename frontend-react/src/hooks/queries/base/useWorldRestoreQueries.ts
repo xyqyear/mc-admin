@@ -12,6 +12,13 @@ export const useWorldLayout = (serverId: string | undefined) =>
     staleTime: 30_000,
   })
 
+export const useWorldDimensionLabels = (serverId: string | undefined) =>
+  useQuery({
+    queryKey: queryKeys.worldRestore.dimensionLabels(serverId ?? ''),
+    queryFn: () => worldRestoreApi.getDimensionLabels(serverId!),
+    enabled: !!serverId,
+  })
+
 export const useEligibleSnapshots = (
   serverId: string | undefined,
   selection: RestorationSelection | null,

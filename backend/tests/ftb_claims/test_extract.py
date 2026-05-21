@@ -133,16 +133,13 @@ async def test_extract_resolves_dim_and_groups_clusters(world_data_path):
     by_id = {d.ftb_id: d for d in result.dimensions}
     overworld = by_id["minecraft:overworld"]
     assert overworld.region_dir_relpath == "world/region"
-    assert overworld.label == "Overworld"
     assert overworld.exists_on_disk is True
 
     nether = by_id["minecraft:the_nether"]
     assert nether.region_dir_relpath == "world/DIM-1/region"
-    assert nether.label == "Nether"
 
     mining = by_id["allthemodium:mining"]
     assert mining.region_dir_relpath is None
-    assert mining.label is None
     assert mining.exists_on_disk is False
 
     # Teams

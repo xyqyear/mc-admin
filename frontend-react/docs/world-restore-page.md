@@ -14,6 +14,11 @@ The set of selected chunks is *not* in the URL — it's transient state in `useW
 
 When no params are present, the page auto-selects the first world root's Overworld dimension.
 
+Display labels are fetched separately from `GET /world-restore/dimension-labels`.
+The layout response remains path-only; the page translates each dimension's
+world-root-relative path through the label mapping and falls back to the raw
+path without a leading `dimensions/`.
+
 ### Why `?dim` carries the relpath, not separate root + dim
 
 The world root's directory name is the first segment of `region_dir_relpath` (`world/region`, `world/dimensions/minecraft/the_nether/region`, …). That makes the relpath unique across all roots on a server, so the URL doesn't need a separate `?root=` parameter. Multi-world Bukkit/Paper setups stay unambiguous with one string.

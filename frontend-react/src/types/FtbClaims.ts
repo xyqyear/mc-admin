@@ -11,7 +11,6 @@ export interface FtbClaimMember {
 export interface FtbDimensionEntry {
   ftb_id: string
   region_dir_relpath: string | null
-  label: string | null
   exists_on_disk: boolean
 }
 

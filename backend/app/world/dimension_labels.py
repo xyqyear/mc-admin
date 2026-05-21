@@ -1,19 +1,25 @@
 from pathlib import Path
 
-OVERWORLD_LABEL = "Overworld"
-NETHER_LABEL = "Nether"
-END_LABEL = "End"
+from ..dynamic_config import config
+from ..dynamic_config.configs.world import (
+    DIMENSION_LABELS,
+    END_LABEL,
+    NETHER_LABEL,
+    OVERWORLD_LABEL,
+)
+
 DIMENSIONS_PREFIX = "dimensions/"
-VANILLA_DIMENSION_LABELS = {
-    ".": OVERWORLD_LABEL,
-    "DIM-1": NETHER_LABEL,
-    "DIM1": END_LABEL,
-    "dimensions/minecraft/overworld": OVERWORLD_LABEL,
-    "dimensions/minecraft/the_nether": NETHER_LABEL,
-    "dimensions/minecraft/the_end": END_LABEL,
-}
+
+
+def dimension_path_for_dir(world_root: Path, dimension_dir: Path) -> str:
+    return dimension_dir.relative_to(world_root).as_posix()
+
+
+def label_for_dimension_path(dimension_path: str) -> str:
+    return config.world.dimension_labels.get(
+        dimension_path, dimension_path.removeprefix(DIMENSIONS_PREFIX)
+    )
 
 
 def label_for_dimension_dir(world_root: Path, dimension_dir: Path) -> str:
-    rel = dimension_dir.relative_to(world_root).as_posix()
-    return VANILLA_DIMENSION_LABELS.get(rel, rel.removeprefix(DIMENSIONS_PREFIX))
+    return label_for_dimension_path(dimension_path_for_dir(world_root, dimension_dir))

@@ -58,9 +58,10 @@ root). The orchestrator joins that with the world root's path + `region/` and
 looks up the result in `discover_world_roots`'s `region_dir` index. When the
 candidate matches a `DimensionInfo`, the response carries the canonical
 `region_dir_relpath` (the same value the world-restore selection model
-expects) plus the layout's human label. Otherwise both fields are `None` and
-the cluster keeps `region_dir_relpath=None` — the frontend renders these
-clusters but disables the in-dim selection actions for them.
+expects). Otherwise the field is `None` and the cluster keeps
+`region_dir_relpath=None` — the frontend renders these clusters but disables
+the in-dim selection actions for them. Display labels come from the separate
+world-restore dimension-label endpoint used by the layout page.
 
 The layout discovery covers root-level legacy/custom dims such as
 `<world>/DIM88/region/`, nested modern/modded dims such as

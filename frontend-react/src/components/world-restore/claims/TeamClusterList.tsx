@@ -31,6 +31,7 @@ interface TeamClusterListProps {
   isLoading: boolean
   isError: boolean
   currentDimRelpath: string | null
+  dimensionLabelByRelpath: Map<string, string>
   mode: WorldRestoreSelectionMode
   selection: Set<ChunkKey>
   overlayVisible: boolean
@@ -80,6 +81,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   isLoading,
   isError,
   currentDimRelpath,
+  dimensionLabelByRelpath,
   mode,
   selection,
   overlayVisible,
@@ -206,6 +208,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
             onToggle={() => toggleExpand(team.id)}
             mode={mode}
             currentDimRelpath={currentDimRelpath}
+            dimensionLabelByRelpath={dimensionLabelByRelpath}
             selection={selection}
             onTeamHover={onTeamHover}
             onTeamSelectInDim={onTeamSelectInDim}
@@ -225,6 +228,7 @@ interface TeamRowProps {
   onToggle: () => void
   mode: WorldRestoreSelectionMode
   currentDimRelpath: string | null
+  dimensionLabelByRelpath: Map<string, string>
   selection: Set<ChunkKey>
   onTeamHover: (clusterIds: Set<string> | null) => void
   onTeamSelectInDim: (team: FtbTeamEntry) => void
@@ -239,6 +243,7 @@ const TeamRow: React.FC<TeamRowProps> = ({
   onToggle,
   mode,
   currentDimRelpath,
+  dimensionLabelByRelpath,
   selection,
   onTeamHover,
   onTeamSelectInDim,
@@ -297,6 +302,7 @@ const TeamRow: React.FC<TeamRowProps> = ({
               isCurrentDim={c.region_dir_relpath === currentDimRelpath}
               accent={color.stroke}
               mode={mode}
+              dimensionLabelByRelpath={dimensionLabelByRelpath}
               selection={selection}
               onClusterHover={onClusterHover}
               onClusterClick={onClusterClick}
@@ -327,6 +333,7 @@ interface ClusterRowProps {
   isCurrentDim: boolean
   accent: string
   mode: WorldRestoreSelectionMode
+  dimensionLabelByRelpath: Map<string, string>
   selection: Set<ChunkKey>
   onClusterHover: (clusterIds: Set<string> | null) => void
   onClusterClick: (cluster: FtbClusterEntry) => void
@@ -338,6 +345,7 @@ const ClusterRow: React.FC<ClusterRowProps> = ({
   isCurrentDim,
   accent,
   mode,
+  dimensionLabelByRelpath,
   selection,
   onClusterHover,
   onClusterClick,
@@ -367,7 +375,8 @@ const ClusterRow: React.FC<ClusterRowProps> = ({
         </div>
         {!isCurrentDim && cluster.region_dir_relpath && (
           <div className="truncate text-[10px] text-muted-foreground">
-            {cluster.region_dir_relpath}
+            {dimensionLabelByRelpath.get(cluster.region_dir_relpath) ??
+              cluster.region_dir_relpath}
           </div>
         )}
       </div>

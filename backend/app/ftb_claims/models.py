@@ -21,7 +21,6 @@ class ClaimMember(BaseModel):
 class ClaimDimensionEntry(BaseModel):
     ftb_id: str
     region_dir_relpath: Optional[str] = None
-    label: Optional[str] = None
     exists_on_disk: bool
 
 

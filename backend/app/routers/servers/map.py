@@ -25,6 +25,7 @@ from ...mcmap import runner as mcmap_runner
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
+from ...world.dimension_labels import label_for_dimension_dir
 from ...world.layout import WorldLayoutDiscoveryError
 from ...world.layout_cache import get_cached_world_roots
 from ...world.region_files import parse_region_filename
@@ -92,7 +93,7 @@ async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
             results.append(
                 DimensionInfo(
                     region_path=region_path,
-                    label=dim.label,
+                    label=label_for_dimension_dir(root.path, dim.region_dir.parent),
                     mca_count=mca_count,
                 )
             )

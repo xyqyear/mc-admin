@@ -12,6 +12,7 @@ from sqlalchemy import desc, func, select, update
 from ... import world as world_subsystem
 from ...db.database import get_async_session
 from ...dependencies import get_current_user
+from ...dynamic_config import config
 from ...ftb_claims import (
     ClaimsResponse,
     FtbExtractError,
@@ -92,7 +93,6 @@ def _sse(event_obj: dict) -> bytes:
 
 
 class DimensionInfoResponse(BaseModel):
-    label: str
     region_dir: str
     entities_dir: Optional[str] = None
     poi_dir: Optional[str] = None
@@ -106,6 +106,10 @@ class WorldRootResponse(BaseModel):
 
 class WorldLayoutResponse(BaseModel):
     world_roots: List[WorldRootResponse]
+
+
+class DimensionLabelsResponse(BaseModel):
+    dimension_labels: dict[str, str]
 
 
 class ListEligibleSnapshotsResponse(BaseModel):
@@ -197,7 +201,6 @@ def _world_root_to_response(root: WorldRoot) -> WorldRootResponse:
         path=str(root.path),
         dimensions=[
             DimensionInfoResponse(
-                label=d.label,
                 region_dir=str(d.region_dir),
                 entities_dir=str(d.entities_dir) if d.entities_dir else None,
                 poi_dir=str(d.poi_dir) if d.poi_dir else None,
@@ -227,6 +230,17 @@ async def get_layout(
 
     roots = await _get_world_roots(data_path)
     return WorldLayoutResponse(world_roots=[_world_root_to_response(r) for r in roots])
+
+
+@router.get(
+    "/{server_id}/world-restore/dimension-labels",
+    response_model=DimensionLabelsResponse,
+)
+async def get_dimension_labels(
+    server_id: str, _: UserPublic = Depends(get_current_user)
+) -> DimensionLabelsResponse:
+    await _ensure_server_exists(server_id)
+    return DimensionLabelsResponse(dimension_labels=dict(config.world.dimension_labels))
 
 
 # --- FTB claims ------------------------------------------------------------
