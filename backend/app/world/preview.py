@@ -17,16 +17,13 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import aiofiles.os as aioos
 
+from ..dynamic_config import config
 from ..utils import async_fs
 
 if TYPE_CHECKING:
     from ..mcmap.queue import ServerRenderQueue
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TTL_SECONDS = 600
-DEFAULT_JANITOR_INTERVAL_SECONDS = 60
-AVG_REGION_BYTES = 8 * 1024 * 1024
 
 
 class PreviewDiskGuardError(RuntimeError):
@@ -90,15 +87,8 @@ def _utcnow() -> datetime:
 class PreviewSessionManager:
     """Manage ``/tmp`` preview session dirs, heartbeats, and the janitor loop."""
 
-    def __init__(
-        self,
-        base_dir: Path,
-        ttl_seconds: int = DEFAULT_TTL_SECONDS,
-        janitor_interval_seconds: int = DEFAULT_JANITOR_INTERVAL_SECONDS,
-    ) -> None:
+    def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
-        self.ttl_seconds = ttl_seconds
-        self.janitor_interval_seconds = janitor_interval_seconds
         self._sessions: dict[str, _Session] = {}
         self._server_to_session: dict[str, str] = {}
         self._janitor_task: Optional[asyncio.Task] = None
@@ -112,7 +102,8 @@ class PreviewSessionManager:
 
         Raises ``PreviewDiskGuardError`` if free space is below the heuristic.
         """
-        required = max(affected_regions, 1) * AVG_REGION_BYTES * 2
+        region_bytes = config.snapshots.world_restore.preview_avg_region_bytes
+        required = max(affected_regions, 1) * region_bytes * 2
         free = await self.disk_free_bytes()
         if free < required:
             raise PreviewDiskGuardError(free=free, required=required)
@@ -192,7 +183,9 @@ class PreviewSessionManager:
         return usage.free
 
     def _ttl(self) -> timedelta:
-        return timedelta(seconds=self.ttl_seconds)
+        return timedelta(
+            seconds=config.snapshots.world_restore.preview_session_ttl_seconds
+        )
 
     async def reap_stale(self) -> list[str]:
         """End sessions whose ``last_seen`` is older than the TTL; return their ids."""
@@ -221,7 +214,10 @@ class PreviewSessionManager:
         """Reap stale sessions and orphan dirs forever; tolerant of transient errors."""
         while True:
             try:
-                await asyncio.sleep(self.janitor_interval_seconds)
+                interval = (
+                    config.snapshots.world_restore.preview_janitor_interval_seconds
+                )
+                await asyncio.sleep(interval)
                 await self.reap_stale()
                 await self.reap_orphan_dirs()
             except asyncio.CancelledError:

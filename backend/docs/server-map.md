@@ -46,7 +46,7 @@ Tile URLs include `?mt=<mca_mtime>` so the browser HTTP cache busts automaticall
 
 A `ServerRenderQueue` exists per `(server_id, region_path)` pair. Including `region_path` in the key guarantees a single `mcmap render --split` invocation never mixes regions from different dimensions, so PNGs always land in the correct subfolder.
 
-**Batching**: a worker collects up to `batch_size` pending coordinates and runs them in one `mcmap render --split --preserve-mtime -j <thread_count>` invocation. The subprocess streams a `region` NDJSON event per output; the worker resolves each waiter's future as the matching event arrives. Any region the subprocess never emits (e.g. terminated mid-batch) gets a `RenderError`.
+**Batching**: a worker collects up to `batch_size` pending coordinates and runs them in one `mcmap render --split --preserve-mtime -j <thread_count>` invocation. The queue reads `config.mcmap` for each batch, so dynamic config edits affect the next render invocation without rebuilding the queue. The subprocess streams a `region` NDJSON event per output; the worker resolves each waiter's future as the matching event arrives. Any region the subprocess never emits (e.g. terminated mid-batch) gets a `RenderError`.
 
 **Coalescing**: duplicate `(x, z)` requests share one `asyncio.Future`. The consumer's `await` is wrapped in `asyncio.shield` so cancelling one consumer does not disturb others.
 
@@ -65,23 +65,24 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 ## Dimension discovery
 
 `GET /dimensions` projects the cached `app.world.layout` discovery into the
-mcmap response shape. Region paths remain relative to `data/`, while labels
-come from the shared `app.world.dimension_labels` rules used by world restore:
-Overworld for the world root, Nether/End for `DIM-1`/`DIM1`, vanilla names for
-`dimensions/minecraft/*`, and the world-root-relative dimension path without a
-leading `dimensions/` for custom modded dimensions.
+mcmap response shape. The cached layout is path-only; this route computes
+legacy map-client labels at response time from the shared
+`config.world.dimension_labels` mapping. The world-restore page fetches labels
+separately through `GET /world-restore/dimension-labels` and translates paths in
+the frontend.
 
 ## Settings
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`).
 - Dynamic (`mcmap` schema): `batch_size`, `thread_count`, `request_timeout_seconds`.
+- Dynamic (`world` schema): `layout_cache_ttl_seconds`, `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
 
 ## Endpoints
 
 Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
-- `GET /dimensions` — auto-discovered region folders from `app.world.layout`, with shared world-restore dimension labels
+- `GET /dimensions` — auto-discovered region folders from `app.world.layout`, with route-time labels for map clients
 - `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples from `app.world.region_manifest` for every non-empty regular `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
 - `POST /initialize` — two-stage SSE
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)

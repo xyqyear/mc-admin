@@ -5,16 +5,38 @@ import asyncio
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.dynamic_config.configs.snapshots import WorldRestoreConfig
 from app.world.preview import (
-    AVG_REGION_BYTES,
     PreviewDiskGuardError,
     PreviewSessionManager,
     PreviewSessionNotFoundError,
 )
+
+default_region_bytes = WorldRestoreConfig().preview_avg_region_bytes
+
+
+def _restore_config(
+    *,
+    ttl_seconds: int = 60,
+    janitor_interval_seconds: int = 5,
+    region_bytes: int = default_region_bytes,
+):
+    return SimpleNamespace(
+        preview_session_ttl_seconds=ttl_seconds,
+        preview_janitor_interval_seconds=janitor_interval_seconds,
+        preview_avg_region_bytes=region_bytes,
+    )
+
+
+def _runtime_config(**kwargs):
+    return SimpleNamespace(
+        snapshots=SimpleNamespace(world_restore=_restore_config(**kwargs))
+    )
 
 
 @pytest.fixture
@@ -24,10 +46,12 @@ def base_dir():
 
 
 @pytest.fixture
-def manager(base_dir):
-    return PreviewSessionManager(
-        base_dir=base_dir, ttl_seconds=60, janitor_interval_seconds=5
+def manager(base_dir, monkeypatch):
+    monkeypatch.setattr(
+        "app.world.preview.config",
+        _runtime_config(),
     )
+    return PreviewSessionManager(base_dir=base_dir)
 
 
 @pytest.mark.asyncio
@@ -88,7 +112,7 @@ async def test_reap_stale_sessions(manager):
     stale_sid = stale.name
     # Force stale session's last_seen to be older than TTL.
     manager._sessions[stale_sid].last_seen = datetime.now(timezone.utc) - timedelta(
-        seconds=manager.ttl_seconds + 60
+        seconds=60 + 60
     )
     reaped = await manager.reap_stale()
     assert reaped == [stale_sid]
@@ -117,12 +141,24 @@ async def test_reap_orphan_dirs(manager, base_dir):
 async def test_disk_guard_raises_when_free_too_low(manager):
     """Mock disk_free_bytes to simulate near-full disk."""
     with patch.object(
-        manager, "disk_free_bytes", new=AsyncMock(return_value=AVG_REGION_BYTES)
+        manager, "disk_free_bytes", new=AsyncMock(return_value=default_region_bytes)
     ):
         with pytest.raises(PreviewDiskGuardError) as exc:
             await manager.create_session("srv1", affected_regions=100)
-    assert exc.value.free == AVG_REGION_BYTES
+    assert exc.value.free == default_region_bytes
     assert exc.value.required > exc.value.free
+
+
+@pytest.mark.asyncio
+async def test_disk_guard_uses_dynamic_region_size(manager, monkeypatch):
+    monkeypatch.setattr(
+        "app.world.preview.config",
+        _runtime_config(region_bytes=4096),
+    )
+    with patch.object(manager, "disk_free_bytes", new=AsyncMock(return_value=4096)):
+        with pytest.raises(PreviewDiskGuardError) as exc:
+            await manager.create_session("srv1", affected_regions=1)
+    assert exc.value.required == 4096 * 2
 
 
 @pytest.mark.asyncio
@@ -152,12 +188,14 @@ async def test_janitor_loop_starts_and_stops_cleanly(manager):
 
 
 @pytest.mark.asyncio
-async def test_janitor_reaps_stale_in_background(base_dir):
+async def test_janitor_reaps_stale_in_background(base_dir, monkeypatch):
     """End-to-end: spin up a janitor with a tight interval; create a stale
     session; verify it's reaped within a reasonable time window."""
-    manager = PreviewSessionManager(
-        base_dir=base_dir, ttl_seconds=1, janitor_interval_seconds=1
+    monkeypatch.setattr(
+        "app.world.preview.config",
+        _runtime_config(ttl_seconds=1, janitor_interval_seconds=1),
     )
+    manager = PreviewSessionManager(base_dir=base_dir)
     session_dir = await manager.create_session("srv1")
     sid = session_dir.name
     # Backdate last_seen so it's already stale.

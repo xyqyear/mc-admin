@@ -3,15 +3,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..dynamic_config import config
 from .layout import WorldRoot, discover_world_roots
-
-LAYOUT_CACHE_TTL_SECONDS = 5.0
 
 
 @dataclass
 class _CacheEntry:
     value: list[WorldRoot] | None
-    expires_at: float
+    cached_at: float
     task: asyncio.Task[list[WorldRoot]] | None
 
 
@@ -26,7 +25,8 @@ async def get_cached_world_roots(data_path: Path) -> list[WorldRoot]:
     async with _lock:
         entry = _cache.get(key)
         if entry is not None:
-            if entry.value is not None and entry.expires_at > now:
+            ttl = config.world.layout_cache_ttl_seconds
+            if entry.value is not None and entry.cached_at + ttl > now:
                 return entry.value
             if entry.task is not None and not entry.task.done():
                 task = entry.task
@@ -50,7 +50,7 @@ async def get_cached_world_roots(data_path: Path) -> list[WorldRoot]:
         entry = _cache.get(key)
         if entry is not None and entry.task is task:
             entry.value = value
-            entry.expires_at = time.monotonic() + LAYOUT_CACHE_TTL_SECONDS
+            entry.cached_at = time.monotonic()
             entry.task = None
     return value
 

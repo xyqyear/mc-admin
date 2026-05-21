@@ -60,6 +60,10 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The frontend polls `/api/tasks/{id}`. Used by archive compression, server population, server rebuild, world restore. Implementation guide: `.claude/background-tasks-guide.md`.
 
+## Dynamic config
+
+Read runtime-tunable dynamic config at the point of behavior, not in long-lived constructors. Constructor-captured dynamic config needs an explicit refresh/rebuild path.
+
 ## Audit middleware
 
 `app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Sensitive field names (`password`, `token`, `secret`, `key`) are masked. Configured via `[audit]` in `config.toml`.

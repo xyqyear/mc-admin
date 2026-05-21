@@ -28,19 +28,20 @@ returned first; other roots are sorted by name.
 
 Within each root, discovery looks for real terrain `region/` directories
 rather than branching by dimension family. The backend requires `fd`: it finds
-directories named `region` up to five components below the world root, then
-keeps only those containing valid `r.X.Z.mca` files. This covers root
+directories named `region` up to the configured world-layout depth, then keeps
+only those containing valid `r.X.Z.mca` files. This covers root
 overworlds, legacy/custom root-child dimensions such as `DIM88`, modern
 `dimensions/<namespace>/<name>` dimensions, and deeper FTB team dimensions
 such as `dimensions/ftbteamdimensions/team/<uuid>`. If `fd` is missing or
 fails, layout discovery fails with `WorldLayoutDiscoveryError`.
 
-Dimension labels come from `app.world.dimension_labels`: the root dimension is
-Overworld, `DIM-1` is Nether, `DIM1` is End, vanilla
-`dimensions/minecraft/*` directories map to their vanilla names, and custom
-dimensions use their world-root-relative path without a leading `dimensions/`.
-The server map endpoint uses the same discovered layout, so both features
-present identical labels.
+Layout discovery is path-only; `WorldRoot` and `DimensionInfo` do not carry
+display labels. `GET /dimension-labels` returns `config.world.dimension_labels`,
+keyed by world-root-relative dimension path. Defaults cover the root dimension
+as Overworld, `DIM-1` as Nether, `DIM1` as End, and vanilla
+`dimensions/minecraft/*` directories. Frontend code translates discovered paths
+with that mapping and falls back to the world-root-relative path without a
+leading `dimensions/`.
 
 `app.world.layout_cache` wraps layout discovery with a short in-memory TTL and
 coalesces concurrent requests per `data_path`. The world-restore page opens
@@ -66,10 +67,10 @@ The cron backup job calls `server_operation_lock.is_locked(server_id)` before ru
 Previewing a restore means showing the user what the world *would* look like after the restore, without touching live data.
 
 - **One session per server.** Starting a new preview tears down the prior session for that server.
-- **Tmpdir layout.** Sessions live under `restore_temp_dir/<session_id>/` (default `/tmp/mc-admin-world-restore/`). Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
+- **Tmpdir layout.** Sessions live under `/tmp/mc-admin-world-restore/<session_id>/`. Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
 - **Lazy tile rendering.** `begin_preview` only stages MCAs (restic restore + optional chunk merge) and attaches a per-session `ServerRenderQueue` before emitting `ready`. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `request_preview_tile` is the orchestrator's tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set.
 - **Heartbeat-driven TTL.** Default 30 minutes. The browser pings every 30 s; on close, `DELETE /preview/{session_id}` tears down. A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Tearing down a session also calls `ServerRenderQueue.shutdown()` to cancel the worker, fail outstanding waiters, and terminate any running mcmap subprocess.
-- **Disk threshold guard.** Estimated cost is `affected_regions × 8 MiB × 2`; preview returns 507 with `{"free", "required"}` if the FS lacks the headroom.
+- **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; preview returns 507 with `{"free", "required"}` if the FS lacks the headroom.
 
 ## Subprocess ownership
 
@@ -86,20 +87,23 @@ On startup, `mark_running_restorations_interrupted()` flips any such rows to `IN
 `app.main` lifespan, in order:
 
 1. `mark_running_restorations_interrupted()` flips stuck rows.
-2. `initialize_world_restore_orchestrator()` builds the singleton with values from `config.snapshots.world_restore.*`. No-op if restic isn't configured.
+2. `initialize_world_restore_orchestrator()` builds the singleton when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
 3. `start_janitor()` launches the preview janitor task; `stop_janitor()` cancels it on shutdown.
 
 The router accesses the orchestrator via `from ... import world as world_subsystem` and reads `world_subsystem.world_restore_orchestrator` *at request time* — so the lifespan-time reassignment is observed even though the binding is module-level.
 
 ## Settings
 
-Dynamic (`snapshots.world_restore` schema): `restore_temp_dir`, `temp_disk_threshold_bytes`, `preview_session_ttl_seconds`, `preview_janitor_interval_seconds`.
+Dynamic (`snapshots.world_restore` schema): `preview_session_ttl_seconds`, `preview_janitor_interval_seconds`, `preview_avg_region_bytes`.
+
+Dynamic (`world` schema): `layout_cache_ttl_seconds`, `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
 
 ## Endpoints
 
 Mounted under `/api/servers/{server_id}/world-restore/`:
 
-- `GET /layout` — cached world roots + dimensions (shared dimension labels; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
+- `GET /layout` — cached world roots + path-only dimensions (`region_dir`, `entities_dir`, `poi_dir`)
+- `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
 - `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
 - `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held
 - `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (start → stage → merge_region → render_progress → ready); returns `session_id` in the `ready` event

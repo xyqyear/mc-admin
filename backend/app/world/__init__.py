@@ -1,13 +1,15 @@
 """World subsystem: layout discovery, per-server locking, restore orchestration."""
 
-from pathlib import Path
 from typing import Optional
 
 from .dimension_labels import (
+    DIMENSION_LABELS,
     END_LABEL,
     NETHER_LABEL,
     OVERWORLD_LABEL,
+    dimension_path_for_dir,
     label_for_dimension_dir,
+    label_for_dimension_path,
 )
 from .layout import (
     DEFAULT_LEVEL_NAME,
@@ -49,22 +51,17 @@ def initialize_world_restore_orchestrator() -> Optional[WorldRestoreOrchestrator
         return world_restore_orchestrator
 
     from ..db.database import get_async_session
-    from ..dynamic_config import config
     from ..minecraft import docker_mc_manager
     from ..snapshots import restic_manager
 
     if restic_manager is None:
         return None
 
-    cfg = config.snapshots.world_restore
     world_restore_orchestrator = WorldRestoreOrchestrator(
         restic_manager=restic_manager,
         docker_mc_manager=docker_mc_manager,
         server_operation_lock=server_operation_lock,
         session_factory=get_async_session,
-        preview_base_dir=Path(cfg.restore_temp_dir),
-        preview_ttl_seconds=cfg.preview_session_ttl_seconds,
-        preview_janitor_interval_seconds=cfg.preview_janitor_interval_seconds,
     )
     return world_restore_orchestrator
 
@@ -77,6 +74,7 @@ def reset_world_restore_orchestrator() -> None:
 
 __all__ = [
     "DEFAULT_LEVEL_NAME",
+    "DIMENSION_LABELS",
     "DimensionInfo",
     "END_LABEL",
     "GLOBAL_LOCK_KEY",
@@ -95,10 +93,12 @@ __all__ = [
     "WorldRoot",
     "clear_world_layout_cache",
     "discover_world_roots",
+    "dimension_path_for_dir",
     "get_cached_world_roots",
     "initialize_world_restore_orchestrator",
     "invalidate_world_layout",
     "label_for_dimension_dir",
+    "label_for_dimension_path",
     "reset_world_restore_orchestrator",
     "server_operation_lock",
     "world_restore_orchestrator",

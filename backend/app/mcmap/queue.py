@@ -100,7 +100,6 @@ class ServerRenderQueue:
                 asyncio.create_task(proc.terminate())
 
     async def _worker(self) -> None:
-        cfg = config.mcmap
         while True:
             try:
                 first = await asyncio.wait_for(
@@ -110,6 +109,7 @@ class ServerRenderQueue:
                 self._worker_task = None
                 return
 
+            cfg = config.mcmap
             batch: List[_PendingRequest] = [first]
             try:
                 while len(batch) < cfg.batch_size:

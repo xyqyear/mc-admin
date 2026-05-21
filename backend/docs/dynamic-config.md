@@ -1,6 +1,6 @@
 # Dynamic Configuration (`app.dynamic_config`)
 
-Runtime-editable configuration with schema migration. Settings that change behavior of running services (DNS provider credentials, snapshot retention, log-parsing regex, mcmap render parallelism, world-restore tmpdir) live here, not in `config.toml`. Editable through the web UI; persisted in the `DynamicConfig` table; cached in memory; survives schema upgrades.
+Runtime-editable configuration with schema migration. Settings that change behavior of running services (DNS provider credentials, snapshot retention, log-parsing regex, mcmap render parallelism, world layout discovery, world-restore preview behavior) live here, not in `config.toml`. Editable through the web UI; persisted in the `DynamicConfig` table; cached in memory; survives schema upgrades.
 
 ## Why a separate config layer
 
@@ -10,7 +10,7 @@ Runtime-editable configuration with schema migration. Settings that change behav
 
 One row per registered config module. The row holds:
 
-- `module_name` — the schema's namespace key (`dns`, `snapshots`, `players`, `log_parser`, `mcmap`)
+- `module_name` — the schema's namespace key (`dns`, `snapshots`, `players`, `log_parser`, `mcmap`, `world`)
 - `version` — the schema version this row was written against
 - `data_json` — the serialized Pydantic model
 
@@ -38,15 +38,20 @@ if config.snapshots.time_restriction.enabled:
 
 Updates flow through `config_manager.update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
 
+Runtime-tunable values are read at the point of behavior, not copied into
+long-lived singletons during construction. If a subsystem must cache derived
+state from dynamic config, it needs an explicit refresh/rebuild path.
+
 ## Registered modules
 
 In `dynamic_config/configs/`:
 
 - `dns.py` — provider, credentials, managed sub-domain, auto-update flag
-- `snapshots.py` — retention, time restrictions, world-restore knobs (tmpdir, disk threshold, preview TTL, janitor interval)
+- `snapshots.py` — retention, time restrictions, world-restore knobs (preview TTL, janitor interval, preview region-size estimate)
 - `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
 - `mcmap.py` — `batch_size`, `thread_count`, `request_timeout_seconds`
+- `world.py` — layout cache TTL, region stat workers, dimension scan depth, dimension labels
 
 ## JSON schema → frontend forms
 

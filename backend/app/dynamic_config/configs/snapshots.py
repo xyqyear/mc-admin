@@ -20,17 +20,6 @@ class TimeRestrictionConfig(BaseConfigSchema):
 class WorldRestoreConfig(BaseConfigSchema):
     """世界恢复(临时目录与预览会话)配置子模型"""
 
-    restore_temp_dir: Annotated[
-        str,
-        Field(description="临时世界恢复目录的根路径(用于暂存快照与预览数据)"),
-    ] = "/tmp/mc-admin-world-restore"
-    temp_disk_threshold_bytes: Annotated[
-        int,
-        Field(
-            description="临时目录所需的最少可用磁盘空间(字节);低于此值则拒绝创建预览",
-            ge=0,
-        ),
-    ] = 2 * 1024**3
     preview_session_ttl_seconds: Annotated[
         int,
         Field(description="预览会话存活时间(秒);超过此时间未心跳的会话会被清理", ge=60),
@@ -39,6 +28,13 @@ class WorldRestoreConfig(BaseConfigSchema):
         int,
         Field(description="预览清理任务的轮询间隔(秒)", ge=10),
     ] = 60
+    preview_avg_region_bytes: Annotated[
+        int,
+        Field(
+            description="预览磁盘空间估算中每个 MCA region 的平均字节数",
+            ge=1,
+        ),
+    ] = 8 * 1024 * 1024
 
 
 class SnapshotsConfig(BaseConfigSchema):

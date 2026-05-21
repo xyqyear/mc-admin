@@ -5,9 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ..dynamic_config import config
 from .region_files import parse_region_filename
-
-REGION_STAT_WORKERS = 32
 
 
 async def list_region_manifest(region_dir: Path) -> List[Tuple[int, int, int]]:
@@ -30,7 +29,7 @@ def list_region_manifest_sync(region_dir: Path) -> List[Tuple[int, int, int]]:
             candidates.append((entry.path, x, z))
 
     rows: List[Tuple[int, int, int]] = []
-    workers = min(REGION_STAT_WORKERS, len(candidates))
+    workers = min(config.world.region_stat_workers, len(candidates))
     if workers <= 1:
         for candidate in candidates:
             coord = _stat_region_candidate(candidate)

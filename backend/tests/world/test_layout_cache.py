@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,4 +34,28 @@ async def test_layout_cache_coalesces_concurrent_discovery(monkeypatch):
 
     assert await layout_cache.get_cached_world_roots(Path("/srv")) is roots
     assert calls == 1
+    await layout_cache.clear_world_layout_cache()
+
+
+@pytest.mark.asyncio
+async def test_layout_cache_uses_dynamic_ttl(monkeypatch):
+    await layout_cache.clear_world_layout_cache()
+    calls = 0
+    roots = [WorldRoot(name="world", path=Path("/srv/world"), dimensions=[])]
+
+    async def fake_discover(data_path: Path):
+        nonlocal calls
+        calls += 1
+        return roots
+
+    monkeypatch.setattr(layout_cache, "discover_world_roots", fake_discover)
+    monkeypatch.setattr(
+        layout_cache,
+        "config",
+        SimpleNamespace(world=SimpleNamespace(layout_cache_ttl_seconds=0.0)),
+    )
+
+    assert await layout_cache.get_cached_world_roots(Path("/srv")) is roots
+    assert await layout_cache.get_cached_world_roots(Path("/srv")) is roots
+    assert calls == 2
     await layout_cache.clear_world_layout_cache()

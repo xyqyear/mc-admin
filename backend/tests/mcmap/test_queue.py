@@ -40,11 +40,12 @@ def _patched_runner(events_per_call):
 
     events_per_call: list of event lists, one per render invocation.
     """
-    calls = {"i": 0, "mcas": []}
+    calls = {"i": 0, "mcas": [], "threads": []}
 
     @asynccontextmanager
     async def fake_render(*, palette, output_dir, mcas, threads, owned_by):
         calls["mcas"].append(list(mcas))
+        calls["threads"].append(threads)
         i = calls["i"]
         calls["i"] += 1
         proc = FakeProc(events_per_call[i] if i < len(events_per_call) else [])
@@ -199,3 +200,26 @@ async def test_missing_event_for_requested_region_raises(cache_and_queue):
         # First one resolves, second one errors out
         assert isinstance(results[0], Path)
         assert isinstance(results[1], MCMapError)
+
+
+async def test_worker_reads_mcmap_config_for_each_batch(cache_and_queue):
+    cache, queue = cache_and_queue
+    fake_render, calls = _patched_runner(
+        [
+            [{"type": "region", "x": 0, "z": 0, "status": "rendered"}],
+            [{"type": "region", "x": 1, "z": 0, "status": "rendered"}],
+        ]
+    )
+    with (
+        patch("app.mcmap.queue.runner.render", fake_render),
+        patch("app.mcmap.queue.config") as config_mock,
+    ):
+        config_mock.mcmap = _mcmap_cfg(batch_size=1, thread_count=2)
+        first = await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
+
+        config_mock.mcmap = _mcmap_cfg(batch_size=1, thread_count=7)
+        second = await asyncio.wait_for(queue.request(1, 0), timeout=2.0)
+
+        assert first == cache.png_path("world/region", 0, 0)
+        assert second == cache.png_path("world/region", 1, 0)
+        assert calls["threads"] == [2, 7]

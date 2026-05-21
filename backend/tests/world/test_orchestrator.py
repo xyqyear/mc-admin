@@ -532,6 +532,7 @@ async def test_rollback_uses_safety_as_source(
     assert rollback_row is not None
     assert rollback_row.is_rollback is True
     original_row = await _read_restoration(session_factory, rid)
+    assert original_row is not None
     assert rollback_row.source_snapshot_id == original_row.safety_snapshot_id
 
 
@@ -574,11 +575,13 @@ async def test_restore_failure_marks_row_failed(
         orchestrator._restic.restore = real_restore  # type: ignore[assignment]
 
     assert events[-1].event_type == "error"
+    assert events[-1].message is not None
     assert "simulated restic failure" in events[-1].message
     rid = events[0].restoration_id
     row = await _read_restoration(session_factory, rid)
     assert row is not None
     assert row.status is RestorationStatus.FAILED
+    assert row.error_message is not None
     assert "simulated restic failure" in row.error_message
 
 

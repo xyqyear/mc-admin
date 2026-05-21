@@ -56,6 +56,7 @@ SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
 
 CHUNKS_PER_REGION_AXIS = 32
 SUBDIR_KINDS = ("region", "entities", "poi")
+PREVIEW_BASE_DIR = Path(tempfile.gettempdir()) / "mc-admin-world-restore"
 
 
 class RestoreEvent(BaseModel):
@@ -160,25 +161,14 @@ class WorldRestoreOrchestrator:
         docker_mc_manager: DockerMCManager,
         server_operation_lock: ServerOperationLock,
         session_factory: SessionFactory,
-        preview_base_dir: Optional[Path] = None,
-        preview_ttl_seconds: Optional[int] = None,
-        preview_janitor_interval_seconds: Optional[int] = None,
     ) -> None:
         self._restic = restic_manager
         self._docker = docker_mc_manager
         self._lock = server_operation_lock
         self._session_factory = session_factory
-        base_dir = preview_base_dir or (
-            Path(tempfile.gettempdir()) / "mc-admin-world-preview"
-        )
-        from .preview import DEFAULT_JANITOR_INTERVAL_SECONDS, DEFAULT_TTL_SECONDS
 
         self._preview_manager = PreviewSessionManager(
-            base_dir=base_dir,
-            ttl_seconds=preview_ttl_seconds or DEFAULT_TTL_SECONDS,
-            janitor_interval_seconds=(
-                preview_janitor_interval_seconds or DEFAULT_JANITOR_INTERVAL_SECONDS
-            ),
+            base_dir=PREVIEW_BASE_DIR,
         )
 
     async def create_snapshot(
@@ -1018,5 +1008,3 @@ def _count_affected_regions(selection: RestorationSelection) -> int:
         return len({(c[0] // CHUNKS_PER_REGION_AXIS, c[1] // CHUNKS_PER_REGION_AXIS) for c in selection.chunks})
     # WORLD/DIMENSION counts require a disk scan; use a conservative default to avoid false trips.
     return 16
-
-
