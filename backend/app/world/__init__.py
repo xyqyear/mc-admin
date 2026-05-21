@@ -3,11 +3,23 @@
 from pathlib import Path
 from typing import Optional
 
+from .dimension_labels import (
+    END_LABEL,
+    NETHER_LABEL,
+    OVERWORLD_LABEL,
+    label_for_dimension_dir,
+)
 from .layout import (
     DEFAULT_LEVEL_NAME,
     DimensionInfo,
+    WorldLayoutDiscoveryError,
     WorldRoot,
     discover_world_roots,
+)
+from .layout_cache import (
+    clear_world_layout_cache,
+    get_cached_world_roots,
+    invalidate_world_layout,
 )
 from .locks import (
     GLOBAL_LOCK_KEY,
@@ -66,8 +78,11 @@ def reset_world_restore_orchestrator() -> None:
 __all__ = [
     "DEFAULT_LEVEL_NAME",
     "DimensionInfo",
+    "END_LABEL",
     "GLOBAL_LOCK_KEY",
     "LockHolder",
+    "NETHER_LABEL",
+    "OVERWORLD_LABEL",
     "PreviewEvent",
     "RestoreError",
     "RestoreEvent",
@@ -76,9 +91,14 @@ __all__ = [
     "ServerOperationKind",
     "ServerOperationLock",
     "WorldRestoreOrchestrator",
+    "WorldLayoutDiscoveryError",
     "WorldRoot",
+    "clear_world_layout_cache",
     "discover_world_roots",
+    "get_cached_world_roots",
     "initialize_world_restore_orchestrator",
+    "invalidate_world_layout",
+    "label_for_dimension_dir",
     "reset_world_restore_orchestrator",
     "server_operation_lock",
     "world_restore_orchestrator",

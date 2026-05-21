@@ -12,6 +12,7 @@ Everything ships as a single Docker image (`Dockerfile` at the repo root); the b
 Beyond what `pyproject.toml` / `package.json` declare:
 
 - Docker Engine + Docker Compose on the host (the backend manages user MC servers via docker-compose)
+- `fd` — required for file search and world layout discovery; the Docker image bundles it
 - Restic — invoked as a subprocess for snapshots; the Docker image bundles it
 - `mcmap` binary — pinned by `MCMAP_VERSION` in `Dockerfile`. For local dev, download a release and set `mcmap_binary_path` in `backend/config.toml`.
 

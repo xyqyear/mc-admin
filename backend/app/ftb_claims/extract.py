@@ -215,8 +215,11 @@ def _shape_response(
     )
 
 
-async def extract_claims_for_server(data_path: Path) -> ClaimsResponse:
-    roots = await discover_world_roots(data_path)
+async def extract_claims_for_server(
+    data_path: Path, roots: Optional[List[WorldRoot]] = None
+) -> ClaimsResponse:
+    if roots is None:
+        roots = await discover_world_roots(data_path)
     if not roots:
         return ClaimsResponse(available=False)
     primary = roots[0]

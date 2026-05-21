@@ -62,6 +62,15 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 
 `region_path` is request-scoped — it's a query parameter on every map endpoint and is never persisted in the database or config. `_resolve_region_path()` rejects absolute paths and any input that resolves outside `data/` (traversal). The frontend tracks the selected dimension in component state and threads it through every request.
 
+## Dimension discovery
+
+`GET /dimensions` projects the cached `app.world.layout` discovery into the
+mcmap response shape. Region paths remain relative to `data/`, while labels
+come from the shared `app.world.dimension_labels` rules used by world restore:
+Overworld for the world root, Nether/End for `DIM-1`/`DIM1`, vanilla names for
+`dimensions/minecraft/*`, and the world-root-relative dimension path without a
+leading `dimensions/` for custom modded dimensions.
+
 ## Settings
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`).
@@ -72,8 +81,8 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
-- `GET /dimensions` — auto-discovered region folders (skipping `.mcmap/`); labels Overworld / Nether / End for legacy and `dimensions/minecraft/*` paths
-- `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples for every existing `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
+- `GET /dimensions` — auto-discovered region folders from `app.world.layout`, with shared world-restore dimension labels
+- `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples from `app.world.region_manifest` for every non-empty regular `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
 - `POST /initialize` — two-stage SSE
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)
 - `DELETE /cache?region=<rel-path>` — wipes one dimension's tiles

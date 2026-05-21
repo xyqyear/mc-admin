@@ -46,9 +46,11 @@ RUN apk add --no-cache \
     fd \
     coreutils
 
-ARG MCMAP_VERSION=v0.6.0
+ARG MCMAP_VERSION=v0.8.0
+ARG MCMAP_SHA256=bd72c13ff7f0f59c3f4f8d239345584f1cf161d5a5fb538dcd048f1b8d0d52c1
 RUN curl -L "https://github.com/xyqyear/mcmap/releases/download/${MCMAP_VERSION}/mcmap-${MCMAP_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
       -o /tmp/mcmap.tar.gz \
+ && echo "${MCMAP_SHA256}  /tmp/mcmap.tar.gz" | sha256sum -c - \
  && tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin --strip-components=1 \
  && chmod +x /usr/local/bin/mcmap \
  && rm /tmp/mcmap.tar.gz

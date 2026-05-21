@@ -1,24 +1,15 @@
+import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import aiofiles
-import aiofiles.os as aioos
-
+from ..config import settings
 from ..minecraft.properties import ServerProperties
+from .dimension_labels import label_for_dimension_dir
+from .region_files import parse_region_filename
 
 DEFAULT_LEVEL_NAME = "world"
-NETHER_DIR = "DIM-1"
-END_DIR = "DIM1"
-OVERWORLD_LABEL = "Overworld"
-NETHER_LABEL = "Nether"
-END_LABEL = "End"
-MCMAP_DIR_NAME = ".mcmap"
-VANILLA_DIMENSION_LABELS = {
-    "dimensions/minecraft/overworld": OVERWORLD_LABEL,
-    "dimensions/minecraft/the_nether": NETHER_LABEL,
-    "dimensions/minecraft/the_end": END_LABEL,
-}
 
 
 @dataclass(frozen=True)
@@ -36,13 +27,22 @@ class WorldRoot:
     dimensions: list[DimensionInfo]
 
 
-async def _read_level_name(data_path: Path) -> str:
+class WorldLayoutDiscoveryError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class _WorldRootCandidate:
+    name: str
+    path: Path
+
+
+def _read_level_name_sync(data_path: Path) -> str:
     properties_path = data_path / "server.properties"
-    if not await aioos.path.exists(properties_path):
+    if not properties_path.exists():
         return DEFAULT_LEVEL_NAME
     try:
-        async with aiofiles.open(properties_path) as f:
-            content = await f.read()
+        content = properties_path.read_text()
     except OSError:
         return DEFAULT_LEVEL_NAME
     parsed = ServerProperties.from_server_properties(content)
@@ -51,110 +51,164 @@ async def _read_level_name(data_path: Path) -> str:
     return DEFAULT_LEVEL_NAME
 
 
-async def _has_level_dat(directory: Path) -> bool:
-    return await aioos.path.isfile(directory / "level.dat")
+def _has_level_dat_sync(directory: Path) -> bool:
+    return (directory / "level.dat").is_file()
 
 
-async def _has_region_mca(region_dir: Path) -> bool:
-    if not await aioos.path.isdir(region_dir):
-        return False
+def _has_region_mca(region_dir: Path) -> bool:
     try:
-        entries = await aioos.listdir(region_dir)
+        entries = os.scandir(region_dir)
     except OSError:
         return False
-    for entry in entries:
-        if entry.startswith("r.") and entry.endswith(".mca"):
-            return True
+    with entries:
+        for entry in entries:
+            if parse_region_filename(entry.name) is None:
+                continue
+            try:
+                if entry.is_file(follow_symlinks=False):
+                    return True
+            except OSError:
+                continue
     return False
 
 
-def _label_for_dimension(world_root: Path, region_parent: Path) -> str:
-    if region_parent == world_root:
-        return OVERWORLD_LABEL
-    if region_parent.parent == world_root:
-        name = region_parent.name
-        if name == NETHER_DIR:
-            return NETHER_LABEL
-        if name == END_DIR:
-            return END_LABEL
-        return name
-    rel = region_parent.relative_to(world_root).as_posix()
-    return VANILLA_DIMENSION_LABELS.get(rel, rel)
+def _scandir_sorted(directory: Path) -> list[os.DirEntry[str]]:
+    with os.scandir(directory) as entries:
+        return sorted(entries, key=lambda e: e.name)
 
 
-DIMENSION_WALK_SKIP_NAMES = frozenset({"region", "entities", "poi", MCMAP_DIR_NAME})
-DIMENSION_WALK_MAX_DEPTH = 6
+DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT = 4
+REGION_DIR_MAX_DEPTH_FROM_WORLD_ROOT = DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT + 1
 
 
-async def _discover_dimensions(world_root: Path) -> list[DimensionInfo]:
-    dimensions: list[DimensionInfo] = []
+def _dimension_info(world_root: Path, directory: Path) -> Optional[DimensionInfo]:
+    region_dir = directory / "region"
+    if not _has_region_mca(region_dir):
+        return None
+    entities_dir = directory / "entities"
+    poi_dir = directory / "poi"
+    return DimensionInfo(
+        region_dir=region_dir,
+        entities_dir=entities_dir if entities_dir.is_dir() else None,
+        poi_dir=poi_dir if poi_dir.is_dir() else None,
+        label=label_for_dimension_dir(world_root, directory),
+    )
 
-    async def visit(directory: Path, depth: int) -> None:
-        region_dir = directory / "region"
-        if await _has_region_mca(region_dir):
-            entities_dir = directory / "entities"
-            poi_dir = directory / "poi"
-            dimensions.append(
-                DimensionInfo(
-                    region_dir=region_dir,
-                    entities_dir=entities_dir
-                    if await aioos.path.isdir(entities_dir)
-                    else None,
-                    poi_dir=poi_dir if await aioos.path.isdir(poi_dir) else None,
-                    label=_label_for_dimension(world_root, directory),
-                )
-            )
 
-        if depth >= DIMENSION_WALK_MAX_DEPTH:
-            return
+def _world_root_candidates_sync(data_path: Path) -> list[_WorldRootCandidate]:
+    if not data_path.is_dir():
+        return []
 
+    level_name = _read_level_name_sync(data_path)
+    primary_path = data_path / level_name
+    if not primary_path.is_dir():
+        primary_path = data_path / DEFAULT_LEVEL_NAME
+
+    candidates: dict[str, Path] = {}
+    if primary_path.is_dir():
+        candidates[primary_path.name] = primary_path
+
+    try:
+        entries = _scandir_sorted(data_path)
+    except OSError:
+        entries = []
+    for entry in entries:
         try:
-            entries = await aioos.listdir(directory)
-        except OSError:
-            return
-        for entry in sorted(entries):
-            if entry in DIMENSION_WALK_SKIP_NAMES:
+            if not entry.is_dir():
                 continue
-            child = directory / entry
-            if await aioos.path.isdir(child):
-                await visit(child, depth + 1)
+        except OSError:
+            continue
+        child = Path(entry.path)
+        if _has_level_dat_sync(child):
+            candidates[entry.name] = child
 
-    await visit(world_root, 0)
+    ordered: list[_WorldRootCandidate] = []
+    if primary_path.is_dir() and primary_path.name in candidates:
+        ordered.append(_WorldRootCandidate(primary_path.name, primary_path))
+    for name in sorted(candidates):
+        if primary_path.is_dir() and name == primary_path.name:
+            continue
+        ordered.append(_WorldRootCandidate(name, candidates[name]))
+    return ordered
+
+
+def _dimensions_from_region_dirs_sync(
+    world_root: Path, region_dirs: list[Path]
+) -> list[DimensionInfo]:
+    dimensions_by_dir: dict[Path, DimensionInfo] = {}
+    for region_dir in region_dirs:
+        if region_dir.name != "region":
+            continue
+        try:
+            region_dir.relative_to(world_root)
+        except ValueError:
+            continue
+        dimension_dir = region_dir.parent
+        info = _dimension_info(world_root, dimension_dir)
+        if info is not None:
+            dimensions_by_dir[dimension_dir] = info
+
+    dimensions = list(dimensions_by_dir.values())
     dimensions.sort(key=lambda d: d.label)
     return dimensions
 
 
-async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
-    if not await aioos.path.isdir(data_path):
-        return []
-
-    level_name = await _read_level_name(data_path)
-    primary_path = data_path / level_name
-    if not await aioos.path.isdir(primary_path):
-        primary_path = data_path / DEFAULT_LEVEL_NAME
-
-    candidate_names: set[str] = set()
-    if await aioos.path.isdir(primary_path):
-        candidate_names.add(primary_path.name)
-
+async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
+    cmd = [
+        str(settings.fd_binary_path),
+        "--unrestricted",
+        "--absolute-path",
+        "--print0",
+        "--case-sensitive",
+        "--type",
+        "directory",
+        "--max-depth",
+        str(REGION_DIR_MAX_DEPTH_FROM_WORLD_ROOT),
+        "^region$",
+        str(world_root),
+    ]
     try:
-        entries = await aioos.listdir(data_path)
-    except OSError:
-        entries = []
-    for entry in entries:
-        if entry == MCMAP_DIR_NAME:
-            continue
-        child = data_path / entry
-        if not await aioos.path.isdir(child):
-            continue
-        if await _has_level_dat(child):
-            candidate_names.add(entry)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        raise WorldLayoutDiscoveryError(
+            f"fd command not found at {settings.fd_binary_path}; "
+            "install fd or configure FD_BINARY_PATH"
+        ) from None
 
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        detail = stderr.decode(errors="replace").strip()
+        raise WorldLayoutDiscoveryError(
+            f"fd failed while discovering world layout under {world_root}: {detail}"
+        )
+
+    region_dirs: list[Path] = []
+    for raw in stdout.split(b"\0"):
+        if not raw:
+            continue
+        path = Path(os.fsdecode(raw))
+        if not path.is_absolute():
+            path = world_root / path
+        region_dirs.append(path)
+    return region_dirs
+
+
+async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
+    candidates = await asyncio.to_thread(_world_root_candidates_sync, data_path)
     roots: list[WorldRoot] = []
-    for name in sorted(candidate_names):
-        root_path = data_path / name
-        dimensions = await _discover_dimensions(root_path)
+
+    for candidate in candidates:
+        region_dirs = await _discover_region_dirs_with_fd(candidate.path)
+        dimensions = await asyncio.to_thread(
+            _dimensions_from_region_dirs_sync, candidate.path, region_dirs
+        )
         if not dimensions:
             continue
-        roots.append(WorldRoot(name=name, path=root_path, dimensions=dimensions))
+        roots.append(
+            WorldRoot(name=candidate.name, path=candidate.path, dimensions=dimensions)
+        )
     return roots

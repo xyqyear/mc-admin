@@ -3,10 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from app.world.layout import (
+from app.config import settings
+from app.world.dimension_labels import (
     END_LABEL,
     NETHER_LABEL,
     OVERWORLD_LABEL,
+)
+from app.world.layout import (
+    DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT,
+    WorldLayoutDiscoveryError,
     discover_world_roots,
 )
 
@@ -152,6 +157,24 @@ async def test_pre_117_layout_has_no_entities_or_poi():
 
 
 @pytest.mark.asyncio
+async def test_legacy_custom_dimension_under_world_root():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "region" / "r.0.0.mca")
+        _touch(world / "DIM88" / "region" / "r.0.0.mca")
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        by_label = {d.label: d for d in roots[0].dimensions}
+        assert set(by_label) == {OVERWORLD_LABEL, "DIM88"}
+        assert by_label["DIM88"].region_dir == world / "DIM88" / "region"
+
+
+@pytest.mark.asyncio
 async def test_custom_level_name():
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
@@ -163,6 +186,21 @@ async def test_custom_level_name():
         roots = await discover_world_roots(data_path)
         assert len(roots) == 1
         assert roots[0].name == "survival"
+
+
+@pytest.mark.asyncio
+async def test_blank_level_name_falls_back_to_world():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, " ")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "region" / "r.0.0.mca")
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        assert roots[0].name == "world"
 
 
 @pytest.mark.asyncio
@@ -186,7 +224,7 @@ async def test_deeply_nested_modded_dimensions():
         _touch(world / "dimensions" / "allthemodium" / "the_beyond" / "region" / "r.0.0.mca")
         _touch(world / "dimensions" / "ad_astra" / "moon" / "region" / "r.0.0.mca")
 
-        # Non-dim siblings under the world root must not crash the walker.
+        # Non-dim siblings under the world root must not affect discovery.
         _touch(world / "playerdata" / "uuid.dat")
         _touch(world / "ftbchunks" / "data.snbt")
 
@@ -197,14 +235,42 @@ async def test_deeply_nested_modded_dimensions():
         assert labels == {
             OVERWORLD_LABEL,
             NETHER_LABEL,
-            "dimensions/allthemodium/mining",
-            "dimensions/allthemodium/the_beyond",
-            "dimensions/ad_astra/moon",
+            "allthemodium/mining",
+            "allthemodium/the_beyond",
+            "ad_astra/moon",
         }
 
         by_label = {d.label: d for d in roots[0].dimensions}
-        assert by_label["dimensions/allthemodium/mining"].region_dir == (
+        assert by_label["allthemodium/mining"].region_dir == (
             world / "dimensions" / "allthemodium" / "mining" / "region"
+        )
+
+
+@pytest.mark.asyncio
+async def test_deep_ftb_team_dimension_layout():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        team_id = "2772fb19-2b8f-4cfd-b53a-b35d3ca41493"
+        _touch(world / "level.dat")
+        _touch(
+            world
+            / "dimensions"
+            / "ftbteamdimensions"
+            / "team"
+            / team_id
+            / "region"
+            / "r.0.0.mca"
+        )
+
+        roots = await discover_world_roots(data_path)
+
+        assert len(roots) == 1
+        dim = roots[0].dimensions[0]
+        assert dim.label == f"ftbteamdimensions/team/{team_id}"
+        assert dim.region_dir == (
+            world / "dimensions" / "ftbteamdimensions" / "team" / team_id / "region"
         )
 
 
@@ -217,9 +283,9 @@ async def test_walk_depth_bound_rejects_extreme_nesting():
         _touch(world / "level.dat")
         _touch(world / "region" / "r.0.0.mca")
 
-        # ``visit`` checks the dim BEFORE the depth guard, so a dim at exactly
-        # MAX_DEPTH is still recorded. Push the dim one level past that.
-        too_deep = world / "a" / "b" / "c" / "d" / "e" / "f" / "g"
+        too_deep = world
+        for i in range(DIMENSION_MAX_DEPTH_FROM_WORLD_ROOT + 2):
+            too_deep = too_deep / f"d{i}"
         _touch(too_deep / "region" / "r.0.0.mca")
 
         roots = await discover_world_roots(data_path)
@@ -228,20 +294,44 @@ async def test_walk_depth_bound_rejects_extreme_nesting():
 
 
 @pytest.mark.asyncio
-async def test_skips_mcmap_dir():
+async def test_data_root_cache_dir_is_not_a_world_root():
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "world")
         world = data_path / "world"
         _touch(world / "level.dat")
         _touch(world / "region" / "r.0.0.mca")
-        # .mcmap directory at the data root should not be discovered.
         _touch(data_path / ".mcmap" / "palette.hash")
-        # .mcmap directory inside the world should not be considered a dimension.
-        _touch(world / ".mcmap" / "tiles" / "0_0.png")
 
         roots = await discover_world_roots(data_path)
         assert len(roots) == 1
         assert roots[0].name == "world"
         labels = [d.label for d in roots[0].dimensions]
         assert labels == [OVERWORLD_LABEL]
+
+
+@pytest.mark.asyncio
+async def test_region_mca_directory_is_not_a_dimension():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        (world / "region" / "r.0.0.mca").mkdir(parents=True)
+
+        roots = await discover_world_roots(data_path)
+        assert roots == []
+
+
+@pytest.mark.asyncio
+async def test_discover_world_roots_requires_fd(monkeypatch):
+    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "world")
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "DIM88" / "region" / "r.0.0.mca")
+
+        with pytest.raises(WorldLayoutDiscoveryError, match="fd command not found"):
+            await discover_world_roots(data_path)

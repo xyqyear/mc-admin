@@ -30,8 +30,10 @@ from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, restic_manag
 from ...world import (
     SelectionResolutionError,
     ServerNotStoppedError,
+    WorldLayoutDiscoveryError,
     WorldRoot,
 )
+from ...world.layout_cache import get_cached_world_roots
 from ...world.preview import PreviewDiskGuardError, PreviewSessionNotFoundError
 
 router = APIRouter(
@@ -205,6 +207,13 @@ def _world_root_to_response(root: WorldRoot) -> WorldRootResponse:
     )
 
 
+async def _get_world_roots(data_path: Path) -> list[WorldRoot]:
+    try:
+        return await get_cached_world_roots(data_path)
+    except WorldLayoutDiscoveryError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 # --- Layout ----------------------------------------------------------------
 
 
@@ -216,12 +225,8 @@ async def get_layout(
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
 
-    from ...world.layout import discover_world_roots
-
-    roots = await discover_world_roots(data_path)
-    return WorldLayoutResponse(
-        world_roots=[_world_root_to_response(r) for r in roots]
-    )
+    roots = await _get_world_roots(data_path)
+    return WorldLayoutResponse(world_roots=[_world_root_to_response(r) for r in roots])
 
 
 # --- FTB claims ------------------------------------------------------------
@@ -238,8 +243,9 @@ async def get_ftb_claims(
     await _ensure_server_exists(server_id)
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
+    roots = await _get_world_roots(data_path)
     try:
-        return await extract_claims_for_server(data_path)
+        return await extract_claims_for_server(data_path, roots=roots)
     except FtbExtractError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -381,9 +387,7 @@ async def end_preview(
     await orch.end_preview(session_id)
 
 
-@router.get(
-    "/{server_id}/world-restore/preview/{session_id}/tile/{rx}/{rz}.png"
-)
+@router.get("/{server_id}/world-restore/preview/{session_id}/tile/{rx}/{rz}.png")
 async def get_preview_tile(
     server_id: str,
     session_id: str,
@@ -620,7 +624,7 @@ async def mark_running_restorations_interrupted() -> int:
             )
         )
         await session.commit()
-    count = result.rowcount or 0
+    count = getattr(result, "rowcount", 0) or 0
     if count:
         logger.info(
             "world restore: flipped %d running restoration(s) to interrupted on startup",

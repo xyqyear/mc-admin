@@ -11,13 +11,41 @@ Whole-world restores are blunt: a player who griefs one chunk forces the admin t
 `RestorationSelection` has four shapes, distinguished by `type`:
 
 - **WORLD** — restic restore against *every* valid world root on the server. Bukkit/Paper multi-world setups are covered in one operation; all dimensions of every root are included. Carries no `region_dir_relpath`.
-- **DIMENSION** — restic restore scoped to a single `region/`+`entities/`+`poi/` triple. The dimension is identified by `region_dir_relpath` (data-relative, e.g. `world/region`, `world/dimensions/minecraft/the_nether/region`, `world_creative/DIM-1/region`).
+- **DIMENSION** — restic restore scoped to a single `region/`+`entities/`+`poi/` triple. The dimension is identified by `region_dir_relpath` (data-relative, e.g. `world/region`, `world/DIM88/region`, `world/dimensions/minecraft/the_nether/region`, `world_creative/DIM-1/region`).
 - **REGIONS** — restic restore filtered to specific `r.X.Z.mca` files inside the dimension named by `region_dir_relpath`. Includes the matching `entities/` and `poi/` sidecars and `c.<absX>.<absZ>.mcc` overflow chunks for the affected region grid, so partial regions never desync.
 - **CHUNKS** — stage source MCAs from the snapshot into a tempdir, then run `mcmap replace-chunks` to splice the selected chunks into the live MCAs (or `remove-chunks` for chunks the snapshot didn't have). Same restic include-path expansion as REGIONS for entities/poi.
 
 ### Why `region_dir_relpath` is enough
 
 The world root directory's name is the first segment of the relpath (`world/region`, `world_nether/region`, …). That makes the relpath unique across all roots on a server, so chunk/region/dimension scopes don't need a separate "root" parameter. Multi-world Bukkit/Paper setups stay unambiguous with a single string.
+
+## Layout discovery
+
+`app.world.layout` first identifies world roots from `server.properties`
+`level-name` plus immediate `data/` children that contain `level.dat`, so
+Bukkit/Paper multi-world folders stay separate roots. The primary root is
+returned first; other roots are sorted by name.
+
+Within each root, discovery looks for real terrain `region/` directories
+rather than branching by dimension family. The backend requires `fd`: it finds
+directories named `region` up to five components below the world root, then
+keeps only those containing valid `r.X.Z.mca` files. This covers root
+overworlds, legacy/custom root-child dimensions such as `DIM88`, modern
+`dimensions/<namespace>/<name>` dimensions, and deeper FTB team dimensions
+such as `dimensions/ftbteamdimensions/team/<uuid>`. If `fd` is missing or
+fails, layout discovery fails with `WorldLayoutDiscoveryError`.
+
+Dimension labels come from `app.world.dimension_labels`: the root dimension is
+Overworld, `DIM-1` is Nether, `DIM1` is End, vanilla
+`dimensions/minecraft/*` directories map to their vanilla names, and custom
+dimensions use their world-root-relative path without a leading `dimensions/`.
+The server map endpoint uses the same discovered layout, so both features
+present identical labels.
+
+`app.world.layout_cache` wraps layout discovery with a short in-memory TTL and
+coalesces concurrent requests per `data_path`. The world-restore page opens
+layout and claims together, so both requests share one filesystem discovery
+while still reflecting disk changes within a few seconds.
 
 ## Safety snapshots
 
@@ -71,7 +99,7 @@ Dynamic (`snapshots.world_restore` schema): `restore_temp_dir`, `temp_disk_thres
 
 Mounted under `/api/servers/{server_id}/world-restore/`:
 
-- `GET /layout` — world roots + dimensions (Overworld/Nether/End label heuristic for legacy and `dimensions/minecraft/*` layouts; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
+- `GET /layout` — cached world roots + dimensions (shared dimension labels; per-dimension `region_dir`, `entities_dir`, `poi_dir` paths)
 - `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
 - `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held
 - `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (start → stage → merge_region → render_progress → ready); returns `session_id` in the `ready` event

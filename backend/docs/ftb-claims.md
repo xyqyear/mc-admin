@@ -10,7 +10,7 @@ roll back a specific player's base after grief reports.
 ```
 GET /servers/{id}/world-restore/claims
    └─► extract_claims_for_server(data_path)
-         ├─ discover_world_roots(data_path)               # backend layout
+         ├─ get_cached_world_roots(data_path)              # backend layout
          ├─ runner.extract_ftb_claims(world_root, ...)     # mcmap subprocess
          ├─ shape_response(raw_data, root, data_path)
          │    ├─ resolve each FTB dim against the layout
@@ -19,9 +19,9 @@ GET /servers/{id}/world-restore/claims
          └─► ClaimsResponse
 ```
 
-`mcmap` v0.6.0 added `extract-ftb-claims --world <dir>`. It autodetects four
-on-disk formats — `snbt` (1.16+ FTB Chunks/Teams), `per_team_nbt` (1.7.10
-GTNH ServerUtilities / 1.12.2 FTB Utilities), `universe_dat` (1.10.2 FTB
+`mcmap extract-ftb-claims --world <dir>` autodetects four on-disk formats —
+`snbt` (1.16+ FTB Chunks/Teams), `per_team_nbt` (1.7.10 GTNH
+ServerUtilities / 1.12.2 FTB Utilities), `universe_dat` (1.10.2 FTB
 Utilities 3.x), `latmod_json` (1.7.10 upstream FTBU) — and emits a single
 NDJSON `result` event with the unified shape.
 
@@ -31,14 +31,19 @@ maps that to `NoFtbDataError`, which the route turns into
 `ClaimsResponse(available=False)` (HTTP 200). Other mcmap errors propagate as
 `FtbExtractError` → HTTP 500.
 
-## No caching
+## Caching
 
-Every request re-runs `mcmap extract-ftb-claims`. On a real server with ~1500
-claims this completes in well under a second, and the page is admin-only, so
-the simplicity of "no stored state" outweighs the negligible CPU cost. If a
-production workload ever shows otherwise, the right cache key is
+Every request re-runs `mcmap extract-ftb-claims`; claim data itself is not
+stored. On a real server with ~1500 claims this completes in well under a
+second, and the page is admin-only, so the simplicity of "no stored claim
+state" outweighs the negligible CPU cost. If a production workload ever shows
+otherwise, the right cache key is
 `(data_path, content_hash_of_ftb_files)` — not `(data_path, mtime)` because
 FTB writes them atomically with the same mtime as the world snapshot.
+
+The route does reuse the short-lived `app.world.layout_cache` result used by
+`GET /world-restore/layout`, so opening the world-restore page does not run
+the expensive world layout discovery twice.
 
 ## Dimension resolution
 
@@ -57,9 +62,10 @@ expects) plus the layout's human label. Otherwise both fields are `None` and
 the cluster keeps `region_dir_relpath=None` — the frontend renders these
 clusters but disables the in-dim selection actions for them.
 
-The layout discovery walks `<world>/dimensions/<modid>/<dim>/region/` so
-nested modded dims resolve cleanly — see `world/layout.py` for the recursive
-walk.
+The layout discovery covers root-level legacy/custom dims such as
+`<world>/DIM88/region/`, nested modern/modded dims such as
+`<world>/dimensions/<modid>/<dim>/region/`, and deeper FTB team dimensions
+such as `<world>/dimensions/ftbteamdimensions/team/<uuid>/region/`.
 
 ## Clustering
 

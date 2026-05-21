@@ -1,46 +1,53 @@
-"""Tests for dimension auto-discovery and label heuristics."""
+"""Tests for map dimension projection from world layout discovery."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from app.routers.servers.map import _discover_dimensions, _label_for_region_path
+from app.routers.servers.map import _discover_dimensions
+from app.world.dimension_labels import label_for_dimension_dir
 
 
 def test_label_for_overworld():
-    assert _label_for_region_path("world/region") == "Overworld"
-    assert _label_for_region_path("region") == "Overworld"
+    world = Path("/data/world")
+    assert label_for_dimension_dir(world, world) == "Overworld"
 
 
 def test_label_for_nether():
-    assert _label_for_region_path("world_nether/DIM-1/region") == "Nether"
+    world = Path("/data/world")
+    assert label_for_dimension_dir(world, world / "DIM-1") == "Nether"
 
 
 def test_label_for_end():
-    assert _label_for_region_path("world_the_end/DIM1/region") == "End"
+    world = Path("/data/world")
+    assert label_for_dimension_dir(world, world / "DIM1") == "End"
 
 
 def test_label_for_vanilla_dimension_directory_layout():
+    world = Path("/data/world")
     assert (
-        _label_for_region_path("world/dimensions/minecraft/overworld/region")
+        label_for_dimension_dir(world, world / "dimensions" / "minecraft" / "overworld")
         == "Overworld"
     )
     assert (
-        _label_for_region_path("world/dimensions/minecraft/the_nether/region")
+        label_for_dimension_dir(
+            world, world / "dimensions" / "minecraft" / "the_nether"
+        )
         == "Nether"
     )
     assert (
-        _label_for_region_path("world/dimensions/minecraft/the_end/region")
+        label_for_dimension_dir(world, world / "dimensions" / "minecraft" / "the_end")
         == "End"
     )
 
 
 def test_label_fallback_to_path():
-    assert _label_for_region_path("custom/dimension/foo") == "custom/dimension/foo"
+    world = Path("/data/world")
+    assert label_for_dimension_dir(world, world / "DIM88") == "DIM88"
     assert (
-        _label_for_region_path("world/dimensions/example/custom/region")
-        == "world/dimensions/example/custom/region"
+        label_for_dimension_dir(world, world / "dimensions" / "example" / "custom")
+        == "example/custom"
     )
 
 
@@ -49,6 +56,8 @@ async def test_discover_skips_mcmap_cache_dir():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
         # Real region
+        (data / "world").mkdir(parents=True)
+        (data / "world" / "level.dat").write_bytes(b"")
         ow = data / "world" / "region"
         ow.mkdir(parents=True)
         (ow / "r.0.0.mca").write_bytes(b"")
@@ -66,6 +75,9 @@ async def test_discover_skips_mcmap_cache_dir():
 async def test_discover_finds_multiple_dimensions():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
+        for root in ["world", "world_nether", "world_the_end"]:
+            (data / root).mkdir(parents=True, exist_ok=True)
+            (data / root / "level.dat").write_bytes(b"")
         for sub, n in [
             ("world/region", 3),
             ("world_nether/DIM-1/region", 1),
@@ -91,6 +103,8 @@ async def test_discover_finds_multiple_dimensions():
 async def test_discover_ignores_non_mca_files_and_negative_coords():
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
+        (data / "world").mkdir(parents=True)
+        (data / "world" / "level.dat").write_bytes(b"")
         region = data / "world" / "region"
         region.mkdir(parents=True)
         (region / "r.0.0.mca").write_bytes(b"")
@@ -115,6 +129,8 @@ async def test_discover_skips_entities_and_poi_siblings():
     renderable map terrain and must not appear as dimensions."""
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
+        (data / "world").mkdir(parents=True)
+        (data / "world" / "level.dat").write_bytes(b"")
         for sub in ["world/region", "world/entities", "world/poi"]:
             (data / sub).mkdir(parents=True)
             (data / sub / "r.0.0.mca").write_bytes(b"")
@@ -128,6 +144,9 @@ async def test_discover_skips_entities_and_poi_in_other_dimensions():
     """Same exclusion applies to nether/end dimension folders."""
     with tempfile.TemporaryDirectory() as d:
         data = Path(d)
+        for root in ["world", "world_nether", "world_the_end"]:
+            (data / root).mkdir(parents=True, exist_ok=True)
+            (data / root / "level.dat").write_bytes(b"")
         for sub in [
             "world/region",
             "world/entities",

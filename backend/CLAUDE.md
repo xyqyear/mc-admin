@@ -41,7 +41,7 @@ app/
 ├── background_tasks/      # in-memory async-generator task manager
 ├── mcmap/                 # server map: mcmap CLI integration, tile cache under data/.mcmap/
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
-├── world/                 # world restore: per-server lock, safety snapshots, preview sessions
+├── world/                 # world layout/restore, per-server lock, safety snapshots, preview sessions
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression
 ```

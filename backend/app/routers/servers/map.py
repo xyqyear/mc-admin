@@ -1,7 +1,6 @@
 import asyncio
 import json
-import re
-import stat as _stat
+import os
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Tuple
 
@@ -26,15 +25,12 @@ from ...mcmap import runner as mcmap_runner
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
+from ...world.layout import WorldLayoutDiscoveryError
+from ...world.layout_cache import get_cached_world_roots
+from ...world.region_files import parse_region_filename
+from ...world.region_manifest import list_region_manifest
 
 router = APIRouter(prefix="/servers", tags=["map"])
-
-REGION_FILE_RE = re.compile(r"^r\.(-?\d+)\.(-?\d+)\.mca$")
-VANILLA_DIMENSION_REGION_LABELS = {
-    "dimensions/minecraft/overworld/region": "Overworld",
-    "dimensions/minecraft/the_nether/region": "Nether",
-    "dimensions/minecraft/the_end/region": "End",
-}
 
 
 async def _get_data_path(server_id: str) -> Path:
@@ -60,85 +56,52 @@ async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
     return resolved
 
 
-def _label_for_region_path(region_path: str) -> str:
-    normalized = region_path.replace("\\", "/").rstrip("/")
-    parts = normalized.split("/")
-    if len(parts) >= 2 and parts[-1] == "region":
-        rel = "/".join(parts[-4:])
-        if rel in VANILLA_DIMENSION_REGION_LABELS:
-            return VANILLA_DIMENSION_REGION_LABELS[rel]
-        if parts[-2] == "DIM-1":
-            return "Nether"
-        if parts[-2] == "DIM1":
-            return "End"
-        if len(parts) == 2:
-            return "Overworld"
-    if normalized == "region":
-        return "Overworld"
-    return normalized
+def _count_region_mca_files_sync(region_dir: Path) -> int:
+    count = 0
+    try:
+        entries = os.scandir(region_dir)
+    except OSError:
+        return 0
+    with entries:
+        for entry in entries:
+            if parse_region_filename(entry.name) is None:
+                continue
+            try:
+                if entry.is_file(follow_symlinks=False):
+                    count += 1
+            except OSError:
+                continue
+    return count
 
 
 async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
-    cache_dir_name = ".mcmap"
     results: List[DimensionInfo] = []
-    if not await aioos.path.isdir(data_path):
-        return results
-
-    async def walk(d: Path) -> None:
-        try:
-            entries = await async_fs.iterdir(d)
-        except (PermissionError, OSError):
-            return
-        # Only "region" holds terrain MCAs; entities/poi share the filename but are not renderable.
-        if d.name == "region":
-            mca_count = 0
-            for entry in entries:
-                if not REGION_FILE_RE.match(entry.name):
-                    continue
-                if await aioos.path.isfile(entry):
-                    mca_count += 1
-            if mca_count > 0:
-                rel = d.relative_to(data_path).as_posix()
-                results.append(
-                    DimensionInfo(
-                        region_path=rel,
-                        label=_label_for_region_path(rel),
-                        mca_count=mca_count,
-                    )
-                )
-            return
-        for entry in entries:
-            if entry.name == cache_dir_name:
+    try:
+        roots = await get_cached_world_roots(data_path)
+    except WorldLayoutDiscoveryError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    for root in roots:
+        for dim in root.dimensions:
+            try:
+                region_path = dim.region_dir.relative_to(data_path).as_posix()
+            except ValueError:
                 continue
-            if await aioos.path.isdir(entry):
-                await walk(entry)
-
-    await walk(data_path)
+            mca_count = await asyncio.to_thread(
+                _count_region_mca_files_sync, dim.region_dir
+            )
+            results.append(
+                DimensionInfo(
+                    region_path=region_path,
+                    label=dim.label,
+                    mca_count=mca_count,
+                )
+            )
     results.sort(key=lambda d: d.region_path)
     return results
 
 
 async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
-    # (x, z, mtime); mtime feeds tile URL `?mt=` for cache busting.
-    coords: List[Tuple[int, int, int]] = []
-    try:
-        entries = await async_fs.iterdir(region_dir)
-    except (PermissionError, OSError):
-        return coords
-    for entry in entries:
-        m = REGION_FILE_RE.match(entry.name)
-        if not m:
-            continue
-        try:
-            st = await aioos.stat(entry)
-        except OSError:
-            continue
-        # Skip zero-byte and non-regular entries — fastanvil can't parse them.
-        if not _stat.S_ISREG(st.st_mode) or st.st_size == 0:
-            continue
-        coords.append((int(m.group(1)), int(m.group(2)), int(st.st_mtime)))
-    coords.sort()
-    return coords
+    return await list_region_manifest(region_dir)
 
 
 @router.get("/{server_id}/map/status", response_model=MapStatus)
