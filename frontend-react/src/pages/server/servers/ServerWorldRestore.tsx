@@ -29,6 +29,7 @@ import {
 import { ClusterPopover } from '@/components/world-restore/claims/ClusterPopover'
 import { TeamClusterList } from '@/components/world-restore/claims/TeamClusterList'
 import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOverlay'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
 import { useWorldLayout } from '@/hooks/queries/base/useWorldRestoreQueries'
 import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
@@ -73,6 +74,10 @@ const ServerWorldRestore: React.FC = () => {
   const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false
 
   const queryClient = useQueryClient()
+  const {
+    confirm: confirmModeChange,
+    confirmDialog: modeChangeConfirmDialog,
+  } = useConfirm()
   const mapStatusQ = useMapStatus(serverId)
   const mapInitialized =
     !!mapStatusQ.data?.client_jar_present &&
@@ -193,7 +198,7 @@ const ServerWorldRestore: React.FC = () => {
     [serverId, setSelection],
   )
 
-  const handleModeChange = useCallback(
+  const applyModeChange = useCallback(
     (next: WorldRestoreSelectionMode) => {
       setSearchParams(
         (prev) => {
@@ -205,6 +210,26 @@ const ServerWorldRestore: React.FC = () => {
       )
     },
     [setSearchParams],
+  )
+
+  const handleModeChange = useCallback(
+    (next: WorldRestoreSelectionMode) => {
+      if (next === urlMode) return
+      if (urlMode === 'region' && next === 'chunk') {
+        confirmModeChange({
+          title: '区块选择仍处于实验性',
+          description:
+            '区块模式目前仍处于实验性阶段，可能导致恢复范围不符合预期，甚至造成整个区域或区块损坏。除非万不得已，请优先使用区域选择。',
+          cancelText: '留在区域选择',
+          confirmText: '我了解风险，切换到区块选择',
+          variant: 'destructive',
+          onConfirm: () => applyModeChange(next),
+        })
+        return
+      }
+      applyModeChange(next)
+    },
+    [applyModeChange, confirmModeChange, urlMode],
   )
 
   const handleDimensionChange = useCallback(
@@ -587,6 +612,7 @@ const ServerWorldRestore: React.FC = () => {
         onClose={() => setInitOpen(false)}
         onComplete={handleInitComplete}
       />
+      {modeChangeConfirmDialog}
     </div>
   )
 }

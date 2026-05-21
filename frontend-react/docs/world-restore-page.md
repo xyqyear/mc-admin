@@ -56,7 +56,7 @@ The world root's directory name is the first segment of `region_dir_relpath` (`w
 
 ## Mode-switch confirmation
 
-Switching from chunk mode to region mode collapses the chunk set to fully-covered regions only. If that drops partially-covered regions, the panel prompts a confirm via `useConfirm` before discarding them. The chunk → region collapse runs through `chunksToFullyCoveredRegions` from `components/map/coords.ts`.
+Switching from region mode to chunk mode prompts a destructive `useConfirm` warning because chunk restore is experimental. The mode is applied only after confirmation. Any mode change clears the transient selection in `useWorldRestoreSelectionStore.setMode`.
 
 ## Snapshot picker (restore flow)
 
