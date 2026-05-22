@@ -51,6 +51,7 @@ jobs:
       MASTER_TOKEN: test-master-token
       JWT__SECRET_KEY: test-secret
       SERVER_PATH: ${{ github.workspace }}/backend/dev-servers
+      STATIC_PATH: ${{ github.workspace }}/backend/.ci-static
       FD_BINARY_PATH: /usr/local/bin/fd
       MCMAP_BINARY_PATH: /usr/local/bin/mcmap
       DATABASE_URL: sqlite+aiosqlite:///./test-${{ matrix.test_group }}.sqlite3
@@ -64,6 +65,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl fd-find
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Prepare static files for API tests
+        run: |
+          mkdir -p .ci-static/assets .ci-static/static
+          cp -R ../frontend-react/public/static/. .ci-static/static/
+          cp ../frontend-react/public/robots.txt .ci-static/robots.txt
+          printf '<!doctype html><html><body></body></html>\n' > .ci-static/index.html
 
       - name: Install 7z test dependencies
         if: matrix.test_group == 'root' || matrix.test_group == 'archive'
