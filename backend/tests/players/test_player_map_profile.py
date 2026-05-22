@@ -5,9 +5,17 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, Player
+from app.models import Base, Player, UserPublic
 from app.players.skin_fetcher import PlayerProfileFetchResult
 from app.routers.players.players import get_player_map_profile
+
+
+def _test_user() -> UserPublic:
+    return UserPublic(
+        id=1,
+        username="test",
+        created_at=datetime.now(timezone.utc),
+    )
 
 
 @pytest.fixture
@@ -42,7 +50,7 @@ async def test_profile_returns_cached_player_without_mojang(test_db_session, mon
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
-        _=None,
+        _=_test_user(),
         db=test_db_session,
     )
     assert result.resolved is True
@@ -66,7 +74,7 @@ async def test_profile_upserts_mojang_result(test_db_session, monkeypatch):
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
-        _=None,
+        _=_test_user(),
         db=test_db_session,
     )
     assert result.resolved is True
@@ -97,7 +105,7 @@ async def test_profile_returns_unresolved_when_mojang_fails(
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
-        _=None,
+        _=_test_user(),
         db=test_db_session,
     )
     assert result.resolved is False
@@ -125,7 +133,7 @@ async def test_profile_returns_cached_when_mojang_fails(test_db_session, monkeyp
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
-        _=None,
+        _=_test_user(),
         db=test_db_session,
     )
     assert result.resolved is True
@@ -136,5 +144,9 @@ async def test_profile_returns_cached_when_mojang_fails(test_db_session, monkeyp
 @pytest.mark.asyncio
 async def test_profile_rejects_invalid_uuid(test_db_session):
     with pytest.raises(HTTPException) as exc:
-        await get_player_map_profile("not-a-uuid", _=None, db=test_db_session)
+        await get_player_map_profile(
+            "not-a-uuid",
+            _=_test_user(),
+            db=test_db_session,
+        )
     assert exc.value.status_code == 400

@@ -77,10 +77,13 @@ class HuaweiDNSClient(DNSClient):
         if region is None:
             region = "cn-south-1"
         credentials = BasicCredentials(ak, sk)
+        dns_region = DnsRegion.value_of(region)
+        if dns_region is None:
+            raise ValueError(f"Unsupported Huawei DNS region: {region}")
         huawei_client = (
             DnsClient.new_builder()
             .with_credentials(credentials)
-            .with_region(DnsRegion.value_of(region))
+            .with_region(dns_region)
             .build()
         )
         self._huawei_client = cast(HuaweiApiClient, huawei_client)

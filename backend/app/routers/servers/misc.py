@@ -58,7 +58,7 @@ async def get_servers(
 
     valid_servers: list[ServerListItem] = []
     for row, result in zip(active_rows, results):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             logger.warning(
                 f"GET /servers: skipping '{row.server_id}' (cannot read compose): {result}"
             )

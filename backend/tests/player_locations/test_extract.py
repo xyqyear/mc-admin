@@ -2,12 +2,14 @@ import json
 import os
 import stat
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from app.config import settings
+from app.models import UserPublic
 from app.player_locations import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
@@ -15,6 +17,14 @@ from app.player_locations import (
     runner,
 )
 from app.routers.servers import world_restore
+
+
+def _test_user() -> UserPublic:
+    return UserPublic(
+        id=1,
+        username="test",
+        created_at=datetime.now(timezone.utc),
+    )
 
 
 def _write_fake_mcmap(payload: dict) -> Path:
@@ -230,6 +240,6 @@ async def test_endpoint_returns_player_locations(world_data_path):
         patch.object(runner.settings, "mcmap_binary_path", str(fake)),
         patch.object(world_restore, "docker_mc_manager", FakeDocker()),
     ):
-        result = await world_restore.get_player_locations("srv1", _=None)
+        result = await world_restore.get_player_locations("srv1", _=_test_user())
     fake.unlink()
     assert result.players[0].region_dir_relpath == "world/region"

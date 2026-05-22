@@ -8,7 +8,7 @@ import shutil
 import sys
 from gzip import GzipFile
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, ParamSpec, TypeVar, cast
 
 from .config import settings
 
@@ -42,9 +42,13 @@ log_stream_handler.setFormatter(formatter)
 logger.addHandler(log_stream_handler)
 
 
-def log_exception[**P, R](
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def log_exception(
     prefix: str = "",
-    default_return: R | None = None,
+    default_return: Any = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Wrap a sync or async function: log exceptions and return ``default_return``."""
 
@@ -52,7 +56,10 @@ def log_exception[**P, R](
         sig = inspect.signature(func)
         func_name = func.__qualname__
 
-        def format_args_kwargs(args: tuple, kwargs: dict) -> tuple[dict, str]:
+        def format_args_kwargs(
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> tuple[dict[str, Any], str]:
             try:
                 bound = sig.bind(*args, **kwargs)
                 bound.apply_defaults()
@@ -90,7 +97,7 @@ def log_exception[**P, R](
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
@@ -101,14 +108,14 @@ def log_exception[**P, R](
                         exc_info=True,
                         stacklevel=2,
                     )
-                    return default_return  # type: ignore[return-value]
+                    return default_return
 
-            return async_wrapper  # type: ignore[return-value]
+            return cast(Callable[P, R], async_wrapper)
 
         else:
 
             @functools.wraps(func)
-            def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
@@ -119,8 +126,8 @@ def log_exception[**P, R](
                         exc_info=True,
                         stacklevel=2,
                     )
-                    return default_return  # type: ignore[return-value]
+                    return default_return
 
-            return sync_wrapper  # type: ignore[return-value]
+            return cast(Callable[P, R], sync_wrapper)
 
     return decorator

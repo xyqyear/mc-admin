@@ -122,11 +122,14 @@ class ResticManager:
         """``password=None`` or empty string means the repository is unprotected."""
         self.repository_path = repository_path
         self.password = password
-        self.use_password = password is not None and password.strip() != ""
+        password_value = (
+            password if password is not None and password.strip() != "" else None
+        )
+        self.use_password = password_value is not None
 
         self.env = {"RESTIC_REPOSITORY": repository_path}
-        if self.use_password:
-            self.env["RESTIC_PASSWORD"] = password
+        if password_value is not None:
+            self.env["RESTIC_PASSWORD"] = password_value
 
     def _add_password_args(self, args: list[str]) -> list[str]:
         if not self.use_password:
