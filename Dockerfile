@@ -35,7 +35,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     UVICORN_PORT="8000" \
     STATIC_PATH="/app/static" \
     FD_BINARY_PATH="/usr/local/bin/fd" \
-    MCMAP_BINARY_PATH="/usr/local/bin/mcmap"
+    MCMAP_BINARY_PATH="/usr/local/bin/mcmap" \
+    RESTIC_BINARY_PATH="/usr/local/bin/restic"
 
 RUN apk add --no-cache \
     docker \

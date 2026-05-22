@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import settings
 from app.snapshots import ResticManager
 from app.utils.exec import exec_command
 
@@ -13,7 +14,10 @@ from app.utils.exec import exec_command
 def check_restic_available() -> bool:
     try:
         result = subprocess.run(
-            ["restic", "version"], capture_output=True, text=True, timeout=5
+            [str(settings.restic_binary_path), "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -51,7 +55,9 @@ def temp_data_dir():
 @pytest.fixture
 async def restic_manager(temp_repo_dir):
     manager = ResticManager(repository_path=str(temp_repo_dir), password=None)
-    await exec_command("restic", "init", "--insecure-no-password", env=manager.env)
+    await exec_command(
+        str(manager.binary_path), "init", "--insecure-no-password", env=manager.env
+    )
     return manager
 
 

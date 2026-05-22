@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import aiofiles.os as aioos
@@ -12,6 +13,9 @@ TEST_ROOT_PATH = Path("/tmp/test_temp_dir")
 def create_mc_server_compose_yaml(
     server_name: str, game_port: int, rcon_port: int
 ) -> str:
+    uid = os.getuid()
+    gid = os.getgid()
+
     return f"""services:
   mc:
     image: itzg/minecraft-server:java25
@@ -32,6 +36,8 @@ def create_mc_server_compose_yaml(
       SPAWN_ANIMALS: 'false'
       SPAWN_MONSTERS: 'false'
       FORCE_GAMEMODE: 'true'
+      UID: '{uid}'
+      GID: '{gid}'
     ports:
     - {game_port}:25565
     - {rcon_port}:25575

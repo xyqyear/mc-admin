@@ -25,6 +25,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import settings
 from app.main import api_app
 from app.minecraft import MCServerStatus
 from app.models import (
@@ -47,7 +48,10 @@ from app.world.locks import LockHolder
 def _restic_available() -> bool:
     try:
         result = subprocess.run(
-            ["restic", "version"], capture_output=True, text=True, timeout=5
+            [str(settings.restic_binary_path), "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -142,7 +146,9 @@ def repo_path() -> Iterator[Path]:
 @pytest_asyncio.fixture
 async def restic_manager(repo_path: Path) -> ResticManager:
     manager = ResticManager(repository_path=str(repo_path), password=None)
-    await exec_command("restic", "init", "--insecure-no-password", env=manager.env)
+    await exec_command(
+        str(manager.binary_path), "init", "--insecure-no-password", env=manager.env
+    )
     return manager
 
 

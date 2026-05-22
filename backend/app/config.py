@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     fd_binary_path: Path = Field(default=Path("/usr/bin/fd"))
     mcmap_binary_path: Path = Field(default=Path("/usr/local/bin/mcmap"))
+    restic_binary_path: Path = Field(default=Path("/usr/local/bin/restic"))
 
     database_url: str = Field(default="sqlite+aiosqlite:///./db.sqlite3")
     master_token: str

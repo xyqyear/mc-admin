@@ -326,13 +326,19 @@ class TestValidateAdoption:
 
     async def test_port_conflict_raises(self, patch_singletons, db_factory):
         mgr = patch_singletons
-        # Create two servers using the same port
-        await mgr.get_instance("first").create(_yaml("first", 25700, 25710))
-        await mgr.get_instance("second").create(_yaml("second", 25700, 25711))
+        first = mgr.get_instance("first")
+        second = mgr.get_instance("second")
+        await first.create(_yaml("first", 25700, 25710))
+        await second.create(_yaml("second", 25700, 25711))
 
-        async with db_factory() as session:
-            with pytest.raises(ValueError, match="端口冲突"):
-                await validate_adoption(session, "second")
+        with patch.object(
+            mgr,
+            "get_all_instances",
+            new=AsyncMock(return_value=[first, second]),
+        ):
+            async with db_factory() as session:
+                with pytest.raises(ValueError, match="端口冲突"):
+                    await validate_adoption(session, "second")
 
 
 # ---------------------------------------------------------------------------

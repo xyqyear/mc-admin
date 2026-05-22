@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import settings
 from app.snapshots import ResticManager
 from app.utils.exec import exec_command
 
@@ -34,7 +35,10 @@ def check_restic_available():
     """Check if restic command is available"""
     try:
         result = subprocess.run(
-            ["restic", "version"], capture_output=True, text=True, timeout=5
+            [str(settings.restic_binary_path), "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -91,7 +95,7 @@ class TestResticManagerIntegrated:
 
         # Initialize the repository
         try:
-            await exec_command("restic", "init", env=manager.env)
+            await exec_command(str(manager.binary_path), "init", env=manager.env)
         except Exception as e:
             pytest.fail(f"Failed to initialize restic repository: {e}")
 

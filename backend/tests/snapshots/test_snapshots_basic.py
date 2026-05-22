@@ -28,6 +28,17 @@ class TestResticManagerBasic:
         assert manager.env["RESTIC_REPOSITORY"] == "/test/repo/path"
         assert manager.env["RESTIC_PASSWORD"] == "test-password"
 
+    def test_restic_manager_binary_path(self):
+        """Test ResticManager binary path configuration"""
+        manager = ResticManager(
+            repository_path="/test/repo/path",
+            password="test-password",
+            binary_path="/custom/bin/restic",
+        )
+
+        assert manager.binary_path == Path("/custom/bin/restic")
+        assert manager._args("version") == ["/custom/bin/restic", "version"]
+
     @pytest.mark.asyncio
     async def test_backup_requires_absolute_path(self):
         """Test that backup method validates absolute paths"""

@@ -54,6 +54,7 @@ jobs:
       STATIC_PATH: ${{ github.workspace }}/backend/.ci-static
       FD_BINARY_PATH: /usr/local/bin/fd
       MCMAP_BINARY_PATH: /usr/local/bin/mcmap
+      RESTIC_BINARY_PATH: /usr/local/bin/restic
       DATABASE_URL: sqlite+aiosqlite:///./test-${{ matrix.test_group }}.sqlite3
       PYTHONPATH: ${{ github.workspace }}/backend
     steps:

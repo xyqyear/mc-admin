@@ -118,10 +118,16 @@ def _parse_restore_event(data: dict) -> Optional[ResticRestoreEvent]:
 
 
 class ResticManager:
-    def __init__(self, repository_path: str, password: str | None = None):
+    def __init__(
+        self,
+        repository_path: str,
+        password: str | None = None,
+        binary_path: str | Path | None = None,
+    ):
         """``password=None`` or empty string means the repository is unprotected."""
         self.repository_path = repository_path
         self.password = password
+        self.binary_path = Path(binary_path or settings.restic_binary_path)
         password_value = (
             password if password is not None and password.strip() != "" else None
         )
@@ -136,6 +142,9 @@ class ResticManager:
             args.append("--insecure-no-password")
         return args
 
+    def _args(self, *args: str) -> list[str]:
+        return [str(self.binary_path), *args]
+
     async def backup(self, paths: List[Path]) -> ResticSnapshotWithSummary:
         """Capture all given absolute paths into a single snapshot."""
         if not paths:
@@ -145,14 +154,13 @@ class ResticManager:
                 raise ValueError("Path must be absolute for restic backup")
 
         args = self._add_password_args(
-            [
-                "restic",
+            self._args(
                 "backup",
                 *(str(p) for p in paths),
                 "--exclude",
                 ".mcmap",
                 "--json",
-            ]
+            )
         )
         result = await exec_command(*args, env=self.env)
 
@@ -176,7 +184,9 @@ class ResticManager:
                 "Could not parse snapshot data from restic backup output"
             )
 
-        args = self._add_password_args(["restic", "snapshots", snapshot_id, "--json"])
+        args = self._add_password_args(
+            self._args("snapshots", snapshot_id, "--json")
+        )
         snapshots_result = await exec_command(*args, env=self.env)
 
         try:
@@ -225,7 +235,7 @@ class ResticManager:
         self, path_filter: Optional[Path] = None
     ) -> List[ResticSnapshot]:
         """Return all snapshots; with ``path_filter`` keep only those covering it."""
-        args = self._add_password_args(["restic", "snapshots", "--json"])
+        args = self._add_password_args(self._args("snapshots", "--json"))
         result = await exec_command(*args, env=self.env)
 
         try:
@@ -329,8 +339,7 @@ class ResticManager:
         Action ``item`` is the snapshot's original absolute path; use
         ``compute_restore_destination`` to map it to the on-disk location.
         """
-        args = [
-            "restic",
+        args = self._args(
             "restore",
             snapshot_id,
             "--target",
@@ -339,7 +348,7 @@ class ResticManager:
             "-vv",
             "--delete",
             "--json",
-        ]
+        )
 
         if include_paths:
             for include_path in include_paths:
@@ -393,8 +402,7 @@ class ResticManager:
 
         Raises ``RuntimeError`` (with captured stderr) on non-zero exit.
         """
-        args = [
-            "restic",
+        args = self._args(
             "restore",
             snapshot_id,
             "--target",
@@ -402,7 +410,7 @@ class ResticManager:
             "--delete",
             "--json",
             "-vv",
-        ]
+        )
 
         if include_paths:
             for include_path in include_paths:
@@ -461,7 +469,7 @@ class ResticManager:
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """Remove the snapshot ``snapshot_id``; prune the repo afterwards by default."""
-        args = ["restic", "forget", snapshot_id]
+        args = self._args("forget", snapshot_id)
 
         if prune:
             args.append("--prune")
@@ -503,7 +511,7 @@ class ResticManager:
                 "At least one retention policy parameter must be specified"
             )
 
-        args = ["restic", "forget", "--group-by", ""]
+        args = self._args("forget", "--group-by", "")
 
         if keep_last is not None:
             args.extend(["--keep-last", str(keep_last)])
@@ -538,11 +546,11 @@ class ResticManager:
         return result
 
     async def list_locks(self) -> str:
-        args = self._add_password_args(["restic", "list", "locks"])
+        args = self._add_password_args(self._args("list", "locks"))
         return await exec_command(*args, env=self.env)
 
     async def unlock(self) -> str:
-        args = self._add_password_args(["restic", "unlock"])
+        args = self._add_password_args(self._args("unlock"))
         return await exec_command(*args, env=self.env)
 
 
@@ -551,4 +559,5 @@ if settings.restic:
     restic_manager = ResticManager(
         repository_path=settings.restic.repository_path,
         password=settings.restic.password,
+        binary_path=settings.restic_binary_path,
     )

@@ -42,16 +42,21 @@ def get_system_used_ports() -> set[int]:
     return used_ports
 
 
-async def get_server_used_ports() -> dict[int, str]:
+async def get_server_used_ports(
+    exclude_server_id: Optional[str] = None,
+) -> set[int]:
     """Get ports used by Minecraft servers.
 
     Returns:
-        Dict mapping port number to server name.
+        Set of ports used by known Minecraft servers.
     """
-    port_map: dict[int, str] = {}
+    ports: set[int] = set()
     instances = await docker_mc_manager.get_all_instances()
 
     for instance in instances:
+        if exclude_server_id and instance.get_name() == exclude_server_id:
+            continue
+
         compose_file_path = await instance.get_compose_file_path()
         if compose_file_path is None:
             continue
@@ -59,8 +64,8 @@ async def get_server_used_ports() -> dict[int, str]:
         try:
             compose_content = await instance.get_compose_file()
             game_port, rcon_port = extract_ports_from_yaml(compose_content)
-            port_map[game_port] = instance.get_name()
-            port_map[rcon_port] = instance.get_name()
+            ports.add(game_port)
+            ports.add(rcon_port)
         except Exception:
             logger.warning(
                 f"Failed to parse compose file for {instance.get_name()} "
@@ -68,7 +73,7 @@ async def get_server_used_ports() -> dict[int, str]:
             )
             continue
 
-    return port_map
+    return ports
 
 
 async def check_port_conflicts(
@@ -89,24 +94,27 @@ async def check_port_conflicts(
     conflicts = []
     ports_to_check = {game_port, rcon_port}
 
-    # Collect ports from all servers (with server name mapping)
-    server_port_map = await get_server_used_ports()
+    # Collect all managed server ports so they are not mistaken for system ports.
+    server_ports = await get_server_used_ports()
+
+    if exclude_server_id is None:
+        conflicting_server_ports = server_ports
+    else:
+        conflicting_server_ports = await get_server_used_ports(exclude_server_id)
 
     # Collect system ports
     system_ports = get_system_used_ports()
 
     # System ports that are NOT from known servers
-    server_port_set = set(server_port_map.keys())
-    non_server_system_ports = system_ports - server_port_set
+    non_server_system_ports = system_ports - server_ports
 
     # Check against other servers
     for port in ports_to_check:
-        if port in server_port_map:
-            owner = server_port_map[port]
-            if exclude_server_id and owner == exclude_server_id:
-                continue
+        if port in conflicting_server_ports:
             port_label = "Game port" if port == game_port else "RCON port"
-            conflicts.append(f"{port_label} {port} is already used by server '{owner}'")
+            conflicts.append(
+                f"{port_label} {port} is already used by another server"
+            )
 
     # Check against system ports (non-server)
     if game_port in non_server_system_ports:

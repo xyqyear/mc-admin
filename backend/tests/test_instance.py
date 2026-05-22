@@ -1,4 +1,6 @@
 # pyright: reportUnusedImport=false
+import os
+
 import pytest
 
 from app.minecraft import DiskSpaceInfo, DockerMCManager, MCServerInfo, MCServerStatus
@@ -36,6 +38,8 @@ async def test_minecraft_instance(teardown: list[str]):  # noqa: F811
     assert mc_compose.get_game_version() == "1.21.11"
     assert mc_compose.get_game_port() == 34544
     assert mc_compose.get_rcon_port() == 34545
+    assert mc_compose.mc_service.environment["UID"] == str(os.getuid())
+    assert mc_compose.mc_service.environment["GID"] == str(os.getgid())
 
 
 @pytest.mark.asyncio
