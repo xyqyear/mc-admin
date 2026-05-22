@@ -8,6 +8,13 @@ from unittest.mock import patch
 import pytest
 
 from app.mcmap import runner
+from app.mcmap.events import (
+    MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER,
+    MCMAP_GEN_PALETTE_EVENT_ADAPTER,
+    MCMAP_RENDER_EVENT_ADAPTER,
+    MCMapProtocolError,
+    MCMapRenderRegionEvent,
+)
 
 
 def _write_fake_mcmap(content: str) -> Path:
@@ -41,19 +48,21 @@ async def test_render_parses_ndjson_events(fake_owned_dir):
             threads=2,
             owned_by=fake_owned_dir,
         ) as proc:
-            async for ev in proc:
+            async for ev in proc.events(MCMAP_RENDER_EVENT_ADAPTER):
                 events.append(ev)
         assert proc.returncode == 0
     fake.unlink()
 
-    types = [e["type"] for e in events]
+    types = [e.type for e in events]
     assert types == ["region", "region", "result"]
-    assert events[0]["x"] == 0
-    assert events[0]["status"] == "rendered"
-    assert events[1]["status"] == "missing"
+    assert isinstance(events[0], MCMapRenderRegionEvent)
+    assert isinstance(events[1], MCMapRenderRegionEvent)
+    assert events[0].x == 0
+    assert events[0].status == "rendered"
+    assert events[1].status == "missing"
 
 
-async def test_runner_skips_malformed_lines(fake_owned_dir):
+async def test_runner_rejects_malformed_lines(fake_owned_dir):
     fake = _write_fake_mcmap(
         "#!/bin/sh\n"
         "echo 'not json'\n"
@@ -67,10 +76,9 @@ async def test_runner_skips_malformed_lines(fake_owned_dir):
             threads=1,
             owned_by=fake_owned_dir,
         ) as proc:
-            events = [e async for e in proc]
+            with pytest.raises(MCMapProtocolError):
+                _ = [e async for e in proc.events(MCMAP_RENDER_EVENT_ADAPTER)]
     fake.unlink()
-    # Malformed line skipped, only the JSON object yielded
-    assert events == [{"type": "result"}]
 
 
 async def test_runner_terminate_is_idempotent(fake_owned_dir):
@@ -114,14 +122,14 @@ async def test_download_client_args_passed_through(fake_owned_dir):
     fake = _write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
-        'echo \'{"type":"result","version":"1.21.4"}\'\n'
+        'echo \'{"type":"result","version":"1.21.4","target":"/tmp/client.jar","bytes":123,"sha1":"abc","move_method":"rename"}\'\n'
     )
     target = fake_owned_dir / "client.jar"
     with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
         async with runner.download_client(
             "1.21.4", target, owned_by=fake_owned_dir
         ) as proc:
-            events = [e async for e in proc]
+            events = [e async for e in proc.events(MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER)]
         assert proc.returncode == 0
     args_text = Path(str(fake) + ".args").read_text()
     fake.unlink()
@@ -131,14 +139,14 @@ async def test_download_client_args_passed_through(fake_owned_dir):
     assert "download-client" in args_text
     assert "1.21.4" in args_text
     assert str(target) in args_text
-    assert events[-1]["type"] == "result"
+    assert events[-1].type == "result"
 
 
 async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
     fake = _write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
-        'echo \'{"type":"result"}\'\n'
+        'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
     )
     out = fake_owned_dir / "palette.json"
     level_dat = fake_owned_dir / "world" / "level.dat"
@@ -149,7 +157,7 @@ async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
             level_dat=level_dat,
             owned_by=fake_owned_dir,
         ) as proc:
-            _ = [e async for e in proc]
+            _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
         assert proc.returncode == 0
     args_text = Path(str(fake) + ".args").read_text()
     fake.unlink()
@@ -164,7 +172,7 @@ async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
     fake = _write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
-        'echo \'{"type":"result"}\'\n'
+        'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
     )
     with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
         async with runner.gen_palette(
@@ -173,7 +181,7 @@ async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
             level_dat=None,
             owned_by=fake_owned_dir,
         ) as proc:
-            _ = [e async for e in proc]
+            _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
         assert proc.returncode == 0
     args_text = Path(str(fake) + ".args").read_text()
     fake.unlink()

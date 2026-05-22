@@ -33,6 +33,13 @@ from ..dynamic_config import config as dynamic_config
 from ..logger import logger
 from ..mcmap import runner as mcmap_runner
 from ..mcmap.cache import ServerMapCache
+from ..mcmap.events import (
+    MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER,
+    MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER,
+    MCMapErrorEvent,
+    MCMapRemoveChunksResultEvent,
+    MCMapReplaceChunksResultEvent,
+)
 from ..mcmap.queue import ServerRenderQueue
 from ..mcmap.types import MCMapError
 from ..minecraft import DockerMCManager, MCServerStatus
@@ -746,22 +753,23 @@ class WorldRestoreOrchestrator:
         *,
         op_name: str,
         ctx_manager: Any,
-        count_key: str,
+        event_adapter: Any,
         expected_count: int,
     ) -> None:
         async with ctx_manager as proc:
-            terminal: Optional[dict] = None
-            async for event in proc:
-                etype = event.get("type")
-                if etype == "result":
-                    terminal = event
-                elif etype == "error":
-                    raise MCMapError(event.get("message", f"{op_name} failed"))
+            completed_count: Optional[int] = None
+            async for event in proc.events(event_adapter):
+                if isinstance(event, MCMapErrorEvent):
+                    raise MCMapError(event.message or f"{op_name} failed")
+                if isinstance(event, MCMapReplaceChunksResultEvent):
+                    completed_count = event.replaced
+                elif isinstance(event, MCMapRemoveChunksResultEvent):
+                    completed_count = event.removed
         if proc.returncode != 0:
             raise MCMapError(f"mcmap {op_name} exited with {proc.returncode}")
-        if terminal is None or terminal.get(count_key) != expected_count:
+        if completed_count != expected_count:
             raise MCMapError(
-                f"mcmap {op_name} reported {terminal} for {expected_count} requested chunks"
+                f"mcmap {op_name} reported {completed_count} for {expected_count} requested chunks"
             )
 
     async def _merge_replace(
@@ -780,7 +788,7 @@ class WorldRestoreOrchestrator:
                 chunks=chunks,
                 owned_by=owned_by,
             ),
-            count_key="replaced",
+            event_adapter=MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER,
             expected_count=len(chunks),
         )
 
@@ -798,7 +806,7 @@ class WorldRestoreOrchestrator:
                 chunks=chunks,
                 owned_by=owned_by,
             ),
-            count_key="removed",
+            event_adapter=MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER,
             expected_count=len(chunks),
         )
 

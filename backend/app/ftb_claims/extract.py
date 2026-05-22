@@ -2,6 +2,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..logger import logger
+from ..mcmap.events import (
+    MCMAP_FTB_CLAIMS_EVENT_ADAPTER,
+    MCMapDimensionEntry,
+    MCMapErrorEvent,
+    MCMapFtbClaimsPayload,
+    MCMapFtbClaimsResultEvent,
+    MCMapFtbMember,
+    MCMapFtbTeam,
+    MCMapProtocolError,
+)
 from ..world.layout import (
     WorldRootPath,
     discover_world_root_paths,
@@ -13,14 +23,11 @@ from .models import (
     ClaimMember,
     ClaimsResponse,
     ClusterEntry,
-    DetectedFormat,
     TeamEntry,
 )
 from .runner import extract_ftb_claims
 
 NO_FTB_DATA_MESSAGE_SUBSTRING = "could not detect FTB claim format"
-
-_VALID_FORMATS = {"snbt", "per_team_nbt", "universe_dat", "latmod_json"}
 
 
 class NoFtbDataError(Exception):
@@ -31,123 +38,95 @@ class FtbExtractError(Exception):
     pass
 
 
-async def _run_extract(world_dir: Path, data_path: Path) -> dict:
-    async with extract_ftb_claims(world_dir, owned_by=data_path) as proc:
-        terminal: Optional[dict] = None
-        async for event in proc:
-            event_type = event.get("type")
-            if event_type in ("result", "error"):
-                terminal = event
-                break
-        await proc.terminate()
-    if terminal is None:
-        stderr = ""
-        raise FtbExtractError(
-            f"mcmap extract-ftb-claims produced no terminal event ({stderr!r})"
-        )
-    if terminal.get("type") == "error":
-        message = str(terminal.get("message", ""))
-        if NO_FTB_DATA_MESSAGE_SUBSTRING in message:
-            raise NoFtbDataError(message)
-        raise FtbExtractError(message or "mcmap extract-ftb-claims failed")
-    data = terminal.get("data")
-    if not isinstance(data, dict):
-        raise FtbExtractError("mcmap result event is missing 'data' payload")
-    return data
+async def _run_extract(world_dir: Path, data_path: Path) -> MCMapFtbClaimsPayload:
+    try:
+        async with extract_ftb_claims(world_dir, owned_by=data_path) as proc:
+            async for event in proc.events(MCMAP_FTB_CLAIMS_EVENT_ADAPTER):
+                if isinstance(event, MCMapFtbClaimsResultEvent):
+                    await proc.terminate()
+                    return event.data
+                if isinstance(event, MCMapErrorEvent):
+                    if NO_FTB_DATA_MESSAGE_SUBSTRING in event.message:
+                        raise NoFtbDataError(event.message)
+                    raise FtbExtractError(
+                        event.message or "mcmap extract-ftb-claims failed"
+                    )
+            stderr = await proc.stderr()
+    except MCMapProtocolError as e:
+        raise FtbExtractError(str(e)) from e
+    raise FtbExtractError(
+        f"mcmap extract-ftb-claims produced no terminal event ({stderr!r})"
+    )
 
 
 def _resolve_dimensions(
-    raw_dims: List[dict],
+    raw_dims: List[MCMapDimensionEntry],
     world_root: WorldRootPath,
     data_path: Path,
 ) -> Tuple[List[ClaimDimensionEntry], Dict[str, Optional[str]]]:
     entries: List[ClaimDimensionEntry] = []
     relpath_by_ftb_id: Dict[str, Optional[str]] = {}
     for raw in raw_dims:
-        ftb_id = str(raw.get("id", ""))
-        folder = str(raw.get("folder", ""))
-        exists_on_disk = bool(raw.get("exists", False))
         resolved = resolve_dimension_folder(
             data_path,
             world_root,
-            folder,
-            exists_on_disk=exists_on_disk,
+            raw.folder,
+            exists_on_disk=raw.exists,
         )
         entries.append(
             ClaimDimensionEntry(
-                ftb_id=ftb_id,
+                ftb_id=raw.id,
                 region_dir_relpath=resolved.region_dir_relpath,
                 exists_on_disk=resolved.exists_on_disk,
             )
         )
-        relpath_by_ftb_id[ftb_id] = resolved.region_dir_relpath
+        relpath_by_ftb_id[raw.id] = resolved.region_dir_relpath
     return entries, relpath_by_ftb_id
 
 
-def _display_name(team: dict) -> str:
-    # pre-1.13 FTB returns name=null; fall back to owner → first member → id prefix.
-    name = team.get("name")
-    if isinstance(name, str) and name.strip():
-        return name.strip()
-    owner = team.get("owner") or {}
-    if isinstance(owner, dict):
-        oname = owner.get("name")
-        if isinstance(oname, str) and oname.strip():
-            return oname.strip()
-    for member in team.get("members") or []:
-        if not isinstance(member, dict):
+def _display_name(team: MCMapFtbTeam) -> str:
+    # pre-1.13 FTB can return name=null; fall back to owner, member, then id.
+    if team.name is not None and team.name.strip():
+        return team.name.strip()
+    if team.owner is not None and team.owner.name is not None:
+        owner_name = team.owner.name.strip()
+        if owner_name:
+            return owner_name
+    for member in team.members:
+        if member.name is None:
             continue
-        mname = member.get("name")
-        if isinstance(mname, str) and mname.strip():
-            return mname.strip()
-    tid = str(team.get("id") or "")
-    return tid[:8] if tid else "(unknown)"
+        member_name = member.name.strip()
+        if member_name:
+            return member_name
+    return team.id[:8] if team.id else "(unknown)"
 
 
-def _parse_member(raw: dict) -> ClaimMember:
+def _parse_member(raw: MCMapFtbMember) -> ClaimMember:
     return ClaimMember(
-        uuid=raw.get("uuid") if isinstance(raw.get("uuid"), str) else None,
-        name=raw.get("name") if isinstance(raw.get("name"), str) else None,
-        rank=raw.get("rank") if isinstance(raw.get("rank"), str) else None,
+        uuid=raw.uuid,
+        name=raw.name,
+        rank=raw.rank,
     )
 
 
-def _coerce_team_type(raw: object) -> str:
-    if raw in ("player", "party", "server"):
-        return raw  # type: ignore[return-value]
-    return "unknown"
-
-
 def _build_team_entry(
-    raw_team: dict,
+    raw_team: MCMapFtbTeam,
     relpath_by_ftb_id: Dict[str, Optional[str]],
 ) -> TeamEntry:
-    team_id = str(raw_team.get("id") or "")
-    members_raw = raw_team.get("members") or []
-    owner_raw = raw_team.get("owner")
-    claims_raw = raw_team.get("claims") or []
-
     by_dim_claims: Dict[str, List[Tuple[int, int]]] = {}
     by_dim_force: Dict[str, List[Tuple[int, int]]] = {}
-    for claim in claims_raw:
-        if not isinstance(claim, dict):
-            continue
-        dim = str(claim.get("dim") or "")
-        try:
-            cx = int(claim.get("cx"))  # type: ignore[arg-type]
-            cz = int(claim.get("cz"))  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            continue
-        by_dim_claims.setdefault(dim, []).append((cx, cz))
-        if bool(claim.get("force_loaded")):
-            by_dim_force.setdefault(dim, []).append((cx, cz))
+    for claim in raw_team.claims:
+        chunk = (claim.cx, claim.cz)
+        by_dim_claims.setdefault(claim.dim, []).append(chunk)
+        if claim.force_loaded:
+            by_dim_force.setdefault(claim.dim, []).append(chunk)
 
     clusters: List[ClusterEntry] = []
     for dim_id, chunks in by_dim_claims.items():
         rel = relpath_by_ftb_id.get(dim_id)
         clusters.extend(
             build_clusters(
-                team_id=team_id,
+                team_id=raw_team.id,
                 region_dir_relpath=rel,
                 claims=chunks,
                 force_loaded=by_dim_force.get(dim_id, []),
@@ -155,12 +134,12 @@ def _build_team_entry(
         )
 
     total_chunks = sum(len(c.chunks) for c in clusters)
-    members = [_parse_member(m) for m in members_raw if isinstance(m, dict)]
-    owner = _parse_member(owner_raw) if isinstance(owner_raw, dict) else None
+    members = [_parse_member(m) for m in raw_team.members]
+    owner = _parse_member(raw_team.owner) if raw_team.owner is not None else None
     return TeamEntry(
-        id=team_id,
+        id=raw_team.id,
         display_name=_display_name(raw_team),
-        type=_coerce_team_type(raw_team.get("type")),  # type: ignore[arg-type]
+        type=raw_team.type,
         members=members,
         owner=owner,
         total_chunks=total_chunks,
@@ -168,33 +147,21 @@ def _build_team_entry(
     )
 
 
-def _coerce_detected_format(raw: object) -> Optional[DetectedFormat]:
-    if isinstance(raw, str) and raw in _VALID_FORMATS:
-        return raw  # type: ignore[return-value]
-    return None
-
-
 def _shape_response(
-    data: dict,
+    data: MCMapFtbClaimsPayload,
     world_root: WorldRootPath,
     data_path: Path,
 ) -> ClaimsResponse:
-    raw_dims = data.get("dimensions") or []
-    raw_teams = data.get("teams") or []
     dimensions, relpath_by_ftb_id = _resolve_dimensions(
-        raw_dims if isinstance(raw_dims, list) else [],
+        data.dimensions,
         world_root,
         data_path,
     )
-    teams = [
-        _build_team_entry(t, relpath_by_ftb_id)
-        for t in raw_teams
-        if isinstance(t, dict)
-    ]
+    teams = [_build_team_entry(t, relpath_by_ftb_id) for t in data.teams]
     teams.sort(key=lambda t: (t.display_name.lower(), t.id))
     return ClaimsResponse(
         available=True,
-        detected_format=_coerce_detected_format(data.get("detected_format")),
+        detected_format=data.detected_format,
         dimensions=dimensions,
         teams=teams,
     )

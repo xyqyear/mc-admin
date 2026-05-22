@@ -27,7 +27,8 @@ data/.mcmap/
 1. **Client jar** — `mcmap download-client <version> client.jar`. The version comes from the server's compose (`docker-minecraft-server` `VERSION` env var). Cached fast-path if `client.jar` exists.
 2. **Palette** — `mcmap gen-palette --level-dat <data>/<level-name>/level.dat -p <mods_dir?> -p client.jar -o palette.json`. The backend always passes `--level-dat` when the file exists; mcmap auto-picks 1.7.10 / 1.12.2 / 1.13+ pipelines from its content (and ignores it for 1.13+). Mods directory is included as an extra pack when `data/mods/` contains at least one `.jar`.
 
-Both stages stream NDJSON progress events through to the browser as SSE.
+Both stages validate mcmap NDJSON with command-specific Pydantic event models,
+then stream progress through to the browser as SSE.
 
 ### Palette currency
 
@@ -46,7 +47,7 @@ Tile URLs include `?mt=<mca_mtime>` so the browser HTTP cache busts automaticall
 
 A `ServerRenderQueue` exists per `(server_id, region_path)` pair. Including `region_path` in the key guarantees a single `mcmap render --split` invocation never mixes regions from different dimensions, so PNGs always land in the correct subfolder.
 
-**Batching**: a worker collects up to `batch_size` pending coordinates and runs them in one `mcmap render --split --preserve-mtime -j <thread_count>` invocation. The queue reads `config.mcmap` for each batch, so dynamic config edits affect the next render invocation without rebuilding the queue. The subprocess streams a `region` NDJSON event per output; the worker resolves each waiter's future as the matching event arrives. Any region the subprocess never emits (e.g. terminated mid-batch) gets a `RenderError`.
+**Batching**: a worker collects up to `batch_size` pending coordinates and runs them in one `mcmap render --split --preserve-mtime -j <thread_count>` invocation. The queue reads `config.mcmap` for each batch, so dynamic config edits affect the next render invocation without rebuilding the queue. The subprocess streams a validated `region` event per output; the worker resolves each waiter's future as the matching event arrives. Any region the subprocess never emits (e.g. terminated mid-batch) gets a `RenderError`.
 
 **Coalescing**: duplicate `(x, z)` requests share one `asyncio.Future`. The consumer's `await` is wrapped in `asyncio.shield` so cancelling one consumer does not disturb others.
 

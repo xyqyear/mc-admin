@@ -29,6 +29,14 @@ class FakeProc:
             await asyncio.sleep(0)  # let other tasks run
             yield ev
 
+    def events(self, adapter):
+        return self._iter_typed(adapter)
+
+    async def _iter_typed(self, adapter):
+        for ev in self._events:
+            await asyncio.sleep(0)
+            yield adapter.validate_python(ev)
+
     async def terminate(self):
         self._terminated = True
         if self._on_terminate is not None:

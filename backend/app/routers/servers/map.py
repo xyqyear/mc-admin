@@ -22,6 +22,14 @@ from ...mcmap import (
     write_palette_hash,
 )
 from ...mcmap import runner as mcmap_runner
+from ...mcmap.events import (
+    MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER,
+    MCMAP_GEN_PALETTE_EVENT_ADAPTER,
+    MCMapDownloadClientResultEvent,
+    MCMapErrorEvent,
+    MCMapGenPaletteResultEvent,
+    MCMapProgressEvent,
+)
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
@@ -193,12 +201,11 @@ async def _initialize_stream(
             async with mcmap_runner.download_client(
                 version, cache.client_jar, owned_by=data_path
             ) as proc:
-                async for event in proc:
-                    if event.get("type") == "progress":
-                        phase = event.get("phase")
-                        if phase == "downloading":
-                            total = event.get("total") or 0
-                            got = event.get("bytes") or 0
+                async for event in proc.events(MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER):
+                    if isinstance(event, MCMapProgressEvent):
+                        if event.phase == "downloading":
+                            total = event.total or 0
+                            got = event.bytes or 0
                             pct = (got / total * 100) if total else 0
                             yield _sse(
                                 {
@@ -208,7 +215,7 @@ async def _initialize_stream(
                                     "message": f"Downloading {version} ({got} / {total} bytes)",
                                 }
                             )
-                        elif phase == "verified":
+                        elif event.phase == "verified":
                             yield _sse(
                                 {
                                     "stage": "client",
@@ -216,7 +223,7 @@ async def _initialize_stream(
                                     "percent": 100,
                                 }
                             )
-                    elif event.get("type") == "result":
+                    elif isinstance(event, MCMapDownloadClientResultEvent):
                         yield _sse(
                             {
                                 "stage": "client",
@@ -225,12 +232,12 @@ async def _initialize_stream(
                                 "cached": False,
                             }
                         )
-                    elif event.get("type") == "error":
+                    elif isinstance(event, MCMapErrorEvent):
                         yield _sse(
                             {
                                 "stage": "client",
                                 "phase": "error",
-                                "message": event.get("message", "unknown error"),
+                                "message": event.message,
                             }
                         )
                         return
@@ -272,14 +279,13 @@ async def _initialize_stream(
             level_dat=level_dat,
             owned_by=data_path,
         ) as proc:
-            async for event in proc:
-                if event.get("type") == "progress":
-                    phase = event.get("phase")
-                    if phase == "pack_loaded":
-                        idx = event.get("index") or 0
-                        total = event.get("total") or 1
+            async for event in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER):
+                if isinstance(event, MCMapProgressEvent):
+                    if event.phase == "pack_loaded":
+                        idx = event.index or 0
+                        total = event.total or 1
                         pct = (idx / total * 100) if total else 0
-                        path_str = event.get("path", "")
+                        path_str = event.path or ""
                         yield _sse(
                             {
                                 "stage": "palette",
@@ -288,7 +294,7 @@ async def _initialize_stream(
                                 "message": f"Loaded {Path(path_str).name} ({idx} of {total})",
                             }
                         )
-                    elif phase == "packs_done":
+                    elif event.phase == "packs_done":
                         yield _sse(
                             {
                                 "stage": "palette",
@@ -296,7 +302,7 @@ async def _initialize_stream(
                                 "percent": 100,
                             }
                         )
-                elif event.get("type") == "result":
+                elif isinstance(event, MCMapGenPaletteResultEvent):
                     await write_palette_hash(cache, version, mods_dir)
                     yield _sse(
                         {
@@ -306,12 +312,12 @@ async def _initialize_stream(
                             "cached": False,
                         }
                     )
-                elif event.get("type") == "error":
+                elif isinstance(event, MCMapErrorEvent):
                     yield _sse(
                         {
                             "stage": "palette",
                             "phase": "error",
-                            "message": event.get("message", "unknown error"),
+                            "message": event.message,
                         }
                     )
                     return

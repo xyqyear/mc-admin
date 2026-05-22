@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from app.mcmap import runner
+from app.mcmap.events import MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER
 
 
 def _write_fake_mcmap(content: str) -> Path:
@@ -43,7 +44,9 @@ async def test_remove_chunks_argv_shape_and_events(fake_owned_dir):
                 chunks=[(4, 15), (13, 22)],
                 owned_by=fake_owned_dir,
             ) as proc:
-                events = [e async for e in proc]
+                events = [
+                    e async for e in proc.events(MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER)
+                ]
             assert proc.returncode == 0
         args_text = Path(str(fake) + ".args").read_text()
     finally:
@@ -57,9 +60,9 @@ async def test_remove_chunks_argv_shape_and_events(fake_owned_dir):
     assert f"-t {tgt}" in args_text
     assert "-c 4,15;13,22" in args_text
 
-    types = [e["type"] for e in events]
+    types = [e.type for e in events]
     assert types == ["chunk_removed", "chunk_removed", "result"]
-    assert events[-1]["removed"] == 2
+    assert events[-1].removed == 2
 
 
 async def test_remove_chunks_error_event(fake_owned_dir):
@@ -77,12 +80,15 @@ async def test_remove_chunks_error_event(fake_owned_dir):
                 chunks=[(0, 0)],
                 owned_by=fake_owned_dir,
             ) as proc:
-                events = [e async for e in proc]
+                events = [
+                    e async for e in proc.events(MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER)
+                ]
             assert proc.returncode == 1
     finally:
         fake.unlink(missing_ok=True)
 
-    assert events[-1] == {"type": "error", "message": "target missing"}
+    assert events[-1].type == "error"
+    assert events[-1].message == "target missing"
 
 
 async def test_remove_chunks_empty_list_raises(fake_owned_dir):

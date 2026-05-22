@@ -29,6 +29,9 @@ class HangingProc:
         if False:  # pragma: no cover
             yield {}
 
+    def events(self, adapter):
+        return self._iter()
+
     async def terminate(self):
         self.terminated.set()
 
@@ -190,6 +193,15 @@ async def test_mid_batch_partial_cancellation_keeps_others_alive(queue_with_cach
             # Wait for the test to release us, then emit one region event for (1,0)
             await event_gate.wait()
             yield {"type": "region", "x": 1, "z": 0, "status": "rendered"}
+
+        def events(self, adapter):
+            return self._iter_typed(adapter)
+
+        async def _iter_typed(self, adapter):
+            await event_gate.wait()
+            yield adapter.validate_python(
+                {"type": "region", "x": 1, "z": 0, "status": "rendered"}
+            )
 
         async def terminate(self):
             self.terminated = True

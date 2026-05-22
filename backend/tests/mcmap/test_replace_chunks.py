@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from app.mcmap import runner
+from app.mcmap.events import MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER
 
 
 def _write_fake_mcmap(content: str) -> Path:
@@ -51,7 +52,9 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
                 chunks=[(4, 15), (13, 22)],
                 owned_by=fake_owned_dir,
             ) as proc:
-                events = [e async for e in proc]
+                events = [
+                    e async for e in proc.events(MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER)
+                ]
             assert proc.returncode == 0
         args_text = Path(str(fake) + ".args").read_text()
     finally:
@@ -65,11 +68,11 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
     # Coords serialized as one semicolon-separated -c argument
     assert "-c 4,15;13,22" in args_text
 
-    types = [e["type"] for e in events]
+    types = [e.type for e in events]
     assert types == ["chunk_replaced", "chunk_replaced", "result"]
-    assert events[0]["x"] == 4 and events[0]["z"] == 15
-    assert events[0]["source_kind"] == "external"
-    assert events[-1]["replaced"] == 2
+    assert events[0].x == 4 and events[0].z == 15
+    assert events[0].source_kind == "external"
+    assert events[-1].replaced == 2
 
 
 async def test_replace_chunks_single_chunk(fake_owned_dir):
@@ -91,7 +94,9 @@ async def test_replace_chunks_single_chunk(fake_owned_dir):
                 chunks=[(0, 0)],
                 owned_by=fake_owned_dir,
             ) as proc:
-                events = [e async for e in proc]
+                events = [
+                    e async for e in proc.events(MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER)
+                ]
             assert proc.returncode == 0
         args_text = Path(str(fake) + ".args").read_text()
     finally:
@@ -99,7 +104,7 @@ async def test_replace_chunks_single_chunk(fake_owned_dir):
         Path(str(fake) + ".args").unlink(missing_ok=True)
 
     assert "-c 0,0" in args_text
-    assert events[-1]["replaced"] == 1
+    assert events[-1].replaced == 1
 
 
 async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
@@ -120,12 +125,15 @@ async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
                 chunks=[(32, 0)],
                 owned_by=fake_owned_dir,
             ) as proc:
-                events = [e async for e in proc]
+                events = [
+                    e async for e in proc.events(MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER)
+                ]
             assert proc.returncode == 1
     finally:
         fake.unlink(missing_ok=True)
 
-    assert events == [{"type": "error", "message": "chunk (32,0) out of range"}]
+    assert events[-1].type == "error"
+    assert events[-1].message == "chunk (32,0) out of range"
 
 
 async def test_replace_chunks_empty_list_raises(fake_owned_dir):

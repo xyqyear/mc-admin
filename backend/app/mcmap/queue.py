@@ -9,6 +9,11 @@ from ..dynamic_config import config
 from ..logger import logger
 from . import runner
 from .cache import ServerMapCache
+from .events import (
+    MCMAP_RENDER_EVENT_ADAPTER,
+    MCMapErrorEvent,
+    MCMapRenderRegionEvent,
+)
 from .types import MCMapError
 
 WORKER_IDLE_TIMEOUT_SECONDS = 60.0
@@ -147,27 +152,28 @@ class ServerRenderQueue:
                 owned_by=self._cache.data_path,
             ) as proc:
                 self._running_proc = proc
-                async for event in proc:
-                    if event.get("type") != "region":
+                async for event in proc.events(MCMAP_RENDER_EVENT_ADAPTER):
+                    if isinstance(event, MCMapErrorEvent):
+                        raise MCMapError(event.message)
+                    if not isinstance(event, MCMapRenderRegionEvent):
                         continue
-                    key: Key = (event["x"], event["z"])
+                    key: Key = (event.x, event.z)
                     if self._running_batch is not None:
                         self._running_batch.pop(key, None)
                     pending = self._pending.pop(key, None)
                     if pending is None or pending.future.done():
                         continue
-                    status = event.get("status")
-                    if status == "rendered":
+                    if event.status == "rendered":
                         pending.future.set_result(
                             self._cache.png_path(self._region_path, *key)
                         )
-                    elif status == "missing":
+                    elif event.status == "missing":
                         pending.future.set_exception(
                             FileNotFoundError(f"region ({key[0]}, {key[1]}) missing")
                         )
                     else:
                         pending.future.set_exception(
-                            MCMapError(event.get("error", "unknown"))
+                            MCMapError(event.error or "unknown")
                         )
         except Exception as e:
             logger.exception(

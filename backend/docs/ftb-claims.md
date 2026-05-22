@@ -12,7 +12,8 @@ GET /servers/{id}/world-restore/claims
    └─► extract_claims_for_server(data_path)
          ├─ discover_world_root_paths(data_path)           # no dimension scan
          ├─ runner.extract_ftb_claims(world_root, ...)     # mcmap subprocess
-         ├─ shape_response(raw_data, root, data_path)
+         ├─ parse mcmap result.data as a Pydantic payload
+         ├─ shape_response(payload, root, data_path)
          │    ├─ resolve each FTB dim folder to a region relpath
          │    ├─ flood-fill each team's claims into clusters
          │    └─ compute centroid / bbox / regions per cluster
@@ -23,7 +24,9 @@ GET /servers/{id}/world-restore/claims
 `snbt` (1.16+ FTB Chunks/Teams), `per_team_nbt` (1.7.10 GTNH
 ServerUtilities / 1.12.2 FTB Utilities), `universe_dat` (1.10.2 FTB
 Utilities 3.x), `latmod_json` (1.7.10 upstream FTBU) — and emits a single
-NDJSON `result` event with the unified shape.
+NDJSON `result` event with the unified shape. The backend validates that event
+and its `data` payload with `app.mcmap.events` Pydantic models before any
+dimension resolution or clustering code runs.
 
 When mcmap can't detect any format, it emits an `error` event with the
 message *"could not detect FTB claim format in world directory"*; the runner
@@ -110,7 +113,7 @@ app/ftb_claims/
 ├── __init__.py    # public API: extract_claims_for_server, models, errors
 ├── models.py      # Pydantic response shapes
 ├── runner.py      # @asynccontextmanager extract_ftb_claims
-├── extract.py     # spawn → parse → resolve dims → flood-fill → shape
+├── extract.py     # spawn -> parse -> resolve dims -> flood-fill -> shape
 └── cluster.py     # pure 4-connectivity flood-fill, centroid, bbox, regions
 ```
 

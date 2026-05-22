@@ -15,7 +15,23 @@ def _write_fake_mcmap(payload: dict) -> Path:
     fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_ftb_mcmap_")
     os.close(fd)
     p = Path(path)
-    line = json.dumps({"type": "result", "data": payload}).replace("'", "'\\''")
+    payload = {
+        "mcmap_extract_ftb_claims_version": 1,
+        "world_dir": "/tmp/world",
+        **payload,
+    }
+    teams = payload.get("teams", [])
+    claims = sum(len(team.get("claims", [])) for team in teams)
+    line = json.dumps(
+        {
+            "type": "result",
+            "detected_format": payload["detected_format"],
+            "teams": len(teams),
+            "claims": claims,
+            "dimensions": len(payload.get("dimensions", [])),
+            "data": payload,
+        }
+    ).replace("'", "'\\''")
     p.write_text("#!/bin/sh\n" f"echo '{line}'\n")
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return p
@@ -186,6 +202,38 @@ async def test_extract_error_other_than_no_data_propagates(world_data_path):
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
     with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
         with pytest.raises(FtbExtractError):
+            await extract_claims_for_server(world_data_path)
+    fake.unlink()
+
+
+async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
+    from app.ftb_claims import FtbExtractError
+
+    payload = {
+        "detected_format": "snbt",
+        "world_dir": str(world_data_path / "world"),
+        "dimensions": [{"id": "minecraft:overworld", "folder": ".", "exists": True}],
+        "teams": [
+            {
+                "id": "team-uuid-1",
+                "name": "alice",
+                "type": "player",
+                "owner": None,
+                "members": [],
+                "claims": [
+                    {
+                        "dim": "minecraft:overworld",
+                        "cx": "0",
+                        "cz": 0,
+                        "force_loaded": False,
+                    }
+                ],
+            }
+        ],
+    }
+    fake = _write_fake_mcmap(payload)
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with pytest.raises(FtbExtractError, match="invalid JSON event"):
             await extract_claims_for_server(world_data_path)
     fake.unlink()
 

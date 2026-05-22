@@ -21,7 +21,20 @@ def _write_fake_mcmap(payload: dict) -> Path:
     fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_players_mcmap_")
     os.close(fd)
     p = Path(path)
-    line = json.dumps({"type": "result", "data": payload}).replace("'", "'\\''")
+    payload = {
+        "mcmap_extract_players_version": 1,
+        "world_dir": "/tmp/world",
+        **payload,
+    }
+    line = json.dumps(
+        {
+            "type": "result",
+            "players": len(payload.get("players", [])),
+            "skipped": len(payload.get("skipped", [])),
+            "dimensions": len(payload.get("dimensions", [])),
+            "data": payload,
+        }
+    ).replace("'", "'\\''")
     p.write_text("#!/bin/sh\n" f"echo '{line}'\n")
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return p
@@ -159,6 +172,29 @@ async def test_extract_error_propagates(world_data_path):
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
     with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
         with pytest.raises(PlayerLocationExtractError):
+            await extract_player_locations_for_server(world_data_path)
+    fake.unlink()
+
+
+async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
+    payload = {
+        "world_dir": str(world_data_path / "world"),
+        "dimensions": [{"id": "minecraft:overworld", "folder": ".", "exists": True}],
+        "players": [
+            {
+                "id": "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
+                "id_kind": "uuid",
+                "source": "playerdata/0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0.dat",
+                "storage": "playerdata",
+                "dim": "minecraft:overworld",
+                "pos": {"x": 1, "z": 2},
+            }
+        ],
+        "skipped": [],
+    }
+    fake = _write_fake_mcmap(payload)
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with pytest.raises(PlayerLocationExtractError, match="invalid JSON event"):
             await extract_player_locations_for_server(world_data_path)
     fake.unlink()
 

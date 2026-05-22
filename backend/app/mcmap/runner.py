@@ -1,16 +1,22 @@
 import asyncio
-import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, List, Optional
+from typing import Any, AsyncIterator, List, Optional, TypeVar
 
 import aiofiles.os as aioos
+from pydantic import TypeAdapter, ValidationError
 
 from ..config import settings
 from ..logger import logger
+from .events import (
+    MCMAP_GENERIC_EVENT_ADAPTER,
+    MCMapGenericEvent,
+    MCMapProtocolError,
+)
 
 TERMINATE_GRACE_SECONDS = 2.0
+EventT = TypeVar("EventT")
 
 
 class MCMapProcess:
@@ -18,19 +24,25 @@ class MCMapProcess:
         self._proc = proc
         self._terminated = False
 
-    def __aiter__(self) -> AsyncIterator[dict]:
-        return self._read_events()
+    def __aiter__(self) -> AsyncIterator[MCMapGenericEvent]:
+        return self.events(MCMAP_GENERIC_EVENT_ADAPTER)
 
-    async def _read_events(self) -> AsyncIterator[dict]:
+    def events(self, adapter: TypeAdapter[EventT]) -> AsyncIterator[EventT]:
+        return self._read_events(adapter)
+
+    async def _read_events(
+        self, adapter: TypeAdapter[EventT]
+    ) -> AsyncIterator[EventT]:
         assert self._proc.stdout is not None
         async for raw in self._proc.stdout:
             line = raw.strip()
             if not line:
                 continue
             try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("mcmap: malformed NDJSON line: %r", line)
+                yield adapter.validate_json(line)
+            except ValidationError as e:
+                logger.warning("mcmap: invalid JSON event: %r (%s)", line, e)
+                raise MCMapProtocolError("mcmap emitted an invalid JSON event") from e
 
     async def terminate(self) -> None:
         if self._terminated or self._proc.returncode is not None:
@@ -192,4 +204,4 @@ async def remove_chunks(
 
 
 def parse_event_for_test(line: bytes) -> Any:
-    return json.loads(line.strip())
+    return MCMAP_GENERIC_EVENT_ADAPTER.validate_json(line.strip())
