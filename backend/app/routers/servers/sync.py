@@ -10,7 +10,8 @@ from ...dns import simple_dns_manager
 from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic, UserRole
-from ...servers import (
+from ...servers.crud import get_active_servers
+from ...servers.lifecycle import (
     CreateServerResult,
     RemoveServerResult,
     SyncDryRunEntry,
@@ -18,7 +19,6 @@ from ...servers import (
     SyncResult,
     adopt_server_partial,
     deactivate_server_partial,
-    get_active_servers,
     preview_deactivation,
     validate_adoption,
 )

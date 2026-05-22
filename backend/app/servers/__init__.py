@@ -7,23 +7,6 @@ from .crud import (
     get_server_db_id,
     mark_server_removed,
 )
-from .lifecycle import (
-    CreateServerResult,
-    CreateServerSpec,
-    RemoveServerResult,
-    SyncDryRunEntry,
-    SyncEntryError,
-    SyncResult,
-    adopt_server_partial,
-    cancel_and_wait_for_tasks,
-    cancel_restart_cronjobs_for_server,
-    close_open_sessions,
-    create_server_full,
-    deactivate_server_partial,
-    preview_deactivation,
-    remove_server_full,
-    validate_adoption,
-)
 from .port_utils import (
     check_port_conflicts,
     extract_ports_from_yaml,
@@ -48,22 +31,4 @@ __all__ = [
     "get_system_used_ports",
     # Rebuild task
     "rebuild_server_task",
-    # Lifecycle orchestrators
-    "create_server_full",
-    "remove_server_full",
-    "adopt_server_partial",
-    "deactivate_server_partial",
-    # Lifecycle primitives
-    "cancel_and_wait_for_tasks",
-    "cancel_restart_cronjobs_for_server",
-    "close_open_sessions",
-    "validate_adoption",
-    "preview_deactivation",
-    # Lifecycle types
-    "CreateServerSpec",
-    "CreateServerResult",
-    "RemoveServerResult",
-    "SyncResult",
-    "SyncDryRunEntry",
-    "SyncEntryError",
 ]

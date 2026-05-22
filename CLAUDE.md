@@ -29,6 +29,11 @@ cd frontend-react && pnpm install && pnpm dev   # port 3000
 
 Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.ts`).
 
+## CI
+
+- `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests.
+- `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags.
+
 ## Cross-component conventions
 
 - All three CLAUDE.md files describe **current** state; never write changelog-style notes ("recently added X", "previously did Y", "now uses Z").

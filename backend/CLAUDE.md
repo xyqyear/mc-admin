@@ -65,6 +65,10 @@ Long-running operations are async generators yielding `TaskProgress(progress, me
 
 Read runtime-tunable dynamic config at the point of behavior, not in long-lived constructors. Constructor-captured dynamic config needs an explicit refresh/rebuild path.
 
+## Server lifecycle imports
+
+Import lifecycle orchestration symbols from `app.servers.lifecycle`. The `app.servers` package init stays limited to CRUD, port utilities, and rebuild exports so player tracking and log monitoring do not form import cycles.
+
 ## Audit middleware
 
 `app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Sensitive field names (`password`, `token`, `secret`, `key`) are masked. Configured via `[audit]` in `config.toml`.

@@ -1,0 +1,113 @@
+name: Backend Tests
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.test_group }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test_group: root
+            pytest_target: tests/test_*.py
+          - test_group: archive
+            pytest_target: tests/archive
+          - test_group: background_tasks
+            pytest_target: tests/background_tasks
+          - test_group: cron
+            pytest_target: tests/cron
+          - test_group: dns
+            pytest_target: tests/dns
+          - test_group: dynamic_config
+            pytest_target: tests/dynamic_config
+          - test_group: files
+            pytest_target: tests/files
+          - test_group: ftb_claims
+            pytest_target: tests/ftb_claims
+          - test_group: mcmap
+            pytest_target: tests/mcmap
+          - test_group: player_locations
+            pytest_target: tests/player_locations
+          - test_group: players
+            pytest_target: tests/players
+          - test_group: servers
+            pytest_target: tests/servers
+          - test_group: snapshots
+            pytest_target: tests/snapshots
+          - test_group: templates
+            pytest_target: tests/templates
+          - test_group: world
+            pytest_target: tests/world
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      MASTER_TOKEN: test-master-token
+      JWT__SECRET_KEY: test-secret
+      SERVER_PATH: ${{ github.workspace }}/backend/dev-servers
+      FD_BINARY_PATH: /usr/local/bin/fd
+      MCMAP_BINARY_PATH: /usr/local/bin/mcmap
+      DATABASE_URL: sqlite+aiosqlite:///./test-${{ matrix.test_group }}.sqlite3
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install system test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl fd-find
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Install 7z test dependencies
+        if: matrix.test_group == 'root' || matrix.test_group == 'archive'
+        run: sudo apt-get install -y p7zip-full
+
+      - name: Install restic test dependencies
+        if: matrix.test_group == 'snapshots' || matrix.test_group == 'world'
+        run: sudo apt-get install -y restic
+
+      - name: Verify Docker test dependencies
+        if: matrix.test_group == 'root'
+        run: |
+          docker version
+          docker compose version
+
+      - name: Install mcmap test dependencies
+        if: matrix.test_group == 'world'
+        run: |
+          dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
+          mcmap_version="$(awk -F= '$1 == "ARG MCMAP_VERSION" { print $2 }' "$dockerfile")"
+          mcmap_sha256="$(awk -F= '$1 == "ARG MCMAP_SHA256" { print $2 }' "$dockerfile")"
+          if [ -z "$mcmap_version" ] || [ -z "$mcmap_sha256" ]; then
+            echo "Failed to read MCMAP_VERSION or MCMAP_SHA256 from ${dockerfile}" >&2
+            exit 1
+          fi
+          curl -L "https://github.com/xyqyear/mcmap/releases/download/${mcmap_version}/mcmap-${mcmap_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/mcmap.tar.gz
+          echo "${mcmap_sha256}  /tmp/mcmap.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin --strip-components=1
+          sudo chmod +x /usr/local/bin/mcmap
+          mcmap --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+
+      - name: Run tests
+        run: uv run pytest ${{ matrix.pytest_target }}
