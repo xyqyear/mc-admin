@@ -304,8 +304,8 @@ class TestPortConflictDetection:
         assert response2.status_code == 409
         detail = response2.json()["detail"]
         assert "端口冲突" in detail
-        assert "Game port 25565 is already used by server 'server1'" in detail
-        assert "RCON port 25575 is already used by server 'server1'" in detail
+        assert "Game port 25565 is already used by another server" in detail
+        assert "RCON port 25575 is already used by another server" in detail
 
     def test_game_port_conflict_only(self, test_client_with_temp_path):
         """Test that only game port conflicts are detected."""
@@ -329,7 +329,7 @@ class TestPortConflictDetection:
         assert response2.status_code == 409
         detail = response2.json()["detail"]
         assert "端口冲突" in detail
-        assert "Game port 25565 is already used by server 'server-base'" in detail
+        assert "Game port 25565 is already used by another server" in detail
         # Should not mention RCON port
         assert "RCON port" not in detail or "RCON port 25576" not in detail
 
@@ -355,7 +355,7 @@ class TestPortConflictDetection:
         assert response2.status_code == 409
         detail = response2.json()["detail"]
         assert "端口冲突" in detail
-        assert "RCON port 25575 is already used by server 'server-rcon-base'" in detail
+        assert "RCON port 25575 is already used by another server" in detail
         # Should not mention game port conflict
         assert "Game port 25566" not in detail
 

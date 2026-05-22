@@ -50,6 +50,23 @@ STEP_NAMES = {
 }
 
 
+def _is_bad_archive_error(error_msg: str) -> bool:
+    normalized_error = error_msg.lower()
+    return any(
+        marker in normalized_error
+        for marker in [
+            "is not archive",
+            "is not supported archive",
+            "can not open",
+            "cannot open",
+            "open error",
+            "headers error",
+            "unexpected end",
+            "crc failed",
+        ]
+    )
+
+
 async def extract_archive_stream(
     archive_path: str,
     output_dir: str,
@@ -110,7 +127,7 @@ async def extract_minecraft_server(
             raise RuntimeError("7z未安装或不可用")
         elif "Permission denied" in error_msg:
             raise RuntimeError("无权限访问压缩包文件")
-        elif "is not supported archive" in error_msg or "Can not open" in error_msg:
+        elif _is_bad_archive_error(error_msg):
             raise RuntimeError("压缩包文件损坏或格式不支持")
         else:
             raise RuntimeError("检查压缩包内容时发生错误")
@@ -135,6 +152,8 @@ async def extract_minecraft_server(
             raise RuntimeError("无权限创建临时目录或解压文件")
         elif "No space left on device" in error_msg:
             raise RuntimeError("磁盘空间不足")
+        elif _is_bad_archive_error(error_msg):
+            raise RuntimeError("压缩包文件损坏或格式不支持")
         else:
             raise RuntimeError("解压过程中发生错误")
 
