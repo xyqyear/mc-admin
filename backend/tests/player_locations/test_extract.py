@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config import settings
 from app.player_locations import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
@@ -135,6 +136,23 @@ async def test_extract_resolves_dimensions_and_keeps_skipped(world_data_path):
     assert unresolved.region_dir_relpath is None
 
     assert result.skipped[0].reason == "missing_pos"
+
+
+async def test_extract_does_not_require_full_dimension_scan(world_data_path, monkeypatch):
+    payload = {
+        "mcmap_extract_players_version": 1,
+        "world_dir": str(world_data_path / "world"),
+        "dimensions": [{"id": "minecraft:overworld", "folder": ".", "exists": True}],
+        "players": [],
+        "skipped": [],
+    }
+    fake = _write_fake_mcmap(payload)
+    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        result = await extract_player_locations_for_server(world_data_path)
+    fake.unlink()
+
+    assert result.dimensions[0].region_dir_relpath == "world/region"
 
 
 async def test_extract_error_propagates(world_data_path):

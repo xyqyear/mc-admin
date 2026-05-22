@@ -1,7 +1,7 @@
 import asyncio
 import os
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 from ..config import settings
@@ -26,14 +26,20 @@ class WorldRoot:
     dimensions: list[DimensionInfo]
 
 
-class WorldLayoutDiscoveryError(RuntimeError):
-    pass
+@dataclass(frozen=True)
+class WorldRootPath:
+    name: str
+    path: Path
 
 
 @dataclass(frozen=True)
-class _WorldRootCandidate:
-    name: str
-    path: Path
+class DimensionFolderResolution:
+    region_dir_relpath: Optional[str]
+    exists_on_disk: bool
+
+
+class WorldLayoutDiscoveryError(RuntimeError):
+    pass
 
 
 def _read_level_name_sync(data_path: Path) -> str:
@@ -89,7 +95,7 @@ def _dimension_info(world_root: Path, directory: Path) -> Optional[DimensionInfo
     )
 
 
-def _world_root_candidates_sync(data_path: Path) -> list[_WorldRootCandidate]:
+def _world_root_paths_sync(data_path: Path) -> list[WorldRootPath]:
     if not data_path.is_dir():
         return []
 
@@ -116,14 +122,55 @@ def _world_root_candidates_sync(data_path: Path) -> list[_WorldRootCandidate]:
         if _has_level_dat_sync(child):
             candidates[entry.name] = child
 
-    ordered: list[_WorldRootCandidate] = []
+    ordered: list[WorldRootPath] = []
     if primary_path.is_dir() and primary_path.name in candidates:
-        ordered.append(_WorldRootCandidate(primary_path.name, primary_path))
+        ordered.append(WorldRootPath(primary_path.name, primary_path))
     for name in sorted(candidates):
         if primary_path.is_dir() and name == primary_path.name:
             continue
-        ordered.append(_WorldRootCandidate(name, candidates[name]))
+        ordered.append(WorldRootPath(name, candidates[name]))
     return ordered
+
+
+def _dimension_folder_parts(folder: str) -> tuple[str, ...] | None:
+    if folder in ("", "."):
+        return ()
+    normalized = PurePosixPath(folder.replace("\\", "/"))
+    if normalized.is_absolute():
+        return None
+    parts = tuple(part for part in normalized.parts if part not in ("", "."))
+    if any(part == ".." for part in parts):
+        return None
+    return parts
+
+
+def resolve_dimension_folder(
+    data_path: Path,
+    world_root: WorldRootPath,
+    folder: str,
+    *,
+    exists_on_disk: bool,
+) -> DimensionFolderResolution:
+    parts = _dimension_folder_parts(folder)
+    if parts is None:
+        return DimensionFolderResolution(
+            region_dir_relpath=None,
+            exists_on_disk=exists_on_disk,
+        )
+
+    dimension_dir = world_root.path.joinpath(*parts) if parts else world_root.path
+    region_dir = dimension_dir / "region"
+    has_region_mca = _has_region_mca(region_dir)
+    relpath: Optional[str] = None
+    if has_region_mca:
+        try:
+            relpath = region_dir.relative_to(data_path).as_posix()
+        except ValueError:
+            relpath = None
+    return DimensionFolderResolution(
+        region_dir_relpath=relpath,
+        exists_on_disk=exists_on_disk or has_region_mca,
+    )
 
 
 def _dimensions_from_region_dirs_sync(
@@ -198,7 +245,7 @@ async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
 
 
 async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
-    candidates = await asyncio.to_thread(_world_root_candidates_sync, data_path)
+    candidates = await discover_world_root_paths(data_path)
     roots: list[WorldRoot] = []
 
     for candidate in candidates:
@@ -212,3 +259,7 @@ async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
             WorldRoot(name=candidate.name, path=candidate.path, dimensions=dimensions)
         )
     return roots
+
+
+async def discover_world_root_paths(data_path: Path) -> list[WorldRootPath]:
+    return await asyncio.to_thread(_world_root_paths_sync, data_path)

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config import settings
 from app.ftb_claims import extract_claims_for_server, runner
 
 
@@ -160,6 +161,23 @@ async def test_extract_resolves_dim_and_groups_clusters(world_data_path):
     eight = by_name["8559re"]
     assert eight.id == "8559re"
     assert eight.type == "player"
+
+
+async def test_extract_does_not_require_full_dimension_scan(world_data_path, monkeypatch):
+    payload = {
+        "detected_format": "snbt",
+        "world_dir": str(world_data_path / "world"),
+        "dimensions": [{"id": "minecraft:overworld", "folder": ".", "exists": True}],
+        "teams": [],
+    }
+    fake = _write_fake_mcmap(payload)
+    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        result = await extract_claims_for_server(world_data_path)
+    fake.unlink()
+
+    assert result.available is True
+    assert result.dimensions[0].region_dir_relpath == "world/region"
 
 
 async def test_extract_error_other_than_no_data_propagates(world_data_path):

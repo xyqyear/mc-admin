@@ -8,9 +8,12 @@ from app.config import settings
 from app.dynamic_config.configs.world import WorldConfig
 import app.world.layout as layout_module
 from app.world.layout import (
+    WorldRootPath,
     WorldLayoutDiscoveryError,
     WorldRoot,
+    discover_world_root_paths,
     discover_world_roots,
+    resolve_dimension_folder,
 )
 
 
@@ -214,6 +217,55 @@ async def test_missing_data_path_returns_empty():
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         roots = await discover_world_roots(Path(tmp) / "does-not-exist")
         assert roots == []
+
+
+@pytest.mark.asyncio
+async def test_world_root_path_discovery_does_not_require_fd(monkeypatch):
+    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        _write_properties(data_path, "survival")
+        world = data_path / "survival"
+        world.mkdir()
+
+        roots = await discover_world_root_paths(data_path)
+
+        assert roots == [WorldRootPath(name="survival", path=world)]
+
+
+def test_resolve_dimension_folder_maps_direct_region_path():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        world = data_path / "world"
+        _touch(world / "level.dat")
+        _touch(world / "dimensions" / "modid" / "moon" / "region" / "r.0.0.mca")
+
+        resolved = resolve_dimension_folder(
+            data_path,
+            WorldRootPath(name="world", path=world),
+            "dimensions/modid/moon",
+            exists_on_disk=False,
+        )
+
+        assert resolved.region_dir_relpath == "world/dimensions/modid/moon/region"
+        assert resolved.exists_on_disk is True
+
+
+def test_resolve_dimension_folder_rejects_unsafe_paths():
+    with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
+        data_path = Path(tmp)
+        world = data_path / "world"
+        world.mkdir()
+
+        resolved = resolve_dimension_folder(
+            data_path,
+            WorldRootPath(name="world", path=world),
+            "../outside",
+            exists_on_disk=True,
+        )
+
+        assert resolved.region_dir_relpath is None
+        assert resolved.exists_on_disk is True
 
 
 @pytest.mark.asyncio

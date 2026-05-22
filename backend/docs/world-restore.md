@@ -43,10 +43,10 @@ as Overworld, `DIM-1` as Nether, `DIM1` as End, and vanilla
 with that mapping and falls back to the world-root-relative path without a
 leading `dimensions/`.
 
-`app.world.layout_cache` wraps layout discovery with a short in-memory TTL and
-coalesces concurrent requests per `data_path`. The world-restore page opens
-layout and claims together, so both requests share one filesystem discovery
-while still reflecting disk changes within a few seconds.
+`discover_world_root_paths` performs the cheap root-path portion of discovery
+without `fd`; mcmap extractors use it before resolving only the dimension
+folders present in mcmap output. `discover_world_roots` performs the full
+dimension scan for endpoints and restore flows that need the complete layout.
 
 ## Safety snapshots
 
@@ -96,13 +96,13 @@ The router accesses the orchestrator via `from ... import world as world_subsyst
 
 Dynamic (`snapshots.world_restore` schema): `preview_session_ttl_seconds`, `preview_janitor_interval_seconds`, `preview_avg_region_bytes`.
 
-Dynamic (`world` schema): `layout_cache_ttl_seconds`, `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
+Dynamic (`world` schema): `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
 
 ## Endpoints
 
 Mounted under `/api/servers/{server_id}/world-restore/`:
 
-- `GET /layout` — cached world roots + path-only dimensions (`region_dir`, `entities_dir`, `poi_dir`)
+- `GET /layout` — world roots + path-only dimensions (`region_dir`, `entities_dir`, `poi_dir`)
 - `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
 - `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
 - `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held

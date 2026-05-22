@@ -14,5 +14,4 @@ def world_runtime_config(monkeypatch):
     )
     monkeypatch.setattr("app.world.dimension_labels.config", runtime_config)
     monkeypatch.setattr("app.world.layout.config", runtime_config)
-    monkeypatch.setattr("app.world.layout_cache.config", runtime_config)
     monkeypatch.setattr("app.routers.servers.world_restore.config", runtime_config)

@@ -51,7 +51,7 @@ In `dynamic_config/configs/`:
 - `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
 - `mcmap.py` — `batch_size`, `thread_count`, `request_timeout_seconds`
-- `world.py` — layout cache TTL, region stat workers, dimension scan depth, dimension labels
+- `world.py` — region stat workers, dimension scan depth, dimension labels
 
 ## JSON schema → frontend forms
 

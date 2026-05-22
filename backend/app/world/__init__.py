@@ -13,15 +13,14 @@ from .dimension_labels import (
 )
 from .layout import (
     DEFAULT_LEVEL_NAME,
+    DimensionFolderResolution,
     DimensionInfo,
     WorldLayoutDiscoveryError,
     WorldRoot,
+    WorldRootPath,
+    discover_world_root_paths,
     discover_world_roots,
-)
-from .layout_cache import (
-    clear_world_layout_cache,
-    get_cached_world_roots,
-    invalidate_world_layout,
+    resolve_dimension_folder,
 )
 from .locks import (
     GLOBAL_LOCK_KEY,
@@ -75,6 +74,7 @@ def reset_world_restore_orchestrator() -> None:
 __all__ = [
     "DEFAULT_LEVEL_NAME",
     "DIMENSION_LABELS",
+    "DimensionFolderResolution",
     "DimensionInfo",
     "END_LABEL",
     "GLOBAL_LOCK_KEY",
@@ -91,14 +91,14 @@ __all__ = [
     "WorldRestoreOrchestrator",
     "WorldLayoutDiscoveryError",
     "WorldRoot",
-    "clear_world_layout_cache",
+    "WorldRootPath",
+    "discover_world_root_paths",
     "discover_world_roots",
     "dimension_path_for_dir",
-    "get_cached_world_roots",
     "initialize_world_restore_orchestrator",
-    "invalidate_world_layout",
     "label_for_dimension_dir",
     "label_for_dimension_path",
+    "resolve_dimension_folder",
     "reset_world_restore_orchestrator",
     "server_operation_lock",
     "world_restore_orchestrator",

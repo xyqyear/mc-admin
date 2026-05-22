@@ -26,8 +26,7 @@ from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
 from ...world.dimension_labels import label_for_dimension_dir
-from ...world.layout import WorldLayoutDiscoveryError
-from ...world.layout_cache import get_cached_world_roots
+from ...world.layout import WorldLayoutDiscoveryError, discover_world_roots
 from ...world.region_files import parse_region_filename
 from ...world.region_manifest import list_region_manifest
 
@@ -78,7 +77,7 @@ def _count_region_mca_files_sync(region_dir: Path) -> int:
 async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
     results: List[DimensionInfo] = []
     try:
-        roots = await get_cached_world_roots(data_path)
+        roots = await discover_world_roots(data_path)
     except WorldLayoutDiscoveryError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     for root in roots:

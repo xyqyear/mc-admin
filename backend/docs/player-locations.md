@@ -17,8 +17,8 @@ lookups.
 
 The location response includes:
 
-- `dimensions[]` from mcmap, with `folder` resolved against the cached world
-  layout to `region_dir_relpath` under the server data directory.
+- `dimensions[]` from mcmap, with `folder` resolved against the primary world
+  root path to `region_dir_relpath` under the server data directory.
 - `players[]` with `id`, `id_kind`, optional normalized `uuid`, storage kind,
   dimension id, optional `region_dir_relpath`, and block position.
 - `skipped[]` for malformed or incomplete files reported by mcmap. Skips are
@@ -31,11 +31,13 @@ same `MCMapProcess` NDJSON reader used by the map and FTB claims pipelines. When
 running as root, it passes `--chown <uid>:<gid>` derived from the server data
 directory so generated or touched files keep host ownership.
 
-`extract_player_locations_for_server(data_path, roots)` uses the first
-discovered world root, matching the FTB claims overlay. Dimension folders are
-resolved by joining the world root with the mcmap folder and `region/`, then
-matching that path against `WorldRoot.dimensions`. Unknown or absent dimensions
-stay in the response with `region_dir_relpath = null`.
+`extract_player_locations_for_server(data_path, world_root)` uses the primary
+world root, matching the FTB claims overlay. Dimension folders are resolved by
+safely joining the world root with the mcmap folder and `region/`; absolute and
+parent-traversal folders are rejected. A folder gets `region_dir_relpath` only
+when that specific region directory contains at least one valid MCA file.
+Unknown or absent dimensions stay in the response with
+`region_dir_relpath = null`.
 
 ## Profile Cache
 

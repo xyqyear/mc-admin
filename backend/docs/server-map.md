@@ -64,8 +64,8 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 
 ## Dimension discovery
 
-`GET /dimensions` projects the cached `app.world.layout` discovery into the
-mcmap response shape. The cached layout is path-only; this route computes
+`GET /dimensions` projects `app.world.layout` discovery into the
+mcmap response shape. The layout is path-only; this route computes
 legacy map-client labels at response time from the shared
 `config.world.dimension_labels` mapping. The world-restore page fetches labels
 separately through `GET /world-restore/dimension-labels` and translates paths in
@@ -75,7 +75,7 @@ the frontend.
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`).
 - Dynamic (`mcmap` schema): `batch_size`, `thread_count`, `request_timeout_seconds`.
-- Dynamic (`world` schema): `layout_cache_ttl_seconds`, `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
+- Dynamic (`world` schema): `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
 
 ## Endpoints
 

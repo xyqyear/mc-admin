@@ -10,10 +10,10 @@ roll back a specific player's base after grief reports.
 ```
 GET /servers/{id}/world-restore/claims
    └─► extract_claims_for_server(data_path)
-         ├─ get_cached_world_roots(data_path)              # backend layout
+         ├─ discover_world_root_paths(data_path)           # no dimension scan
          ├─ runner.extract_ftb_claims(world_root, ...)     # mcmap subprocess
          ├─ shape_response(raw_data, root, data_path)
-         │    ├─ resolve each FTB dim against the layout
+         │    ├─ resolve each FTB dim folder to a region relpath
          │    ├─ flood-fill each team's claims into clusters
          │    └─ compute centroid / bbox / regions per cluster
          └─► ClaimsResponse
@@ -41,9 +41,9 @@ otherwise, the right cache key is
 `(data_path, content_hash_of_ftb_files)` — not `(data_path, mtime)` because
 FTB writes them atomically with the same mtime as the world snapshot.
 
-The route does reuse the short-lived `app.world.layout_cache` result used by
-`GET /world-restore/layout`, so opening the world-restore page does not run
-the expensive world layout discovery twice.
+The route intentionally avoids full world-layout discovery. It only discovers
+world root paths from `server.properties` / `level.dat`, then validates the
+specific dimension folders reported by mcmap.
 
 ## Dimension resolution
 
@@ -54,16 +54,15 @@ the expensive world layout discovery twice.
   `"-1"`, `"7"`) — these are pre-1.13 dim ids.
 
 Every dim entry also carries a `folder` field (path relative to the world
-root). The orchestrator joins that with the world root's path + `region/` and
-looks up the result in `discover_world_roots`'s `region_dir` index. When the
-candidate matches a `DimensionInfo`, the response carries the canonical
-`region_dir_relpath` (the same value the world-restore selection model
-expects). Otherwise the field is `None` and the cluster keeps
+root). The orchestrator safely joins that folder with the primary world root
+and `region/`, rejects absolute or parent-traversal paths, and emits a
+canonical `region_dir_relpath` when that specific region directory contains at
+least one valid MCA file. Otherwise the field is `None` and the cluster keeps
 `region_dir_relpath=None` — the frontend renders these clusters but disables
 the in-dim selection actions for them. Display labels come from the separate
 world-restore dimension-label endpoint used by the layout page.
 
-The layout discovery covers root-level legacy/custom dims such as
+Direct folder resolution covers root-level legacy/custom dims such as
 `<world>/DIM88/region/`, nested modern/modded dims such as
 `<world>/dimensions/<modid>/<dim>/region/`, and deeper FTB team dimensions
 such as `<world>/dimensions/ftbteamdimensions/team/<uuid>/region/`.

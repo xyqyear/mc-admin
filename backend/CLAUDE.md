@@ -42,7 +42,7 @@ app/
 ├── mcmap/                 # server map: mcmap CLI integration, tile cache under data/.mcmap/
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
-├── world/                 # world layout/restore, per-server lock, safety snapshots, preview sessions
+├── world/                 # world root/dimension layout, mcmap folder resolution, restore locks/previews
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression
 ```

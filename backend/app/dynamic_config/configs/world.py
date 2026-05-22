@@ -21,14 +21,6 @@ DIMENSION_LABELS = {
 class WorldConfig(BaseConfigSchema):
     """World layout discovery and region manifest configuration."""
 
-    layout_cache_ttl_seconds: Annotated[
-        float,
-        Field(
-            description="每个服务器 data 路径的世界布局发现缓存时间(秒)",
-            ge=0,
-            le=3600,
-        ),
-    ] = 5.0
     region_stat_workers: Annotated[
         int,
         Field(

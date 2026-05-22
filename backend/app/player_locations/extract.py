@@ -2,7 +2,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..logger import logger
-from ..world.layout import DimensionInfo, WorldRoot, discover_world_roots
+from ..world.layout import (
+    WorldRootPath,
+    discover_world_root_paths,
+    resolve_dimension_folder,
+)
 from .models import (
     PlayerLocationDimensionEntry,
     PlayerLocationEntry,
@@ -50,48 +54,30 @@ async def _run_extract(world_dir: Path, data_path: Path) -> dict:
 
 def _resolve_dimensions(
     raw_dims: List[dict],
-    world_root: WorldRoot,
+    world_root: WorldRootPath,
     data_path: Path,
 ) -> Tuple[List[PlayerLocationDimensionEntry], Dict[str, Optional[str]]]:
-    layout_by_region_dir: Dict[Path, DimensionInfo] = {
-        d.region_dir: d for d in world_root.dimensions
-    }
-
     entries: List[PlayerLocationDimensionEntry] = []
     relpath_by_dim_id: Dict[str, Optional[str]] = {}
     for raw in raw_dims:
         dim_id = str(raw.get("id", ""))
         folder = str(raw.get("folder", ""))
         exists_on_disk = bool(raw.get("exists", False))
-        if folder == "." or folder == "":
-            candidate = world_root.path / "region"
-        else:
-            candidate = world_root.path / folder / "region"
-        match = layout_by_region_dir.get(candidate)
-        if match is not None:
-            try:
-                rel = match.region_dir.relative_to(data_path).as_posix()
-            except ValueError:
-                rel = None
-            entries.append(
-                PlayerLocationDimensionEntry(
-                    dimension_id=dim_id,
-                    folder=folder,
-                    region_dir_relpath=rel,
-                    exists_on_disk=True,
-                )
+        resolved = resolve_dimension_folder(
+            data_path,
+            world_root,
+            folder,
+            exists_on_disk=exists_on_disk,
+        )
+        entries.append(
+            PlayerLocationDimensionEntry(
+                dimension_id=dim_id,
+                folder=folder,
+                region_dir_relpath=resolved.region_dir_relpath,
+                exists_on_disk=resolved.exists_on_disk,
             )
-            relpath_by_dim_id[dim_id] = rel
-        else:
-            entries.append(
-                PlayerLocationDimensionEntry(
-                    dimension_id=dim_id,
-                    folder=folder,
-                    region_dir_relpath=None,
-                    exists_on_disk=exists_on_disk,
-                )
-            )
-            relpath_by_dim_id[dim_id] = None
+        )
+        relpath_by_dim_id[dim_id] = resolved.region_dir_relpath
     return entries, relpath_by_dim_id
 
 
@@ -158,7 +144,7 @@ def _build_skipped(raw: dict) -> Optional[PlayerLocationSkippedFile]:
 
 def _shape_response(
     data: dict,
-    world_root: WorldRoot,
+    world_root: WorldRootPath,
     data_path: Path,
 ) -> PlayerLocationsResponse:
     raw_dims = data.get("dimensions") or []
@@ -192,18 +178,18 @@ def _shape_response(
 
 
 async def extract_player_locations_for_server(
-    data_path: Path, roots: Optional[List[WorldRoot]] = None
+    data_path: Path, world_root: Optional[WorldRootPath] = None
 ) -> PlayerLocationsResponse:
-    if roots is None:
-        roots = await discover_world_roots(data_path)
-    if not roots:
+    if world_root is None:
+        roots = await discover_world_root_paths(data_path)
+        world_root = roots[0] if roots else None
+    if world_root is None:
         return PlayerLocationsResponse()
-    primary = roots[0]
     try:
-        data = await _run_extract(primary.path, data_path)
+        data = await _run_extract(world_root.path, data_path)
     except PlayerLocationExtractError:
         logger.exception(
-            "player-locations: mcmap extract failed for world=%s", primary.path
+            "player-locations: mcmap extract failed for world=%s", world_root.path
         )
         raise
-    return _shape_response(data, primary, data_path)
+    return _shape_response(data, world_root, data_path)

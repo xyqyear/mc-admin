@@ -38,8 +38,9 @@ from ...world import (
     ServerNotStoppedError,
     WorldLayoutDiscoveryError,
     WorldRoot,
+    discover_world_root_paths,
+    discover_world_roots,
 )
-from ...world.layout_cache import get_cached_world_roots
 from ...world.preview import PreviewDiskGuardError, PreviewSessionNotFoundError
 
 router = APIRouter(
@@ -217,7 +218,7 @@ def _world_root_to_response(root: WorldRoot) -> WorldRootResponse:
 
 async def _get_world_roots(data_path: Path) -> list[WorldRoot]:
     try:
-        return await get_cached_world_roots(data_path)
+        return await discover_world_roots(data_path)
     except WorldLayoutDiscoveryError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -262,9 +263,14 @@ async def get_ftb_claims(
     await _ensure_server_exists(server_id)
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
-    roots = await _get_world_roots(data_path)
+    roots = await discover_world_root_paths(data_path)
+    if not roots:
+        return ClaimsResponse(available=False)
     try:
-        return await extract_claims_for_server(data_path, roots=roots)
+        return await extract_claims_for_server(
+            data_path,
+            world_root=roots[0],
+        )
     except FtbExtractError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -283,9 +289,14 @@ async def get_player_locations(
     await _ensure_server_exists(server_id)
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
-    roots = await _get_world_roots(data_path)
+    roots = await discover_world_root_paths(data_path)
+    if not roots:
+        return PlayerLocationsResponse()
     try:
-        return await extract_player_locations_for_server(data_path, roots=roots)
+        return await extract_player_locations_for_server(
+            data_path,
+            world_root=roots[0],
+        )
     except PlayerLocationExtractError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
