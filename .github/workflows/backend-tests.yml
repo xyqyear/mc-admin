@@ -63,8 +63,24 @@ jobs:
       - name: Install system test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl fd-find
-          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+          sudo apt-get install -y bzip2 curl
+
+      - name: Install fd test dependency
+        run: |
+          dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
+          fd_version="$(awk -F= '$1 == "ARG FD_VERSION" { print $2 }' "$dockerfile")"
+          fd_sha256="$(awk -F= '$1 == "ARG FD_SHA256" { print $2 }' "$dockerfile")"
+          if [ -z "$fd_version" ] || [ -z "$fd_sha256" ]; then
+            echo "Failed to read FD_VERSION or FD_SHA256 from ${dockerfile}" >&2
+            exit 1
+          fi
+          curl -L "https://github.com/sharkdp/fd/releases/download/${fd_version}/fd-${fd_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/fd.tar.gz
+          echo "${fd_sha256}  /tmp/fd.tar.gz" | sha256sum -c -
+          tmpdir="$(mktemp -d)"
+          tar -xzf /tmp/fd.tar.gz -C "$tmpdir"
+          sudo install -m 0755 "$tmpdir/fd-${fd_version}-x86_64-unknown-linux-musl/fd" /usr/local/bin/fd
+          rm -rf "$tmpdir" /tmp/fd.tar.gz
+          fd --version
 
       - name: Prepare static files for API tests
         run: |
@@ -79,7 +95,21 @@ jobs:
 
       - name: Install restic test dependencies
         if: matrix.test_group == 'snapshots' || matrix.test_group == 'world'
-        run: sudo apt-get install -y restic
+        run: |
+          dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
+          restic_version="$(awk -F= '$1 == "ARG RESTIC_VERSION" { print $2 }' "$dockerfile")"
+          restic_sha256="$(awk -F= '$1 == "ARG RESTIC_SHA256" { print $2 }' "$dockerfile")"
+          if [ -z "$restic_version" ] || [ -z "$restic_sha256" ]; then
+            echo "Failed to read RESTIC_VERSION or RESTIC_SHA256 from ${dockerfile}" >&2
+            exit 1
+          fi
+          curl -L "https://github.com/restic/restic/releases/download/v${restic_version}/restic_${restic_version}_linux_amd64.bz2" -o /tmp/restic.bz2
+          echo "${restic_sha256}  /tmp/restic.bz2" | sha256sum -c -
+          tmpdir="$(mktemp -d)"
+          bunzip2 -c /tmp/restic.bz2 > "$tmpdir/restic"
+          sudo install -m 0755 "$tmpdir/restic" /usr/local/bin/restic
+          rm -rf "$tmpdir" /tmp/restic.bz2
+          restic version
 
       - name: Verify Docker test dependencies
         if: matrix.test_group == 'root'

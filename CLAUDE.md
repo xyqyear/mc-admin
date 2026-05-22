@@ -12,8 +12,8 @@ Everything ships as a single Docker image (`Dockerfile` at the repo root); the b
 Beyond what `pyproject.toml` / `package.json` declare:
 
 - Docker Engine + Docker Compose on the host (the backend manages user MC servers via docker-compose)
-- `fd` — required for file search and world layout discovery; the Docker image bundles it
-- Restic — invoked as a subprocess for snapshots; the Docker image bundles it
+- `fd` — required for file search and world layout discovery; pinned by `FD_VERSION` in `Dockerfile`
+- Restic — invoked as a subprocess for snapshots; pinned by `RESTIC_VERSION` in `Dockerfile`
 - `mcmap` binary — pinned by `MCMAP_VERSION` in `Dockerfile`. For local dev, download a release and set `mcmap_binary_path` in `backend/config.toml`.
 
 ## Quick start
@@ -31,7 +31,7 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 
 ## CI
 
-- `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests.
+- `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests, and it installs pinned `fd`, Restic, and `mcmap` versions from `Dockerfile`.
 - `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags.
 
 ## Cross-component conventions

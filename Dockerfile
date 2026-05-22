@@ -34,17 +34,34 @@ ENV PATH="/app/.venv/bin:$PATH" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="8000" \
     STATIC_PATH="/app/static" \
-    FD_BINARY_PATH="/usr/bin/fd" \
+    FD_BINARY_PATH="/usr/local/bin/fd" \
     MCMAP_BINARY_PATH="/usr/local/bin/mcmap"
 
 RUN apk add --no-cache \
     docker \
     docker-cli-compose \
     p7zip \
-    restic \
+    bzip2 \
     curl \
-    fd \
     coreutils
+
+ARG FD_VERSION=v10.4.2
+ARG FD_SHA256=e3257d48e29a6be965187dbd24ce9af564e0fe67b3e73c9bdcd180f4ec11bdde
+RUN curl -L "https://github.com/sharkdp/fd/releases/download/${FD_VERSION}/fd-${FD_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+      -o /tmp/fd.tar.gz \
+ && echo "${FD_SHA256}  /tmp/fd.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/fd.tar.gz -C /tmp \
+ && install -m 0755 "/tmp/fd-${FD_VERSION}-x86_64-unknown-linux-musl/fd" /usr/local/bin/fd \
+ && rm -rf /tmp/fd.tar.gz "/tmp/fd-${FD_VERSION}-x86_64-unknown-linux-musl"
+
+ARG RESTIC_VERSION=0.18.1
+ARG RESTIC_SHA256=680838f19d67151adba227e1570cdd8af12c19cf1735783ed1ba928bc41f363d
+RUN curl -L "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2" \
+      -o /tmp/restic.bz2 \
+ && echo "${RESTIC_SHA256}  /tmp/restic.bz2" | sha256sum -c - \
+ && bunzip2 -c /tmp/restic.bz2 > /usr/local/bin/restic \
+ && chmod +x /usr/local/bin/restic \
+ && rm /tmp/restic.bz2
 
 ARG MCMAP_VERSION=v0.8.0
 ARG MCMAP_SHA256=bd72c13ff7f0f59c3f4f8d239345584f1cf161d5a5fb538dcd048f1b8d0d52c1
