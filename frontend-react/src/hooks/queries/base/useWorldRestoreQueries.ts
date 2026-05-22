@@ -19,6 +19,17 @@ export const useWorldDimensionLabels = (serverId: string | undefined) =>
     enabled: !!serverId,
   })
 
+export const useWorldRestorePlayerLocations = (
+  serverId: string | undefined,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: queryKeys.worldRestore.playerLocations(serverId ?? ''),
+    queryFn: () => worldRestoreApi.getPlayerLocations(serverId!),
+    enabled: !!serverId && enabled,
+    staleTime: 30_000,
+  })
+
 export const useEligibleSnapshots = (
   serverId: string | undefined,
   selection: RestorationSelection | null,

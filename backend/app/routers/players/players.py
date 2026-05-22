@@ -1,15 +1,25 @@
 """Player information API endpoints."""
 
+import base64
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi import status as http_status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...models import UserPublic
-from ...players.crud import get_player_avatar_data, get_player_by_db_id, get_player_skin_data
+from ...player_locations import normalize_uuid
+from ...players.crud import (
+    get_player_avatar_data,
+    get_player_by_db_id,
+    get_player_by_uuid as get_cached_player_by_uuid,
+    get_player_skin_data,
+    upsert_player_profile,
+)
 from ...players.crud.query.player_query import (
     PlayerDetailResponse,
     PlayerSummary,
@@ -17,9 +27,38 @@ from ...players.crud.query.player_query import (
     get_player_detail_by_name,
     get_player_detail_by_uuid,
 )
+from ...players.skin_fetcher import skin_fetcher
 from ...players.tracking import update_player_skin
 
 router = APIRouter(prefix="/players", tags=["players"])
+
+
+class PlayerMapProfileResponse(BaseModel):
+    player_db_id: Optional[int] = None
+    uuid: str
+    current_name: Optional[str] = None
+    avatar_base64: Optional[str] = None
+    resolved: bool
+    last_skin_update: Optional[datetime] = None
+
+
+def _avatar_base64(avatar_data: Optional[bytes]) -> Optional[str]:
+    if not avatar_data:
+        return None
+    return base64.b64encode(avatar_data).decode("utf-8")
+
+
+def _profile_response(player, uuid: str) -> PlayerMapProfileResponse:
+    if player is None:
+        return PlayerMapProfileResponse(uuid=uuid, resolved=False)
+    return PlayerMapProfileResponse(
+        player_db_id=player.player_db_id,
+        uuid=player.uuid,
+        current_name=player.current_name,
+        avatar_base64=_avatar_base64(player.avatar_data),
+        resolved=True,
+        last_skin_update=player.last_skin_update,
+    )
 
 
 @router.get("/", response_model=List[PlayerSummary])
@@ -58,6 +97,45 @@ async def get_player_by_uuid(
             detail=f"Player with UUID '{uuid}' not found",
         )
     return player_detail
+
+
+@router.get("/uuid/{uuid}/profile", response_model=PlayerMapProfileResponse)
+async def get_player_map_profile(
+    uuid: str,
+    _: UserPublic = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlayerMapProfileResponse:
+    """
+    Resolve a lightweight player profile for map overlays.
+
+    Returns cached player data when possible. Mojang failures are represented
+    as unresolved 200 responses so player-location rendering is never blocked
+    by external availability.
+    """
+    normalized = normalize_uuid(uuid)
+    if normalized is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID",
+        )
+
+    cached = await get_cached_player_by_uuid(db, normalized)
+    if cached is not None and cached.avatar_data:
+        return _profile_response(cached, normalized)
+
+    fetched = await skin_fetcher.fetch_player_profile(normalized)
+    if fetched is None:
+        return _profile_response(cached, normalized)
+
+    player = await upsert_player_profile(
+        db,
+        normalized,
+        fetched.name,
+        fetched.skin_data,
+        fetched.avatar_data,
+        datetime.now(timezone.utc),
+    )
+    return _profile_response(player, normalized)
 
 
 @router.get("/name/{name}", response_model=PlayerDetailResponse)

@@ -52,6 +52,12 @@ async def get_player_by_name(
     return result.scalar_one_or_none()
 
 
+async def get_player_by_uuid(session: AsyncSession, uuid: str) -> Optional[Player]:
+    """Get player by dashless UUID."""
+    result = await session.execute(select(Player).where(Player.uuid == uuid))
+    return result.scalar_one_or_none()
+
+
 async def get_all_player_names_with_ids(
     session: AsyncSession,
 ) -> list[tuple[str, int]]:
@@ -183,3 +189,36 @@ async def update_player_skin(
         player.avatar_data = avatar_data
         player.last_skin_update = timestamp
         await session.commit()
+
+
+async def upsert_player_profile(
+    session: AsyncSession,
+    uuid: str,
+    player_name: str,
+    skin_data: Optional[bytes],
+    avatar_data: Optional[bytes],
+    timestamp: datetime,
+) -> Player:
+    """Upsert player identity and optional cached skin data."""
+    player = await get_player_by_uuid(session, uuid)
+    if player is None:
+        player = Player(
+            uuid=uuid,
+            current_name=player_name,
+            skin_data=skin_data,
+            avatar_data=avatar_data,
+            last_skin_update=timestamp if skin_data or avatar_data else None,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(player)
+    else:
+        player.current_name = player_name
+        if skin_data is not None:
+            player.skin_data = skin_data
+        if avatar_data is not None:
+            player.avatar_data = avatar_data
+        if skin_data is not None or avatar_data is not None:
+            player.last_skin_update = timestamp
+    await session.commit()
+    await session.refresh(player)
+    return player

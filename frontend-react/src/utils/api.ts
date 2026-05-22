@@ -131,6 +131,8 @@ export const queryKeys = {
       [...queryKeys.players.all, "list", filters] as const,
     detailByUUID: (uuid: string) => [...queryKeys.players.all, "detail", "uuid", uuid] as const,
     detailByName: (name: string) => [...queryKeys.players.all, "detail", "name", name] as const,
+    mapProfileByUUID: (uuid: string) =>
+      [...queryKeys.players.all, "map-profile", "uuid", uuid] as const,
     serverOnline: (serverId: string) => [...queryKeys.players.all, "server", serverId, "online"] as const,
     sessions: (playerDbId: number, params?: any) =>
       [...queryKeys.players.all, playerDbId, "sessions", params] as const,
@@ -229,6 +231,8 @@ export const queryKeys = {
       [...queryKeys.worldRestore.all, "layout", serverId] as const,
     dimensionLabels: (serverId: string) =>
       [...queryKeys.worldRestore.all, "dimension-labels", serverId] as const,
+    playerLocations: (serverId: string) =>
+      [...queryKeys.worldRestore.all, "player-locations", serverId] as const,
     eligible: (serverId: string, selection: unknown) =>
       [...queryKeys.worldRestore.all, "eligible", serverId, selection] as const,
     history: (serverId: string) =>

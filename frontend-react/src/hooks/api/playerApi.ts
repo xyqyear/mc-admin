@@ -36,6 +36,15 @@ export interface OnlinePlayerInfo {
   session_duration_seconds: number
 }
 
+export interface PlayerMapProfileResponse {
+  player_db_id: number | null
+  uuid: string
+  current_name: string | null
+  avatar_base64: string | null
+  resolved: boolean
+  last_skin_update: string | null
+}
+
 export interface SessionInfo {
   session_id: number
   server_db_id: number
@@ -95,6 +104,11 @@ export const playerApi = {
 
   getPlayerByUUID: async (uuid: string): Promise<PlayerDetailResponse> => {
     const response = await api.get(`/players/uuid/${uuid}`)
+    return response.data
+  },
+
+  getPlayerMapProfile: async (uuid: string): Promise<PlayerMapProfileResponse> => {
+    const response = await api.get(`/players/uuid/${uuid}/profile`)
     return response.data
   },
 

@@ -1,5 +1,12 @@
-import React from 'react';
-import { User } from 'lucide-react';
+import React from 'react'
+import { User } from 'lucide-react'
+
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar'
+import { cn } from '@/lib/utils'
 
 interface MCAvatarProps {
   avatarBase64?: string | null;
@@ -14,11 +21,12 @@ export const MCAvatar: React.FC<MCAvatarProps> = ({
   className = '',
   playerName = '玩家'
 }) => {
-  const hasAvatar = avatarBase64 && avatarBase64.trim() !== '';
+  const hasAvatar = avatarBase64 && avatarBase64.trim() !== ''
+  const fallbackText = playerName.trim().slice(0, 1).toUpperCase()
 
   return (
-    <div
-      className={`inline-flex items-center justify-center shrink-0 bg-gray-200 ${className}`}
+    <Avatar
+      className={cn('rounded-sm after:rounded-sm', className)}
       style={{
         width: size,
         height: size,
@@ -26,23 +34,25 @@ export const MCAvatar: React.FC<MCAvatarProps> = ({
         minHeight: size
       }}
     >
-      {hasAvatar ? (
-        <img
+      {hasAvatar && (
+        <AvatarImage
           src={`data:image/png;base64,${avatarBase64}`}
           alt={`${playerName}的头像`}
-          className="w-full h-full"
+          className="rounded-sm"
           style={{
             imageRendering: 'pixelated',
           }}
         />
-      ) : (
-        <User
-          size={size * 0.5}
-          className="text-muted-foreground"
-        />
       )}
-    </div>
-  );
-};
+      <AvatarFallback className="rounded-sm">
+        {fallbackText ? (
+          <span className="text-xs font-medium">{fallbackText}</span>
+        ) : (
+          <User style={{ width: size * 0.45, height: size * 0.45 }} />
+        )}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
 
-export default MCAvatar;
+export default MCAvatar

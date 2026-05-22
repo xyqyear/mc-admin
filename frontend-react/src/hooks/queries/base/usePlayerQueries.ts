@@ -1,6 +1,16 @@
-import { useQuery } from '@tanstack/react-query'
-import { playerApi } from '@/hooks/api/playerApi'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import {
+  playerApi,
+  type PlayerMapProfileResponse,
+} from '@/hooks/api/playerApi'
 import { queryKeys } from '@/utils/api'
+
+function normalizeUuid(uuid: string | null | undefined): string | null {
+  if (!uuid) return null
+  const normalized = uuid.replaceAll('-', '').toLowerCase()
+  if (!/^[0-9a-f]{32}$/.test(normalized)) return null
+  return normalized
+}
 
 export const useAllPlayers = (params?: {
   online_only?: boolean
@@ -23,6 +33,48 @@ export const usePlayerByUUID = (uuid: string | null) => {
     staleTime: 1 * 60 * 1000,
     retry: 2
   })
+}
+
+export const usePlayerMapProfile = (uuid: string | null) => {
+  const normalized = normalizeUuid(uuid)
+  return useQuery({
+    queryKey: queryKeys.players.mapProfileByUUID(normalized ?? ''),
+    queryFn: () => playerApi.getPlayerMapProfile(normalized!),
+    enabled: !!normalized,
+    staleTime: 10 * 60 * 1000,
+    retry: false
+  })
+}
+
+export const usePlayerMapProfiles = (
+  uuids: readonly (string | null | undefined)[],
+  enabled = true
+) => {
+  const normalizedUuids = Array.from(
+    new Set(
+      uuids
+        .map((uuid) => normalizeUuid(uuid))
+        .filter((uuid): uuid is string => !!uuid)
+    )
+  )
+  const results = useQueries({
+    queries: normalizedUuids.map((uuid) => ({
+      queryKey: queryKeys.players.mapProfileByUUID(uuid),
+      queryFn: () => playerApi.getPlayerMapProfile(uuid),
+      enabled,
+      staleTime: 10 * 60 * 1000,
+      retry: false
+    }))
+  })
+  const profilesByUuid = new Map<string, PlayerMapProfileResponse>()
+  const pendingUuids = new Set<string>()
+  results.forEach((result, index) => {
+    const uuid = normalizedUuids[index]
+    if (!uuid) return
+    if (result.data) profilesByUuid.set(uuid, result.data)
+    if (result.isLoading || result.isFetching) pendingUuids.add(uuid)
+  })
+  return { uuids: normalizedUuids, results, profilesByUuid, pendingUuids }
 }
 
 export const usePlayerByName = (name: string | null) => {
@@ -112,6 +164,8 @@ export const usePlayerQueries = () => {
   return {
     useAllPlayers,
     usePlayerByUUID,
+    usePlayerMapProfile,
+    usePlayerMapProfiles,
     usePlayerByName,
     useServerOnlinePlayers,
     usePlayerSessions,

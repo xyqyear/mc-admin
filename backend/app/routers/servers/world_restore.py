@@ -27,6 +27,11 @@ from ...models import (
     RestorationType,
     UserPublic,
 )
+from ...player_locations import (
+    PlayerLocationExtractError,
+    PlayerLocationsResponse,
+    extract_player_locations_for_server,
+)
 from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, restic_manager
 from ...world import (
     SelectionResolutionError,
@@ -261,6 +266,27 @@ async def get_ftb_claims(
     try:
         return await extract_claims_for_server(data_path, roots=roots)
     except FtbExtractError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Player locations ------------------------------------------------------
+
+
+@router.get(
+    "/{server_id}/world-restore/player-locations",
+    response_model=PlayerLocationsResponse,
+)
+async def get_player_locations(
+    server_id: str,
+    _: UserPublic = Depends(get_current_user),
+) -> PlayerLocationsResponse:
+    await _ensure_server_exists(server_id)
+    instance = docker_mc_manager.get_instance(server_id)
+    data_path = instance.get_data_path()
+    roots = await _get_world_roots(data_path)
+    try:
+        return await extract_player_locations_for_server(data_path, roots=roots)
+    except PlayerLocationExtractError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 

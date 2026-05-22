@@ -41,6 +41,7 @@ app/
 ├── background_tasks/      # in-memory async-generator task manager
 ├── mcmap/                 # server map: mcmap CLI integration, tile cache under data/.mcmap/
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
+├── player_locations/      # saved player-position extraction via mcmap extract-players
 ├── world/                 # world layout/restore, per-server lock, safety snapshots, preview sessions
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression
@@ -89,6 +90,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/background-tasks.md` — async-generator task manager, `TaskProgress` pattern
 - `docs/server-map.md` — `app.mcmap` rendering pipeline, palette currency, render queue, cancellation
 - `docs/ftb-claims.md` — `app.ftb_claims` mcmap subprocess, dim resolution, clustering, no-cache rationale
+- `docs/player-locations.md` — `app.player_locations`, saved positions, dim resolution, profile cache fallback
 - `docs/world-restore.md` — `app.world` scopes, locks, safety snapshots, preview sessions, crash recovery
 - `docs/websocket-console.md` — docker-py attach socket bridge, message protocol
 - `docs/auth.md` — JWT, password login, master token, WebSocket-code login flow

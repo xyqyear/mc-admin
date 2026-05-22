@@ -8,6 +8,7 @@ import type {
   RestorationSelection,
   WorldLayoutResponse,
 } from '@/types/WorldRestore'
+import type { PlayerLocationsResponse } from '@/types/PlayerLocations'
 
 // REST surface for the world-restore feature. Streaming endpoints (POST
 // /preview, POST /restore, POST /restorations/{id}/rollback) are consumed via
@@ -22,6 +23,13 @@ export const worldRestoreApi = {
     api
       .get<DimensionLabelsResponse>(
         `/servers/${serverId}/world-restore/dimension-labels`,
+      )
+      .then((r) => r.data),
+
+  getPlayerLocations: (serverId: string) =>
+    api
+      .get<PlayerLocationsResponse>(
+        `/servers/${serverId}/world-restore/player-locations`,
       )
       .then((r) => r.data),
 

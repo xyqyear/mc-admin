@@ -29,9 +29,16 @@ import {
 import { ClusterPopover } from '@/components/world-restore/claims/ClusterPopover'
 import { TeamClusterList } from '@/components/world-restore/claims/TeamClusterList'
 import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOverlay'
+import { PlayerLocationList } from '@/components/world-restore/players/PlayerLocationList'
+import { usePlayersOverlay } from '@/components/world-restore/players/usePlayersOverlay'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
 import {
+  usePlayerMapProfiles,
+  useServerOnlinePlayers,
+} from '@/hooks/queries/base/usePlayerQueries'
+import {
+  useWorldRestorePlayerLocations,
   useWorldDimensionLabels,
   useWorldLayout,
 } from '@/hooks/queries/base/useWorldRestoreQueries'
@@ -44,7 +51,9 @@ import {
 } from '@/stores/useWorldRestoreSelectionStore'
 import type { FtbClusterEntry, FtbTeamEntry } from '@/types/FtbClaims'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
+import type { PlayerLocationEntry } from '@/types/PlayerLocations'
 import { queryKeys } from '@/utils/api'
+import { normalizePlayerUuid } from '@/components/world-restore/players/playerLocationDisplay'
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
 const EMPTY_SELECTION = new Set<ChunkKey>()
@@ -258,7 +267,7 @@ const ServerWorldRestore: React.FC = () => {
 
   const claimsQ = useFtbClaims(serverId, mapInitialized)
   const claimsAvailable = !!claimsQ.data?.available
-  const [overlayVisible, setOverlayVisible] = useState(true)
+  const [claimsOverlayVisible, setClaimsOverlayVisible] = useState(true)
   const teams = useMemo<FtbTeamEntry[]>(
     () => claimsQ.data?.teams ?? [],
     [claimsQ.data],
@@ -291,13 +300,71 @@ const ServerWorldRestore: React.FC = () => {
   } = useClaimsOverlay({
     teams,
     currentDimRelpath: regionRelpath,
-    enabled: claimsAvailable && overlayVisible,
+    enabled: claimsAvailable && claimsOverlayVisible,
     onRender: handleOverlayRender,
   })
 
   const handleRefreshClaims = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.ftbClaims.all })
   }, [queryClient])
+
+  // --- Player locations overlay ---
+
+  const playerLocationsQ = useWorldRestorePlayerLocations(
+    serverId,
+    mapInitialized,
+  )
+  const [playersOverlayVisible, setPlayersOverlayVisible] = useState(true)
+  const [onlinePlayersOnly, setOnlinePlayersOnly] = useState(false)
+  const playerLocations = useMemo<PlayerLocationEntry[]>(
+    () => playerLocationsQ.data?.players ?? [],
+    [playerLocationsQ.data],
+  )
+  const onlinePlayersQ = useServerOnlinePlayers(serverId)
+  const onlinePlayerUuids = useMemo(
+    () =>
+      new Set(
+        (onlinePlayersQ.data ?? [])
+          .map((player) => normalizePlayerUuid(player.uuid))
+          .filter((uuid): uuid is string => !!uuid),
+      ),
+    [onlinePlayersQ.data],
+  )
+  const onlineStatusAvailable = !!onlinePlayersQ.data && !onlinePlayersQ.isError
+  const playerUuids = useMemo(
+    () =>
+      playerLocations
+        .map((player) => player.uuid)
+        .filter((uuid): uuid is string => !!uuid),
+    [playerLocations],
+  )
+  const playerProfiles = usePlayerMapProfiles(
+    playerUuids,
+    mapInitialized && !!playerLocationsQ.data,
+  )
+  const { overlays: playersOverlays, panToBlock: panToPlayerBlock } =
+    usePlayersOverlay({
+      players: playerLocations,
+      currentDimRelpath: regionRelpath,
+      profilesByUuid: playerProfiles.profilesByUuid,
+      onlinePlayerUuids,
+      onlineOnly: onlinePlayersOnly && onlineStatusAvailable,
+      onlineStatusAvailable,
+      enabled: mapInitialized,
+      visible: playersOverlayVisible,
+      onRender: handleOverlayRender,
+    })
+
+  const mapOverlays = useMemo(() => {
+    const out = [...(claimsOverlays ?? []), ...(playersOverlays ?? [])]
+    return out.length > 0 ? out : undefined
+  }, [claimsOverlays, playersOverlays])
+
+  const handleRefreshPlayers = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.worldRestore.playerLocations(serverId),
+    })
+  }, [queryClient, serverId])
 
   const handleClusterSelect = useCallback(
     (cluster: FtbClusterEntry) => {
@@ -337,6 +404,24 @@ const ServerWorldRestore: React.FC = () => {
       }
     },
     [regionRelpath, panToBlock, handleDimensionChange],
+  )
+
+  const handlePlayerClick = useCallback(
+    (player: PlayerLocationEntry) => {
+      if (player.region_dir_relpath === regionRelpath) {
+        panToPlayerBlock(player.pos.x, player.pos.z)
+        return
+      }
+      if (player.region_dir_relpath) {
+        pendingPanRef.current = {
+          dimRelpath: player.region_dir_relpath,
+          bx: player.pos.x,
+          bz: player.pos.z,
+        }
+        handleDimensionChange(player.region_dir_relpath)
+      }
+    },
+    [regionRelpath, panToPlayerBlock, handleDimensionChange],
   )
 
   const popoverContext = useMemo(() => {
@@ -533,7 +618,7 @@ const ServerWorldRestore: React.FC = () => {
                   selectionMode={selectionMode}
                   selection={selection}
                   onSelectionChange={handleSelectionChange}
-                  overlays={claimsOverlays}
+                  overlays={mapOverlays}
                   initialView={initialView}
                   onViewChange={handleViewChange}
                 />
@@ -548,11 +633,20 @@ const ServerWorldRestore: React.FC = () => {
           <div className="flex flex-col min-w-0 md:min-h-0 md:overflow-y-auto md:*:shrink-0">
             <Card>
               <CardContent>
-                {claimsAvailable ? (
+                {mapInitialized ? (
                   <Tabs defaultValue="backup" className="gap-4">
-                    <TabsList className="w-full">
+                    <TabsList
+                      className={
+                        claimsAvailable
+                          ? 'grid w-full grid-cols-3'
+                          : 'grid w-full grid-cols-2'
+                      }
+                    >
                       <TabsTrigger value="backup">备份与恢复</TabsTrigger>
-                      <TabsTrigger value="claims">领地列表</TabsTrigger>
+                      {claimsAvailable && (
+                        <TabsTrigger value="claims">领地列表</TabsTrigger>
+                      )}
+                      <TabsTrigger value="players">玩家位置</TabsTrigger>
                     </TabsList>
                     <TabsContent value="backup">
                       <WorldRestoreSelectionPanel
@@ -564,22 +658,44 @@ const ServerWorldRestore: React.FC = () => {
                       />
                     </TabsContent>
                     <TabsContent value="claims">
-                      <TeamClusterList
-                        data={claimsQ.data}
-                        isLoading={claimsQ.isLoading}
-                        isError={claimsQ.isError}
+                      {claimsAvailable && (
+                        <TeamClusterList
+                          data={claimsQ.data}
+                          isLoading={claimsQ.isLoading}
+                          isError={claimsQ.isError}
+                          currentDimRelpath={regionRelpath}
+                          dimensionLabelByRelpath={dimensionLabelByRelpath}
+                          mode={urlMode}
+                          selection={selection}
+                          overlayVisible={claimsOverlayVisible}
+                          onOverlayVisibleChange={setClaimsOverlayVisible}
+                          onRefresh={handleRefreshClaims}
+                          onClusterHover={highlightClusters}
+                          onClusterClick={handleClusterClick}
+                          onClusterSelect={handleClusterSelect}
+                          onTeamHover={highlightClusters}
+                          onTeamSelectInDim={handleTeamSelectInDim}
+                        />
+                      )}
+                    </TabsContent>
+                    <TabsContent value="players">
+                      <PlayerLocationList
+                        data={playerLocationsQ.data}
+                        isLoading={playerLocationsQ.isLoading}
+                        isError={playerLocationsQ.isError}
                         currentDimRelpath={regionRelpath}
                         dimensionLabelByRelpath={dimensionLabelByRelpath}
-                        mode={urlMode}
-                        selection={selection}
-                        overlayVisible={overlayVisible}
-                        onOverlayVisibleChange={setOverlayVisible}
-                        onRefresh={handleRefreshClaims}
-                        onClusterHover={highlightClusters}
-                        onClusterClick={handleClusterClick}
-                        onClusterSelect={handleClusterSelect}
-                        onTeamHover={highlightClusters}
-                        onTeamSelectInDim={handleTeamSelectInDim}
+                        profilesByUuid={playerProfiles.profilesByUuid}
+                        pendingProfileUuids={playerProfiles.pendingUuids}
+                        onlinePlayerUuids={onlinePlayerUuids}
+                        onlineOnly={onlinePlayersOnly}
+                        onlineStatusLoading={onlinePlayersQ.isLoading}
+                        onlineStatusAvailable={onlineStatusAvailable}
+                        overlayVisible={playersOverlayVisible}
+                        onOverlayVisibleChange={setPlayersOverlayVisible}
+                        onOnlineOnlyChange={setOnlinePlayersOnly}
+                        onRefresh={handleRefreshPlayers}
+                        onPlayerClick={handlePlayerClick}
                       />
                     </TabsContent>
                   </Tabs>
