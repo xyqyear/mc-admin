@@ -59,13 +59,6 @@ class ConfigUpdateResponse(BaseModel):
     updated_config: Dict[str, Any]
 
 
-class SuccessResponse(BaseModel):
-    """Generic success response."""
-
-    success: bool
-    message: str
-
-
 @router.get("/modules", response_model=ConfigModuleList)
 async def list_all_modules(_: UserPublic = Depends(get_current_user)):
     """
@@ -187,19 +180,4 @@ async def reset_module_config(
         success=True,
         message=f"Configuration for module '{module_name}' reset to defaults",
         updated_config=reset_config.model_dump(),
-    )
-
-
-@router.get("/health", response_model=SuccessResponse)
-async def config_health_check(_: UserPublic = Depends(get_current_user)):
-    """
-    Health check endpoint for the dynamic configuration system.
-
-    Returns:
-        Health status of the configuration system
-    """
-    # Simple check to see if the config manager is initialized
-    config_manager.get_all_configs()
-    return SuccessResponse(
-        success=True, message="Dynamic configuration system is healthy"
     )

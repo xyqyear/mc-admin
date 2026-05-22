@@ -10,9 +10,7 @@ from ...dependencies import get_current_user
 from ...models import UserPublic
 from ...players.crud.query.achievement_query import (
     AchievementInfo,
-    PlayerAchievementRank,
     get_player_achievements,
-    get_server_achievement_leaderboard,
 )
 
 router = APIRouter(prefix="/players", tags=["player-achievements"])
@@ -34,27 +32,3 @@ async def get_player_achievement_list(
         db, player_db_id=player_db_id, server_id=server_id
     )
     return achievements
-
-
-# Server achievement leaderboard endpoint (under /servers prefix)
-server_router = APIRouter(prefix="/servers", tags=["server-achievements"])
-
-
-@server_router.get(
-    "/{server_id}/achievements/leaderboard", response_model=List[PlayerAchievementRank]
-)
-async def get_achievement_leaderboard(
-    server_id: str,
-    limit: int = Query(50, ge=1, le=100, description="Number of top players to return"),
-    _: UserPublic = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get server achievement leaderboard.
-
-    Returns a leaderboard of players ranked by achievement count on the specified server.
-    """
-    leaderboard = await get_server_achievement_leaderboard(
-        db, server_id=server_id, limit=limit
-    )
-    return leaderboard

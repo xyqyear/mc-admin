@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Tuple
 
@@ -12,7 +11,6 @@ from ...dependencies import get_current_user
 from ...dynamic_config import config
 from ...logger import logger
 from ...mcmap import (
-    DimensionInfo,
     MapStatus,
     ServerMapCache,
     discover_level_dat,
@@ -33,9 +31,6 @@ from ...mcmap.events import (
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
-from ...world.dimension_labels import label_for_dimension_dir
-from ...world.layout import WorldLayoutDiscoveryError, discover_world_roots
-from ...world.region_files import parse_region_filename
 from ...world.region_manifest import list_region_manifest
 
 router = APIRouter(prefix="/servers", tags=["map"])
@@ -62,50 +57,6 @@ async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
     if not await aioos.path.isdir(resolved):
         raise HTTPException(status_code=404, detail="Region directory not found")
     return resolved
-
-
-def _count_region_mca_files_sync(region_dir: Path) -> int:
-    count = 0
-    try:
-        entries = os.scandir(region_dir)
-    except OSError:
-        return 0
-    with entries:
-        for entry in entries:
-            if parse_region_filename(entry.name) is None:
-                continue
-            try:
-                if entry.is_file(follow_symlinks=False):
-                    count += 1
-            except OSError:
-                continue
-    return count
-
-
-async def _discover_dimensions(data_path: Path) -> List[DimensionInfo]:
-    results: List[DimensionInfo] = []
-    try:
-        roots = await discover_world_roots(data_path)
-    except WorldLayoutDiscoveryError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    for root in roots:
-        for dim in root.dimensions:
-            try:
-                region_path = dim.region_dir.relative_to(data_path).as_posix()
-            except ValueError:
-                continue
-            mca_count = await asyncio.to_thread(
-                _count_region_mca_files_sync, dim.region_dir
-            )
-            results.append(
-                DimensionInfo(
-                    region_path=region_path,
-                    label=label_for_dimension_dir(root.path, dim.region_dir.parent),
-                    mca_count=mca_count,
-                )
-            )
-    results.sort(key=lambda d: d.region_path)
-    return results
 
 
 async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
@@ -144,14 +95,6 @@ async def get_status(
         palette_current=palette_current,
         version=version,
     )
-
-
-@router.get("/{server_id}/map/dimensions", response_model=List[DimensionInfo])
-async def get_dimensions(
-    server_id: str, _: UserPublic = Depends(get_current_user)
-) -> List[DimensionInfo]:
-    data_path = await _get_data_path(server_id)
-    return await _discover_dimensions(data_path)
 
 
 @router.get("/{server_id}/map/regions", response_model=List[Tuple[int, int, int]])
@@ -410,18 +353,3 @@ async def _png_response(png: Path) -> FileResponse:
             "ETag": f'"{int(st.st_mtime)}"',
         },
     )
-
-
-@router.delete("/{server_id}/map/cache")
-async def clear_dimension_cache(
-    server_id: str,
-    region: str = Query(..., description="Region folder relative to data/"),
-    _: UserPublic = Depends(get_current_user),
-) -> dict:
-    data_path = await _get_data_path(server_id)
-    await _resolve_region_path(data_path, region)
-    cache = ServerMapCache(data_path=data_path)
-    tiles = cache.tiles_dir(region)
-    if await aioos.path.exists(tiles):
-        await async_fs.rmtree(tiles)
-    return {"cleared": region}

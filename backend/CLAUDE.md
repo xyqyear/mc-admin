@@ -9,10 +9,12 @@ uv sync
 uv run alembic upgrade head
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 uv run pytest tests/ -v -k "not _with_docker and not integrated"
+uv run pyright
 ```
 
 - **Use `uv`**, never `pip`/`venv` directly.
 - **Do not run `black`** — formatting is not enforced.
+- **Run `uv run pyright` after backend code changes.**
 - **Alembic autogenerate is only required for changes to existing tables.** New tables are created automatically by the metadata-bound engine.
 - Tests whose function names end in `_with_docker` or live in files containing `integrated` start real Docker containers; they're slow and excluded by the default `-k` filter above.
 

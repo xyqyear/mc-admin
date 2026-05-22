@@ -248,27 +248,6 @@ async def get_player_detail_by_uuid(
     return await _build_player_detail(session, player_obj)
 
 
-async def get_player_detail_by_name(
-    session: AsyncSession, name: str
-) -> Optional[PlayerDetailResponse]:
-    """Get player detail by name.
-
-    Args:
-        session: Database session
-        name: Player name
-
-    Returns:
-        Player detail or None
-    """
-    player = await session.execute(select(Player).where(Player.current_name == name))
-    player_obj = player.scalar_one_or_none()
-
-    if not player_obj:
-        return None
-
-    return await _build_player_detail(session, player_obj)
-
-
 async def _build_player_detail(
     session: AsyncSession, player: Player
 ) -> PlayerDetailResponse:

@@ -128,42 +128,6 @@ async def get_player_by_db_id(
     return result.scalar_one_or_none()
 
 
-async def get_player_avatar_data(
-    session: AsyncSession, player_db_id: int
-) -> Optional[bytes]:
-    """Get player avatar PNG data.
-
-    Args:
-        session: Database session
-        player_db_id: Player database ID
-
-    Returns:
-        Avatar PNG bytes or None if not found
-    """
-    result = await session.execute(
-        select(Player.avatar_data).where(Player.player_db_id == player_db_id)
-    )
-    return result.scalar_one_or_none()
-
-
-async def get_player_skin_data(
-    session: AsyncSession, player_db_id: int
-) -> Optional[bytes]:
-    """Get player skin PNG data.
-
-    Args:
-        session: Database session
-        player_db_id: Player database ID
-
-    Returns:
-        Skin PNG bytes or None if not found
-    """
-    result = await session.execute(
-        select(Player.skin_data).where(Player.player_db_id == player_db_id)
-    )
-    return result.scalar_one_or_none()
-
-
 async def update_player_skin(
     session: AsyncSession,
     player_db_id: int,

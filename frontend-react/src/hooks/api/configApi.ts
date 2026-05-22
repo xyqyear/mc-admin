@@ -27,11 +27,6 @@ export interface ConfigUpdateResponse {
   updated_config: Record<string, any>
 }
 
-export interface SuccessResponse {
-  success: boolean
-  message: string
-}
-
 export const listAllModules = async (): Promise<ConfigModuleList> => {
   const response = await api.get('/config/modules')
   return response.data
@@ -59,10 +54,5 @@ export const getModuleSchema = async (moduleName: string): Promise<ConfigModuleI
 
 export const resetModuleConfig = async (moduleName: string): Promise<ConfigUpdateResponse> => {
   const response = await api.post(`/config/modules/${moduleName}/reset`)
-  return response.data
-}
-
-export const configHealthCheck = async (): Promise<SuccessResponse> => {
-  const response = await api.get('/config/health')
   return response.data
 }

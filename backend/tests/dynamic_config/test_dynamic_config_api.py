@@ -370,19 +370,6 @@ class TestConfigAPI:
         assert updated_config["tags"] == ["updated", "tags", "list"]
 
     @pytest.mark.asyncio
-    async def test_config_health_check(
-        self, test_api_db, api_client, authenticated_headers
-    ):
-        """Test GET /api/config/health - Health check endpoint."""
-        response = api_client.get("/api/config/health", headers=authenticated_headers)
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["success"] is True
-        assert "healthy" in data["message"].lower()
-
-    @pytest.mark.asyncio
     async def test_api_error_handling(
         self, test_api_db, api_client, authenticated_headers
     ):
@@ -430,9 +417,6 @@ class TestConfigAPI:
         assert response.status_code == 401  # Unauthorized
 
         response = api_client.get("/api/config/modules/api_test/schema")
-        assert response.status_code == 401  # Unauthorized
-
-        response = api_client.get("/api/config/health")
         assert response.status_code == 401  # Unauthorized
 
 

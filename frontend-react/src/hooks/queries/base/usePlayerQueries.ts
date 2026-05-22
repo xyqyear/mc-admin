@@ -77,16 +77,6 @@ export const usePlayerMapProfiles = (
   return { uuids: normalizedUuids, results, profilesByUuid, pendingUuids }
 }
 
-export const usePlayerByName = (name: string | null) => {
-  return useQuery({
-    queryKey: queryKeys.players.detailByName(name!),
-    queryFn: () => playerApi.getPlayerByName(name!),
-    enabled: !!name,
-    staleTime: 1 * 60 * 1000,
-    retry: 2
-  })
-}
-
 export const useServerOnlinePlayers = (serverId: string) => {
   return useQuery({
     queryKey: queryKeys.players.serverOnline(serverId),
@@ -166,7 +156,6 @@ export const usePlayerQueries = () => {
     usePlayerByUUID,
     usePlayerMapProfile,
     usePlayerMapProfiles,
-    usePlayerByName,
     useServerOnlinePlayers,
     usePlayerSessions,
     usePlayerSessionStats,

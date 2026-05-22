@@ -4,7 +4,7 @@ import base64
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,17 +14,14 @@ from ...dependencies import get_current_user
 from ...models import UserPublic
 from ...player_locations import normalize_uuid
 from ...players.crud import (
-    get_player_avatar_data,
     get_player_by_db_id,
     get_player_by_uuid as get_cached_player_by_uuid,
-    get_player_skin_data,
     upsert_player_profile,
 )
 from ...players.crud.query.player_query import (
     PlayerDetailResponse,
     PlayerSummary,
     get_all_players_summary,
-    get_player_detail_by_name,
     get_player_detail_by_uuid,
 )
 from ...players.skin_fetcher import skin_fetcher
@@ -136,70 +133,6 @@ async def get_player_map_profile(
         datetime.now(timezone.utc),
     )
     return _profile_response(player, normalized)
-
-
-@router.get("/name/{name}", response_model=PlayerDetailResponse)
-async def get_player_by_name(
-    name: str,
-    _: UserPublic = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get player detail by name.
-
-    Returns detailed information about a player including statistics and current status.
-    """
-    player_detail = await get_player_detail_by_name(db, name)
-    if not player_detail:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=f"Player with name '{name}' not found",
-        )
-    return player_detail
-
-
-@router.get("/{player_db_id}/avatar")
-async def get_player_avatar(
-    player_db_id: int,
-    _: UserPublic = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get player avatar image.
-
-    Returns the player's avatar as a PNG image.
-    """
-    avatar_data = await get_player_avatar_data(db, player_db_id)
-
-    if not avatar_data:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Player avatar not found",
-        )
-
-    return Response(content=avatar_data, media_type="image/png")
-
-
-@router.get("/{player_db_id}/skin")
-async def get_player_skin(
-    player_db_id: int,
-    _: UserPublic = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get player skin image.
-
-    Returns the player's skin as a PNG image.
-    """
-    skin_data = await get_player_skin_data(db, player_db_id)
-
-    if not skin_data:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Player skin not found",
-        )
-
-    return Response(content=skin_data, media_type="image/png")
 
 
 @router.post("/{player_db_id}/refresh-skin")

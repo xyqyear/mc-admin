@@ -40,6 +40,7 @@ dev = [
     "setuptools>=80.9.0,<81",
     "pytest-asyncio>=1.2.0,<2",
     "pytest-cov>=7.0.0,<8",
+    "pyright>=1.1.409",
 ]
 
 [tool.uv]
@@ -56,3 +57,12 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "-vv --cov=app --cov-report=xml:cov.xml --cov-report=html:cov_html --cov-report=term-missing"
+
+[tool.pyright]
+include = ["app", "tests", "alembic"]
+exclude = [
+    "**/__pycache__",
+    ".pytest_cache",
+    "cov_html",
+    "dev-servers*",
+]

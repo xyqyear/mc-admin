@@ -8,7 +8,6 @@ from .palette import (
     write_palette_hash,
 )
 from .types import (
-    DimensionInfo,
     InitEvent,
     MapStatus,
     MCMapError,
@@ -22,7 +21,6 @@ __all__ = [
     "write_palette_hash",
     "discover_mods_dir",
     "discover_level_dat",
-    "DimensionInfo",
     "MapStatus",
     "InitEvent",
     "MCMapError",

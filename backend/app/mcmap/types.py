@@ -5,14 +5,6 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 
 
-class DimensionInfo(BaseModel):
-    """A discovered dimension on disk."""
-
-    region_path: str
-    label: str
-    mca_count: int
-
-
 class MapStatus(BaseModel):
     """Per-server map initialization state."""
 

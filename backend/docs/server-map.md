@@ -63,28 +63,16 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 
 `region_path` is request-scoped — it's a query parameter on every map endpoint and is never persisted in the database or config. `_resolve_region_path()` rejects absolute paths and any input that resolves outside `data/` (traversal). The frontend tracks the selected dimension in component state and threads it through every request.
 
-## Dimension discovery
-
-`GET /dimensions` projects `app.world.layout` discovery into the
-mcmap response shape. The layout is path-only; this route computes
-legacy map-client labels at response time from the shared
-`config.world.dimension_labels` mapping. The world-restore page fetches labels
-separately through `GET /world-restore/dimension-labels` and translates paths in
-the frontend.
-
 ## Settings
 
 - Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`).
 - Dynamic (`mcmap` schema): `batch_size`, `thread_count`, `request_timeout_seconds`.
-- Dynamic (`world` schema): `region_stat_workers`, `dimension_max_depth_from_world_root`, `dimension_labels`.
 
 ## Endpoints
 
 Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
-- `GET /dimensions` — auto-discovered region folders from `app.world.layout`, with route-time labels for map clients
 - `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples from `app.world.region_manifest` for every non-empty regular `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
 - `POST /initialize` — two-stage SSE
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)
-- `DELETE /cache?region=<rel-path>` — wipes one dimension's tiles

@@ -30,10 +30,6 @@ interface ServerMemoryResponse {
   memoryUsageBytes: number;
 }
 
-interface ServerPlayersResponse {
-  onlinePlayers: string[];
-}
-
 interface ServerIOStatsResponse {
   diskReadBytes: number;
   diskWriteBytes: number;
@@ -148,13 +144,6 @@ export const serverApi = {
     return {
       memoryUsageBytes: res.data.memoryUsageBytes,
     };
-  },
-
-  // DEPRECATED: prefer playerApi.getServerOnlinePlayers (returns avatar/uuid).
-  // Backend requires HEALTHY status.
-  getServerPlayers: async (id: string): Promise<string[]> => {
-    const res = await api.get<ServerPlayersResponse>(`/servers/${id}/players`);
-    return res.data.onlinePlayers;
   },
 
   // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
@@ -330,4 +319,3 @@ export type {
   ServerListItem,
   ServerStatusResponse
 };
-

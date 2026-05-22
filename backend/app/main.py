@@ -36,7 +36,6 @@ from .routers.players import (
     chat,
     players,
     sessions,
-    statistics,
 )
 from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
@@ -45,7 +44,6 @@ from .routers.servers import files as server_files
 from .routers.servers import map as server_map
 from .routers.servers import misc as server_misc
 from .routers.servers import operations as server_operations
-from .routers.servers import players as server_players
 from .routers.servers import populate as server_populate
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
@@ -135,15 +133,10 @@ api_app.include_router(players.router)
 api_app.include_router(sessions.router)
 api_app.include_router(sessions.server_router)
 api_app.include_router(chat.router)
-api_app.include_router(chat.server_router)
 api_app.include_router(achievements.router)
-api_app.include_router(achievements.server_router)
-api_app.include_router(statistics.router)
-api_app.include_router(statistics.server_router)
 
 api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
-api_app.include_router(server_players.router)
 api_app.include_router(server_compose.router)
 api_app.include_router(server_operations.router)
 # server_sync must be registered before server_create so POST /servers/sync

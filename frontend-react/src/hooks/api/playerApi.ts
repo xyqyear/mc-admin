@@ -112,19 +112,6 @@ export const playerApi = {
     return response.data
   },
 
-  getPlayerByName: async (name: string): Promise<PlayerDetailResponse> => {
-    const response = await api.get(`/players/name/${name}`)
-    return response.data
-  },
-
-  getPlayerAvatarUrl: (playerDbId: number): string => {
-    return `/players/${playerDbId}/avatar`
-  },
-
-  getPlayerSkinUrl: (playerDbId: number): string => {
-    return `/players/${playerDbId}/skin`
-  },
-
   refreshPlayerSkin: async (playerDbId: number): Promise<{ message: string }> => {
     const response = await api.post(`/players/${playerDbId}/refresh-skin`)
     return response.data
