@@ -149,7 +149,6 @@ def mock_settings_and_auth(temp_dirs, test_db):
         patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.operations.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.compose.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.players.docker_mc_manager", real_mc_manager),
         patch("app.routers.servers.resources.docker_mc_manager", real_mc_manager),
         patch(
             "app.servers.lifecycle.orchestrators.docker_mc_manager", real_mc_manager
