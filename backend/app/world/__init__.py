@@ -3,10 +3,6 @@
 from typing import Optional
 
 from .dimension_labels import (
-    DIMENSION_LABELS,
-    END_LABEL,
-    NETHER_LABEL,
-    OVERWORLD_LABEL,
     dimension_path_for_dir,
     label_for_dimension_dir,
     label_for_dimension_path,
@@ -73,14 +69,10 @@ def reset_world_restore_orchestrator() -> None:
 
 __all__ = [
     "DEFAULT_LEVEL_NAME",
-    "DIMENSION_LABELS",
     "DimensionFolderResolution",
     "DimensionInfo",
-    "END_LABEL",
     "GLOBAL_LOCK_KEY",
     "LockHolder",
-    "NETHER_LABEL",
-    "OVERWORLD_LABEL",
     "PreviewEvent",
     "RestoreError",
     "RestoreEvent",

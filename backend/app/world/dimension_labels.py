@@ -1,12 +1,6 @@
 from pathlib import Path
 
 from ..dynamic_config import config
-from ..dynamic_config.configs.world import (
-    DIMENSION_LABELS,
-    END_LABEL,
-    NETHER_LABEL,
-    OVERWORLD_LABEL,
-)
 
 DIMENSIONS_PREFIX = "dimensions/"
 
