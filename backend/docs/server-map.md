@@ -27,6 +27,10 @@ data/.mcmap/
 1. **Client jar** — `mcmap download-client <version> client.jar`. The version comes from the server's compose (`docker-minecraft-server` `VERSION` env var). Cached fast-path if `client.jar` exists.
 2. **Palette** — `mcmap gen-palette --level-dat <data>/<level-name>/level.dat -p <mods_dir?> -p client.jar -o palette.json`. The backend always passes `--level-dat` when the file exists; mcmap auto-picks 1.7.10 / 1.12.2 / 1.13+ pipelines from its content (and ignores it for 1.13+). Mods directory is included as an extra pack when `data/mods/` contains at least one `.jar`.
 
+`POST /servers/{id}/map/initialize?force=true` first deletes `client.jar`,
+`palette.json`, and `palette.hash`, then runs the same flow. Use it when the
+cached prerequisites may be corrupt or tied to the wrong client.
+
 Both stages validate mcmap NDJSON with command-specific Pydantic event models,
 then stream progress through to the browser as SSE.
 
@@ -74,5 +78,5 @@ Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
 - `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples from `app.world.region_manifest` for every non-empty regular `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
-- `POST /initialize` — two-stage SSE
+- `POST /initialize?force=<bool>` — two-stage SSE; force clears prerequisites first
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)

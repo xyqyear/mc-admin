@@ -112,13 +112,36 @@ def _sse(event_obj: dict) -> bytes:
     return f"data: {json.dumps(event_obj, separators=(',', ':'))}\n\n".encode()
 
 
+async def _clear_prerequisite_cache(cache: ServerMapCache) -> None:
+    for path in (cache.client_jar, cache.palette_json, cache.palette_hash_file):
+        try:
+            await aioos.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
 async def _initialize_stream(
     server_id: str,
+    *,
+    force: bool = False,
 ) -> AsyncGenerator[bytes, None]:
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
     await cache.ensure_dir(cache.cache_dir)
+
+    if force:
+        try:
+            await _clear_prerequisite_cache(cache)
+        except OSError as e:
+            yield _sse(
+                {
+                    "stage": "client",
+                    "phase": "error",
+                    "message": f"failed to clear map prerequisites: {e}",
+                }
+            )
+            return
 
     try:
         compose = await instance.get_compose_obj()
@@ -284,14 +307,16 @@ async def _initialize_stream(
 
 @router.post("/{server_id}/map/initialize")
 async def initialize(
-    server_id: str, _: UserPublic = Depends(get_current_user)
+    server_id: str,
+    force: bool = Query(False, description="Delete cached prerequisites first"),
+    _: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
     instance = docker_mc_manager.get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
     return StreamingResponse(
-        _initialize_stream(server_id),
+        _initialize_stream(server_id, force=force),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

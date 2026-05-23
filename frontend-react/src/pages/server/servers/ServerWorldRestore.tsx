@@ -97,10 +97,20 @@ const ServerWorldRestore: React.FC = () => {
     !!mapStatusQ.data?.palette_present &&
     !!mapStatusQ.data?.palette_current
   const [initOpen, setInitOpen] = useState(false)
+  const [initForce, setInitForce] = useState(false)
+  const openInitDialog = useCallback((force = false) => {
+    setInitForce(force)
+    setInitOpen(true)
+  }, [])
   const handleInitComplete = useCallback(() => {
     setInitOpen(false)
+    setInitForce(false)
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
   }, [queryClient])
+  const handleInitClose = useCallback(() => {
+    setInitOpen(false)
+    setInitForce(false)
+  }, [])
 
   const handleRefreshMap = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.map.all })
@@ -505,7 +515,11 @@ const ServerWorldRestore: React.FC = () => {
                       <RefreshCw className="mr-1 h-4 w-4" />
                       刷新地图
                     </Button>
-                    <Button variant="outline" onClick={() => setInitOpen(true)}>
+                    <Button
+                      variant="destructive"
+                      onClick={() => openInitDialog(true)}
+                      title="删除客户端 JAR 和调色板缓存后重新下载并生成"
+                    >
                       重载渲染前置
                     </Button>
                     <Tabs
@@ -599,7 +613,7 @@ const ServerWorldRestore: React.FC = () => {
                 ? '尚未生成调色板。'
                 : '调色板已过期（版本或mods变更）。'}
             </div>
-            <Button onClick={() => setInitOpen(true)}>初始化地图</Button>
+            <Button onClick={() => openInitDialog(false)}>初始化地图</Button>
           </CardContent>
         </Card>
       )}
@@ -737,7 +751,8 @@ const ServerWorldRestore: React.FC = () => {
       <MapInitDialog
         open={initOpen}
         serverId={serverId}
-        onClose={() => setInitOpen(false)}
+        force={initForce}
+        onClose={handleInitClose}
         onComplete={handleInitComplete}
       />
       {modeChangeConfirmDialog}

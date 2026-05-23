@@ -8,7 +8,7 @@ import { useTokenStore } from '@/stores/useTokenStore'
 // We can't use the browser's native EventSource because the backend requires
 // JWT auth in the Authorization header — EventSource only supports cookie
 // auth. So we drive the stream with fetch + a manual `data: <json>\n\n`
-// parser, the same machinery that MapInitDialog uses for /map/initialize.
+// parser.
 //
 // The hook is enabled-flag driven: flipping `enabled` from false → true opens
 // the stream; flipping back to false aborts it. URL/body changes while

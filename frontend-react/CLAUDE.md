@@ -60,7 +60,7 @@ shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific
 
 ## SSE consumer
 
-`hooks/useEventStream.ts` is the canonical SSE client (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Uses fetch + `AbortController` + `\n\n` block parser. Auth header injected from `useTokenStore`. Body fingerprinted via `JSON.stringify` so caller-side inline objects don't restart the stream every render. Used for world-restore preview/restore/rollback flows and map initialize.
+`hooks/useEventStream.ts` is the canonical SSE client (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Uses fetch + `AbortController` + `\n\n` block parser. Auth header injected from `useTokenStore`. Body fingerprinted via `JSON.stringify` so caller-side inline objects don't restart the stream every render. Used for world-restore preview/restore/rollback flows; map initialize uses a dialog-local fetch with the same parser shape.
 
 ## Monaco editor
 

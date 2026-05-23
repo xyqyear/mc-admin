@@ -72,4 +72,4 @@ This is load-bearing. Without it, browsing across a world would stack render job
 
 ## Init dialog
 
-`components/dialogs/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. Driven by `useEventStream` (the canonical SSE consumer hook). Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog also exposes a "重载渲染前置" button once initialized, so the user can manually rebuild the palette after adding mods.
+`components/dialogs/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses a flow-local fetch + `\n\n` block parser so the dialog can own abort/close behavior. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.

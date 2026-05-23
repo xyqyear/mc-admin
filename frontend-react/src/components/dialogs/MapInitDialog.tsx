@@ -15,6 +15,7 @@ import { useTokenStore } from '@/stores/useTokenStore'
 interface MapInitDialogProps {
   open: boolean
   serverId: string
+  force?: boolean
   onClose: () => void
   onComplete: () => void
 }
@@ -36,6 +37,7 @@ const initialStage: StageState = {
 const MapInitDialog: React.FC<MapInitDialogProps> = ({
   open,
   serverId,
+  force = false,
   onClose,
   onComplete,
 }) => {
@@ -43,6 +45,24 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   const [palette, setPalette] = useState<StageState>(initialStage)
   const [errored, setErrored] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  const applyEvent = (event: InitEvent) => {
+    if (event.stage === 'client') {
+      setClient((prev) => ({
+        percent: event.percent ?? prev.percent,
+        message: event.message ?? prev.message,
+        done: event.phase === 'done',
+        cached: event.cached ?? prev.cached,
+      }))
+    } else if (event.stage === 'palette') {
+      setPalette((prev) => ({
+        percent: event.percent ?? prev.percent,
+        message: event.message ?? prev.message,
+        done: event.phase === 'done',
+        cached: event.cached ?? prev.cached,
+      }))
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -56,8 +76,9 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
     ;(async () => {
       try {
         const token = useTokenStore.getState().token
+        const query = force ? '?force=true' : ''
         const res = await fetch(
-          `${getApiBaseUrl()}/servers/${serverId}/map/initialize`,
+          `${getApiBaseUrl()}/servers/${serverId}/map/initialize${query}`,
           {
             method: 'POST',
             headers: {
@@ -121,25 +142,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
       abortRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, serverId])
-
-  const applyEvent = (event: InitEvent) => {
-    if (event.stage === 'client') {
-      setClient((prev) => ({
-        percent: event.percent ?? prev.percent,
-        message: event.message ?? prev.message,
-        done: event.phase === 'done',
-        cached: event.cached ?? prev.cached,
-      }))
-    } else if (event.stage === 'palette') {
-      setPalette((prev) => ({
-        percent: event.percent ?? prev.percent,
-        message: event.message ?? prev.message,
-        done: event.phase === 'done',
-        cached: event.cached ?? prev.cached,
-      }))
-    }
-  }
+  }, [open, serverId, force])
 
   const isActive = !errored && (!client.done || !palette.done)
 
@@ -147,7 +150,9 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
     <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>
       <DialogContent showCloseButton={!isActive}>
         <DialogHeader>
-          <DialogTitle>正在初始化地图</DialogTitle>
+          <DialogTitle>
+            {force ? '正在重载渲染前置' : '正在初始化地图'}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <StageRow
