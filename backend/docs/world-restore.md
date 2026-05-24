@@ -56,11 +56,11 @@ This means every successful restore has a one-click undo. It also means **a part
 
 ## Per-server lock
 
-`server_operation_lock` (in `app.world.locks`) is a singleton holding one `asyncio.Lock` per server id (or `__global__`). The lock is acquired with a `ServerOperationKind` of `BACKUP` (snapshot creation) or `RESTORE` (restore + rollback) and held for the full operation including the safety snapshot.
+`server_operation_lock` (in `app.world.locks`) is a singleton holding one `asyncio.Lock` per server id (or `__global__`). The lock is acquired with a `ServerOperationKind` of `BACKUP` (manual or scheduled snapshot creation) or `RESTORE` (restore + rollback) and held for the full operation including the safety snapshot.
 
 `LockHolder` records `kind`, `started_at`, optional `user_id`, a human-readable description, and the active `restoration_id` so the UI can attribute the wait to the right user and operation.
 
-The cron backup job calls `server_operation_lock.is_locked(server_id)` before running and skips with a structured "skipped" log entry plus an Uptime Kuma notification when the lock is held. Backups never collide with restores; cron pressure never pushes a backup into an active restore window.
+The cron backup job uses `try_acquire()` with either the target server id or `__global__`. If the lock is held, the run is skipped with a structured log entry plus an Uptime Kuma "skipped" notification when configured. Backups never collide with restores; cron pressure never pushes a backup into an active restore window. Map render queues do not take this lock because they only read source MCAs and write cached PNGs.
 
 ## Preview sessions
 
@@ -68,19 +68,29 @@ Previewing a restore means showing the user what the world *would* look like aft
 
 - **One session per server.** Starting a new preview tears down the prior session for that server.
 - **Tmpdir layout.** Sessions live under `/tmp/mc-admin-world-restore/<session_id>/`. Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched.
-- **Lazy tile rendering.** `begin_preview` only stages MCAs (restic restore + optional chunk merge) and attaches a per-session `ServerRenderQueue` before emitting `ready`. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `request_preview_tile` is the orchestrator's tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set.
+- **Lazy tile rendering.** `begin_preview` stages MCAs with restic, runs the chunk merge for CHUNKS scope, and attaches a per-session `ServerRenderQueue` for REGIONS/CHUNKS previews before emitting `ready`. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `request_preview_tile` is the orchestrator's tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set or for scopes without an attached render queue.
 - **Heartbeat-driven TTL.** Default 30 minutes. The browser pings every 30 s; on close, `DELETE /preview/{session_id}` tears down. A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Tearing down a session also calls `ServerRenderQueue.shutdown()` to cancel the worker, fail outstanding waiters, and terminate any running mcmap subprocess.
-- **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; preview returns 507 with `{"free", "required"}` if the FS lacks the headroom.
+- **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; REGIONS uses the selected region count, CHUNKS uses the unique parent-region count, and WORLD/DIMENSION use a conservative default. If the FS lacks headroom, the preview SSE emits an `error` event with `free` and `required`.
+
+The preview stream reports staging and chunk-merge progress only (`start`, `stage`, `merge_region`, `ready`, `error`). Tile rendering happens later through tile requests, not through the preview SSE.
 
 ## Subprocess ownership
 
 mcmap subcommands (`replace-chunks`, `remove-chunks`, `render`) run with the backend's privileges. When the backend is root, `_chown_args_for(data_path)` in `app.mcmap.runner` appends `--chown UID:GID` so mcmap chowns its outputs (atomic replacements of target MCAs and rendered tile PNGs) to the data dir's owner. There is no preexec demotion, so the subprocess can read restic-restored staging trees under `<session_dir>/source/` and the chunk-flow tempdir directly — no separate chown step is required before merging.
 
+## Map tile cache invalidation
+
+After a restore or rollback completes, `_invalidate_map_cache()` deletes cached PNG tiles for affected region MCAs and emits an `invalidate_cache` progress event. WORLD/DIMENSION invalidation derives affected regions from restic verbose-status items. REGIONS/CHUNKS invalidation uses the explicit selection because that is the authoritative affected set. Only `region/` MCAs map to PNGs; `entities/` and `poi/` sidecars are skipped.
+
+The frontend invalidates world-restore and map query keys after completion. The map tile layer reloads the region manifest and uses MCA mtimes as cache-busting query params.
+
 ## Crash recovery
 
 If the backend crashes mid-restore, the `Restoration` row is left in `RUNNING` status but no further work happens.
 
-On startup, `mark_running_restorations_interrupted()` flips any such rows to `INTERRUPTED` with `error_message="server restarted before completion"`. The frontend history drawer surfaces a "rollback" CTA on these — because the safety snapshot was created *before* the partial restore began, rolling back to it cleanly recovers the pre-restore state regardless of how far the restore got.
+On startup, `mark_running_restorations_interrupted()` flips any such rows to `INTERRUPTED` with `error_message="server restarted before completion"`. The frontend history drawer surfaces rollback on these when the safety snapshot still exists — because the safety snapshot was created *before* the partial restore began, rolling back to it cleanly recovers the pre-restore state regardless of how far the restore got.
+
+Rollback rows are flat `Restoration` rows with `is_rollback=true`. A rollback also creates its own safety snapshot, so a successful rollback can itself be undone while that safety snapshot remains in restic.
 
 ## Lifespan wiring
 
@@ -104,12 +114,14 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 
 - `GET /layout` — world roots + path-only dimensions (`region_dir`, `entities_dir`, `poi_dir`)
 - `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
-- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* paths the selection resolves to (uses `ResticManager.find_snapshots_covering`)
-- `POST /snapshots` (body: `RestorationSelection`) — creates a backup at the requested scope; returns 423 if the server lock is held
-- `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (start → stage → merge_region → render_progress → ready); returns `session_id` in the `ready` event
+- `GET /claims` — FTB claims extracted from the primary world root via mcmap; returns `available=false` when no supported FTB data is detected
+- `GET /player-locations` — saved player positions extracted from the primary world root via mcmap, with dimension ids resolved to `region_dir_relpath` when possible
+- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* MCA paths the selection resolves to (uses `ResticManager.find_snapshots_covering`; speculative MCC sidecars are excluded from eligibility)
+- `POST /snapshots` (body: `{type: "world"|"dimension", region_dir_relpath?}`) — creates a manual snapshot at world or dimension scope; returns 423 if the server lock is held
+- `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (`start` → `stage` → optional `merge_region` → `ready`, or `error`); returns `session_id` in the `ready` event
 - `POST /preview/{session_id}/heartbeat` — extends the TTL; 404 if the session is unknown
 - `DELETE /preview/{session_id}` — idempotent teardown
 - `GET /preview/{session_id}/tile/{rx}/{rz}.png` — preview tile (also heartbeats)
 - `POST /restore` (body: `{source_snapshot_id, selection}`) — SSE stream of `RestoreEvent`; pre-checks return 409 (server running) or 423 (locked) before SSE handshake so the frontend can render distinct UI
-- `GET /restorations` / `GET /restorations/{id}` — restoration history rows
-- `POST /restorations/{id}/rollback` — SSE stream of `RestoreEvent`; uses the row's `safety_snapshot_id` as the source
+- `GET /restorations?limit=&offset=` / `GET /restorations/{id}` — restoration history rows, including source/safety snapshot existence flags
+- `POST /restorations/{id}/rollback` — SSE stream of `RestoreEvent`; uses the row's `safety_snapshot_id` as the source and pre-checks 400 (missing/deleted safety snapshot), 409 (server running), and 423 (locked)
