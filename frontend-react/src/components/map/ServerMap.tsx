@@ -640,12 +640,16 @@ const CoordinateJumpControl: React.FC<CoordinateJumpControlProps> = ({
 }) => {
   const [xStr, setXStr] = useState('')
   const [zStr, setZStr] = useState('')
+  const canJump =
+    xStr.trim() !== '' &&
+    zStr.trim() !== '' &&
+    Number.isFinite(Number(xStr)) &&
+    Number.isFinite(Number(zStr))
 
   const submit = () => {
-    if (xStr === '' || zStr === '') return
+    if (!canJump) return
     const x = Number(xStr)
     const z = Number(zStr)
-    if (!Number.isFinite(x) || !Number.isFinite(z)) return
     onJump(x, z)
   }
 
@@ -683,6 +687,7 @@ const CoordinateJumpControl: React.FC<CoordinateJumpControlProps> = ({
         variant="ghost"
         aria-label="跳转坐标"
         title="跳转坐标"
+        disabled={!canJump}
         onClick={submit}
       >
         <LocateFixed className="h-4 w-4" />
