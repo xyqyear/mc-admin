@@ -30,8 +30,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 def get_async_session():
     """Async session context manager for use outside FastAPI dependency injection."""
     return AsyncSessionLocal()
-
-
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)

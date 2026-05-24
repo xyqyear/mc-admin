@@ -6,8 +6,8 @@ FastAPI + SQLAlchemy 2.0 async on Python 3.13+. Manages Minecraft servers runnin
 
 ```bash
 uv sync
-uv run alembic upgrade head
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+uv run alembic upgrade head   # optional manual maintenance; startup also migrates
 uv run pytest tests/ -v -k "not _with_docker and not integrated"
 uv run pyright
 ```
@@ -15,7 +15,7 @@ uv run pyright
 - **Use `uv`**, never `pip`/`venv` directly.
 - **Do not run `black`** — formatting is not enforced.
 - **Run `uv run pyright` after backend code changes.**
-- **Alembic autogenerate is only required for changes to existing tables.** New tables are created automatically by the metadata-bound engine.
+- **Alembic migrations run during startup** before DB-backed subsystems start; see `docs/database-migrations.md`.
 - Tests whose function names end in `_with_docker` or live in files containing `integrated` start real Docker containers; they're slow and excluded by the default `-k` filter above.
 
 ## Module map
@@ -28,7 +28,7 @@ app/
 ├── dependencies.py        # DI for sessions, auth, role guards
 ├── audit.py               # operation audit middleware
 ├── auth/                  # JWT + WebSocket login codes
-├── db/                    # async engine, CRUD modules
+├── db/                    # async engine, startup migrations, CRUD modules
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
 ├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
@@ -84,6 +84,7 @@ Import lifecycle orchestration symbols from `app.servers.lifecycle`. The `app.se
 Long-form, current-state design docs live under `backend/docs/`:
 
 - `docs/servers.md` — DB-driven server discovery, bundled lifecycle orchestrators, filesystem↔DB sync endpoint
+- `docs/database-migrations.md` — Alembic startup gate, supported DB states, revision IDs
 - `docs/minecraft.md` — Docker Compose lifecycle, `MCInstance`, compose validation, cgroup v2 monitoring
 - `docs/players.md` — direct-function-call tracking, singletons (heartbeat / syncer / skin), DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain, dispatch to tracking functions

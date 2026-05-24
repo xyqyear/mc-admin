@@ -1,6 +1,6 @@
 """add restoration table
 
-Revision ID: 07f7f1887ca3
+Revision ID: 2026052400
 Revises: f2ee81a56fee
 Create Date: 2026-04-26 11:44:11.805803
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '07f7f1887ca3'
+revision: str = '2026052400'
 down_revision: Union[str, Sequence[str], None] = 'f2ee81a56fee'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

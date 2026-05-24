@@ -13,7 +13,8 @@ from starlette.middleware.cors import CORSMiddleware
 from .audit import OperationAuditMiddleware
 from .config import settings
 from .cron import cron_manager
-from .db.database import get_async_session, init_db
+from .db.database import get_async_session
+from .db.migrations import ensure_database_schema
 from .dns import simple_dns_manager
 from .dynamic_config import config_manager
 from .logger import logger
@@ -56,8 +57,8 @@ from .world import initialize_world_restore_orchestrator
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting up and initializing the database...")
-    await init_db()
+    logger.info("Applying database migrations...")
+    await ensure_database_schema()
 
     logger.info("Initializing dynamic configuration system...")
     await config_manager.initialize_all_configs()

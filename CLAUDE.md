@@ -22,7 +22,7 @@ Binary path settings (`fd_binary_path`, `restic_binary_path`, `mcmap_binary_path
 
 ```bash
 # backend
-cd backend && uv sync && uv run alembic upgrade head
+cd backend && uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 
 # frontend

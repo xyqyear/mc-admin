@@ -2,6 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
+from sqlalchemy import Connection
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
@@ -27,7 +28,7 @@ config.set_main_option('sqlalchemy.url', database_url)
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -70,19 +71,31 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    connectable = config.attributes.get("connection")
+
+    if isinstance(connectable, Connection):
+        context.configure(
+            connection=connectable, target_metadata=target_metadata
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+    try:
+        with connectable.connect() as connection:
+            context.configure(connection=connection, target_metadata=target_metadata)
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        connectable.dispose()
 
 
 if context.is_offline_mode():
