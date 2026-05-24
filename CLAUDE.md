@@ -13,8 +13,10 @@ Beyond what `pyproject.toml` / `package.json` declare:
 
 - Docker Engine + Docker Compose on the host (the backend manages user MC servers via docker-compose)
 - `fd` — required for file search and world layout discovery; pinned by `FD_VERSION` in `Dockerfile`
-- Restic — invoked as a subprocess for snapshots; pinned by `RESTIC_VERSION` in `Dockerfile`. For local dev, set `restic_binary_path` in `backend/config.toml` when the binary is not at `/usr/local/bin/restic`.
-- `mcmap` binary — pinned by `MCMAP_VERSION` in `Dockerfile`. For local dev, download a release and set `mcmap_binary_path` in `backend/config.toml`.
+- Restic — invoked as a subprocess for snapshots; pinned by `RESTIC_VERSION` in `Dockerfile`.
+- `mcmap` binary — pinned by `MCMAP_VERSION` in `Dockerfile`.
+
+Binary path settings (`fd_binary_path`, `restic_binary_path`, `mcmap_binary_path`) and their env vars override discovery. Omitted paths resolve once at startup from `PATH`, then `/usr/local/bin`, then `/usr/bin`.
 
 ## Quick start
 

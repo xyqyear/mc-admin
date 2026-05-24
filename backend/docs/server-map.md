@@ -69,7 +69,7 @@ mcmap runs with the backend's privileges — there is no setuid demotion. When t
 
 ## Settings
 
-- Static (`config.toml` / env): `mcmap_binary_path` (default `/usr/local/bin/mcmap`).
+- Static (`config.toml` / env): `mcmap_binary_path`, otherwise startup discovery from `PATH`, `/usr/local/bin/mcmap`, then `/usr/bin/mcmap`.
 - Dynamic (`mcmap` schema): `batch_size`, `thread_count`, `request_timeout_seconds`.
 
 ## Endpoints

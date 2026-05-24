@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +13,20 @@ from pydantic_settings import (
 
 _CONFIG_PATH = os.getenv("MC_ADMIN_CONFIG", "config.toml")
 _ENV_PATH = os.getenv("MC_ADMIN_ENV", ".env")
+_BINARY_FALLBACK_DIRS = (Path("/usr/local/bin"), Path("/usr/bin"))
+
+
+def _resolve_binary_default(binary_name: str) -> Path:
+    resolved = shutil.which(binary_name)
+    if resolved is not None:
+        return Path(resolved)
+
+    for directory in _BINARY_FALLBACK_DIRS:
+        candidate = directory / binary_name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+
+    return Path(binary_name)
 
 
 class JWTSettings(BaseModel):
@@ -44,9 +59,13 @@ class Settings(BaseSettings):
 
     cgroup_path: Path = Field(default=Path("/sys/fs/cgroup"))
 
-    fd_binary_path: Path = Field(default=Path("/usr/bin/fd"))
-    mcmap_binary_path: Path = Field(default=Path("/usr/local/bin/mcmap"))
-    restic_binary_path: Path = Field(default=Path("/usr/local/bin/restic"))
+    fd_binary_path: Path = Field(default_factory=lambda: _resolve_binary_default("fd"))
+    mcmap_binary_path: Path = Field(
+        default_factory=lambda: _resolve_binary_default("mcmap")
+    )
+    restic_binary_path: Path = Field(
+        default_factory=lambda: _resolve_binary_default("restic")
+    )
 
     database_url: str = Field(default="sqlite+aiosqlite:///./db.sqlite3")
     master_token: str

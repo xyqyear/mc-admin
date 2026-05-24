@@ -23,7 +23,7 @@ Public methods:
 
 ## Subprocess pattern
 
-All commands run through `ResticManager.binary_path`, which defaults to `settings.restic_binary_path`. The subprocess env carries `RESTIC_REPOSITORY` and, for protected repos, `RESTIC_PASSWORD`. JSON output is parsed line-by-line; restore events arrive as NDJSON (`status` / `verbose_status` / `summary` message types). Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
+All commands run through `ResticManager.binary_path`, which defaults to `settings.restic_binary_path`. That setting comes from `restic_binary_path` / `RESTIC_BINARY_PATH` when configured; otherwise it resolves once at startup from `PATH`, `/usr/local/bin/restic`, then `/usr/bin/restic`. The subprocess env carries `RESTIC_REPOSITORY` and, for protected repos, `RESTIC_PASSWORD`. JSON output is parsed line-by-line; restore events arrive as NDJSON (`status` / `verbose_status` / `summary` message types). Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
 
 ## Time-restriction guard
 
