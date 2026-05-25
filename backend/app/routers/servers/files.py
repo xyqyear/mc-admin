@@ -24,7 +24,6 @@ from ...files import (
     search_files,
     set_upload_policy,
     update_file_content,
-    upload_file,
     upload_multiple_files,
 )
 from ...minecraft import docker_mc_manager
@@ -117,26 +116,6 @@ async def download_file(
         filename=file_path.name,
         media_type="application/octet-stream",
     )
-
-
-@router.post("/{server_id}/files/upload")
-async def upload_file_endpoint(
-    server_id: str,
-    path: str = "/",
-    file: UploadFile = File(...),
-    _: UserPublic = Depends(get_current_user),
-):
-    """Upload a file to the specified server path"""
-    instance = docker_mc_manager.get_instance(server_id)
-
-    # Check if server exists
-    if not await instance.exists():
-        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
-
-    base_path = instance.get_data_path()
-    filename = await upload_file(base_path, path, file, allow_overwrite=False)
-
-    return {"message": f"File '{filename}' uploaded successfully"}
 
 
 @router.post("/{server_id}/files/create")

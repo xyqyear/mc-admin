@@ -35,20 +35,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  const useUploadFile = () => {
-    return useMutation({
-      mutationFn: ({ path, file }: { path: string; file: File }) =>
-        fileApi.uploadFile(serverId!, path, file),
-      onSuccess: () => {
-        toast.success("文件上传成功");
-        invalidateFileList();
-      },
-      onError: (error: any) => {
-        toast.error(error.response?.data?.detail || "上传文件失败");
-      },
-    });
-  };
-
   const useCreateFile = () => {
     return useMutation({
       mutationFn: (createRequest: CreateFileRequest) =>
@@ -193,7 +179,6 @@ export const useFileMutations = (serverId: string | undefined) => {
 
   return {
     useUpdateFile,
-    useUploadFile,
     useCreateFile,
     useDeleteFile,
     useBulkDeleteFiles,

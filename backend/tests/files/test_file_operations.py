@@ -280,61 +280,18 @@ class TestFileOperations:
             assert response.headers["content-type"] == "application/octet-stream"
             assert "server-port=25565" in response.text
 
-    def test_upload_file(self, client, mock_instance):
-        """Test uploading a file."""
-        server_id, instance = mock_instance
-
-        with mock_file_operations_setup(instance):
-            # Create test file content
-            test_content = b"This is test file content for upload"
-
-            response = client.post(
-                f"/servers/{server_id}/files/upload?path=/",
-                headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("test_upload.txt", test_content, "text/plain")},
-            )
-
-            assert response.status_code == 200
-            assert "uploaded successfully" in response.json()["message"]
-
-            # Verify file was created
-            uploaded_file = instance.data_path / "test_upload.txt"
-            assert uploaded_file.exists()
-            assert uploaded_file.read_bytes() == test_content
-
-    def test_upload_file_to_subdirectory(self, client, mock_instance):
-        """Test uploading a file to subdirectory."""
-        server_id, instance = mock_instance
-
-        with mock_file_operations_setup(instance):
-            test_content = b"Plugin configuration"
-
-            response = client.post(
-                f"/servers/{server_id}/files/upload?path=/plugins",
-                headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("new_plugin.yml", test_content, "text/yaml")},
-            )
-
-            assert response.status_code == 200
-
-            # Verify file was created in subdirectory
-            uploaded_file = instance.data_path / "plugins" / "new_plugin.yml"
-            assert uploaded_file.exists()
-            assert uploaded_file.read_bytes() == test_content
-
-    def test_upload_file_already_exists(self, client, mock_instance):
-        """Test uploading file that already exists."""
+    def test_single_file_upload_endpoint_removed(self, client, mock_instance):
+        """Test legacy single-file upload endpoint is not exposed."""
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
             response = client.post(
                 f"/servers/{server_id}/files/upload?path=/",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("server.properties", b"content", "text/plain")},
+                files={"file": ("test_upload.txt", b"content", "text/plain")},
             )
 
-            assert response.status_code == 409
-            assert "File already exists" in response.json()["detail"]
+            assert response.status_code == 404
 
     def test_create_file(self, client, mock_instance):
         """Test creating a new file."""

@@ -143,28 +143,6 @@ export const fileApi = {
     return response.data;
   },
 
-  uploadFile: async (
-    serverId: string,
-    path: string,
-    file: File
-  ): Promise<{ message: string }> => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await api.post(
-      `/servers/${serverId}/files/upload`,
-      formData,
-      {
-        params: { path },
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        timeout: 1800000,
-      }
-    );
-    return response.data;
-  },
-
   createFileOrDirectory: async (
     serverId: string,
     createRequest: CreateFileRequest

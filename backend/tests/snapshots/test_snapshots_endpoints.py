@@ -511,14 +511,13 @@ class TestSnapshotEndpoints:
             )
             assert create_response.status_code == 200
 
-            # Upload file using files API
-            upload_response = client.post(
-                f"/servers/{server_id}/files/upload",
+            update_new_file_response = client.post(
+                f"/servers/{server_id}/files/content",
                 headers={"Authorization": "Bearer test_master_token"},
-                params={"path": "/"},
-                files={"file": ("uploaded.txt", b"uploaded content", "text/plain")},
+                params={"path": "/new_config.yml"},
+                json={"content": "uploaded content"},
             )
-            assert upload_response.status_code == 200
+            assert update_new_file_response.status_code == 200
 
             # Verify modifications
             modified_props_response = client.get(
@@ -564,14 +563,6 @@ class TestSnapshotEndpoints:
             assert restored_props_response.status_code == 200
             restored_content = restored_props_response.json()["content"]
             assert restored_content == original_props_content
-
-            # Verify uploaded file was deleted (restore with --delete)
-            uploaded_file_response = client.get(
-                f"/servers/{server_id}/files/content",
-                headers={"Authorization": "Bearer test_master_token"},
-                params={"path": "/uploaded.txt"},
-            )
-            assert uploaded_file_response.status_code == 404
 
             # Verify created file was deleted
             created_file_response = client.get(

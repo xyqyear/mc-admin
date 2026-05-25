@@ -15,7 +15,7 @@ Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry
 
 ## Modules
 
-- `base.py` — single-file CRUD: `get_file_items`, `get_file_content`, `update_file_content`, `upload_file`, plus rename/delete via the `types` helpers.
+- `base.py` — file CRUD helpers: `get_file_items`, `get_file_content`, `update_file_content`, `upload_file`, plus rename/delete via the `types` helpers. `upload_file` is used by archive uploads; server file uploads use the session flow.
 - `multi_file.py` — session orchestrator: `check_upload_conflicts`, `set_upload_policy`, `upload_multiple_files`.
 - `search.py` — `search_files` shells out to `fd` for fast regex search; filters cover regex, case sensitivity, max depth, min/max size, newer-than / older-than dates. Result rows are parsed from `stat` output into `SearchFileItem`.
 - `types.py` — `FileItem`, `FileContent`, `MultiFileUploadRequest`, `FileStructureItem`, `OverwritePolicy`, `UploadSession`, plus the result models.

@@ -88,7 +88,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/minecraft.md` — Docker Compose lifecycle, `MCInstance`, compose validation, cgroup v2 monitoring
 - `docs/players.md` — direct-function-call tracking, singletons (heartbeat / syncer / skin), DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain, dispatch to tracking functions
-- `docs/files.md` — single-file CRUD, session-based multi-file upload, `fd`-backed deep search
+- `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search
 - `docs/snapshots.md` — Restic wrapper, retention, restore streaming, lock interaction
 - `docs/cron.md` — APScheduler integration, registry, backup + restart jobs, Uptime Kuma push
 - `docs/dns.md` — DNSPod / Huawei providers, mc-router sync, reconciliation flow
