@@ -169,7 +169,18 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(o) => { if (!o) cleanup() }}>
+      <Dialog
+        open={open}
+        disablePointerDismissal={isUploading}
+        onOpenChange={(o, eventDetails) => {
+          if (o) return
+          if (isUploading) {
+            eventDetails.cancel()
+            return
+          }
+          cleanup()
+        }}
+      >
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>上传文件</DialogTitle>
