@@ -60,7 +60,7 @@ shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific
 
 ## SSE consumer
 
-`hooks/useEventStream.ts` is the canonical SSE client (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Uses fetch + `AbortController` + `\n\n` block parser. Auth header injected from `useTokenStore`. Body fingerprinted via `JSON.stringify` so caller-side inline objects don't restart the stream every render. Used for world-restore preview/restore/rollback flows; map initialize uses a dialog-local fetch with the same parser shape.
+`utils/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, with auth injected from `useTokenStore`. `hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`, so pass stable bodies when stream restarts matter.
 
 ## Monaco editor
 
@@ -76,6 +76,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/task-center.md` — global task panel, backend task polling, browser download tracking
 - `docs/player-management.md` — global page, detail drawer tabs, online-players card
 - `docs/file-management.md` — file browser, multi-file upload session flow, deep search, compression tasks
+- `docs/archive-upload.md` — resumable archive upload dialog, pause/resume, SHA256 verification, SSE reader split
 - `docs/cron-management.md` — visual expression builder, schema-driven job params, status flow
 - `docs/dns-management.md` — diff display, conditional layout, manual update flow
 - `docs/templates.md` — three-tab editor, variable validation, mode-conversion wizard

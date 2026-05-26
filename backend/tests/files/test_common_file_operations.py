@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from app.files import (
     CreateFileRequest,
@@ -20,32 +20,7 @@ from app.files import (
     get_file_items,
     rename_file_or_directory,
     update_file_content,
-    upload_file,
 )
-
-
-class MockUploadFile(UploadFile):
-    """Mock UploadFile for testing."""
-
-    def __init__(self, filename: str, content: bytes):
-        self.filename = filename
-        self._content = content
-        self._pos = 0
-
-    async def read(
-        self,
-        size: int = -1,
-    ) -> bytes:
-        if self._pos >= len(self._content):
-            return b""
-        if size == -1:
-            result = self._content[self._pos :]
-            self._pos = len(self._content)
-            return result
-        else:
-            result = self._content[self._pos : self._pos + size]
-            self._pos += size
-            return result
 
 
 class TestCommonFileOperations:
@@ -180,67 +155,6 @@ class TestCommonFileOperations:
             await update_file_content(base_path, "/nonexistent.txt", "content")
 
         assert exc_info.value.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_upload_file_new(self, test_structure):
-        """Test uploading new file."""
-        base_path = test_structure
-        test_content = b"This is uploaded file content"
-        mock_file = MockUploadFile("uploaded.txt", test_content)
-
-        filename = await upload_file(base_path, "/", mock_file, allow_overwrite=False)
-
-        assert filename == "uploaded.txt"
-
-        # Verify file was created
-        uploaded_file = base_path / "uploaded.txt"
-        assert uploaded_file.exists()
-        assert uploaded_file.read_bytes() == test_content
-
-    @pytest.mark.asyncio
-    async def test_upload_file_to_subdirectory(self, test_structure):
-        """Test uploading file to subdirectory."""
-        base_path = test_structure
-        test_content = b"Plugin content"
-        mock_file = MockUploadFile("new_plugin.jar", test_content)
-
-        filename = await upload_file(
-            base_path, "/plugins", mock_file, allow_overwrite=False
-        )
-
-        assert filename == "new_plugin.jar"
-
-        # Verify file was created in subdirectory
-        uploaded_file = base_path / "plugins" / "new_plugin.jar"
-        assert uploaded_file.exists()
-        assert uploaded_file.read_bytes() == test_content
-
-    @pytest.mark.asyncio
-    async def test_upload_file_exists_no_overwrite(self, test_structure):
-        """Test uploading file that exists without overwrite."""
-        base_path = test_structure
-        mock_file = MockUploadFile("config.txt", b"content")
-
-        with pytest.raises(HTTPException) as exc_info:
-            await upload_file(base_path, "/", mock_file, allow_overwrite=False)
-
-        assert exc_info.value.status_code == 409
-        assert "File already exists" in exc_info.value.detail
-
-    @pytest.mark.asyncio
-    async def test_upload_file_exists_with_overwrite(self, test_structure):
-        """Test uploading file that exists with overwrite allowed."""
-        base_path = test_structure
-        new_content = b"Overwritten content"
-        mock_file = MockUploadFile("config.txt", new_content)
-
-        filename = await upload_file(base_path, "/", mock_file, allow_overwrite=True)
-
-        assert filename == "config.txt"
-
-        # Verify file was overwritten
-        uploaded_file = base_path / "config.txt"
-        assert uploaded_file.read_bytes() == new_content
 
     @pytest.mark.asyncio
     async def test_create_file(self, test_structure):

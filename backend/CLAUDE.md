@@ -27,6 +27,7 @@ app/
 ├── models.py              # SQLAlchemy + Pydantic models
 ├── dependencies.py        # DI for sessions, auth, role guards
 ├── audit.py               # operation audit middleware
+├── archive/              # archive domain services: resumable uploads and SHA256 streaming
 ├── auth/                  # JWT + WebSocket login codes
 ├── db/                    # async engine, startup migrations, CRUD modules
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
@@ -46,7 +47,7 @@ app/
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
 ├── world/                 # world root/dimension layout, mcmap folder resolution, restore locks/previews
 ├── websocket/console.py   # docker attach console
-└── utils/                 # async_fs, exec, system, compression
+└── utils/                 # async_fs, exec, system, compression, SSE helpers
 ```
 
 ## Filesystem I/O — never block the event loop
@@ -89,6 +90,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/players.md` — direct-function-call tracking, singletons (heartbeat / syncer / skin), DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain, dispatch to tracking functions
 - `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search
+- `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 SSE
 - `docs/snapshots.md` — Restic wrapper, retention, restore streaming, lock interaction
 - `docs/cron.md` — APScheduler integration, registry, backup + restart jobs, Uptime Kuma push
 - `docs/dns.md` — DNSPod / Huawei providers, mc-router sync, reconciliation flow

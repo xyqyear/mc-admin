@@ -7,10 +7,24 @@ from pathlib import Path
 from typing import Optional
 
 from aiofiles import os as aioos
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from ..archive.uploads import (
+    ArchiveUploadChunkResponse,
+    ArchiveUploadInitRequest,
+    ArchiveUploadInitResponse,
+    ArchiveUploadVerifyRequest,
+    ArchiveUploadVerifyResponse,
+    append_archive_upload_chunk,
+    archive_upload_headers,
+    cancel_archive_upload,
+    ensure_archive_upload_ready_for_sha256,
+    init_archive_upload,
+    iter_archive_upload_sha256_events,
+    verify_archive_upload,
+)
 from ..background_tasks import TaskType, task_manager
 from ..config import settings
 from ..dependencies import get_current_user
@@ -22,22 +36,16 @@ from ..files import (
     delete_file_or_directory,
     get_file_items,
     rename_file_or_directory,
-    upload_file,
 )
 from ..minecraft import docker_mc_manager
 from ..models import UserPublic
 from ..utils.compression import create_server_archive_stream
-from ..utils.exec import exec_command
+from ..utils.sse import sse_response
 
 router = APIRouter(
     prefix="/archive",
     tags=["archive"],
 )
-
-
-class SHA256Response(BaseModel):
-    sha256: str
-    filename: str
 
 
 class CreateArchiveRequest(BaseModel):
@@ -88,18 +96,64 @@ async def download_archive_file(path: str, _: UserPublic = Depends(get_current_u
     )
 
 
-@router.post("/upload")
-async def upload_archive_file(
-    path: str = "/",
-    file: UploadFile = File(...),
-    allow_overwrite: bool = False,
+@router.post("/upload/init", response_model=ArchiveUploadInitResponse)
+async def init_archive_upload_endpoint(
+    request: ArchiveUploadInitRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    """Upload a file to the archive"""
+    """Start a resumable archive upload."""
     base_path = await _get_archive_base_path()
-    filename = await upload_file(base_path, path, file, allow_overwrite=allow_overwrite)
+    return await init_archive_upload(base_path, request)
 
-    return {"message": f"Archive file '{filename}' uploaded successfully"}
+
+@router.head("/upload/{upload_id}")
+async def get_archive_upload_status(
+    upload_id: str,
+    _: UserPublic = Depends(get_current_user),
+) -> Response:
+    """Return the server-side offset for a resumable upload."""
+    headers = await archive_upload_headers(upload_id)
+    return Response(status_code=204, headers=headers)
+
+
+@router.patch("/upload/{upload_id}", response_model=ArchiveUploadChunkResponse)
+async def upload_archive_chunk(
+    upload_id: str,
+    request: Request,
+    upload_offset: int = Header(..., alias="Upload-Offset"),
+    _: UserPublic = Depends(get_current_user),
+):
+    """Append one chunk to a resumable archive upload."""
+    body = await request.body()
+    return await append_archive_upload_chunk(upload_id, upload_offset, body)
+
+
+@router.delete("/upload/{upload_id}", status_code=204)
+async def cancel_archive_upload_endpoint(
+    upload_id: str,
+    _: UserPublic = Depends(get_current_user),
+) -> None:
+    """Cancel a resumable archive upload and remove its temporary file."""
+    await cancel_archive_upload(upload_id)
+
+
+@router.get("/upload/{upload_id}/sha256/stream")
+async def stream_archive_upload_sha256(
+    upload_id: str, _: UserPublic = Depends(get_current_user)
+):
+    """Calculate SHA256 for a pending archive upload as Server-Sent Events."""
+    await ensure_archive_upload_ready_for_sha256(upload_id)
+    return sse_response(iter_archive_upload_sha256_events(upload_id))
+
+
+@router.post("/upload/{upload_id}/verify", response_model=ArchiveUploadVerifyResponse)
+async def verify_archive_upload_endpoint(
+    upload_id: str,
+    request: ArchiveUploadVerifyRequest,
+    _: UserPublic = Depends(get_current_user),
+):
+    """Publish a pending archive upload after SHA256 verification."""
+    return await verify_archive_upload(upload_id, request)
 
 
 @router.post("/create")
@@ -135,32 +189,6 @@ async def rename_archive_file_or_directory(
     message = await rename_file_or_directory(base_path, rename_request)
 
     return {"message": message}
-
-
-@router.get("/sha256", response_model=SHA256Response)
-async def get_archive_file_sha256(path: str, _: UserPublic = Depends(get_current_user)):
-    """Calculate SHA256 hash of a specific archive file"""
-    base_path = await _get_archive_base_path()
-    file_path = base_path / path.lstrip("/")
-
-    # Validate file exists and is a file (not a directory)
-    if not await aioos.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Archive file not found")
-
-    if not await aioos.path.isfile(file_path):
-        raise HTTPException(status_code=400, detail="Path is not a file")
-
-    # Execute sha256sum command
-    output = await exec_command("sha256sum", str(file_path))
-
-    # Parse output: "{hash} {file}" format, split by space and take first part
-    parts = output.strip().split()
-    if len(parts) < 1:
-        raise HTTPException(status_code=500, detail="Invalid sha256sum output")
-
-    sha256_hash = parts[0]
-
-    return SHA256Response(sha256=sha256_hash, filename=file_path.name)
 
 
 @router.post("/compress", response_model=CreateArchiveResponse)

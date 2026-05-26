@@ -1,5 +1,4 @@
 import asyncio
-import json
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Tuple
 
@@ -31,6 +30,7 @@ from ...mcmap.events import (
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...utils import async_fs
+from ...utils.sse import sse_encode, sse_response
 from ...world.region_manifest import list_region_manifest
 
 router = APIRouter(prefix="/servers", tags=["map"])
@@ -108,10 +108,6 @@ async def get_regions(
     return await _list_regions(region_dir)
 
 
-def _sse(event_obj: dict) -> bytes:
-    return f"data: {json.dumps(event_obj, separators=(',', ':'))}\n\n".encode()
-
-
 async def _clear_prerequisite_cache(cache: ServerMapCache) -> None:
     for path in (cache.client_jar, cache.palette_json, cache.palette_hash_file):
         try:
@@ -134,7 +130,7 @@ async def _initialize_stream(
         try:
             await _clear_prerequisite_cache(cache)
         except OSError as e:
-            yield _sse(
+            yield sse_encode(
                 {
                     "stage": "client",
                     "phase": "error",
@@ -147,7 +143,7 @@ async def _initialize_stream(
         compose = await instance.get_compose_obj()
         version = compose.get_game_version()
     except Exception as e:
-        yield _sse(
+        yield sse_encode(
             {
                 "stage": "client",
                 "phase": "error",
@@ -158,11 +154,11 @@ async def _initialize_stream(
 
     # Stage 1: client jar
     if await aioos.path.exists(cache.client_jar):
-        yield _sse(
+        yield sse_encode(
             {"stage": "client", "phase": "done", "percent": 100, "cached": True}
         )
     else:
-        yield _sse({"stage": "client", "phase": "starting", "percent": 0})
+        yield sse_encode({"stage": "client", "phase": "starting", "percent": 0})
         try:
             async with mcmap_runner.download_client(
                 version, cache.client_jar, owned_by=data_path
@@ -173,7 +169,7 @@ async def _initialize_stream(
                             total = event.total or 0
                             got = event.bytes or 0
                             pct = (got / total * 100) if total else 0
-                            yield _sse(
+                            yield sse_encode(
                                 {
                                     "stage": "client",
                                     "phase": "downloading",
@@ -182,7 +178,7 @@ async def _initialize_stream(
                                 }
                             )
                         elif event.phase == "verified":
-                            yield _sse(
+                            yield sse_encode(
                                 {
                                     "stage": "client",
                                     "phase": "verifying",
@@ -190,7 +186,7 @@ async def _initialize_stream(
                                 }
                             )
                     elif isinstance(event, MCMapDownloadClientResultEvent):
-                        yield _sse(
+                        yield sse_encode(
                             {
                                 "stage": "client",
                                 "phase": "done",
@@ -199,7 +195,7 @@ async def _initialize_stream(
                             }
                         )
                     elif isinstance(event, MCMapErrorEvent):
-                        yield _sse(
+                        yield sse_encode(
                             {
                                 "stage": "client",
                                 "phase": "error",
@@ -209,7 +205,7 @@ async def _initialize_stream(
                         return
             if proc.returncode not in (0, None):
                 stderr_text = await proc.stderr()
-                yield _sse(
+                yield sse_encode(
                     {
                         "stage": "client",
                         "phase": "error",
@@ -219,19 +215,19 @@ async def _initialize_stream(
                 return
         except Exception as e:
             logger.exception("mcmap download-client failed")
-            yield _sse({"stage": "client", "phase": "error", "message": str(e)})
+            yield sse_encode({"stage": "client", "phase": "error", "message": str(e)})
             return
 
     # Stage 2: palette
     mods_dir = await discover_mods_dir(data_path)
     if await palette_is_current(cache, version, mods_dir):
-        yield _sse(
+        yield sse_encode(
             {"stage": "palette", "phase": "done", "percent": 100, "cached": True}
         )
-        yield _sse({"stage": "complete"})
+        yield sse_encode({"stage": "complete"})
         return
 
-    yield _sse({"stage": "palette", "phase": "starting", "percent": 0})
+    yield sse_encode({"stage": "palette", "phase": "starting", "percent": 0})
     packs: List[Path] = []
     if mods_dir is not None:
         packs.append(mods_dir)
@@ -252,7 +248,7 @@ async def _initialize_stream(
                         total = event.total or 1
                         pct = (idx / total * 100) if total else 0
                         path_str = event.path or ""
-                        yield _sse(
+                        yield sse_encode(
                             {
                                 "stage": "palette",
                                 "phase": "pack_loaded",
@@ -261,7 +257,7 @@ async def _initialize_stream(
                             }
                         )
                     elif event.phase == "packs_done":
-                        yield _sse(
+                        yield sse_encode(
                             {
                                 "stage": "palette",
                                 "phase": "resolving",
@@ -270,7 +266,7 @@ async def _initialize_stream(
                         )
                 elif isinstance(event, MCMapGenPaletteResultEvent):
                     await write_palette_hash(cache, version, mods_dir)
-                    yield _sse(
+                    yield sse_encode(
                         {
                             "stage": "palette",
                             "phase": "done",
@@ -279,7 +275,7 @@ async def _initialize_stream(
                         }
                     )
                 elif isinstance(event, MCMapErrorEvent):
-                    yield _sse(
+                    yield sse_encode(
                         {
                             "stage": "palette",
                             "phase": "error",
@@ -289,7 +285,7 @@ async def _initialize_stream(
                     return
         if proc.returncode not in (0, None):
             stderr_text = await proc.stderr()
-            yield _sse(
+            yield sse_encode(
                 {
                     "stage": "palette",
                     "phase": "error",
@@ -299,10 +295,10 @@ async def _initialize_stream(
             return
     except Exception as e:
         logger.exception("mcmap gen-palette failed")
-        yield _sse({"stage": "palette", "phase": "error", "message": str(e)})
+        yield sse_encode({"stage": "palette", "phase": "error", "message": str(e)})
         return
 
-    yield _sse({"stage": "complete"})
+    yield sse_encode({"stage": "complete"})
 
 
 @router.post("/{server_id}/map/initialize")
@@ -315,14 +311,7 @@ async def initialize(
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    return StreamingResponse(
-        _initialize_stream(server_id, force=force),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return sse_response(_initialize_stream(server_id, force=force))
 
 
 @router.get("/{server_id}/map/tiles/{x}/{z}.png")

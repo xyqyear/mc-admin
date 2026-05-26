@@ -7,7 +7,7 @@ from typing import List
 
 import aiofiles
 from aiofiles import os as aioos
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from ..utils import async_fs
 from .types import (
@@ -104,36 +104,6 @@ async def update_file_content(base_path: Path, path: str, content: str) -> None:
 
     async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
         await f.write(content)
-
-
-async def upload_file(
-    base_path: Path, path: str, file: UploadFile, allow_overwrite: bool = False
-) -> str:
-    """Upload a file to the specified path."""
-    target_dir = base_path / path.lstrip("/")
-
-    # Ensure target directory exists with proper ownership
-    if not await aioos.path.exists(target_dir):
-        await makedirs_with_ownership(target_dir, base_path)
-
-    if not await aioos.path.isdir(target_dir):
-        raise HTTPException(status_code=400, detail="Target path is not a directory")
-
-    file_path = target_dir / (file.filename or "unnamed_file")
-
-    # Check if file already exists
-    if not allow_overwrite and await aioos.path.exists(file_path):
-        raise HTTPException(status_code=409, detail="File already exists")
-
-    # Write file
-    async with aiofiles.open(file_path, "wb") as f:
-        while chunk := await file.read(10 * 1024 * 1024):
-            await f.write(chunk)
-
-    # Set ownership to match parent directory
-    await set_file_ownership(file_path, base_path)
-
-    return file.filename or "unnamed_file"
 
 
 async def create_file_or_directory(

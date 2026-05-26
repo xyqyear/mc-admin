@@ -182,7 +182,6 @@ export const queryKeys = {
   archive: {
     all: ["archive"] as const,
     files: (path: string) => [...queryKeys.archive.all, "files", path] as const,
-    sha256: (path: string) => [...queryKeys.archive.all, "sha256", path] as const,
   },
 
   config: {

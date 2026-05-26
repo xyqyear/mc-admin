@@ -1,5 +1,4 @@
 import asyncio
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator, List, Literal, Optional
@@ -33,6 +32,7 @@ from ...player_locations import (
     extract_player_locations_for_server,
 )
 from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, restic_manager
+from ...utils.sse import sse_encode, sse_response
 from ...world import (
     SelectionResolutionError,
     ServerNotStoppedError,
@@ -89,10 +89,6 @@ def _holder_dict(holder) -> dict:
         "description": holder.description,
         "restoration_id": holder.restoration_id,
     }
-
-
-def _sse(event_obj: dict) -> bytes:
-    return f"data: {json.dumps(event_obj, separators=(',', ':'))}\n\n".encode()
 
 
 # --- Response models -------------------------------------------------------
@@ -384,9 +380,9 @@ async def begin_preview(
                 source_snapshot_id=body.source_snapshot_id,
                 selection=body.selection,
             ):
-                yield _sse(event.model_dump(exclude_none=True))
+                yield sse_encode(event.model_dump(exclude_none=True))
         except PreviewDiskGuardError as e:
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "error",
                     "message": str(e),
@@ -395,16 +391,12 @@ async def begin_preview(
                 }
             )
         except SelectionResolutionError as e:
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
         except Exception as e:
             logger.exception("preview stream failed for server=%s", server_id)
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
 
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return sse_response(event_gen())
 
 
 @router.post(
@@ -511,20 +503,16 @@ async def begin_restore(
                 selection=body.selection,
                 user_id=user.id,
             ):
-                yield _sse(event.model_dump(exclude_none=True))
+                yield sse_encode(event.model_dump(exclude_none=True))
         except ServerNotStoppedError as e:
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
         except SelectionResolutionError as e:
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
         except Exception as e:
             logger.exception("restore stream failed for server=%s", server_id)
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
 
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return sse_response(event_gen())
 
 
 # --- Restoration history ---------------------------------------------------
@@ -643,20 +631,16 @@ async def rollback_restoration(
     async def event_gen() -> AsyncGenerator[bytes, None]:
         try:
             async for event in orch.rollback(restoration_id, user.id):
-                yield _sse(event.model_dump(exclude_none=True))
+                yield sse_encode(event.model_dump(exclude_none=True))
         except Exception as e:
             logger.exception(
                 "rollback stream failed for server=%s restoration=%s",
                 server_id,
                 restoration_id,
             )
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
 
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return sse_response(event_gen())
 
 
 # --- Crash recovery --------------------------------------------------------

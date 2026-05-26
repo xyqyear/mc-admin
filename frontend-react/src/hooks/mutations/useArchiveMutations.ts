@@ -1,4 +1,4 @@
-import { archiveApi, type CreateArchiveFileRequest, type CreateArchiveRequest, type RenameArchiveFileRequest, type UploadOptions } from '@/hooks/api/archiveApi'
+import { archiveApi, type CreateArchiveFileRequest, type CreateArchiveRequest, type RenameArchiveFileRequest } from '@/hooks/api/archiveApi'
 import { taskQueryKeys } from '@/hooks/queries/base/useTaskQueries'
 import { queryKeys } from '@/utils/api'
 import { useDownloadManager } from '@/utils/downloadUtils'
@@ -15,32 +15,6 @@ export const useArchiveMutations = () => {
     const lastSlashIndex = normalized.lastIndexOf('/')
     if (lastSlashIndex <= 0) return '/'
     return normalized.slice(0, lastSlashIndex)
-  }
-
-  const useUploadFile = () => {
-    return useMutation({
-      mutationFn: ({
-        path,
-        file,
-        allowOverwrite,
-        options
-      }: {
-        path: string;
-        file: File;
-        allowOverwrite?: boolean;
-        options?: UploadOptions;
-      }) =>
-        archiveApi.uploadArchiveFile(path, file, allowOverwrite, options),
-      onSuccess: (_, { path, file }) => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(path) })
-        const filePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(filePath) })
-        toast.success('文件上传成功')
-      },
-      onError: (error: any) => {
-        toast.error(`上传失败: ${error.message}`)
-      }
-    })
   }
 
   const useCreateItem = () => {
@@ -62,7 +36,6 @@ export const useArchiveMutations = () => {
       mutationFn: (path: string) => archiveApi.deleteArchiveItem(path),
       onSuccess: (_, path) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(path) })
         toast.success('删除成功')
       },
       onError: (error: any) => {
@@ -79,7 +52,6 @@ export const useArchiveMutations = () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.archive.files(getParentPath(request.old_path))
         })
-        queryClient.invalidateQueries({ queryKey: queryKeys.archive.sha256(request.old_path) })
         toast.success('重命名成功')
       },
       onError: (error: any) => {
@@ -114,7 +86,6 @@ export const useArchiveMutations = () => {
 
 
   return {
-    useUploadFile,
     useCreateItem,
     useDeleteItem,
     useRenameItem,

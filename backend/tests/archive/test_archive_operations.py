@@ -3,6 +3,8 @@ Comprehensive unit tests for archive operations API endpoints.
 Tests archive file management functionality using temporary directories.
 """
 
+import hashlib
+import json
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -32,6 +34,38 @@ def mock_archive_operations_setup(archive_path: Path):
         mock_settings.master_token = "test_master_token"
         mock_dep_settings.master_token = "test_master_token"
         yield
+
+
+def parse_sse_events(text: str) -> list[dict]:
+    events = []
+    for block in text.strip().split("\n\n"):
+        data = "\n".join(
+            line.removeprefix("data:").strip()
+            for line in block.splitlines()
+            if line.startswith("data:")
+        )
+        if data:
+            events.append(json.loads(data))
+    return events
+
+
+def verify_archive_upload(client: TestClient, upload_id: str, content: bytes) -> dict:
+    expected_hash = hashlib.sha256(content).hexdigest()
+    sha_response = client.get(
+        f"/archive/upload/{upload_id}/sha256/stream",
+        headers={"Authorization": "Bearer test_master_token"},
+    )
+    assert sha_response.status_code == 200
+    events = parse_sse_events(sha_response.text)
+    assert events[-1]["sha256"] == expected_hash
+
+    verify_response = client.post(
+        f"/archive/upload/{upload_id}/verify",
+        headers={"Authorization": "Bearer test_master_token"},
+        json={"sha256": expected_hash},
+    )
+    assert verify_response.status_code == 200
+    return verify_response.json()
 
 
 class TestArchiveOperations:
@@ -171,82 +205,240 @@ class TestArchiveOperations:
             assert response.headers["content-type"] == "application/octet-stream"
             assert "server:" in response.text
 
-    def test_upload_archive_file(self, client, archive_setup):
-        """Test uploading an archive file."""
+    def test_resumable_upload_archive_file(self, client, archive_setup):
+        """Test uploading an archive file with the resumable protocol."""
         archive_path = archive_setup
 
         with mock_archive_operations_setup(archive_path):
             test_content = b"This is test file content for upload to archive"
 
             response = client.post(
-                "/archive/upload?path=/",
+                "/archive/upload/init",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("test_upload.txt", test_content, "text/plain")},
+                json={
+                    "path": "/",
+                    "filename": "test_upload.txt",
+                    "size": len(test_content),
+                },
             )
 
             assert response.status_code == 200
-            assert "uploaded successfully" in response.json()["message"]
+            init_data = response.json()
+            assert init_data["offset"] == 0
+            assert init_data["chunk_size"] == 8 * 1024 * 1024
+            upload_id = init_data["upload_id"]
 
-            # Verify file was created
+            status_response = client.head(
+                f"/archive/upload/{upload_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert status_response.status_code == 204
+            assert status_response.headers["upload-offset"] == "0"
+
+            chunk_response = client.patch(
+                f"/archive/upload/{upload_id}",
+                headers={
+                    "Authorization": "Bearer test_master_token",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=test_content,
+            )
+
+            assert chunk_response.status_code == 200
+            chunk_data = chunk_response.json()
+            assert chunk_data["complete"] is True
+            assert chunk_data["pending_verification"] is True
+            assert chunk_data["offset"] == len(test_content)
+            assert chunk_data["path"] == "/test_upload.txt"
+
             uploaded_file = archive_path / "test_upload.txt"
+            assert not uploaded_file.exists()
+
+            verify_data = verify_archive_upload(client, upload_id, test_content)
+            assert verify_data["path"] == "/test_upload.txt"
             assert uploaded_file.exists()
             assert uploaded_file.read_bytes() == test_content
 
-    def test_upload_archive_file_to_subdirectory(self, client, archive_setup):
-        """Test uploading an archive file to subdirectory."""
+    def test_resumable_upload_archive_file_to_subdirectory(
+        self, client, archive_setup
+    ):
+        """Test resumable upload to a subdirectory."""
         archive_path = archive_setup
 
         with mock_archive_operations_setup(archive_path):
             test_content = b"New plugin jar file content"
 
             response = client.post(
-                "/archive/upload?path=/plugins",
+                "/archive/upload/init",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={
-                    "file": ("new_plugin.jar", test_content, "application/java-archive")
+                json={
+                    "path": "/plugins",
+                    "filename": "new_plugin.jar",
+                    "size": len(test_content),
                 },
             )
 
             assert response.status_code == 200
+            upload_id = response.json()["upload_id"]
+            chunk_response = client.patch(
+                f"/archive/upload/{upload_id}",
+                headers={
+                    "Authorization": "Bearer test_master_token",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=test_content,
+            )
 
-            # Verify file was created in subdirectory
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["path"] == "/plugins/new_plugin.jar"
             uploaded_file = archive_path / "plugins" / "new_plugin.jar"
+            assert not uploaded_file.exists()
+
+            verify_data = verify_archive_upload(client, upload_id, test_content)
+            assert verify_data["path"] == "/plugins/new_plugin.jar"
             assert uploaded_file.exists()
             assert uploaded_file.read_bytes() == test_content
 
-    def test_upload_archive_file_already_exists(self, client, archive_setup):
-        """Test uploading archive file that already exists."""
+    def test_resumable_upload_archive_file_already_exists(self, client, archive_setup):
+        """Test init rejects an existing target without overwrite."""
         archive_path = archive_setup
 
         with mock_archive_operations_setup(archive_path):
             response = client.post(
-                "/archive/upload?path=/",
+                "/archive/upload/init",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("config.yml", b"content", "text/yaml")},
+                json={"path": "/", "filename": "config.yml", "size": 7},
             )
 
             assert response.status_code == 409
             assert "File already exists" in response.json()["detail"]
 
-    def test_upload_archive_file_with_overwrite(self, client, archive_setup):
-        """Test uploading archive file with overwrite allowed."""
+    def test_resumable_upload_archive_file_with_overwrite(self, client, archive_setup):
+        """Test resumable upload can overwrite when allowed."""
         archive_path = archive_setup
 
         with mock_archive_operations_setup(archive_path):
             new_content = b"# Overwritten config content"
 
             response = client.post(
-                "/archive/upload?path=/&allow_overwrite=true",
+                "/archive/upload/init",
                 headers={"Authorization": "Bearer test_master_token"},
-                files={"file": ("config.yml", new_content, "text/yaml")},
+                json={
+                    "path": "/",
+                    "filename": "config.yml",
+                    "size": len(new_content),
+                    "allow_overwrite": True,
+                },
             )
 
             assert response.status_code == 200
-            assert "uploaded successfully" in response.json()["message"]
+            upload_id = response.json()["upload_id"]
+            chunk_response = client.patch(
+                f"/archive/upload/{upload_id}",
+                headers={
+                    "Authorization": "Bearer test_master_token",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=new_content,
+            )
 
-            # Verify file was overwritten
+            assert chunk_response.status_code == 200
             uploaded_file = archive_path / "config.yml"
+            assert uploaded_file.read_text() != new_content.decode()
+
+            verify_archive_upload(client, upload_id, new_content)
             assert uploaded_file.read_bytes() == new_content
+
+    def test_resumable_upload_offset_mismatch(self, client, archive_setup):
+        """Test chunk upload rejects stale or incorrect offsets."""
+        with mock_archive_operations_setup(archive_setup):
+            response = client.post(
+                "/archive/upload/init",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"path": "/", "filename": "offset.zip", "size": 8},
+            )
+            upload_id = response.json()["upload_id"]
+
+            mismatch_response = client.patch(
+                f"/archive/upload/{upload_id}",
+                headers={
+                    "Authorization": "Bearer test_master_token",
+                    "Upload-Offset": "4",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=b"data",
+            )
+
+            assert mismatch_response.status_code == 409
+            assert mismatch_response.json()["detail"]["offset"] == 0
+
+    def test_cancel_resumable_upload(self, client, archive_setup):
+        """Test cancelling an upload removes its session."""
+        with mock_archive_operations_setup(archive_setup):
+            response = client.post(
+                "/archive/upload/init",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"path": "/", "filename": "cancel.zip", "size": 4},
+            )
+            upload_id = response.json()["upload_id"]
+
+            cancel_response = client.delete(
+                f"/archive/upload/{upload_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert cancel_response.status_code == 204
+
+            status_response = client.head(
+                f"/archive/upload/{upload_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert status_response.status_code == 404
+
+    def test_cancel_completed_upload_before_verification(self, client, archive_setup):
+        """Test cancelling a completed upload before SHA256 publish removes temp state."""
+        archive_path = archive_setup
+
+        with mock_archive_operations_setup(archive_path):
+            test_content = b"pending upload"
+            response = client.post(
+                "/archive/upload/init",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={
+                    "path": "/",
+                    "filename": "pending.zip",
+                    "size": len(test_content),
+                },
+            )
+            upload_id = response.json()["upload_id"]
+
+            chunk_response = client.patch(
+                f"/archive/upload/{upload_id}",
+                headers={
+                    "Authorization": "Bearer test_master_token",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=test_content,
+            )
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["pending_verification"] is True
+            assert not (archive_path / "pending.zip").exists()
+
+            cancel_response = client.delete(
+                f"/archive/upload/{upload_id}",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert cancel_response.status_code == 204
+            assert not (archive_path / "pending.zip").exists()
+
+            sha_response = client.get(
+                f"/archive/upload/{upload_id}/sha256/stream",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+            assert sha_response.status_code == 404
 
     def test_create_archive_file(self, client, archive_setup):
         """Test creating a new archive file."""

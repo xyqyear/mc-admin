@@ -17,7 +17,6 @@ from .base import (
     get_file_items,
     rename_file_or_directory,
     update_file_content,
-    upload_file,
 )
 
 # Multi-file operations
@@ -79,7 +78,6 @@ __all__ = [
     "get_file_items",
     "rename_file_or_directory",
     "update_file_content",
-    "upload_file",
     # Multi-file operations
     "check_upload_conflicts",
     "set_upload_policy",

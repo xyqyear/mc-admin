@@ -116,6 +116,12 @@ api_app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "Upload-Offset",
+        "Upload-Length",
+        "Upload-Chunk-Size",
+        "Upload-Expires",
+    ],
 )
 
 api_app.include_router(auth.router)

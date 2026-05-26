@@ -1,5 +1,4 @@
 import api from '@/utils/api'
-import { AxiosRequestConfig } from 'axios'
 
 export interface ArchiveFileItem {
   name: string
@@ -25,20 +24,6 @@ export interface RenameArchiveFileRequest {
   new_name: string
 }
 
-export interface UploadProgressEvent {
-  loaded: number
-  total: number
-  progress: number
-  bytes?: number
-  bytesPerSecond?: number
-  estimatedRemaining?: number
-}
-
-export interface UploadOptions {
-  onUploadProgress?: (progressEvent: UploadProgressEvent) => void
-  signal?: AbortSignal
-}
-
 export interface CreateArchiveRequest {
   server_id: string
   path?: string | null
@@ -46,6 +31,64 @@ export interface CreateArchiveRequest {
 
 export interface CreateArchiveResponse {
   task_id: string
+}
+
+export interface InitArchiveUploadRequest {
+  path: string
+  filename: string
+  size: number
+  allow_overwrite?: boolean
+}
+
+export interface InitArchiveUploadResponse {
+  upload_id: string
+  offset: number
+  chunk_size: number
+  expires_at: number
+}
+
+export interface ArchiveUploadStatus {
+  offset: number
+  total: number
+  chunkSize: number
+  expiresAt: number
+  filename: string
+}
+
+export interface ArchiveUploadChunkResponse {
+  upload_id: string
+  offset: number
+  complete: boolean
+  pending_verification?: boolean
+  path?: string | null
+  filename?: string | null
+}
+
+export interface VerifyArchiveUploadRequest {
+  sha256: string
+}
+
+export interface VerifyArchiveUploadResponse {
+  upload_id: string
+  path: string
+  filename: string
+  sha256: string
+}
+
+export interface ArchiveSHA256Event {
+  event_type: 'start' | 'progress' | 'complete' | 'error'
+  loaded?: number
+  total?: number
+  percent?: number
+  sha256?: string
+  filename?: string
+  message?: string
+}
+
+const parseHeaderNumber = (value: string | undefined, fallback = 0) => {
+  if (!value) return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 export const archiveApi = {
@@ -85,42 +128,50 @@ export const archiveApi = {
     return response.data;
   },
 
-  uploadArchiveFile: (
-    path: string,
-    file: File,
-    allowOverwrite: boolean = false,
-    options?: UploadOptions
-  ) => {
-    const formData = new FormData()
-    formData.append('file', file)
+  initArchiveUpload: (
+    request: InitArchiveUploadRequest,
+    signal?: AbortSignal,
+  ): Promise<InitArchiveUploadResponse> =>
+    api.post('/archive/upload/init', request, { signal }).then((res: any) => res.data),
 
-    const config: AxiosRequestConfig = {
-      params: { path, allow_overwrite: allowOverwrite },
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 1800000
+  getArchiveUploadStatus: async (
+    uploadId: string,
+    signal?: AbortSignal,
+  ): Promise<ArchiveUploadStatus> => {
+    const response = await api.head(`/archive/upload/${uploadId}`, { signal })
+    return {
+      offset: parseHeaderNumber(response.headers['upload-offset']),
+      total: parseHeaderNumber(response.headers['upload-length']),
+      chunkSize: parseHeaderNumber(response.headers['upload-chunk-size'], 8 * 1024 * 1024),
+      expiresAt: parseHeaderNumber(response.headers['upload-expires']),
+      filename: response.headers['upload-filename'] ?? '',
     }
-
-    if (options?.onUploadProgress) {
-      config.onUploadProgress = (progressEvent: any) => {
-        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-        const uploadProgressEvent: UploadProgressEvent = {
-          loaded: progressEvent.loaded,
-          total: progressEvent.total,
-          progress: progress,
-          bytes: progressEvent.loaded,
-          bytesPerSecond: progressEvent.bytesPerSecond || 0,
-          estimatedRemaining: progressEvent.estimatedRemaining || 0
-        }
-        options.onUploadProgress!(uploadProgressEvent)
-      }
-    }
-
-    if (options?.signal) {
-      config.signal = options.signal
-    }
-
-    return api.post('/archive/upload', formData, config).then((res: any) => res.data)
   },
+
+  uploadArchiveChunk: (
+    uploadId: string,
+    offset: number,
+    chunk: Blob,
+    signal?: AbortSignal,
+  ): Promise<ArchiveUploadChunkResponse> =>
+    api.patch(`/archive/upload/${uploadId}`, chunk, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Upload-Offset': String(offset),
+      },
+      timeout: 1800000,
+      signal,
+    }).then((res: any) => res.data),
+
+  cancelArchiveUpload: (uploadId: string): Promise<void> =>
+    api.delete(`/archive/upload/${uploadId}`).then(() => undefined),
+
+  verifyArchiveUpload: (
+    uploadId: string,
+    request: VerifyArchiveUploadRequest,
+    signal?: AbortSignal,
+  ): Promise<VerifyArchiveUploadResponse> =>
+    api.post(`/archive/upload/${uploadId}/verify`, request, { signal }).then((res: any) => res.data),
 
   createArchiveItem: (request: CreateArchiveFileRequest) =>
     api.post('/archive/create', request).then((res: any) => res.data),
@@ -130,9 +181,6 @@ export const archiveApi = {
 
   renameArchiveItem: (request: RenameArchiveFileRequest) =>
     api.post('/archive/rename', request).then((res: any) => res.data),
-
-  calculateSHA256: (path: string): Promise<{ sha256: string }> =>
-    api.get('/archive/sha256', { params: { path } }).then((res: any) => res.data),
 
   createArchive: (request: CreateArchiveRequest): Promise<CreateArchiveResponse> =>
     api.post('/archive/compress', request).then((res: any) => res.data),

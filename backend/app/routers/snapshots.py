@@ -1,13 +1,11 @@
 """Global snapshot management endpoints using restic"""
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
@@ -25,6 +23,7 @@ from ..snapshots import (
 )
 from ..system.resources import get_disk_info
 from ..utils import async_fs
+from ..utils.sse import sse_encode, sse_response
 from ..world import png_invalidate
 
 router = APIRouter(
@@ -234,10 +233,6 @@ async def preview_global_restore(
     return RestorePreviewResponse(actions=actions, preview_summary=summary)
 
 
-def _sse(payload: dict) -> bytes:
-    return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
-
-
 async def _invalidate_pngs_across_instances(items: list[str]) -> int:
     """Walk every known docker MC instance and delete cached tiles for any
     region MCAs the restore touched that fall under that instance's data dir.
@@ -274,14 +269,14 @@ async def restore_global_snapshot(
 
     async def event_gen() -> AsyncGenerator[bytes, None]:
         try:
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "start",
                     "message": f"restoring snapshot {request.snapshot_id[:8]}",
                 }
             )
 
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "safety_snapshot",
                     "message": "creating safety snapshot",
@@ -298,14 +293,14 @@ async def restore_global_snapshot(
                     e,
                     exc_info=True,
                 )
-                yield _sse(
+                yield sse_encode(
                     {
                         "event_type": "error",
                         "message": f"failed to create safety snapshot: {e}",
                     }
                 )
                 return
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "safety_snapshot",
                     "safety_snapshot_id": safety_snapshot.short_id,
@@ -313,7 +308,7 @@ async def restore_global_snapshot(
                 }
             )
 
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "restore",
                     "message": f"restoring {len(target_paths)} path(s)",
@@ -328,7 +323,7 @@ async def restore_global_snapshot(
                     include_paths=target_paths,
                 ):
                     if ev.kind == "status" and ev.percent_done is not None:
-                        yield _sse(
+                        yield sse_encode(
                             {
                                 "event_type": "restore",
                                 "percent": ev.percent_done * 100.0,
@@ -350,11 +345,11 @@ async def restore_global_snapshot(
                     e,
                     exc_info=True,
                 )
-                yield _sse({"event_type": "error", "message": str(e)})
+                yield sse_encode({"event_type": "error", "message": str(e)})
                 return
 
             invalidated = await _invalidate_pngs_across_instances(touched_items)
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "invalidate_cache",
                     "message": f"invalidated {invalidated} map tile(s)",
@@ -370,7 +365,7 @@ async def restore_global_snapshot(
                 paths_repr,
                 invalidated,
             )
-            yield _sse(
+            yield sse_encode(
                 {
                     "event_type": "complete",
                     "message": f"restored snapshot {request.snapshot_id[:8]}",
@@ -381,13 +376,9 @@ async def restore_global_snapshot(
             logger.exception(
                 "Restore stream failed (snapshot_id=%s)", request.snapshot_id
             )
-            yield _sse({"event_type": "error", "message": str(e)})
+            yield sse_encode({"event_type": "error", "message": str(e)})
 
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return sse_response(event_gen())
 
 
 @router.delete("/{snapshot_id}")

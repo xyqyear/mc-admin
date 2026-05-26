@@ -19,25 +19,7 @@ export const useArchiveQueries = () => {
     })
   }
 
-  const useArchiveSHA256 = (
-    path: string | null,
-    enabled: boolean = false,
-    options?: Omit<UseQueryOptions<{ sha256: string }>, 'queryKey' | 'queryFn' | 'enabled'>
-  ) => {
-    return useQuery({
-      queryKey: queryKeys.archive.sha256(path || ''),
-      queryFn: () => archiveApi.calculateSHA256(path!),
-      // Default disabled — SHA256 is expensive and triggered explicitly.
-      enabled: !!path && enabled,
-      // Hash is content-derived; cache forever for a given path until invalidated on write.
-      staleTime: Infinity,
-      refetchInterval: false,
-      ...options,
-    })
-  }
-
   return {
     useArchiveFileList,
-    useArchiveSHA256,
   }
 }

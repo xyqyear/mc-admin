@@ -8,8 +8,6 @@ import {
   Folder,
   FileArchive,
   Pencil,
-  Shield,
-  HelpCircle,
 } from 'lucide-react'
 import {
   type ColumnDef,
@@ -24,7 +22,6 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/spinner'
 import { Checkbox } from '@/components/ui/checkbox'
 
 import PageHeader from '@/components/layout/PageHeader'
@@ -34,8 +31,6 @@ import { RefreshButton } from '@/components/common/RefreshButton'
 import DragDropOverlay from '@/components/server/DragDropOverlay'
 import ArchiveUploadDialog from '@/components/dialogs/ArchiveUploadDialog'
 import ArchiveRenameDialog from '@/components/dialogs/ArchiveRenameDialog'
-import SHA256ResultDialog from '@/components/dialogs/SHA256ResultDialog'
-import SHA256HelpDialog from '@/components/dialogs/SHA256HelpDialog'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useArchiveQueries } from '@/hooks/queries/base/useArchiveQueries'
 import { useArchiveMutations } from '@/hooks/mutations/useArchiveMutations'
@@ -46,7 +41,7 @@ import type { ArchiveFileItem } from '@/hooks/api/archiveApi'
 const ArchiveManagement: React.FC = () => {
   const { confirm, confirmDialog } = useConfirm()
 
-  const { useArchiveFileList, useArchiveSHA256 } = useArchiveQueries()
+  const { useArchiveFileList } = useArchiveQueries()
   const { useDeleteItem, downloadFile } = useArchiveMutations()
 
   const { data: fileData, isLoading, isFetching, refetch } = useArchiveFileList()
@@ -58,10 +53,6 @@ const ArchiveManagement: React.FC = () => {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
   const [dragDropFiles, setDragDropFiles] = useState<File[] | undefined>(undefined)
   const [renamingFile, setRenamingFile] = useState<ArchiveFileItem | null>(null)
-  const [sha256Path, setSha256Path] = useState<string | null>(null)
-  const [sha256DialogOpen, setSha256DialogOpen] = useState(false)
-  const [sha256Result, setSha256Result] = useState<{ fileName: string; hash: string } | null>(null)
-  const [sha256HelpVisible, setSha256HelpVisible] = useState(false)
 
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'modified_at', desc: true },
@@ -79,27 +70,6 @@ const ArchiveManagement: React.FC = () => {
       toast.error(errorMessage)
     },
   })
-
-  const sha256Query = useArchiveSHA256(sha256Path, !!sha256Path)
-
-  React.useEffect(() => {
-    if (sha256Query.data && sha256Path) {
-      const file = archiveFiles.find(f => f.path === sha256Path)
-      setSha256Result({
-        fileName: file?.name || sha256Path,
-        hash: sha256Query.data.sha256,
-      })
-      setSha256DialogOpen(true)
-      setSha256Path(null)
-    }
-  }, [sha256Query.data, sha256Path, archiveFiles])
-
-  React.useEffect(() => {
-    if (sha256Query.error && sha256Path) {
-      toast.error(`计算SHA256失败: ${(sha256Query.error as any).message}`)
-      setSha256Path(null)
-    }
-  }, [sha256Query.error, sha256Path])
 
   const handleDownload = async (file: ArchiveFileItem) => {
     await downloadFile(file.path, file.name)
@@ -218,29 +188,14 @@ const ArchiveManagement: React.FC = () => {
         return (
           <div className="flex items-center gap-1">
             {file.type === 'file' && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleDownload(file)}
-                  title="下载"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setSha256Path(file.path)}
-                  disabled={sha256Query.isLoading && sha256Path === file.path}
-                  title="计算SHA256"
-                >
-                  {sha256Query.isLoading && sha256Path === file.path ? (
-                    <Spinner className="size-4" />
-                  ) : (
-                    <Shield className="h-4 w-4" />
-                  )}
-                </Button>
-              </>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => handleDownload(file)}
+                title="下载"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
             )}
             <Button
               variant="ghost"
@@ -326,22 +281,9 @@ const ArchiveManagement: React.FC = () => {
       </Card>
 
       <Alert>
-        <AlertTitle>
-          <div className="flex items-center justify-between">
-            <span>压缩包管理说明</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setSha256HelpVisible(true)}
-              className="text-blue-600 hover:text-blue-700"
-              title="查看SHA256校验方法"
-            >
-              <HelpCircle className="h-4 w-4" />
-            </Button>
-          </div>
-        </AlertTitle>
+        <AlertTitle>压缩包管理说明</AlertTitle>
         <AlertDescription>
-          您可以上传，下载，重命名和删除压缩包。此处压缩包可以用于创建服务器或覆盖现有服务器内容。建议上传后使用SHA256功能核对文件完整性。
+          您可以上传、下载、重命名和删除压缩包。上传完成后会自动进行 SHA256 完整性校验。
         </AlertDescription>
       </Alert>
 
@@ -355,17 +297,6 @@ const ArchiveManagement: React.FC = () => {
         open={!!renamingFile}
         file={renamingFile}
         onClose={() => setRenamingFile(null)}
-      />
-
-      <SHA256ResultDialog
-        open={sha256DialogOpen}
-        onClose={() => { setSha256DialogOpen(false); setSha256Result(null) }}
-        result={sha256Result}
-      />
-
-      <SHA256HelpDialog
-        open={sha256HelpVisible}
-        onCancel={() => setSha256HelpVisible(false)}
       />
 
       {confirmDialog}
