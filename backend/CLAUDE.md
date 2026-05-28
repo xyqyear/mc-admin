@@ -33,7 +33,7 @@ app/
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
 ├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
-├── players/               # identity resolution, dynamic name filtering, tracking, sessions, chat, achievements, skins
+├── players/               # identity resolution, dynamic name filtering, cleanup, tracking, sessions, chat, achievements, skins
 ├── log_monitor/           # watchfiles-based latest.log parser
 ├── files/                 # CRUD, deep search, multi-file upload
 ├── snapshots/             # Restic wrapper

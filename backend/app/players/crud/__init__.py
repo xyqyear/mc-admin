@@ -11,6 +11,14 @@ from .player import (
     upsert_player,
     upsert_player_profile,
 )
+from .player_cleanup import (
+    PlayerCleanupCandidate,
+    PlayerCleanupDeleteResponse,
+    PlayerCleanupKind,
+    PlayerCleanupPreviewResponse,
+    delete_player_cleanup_candidates,
+    get_player_cleanup_preview,
+)
 from .player_achievement import upsert_achievement
 from .player_chat import create_chat_message
 from .player_session import (
@@ -35,6 +43,12 @@ __all__ = [
     "get_or_add_player_by_name",
     "update_player_skin",
     "upsert_player_profile",
+    "PlayerCleanupCandidate",
+    "PlayerCleanupDeleteResponse",
+    "PlayerCleanupKind",
+    "PlayerCleanupPreviewResponse",
+    "delete_player_cleanup_candidates",
+    "get_player_cleanup_preview",
     # Player Session
     "get_or_create_session",
     "end_all_open_sessions",

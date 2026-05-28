@@ -19,6 +19,11 @@ online-mode UUIDs. Dynamic `players.ignored_name_prefixes` excludes matching
 names from write-side tracking and profile-cache creation using
 case-insensitive prefix matching. Its default is `["bot_"]`.
 
+`app.players.crud.player_cleanup` exposes maintenance helpers for stored rows
+that predate those gates. Cleanup previews list all matching players and their
+related session/chat/achievement counts. Cleanup deletes recompute the current
+candidate set before removing player rows and dependent records.
+
 ## Singletons
 
 Each owns its own lifecycle and runs as a background task.

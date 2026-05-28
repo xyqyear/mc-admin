@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   playerApi,
+  type PlayerCleanupKind,
   type PlayerMapProfileResponse,
 } from '@/hooks/api/playerApi'
 import { queryKeys } from '@/utils/api'
@@ -43,6 +44,19 @@ export const usePlayerMapProfile = (uuid: string | null) => {
     enabled: !!normalized,
     staleTime: 10 * 60 * 1000,
     retry: false
+  })
+}
+
+export const usePlayerCleanupPreview = (
+  kind: PlayerCleanupKind | null,
+  enabled: boolean
+) => {
+  return useQuery({
+    queryKey: queryKeys.players.cleanupPreview(kind),
+    queryFn: () => playerApi.getPlayerCleanupPreview(kind!),
+    enabled: !!kind && enabled,
+    staleTime: 0,
+    retry: 1
   })
 }
 
@@ -154,6 +168,7 @@ export const usePlayerQueries = () => {
   return {
     useAllPlayers,
     usePlayerByUUID,
+    usePlayerCleanupPreview,
     usePlayerMapProfile,
     usePlayerMapProfiles,
     useServerOnlinePlayers,

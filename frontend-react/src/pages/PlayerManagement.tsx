@@ -4,6 +4,8 @@ import {
   Users,
   Clock,
   Calendar,
+  Tag,
+  UserX,
 } from 'lucide-react';
 import {
   type ColumnDef,
@@ -25,11 +27,12 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { PlayerOnlineBadge } from '@/components/common/PlayerOnlineBadge';
 import { RefreshButton } from '@/components/common/RefreshButton';
 import PlayerFilters from '@/components/players/PlayerFilters';
+import PlayerCleanupDialog from '@/components/players/PlayerCleanupDialog';
 import PlayerDetailDialog from '@/components/players/PlayerDetailDialog';
 import { MCAvatar } from '@/components/players/MCAvatar';
 import { useAllPlayers } from '@/hooks/queries/base/usePlayerQueries';
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
-import type { PlayerSummary } from '@/hooks/api/playerApi';
+import type { PlayerCleanupKind, PlayerSummary } from '@/hooks/api/playerApi';
 import { formatUUID } from '@/utils/formatUtils';
 
 const formatDuration = (seconds: number): string => {
@@ -53,7 +56,7 @@ const columns: ColumnDef<PlayerSummary, any>[] = [
     accessorKey: 'current_name',
     header: '玩家',
     cell: ({ row }) => (
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center gap-3">
         <MCAvatar
           avatarBase64={row.original.avatar_base64}
           size={40}
@@ -138,6 +141,7 @@ const columns: ColumnDef<PlayerSummary, any>[] = [
 
 const PlayerManagement: React.FC = () => {
   const [selectedPlayerUUID, setSelectedPlayerUUID] = useState<string | null>(null);
+  const [cleanupKind, setCleanupKind] = useState<PlayerCleanupKind | null>(null);
   const [filters, setFilters] = useState<{
     online_only?: boolean;
     server_id?: string;
@@ -229,7 +233,25 @@ const PlayerManagement: React.FC = () => {
         title="玩家管理"
         icon={<Users className="h-5 w-5" />}
         actions={
-          <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCleanupKind('offline_uuid')}
+            >
+              <UserX data-icon="inline-start" />
+              清理离线 UUID
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCleanupKind('ignored_name_prefix')}
+            >
+              <Tag data-icon="inline-start" />
+              清理忽略前缀
+            </Button>
+            <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
+          </div>
         }
       />
 
@@ -284,6 +306,14 @@ const PlayerManagement: React.FC = () => {
         uuid={selectedPlayerUUID}
         open={!!selectedPlayerUUID}
         onClose={() => setSelectedPlayerUUID(null)}
+      />
+
+      <PlayerCleanupDialog
+        kind={cleanupKind}
+        open={!!cleanupKind}
+        onOpenChange={(open) => {
+          if (!open) setCleanupKind(null);
+        }}
       />
     </div>
   );

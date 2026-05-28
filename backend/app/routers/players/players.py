@@ -14,8 +14,13 @@ from ...dependencies import get_current_user
 from ...models import UserPublic
 from ...player_locations import normalize_uuid
 from ...players.crud import (
+    PlayerCleanupDeleteResponse,
+    PlayerCleanupKind,
+    PlayerCleanupPreviewResponse,
+    delete_player_cleanup_candidates,
     get_player_by_db_id,
     get_player_by_uuid as get_cached_player_by_uuid,
+    get_player_cleanup_preview,
     upsert_player_profile,
 )
 from ...players.crud.query.player_query import (
@@ -75,6 +80,24 @@ async def get_all_players(
         db, online_only=online_only, server_id=server_id
     )
     return players
+
+
+@router.get("/cleanup/{kind}/preview", response_model=PlayerCleanupPreviewResponse)
+async def preview_player_cleanup(
+    kind: PlayerCleanupKind,
+    _: UserPublic = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlayerCleanupPreviewResponse:
+    return await get_player_cleanup_preview(db, kind)
+
+
+@router.delete("/cleanup/{kind}", response_model=PlayerCleanupDeleteResponse)
+async def delete_player_cleanup(
+    kind: PlayerCleanupKind,
+    _: UserPublic = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlayerCleanupDeleteResponse:
+    return await delete_player_cleanup_candidates(db, kind)
 
 
 @router.get("/uuid/{uuid}", response_model=PlayerDetailResponse)

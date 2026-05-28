@@ -6,6 +6,7 @@ Surface for everything the backend's player-tracking system records: who's been 
 
 - `pages/PlayerManagement.tsx` — global page at `/players`. Sortable, filterable table of every recorded player.
 - `components/players/PlayerFilters.tsx` — search box (name / UUID substring), online-only toggle, server dropdown. Filters cascade into `usePlayerQueries({ online_only, server_id })`.
+- `components/players/PlayerCleanupDialog.tsx` — shared preview-and-confirm dialog for deleting stored players excluded by current identity rules: non-online UUIDs and names matching `players.ignored_name_prefixes`.
 - `components/players/PlayerDetailDialog.tsx` — detail dialog with four tabs:
   - **基本信息** — UUID (formatted `8-4-4-4-12`), current name, first seen, last seen, total playtime
   - **会话记录** — `PlayerSession` rows with join/leave timestamps and computed durations
@@ -19,12 +20,15 @@ Surface for everything the backend's player-tracking system records: who's been 
 | Query                                      | Endpoint                                  | Cadence                |
 | ------------------------------------------ | ----------------------------------------- | ---------------------- |
 | `players.list(filters)`                    | `GET /api/players/`                       | manual / on filter     |
+| `players.cleanupPreview(kind)`             | `GET /api/players/cleanup/{kind}/preview` | dialog-open preview     |
 | `players.detailByUUID(uuid)`               | `GET /api/players/uuid/{uuid}`            | manual                 |
 | `players.sessions(playerDbId, params)`     | `GET /api/players/{id}/sessions`          | manual                 |
 | `players.chat(playerDbId, params)`         | `GET /api/players/{id}/chat`              | manual                 |
 | `players.achievements(playerDbId, srvId)`  | `GET /api/players/{id}/achievements`      | manual                 |
 | `players.serverOnline(serverId)`           | `GET /api/servers/{id}/online-players`    | 10 s, HEALTHY-gated    |
 | `players.sessionStats(playerDbId, period)` | `GET /api/players/{id}/sessions/stats`    | manual                 |
+
+Cleanup mutations call `DELETE /api/players/cleanup/{kind}` and invalidate the entire `players` query prefix because player rows and their dependent session/chat/achievement records are removed together.
 
 The drawer drives 4–5 of these in parallel when opened; React Query dedupes identical keys so navigating between tabs doesn't refetch already-loaded data.
 

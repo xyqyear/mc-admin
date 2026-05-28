@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { playerApi } from '@/hooks/api/playerApi'
+import { playerApi, type PlayerCleanupKind } from '@/hooks/api/playerApi'
 import { queryKeys } from '@/utils/api'
 
 export const usePlayerMutations = () => {
@@ -14,7 +14,17 @@ export const usePlayerMutations = () => {
     })
   }
 
+  const useDeletePlayerCleanup = () => {
+    return useMutation({
+      mutationFn: (kind: PlayerCleanupKind) => playerApi.deletePlayerCleanup(kind),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.players.all })
+      },
+    })
+  }
+
   return {
+    useDeletePlayerCleanup,
     useRefreshPlayerSkin,
   }
 }

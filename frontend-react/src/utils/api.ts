@@ -130,6 +130,8 @@ export const queryKeys = {
     list: (filters?: { online_only?: boolean; server_id?: string }) =>
       [...queryKeys.players.all, "list", filters] as const,
     detailByUUID: (uuid: string) => [...queryKeys.players.all, "detail", "uuid", uuid] as const,
+    cleanupPreview: (kind?: string | null) =>
+      [...queryKeys.players.all, "cleanup", kind, "preview"] as const,
     mapProfileByUUID: (uuid: string) =>
       [...queryKeys.players.all, "map-profile", "uuid", uuid] as const,
     serverOnline: (serverId: string) => [...queryKeys.players.all, "server", serverId, "online"] as const,
