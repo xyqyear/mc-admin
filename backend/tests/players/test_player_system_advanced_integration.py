@@ -9,12 +9,14 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.dynamic_config.configs.players import PlayersConfig
 from app.db.database import Base
 from app.minecraft.instance import MCServerStatus
 from app.models import (
@@ -182,6 +184,14 @@ async def set_player_online(db, player_db_id: int, server_db_id: int):
         )
         session.add(player_session)
         await session.commit()
+
+
+def set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
+    """Patch runtime player-name filters for integration tests."""
+    runtime_config = SimpleNamespace(
+        players=PlayersConfig(ignored_name_prefixes=prefixes)
+    )
+    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
 
 
 # ============================================================================
@@ -495,6 +505,75 @@ async def test_player_syncer_corrects_false_negatives(
         # Both should have been marked online
         online = await get_online_players(db, server_db_id)
         assert len(online) == 2
+
+        await player_syncer.stop()
+
+    finally:
+        for p in patches:
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_player_syncer_filters_ignored_rcon_players(
+    test_database, mock_config, mock_skin_fetcher, mock_mojang_api, monkeypatch
+):
+    """Test RCON validation does not auto-create ignored players."""
+    db = test_database
+
+    server_db_id = await create_server(db, "server1", is_active=True)
+
+    async with db() as session:
+        player = Player(
+            uuid=make_online_uuid("Steve"),
+            current_name="Steve",
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(player)
+        await session.commit()
+
+    mock_instance = MagicMock()
+    mock_instance.get_status = AsyncMock(return_value=MCServerStatus.HEALTHY)
+    mock_instance.list_players = AsyncMock(return_value=["Steve", "BOT_Carpet"])
+
+    mock_mc_manager = MagicMock()
+    mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
+
+    set_ignored_player_prefixes(monkeypatch, ["bot_"])
+
+    patches = [
+        patch("app.players.tracking.get_async_session", db),
+        patch("app.players.player_syncer.get_async_session", db),
+        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
+        patch("app.players.player_syncer.config", mock_config),
+        patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
+        patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
+    ]
+
+    for p in patches:
+        p.start()
+
+    try:
+        player_syncer = PlayerSyncer()
+
+        await player_syncer.start()
+        await asyncio.sleep(0.4)
+
+        mock_mojang_api.assert_not_called()
+
+        async with db() as session:
+            result = await session.execute(select(Player))
+            players = list(result.scalars().all())
+            assert [player.current_name for player in players] == ["Steve"]
+
+        online = await get_online_players(db, server_db_id)
+        assert len(online) == 1
+
+        async with db() as session:
+            result = await session.execute(
+                select(Player).where(Player.player_db_id == online[0].player_db_id)
+            )
+            online_player = result.scalar_one()
+            assert online_player.current_name == "Steve"
 
         await player_syncer.stop()
 

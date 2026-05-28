@@ -51,6 +51,7 @@ class SkinFetcherConfig(BaseConfigSchema):
         ),
     ] = 10
 
+
 class QueryConfig(BaseConfigSchema):
     """Query protocol configuration for player listing."""
 
@@ -93,3 +94,10 @@ class PlayersConfig(BaseConfigSchema):
         QueryConfig,
         Field(description="Query协议配置"),
     ] = QueryConfig()
+
+    ignored_name_prefixes: Annotated[
+        list[str],
+        Field(
+            description="不写入玩家数据库的玩家名前缀列表，忽略大小写，默认包含 bot_",
+        ),
+    ] = ["bot_"]

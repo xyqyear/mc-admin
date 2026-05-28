@@ -2,12 +2,14 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.dynamic_config.configs.players import PlayersConfig
 from app.models import Base, Player, PlayerSession, Server, ServerStatus
 from app.players.crud import upsert_player
 from app.players.tracking import (
@@ -80,6 +82,13 @@ def _mock_get_async_session(test_db_session):
     return _session_ctx
 
 
+def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
+    runtime_config = SimpleNamespace(
+        players=PlayersConfig(ignored_name_prefixes=prefixes)
+    )
+    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+
+
 class TestUpsertPlayer:
     """Test upsert_player (UUID discovered replacement)."""
 
@@ -116,6 +125,22 @@ class TestUpsertPlayer:
         await test_db_session.refresh(player)
         assert player.current_name == "NewName"
         assert player.uuid == uuid
+
+    @pytest.mark.asyncio
+    async def test_upsert_skips_ignored_player_prefix_case_insensitive(
+        self, test_db_session, monkeypatch
+    ):
+        """Test that ignored player prefixes block direct UUID upserts."""
+        _set_ignored_player_prefixes(monkeypatch, ["bot_"])
+        uuid = make_online_uuid("BotPlayer")
+
+        inserted = await upsert_player(test_db_session, uuid, "BoT_Player")
+
+        assert inserted is False
+        result = await test_db_session.execute(
+            select(Player).where(Player.uuid == uuid)
+        )
+        assert result.scalar_one_or_none() is None
 
 
 class TestProcessPlayerJoin:
@@ -185,6 +210,36 @@ class TestProcessPlayerJoin:
         )
         session = result.scalar_one_or_none()
         assert session is not None
+
+    @pytest.mark.asyncio
+    async def test_ignored_player_join_skips_player_session_and_skin(
+        self, test_db_session, test_server, monkeypatch
+    ):
+        """Test that ignored players do not create player or session rows."""
+        _set_ignored_player_prefixes(monkeypatch, ["bot_"])
+        mock_session = _mock_get_async_session(test_db_session)
+
+        with (
+            patch("app.players.tracking.get_async_session", mock_session),
+            patch(
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+                new_callable=AsyncMock,
+            ) as mock_fetch_uuid,
+            patch("app.players.tracking.update_player_skin", new_callable=AsyncMock)
+            as mock_skin_update,
+        ):
+            await process_player_join("test_server", "BOT_Carpet")
+
+        mock_fetch_uuid.assert_not_called()
+        mock_skin_update.assert_not_called()
+
+        result = await test_db_session.execute(
+            select(Player).where(Player.current_name == "BOT_Carpet")
+        )
+        assert result.scalar_one_or_none() is None
+
+        result = await test_db_session.execute(select(PlayerSession))
+        assert result.scalars().all() == []
 
     @pytest.mark.asyncio
     async def test_skin_update_scheduled_for_existing_player(

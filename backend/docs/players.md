@@ -15,7 +15,9 @@ There is no event dispatcher. Producers (LogMonitor, HeartbeatManager, PlayerSyn
 
 Identity resolution and UUID validity rules are documented in
 `docs/player-identity.md`. Player storage and skin/profile fetches accept only
-online-mode UUIDs.
+online-mode UUIDs. Dynamic `players.ignored_name_prefixes` excludes matching
+names from write-side tracking and profile-cache creation using
+case-insensitive prefix matching. Its default is `["bot_"]`.
 
 ## Singletons
 

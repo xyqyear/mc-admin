@@ -48,7 +48,7 @@ In `dynamic_config/configs/`:
 
 - `dns.py` — provider, credentials, managed sub-domain, auto-update flag
 - `snapshots.py` — retention, time restrictions, world-restore knobs (preview TTL, janitor interval, preview region-size estimate)
-- `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout
+- `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout, ignored player-name prefixes (default `["bot_"]`)
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
 - `mcmap.py` — `batch_size`, `thread_count`, `request_timeout_seconds`
 - `world.py` — region stat workers, dimension scan depth, dimension labels

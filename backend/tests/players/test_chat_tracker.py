@@ -1,6 +1,7 @@
 """Tests for record_chat_message and record_achievement tracking functions."""
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,7 @@ from app.models import (
     Server,
     ServerStatus,
 )
+from app.dynamic_config.configs.players import PlayersConfig
 from app.players.tracking import record_achievement, record_chat_message
 from tests.players.helpers import make_offline_uuid, make_online_uuid
 
@@ -82,6 +84,13 @@ def mock_mojang_api():
         yield mock
 
 
+def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
+    runtime_config = SimpleNamespace(
+        players=PlayersConfig(ignored_name_prefixes=prefixes)
+    )
+    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+
+
 class TestRecordChatMessage:
     """Test record_chat_message functionality."""
 
@@ -144,6 +153,36 @@ class TestRecordChatMessage:
 
                 assert len(messages) == 1
                 assert messages[0].message_text == "First message!"
+
+    @pytest.mark.asyncio
+    async def test_ignored_player_skips_chat_write(
+        self, test_db_session, test_server, monkeypatch
+    ):
+        """Test ignored player chat is not persisted or auto-created."""
+        _set_ignored_player_prefixes(monkeypatch, ["bot_"])
+
+        with patch("app.players.tracking.get_async_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = test_db_session
+
+            with patch(
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+            ) as mock_fetch_uuid:
+                await record_chat_message(
+                    server_id="test_server",
+                    player_name="boT_Carpet",
+                    message="Synthetic hello",
+                    timestamp=datetime.now(timezone.utc),
+                )
+
+        mock_fetch_uuid.assert_not_called()
+
+        result = await test_db_session.execute(
+            select(Player).where(Player.current_name == "boT_Carpet")
+        )
+        assert result.scalar_one_or_none() is None
+
+        result = await test_db_session.execute(select(PlayerChatMessage))
+        assert result.scalars().all() == []
 
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):

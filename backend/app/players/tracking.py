@@ -16,6 +16,7 @@ from .crud import (
     end_all_open_sessions_on_server,
     get_all_player_names_with_ids,
     get_or_add_player_by_name,
+    get_player_by_name,
     get_or_create_session,
     upsert_achievement,
 )
@@ -23,6 +24,7 @@ from .crud import (
     update_player_skin as crud_update_player_skin,
 )
 from .identity_resolver import normalize_online_uuid
+from .name_filters import is_ignored_player_name
 from .skin_fetcher import skin_fetcher
 
 
@@ -42,6 +44,10 @@ async def process_player_join(
     """
     if timestamp is None:
         timestamp = _now()
+
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player join: {player_name}")
+        return
 
     async with get_async_session() as session:
         player = await get_or_add_player_by_name(session, server_id, player_name)
@@ -94,7 +100,10 @@ async def process_player_left(
             logger.warning(f"Server not found in database: {server_id}")
             return
 
-        player = await get_or_add_player_by_name(session, server_id, player_name)
+        if is_ignored_player_name(player_name):
+            player = await get_player_by_name(session, player_name)
+        else:
+            player = await get_or_add_player_by_name(session, server_id, player_name)
         if player is None:
             logger.warning(f"Player not found and could not be fetched: {player_name}")
             return
@@ -124,6 +133,10 @@ async def record_chat_message(
     """Record a player chat message."""
     if timestamp is None:
         timestamp = _now()
+
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player chat message: {player_name}")
+        return
 
     async with get_async_session() as session:
         server_db_id = await get_server_db_id(session, server_id)
@@ -157,6 +170,10 @@ async def record_achievement(
     """
     if timestamp is None:
         timestamp = _now()
+
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player achievement: {player_name}")
+        return
 
     async with get_async_session() as session:
         server_db_id = await get_server_db_id(session, server_id)

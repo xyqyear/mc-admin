@@ -28,7 +28,8 @@ Name-only tracking calls go through
 `get_or_add_player_by_name(session, server_id, player_name)`. Existing database
 rows are reused only when their stored UUID is v4. Missing names resolve through
 `usercache.json` first, then Mojang, and are inserted only after a v4 UUID is
-available.
+available. Names matching `players.ignored_name_prefixes` are skipped before
+identity resolution. The default ignored prefix list is `["bot_"]`.
 
 UUID-known writes also require v4 UUIDs:
 
@@ -36,6 +37,9 @@ UUID-known writes also require v4 UUIDs:
 - `upsert_player_profile()` skips non-v4 UUIDs from profile caching.
 - `get_player_by_uuid()` returns `None` for non-v4 UUIDs.
 - `update_player_skin()` skips Mojang skin fetches for non-v4 UUIDs.
+
+`upsert_player()` and `upsert_player_profile()` also skip names matching
+`players.ignored_name_prefixes` with case-insensitive prefix comparison.
 
 The map profile endpoint keeps its own lightweight gate: syntactically valid
 non-v4 UUIDs return an unresolved response without cache or Mojang lookups.

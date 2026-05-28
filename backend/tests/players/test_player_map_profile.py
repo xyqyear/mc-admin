@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.dynamic_config.configs.players import PlayersConfig
 from app.models import Base, Player, UserPublic
 from app.players.skin_fetcher import PlayerProfileFetchResult
 from app.routers.players.players import get_player_map_profile
@@ -89,6 +91,41 @@ async def test_profile_upserts_mojang_result(test_db_session, monkeypatch):
     ).scalar_one()
     assert row.current_name == "FetchedName"
     assert row.avatar_data == b"avatar"
+
+
+@pytest.mark.asyncio
+async def test_profile_skips_ignored_mojang_name(test_db_session, monkeypatch):
+    runtime_config = SimpleNamespace(
+        players=PlayersConfig(ignored_name_prefixes=["bot_"])
+    )
+    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+
+    async def fetch(uuid: str):
+        return PlayerProfileFetchResult(
+            name="BOT_MapProfile",
+            skin_data=b"skin",
+            avatar_data=b"avatar",
+        )
+
+    monkeypatch.setattr(
+        "app.routers.players.players.skin_fetcher.fetch_player_profile",
+        fetch,
+    )
+
+    result = await get_player_map_profile(
+        "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
+        _=_test_user(),
+        db=test_db_session,
+    )
+    assert result.resolved is False
+    assert result.current_name is None
+
+    row = (
+        await test_db_session.execute(
+            select(Player).where(Player.uuid == "0b4c41928eb34f0b90228e2cb2ee6fc0")
+        )
+    ).scalar_one_or_none()
+    assert row is None
 
 
 @pytest.mark.asyncio

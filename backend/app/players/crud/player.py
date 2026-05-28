@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...logger import logger
 from ...models import Player
 from ..identity_resolver import normalize_online_uuid, resolve_player_by_name
+from ..name_filters import is_ignored_player_name
 
 
 async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> bool:
@@ -21,6 +22,10 @@ async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> b
         uuid: Online-mode player UUID
         player_name: Player name
     """
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player {player_name}")
+        return False
+
     normalized_uuid = normalize_online_uuid(uuid)
     if normalized_uuid is None:
         logger.warning(f"Skipping player {player_name}: non-v4 UUID {uuid}")
@@ -104,6 +109,10 @@ async def get_or_add_player_by_name(
     Returns:
         Player or None if player doesn't exist and no online UUID is available
     """
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player {player_name}")
+        return None
+
     player = await get_player_by_name(session, player_name)
     if player:
         if normalize_online_uuid(player.uuid) is None:
@@ -188,6 +197,10 @@ async def upsert_player_profile(
     if normalized_uuid is None:
         logger.warning(f"Skipping player profile {player_name}: non-v4 UUID {uuid}")
         return None
+
+    if is_ignored_player_name(player_name):
+        logger.info(f"Skipping ignored player profile {player_name}")
+        return await get_player_by_uuid(session, normalized_uuid)
 
     player = await get_player_by_uuid(session, normalized_uuid)
     if player is None:

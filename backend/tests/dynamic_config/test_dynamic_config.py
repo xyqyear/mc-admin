@@ -6,6 +6,7 @@ import pytest
 from pydantic import Field
 
 from app.dynamic_config import BaseConfigSchema
+from app.dynamic_config.configs.players import PlayersConfig
 from app.dynamic_config.manager import ConfigManager
 from app.dynamic_config.migration import ConfigMigrator
 
@@ -97,6 +98,13 @@ class TestBaseConfigSchema:
         import json
 
         json.dumps(schema)  # Should not raise exception
+
+    def test_players_config_default_ignored_prefixes(self):
+        """Test player name filters default to Carpet bot prefixes."""
+        assert PlayersConfig().ignored_name_prefixes == ["bot_"]
+        assert PlayersConfig.model_json_schema()["properties"][
+            "ignored_name_prefixes"
+        ]["default"] == ["bot_"]
 
 
 class TestConfigMigrator:

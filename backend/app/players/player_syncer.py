@@ -9,6 +9,7 @@ from ..logger import log_exception, logger
 from ..minecraft import MCServerStatus, docker_mc_manager
 from ..servers.crud import get_active_servers_map
 from .crud import get_online_player_names_on_server
+from .name_filters import is_ignored_player_name
 from .tracking import process_player_join, process_player_left
 
 
@@ -67,7 +68,9 @@ class PlayerSyncer:
 
         try:
             online_players = await instance.list_players()
-            online_player_names: Set[str] = set(online_players)
+            online_player_names: Set[str] = {
+                name for name in online_players if not is_ignored_player_name(name)
+            }
         except Exception as e:
             logger.warning(f"Failed to get player list from {server_id}: {e}")
             return
