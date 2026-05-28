@@ -13,7 +13,7 @@ lookups.
   returns `PlayerLocationsResponse`.
 - `GET /players/uuid/{uuid}/profile` returns a lightweight map profile for one
   UUID. Dashed and dashless UUIDs are normalized to the dashless lowercase DB
-  form.
+  form. Syntactically valid non-v4 UUIDs return `resolved = false`.
 
 The location response includes:
 
@@ -43,10 +43,11 @@ Unknown or absent dimensions stay in the response with
 
 ## Profile Cache
 
-The profile endpoint reads the existing `Player` table by normalized UUID. A
-cached player with avatar data is returned immediately. Missing or incomplete
-cache entries call Mojang's session server for name and texture data, extract
-the 8x8 avatar from the skin image, and upsert the `Player` row.
+The profile endpoint first rejects non-v4 UUIDs with an unresolved response. It
+then reads the existing `Player` table by normalized UUID. A cached player with
+avatar data is returned immediately. Missing or incomplete cache entries call
+Mojang's session server for name and texture data, extract the 8x8 avatar from
+the skin image, and upsert the `Player` row.
 
 Mojang 404, 429, timeout, malformed texture payloads, or skin download failures
 return a 200 response with either the cached DB identity or an unresolved

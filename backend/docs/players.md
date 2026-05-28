@@ -6,12 +6,16 @@ Tracks who's online, when they joined and left, what they said in chat, and what
 
 There is no event dispatcher. Producers (LogMonitor, HeartbeatManager, PlayerSyncer, REST handlers) call composite functions in `app/players/tracking.py` directly. The composites handle "ensure player exists in DB" + the side effect:
 
-- `process_player_join(server_id, player_name, timestamp)` — `get_or_add_player_by_name` (calls Mojang for the UUID if missing), open a `PlayerSession`, schedule a skin update task.
+- `process_player_join(server_id, player_name, timestamp)` — `get_or_add_player_by_name` (reuses v4 DB identities, otherwise resolves via server `usercache.json` with Mojang fallback), open a `PlayerSession`, schedule a skin update task.
 - `process_player_left(server_id, player_name, reason, timestamp)` — close every open session for that (player, server).
 - `record_chat_message(server_id, player_name, message, timestamp)` — upsert player + insert `PlayerChatMessage`.
-- `record_achievement(server_id, player_name, achievement_name, timestamp)` — match the in-game name against known players (longest-first to avoid prefix collisions), insert `PlayerAchievement` (unique on `(player, server, achievement)`).
+- `record_achievement(server_id, player_name, achievement_name, timestamp)` — match the in-game name against known v4 players (longest-first to avoid prefix collisions), insert `PlayerAchievement` (unique on `(player, server, achievement)`).
 - `close_server_sessions(server_id, timestamp)` — close every open session on that server (called when the server stops).
 - `update_player_skin(player_db_id, uuid, player_name)` — fetch skin via `skin_fetcher`, write `Player.skin_data` and `Player.avatar_data`.
+
+Identity resolution and UUID validity rules are documented in
+`docs/player-identity.md`. Player storage and skin/profile fetches accept only
+online-mode UUIDs.
 
 ## Singletons
 

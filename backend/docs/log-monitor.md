@@ -14,7 +14,7 @@ Modern Minecraft has no first-class API for "tell me when a player joins" — th
 
 | Event                          | Calls                                              |
 | ------------------------------ | -------------------------------------------------- |
-| `PlayerUuidDiscoveredEvent`    | `upsert_player()` (records the UUID immediately)   |
+| `PlayerUuidDiscoveredEvent`    | `upsert_player()` (records v4 UUIDs immediately)   |
 | `PlayerJoinedEvent`            | `process_player_join()`                            |
 | `PlayerLeftEvent`              | `process_player_left()`                            |
 | `PlayerChatMessageEvent`       | `record_chat_message()`                            |

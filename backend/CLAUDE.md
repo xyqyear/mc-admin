@@ -33,7 +33,7 @@ app/
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
 ├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
-├── players/               # tracking, sessions, chat, achievements, skins
+├── players/               # identity resolution, tracking, sessions, chat, achievements, skins
 ├── log_monitor/           # watchfiles-based latest.log parser
 ├── files/                 # CRUD, deep search, multi-file upload
 ├── snapshots/             # Restic wrapper
@@ -87,6 +87,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/servers.md` — DB-driven server discovery, bundled lifecycle orchestrators, filesystem↔DB sync endpoint
 - `docs/database-migrations.md` — Alembic startup gate, supported DB states, revision IDs
 - `docs/minecraft.md` — Docker Compose lifecycle, `MCInstance`, compose validation, cgroup v2 monitoring
+- `docs/player-identity.md` — usercache-first identity resolution, v4 UUID gates, Mojang fallback
 - `docs/players.md` — direct-function-call tracking, singletons (heartbeat / syncer / skin), DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain, dispatch to tracking functions
 - `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search

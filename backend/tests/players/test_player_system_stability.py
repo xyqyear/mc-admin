@@ -29,6 +29,7 @@ from app.players.tracking import (
     process_player_join,
     process_player_left,
 )
+from tests.players.helpers import make_online_uuid
 
 # ============================================================================
 # Fixtures
@@ -79,9 +80,7 @@ def mock_mojang_api():
 
     async def fetch_uuid(player_name: str):
         await asyncio.sleep(0.2)
-        import hashlib
-
-        return hashlib.md5(player_name.encode()).hexdigest()[:32]
+        return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)
 
@@ -92,7 +91,6 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
     patches = [
         patch("app.players.tracking.get_async_session", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -173,7 +171,7 @@ async def test_concurrent_events_same_player(player_system):
 
     # Upsert player UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Concurrent joins (simulating race condition — each gets its own DB session)
     join_time = datetime.now(timezone.utc)
@@ -209,7 +207,7 @@ async def test_rapid_server_stop_events(player_system):
     # Create players
     for i in range(5):
         async with db() as session:
-            await upsert_player(session, f"uuid{i}", f"Player{i}")
+            await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
         await process_player_join("server1", f"Player{i}")
 
     # Multiple rapid close_server_sessions calls
@@ -240,7 +238,7 @@ async def test_concurrent_multi_server_events(player_system):
 
     # Upsert player UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins all 3 servers concurrently
     await asyncio.gather(
@@ -278,7 +276,7 @@ async def test_massive_player_count(player_system):
     # Upsert all player UUIDs
     for i in range(player_count):
         async with db() as session:
-            await upsert_player(session, f"uuid{i}", f"Player{i}")
+            await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
 
     # All join
     join_tasks = [
@@ -325,7 +323,7 @@ async def test_session_without_leave(player_system):
     # Multiple players join but never leave
     for i in range(10):
         async with db() as session:
-            await upsert_player(session, f"uuid{i}", f"Player{i}")
+            await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
         await process_player_join("server1", f"Player{i}")
 
     # Check all have open sessions
@@ -362,7 +360,7 @@ async def test_long_session_duration_calculation(player_system):
     _server_db_id = await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins 1 day ago
     join_time = datetime.now(timezone.utc) - timedelta(days=1)
@@ -396,7 +394,7 @@ async def test_event_ordering_preservation(player_system):
 
     # Upsert UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Session 1: 0-10 minutes
     await process_player_join("server1", "Steve", timestamp=base_time)
@@ -435,7 +433,7 @@ async def test_zero_duration_session(player_system):
     _server_db_id = await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins and immediately leaves (same timestamp)
     same_time = datetime.now(timezone.utc)
@@ -482,7 +480,7 @@ async def test_missing_server_in_tracker(player_system):
 
     # Upsert player UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player join on nonexistent server (should handle gracefully)
     await process_player_join("nonexistent", "Steve")

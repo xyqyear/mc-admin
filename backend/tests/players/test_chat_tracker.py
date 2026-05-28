@@ -16,6 +16,7 @@ from app.models import (
     ServerStatus,
 )
 from app.players.tracking import record_achievement, record_chat_message
+from tests.players.helpers import make_offline_uuid, make_online_uuid
 
 
 @pytest.fixture
@@ -60,7 +61,7 @@ async def test_player(test_db_session):
     """Create a test player in the database."""
     player = Player(
         player_db_id=1,
-        uuid="test_uuid_123",
+        uuid=make_online_uuid("TestPlayer"),
         current_name="TestPlayer",
         created_at=datetime.now(timezone.utc),
     )
@@ -72,10 +73,10 @@ async def test_player(test_db_session):
 @pytest.fixture
 def mock_mojang_api():
     """Mock the Mojang API."""
-    with patch("app.players.crud.player.fetch_player_uuid_from_mojang") as mock:
+    with patch("app.players.mojang_api.fetch_player_uuid_from_mojang") as mock:
 
         async def return_uuid(*args, **kwargs):
-            return "new_player_uuid_456"
+            return make_online_uuid("NewPlayer")
 
         mock.side_effect = return_uuid
         yield mock
@@ -116,8 +117,8 @@ class TestRecordChatMessage:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
-                "app.players.crud.player.fetch_player_uuid_from_mojang",
-                return_value="new_player_uuid_456",
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+                return_value=make_online_uuid("NewPlayer"),
             ):
                 await record_chat_message(
                     server_id="test_server",
@@ -132,7 +133,7 @@ class TestRecordChatMessage:
                 player = result.scalar_one_or_none()
 
                 assert player is not None
-                assert player.uuid == "new_player_uuid_456"
+                assert player.uuid == make_online_uuid("NewPlayer")
 
                 result = await test_db_session.execute(
                     select(PlayerChatMessage).where(
@@ -219,6 +220,31 @@ class TestRecordAchievement:
             assert len(achievements) == 0
 
     @pytest.mark.asyncio
+    async def test_offline_uuid_player_skipped(self, test_db_session, test_server):
+        player = Player(
+            player_db_id=2,
+            uuid=make_offline_uuid("OfflinePlayer"),
+            current_name="OfflinePlayer",
+            created_at=datetime.now(timezone.utc),
+        )
+        test_db_session.add(player)
+        await test_db_session.commit()
+
+        with patch("app.players.tracking.get_async_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = test_db_session
+
+            await record_achievement(
+                server_id="test_server",
+                player_name="OfflinePlayer",
+                achievement_name="Not Recorded",
+                timestamp=datetime.now(timezone.utc),
+            )
+
+            result = await test_db_session.execute(select(PlayerAchievement))
+            achievements = result.scalars().all()
+            assert len(achievements) == 0
+
+    @pytest.mark.asyncio
     async def test_duplicate_not_saved(self, test_db_session, test_server, test_player):
         """Test that duplicate achievements are not saved."""
         with patch("app.players.tracking.get_async_session") as mock_session:
@@ -254,7 +280,7 @@ class TestRecordAchievement:
         """Test matching player with title suffix (e.g., 'PlayerName the Ugly')."""
         player = Player(
             player_db_id=10,
-            uuid="test_uuid_with_title",
+            uuid=make_online_uuid("___Astesia"),
             current_name="___Astesia",
             created_at=datetime.now(timezone.utc),
         )
@@ -288,13 +314,13 @@ class TestRecordAchievement:
         """Test that longest player name is matched first to avoid partial matches."""
         short_player = Player(
             player_db_id=20,
-            uuid="short_uuid",
+            uuid=make_online_uuid("Steve"),
             current_name="Steve",
             created_at=datetime.now(timezone.utc),
         )
         long_player = Player(
             player_db_id=21,
-            uuid="long_uuid",
+            uuid=make_online_uuid("SteveTheGreat"),
             current_name="SteveTheGreat",
             created_at=datetime.now(timezone.utc),
         )

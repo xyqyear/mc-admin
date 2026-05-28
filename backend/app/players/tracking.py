@@ -22,6 +22,7 @@ from .crud import (
 from .crud import (
     update_player_skin as crud_update_player_skin,
 )
+from .identity_resolver import normalize_online_uuid
 from .skin_fetcher import skin_fetcher
 
 
@@ -43,7 +44,7 @@ async def process_player_join(
         timestamp = _now()
 
     async with get_async_session() as session:
-        player = await get_or_add_player_by_name(session, player_name)
+        player = await get_or_add_player_by_name(session, server_id, player_name)
         if player is None:
             logger.warning(f"Player not found and could not be fetched: {player_name}")
             return
@@ -93,7 +94,7 @@ async def process_player_left(
             logger.warning(f"Server not found in database: {server_id}")
             return
 
-        player = await get_or_add_player_by_name(session, player_name)
+        player = await get_or_add_player_by_name(session, server_id, player_name)
         if player is None:
             logger.warning(f"Player not found and could not be fetched: {player_name}")
             return
@@ -130,7 +131,7 @@ async def record_chat_message(
             logger.warning(f"Server not found in database: {server_id}")
             return
 
-        player = await get_or_add_player_by_name(session, player_name)
+        player = await get_or_add_player_by_name(session, server_id, player_name)
         if player is None:
             logger.warning(f"Player not found and could not be fetched: {player_name}")
             return
@@ -227,9 +228,14 @@ async def update_player_skin(
     player_name: str,
 ) -> None:
     """Fetch player skin from Mojang API and update the database."""
-    logger.debug(f"Updating skin for player {player_name} ({uuid})")
+    normalized_uuid = normalize_online_uuid(uuid)
+    if normalized_uuid is None:
+        logger.warning(f"Skipping skin update for {player_name}: non-v4 UUID {uuid}")
+        return
 
-    result = await skin_fetcher.fetch_player_skin(uuid)
+    logger.debug(f"Updating skin for player {player_name} ({normalized_uuid})")
+
+    result = await skin_fetcher.fetch_player_skin(normalized_uuid)
 
     async with get_async_session() as session:
         now = _now()

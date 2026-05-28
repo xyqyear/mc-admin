@@ -8,6 +8,7 @@ import pytest
 
 from app.log_monitor.events import PlayerJoinedEvent, PlayerUuidDiscoveredEvent
 from app.log_monitor.monitor import LogMonitor
+from tests.players.helpers import make_online_uuid
 
 
 @pytest.fixture
@@ -219,10 +220,11 @@ class TestLogMonitor:
     @pytest.mark.asyncio
     async def test_handle_event_uuid_discovered(self, log_monitor_instance):
         """Test handling PlayerUuidDiscoveredEvent calls upsert_player."""
+        uuid = make_online_uuid("TestPlayer")
         event = PlayerUuidDiscoveredEvent(
             server_id="test_server",
             player_name="TestPlayer",
-            uuid="12345678123456781234567812345678",
+            uuid=uuid,
         )
 
         with patch("app.log_monitor.monitor.get_async_session") as mock_get_session:
@@ -236,7 +238,7 @@ class TestLogMonitor:
             ) as mock_upsert:
                 await log_monitor_instance._handle_event(event)
                 mock_upsert.assert_called_once_with(
-                    mock_session, "12345678123456781234567812345678", "TestPlayer"
+                    mock_session, uuid, "TestPlayer"
                 )
 
     @pytest.mark.asyncio

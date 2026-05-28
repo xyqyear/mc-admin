@@ -16,6 +16,7 @@ from app.players.tracking import (
     process_player_left,
     update_player_skin,
 )
+from tests.players.helpers import make_online_uuid
 
 
 @pytest.fixture
@@ -60,7 +61,7 @@ async def test_player(test_db_session):
     """Create a test player in the database."""
     player = Player(
         player_db_id=1,
-        uuid="test_uuid_123",
+        uuid=make_online_uuid("TestPlayer"),
         current_name="TestPlayer",
         created_at=datetime.now(timezone.utc),
     )
@@ -85,34 +86,36 @@ class TestUpsertPlayer:
     @pytest.mark.asyncio
     async def test_upsert_creates_new_player(self, test_db_session):
         """Test that upsert_player creates a new player record."""
-        await upsert_player(test_db_session, "discovered_uuid_999", "NewPlayer")
+        uuid = make_online_uuid("NewPlayer")
+        await upsert_player(test_db_session, uuid, "NewPlayer")
 
         result = await test_db_session.execute(
-            select(Player).where(Player.uuid == "discovered_uuid_999")
+            select(Player).where(Player.uuid == uuid)
         )
         player = result.scalar_one_or_none()
 
         assert player is not None
         assert player.current_name == "NewPlayer"
-        assert player.uuid == "discovered_uuid_999"
+        assert player.uuid == uuid
 
     @pytest.mark.asyncio
     async def test_upsert_updates_existing_player_name(self, test_db_session):
         """Test that upsert_player updates the name for an existing UUID."""
+        uuid = make_online_uuid("OldName")
         player = Player(
             player_db_id=1,
-            uuid="test_uuid_123",
+            uuid=uuid,
             current_name="OldName",
             created_at=datetime.now(timezone.utc),
         )
         test_db_session.add(player)
         await test_db_session.commit()
 
-        await upsert_player(test_db_session, "test_uuid_123", "NewName")
+        await upsert_player(test_db_session, uuid, "NewName")
 
         await test_db_session.refresh(player)
         assert player.current_name == "NewName"
-        assert player.uuid == "test_uuid_123"
+        assert player.uuid == uuid
 
 
 class TestProcessPlayerJoin:
@@ -150,12 +153,13 @@ class TestProcessPlayerJoin:
     ):
         """Test that joining with a new player auto-creates the player and session."""
         mock_session = _mock_get_async_session(test_db_session)
+        uuid = make_online_uuid("BrandNewPlayer")
 
         with (
             patch("app.players.tracking.get_async_session", mock_session),
             patch(
-                "app.players.crud.player.fetch_player_uuid_from_mojang",
-                return_value="new_player_uuid_111",
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+                return_value=uuid,
             ),
             patch("app.players.tracking.update_player_skin", new_callable=AsyncMock),
         ):
@@ -170,7 +174,7 @@ class TestProcessPlayerJoin:
         player = result.scalar_one_or_none()
 
         assert player is not None
-        assert player.uuid == "new_player_uuid_111"
+        assert player.uuid == uuid
 
         result = await test_db_session.execute(
             select(PlayerSession).where(
@@ -208,12 +212,13 @@ class TestProcessPlayerJoin:
         """Test that skin update task is created on player join (new player)."""
         mock_session = _mock_get_async_session(test_db_session)
         mock_skin_update = AsyncMock()
+        uuid = make_online_uuid("NewPlayer123")
 
         with (
             patch("app.players.tracking.get_async_session", mock_session),
             patch(
-                "app.players.crud.player.fetch_player_uuid_from_mojang",
-                return_value="new_player_uuid_222",
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+                return_value=uuid,
             ),
             patch("app.players.tracking.update_player_skin", mock_skin_update),
         ):
@@ -229,7 +234,7 @@ class TestProcessPlayerJoin:
         assert player is not None
 
         mock_skin_update.assert_called_once_with(
-            player.player_db_id, "new_player_uuid_222", "NewPlayer123"
+            player.player_db_id, uuid, "NewPlayer123"
         )
 
 
@@ -271,12 +276,13 @@ class TestProcessPlayerLeft:
     async def test_new_player_auto_created_on_leave(self, test_db_session, test_server):
         """Test that leaving with a new player auto-creates the player record."""
         mock_session = _mock_get_async_session(test_db_session)
+        uuid = make_online_uuid("LeavingPlayer")
 
         with (
             patch("app.players.tracking.get_async_session", mock_session),
             patch(
-                "app.players.crud.player.fetch_player_uuid_from_mojang",
-                return_value="new_player_uuid_222",
+                "app.players.mojang_api.fetch_player_uuid_from_mojang",
+                return_value=uuid,
             ),
         ):
             leave_time = datetime.now(timezone.utc)
@@ -293,7 +299,7 @@ class TestProcessPlayerLeft:
         player = result.scalar_one_or_none()
 
         assert player is not None
-        assert player.uuid == "new_player_uuid_222"
+        assert player.uuid == uuid
 
 
 class TestCloseServerSessions:
@@ -306,7 +312,7 @@ class TestCloseServerSessions:
         """Test that all open sessions are ended when a server stops."""
         player2 = Player(
             player_db_id=2,
-            uuid="test_uuid_456",
+            uuid=make_online_uuid("Player2"),
             current_name="Player2",
             created_at=datetime.now(timezone.utc),
         )

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models import Base, Player, UserPublic
 from app.players.skin_fetcher import PlayerProfileFetchResult
 from app.routers.players.players import get_player_map_profile
+from tests.players.helpers import make_offline_uuid
 
 
 def _test_user() -> UserPublic:
@@ -139,6 +140,27 @@ async def test_profile_returns_cached_when_mojang_fails(test_db_session, monkeyp
     assert result.resolved is True
     assert result.current_name == "CachedNoAvatar"
     assert result.avatar_base64 is None
+
+
+@pytest.mark.asyncio
+async def test_profile_returns_unresolved_for_non_v4_uuid(test_db_session, monkeypatch):
+    async def fail_fetch(uuid: str):
+        raise AssertionError("Mojang should not be called")
+
+    monkeypatch.setattr(
+        "app.routers.players.players.skin_fetcher.fetch_player_profile",
+        fail_fetch,
+    )
+
+    uuid = make_offline_uuid("OfflinePlayer")
+    result = await get_player_map_profile(
+        uuid,
+        _=_test_user(),
+        db=test_db_session,
+    )
+    assert result.uuid == uuid
+    assert result.resolved is False
+    assert result.current_name is None
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ from app.models import (
 from app.players.heartbeat import HeartbeatManager
 from app.players.player_syncer import PlayerSyncer
 from app.players.skin_fetcher import SkinFetcher
+from tests.players.helpers import make_online_uuid
 
 # ============================================================================
 # Fixtures
@@ -77,9 +78,7 @@ def mock_mojang_api():
 
     async def fetch_uuid(player_name: str):
         await asyncio.sleep(0.2)
-        import hashlib
-
-        return hashlib.md5(player_name.encode()).hexdigest()[:32]
+        return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)
 
@@ -245,7 +244,7 @@ async def test_heartbeat_crash_detection(
     async with db() as session:
         for name in ["Steve", "Alex"]:
             player = Player(
-                uuid=f"uuid_{name}",
+                uuid=make_online_uuid(name),
                 current_name=name,
                 created_at=datetime.now(timezone.utc),
             )
@@ -271,7 +270,6 @@ async def test_heartbeat_crash_detection(
         patch("app.players.tracking.get_async_session", db),
         patch("app.players.heartbeat.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
         patch.object(ps_singleton, "validate_all_servers", mock_validate),
     ]
@@ -375,7 +373,7 @@ async def test_player_syncer_corrects_false_positives(
     async with db() as session:
         for name in ["Steve", "Alex", "Bob"]:
             player = Player(
-                uuid=f"uuid_{name}",
+                uuid=make_online_uuid(name),
                 current_name=name,
                 created_at=datetime.now(timezone.utc),
             )
@@ -405,7 +403,6 @@ async def test_player_syncer_corrects_false_positives(
         patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -454,7 +451,7 @@ async def test_player_syncer_corrects_false_negatives(
     async with db() as session:
         for name in ["Steve", "Alex"]:
             player = Player(
-                uuid=f"uuid_{name}",
+                uuid=make_online_uuid(name),
                 current_name=name,
                 created_at=datetime.now(timezone.utc),
             )
@@ -481,7 +478,6 @@ async def test_player_syncer_corrects_false_negatives(
         patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -609,7 +605,7 @@ async def test_crash_recovery_triggers_rcon_validation(
     async with db() as session:
         for name in ["Steve", "Alex", "Bob"]:
             player = Player(
-                uuid=f"uuid_{name}",
+                uuid=make_online_uuid(name),
                 current_name=name,
                 created_at=datetime.now(timezone.utc),
             )
@@ -640,7 +636,6 @@ async def test_crash_recovery_triggers_rcon_validation(
         patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
         patch("app.players.player_syncer.config", mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 

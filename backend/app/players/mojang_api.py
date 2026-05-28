@@ -22,8 +22,35 @@ async def fetch_player_uuid_from_mojang(player_name: str) -> Optional[str]:
             return None
         elif response.status_code == 200:
             data = response.json()
-            return data.get("id")
+            player_uuid = data.get("id")
+            return player_uuid if isinstance(player_uuid, str) and player_uuid else None
         else:
             logger.error(
                 f"Unexpected Mojang API response {response.status_code} for player: {player_name}"
             )
+    return None
+
+
+@log_exception("Error fetching player name from Mojang API for {uuid}: ")
+async def fetch_player_name_from_mojang(uuid: str) -> Optional[str]:
+    """Return the current player name for ``uuid``, or ``None`` if not found."""
+    uuid_clean = uuid.replace("-", "")
+    url = f"https://sessionserver.mojang.com/session/minecraft/profile/{uuid_clean}"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(url)
+
+        if response.status_code == 404:
+            logger.warning(f"Player not found in Mojang API: {uuid_clean}")
+            return None
+        elif response.status_code == 429:
+            logger.warning(f"Mojang API rate limited for player UUID: {uuid_clean}")
+            return None
+        elif response.status_code == 200:
+            data = response.json()
+            name = data.get("name")
+            return name if isinstance(name, str) and name else None
+        else:
+            logger.error(
+                f"Unexpected Mojang API response {response.status_code} for player UUID: {uuid_clean}"
+            )
+    return None

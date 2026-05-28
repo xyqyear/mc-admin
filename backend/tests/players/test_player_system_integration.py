@@ -34,6 +34,7 @@ from app.players.tracking import (
     record_achievement,
     record_chat_message,
 )
+from tests.players.helpers import make_online_uuid
 
 # ============================================================================
 # Fixtures
@@ -84,11 +85,7 @@ def mock_mojang_api():
 
     async def fetch_uuid(player_name: str):
         await asyncio.sleep(0.2)
-        # Return consistent UUID based on name
-        import hashlib
-
-        hash_hex = hashlib.md5(player_name.encode()).hexdigest()
-        return hash_hex[:32]  # 32 chars without dashes
+        return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)
 
@@ -100,7 +97,6 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
     patches = [
         patch("app.players.tracking.get_async_session", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch("app.players.crud.player.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
@@ -208,8 +204,9 @@ async def test_normal_flow_uuid_join_leave(player_system):
     server_db_id = await create_server(db, "server1")
 
     # Upsert player UUID directly
+    uuid = make_online_uuid("Steve")
     async with db() as session:
-        await upsert_player(session, "abc123", "Steve")
+        await upsert_player(session, uuid, "Steve")
 
     # Player joins
     await process_player_join("server1", "Steve")
@@ -217,7 +214,7 @@ async def test_normal_flow_uuid_join_leave(player_system):
     # Verify player is online
     player = await get_player(db, "Steve")
     assert player is not None
-    assert player.uuid == "abc123"
+    assert player.uuid == uuid
     assert player.current_name == "Steve"
 
     # Check player is online (has open session)
@@ -246,7 +243,7 @@ async def test_server_stopping_marks_all_offline(player_system):
     # Three players: upsert UUID then join
     for name in ["Steve", "Alex", "Bob"]:
         async with db() as session:
-            await upsert_player(session, f"uuid_{name}", name)
+            await upsert_player(session, make_online_uuid(name), name)
         await process_player_join("server1", name)
 
     # Verify all online
@@ -295,7 +292,7 @@ async def test_session_duration_calculation(player_system):
 
     # Upsert player UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins
     join_time = datetime.now(timezone.utc)
@@ -326,7 +323,7 @@ async def test_multiple_sessions_recorded(player_system):
     server_db_id = await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Session 1: 3 minutes
     t1 = datetime.now(timezone.utc)
@@ -366,7 +363,7 @@ async def test_server_stop_ends_sessions(player_system):
     join_time = datetime.now(timezone.utc)
     for name in ["Steve", "Alex"]:
         async with db() as session:
-            await upsert_player(session, f"uuid_{name}", name)
+            await upsert_player(session, make_online_uuid(name), name)
         await process_player_join("server1", name, timestamp=join_time)
 
     # Server stops after 10 minutes
@@ -406,7 +403,7 @@ async def test_chat_messages_recorded(player_system):
     await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     await process_player_join("server1", "Steve")
 
@@ -431,7 +428,7 @@ async def test_achievements_recorded_and_deduplicated(player_system):
     await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     player = await get_player(db, "Steve")
 
@@ -478,27 +475,28 @@ async def test_uuid_update_for_existing_player(player_system):
     await create_server(db, "server1")
 
     # Upsert player with name Steve
+    uuid = make_online_uuid("Steve")
     async with db() as session:
-        await upsert_player(session, "consistent_uuid_123", "Steve")
+        await upsert_player(session, uuid, "Steve")
 
     player = await get_player(db, "Steve")
-    assert player.uuid == "consistent_uuid_123"
+    assert player.uuid == uuid
     assert player.current_name == "Steve"
 
     # Player changes name to Steve2 (UUID stays same)
     async with db() as session:
-        await upsert_player(session, "consistent_uuid_123", "Steve2")
+        await upsert_player(session, uuid, "Steve2")
 
     # Query the player by UUID
     async with db() as session:
         result = await session.execute(
-            select(Player).where(Player.uuid == "consistent_uuid_123")
+            select(Player).where(Player.uuid == uuid)
         )
         player = result.scalar_one()
 
     # Name should be updated to Steve2
     assert player.current_name == "Steve2"
-    assert player.uuid == "consistent_uuid_123"
+    assert player.uuid == uuid
 
 
 @pytest.mark.asyncio
@@ -511,7 +509,7 @@ async def test_multiple_servers_same_player(player_system):
 
     # Upsert player UUID
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins server1
     await process_player_join("server1", "Steve")
@@ -540,7 +538,7 @@ async def test_rapid_join_leave_cycles(player_system):
     await create_server(db, "server1")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     player = await get_player(db, "Steve")
 
@@ -579,7 +577,7 @@ async def test_concurrent_players_on_same_server(player_system):
     # All players join
     for name in players:
         async with db() as session:
-            await upsert_player(session, f"uuid_{name}", name)
+            await upsert_player(session, make_online_uuid(name), name)
         await process_player_join("server1", name)
 
     # Verify all online
@@ -612,11 +610,13 @@ async def test_player_name_case_sensitivity(player_system):
     await create_server(db, "server1")
 
     # Different case variations should be treated as different players
+    uuid_lower = make_online_uuid("Steve-lower")
+    uuid_upper = make_online_uuid("Steve-upper")
     async with db() as session:
-        await upsert_player(session, "uuid_lower", "Steve")
+        await upsert_player(session, uuid_lower, "Steve")
 
     async with db() as session:
-        await upsert_player(session, "uuid_upper", "STEVE")
+        await upsert_player(session, uuid_upper, "STEVE")
 
     player_lower = await get_player(db, "Steve")
     player_upper = await get_player(db, "STEVE")
@@ -624,8 +624,8 @@ async def test_player_name_case_sensitivity(player_system):
     assert player_lower is not None
     assert player_upper is not None
     assert player_lower.player_db_id != player_upper.player_db_id
-    assert player_lower.uuid == "uuid_lower"
-    assert player_upper.uuid == "uuid_upper"
+    assert player_lower.uuid == uuid_lower
+    assert player_upper.uuid == uuid_upper
 
 
 @pytest.mark.asyncio
@@ -640,7 +640,7 @@ async def test_player_last_seen_update(player_system):
     # Upsert UUID and join
     time1 = datetime.now(timezone.utc)
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     await process_player_join("server1", "Steve", timestamp=time1)
 
@@ -681,7 +681,7 @@ async def test_achievement_same_name_different_servers(player_system):
     server2_id = await create_server(db, "server2")
 
     async with db() as session:
-        await upsert_player(session, "uuid1", "Steve")
+        await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     player = await get_player(db, "Steve")
 

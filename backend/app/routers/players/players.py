@@ -24,6 +24,7 @@ from ...players.crud.query.player_query import (
     get_all_players_summary,
     get_player_detail_by_uuid,
 )
+from ...players.identity_resolver import is_online_uuid
 from ...players.skin_fetcher import skin_fetcher
 from ...players.tracking import update_player_skin
 
@@ -115,6 +116,8 @@ async def get_player_map_profile(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Invalid UUID",
         )
+    if not is_online_uuid(normalized):
+        return PlayerMapProfileResponse(uuid=normalized, resolved=False)
 
     cached = await get_cached_player_by_uuid(db, normalized)
     if cached is not None and cached.avatar_data:

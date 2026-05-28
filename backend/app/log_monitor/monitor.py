@@ -184,10 +184,13 @@ class LogMonitor:
             match event:
                 case PlayerUuidDiscoveredEvent():
                     async with get_async_session() as session:
-                        await upsert_player(session, event.uuid, event.player_name)
-                    logger.info(
-                        f"Updated player UUID: {event.player_name} = {event.uuid}"
-                    )
+                        updated = await upsert_player(
+                            session, event.uuid, event.player_name
+                        )
+                    if updated:
+                        logger.info(
+                            f"Updated player UUID: {event.player_name} = {event.uuid}"
+                        )
                 case PlayerJoinedEvent():
                     await process_player_join(
                         event.server_id, event.player_name, event.timestamp

@@ -10,19 +10,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...logger import logger
 from ...models import Player
-from ..mojang_api import fetch_player_uuid_from_mojang
+from ..identity_resolver import normalize_online_uuid, resolve_player_by_name
 
 
-async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> None:
+async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> bool:
     """Upsert player record (insert or update name).
 
     Args:
         session: Database session
-        uuid: Player UUID (without dashes)
+        uuid: Online-mode player UUID
         player_name: Player name
     """
+    normalized_uuid = normalize_online_uuid(uuid)
+    if normalized_uuid is None:
+        logger.warning(f"Skipping player {player_name}: non-v4 UUID {uuid}")
+        return False
+
     stmt = insert(Player).values(
-        uuid=uuid,
+        uuid=normalized_uuid,
         current_name=player_name,
         created_at=datetime.now(timezone.utc),
     )
@@ -32,6 +37,7 @@ async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> N
     )
     await session.execute(stmt)
     await session.commit()
+    return True
 
 
 async def get_player_by_name(
@@ -54,7 +60,11 @@ async def get_player_by_name(
 
 async def get_player_by_uuid(session: AsyncSession, uuid: str) -> Optional[Player]:
     """Get player by dashless UUID."""
-    result = await session.execute(select(Player).where(Player.uuid == uuid))
+    normalized_uuid = normalize_online_uuid(uuid)
+    if normalized_uuid is None:
+        return None
+
+    result = await session.execute(select(Player).where(Player.uuid == normalized_uuid))
     return result.scalar_one_or_none()
 
 
@@ -69,43 +79,53 @@ async def get_all_player_names_with_ids(
     Returns:
         List of (player_name, player_db_id) tuples
     """
-    result = await session.execute(select(Player.current_name, Player.player_db_id))
-    return [(row[0], row[1]) for row in result.all()]
+    result = await session.execute(
+        select(Player.current_name, Player.player_db_id, Player.uuid)
+    )
+    return [
+        (row[0], row[1])
+        for row in result.all()
+        if normalize_online_uuid(row[2]) is not None
+    ]
 
 
 async def get_or_add_player_by_name(
     session: AsyncSession,
+    server_id: str,
     player_name: str,
 ) -> Optional[Player]:
-    """Get player by name, or add if not exists by fetching UUID from Mojang.
+    """Get player by name, or add if not exists by resolving an online UUID.
 
     Args:
         session: Database session
+        server_id: Server ID used to read usercache.json
         player_name: Player name
 
     Returns:
-        Player or None if player doesn't exist and couldn't be fetched from Mojang
+        Player or None if player doesn't exist and no online UUID is available
     """
-    # Check if player exists
     player = await get_player_by_name(session, player_name)
     if player:
+        if normalize_online_uuid(player.uuid) is None:
+            logger.warning(
+                f"Skipping player {player_name}: stored UUID is not online-mode"
+            )
+            return None
         return player
 
-    logger.info(f"Player {player_name} not found in database, fetching from Mojang API")
+    logger.info(f"Player {player_name} not found in database, resolving identity")
 
-    # Fetch UUID from Mojang (no database transaction during API call)
-    uuid = await fetch_player_uuid_from_mojang(player_name)
-    if not uuid:
-        logger.warning(f"Could not fetch UUID for player {player_name}")
+    identity = await resolve_player_by_name(server_id, player_name)
+    if identity is None:
+        logger.warning(f"Could not resolve online UUID for player {player_name}")
         return None
 
-    # Add new player
-    await upsert_player(session, uuid, player_name)
+    if not await upsert_player(session, identity.uuid, identity.name):
+        return None
 
-    logger.info(f"Added player {player_name} ({uuid}) to database")
+    logger.info(f"Added player {identity.name} ({identity.uuid}) to database")
 
-    # Fetch the newly created player
-    player = await get_player_by_name(session, player_name)
+    player = await get_player_by_uuid(session, identity.uuid)
 
     return player
 
@@ -162,12 +182,17 @@ async def upsert_player_profile(
     skin_data: Optional[bytes],
     avatar_data: Optional[bytes],
     timestamp: datetime,
-) -> Player:
+) -> Optional[Player]:
     """Upsert player identity and optional cached skin data."""
-    player = await get_player_by_uuid(session, uuid)
+    normalized_uuid = normalize_online_uuid(uuid)
+    if normalized_uuid is None:
+        logger.warning(f"Skipping player profile {player_name}: non-v4 UUID {uuid}")
+        return None
+
+    player = await get_player_by_uuid(session, normalized_uuid)
     if player is None:
         player = Player(
-            uuid=uuid,
+            uuid=normalized_uuid,
             current_name=player_name,
             skin_data=skin_data,
             avatar_data=avatar_data,
