@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -9,8 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import type { InitEvent } from '@/types/MapTypes'
-import { getApiBaseUrl } from '@/utils/api'
-import { useTokenStore } from '@/stores/useTokenStore'
+import { readEventStream } from '@/utils/eventStream'
 
 interface MapInitDialogProps {
   open: boolean
@@ -44,7 +43,6 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   const [client, setClient] = useState<StageState>(initialStage)
   const [palette, setPalette] = useState<StageState>(initialStage)
   const [errored, setErrored] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
 
   const applyEvent = (event: InitEvent) => {
     if (event.stage === 'client') {
@@ -71,75 +69,34 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
     setErrored(null)
 
     const ctrl = new AbortController()
-    abortRef.current = ctrl
+    let completed = false
 
-    ;(async () => {
-      try {
-        const token = useTokenStore.getState().token
-        const query = force ? '?force=true' : ''
-        const res = await fetch(
-          `${getApiBaseUrl()}/servers/${serverId}/map/initialize${query}`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: token ? `Bearer ${token}` : '',
-              Accept: 'text/event-stream',
-            },
-            signal: ctrl.signal,
-          }
-        )
-        if (!res.ok || !res.body) {
-          throw new Error(`HTTP ${res.status}`)
+    void readEventStream<InitEvent>({
+      url: `/servers/${serverId}/map/initialize${force ? '?force=true' : ''}`,
+      method: 'POST',
+      signal: ctrl.signal,
+      onEvent: (event) => {
+        applyEvent(event)
+        if (event.stage === 'complete') {
+          completed = true
         }
-
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let completed = false
-
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          let idx: number
-          while ((idx = buffer.indexOf('\n\n')) !== -1) {
-            const block = buffer.slice(0, idx)
-            buffer = buffer.slice(idx + 2)
-            const dataLines = block
-              .split('\n')
-              .filter((l) => l.startsWith('data:'))
-              .map((l) => l.slice(5).trim())
-            if (dataLines.length === 0) continue
-            const payload = dataLines.join('\n')
-            let event: InitEvent
-            try {
-              event = JSON.parse(payload)
-            } catch {
-              continue
-            }
-            applyEvent(event)
-            if (event.stage === 'complete') {
-              completed = true
-            }
-            if (event.phase === 'error') {
-              setErrored(event.message ?? '未知错误')
-              return
-            }
-          }
+        if (event.phase === 'error') {
+          setErrored(event.message ?? '未知错误')
+          ctrl.abort()
         }
-        if (completed) {
-          toast.success('地图初始化完成')
-          onComplete()
-        }
-      } catch (e) {
-        if ((e as { name?: string })?.name === 'AbortError') return
-        setErrored((e as Error).message)
-      }
-    })()
+      },
+      onClose: () => {
+        if (!completed) return
+        toast.success('地图初始化完成')
+        onComplete()
+      },
+      onError: (message) => {
+        setErrored(message)
+      },
+    })
 
     return () => {
       ctrl.abort()
-      abortRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId, force])
