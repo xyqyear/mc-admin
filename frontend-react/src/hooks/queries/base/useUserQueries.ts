@@ -8,7 +8,7 @@ export const useCurrentUser = () => {
     queryFn: userApi.getCurrentUser,
     staleTime: 5 * 60 * 1000,
     retry: (failureCount, error: any) => {
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
+      if (error?.status === 401 || error?.status === 403) {
         return false;
       }
       return failureCount < 3;
@@ -22,7 +22,7 @@ export const useAllUsers = () => {
     queryFn: userApi.getAllUsers,
     staleTime: 2 * 60 * 1000,
     retry: (failureCount, error: any) => {
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
+      if (error?.status === 401 || error?.status === 403) {
         return false;
       }
       return failureCount < 3;

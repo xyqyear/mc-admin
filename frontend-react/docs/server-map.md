@@ -1,6 +1,6 @@
 # Server Map
 
-The server map is an embedded Leaflet component, not a standalone page. It's used by the world-restore page (chunk/region selection) and by the world-restore preview modal (read-only). The backend renders tile PNGs on demand; the frontend's job is to display them, run the selection gestures, and aggressively cancel work that's no longer needed.
+The server map is an embedded Leaflet component, not a standalone page. It's used by the world-restore page (chunk/region selection) and by the world-restore preview modal (read-only). The backend renders tile PNGs on demand; the frontend's job is to display them, run the selection gestures, and let Leaflet/browser tile lifecycle handle image loading and cache eviction.
 
 ## Why Leaflet with `CRS.Simple`
 
@@ -51,25 +51,16 @@ Mode-switch math (chunk → region) runs through these so both modes always agre
 
 ## `ServerMapTileLayer`
 
-`components/map/ServerMapTileLayer.ts` is a custom `L.GridLayer` rather than a stock `L.TileLayer`. The reasons:
+`components/map/ServerMapTileLayer.ts` extends the shared `ServerTileLayer`, a native Leaflet `L.TileLayer` wrapper. The reasons:
 
-- **Authed fetches.** Tile URLs require the JWT, which lives in `useTokenStore`. Routing through the project's `axios` instance picks up the auth interceptor automatically; a stock `<img>` tag bypasses Axios.
-- **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and serves a blank tile for anything outside the set, skipping a round trip.
-- **Cancellation and tile resource cleanup on unload.** When Leaflet calls `_removeTile` (zoom, pan, viewport change), the layer aborts the in-flight `AbortController`, revokes any pending blob URL, and clears the image source. Axios cancels, FastAPI raises `CancelledError`, the backend queue drops the consumer, and if it was the last one, the mcmap subprocess gets SIGTERM. End-to-end cancellation lets the backend reclaim render capacity instantly.
+- **Cookie-backed image requests.** Tile URLs are normal same-origin `/api/...png` image URLs, so the browser sends the HttpOnly session cookie and can use its native image cache.
+- **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and returns a blank data URL for anything outside the set, skipping a round trip.
+- **Cache-stable URLs.** The layer appends the MCA mtime as `?mt=` for map tiles, so browser cache entries survive panning and zooming but bust when a region file changes.
 
-## Cancellation cascade
+## Tile caching
 
-```
-leaflet _removeTile
-  → AbortController.abort()
-  → axios cancels
-  → backend FastAPI handler raises CancelledError
-  → ServerRenderQueue refcount drop
-  → if last consumer for the running batch: SIGTERM mcmap subprocess
-```
-
-This is load-bearing. Without it, browsing across a world would stack render jobs faster than they could complete.
+Leaflet creates normal `<img>` elements. When panning or zooming removes a tile, Leaflet drops the DOM node and the browser owns memory/cache eviction. Previously visible tiles can be reused from the HTTP image cache when the URL is unchanged.
 
 ## Init dialog
 
-`components/dialogs/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses a flow-local fetch + `\n\n` block parser so the dialog can own abort/close behavior. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.
+`components/dialogs/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses the shared `readEventStream` helper so abort, parsing, cookie auth, and CSRF handling match the rest of the app. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.

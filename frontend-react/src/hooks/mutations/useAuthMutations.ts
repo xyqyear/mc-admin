@@ -1,19 +1,19 @@
 import { authApi, type LoginRequest } from "@/hooks/api/authApi";
-import { useTokenStore } from "@/stores/useTokenStore";
 import type { ApiError } from "@/utils/api";
-import { useMutation } from "@tanstack/react-query";
+import { queryKeys } from "@/utils/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 export const useAuthMutations = () => {
-  const { setToken } = useTokenStore();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const useLogin = () => {
     return useMutation({
       mutationFn: (credentials: LoginRequest) => authApi.login(credentials),
       onSuccess: (data) => {
-        setToken(data.access_token);
+        queryClient.setQueryData(queryKeys.user.me(), data.user);
         toast.success("登录成功");
         navigate("/");
       },

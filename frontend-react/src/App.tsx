@@ -1,12 +1,14 @@
-import React, { ErrorInfo, Suspense } from 'react'
+import React, { ErrorInfo, Suspense, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ErrorBoundary } from 'react-error-boundary'
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { ErrorFallback } from '@/components/layout/ErrorFallback'
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
 import { MainLayout } from '@/components/layout/MainLayout'
 import VersionUpdateDialog from '@/components/VersionUpdateDialog'
+import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
 import { useVersionCheck } from '@/hooks/useVersionCheck'
-import { useTokenStore } from '@/stores/useTokenStore'
+import { AUTH_EXPIRED_EVENT } from '@/utils/api'
 import { toast } from 'sonner'
 
 const Login = React.lazy(() => import('@/pages/Login'))
@@ -32,9 +34,13 @@ const DefaultVariables = React.lazy(() => import('@/pages/templates/DefaultVaria
 
 
 function ProtectedRoutes() {
-  const token = useTokenStore((state) => state.token)
+  const currentUserQuery = useCurrentUser()
 
-  if (!token) {
+  if (currentUserQuery.isLoading) {
+    return <LoadingSpinner fullscreen />
+  }
+
+  if (!currentUserQuery.data) {
     return <Navigate to="/login" replace />
   }
 
@@ -48,9 +54,13 @@ function ProtectedRoutes() {
 }
 
 function AuthRoutes() {
-  const token = useTokenStore((state) => state.token)
+  const currentUserQuery = useCurrentUser()
 
-  if (token) {
+  if (currentUserQuery.isLoading) {
+    return <LoadingSpinner fullscreen />
+  }
+
+  if (currentUserQuery.data) {
     return <Navigate to="/" replace />
   }
 
@@ -58,7 +68,20 @@ function AuthRoutes() {
 }
 
 function App() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { shouldShowDialog, fromVersion, toVersion, handleClose, handleRemindLater } = useVersionCheck()
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      queryClient.clear()
+      navigate('/login', { replace: true })
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+    }
+  }, [navigate, queryClient])
 
   const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     console.error('Application error:', error, errorInfo)

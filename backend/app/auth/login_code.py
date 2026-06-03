@@ -1,20 +1,33 @@
 import asyncio
 import random
+import secrets
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..db.crud.user import get_user_by_username
-from ..dependencies import JwtClaims
 from ..logger import logger
-from .jwt_utils import create_access_token, get_token_expiry
+from ..models import UserPublic
+from .session import user_to_public
+
+
+@dataclass(frozen=True)
+class LoginCompletion:
+    user: UserPublic
+    expires_at: datetime
 
 
 class LoginCodeManager:
     def __init__(self):
         self.websocket_code_map: dict[WebSocket, str] = {}
+        self.completion_tickets: dict[str, LoginCompletion] = {}
 
     def generate_code(self):
         return "".join(random.choices("0123456789", k=8))
+
+    def generate_ticket(self):
+        return secrets.token_urlsafe(32)
 
     async def manage_websocket(self, websocket: WebSocket):
         await websocket.accept()
@@ -55,7 +68,14 @@ class LoginCodeManager:
                 return websocket
         return None
 
+    def _remove_expired_tickets(self) -> None:
+        now = datetime.now(timezone.utc)
+        for ticket, completion in list(self.completion_tickets.items()):
+            if completion.expires_at <= now:
+                self.completion_tickets.pop(ticket, None)
+
     async def verify_user_with_code(self, session, username: str, code: str):
+        self._remove_expired_tickets()
         user = await get_user_by_username(session, username=username)
         if user is None:
             return False
@@ -63,27 +83,32 @@ class LoginCodeManager:
         if websocket is None:
             return False
 
-        if user.id is None:
+        try:
+            public_user = user_to_public(user)
+        except ValueError:
             return False
 
-        jwt_claims = JwtClaims(
-            sub=user.username,
-            user_id=user.id,
-            username=user.username,
-            role=user.role.value,
-            created_at=user.created_at.isoformat(),
-            exp=get_token_expiry(),
+        ticket = self.generate_ticket()
+        self.completion_tickets[ticket] = LoginCompletion(
+            user=public_user,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
-        access_token = create_access_token(jwt_claims)
         try:
-            await websocket.send_json(
-                {"type": "verified", "access_token": access_token}
-            )
+            await websocket.send_json({"type": "verified", "ticket": ticket})
         except WebSocketDisconnect:
             self.websocket_code_map.pop(websocket, None)
+            self.completion_tickets.pop(ticket, None)
             return False
 
+        self.websocket_code_map.pop(websocket, None)
         return True
+
+    def complete_login(self, ticket: str) -> UserPublic | None:
+        self._remove_expired_tickets()
+        completion = self.completion_tickets.pop(ticket, None)
+        if completion is None:
+            return None
+        return completion.user
 
 
 loginCodeManager = LoginCodeManager()

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
 
+from .auth.session import CSRFMiddleware
 from .audit import OperationAuditMiddleware
 from .config import settings
 from .cron import cron_manager
@@ -109,6 +110,7 @@ api_app = FastAPI(root_path="/api")
 
 # Middlewares execute in reverse-added order, so audit runs first.
 api_app.add_middleware(OperationAuditMiddleware)
+api_app.add_middleware(CSRFMiddleware)
 
 api_app.add_middleware(
     CORSMiddleware,

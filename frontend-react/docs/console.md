@@ -44,7 +44,7 @@ Connection states: `DISCONNECTED → CONNECTING → CONNECTED | ERROR`.
 
 **Reconnection**: exponential backoff `[1, 2, 4, 8, 16] s`, max 5 retries. Triggered on unexpected close; not triggered on user-initiated close. The retry timer is cleared on cleanup so navigating away cancels pending reconnects.
 
-**Auth**: JWT goes as `?token=` in the URL because browsers can't set custom headers on WebSocket connect. Cols/rows are also URL params so the backend can size the docker attach properly on first byte.
+**Auth**: the browser sends the HttpOnly session cookie during the WebSocket handshake. Cols/rows are URL params so the backend can size the docker attach properly on first byte.
 
 ## Lifecycle
 

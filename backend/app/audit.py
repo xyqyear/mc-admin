@@ -13,8 +13,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from .auth.session import TokenValidationError, get_user_from_request
 from .config import settings
-from .dependencies import get_current_user
 
 
 class OperationAuditMiddleware(BaseHTTPMiddleware):
@@ -74,14 +74,9 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         return masked_data
 
     async def _get_user_info(self, request: Request) -> Optional[Dict[str, Any]]:
-        auth_header = request.headers.get("authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            return None
-        token = auth_header.split(" ")[1]
-
         try:
-            user = get_current_user(token)
-        except Exception:
+            user = get_user_from_request(request)
+        except TokenValidationError:
             return None
 
         return {

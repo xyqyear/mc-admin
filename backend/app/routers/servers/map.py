@@ -363,7 +363,6 @@ async def _png_response(png: Path) -> FileResponse:
         media_type="image/png",
         headers={
             "Cache-Control": "private, max-age=31536000",
-            "Vary": "Authorization",
             "ETag": f'"{int(st.st_mtime)}"',
         },
     )

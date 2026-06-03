@@ -1,4 +1,3 @@
-import { useTokenStore } from "@/stores/useTokenStore";
 import { getApiBaseUrl } from "@/utils/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -36,8 +35,6 @@ export const useServerConsoleWebSocket = (
   serverId: string,
   canConnect: boolean = true,
 ): UseServerConsoleWebSocketReturn => {
-  const { token } = useTokenStore();
-
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
@@ -57,11 +54,11 @@ export const useServerConsoleWebSocket = (
 
   const buildWebSocketUrl = useCallback(
     (cols: number, rows: number) => {
-      if (!serverId || !token) return null;
+      if (!serverId) return null;
       const baseUrl = getApiBaseUrl(true);
-      return `${baseUrl}/servers/${serverId}/console?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
+      return `${baseUrl}/servers/${serverId}/console?cols=${cols}&rows=${rows}`;
     },
-    [serverId, token],
+    [serverId],
   );
 
   const disconnect = useCallback(() => {
@@ -128,7 +125,7 @@ export const useServerConsoleWebSocket = (
         disconnect();
       }
 
-      if (!token || !serverId) {
+      if (!serverId) {
         return;
       }
 
@@ -193,7 +190,7 @@ export const useServerConsoleWebSocket = (
         setLastError("Failed to create WebSocket connection");
       }
     },
-    [token, serverId, buildWebSocketUrl, handleWebSocketMessage, disconnect],
+    [serverId, buildWebSocketUrl, handleWebSocketMessage, disconnect],
   );
 
   const scheduleReconnect = useCallback(() => {

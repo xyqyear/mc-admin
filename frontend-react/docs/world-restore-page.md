@@ -133,7 +133,7 @@ FTB claims and player locations share `ServerMap`'s generic overlay hook (`overl
 
 ## SSE consumer
 
-All three world-restore flows — `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback` — go through `hooks/useEventStream.ts`. It handles fetch + `AbortController` + `\n\n` block parsing, injects the JWT from `useTokenStore`, and fingerprints the body via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
+All three world-restore flows — `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback` — go through `hooks/useEventStream.ts`. It handles fetch + `AbortController` + `\n\n` block parsing, same-origin cookies, CSRF header injection, and body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
 
 ## Routing
 

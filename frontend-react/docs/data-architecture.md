@@ -13,8 +13,9 @@ Raw Axios. Per-domain modules: `serverApi`, `playerApi`, `snapshotApi`, `archive
 The shared Axios instance lives in `utils/api.ts`:
 
 - 60s timeout, JSON content-type
-- Request interceptor: injects `Authorization: Bearer ${useTokenStore.getState().token}` if a token exists
-- Response interceptor: extracts `detail` / `message` from backend errors into a normalized `ApiError`; on 401, clears the token
+- Sends same-origin cookies (`withCredentials`) for the HttpOnly JWT session
+- Mirrors the readable CSRF cookie into `X-CSRF-Token` for unsafe requests
+- Response interceptor: extracts `detail` / `message` from backend errors into a normalized `ApiError`; on authenticated-route 401s, broadcasts an auth-expired event so the app clears cached server state and returns to login
 
 No caching at this layer. No React.
 

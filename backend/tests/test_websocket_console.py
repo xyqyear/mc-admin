@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth.session import AUTH_COOKIE_NAME, create_session_token, get_system_user
 from app.main import api_app
 
 
@@ -110,7 +111,14 @@ def mock_instance():
 @pytest.fixture
 def client():
     """Create test client."""
-    return TestClient(api_app)
+    client = TestClient(api_app)
+    token, _ = create_session_token(get_system_user())
+    client.cookies.set(AUTH_COOKIE_NAME, token, path="/")
+    return client
+
+
+def console_url(server_id: str, cols: int = 80, rows: int = 24) -> str:
+    return f"/servers/{server_id}/console?cols={cols}&rows={rows}"
 
 
 class TestWebSocketConsole:
@@ -122,7 +130,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -130,14 +137,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Should receive initial logs
                 data = websocket.receive_json()
                 assert data["type"] in ["log", "info"]
@@ -149,22 +153,18 @@ class TestWebSocketConsole:
                         or "Loading properties" in data["content"]
                     )
 
-    def test_websocket_connection_invalid_token(self, client, mock_instance):
-        """Test WebSocket connection with invalid token."""
+    def test_websocket_connection_invalid_cookie(self, client, mock_instance):
+        """Test WebSocket connection with invalid session cookie."""
         server_id, instance = mock_instance
+        client.cookies.set(AUTH_COOKIE_NAME, "invalid_session", path="/")
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
-            # This should fail due to invalid token
             with pytest.raises(Exception):
-                with client.websocket_connect(
-                    f"/servers/{server_id}/console?token=invalid_token&cols=80&rows=24"
-                ) as websocket:
+                with client.websocket_connect(console_url(server_id)) as websocket:
                     websocket.receive_json()
 
     def test_websocket_server_not_found(self, client, mock_instance):
@@ -174,14 +174,10 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Should receive error message
                 data = websocket.receive_json()
                 assert data["type"] == "error"
@@ -197,14 +193,10 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Should receive error message about server not running
                 data = websocket.receive_json()
                 assert data["type"] == "error"
@@ -219,7 +211,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -227,14 +218,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -256,7 +244,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -264,14 +251,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -291,7 +275,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -299,14 +282,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -318,11 +298,11 @@ class TestWebSocketConsole:
                 # Connection should remain stable (no error response expected)
                 # The test passes if no exception is raised
 
-    def test_websocket_no_token(self, client, mock_instance):
-        """Test WebSocket connection without authentication token."""
+    def test_websocket_no_session(self, client, mock_instance):
+        """Test WebSocket connection without authentication cookie."""
         server_id, _ = mock_instance
+        client.cookies.clear()
 
-        # Should fail when no token is provided (missing required params)
         with pytest.raises(Exception):
             with client.websocket_connect(
                 f"/servers/{server_id}/console?cols=80&rows=24"
@@ -336,7 +316,7 @@ class TestWebSocketConsole:
         # Should fail when cols/rows are missing
         with pytest.raises(Exception):
             with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token"
+                f"/servers/{server_id}/console"
             ) as websocket:
                 websocket.receive_json()
 
@@ -346,7 +326,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -354,14 +333,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # 1. Receive initial logs first
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -377,7 +353,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -385,14 +360,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -409,7 +381,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -417,14 +388,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -443,7 +411,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -451,14 +418,11 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Receive initial logs
                 initial_data = websocket.receive_json()
                 assert initial_data["type"] in ["log", "info"]
@@ -477,7 +441,6 @@ class TestWebSocketConsole:
 
         with (
             patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
-            patch("app.dependencies.settings") as mock_settings,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -485,15 +448,12 @@ class TestWebSocketConsole:
             ),
         ):
             mock_manager.get_instance.return_value = instance
-            mock_settings.master_token = "test_master_token"
 
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client.logs_content = ""  # Empty logs
             mock_docker_client_class.return_value = mock_docker_client
 
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?token=test_master_token&cols=80&rows=24"
-            ) as websocket:
+            with client.websocket_connect(console_url(server_id)) as websocket:
                 # Should receive info message about no logs
                 data = websocket.receive_json()
                 assert data["type"] == "info"

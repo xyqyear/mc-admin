@@ -55,7 +55,7 @@ import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
-import { useTokenStore } from '@/stores/useTokenStore'
+import { authApi } from '@/hooks/api/authApi'
 import { UserRole } from '@/types/User'
 import ServerMenuIcon from '@/components/layout/ServerMenuIcon'
 import DebugTool from '@/components/debug/DebugTool'
@@ -68,7 +68,6 @@ const AppSidebar: React.FC = () => {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { openKeys, setOpenKeys, updateForNavigation } = useSidebarStore()
-  const { clearToken } = useTokenStore()
   const { toggleSidebar, state: sidebarState } = useSidebar()
   const { theme, setTheme } = useTheme()
   const isDark = theme !== 'light'
@@ -85,8 +84,8 @@ const AppSidebar: React.FC = () => {
     updateForNavigation(location.pathname)
   }, [location.pathname, updateForNavigation])
 
-  const handleLogout = () => {
-    clearToken()
+  const handleLogout = async () => {
+    await authApi.logout().catch(() => undefined)
     queryClient.clear()
     navigate('/login')
   }

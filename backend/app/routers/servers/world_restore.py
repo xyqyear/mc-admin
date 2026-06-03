@@ -460,7 +460,6 @@ async def get_preview_tile(
         media_type="image/png",
         headers={
             "Cache-Control": "private, max-age=60",
-            "Vary": "Authorization",
         },
     )
 

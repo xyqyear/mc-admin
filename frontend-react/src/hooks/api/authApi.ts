@@ -1,4 +1,5 @@
 import { api } from "@/utils/api";
+import type { User } from "@/types/User";
 
 interface LoginRequest {
   username: string;
@@ -6,8 +7,11 @@ interface LoginRequest {
 }
 
 interface LoginResponse {
-  access_token: string;
-  token_type: "bearer";
+  user: User;
+}
+
+interface CompleteCodeLoginRequest {
+  ticket: string;
 }
 
 export const authApi = {
@@ -25,6 +29,17 @@ export const authApi = {
 
     return response.data;
   },
+
+  completeCodeLogin: async (
+    request: CompleteCodeLoginRequest,
+  ): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>("/auth/code/complete", request);
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post("/auth/logout");
+  },
 };
 
-export type { LoginRequest, LoginResponse };
+export type { CompleteCodeLoginRequest, LoginRequest, LoginResponse };

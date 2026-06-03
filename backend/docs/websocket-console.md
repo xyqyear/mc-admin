@@ -8,7 +8,7 @@ Reading `docker logs` and writing to a side channel was the old approach. It has
 
 ## Connection lifecycle
 
-Frontend opens a WebSocket at `/api/servers/{server_id}/console?token=<jwt>&cols=<c>&rows=<r>`. The handler:
+Frontend opens a WebSocket at `/api/servers/{server_id}/console?cols=<c>&rows=<r>`. The browser sends the session cookie during the WebSocket handshake. The handler:
 
 1. Accepts the WebSocket.
 2. Resolves the `MCInstance`. If the server doesn't exist or isn't running, sends an error message and closes.
@@ -40,7 +40,7 @@ Before the live stream starts, the handler fetches `docker.logs(container_id, ta
 
 ## Auth
 
-The JWT is passed as a `?token=` query param because browsers can't set custom headers on WebSocket connect. The handler reads it, validates against `auth.jwt_utils`, and rejects on failure.
+The handler authenticates the WebSocket from the HttpOnly session cookie and validates the `Origin` header against the current host (with localhost dev origins allowed). Token query params are not accepted.
 
 ## No backend reconnection
 

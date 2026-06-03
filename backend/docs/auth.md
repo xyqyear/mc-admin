@@ -1,27 +1,39 @@
 # Authentication (`app.auth`)
 
-JWT-based authentication with two login paths and a master-token fallback. The two paths exist because browser-only and headless flows have different ergonomics — the WebSocket-code flow lets a phone with the master token authenticate a freshly-opened browser without typing a password.
+Browser authentication uses a JWT stored in an HttpOnly cookie, paired with a readable CSRF cookie. The master token remains a header-only operational credential for non-browser/system flows such as verifying a WebSocket login code.
 
-## JWT
+## Session JWT
 
-`auth/jwt_utils.py`:
+`auth/jwt_utils.py` handles signing and password hashing:
 
 - **Signing**: HS256 via `joserfc` with `OctKey(settings.jwt.secret_key)`.
-- **Hashing**: Argon2 via `pwdlib` (modern default; replaced bcrypt without compat issues since stored hashes are versioned).
+- **Hashing**: Argon2 via `pwdlib`.
 - **Expiry**: `settings.jwt.access_token_expire_minutes` (default 30 days).
-- **Claims**: standard `sub`, `exp`, plus `username` and `role` so request handlers don't need a DB hit on every request.
 
-`get_current_user` (in `app.dependencies`) is the FastAPI dependency that decodes the bearer token, validates expiry, and returns a `UserPublic`. `RequireRole(UserRole.OWNER)` is the role guard.
+`auth/session.py` defines the browser session contract:
 
-## Password login
+- `mc_admin_session` — HttpOnly JWT cookie scoped to `/api`
+- `mc_admin_csrf` — readable CSRF cookie scoped to `/`
+- `X-CSRF-Token` — required header for unsafe cookie-authenticated requests
+- Claims include `sub`, `user_id`, `username`, `role`, `created_at`, `csrf`, and `exp`.
 
-Standard OAuth2 password flow at `POST /api/auth/token`. Returns `{access_token, token_type}`.
+`get_current_user` (in `app.dependencies`) reads the session cookie, validates the JWT, and returns a `UserPublic`. It also accepts `Authorization: Bearer <master_token>` for operational calls. `RequireRole(UserRole.OWNER)` is the role guard.
 
-## Master token
+## Password Login
 
-`settings.master_token` is a long secret stored in `config.toml`. It bypasses the normal user check — used for the WebSocket-code verify flow and for system operations triggered outside a browser session. Treat it like a root password.
+`POST /api/auth/token` accepts the OAuth2 password form fields and sets both auth cookies on success. The response body is `{user}` so the frontend can seed its `GET /api/user/me` query cache without receiving the JWT.
 
-## WebSocket-code login
+`POST /api/auth/logout` clears both cookies.
+
+## CSRF
+
+`CSRFMiddleware` checks unsafe methods when a session cookie is present. The CSRF header must match both the readable CSRF cookie and the CSRF claim in the JWT. Login, logout, code-login completion, and master-token calls are exempt.
+
+## Master Token
+
+`settings.master_token` is a long secret stored in `config.toml`. It bypasses the normal browser session check when sent as `Authorization: Bearer <master_token>`. Treat it like a root password.
+
+## WebSocket-Code Login
 
 Designed for "I'm sitting at a new browser, I don't want to type my password — let me confirm from my phone".
 
@@ -29,12 +41,12 @@ Designed for "I'm sitting at a new browser, I don't want to type my password —
 
 1. Browser opens a WebSocket to `/api/auth/code`.
 2. Backend generates an 8-digit numeric code, stores it against the WebSocket id, sends `{"type": "code", "code": "...", "timeout": 60}`.
-3. Browser shows the code (and a QR code that links to the verify page).
-4. On a second device, the user opens the verify page, types or scans the code, and submits with the master token.
-5. `POST /api/auth/verifyCode` looks up the code, finds the WebSocket, mints a JWT for the requesting username, sends `{"type": "verified", "access_token": "..."}` back through the WebSocket and closes it.
-6. The browser receives the token and stores it in `useTokenStore`.
+3. Browser shows the code.
+4. On a second device, the user submits the code through `POST /api/auth/verifyCode` using the master token.
+5. The backend validates the user and code, creates a short-lived one-time ticket, and sends `{"type": "verified", "ticket": "..."}` through the waiting WebSocket.
+6. The browser calls `POST /api/auth/code/complete` with the ticket; that HTTP response sets the HttpOnly session cookie and returns `{user}`.
 
-Codes rotate every 60 s if not consumed (`rotate_code_loop`). Old codes immediately become unverifiable.
+Codes rotate every 60 s if not consumed (`rotate_code_loop`). Completion tickets expire after 5 minutes and are single-use.
 
 ## Roles
 
@@ -42,5 +54,6 @@ Codes rotate every 60 s if not consumed (`rotate_code_loop`). Old codes immediat
 
 ## Files
 
-- `jwt_utils.py` — JWT mint/decode + password hashing
+- `jwt_utils.py` — JWT minting + password hashing
+- `session.py` — cookie/session helpers, CSRF middleware, auth extraction
 - `login_code.py` — `LoginCodeManager` (WebSocket code flow)

@@ -12,7 +12,7 @@ For each matched request:
 
 - `timestamp` (UTC, ISO-8601)
 - `method`, `path`, `status_code`, `processing_time_ms`
-- User context: `user_id`, `username`, `role` — extracted from the JWT bearer if present
+- User context: `user_id`, `username`, `role` — extracted from the session cookie or master-token header if present
 - `client_ip` — `X-Forwarded-For` or `X-Real-IP` if set, otherwise the socket peer
 - `request_body` — JSON-decoded if the body is `application/json` and within `max_body_size`. Larger payloads are skipped (logged as `null`) to avoid blowing up the log file.
 

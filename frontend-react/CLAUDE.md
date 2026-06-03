@@ -48,9 +48,12 @@ shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific
 - **Confirmation dialogs**: `useConfirm` (in `hooks/useConfirm.tsx`). Accepts `title`, `description`, `confirmText`, `cancelText`, `variant`, `onConfirm` — **no `content` field**. For rich confirmations (diff previews etc.), use a state-driven `<Dialog>` instead.
 - Legacy Ant Design has been removed — no `antd`, `@ant-design/icons`, or `@rjsf/antd`.
 
+## Auth
+
+Browser auth is an HttpOnly JWT cookie plus a readable CSRF cookie. Route guards use `useCurrentUser()` (`GET /api/user/me`) as the session source of truth. Axios is configured in `utils/api.ts` with credentials and XSRF cookie/header names; fetch-based SSE adds the CSRF header manually.
+
 ## Stores (Zustand, persisted to localStorage)
 
-- `useTokenStore` — JWT
 - `useSidebarStore` — sidebar collapse state, `openKeys` for nested sections
 - `useLoginPreferenceStore` — user's preferred auth method
 - `useDownloadStore` — download tasks
@@ -60,7 +63,7 @@ shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific
 
 ## SSE consumer
 
-`utils/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, with auth injected from `useTokenStore`. `hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`, so pass stable bodies when stream restarts matter.
+`utils/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. `hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`, so pass stable bodies when stream restarts matter.
 
 ## Monaco editor
 
@@ -84,7 +87,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/monaco-editor.md` — worker setup, compose schema, SNBT custom language
 - `docs/version-updates.md` — manual changelog list, detection hook, snooze flow
 - `docs/server-lifecycle.md` — bundled create/remove round-trips, OWNER-only filesystem↔DB sync dialog, `types/lifecycle.ts`
-- `docs/server-map.md` — embedded Leaflet map, custom GridLayer for authed tiles, sparse manifest, cancellation cascade
+- `docs/server-map.md` — embedded Leaflet map, native Leaflet tile URLs, sparse manifest, browser image cache
 - `docs/world-restore-page.md` — URL-driven dim/mode, selection state, preview/restore/rollback flows, history drawer
 - `docs/ftb-claims-overlay.md` — always-on FTB claims overlay (when detected), polygon clustering, team/cluster side panel, popover-driven selection
 - `docs/player-locations-overlay.md` — saved player positions, per-UUID profile queries, online-state filtering, translucent Leaflet markers

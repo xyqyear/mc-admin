@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { AlertCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,7 +14,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { useAuthMutations } from '@/hooks/mutations/useAuthMutations'
 import { useCodeLoginWebsocket } from '@/hooks/useCodeLoginWebsocket'
 import { useLoginPreferenceStore } from '@/stores/useLoginPreferenceStore'
-import { useIsAuthenticated } from '@/stores/useTokenStore'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -25,8 +23,6 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>
 
 const Login = () => {
-  const navigate = useNavigate()
-  const isAuthenticated = useIsAuthenticated()
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
   const { useLogin } = useAuthMutations()
   const loginMutation = useLogin()
@@ -72,16 +68,6 @@ const Login = () => {
       disconnect()
     }
   }, [loginPreference, connect, disconnect])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/', { replace: true })
-    }
-  }, [isAuthenticated, navigate])
-
-  if (isAuthenticated) {
-    return null
-  }
 
   const progressValue = codeTimeout > 0
     ? Math.max(0, Math.min(100, (countdown / codeTimeout) * 100))

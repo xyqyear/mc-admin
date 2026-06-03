@@ -28,7 +28,7 @@ app/
 ├── dependencies.py        # DI for sessions, auth, role guards
 ├── audit.py               # operation audit middleware
 ├── archive/              # archive domain services: resumable uploads and SHA256 streaming
-├── auth/                  # JWT + WebSocket login codes
+├── auth/                  # JWT cookies, CSRF, WebSocket login codes
 ├── db/                    # async engine, startup migrations, CRUD modules
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
 ├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
@@ -103,7 +103,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/player-locations.md` — `app.player_locations`, saved positions, dim resolution, profile cache fallback
 - `docs/world-restore.md` — `app.world` scopes, locks, safety snapshots, preview sessions, crash recovery
 - `docs/websocket-console.md` — docker-py attach socket bridge, message protocol
-- `docs/auth.md` — JWT, password login, master token, WebSocket-code login flow
+- `docs/auth.md` — JWT cookies, CSRF, password login, master token, WebSocket-code login flow
 - `docs/audit.md` — middleware, sensitive-field masking, log rotation
 
 Add a `docs/<topic>.md` whenever a new system has design rationale (business logic, invariants, lifecycle ordering) that doesn't fit on one line in this file. Each doc is self-contained and reflects current state — no changelog, no "previously…" notes.

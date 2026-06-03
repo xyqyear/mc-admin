@@ -1,4 +1,3 @@
-import { useTokenStore } from "@/stores/useTokenStore";
 import axios, { AxiosError, AxiosResponse } from "axios";
 
 export interface ApiError {
@@ -13,6 +12,10 @@ export interface ApiResponse<T = any> {
   success: boolean;
 }
 
+export const AUTH_EXPIRED_EVENT = "mc-admin-auth-expired";
+export const CSRF_COOKIE_NAME = "mc_admin_csrf";
+export const CSRF_HEADER_NAME = "X-CSRF-Token";
+
 // When `ws` is true, swap http(s) for ws(s) so the same origin works for WebSocket URLs.
 export const getApiBaseUrl = (ws: boolean = false): string => {
   let baseUrl = window.location.origin + "/api"
@@ -26,49 +29,48 @@ export const getApiBaseUrl = (ws: boolean = false): string => {
   return baseUrl;
 };
 
+export const buildApiUrl = (input: string): string => {
+  if (/^https?:\/\//i.test(input)) return input;
+  const base = getApiBaseUrl();
+  return `${base}${input.startsWith("/") ? "" : "/"}${input}`;
+};
+
+export const getCookieValue = (name: string): string | null => {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const value = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  if (!value) return null;
+  return decodeURIComponent(value.slice(prefix.length));
+};
+
+export const getCsrfToken = (): string | null => getCookieValue(CSRF_COOKIE_NAME);
+
 export const api = axios.create({
   baseURL: getApiBaseUrl(),
   timeout: 60000,
+  withCredentials: true,
+  xsrfCookieName: CSRF_COOKIE_NAME,
+  xsrfHeaderName: CSRF_HEADER_NAME,
+  withXSRFToken: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
-
-const getAuthToken = () => {
-  try {
-    return useTokenStore.getState().token;
-  } catch (error) {
-    console.error("Failed to get auth token:", error);
-    return null;
-  }
-};
-
-api.interceptors.request.use(
-  (config) => {
-    const token = getAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error: AxiosError) => {
-    console.error("Request interceptor error:", error);
-    return Promise.reject(error);
-  }
-);
 
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     const status = error.response?.status;
 
-    if (status === 401) {
-      // Clear the token; the router-level auth wrapper handles the redirect.
-      try {
-        useTokenStore.getState().clearToken();
-      } catch (e) {
-        console.error("Failed to clear token:", e);
-      }
+    if (
+      status === 401 &&
+      typeof window !== "undefined" &&
+      !String(error.config?.url ?? "").startsWith("/auth/") &&
+      !String(error.config?.url ?? "").startsWith("/user/me")
+    ) {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
 
     const apiError: ApiError = {

@@ -1,5 +1,7 @@
-import { useTokenStore } from "@/stores/useTokenStore";
+import { authApi } from "@/hooks/api/authApi";
 import { getApiBaseUrl } from "@/utils/api";
+import { queryKeys } from "@/utils/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -12,7 +14,7 @@ interface CodeMessage {
 
 interface VerifiedMessage {
   type: "verified";
-  access_token: string;
+  ticket: string;
 }
 
 type ServerMessage = CodeMessage | VerifiedMessage;
@@ -33,7 +35,7 @@ export const useCodeLoginWebsocket = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { setToken } = useTokenStore();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const wsBaseUrl = getApiBaseUrl(true).replace(/\/$/, "");
@@ -83,10 +85,18 @@ export const useCodeLoginWebsocket = () => {
             setCodeTimeout(data.timeout);
             setCountdown(data.timeout);
           } else if (data.type === "verified") {
-            setToken(data.access_token);
-            toast.success("验证成功，正在跳转...");
-            disconnect();
-            navigate("/");
+            void authApi.completeCodeLogin({ ticket: data.ticket })
+              .then((result) => {
+                queryClient.setQueryData(queryKeys.user.me(), result.user);
+                toast.success("验证成功，正在跳转...");
+                disconnect();
+                navigate("/");
+              })
+              .catch((error) => {
+                console.error("Failed to complete code login:", error);
+                setError("验证失败，请重新获取验证码");
+                setStatus(ConnectionStatus.ERROR);
+              });
           }
         } catch (error) {
           console.error("Failed to parse WebSocket message:", error);
@@ -113,7 +123,7 @@ export const useCodeLoginWebsocket = () => {
       setError("无法建立连接");
       setStatus(ConnectionStatus.ERROR);
     }
-  }, [wsBaseUrl, setToken, navigate, disconnect]);
+  }, [wsBaseUrl, queryClient, navigate, disconnect]);
 
   useEffect(() => {
     if (status === ConnectionStatus.CONNECTED && countdown > 0) {

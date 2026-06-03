@@ -1,5 +1,4 @@
-import { useTokenStore } from '@/stores/useTokenStore'
-import { getApiBaseUrl } from '@/utils/api'
+import { buildApiUrl, CSRF_HEADER_NAME, getCsrfToken } from '@/utils/api'
 
 export interface EventStreamOptions<TEvent> {
   url: string
@@ -16,26 +15,28 @@ const PROTOCOL_RE = /^https?:\/\//i
 
 export const buildEventStreamUrl = (input: string): string => {
   if (PROTOCOL_RE.test(input)) return input
-  const base = getApiBaseUrl()
-  return `${base}${input.startsWith('/') ? '' : '/'}${input}`
+  return buildApiUrl(input)
 }
 
 export async function readEventStream<TEvent>(
   opts: EventStreamOptions<TEvent>,
 ): Promise<void> {
   try {
-    const token = useTokenStore.getState().token
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
     }
-    if (token) headers.Authorization = `Bearer ${token}`
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+    const csrfToken = getCsrfToken()
+    if (csrfToken && (opts.method ?? 'POST') !== 'GET') {
+      headers[CSRF_HEADER_NAME] = csrfToken
+    }
 
     const res = await fetch(buildEventStreamUrl(opts.url), {
       method: opts.method ?? 'POST',
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
+      credentials: 'same-origin',
     })
     opts.onResponse?.(res)
     if (!res.ok || !res.body) {

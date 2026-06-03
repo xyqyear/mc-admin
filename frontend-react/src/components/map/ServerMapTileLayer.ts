@@ -1,14 +1,14 @@
 import type L from 'leaflet'
 
-import { AuthedTileLayer, type AuthedTileLayerOptions } from './AuthedTileLayer'
+import { ServerTileLayer, type ServerTileLayerOptions } from './ServerTileLayer'
 
-interface ServerMapTileLayerOptions extends AuthedTileLayerOptions {
+interface ServerMapTileLayerOptions extends ServerTileLayerOptions {
   serverId: string
   regionPath: string
   regions: ReadonlyMap<string, number>
 }
 
-export class ServerMapTileLayer extends AuthedTileLayer {
+export class ServerMapTileLayer extends ServerTileLayer {
   private readonly serverId: string
   private readonly regionPath: string
   private readonly regions: ReadonlyMap<string, number>
@@ -20,7 +20,7 @@ export class ServerMapTileLayer extends AuthedTileLayer {
     this.regions = opts.regions
   }
 
-  protected buildUrl(coords: L.Coords): string {
+  protected buildPath(coords: L.Coords): string {
     return `/servers/${this.serverId}/map/tiles/${coords.x}/${coords.y}.png`
   }
 
