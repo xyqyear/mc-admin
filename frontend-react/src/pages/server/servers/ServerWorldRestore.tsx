@@ -477,6 +477,7 @@ const ServerWorldRestore: React.FC = () => {
     () => new Map(dimensionOptions.map((o) => [o.value, o.label])),
     [dimensionOptions],
   )
+  const dimensionSelectValue = dimensionRelpath ?? null
 
   if (!serverId) {
     return (
@@ -541,7 +542,8 @@ const ServerWorldRestore: React.FC = () => {
                   </>
                 )}
                 <Select
-                  value={dimensionRelpath ?? undefined}
+                  items={dimensionOptions}
+                  value={dimensionSelectValue}
                   onValueChange={(v) => {
                     if (typeof v === 'string') handleDimensionChange(v)
                   }}
