@@ -44,7 +44,7 @@ swaps in names and avatars when profile queries complete.
 
 Online players sort before offline players. Rows in the current dimension are
 fully opaque. Rows in other matched dimensions are dimmed but clickable;
-clicking switches the URL `?dim=` and pans after the new map render. Rows whose
+clicking switches the URL `#dim=` and pans after the new map render. Rows whose
 mcmap dimension cannot be resolved to a region directory stay visible as
 unmatched and are not clickable.
 

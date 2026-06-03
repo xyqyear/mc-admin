@@ -55,7 +55,7 @@ Mode-switch math (chunk → region) runs through these so both modes always agre
 
 - **Authed fetches.** Tile URLs require the JWT, which lives in `useTokenStore`. Routing through the project's `axios` instance picks up the auth interceptor automatically; a stock `<img>` tag bypasses Axios.
 - **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and serves a blank tile for anything outside the set, skipping a round trip.
-- **Cancellation on tile unload.** When Leaflet calls `_removeTile` (zoom, pan, viewport change), the layer aborts the in-flight `AbortController`. Axios cancels, FastAPI raises `CancelledError`, the backend queue drops the consumer, and if it was the last one, the mcmap subprocess gets SIGTERM. End-to-end cancellation lets the backend reclaim render capacity instantly.
+- **Cancellation and tile resource cleanup on unload.** When Leaflet calls `_removeTile` (zoom, pan, viewport change), the layer aborts the in-flight `AbortController`, revokes any pending blob URL, and clears the image source. Axios cancels, FastAPI raises `CancelledError`, the backend queue drops the consumer, and if it was the last one, the mcmap subprocess gets SIGTERM. End-to-end cancellation lets the backend reclaim render capacity instantly.
 
 ## Cancellation cascade
 

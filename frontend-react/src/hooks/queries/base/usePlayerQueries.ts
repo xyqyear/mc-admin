@@ -1,4 +1,9 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useCallback, useMemo } from 'react'
+import {
+  useQueries,
+  useQuery,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 import {
   playerApi,
   type PlayerCleanupKind,
@@ -11,6 +16,18 @@ function normalizeUuid(uuid: string | null | undefined): string | null {
   const normalized = uuid.replaceAll('-', '').toLowerCase()
   if (!/^[0-9a-f]{32}$/.test(normalized)) return null
   return normalized
+}
+
+function normalizeUuidList(
+  uuids: readonly (string | null | undefined)[]
+): string[] {
+  return Array.from(
+    new Set(
+      uuids
+        .map((uuid) => normalizeUuid(uuid))
+        .filter((uuid): uuid is string => !!uuid)
+    )
+  )
 }
 
 export const useAllPlayers = (params?: {
@@ -64,31 +81,41 @@ export const usePlayerMapProfiles = (
   uuids: readonly (string | null | undefined)[],
   enabled = true
 ) => {
-  const normalizedUuids = Array.from(
-    new Set(
-      uuids
-        .map((uuid) => normalizeUuid(uuid))
-        .filter((uuid): uuid is string => !!uuid)
-    )
+  const normalizedUuidKey = normalizeUuidList(uuids).join('\0')
+  const normalizedUuids = useMemo(
+    () => (normalizedUuidKey ? normalizedUuidKey.split('\0') : []),
+    [normalizedUuidKey]
   )
-  const results = useQueries({
-    queries: normalizedUuids.map((uuid) => ({
-      queryKey: queryKeys.players.mapProfileByUUID(uuid),
-      queryFn: () => playerApi.getPlayerMapProfile(uuid),
-      enabled,
-      staleTime: 10 * 60 * 1000,
-      retry: false
-    }))
+  const queries = useMemo(
+    () =>
+      normalizedUuids.map((uuid) => ({
+        queryKey: queryKeys.players.mapProfileByUUID(uuid),
+        queryFn: () => playerApi.getPlayerMapProfile(uuid),
+        enabled,
+        staleTime: 10 * 60 * 1000,
+        retry: false
+      })),
+    [enabled, normalizedUuids]
+  )
+  const combineProfiles = useCallback(
+    (results: UseQueryResult<PlayerMapProfileResponse>[]) => {
+      const profilesByUuid = new Map<string, PlayerMapProfileResponse>()
+      const pendingUuids = new Set<string>()
+      results.forEach((result, index) => {
+        const uuid = normalizedUuids[index]
+        if (!uuid) return
+        if (result.data) profilesByUuid.set(uuid, result.data)
+        if (result.isLoading || result.isFetching) pendingUuids.add(uuid)
+      })
+      return { results, profilesByUuid, pendingUuids }
+    },
+    [normalizedUuids]
+  )
+  const combined = useQueries({
+    queries,
+    combine: combineProfiles
   })
-  const profilesByUuid = new Map<string, PlayerMapProfileResponse>()
-  const pendingUuids = new Set<string>()
-  results.forEach((result, index) => {
-    const uuid = normalizedUuids[index]
-    if (!uuid) return
-    if (result.data) profilesByUuid.set(uuid, result.data)
-    if (result.isLoading || result.isFetching) pendingUuids.add(uuid)
-  })
-  return { uuids: normalizedUuids, results, profilesByUuid, pendingUuids }
+  return { uuids: normalizedUuids, ...combined }
 }
 
 export const useServerOnlinePlayers = (serverId: string) => {

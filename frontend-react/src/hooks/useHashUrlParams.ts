@@ -26,6 +26,14 @@ function readUrlParams(
   return params
 }
 
+function ownedParamsEqual(
+  keys: readonly string[],
+  a: URLSearchParams,
+  b: URLSearchParams,
+): boolean {
+  return keys.every((key) => a.get(key) === b.get(key))
+}
+
 function hasOwnedSearchParams(keys: readonly string[], search: string): boolean {
   const params = new URLSearchParams(search)
   return keys.some((key) => params.has(key))
@@ -65,7 +73,7 @@ function urlFromParams(
   return `${url.pathname}${url.search}${url.hash}`
 }
 
-function replaceHashParams(
+function replaceHashUrlParamsValue(
   keys: readonly string[],
   params: URLSearchParams,
 ): void {
@@ -95,8 +103,13 @@ export function useHashUrlParams(
 
   useEffect(() => {
     const syncFromUrl = () => {
-      setParams(
-        readUrlParams(keys, window.location.search, window.location.hash),
+      const next = readUrlParams(
+        keys,
+        window.location.search,
+        window.location.hash,
+      )
+      setParams((current) =>
+        ownedParamsEqual(keys, current, next) ? current : next,
       )
     }
     syncFromUrl()
@@ -113,7 +126,9 @@ export function useHashUrlParams(
       window.location.hash,
     )
     canonicalizeSearchParams(keys, next)
-    setParams(next)
+    setParams((current) =>
+      ownedParamsEqual(keys, current, next) ? current : next,
+    )
   }, [
     keys,
     location.pathname,
@@ -130,11 +145,26 @@ export function useHashUrlParams(
         window.location.hash,
       )
       update(next)
-      replaceHashParams(keys, next)
-      setParams(next)
+      replaceHashUrlParamsValue(keys, next)
+      setParams((current) =>
+        ownedParamsEqual(keys, current, next) ? current : next,
+      )
     },
     [keys],
   )
 
   return [params, replaceParams] as const
+}
+
+export function readHashUrlParams(keys: readonly string[]): URLSearchParams {
+  return readUrlParams(keys, window.location.search, window.location.hash)
+}
+
+export function replaceHashUrlParams(
+  keys: readonly string[],
+  update: HashUrlParamsUpdater,
+): void {
+  const next = readHashUrlParams(keys)
+  update(next)
+  replaceHashUrlParamsValue(keys, next)
 }

@@ -32,7 +32,12 @@ import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOve
 import { PlayerLocationList } from '@/components/world-restore/players/PlayerLocationList'
 import { usePlayersOverlay } from '@/components/world-restore/players/usePlayersOverlay'
 import { useConfirm } from '@/hooks/useConfirm'
-import { useHashUrlParams } from '@/hooks/useHashUrlParams'
+import {
+  readHashUrlParams,
+  replaceHashUrlParams,
+  useHashUrlParams,
+  type HashUrlParamsUpdater,
+} from '@/hooks/useHashUrlParams'
 import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
 import {
   usePlayerMapProfiles,
@@ -58,7 +63,17 @@ import { normalizePlayerUuid } from '@/components/world-restore/players/playerLo
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
 const EMPTY_SELECTION = new Set<ChunkKey>()
-const WORLD_RESTORE_URL_KEYS = ['dim', 'mode', 'z', 'cx', 'cz'] as const
+const WORLD_RESTORE_REACTIVE_URL_KEYS = ['dim', 'mode'] as const
+const WORLD_RESTORE_URL_KEYS = [
+  ...WORLD_RESTORE_REACTIVE_URL_KEYS,
+  'z',
+  'cx',
+  'cz',
+] as const
+
+function replaceWorldRestoreUrlParams(update: HashUrlParamsUpdater): void {
+  replaceHashUrlParams(WORLD_RESTORE_URL_KEYS, update)
+}
 
 function parseInitialView(params: URLSearchParams): ServerMapView | undefined {
   if (!params.has('z') && !params.has('cx') && !params.has('cz')) return undefined
@@ -75,12 +90,13 @@ function parseInitialView(params: URLSearchParams): ServerMapView | undefined {
 const ServerWorldRestore: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const serverId = id ?? ''
-  const [urlParams, replaceWorldRestoreUrlParams] =
-    useHashUrlParams(WORLD_RESTORE_URL_KEYS)
+  const [urlParams] = useHashUrlParams(WORLD_RESTORE_REACTIVE_URL_KEYS)
 
   const dimensionRelpath = urlParams.get('dim') ?? null
   const urlMode = urlParams.get('mode') === 'chunk' ? 'chunk' : 'region'
-  const [initialView] = useState(() => parseInitialView(urlParams))
+  const [initialView] = useState(() =>
+    parseInitialView(readHashUrlParams(WORLD_RESTORE_URL_KEYS)),
+  )
 
   const layoutQ = useWorldLayout(serverId)
   const labelsQ = useWorldDimensionLabels(serverId)
@@ -168,12 +184,7 @@ const ServerWorldRestore: React.FC = () => {
     replaceWorldRestoreUrlParams((params) => {
       params.set('dim', wantedRel)
     })
-  }, [
-    currentRoot,
-    currentDimension,
-    dimensionRelpath,
-    replaceWorldRestoreUrlParams,
-  ])
+  }, [currentRoot, currentDimension, dimensionRelpath])
 
   // The store wipes the selection when dim changes.
   useEffect(() => {
@@ -208,7 +219,7 @@ const ServerWorldRestore: React.FC = () => {
         params.set('cz', String(view.cz))
       })
     },
-    [replaceWorldRestoreUrlParams],
+    [],
   )
 
   const handleSelectionChange = useCallback(
@@ -225,7 +236,7 @@ const ServerWorldRestore: React.FC = () => {
         params.set('mode', next)
       })
     },
-    [replaceWorldRestoreUrlParams],
+    [],
   )
 
   const handleModeChange = useCallback(
@@ -258,7 +269,7 @@ const ServerWorldRestore: React.FC = () => {
         params.delete('cz')
       })
     },
-    [replaceWorldRestoreUrlParams],
+    [],
   )
 
   // --- FTB claims overlay ---

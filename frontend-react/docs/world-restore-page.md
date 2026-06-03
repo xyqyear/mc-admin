@@ -4,11 +4,15 @@
 
 ## URL is the source of truth
 
-The page state that survives reload — selected dimension, selection mode, map view — lives in the URL:
+The page state that survives reload — selected dimension, selection mode, map view — lives in hash params on the URL:
 
-- `?dim=<region_dir_relpath>` — which dimension's region folder is being inspected (e.g. `world/region`, `world/dimensions/minecraft/the_nether/region`)
-- `?mode=region|chunk` — region-level or chunk-level selection
-- `?z`, `?cx`, `?cz` — Leaflet zoom + center, kept in sync via `onViewChange`
+- `#dim=<region_dir_relpath>` — which dimension's region folder is being inspected (e.g. `world/region`, `world/dimensions/minecraft/the_nether/region`)
+- `#mode=region|chunk` — region-level or chunk-level selection
+- `#z`, `#cx`, `#cz` — Leaflet zoom + center, kept in sync via `onViewChange`
+
+`dim` and `mode` are reactive page state. The view params are read for the
+initial map view and then written back with replace-only, non-reactive hash
+updates so panning and zooming do not rebuild the page or its Leaflet overlays.
 
 The set of selected chunks is *not* in the URL — it's transient state in `useWorldRestoreSelectionStore`, deliberately cleared on reload (a chunk selection that survived might not match the current world layout).
 
@@ -19,7 +23,7 @@ The layout response remains path-only; the page translates each dimension's
 world-root-relative path through the label mapping and falls back to the raw
 path without a leading `dimensions/`.
 
-### Why `?dim` carries the relpath, not separate root + dim
+### Why `#dim` carries the relpath, not separate root + dim
 
 The world root's directory name is the first segment of `region_dir_relpath` (`world/region`, `world/dimensions/minecraft/the_nether/region`, …). That makes the relpath unique across all roots on a server, so the URL doesn't need a separate `?root=` parameter. Multi-world Bukkit/Paper setups stay unambiguous with one string.
 
