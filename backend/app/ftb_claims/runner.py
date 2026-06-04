@@ -8,7 +8,7 @@ import aiofiles.os as aioos
 
 from ..config import settings
 from ..logger import logger
-from ..mcmap.runner import MCMapProcess
+from ..mcmap.runner import MCMapProcess, MCMAP_STREAM_LIMIT_BYTES
 
 
 async def _chown_args_for(owned_by: Path) -> List[str]:
@@ -43,6 +43,7 @@ async def extract_ftb_claims(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=MCMAP_STREAM_LIMIT_BYTES,
     )
     wrapper = MCMapProcess(proc)
     try:

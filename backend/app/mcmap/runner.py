@@ -16,6 +16,7 @@ from .events import (
 )
 
 TERMINATE_GRACE_SECONDS = 2.0
+MCMAP_STREAM_LIMIT_BYTES = 16 * 1024 * 1024
 EventT = TypeVar("EventT")
 
 
@@ -92,6 +93,7 @@ async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
         *full_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=MCMAP_STREAM_LIMIT_BYTES,
     )
 
 
