@@ -63,9 +63,9 @@ class ServerMapCache:
             png_st = await aioos.stat(png)
         except FileNotFoundError:
             return "missing_png"
-        # mcmap stamps PNGs with their source MCA's mtime via `--preserve-mtime`;
-        # exact match means the tile is current.
-        if mca_st.st_mtime == png_st.st_mtime:
+        # Windows-mounted worlds can expose fractional MCA mtimes while mcmap
+        # writes PNG mtimes at second precision.
+        if int(mca_st.st_mtime) == int(png_st.st_mtime):
             return "fresh"
         return "stale"
 

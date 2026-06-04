@@ -61,7 +61,7 @@ async def test_is_fresh_zero_byte_mca_treated_as_missing():
 @pytest.mark.asyncio
 async def test_is_fresh_fresh_when_mtimes_match():
     """mcmap renders with `--preserve-mtime`, so a PNG that matches its
-    source MCA's mtime exactly is current."""
+    source MCA's mtime is current."""
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
         mca = cache.mca_path("world/region", 0, 0)
@@ -72,6 +72,21 @@ async def test_is_fresh_fresh_when_mtimes_match():
         png.write_bytes(b"")
         os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
         os.utime(mca, (1_700_000_000.0, 1_700_000_000.0))
+        assert await cache.is_fresh("world/region", 0, 0) == "fresh"
+
+
+@pytest.mark.asyncio
+async def test_is_fresh_compares_mtimes_at_second_precision():
+    with tempfile.TemporaryDirectory() as d:
+        cache = ServerMapCache(data_path=Path(d))
+        mca = cache.mca_path("world/region", 0, 0)
+        png = cache.png_path("world/region", 0, 0)
+        mca.parent.mkdir(parents=True)
+        png.parent.mkdir(parents=True)
+        mca.write_bytes(b"x")
+        png.write_bytes(b"")
+        os.utime(png, (1_700_000_000.0, 1_700_000_000.0))
+        os.utime(mca, (1_700_000_000.5, 1_700_000_000.5))
         assert await cache.is_fresh("world/region", 0, 0) == "fresh"
 
 
