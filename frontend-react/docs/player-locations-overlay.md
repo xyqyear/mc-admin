@@ -10,7 +10,7 @@ file positions, not live online positions.
 useWorldRestorePlayerLocations(serverId, mapInitialized)
         |
         v
-PlayerLocationsResponse.players[] --> usePlayerMapProfiles(uuids)
+PlayerLocationsResponse.players[] --> usePlayerMapProfiles(uuids) --> POST /players/profiles/stream
         |                                      |
         |                                      v
         +--------------> PlayerLocationList <-- PlayerMapProfileResponse
@@ -23,9 +23,11 @@ useServerOnlinePlayers(serverId) ---> normalized online UUID set
 ```
 
 Location extraction is one request for the server/world. Profile resolution is
-one TanStack Query request per normalized UUID, deduplicated by
-`usePlayerMapProfiles`. The list renders UUID/name fallbacks immediately and
-swaps in names and avatars when profile queries complete.
+one SSE request for the normalized UUID set, deduplicated by
+`usePlayerMapProfiles`. The stream emits cached profiles immediately, then
+fills in missing names and avatars as Mojang lookups complete. Each profile
+event also primes the matching TanStack Query cache entry keyed by normalized
+UUID.
 
 ## Sidebar
 

@@ -14,6 +14,10 @@ lookups.
 - `GET /players/uuid/{uuid}/profile` returns a lightweight map profile for one
   UUID. Dashed and dashless UUIDs are normalized to the dashless lowercase DB
   form. Syntactically valid non-v4 UUIDs return `resolved = false`.
+- `POST /players/profiles/stream` accepts `{ "uuids": [...] }` and streams SSE
+  events for bulk map-profile resolution. Cached rows are emitted first, then
+  uncached online UUIDs are resolved through Mojang with bounded network
+  concurrency.
 
 The location response includes:
 
@@ -43,13 +47,21 @@ Unknown or absent dimensions stay in the response with
 
 ## Profile Cache
 
-The profile endpoint first rejects non-v4 UUIDs with an unresolved response. It
-then reads the existing `Player` table by normalized UUID. A cached player with
-avatar data is returned immediately. Missing or incomplete cache entries call
-Mojang's session server for name and texture data, extract the 8x8 avatar from
-the skin image, and upsert the `Player` row.
+The single-profile endpoint first rejects non-v4 UUIDs with an unresolved
+response. It then reads the existing `Player` table by normalized UUID. A cached
+player with avatar data is returned immediately. Missing or incomplete cache
+entries call Mojang's session server for name and texture data, extract the 8x8
+avatar from the skin image, and upsert the `Player` row.
 
 Mojang 404, 429, timeout, malformed texture payloads, or skin download failures
 return a 200 response with either the cached DB identity or an unresolved
-profile. The frontend can therefore render locations first and let names and
-avatars appear as per-UUID TanStack Query calls complete.
+profile.
+
+The bulk stream uses the same normalization and cache semantics, but it performs
+one cache scan for the requested UUID set and opens short-lived database
+sessions only for cache reads and individual upserts. Mojang fetches run outside
+database sessions, with bounded concurrency, so a dimension containing hundreds
+of player files does not create hundreds of browser requests or hold SQLite
+transactions while network I/O is pending. The frontend can therefore render
+locations first and let names and avatars appear as streamed profile events
+arrive.

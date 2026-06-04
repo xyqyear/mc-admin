@@ -5,6 +5,7 @@ import type { PlayerLocationEntry } from '@/types/PlayerLocations'
 
 import {
   isPlayerOnline,
+  normalizedUuidOf,
   playerDisplayName,
   playerLocationKey,
 } from './playerLocationDisplay'
@@ -41,7 +42,8 @@ export function buildPlayerLocationsLayer({
     if (player.region_dir_relpath !== currentDimRelpath) continue
     const online = isPlayerOnline(player, onlinePlayerUuids)
     if (onlineOnly && !online) continue
-    const profile = player.uuid ? profilesByUuid.get(player.uuid) : undefined
+    const uuid = normalizedUuidOf(player)
+    const profile = uuid ? profilesByUuid.get(uuid) : undefined
     const label = playerDisplayName(player, profile)
     const status: PlayerOnlineStatus = onlineStatusAvailable
       ? online

@@ -1,16 +1,20 @@
 """Player information API endpoints."""
 
+import asyncio
 import base64
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...db.database import get_db
+from ...db.database import get_async_session, get_db
 from ...dependencies import get_current_user
+from ...logger import logger
 from ...models import UserPublic
 from ...player_locations import normalize_uuid
 from ...players.crud import (
@@ -21,6 +25,7 @@ from ...players.crud import (
     get_player_by_db_id,
     get_player_by_uuid as get_cached_player_by_uuid,
     get_player_cleanup_preview,
+    get_players_by_uuids,
     upsert_player_profile,
 )
 from ...players.crud.query.player_query import (
@@ -32,8 +37,10 @@ from ...players.crud.query.player_query import (
 from ...players.identity_resolver import is_online_uuid
 from ...players.skin_fetcher import skin_fetcher
 from ...players.tracking import update_player_skin
+from ...utils.sse import sse_response
 
 router = APIRouter(prefix="/players", tags=["players"])
+PROFILE_FETCH_CONCURRENCY = 8
 
 
 class PlayerMapProfileResponse(BaseModel):
@@ -43,6 +50,18 @@ class PlayerMapProfileResponse(BaseModel):
     avatar_base64: Optional[str] = None
     resolved: bool
     last_skin_update: Optional[datetime] = None
+
+
+class PlayerMapProfilesRequest(BaseModel):
+    uuids: List[str] = Field(default_factory=list, max_length=2000)
+
+
+class PlayerMapProfilesStreamEvent(BaseModel):
+    event_type: Literal["profile", "complete", "error"]
+    profile: Optional[PlayerMapProfileResponse] = None
+    message: Optional[str] = None
+    total: Optional[int] = None
+    resolved: Optional[int] = None
 
 
 def _avatar_base64(avatar_data: Optional[bytes]) -> Optional[str]:
@@ -62,6 +81,129 @@ def _profile_response(player, uuid: str) -> PlayerMapProfileResponse:
         resolved=True,
         last_skin_update=player.last_skin_update,
     )
+
+
+def _profile_event(profile: PlayerMapProfileResponse) -> dict:
+    return {
+        "event_type": "profile",
+        "profile": profile.model_dump(mode="json"),
+    }
+
+
+def _complete_event(total: int, resolved: int) -> dict:
+    return {"event_type": "complete", "total": total, "resolved": resolved}
+
+
+def _error_event(message: str) -> dict:
+    return {"event_type": "error", "message": message}
+
+
+def _dedupe_normalized_uuids(uuids: List[str]) -> tuple[list[str], list[str]]:
+    normalized_uuids: list[str] = []
+    invalid_uuids: list[str] = []
+    seen: set[str] = set()
+    for raw_uuid in uuids:
+        normalized = normalize_uuid(raw_uuid)
+        if normalized is None:
+            if raw_uuid not in seen:
+                invalid_uuids.append(raw_uuid)
+                seen.add(raw_uuid)
+            continue
+        if normalized in seen:
+            continue
+        normalized_uuids.append(normalized)
+        seen.add(normalized)
+    return normalized_uuids, invalid_uuids
+
+
+async def _client_disconnected(request: Request | None) -> bool:
+    return bool(request and await request.is_disconnected())
+
+
+async def iter_player_map_profile_events(
+    uuids: List[str],
+    request: Request | None = None,
+) -> AsyncIterator[dict]:
+    normalized_uuids, invalid_uuids = _dedupe_normalized_uuids(uuids)
+    total = len(normalized_uuids) + len(invalid_uuids)
+    resolved = 0
+
+    for uuid in invalid_uuids:
+        if await _client_disconnected(request):
+            return
+        yield _profile_event(PlayerMapProfileResponse(uuid=uuid, resolved=False))
+
+    online_uuids: list[str] = []
+    for uuid in normalized_uuids:
+        if not is_online_uuid(uuid):
+            if await _client_disconnected(request):
+                return
+            yield _profile_event(PlayerMapProfileResponse(uuid=uuid, resolved=False))
+            continue
+        online_uuids.append(uuid)
+
+    if not online_uuids:
+        yield _complete_event(total, resolved)
+        return
+
+    async with get_async_session() as db:
+        cached_players = await get_players_by_uuids(db, online_uuids)
+
+    fetch_uuids: list[str] = []
+    for uuid in online_uuids:
+        cached = cached_players.get(uuid)
+        if cached is not None:
+            if await _client_disconnected(request):
+                return
+            profile = _profile_response(cached, uuid)
+            if profile.resolved:
+                resolved += 1
+            yield _profile_event(profile)
+            if cached.avatar_data:
+                continue
+        fetch_uuids.append(uuid)
+
+    semaphore = asyncio.Semaphore(PROFILE_FETCH_CONCURRENCY)
+
+    async def fetch(uuid: str):
+        async with semaphore:
+            return uuid, await skin_fetcher.fetch_player_profile(uuid)
+
+    tasks = {asyncio.create_task(fetch(uuid)) for uuid in fetch_uuids}
+    try:
+        for completed in asyncio.as_completed(tasks):
+            if await _client_disconnected(request):
+                return
+            uuid, fetched = await completed
+            if fetched is None:
+                if uuid not in cached_players:
+                    yield _profile_event(
+                        PlayerMapProfileResponse(uuid=uuid, resolved=False)
+                    )
+                continue
+
+            async with get_async_session() as db:
+                player = await upsert_player_profile(
+                    db,
+                    uuid,
+                    fetched.name,
+                    fetched.skin_data,
+                    fetched.avatar_data,
+                    datetime.now(timezone.utc),
+                )
+
+            profile = _profile_response(player, uuid)
+            if profile.resolved and uuid not in cached_players:
+                resolved += 1
+            yield _profile_event(profile)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    yield _complete_event(total, resolved)
 
 
 @router.get("/", response_model=List[PlayerSummary])
@@ -118,6 +260,35 @@ async def get_player_by_uuid(
             detail=f"Player with UUID '{uuid}' not found",
         )
     return player_detail
+
+
+@router.post("/profiles/stream", response_class=StreamingResponse)
+async def stream_player_map_profiles(
+    request_body: PlayerMapProfilesRequest,
+    request: Request,
+    _: UserPublic = Depends(get_current_user),
+) -> StreamingResponse:
+    """
+    Stream lightweight player profiles for map overlays.
+
+    Cached rows are emitted first. Mojang fetches only run for uncached or
+    avatar-missing online UUIDs, and database sessions are opened only for short
+    cache/upsert operations so the stream does not hold SQLite while waiting on
+    network I/O.
+    """
+
+    async def event_gen() -> AsyncIterator[dict]:
+        try:
+            async for event in iter_player_map_profile_events(
+                request_body.uuids,
+                request,
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("player profile stream failed")
+            yield _error_event(str(e))
+
+    return sse_response(event_gen())
 
 
 @router.get("/uuid/{uuid}/profile", response_model=PlayerMapProfileResponse)

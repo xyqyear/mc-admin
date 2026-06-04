@@ -45,6 +45,21 @@ export interface PlayerMapProfileResponse {
   last_skin_update: string | null
 }
 
+export type PlayerMapProfilesStreamEvent =
+  | {
+      event_type: 'profile'
+      profile: PlayerMapProfileResponse
+    }
+  | {
+      event_type: 'complete'
+      total: number
+      resolved: number
+    }
+  | {
+      event_type: 'error'
+      message: string
+    }
+
 export type PlayerCleanupKind = 'offline_uuid' | 'ignored_name_prefix'
 
 export interface PlayerCleanupCandidate {

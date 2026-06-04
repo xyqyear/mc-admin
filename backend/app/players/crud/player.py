@@ -2,7 +2,7 @@
 # flake8: noqa: E711, E712
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -71,6 +71,27 @@ async def get_player_by_uuid(session: AsyncSession, uuid: str) -> Optional[Playe
 
     result = await session.execute(select(Player).where(Player.uuid == normalized_uuid))
     return result.scalar_one_or_none()
+
+
+async def get_players_by_uuids(
+    session: AsyncSession, uuids: Iterable[str]
+) -> dict[str, Player]:
+    """Get players by normalized online UUID."""
+    normalized_uuids = [
+        uuid
+        for uuid in {normalize_online_uuid(value) for value in uuids}
+        if uuid is not None
+    ]
+    if not normalized_uuids:
+        return {}
+
+    players: dict[str, Player] = {}
+    chunk_size = 900
+    for i in range(0, len(normalized_uuids), chunk_size):
+        chunk = normalized_uuids[i : i + chunk_size]
+        result = await session.execute(select(Player).where(Player.uuid.in_(chunk)))
+        players.update({player.uuid: player for player in result.scalars().all()})
+    return players
 
 
 async def get_all_player_names_with_ids(
@@ -202,25 +223,27 @@ async def upsert_player_profile(
         logger.info(f"Skipping ignored player profile {player_name}")
         return await get_player_by_uuid(session, normalized_uuid)
 
-    player = await get_player_by_uuid(session, normalized_uuid)
-    if player is None:
-        player = Player(
-            uuid=normalized_uuid,
-            current_name=player_name,
-            skin_data=skin_data,
-            avatar_data=avatar_data,
-            last_skin_update=timestamp if skin_data or avatar_data else None,
-            created_at=datetime.now(timezone.utc),
-        )
-        session.add(player)
-    else:
-        player.current_name = player_name
-        if skin_data is not None:
-            player.skin_data = skin_data
-        if avatar_data is not None:
-            player.avatar_data = avatar_data
-        if skin_data is not None or avatar_data is not None:
-            player.last_skin_update = timestamp
+    values: dict[str, object] = {
+        "uuid": normalized_uuid,
+        "current_name": player_name,
+        "skin_data": skin_data,
+        "avatar_data": avatar_data,
+        "last_skin_update": timestamp if skin_data or avatar_data else None,
+        "created_at": datetime.now(timezone.utc),
+    }
+    update_values: dict[str, object] = {"current_name": player_name}
+    if skin_data is not None:
+        update_values["skin_data"] = skin_data
+    if avatar_data is not None:
+        update_values["avatar_data"] = avatar_data
+    if skin_data is not None or avatar_data is not None:
+        update_values["last_skin_update"] = timestamp
+
+    stmt = insert(Player).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["uuid"],
+        set_=update_values,
+    )
+    await session.execute(stmt)
     await session.commit()
-    await session.refresh(player)
-    return player
+    return await get_player_by_uuid(session, normalized_uuid)

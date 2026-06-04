@@ -1,15 +1,16 @@
-import { useCallback, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  useQueries,
   useQuery,
-  type UseQueryResult,
+  useQueryClient,
 } from '@tanstack/react-query'
 import {
   playerApi,
   type PlayerCleanupKind,
+  type PlayerMapProfilesStreamEvent,
   type PlayerMapProfileResponse,
 } from '@/hooks/api/playerApi'
 import { queryKeys } from '@/utils/api'
+import { readEventStream } from '@/utils/eventStream'
 
 function normalizeUuid(uuid: string | null | undefined): string | null {
   if (!uuid) return null
@@ -81,41 +82,98 @@ export const usePlayerMapProfiles = (
   uuids: readonly (string | null | undefined)[],
   enabled = true
 ) => {
+  const queryClient = useQueryClient()
   const normalizedUuidKey = normalizeUuidList(uuids).join('\0')
   const normalizedUuids = useMemo(
     () => (normalizedUuidKey ? normalizedUuidKey.split('\0') : []),
     [normalizedUuidKey]
   )
-  const queries = useMemo(
-    () =>
-      normalizedUuids.map((uuid) => ({
-        queryKey: queryKeys.players.mapProfileByUUID(uuid),
-        queryFn: () => playerApi.getPlayerMapProfile(uuid),
-        enabled,
-        staleTime: 10 * 60 * 1000,
-        retry: false
-      })),
-    [enabled, normalizedUuids]
-  )
-  const combineProfiles = useCallback(
-    (results: UseQueryResult<PlayerMapProfileResponse>[]) => {
-      const profilesByUuid = new Map<string, PlayerMapProfileResponse>()
-      const pendingUuids = new Set<string>()
-      results.forEach((result, index) => {
-        const uuid = normalizedUuids[index]
-        if (!uuid) return
-        if (result.data) profilesByUuid.set(uuid, result.data)
-        if (result.isLoading || result.isFetching) pendingUuids.add(uuid)
-      })
-      return { results, profilesByUuid, pendingUuids }
-    },
-    [normalizedUuids]
-  )
-  const combined = useQueries({
-    queries,
-    combine: combineProfiles
-  })
-  return { uuids: normalizedUuids, ...combined }
+  const [profilesByUuid, setProfilesByUuid] = useState<
+    Map<string, PlayerMapProfileResponse>
+  >(new Map())
+  const [pendingUuids, setPendingUuids] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const cachedProfiles = new Map<string, PlayerMapProfileResponse>()
+    for (const uuid of normalizedUuids) {
+      const cached = queryClient.getQueryData<PlayerMapProfileResponse>(
+        queryKeys.players.mapProfileByUUID(uuid)
+      )
+      if (cached) cachedProfiles.set(uuid, cached)
+    }
+
+    setProfilesByUuid(cachedProfiles)
+    setPendingUuids(
+      enabled
+        ? new Set(normalizedUuids.filter((uuid) => !cachedProfiles.has(uuid)))
+        : new Set()
+    )
+    setError(null)
+
+    if (!enabled || normalizedUuids.length === 0) return
+
+    const ctrl = new AbortController()
+
+    void readEventStream<PlayerMapProfilesStreamEvent>({
+      url: '/players/profiles/stream',
+      method: 'POST',
+      body: { uuids: normalizedUuids },
+      signal: ctrl.signal,
+      onEvent: (event) => {
+        if (event.event_type === 'profile') {
+          const uuid = normalizeUuid(event.profile.uuid)
+          if (!uuid) return
+          const profile = { ...event.profile, uuid }
+          queryClient.setQueryData(
+            queryKeys.players.mapProfileByUUID(uuid),
+            profile
+          )
+          setProfilesByUuid((prev) => {
+            const next = new Map(prev)
+            next.set(uuid, profile)
+            return next
+          })
+          setPendingUuids((prev) => {
+            if (!prev.has(uuid)) return prev
+            const next = new Set(prev)
+            next.delete(uuid)
+            return next
+          })
+          return
+        }
+        if (event.event_type === 'complete') {
+          setPendingUuids(new Set())
+          return
+        }
+        if (event.event_type === 'error') {
+          setError(event.message)
+          setPendingUuids(new Set())
+        }
+      },
+      onClose: () => {
+        setPendingUuids(new Set())
+      },
+      onError: (message) => {
+        setError(message)
+        setPendingUuids(new Set())
+      },
+    })
+
+    return () => {
+      ctrl.abort()
+    }
+  }, [enabled, normalizedUuids, queryClient])
+
+  return {
+    uuids: normalizedUuids,
+    profilesByUuid,
+    pendingUuids,
+    error,
+    isLoading: enabled && pendingUuids.size > 0 && profilesByUuid.size === 0,
+    isFetching: enabled && pendingUuids.size > 0,
+    isError: !!error,
+  }
 }
 
 export const useServerOnlinePlayers = (serverId: string) => {

@@ -72,8 +72,10 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
       const aCurrent = a.region_dir_relpath === currentDimRelpath ? 0 : 1
       const bCurrent = b.region_dir_relpath === currentDimRelpath ? 0 : 1
       if (aCurrent !== bCurrent) return aCurrent - bCurrent
-      const aProfile = a.uuid ? profilesByUuid.get(a.uuid) : undefined
-      const bProfile = b.uuid ? profilesByUuid.get(b.uuid) : undefined
+      const aUuid = normalizedUuidOf(a)
+      const bUuid = normalizedUuidOf(b)
+      const aProfile = aUuid ? profilesByUuid.get(aUuid) : undefined
+      const bProfile = bUuid ? profilesByUuid.get(bUuid) : undefined
       const aName = playerDisplayName(a, aProfile)
       const bName = playerDisplayName(b, bProfile)
       return aName.localeCompare(bName, undefined, { sensitivity: 'base' })
@@ -189,6 +191,7 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
         ) : (
           players.map((player) => {
             const online = isPlayerOnline(player, onlinePlayerUuids)
+            const uuid = normalizedUuidOf(player)
             return (
               <PlayerRow
                 key={playerLocationKey(player)}
@@ -197,12 +200,8 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
                 isOnline={online}
                 onlineStatusAvailable={onlineStatusAvailable}
                 dimensionLabelByRelpath={dimensionLabelByRelpath}
-                profile={
-                  player.uuid ? profilesByUuid.get(player.uuid) : undefined
-                }
-                profilePending={
-                  !!player.uuid && pendingProfileUuids.has(player.uuid)
-                }
+                profile={uuid ? profilesByUuid.get(uuid) : undefined}
+                profilePending={!!uuid && pendingProfileUuids.has(uuid)}
                 onClick={onPlayerClick}
               />
             )
