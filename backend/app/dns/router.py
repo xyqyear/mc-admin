@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-import httpx
+import httpx2
 
 from ..logger import logger
 
@@ -36,7 +36,7 @@ class MCRouterClient:
     """
 
     def __init__(self, base_url: str) -> None:
-        self._client = httpx.AsyncClient(timeout=10.0)
+        self._client = httpx2.AsyncClient(timeout=10.0)
 
         self._base_url = base_url
 

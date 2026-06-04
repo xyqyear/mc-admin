@@ -76,7 +76,7 @@ class MockDNSClient(DNSClient):
 
 class MockMCRouterClient(MCRouterClient):
     def __init__(self, base_url):
-        # Bypass super().__init__ to avoid creating a real httpx session.
+        # Bypass super().__init__ to avoid creating a real HTTP client session.
         self.base_url = base_url
         self.routes = {}
 

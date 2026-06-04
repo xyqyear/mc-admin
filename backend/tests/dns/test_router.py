@@ -26,7 +26,7 @@ def mock_client():
 
 @pytest.fixture
 def router_client():
-    with patch("app.dns.router.httpx.AsyncClient"):
+    with patch("app.dns.router.httpx2.AsyncClient"):
         client = MCRouterClient("http://localhost:26666")
         client._client = AsyncMock()
         return client
@@ -326,7 +326,7 @@ async def test_close(router_client):
 
 
 def test_base_url_normalization():
-    with patch("app.dns.router.httpx.AsyncClient"):
+    with patch("app.dns.router.httpx2.AsyncClient"):
         client1 = MCRouterClient("http://localhost:26666")
         assert client1._base_url == "http://localhost:26666/"
 
@@ -335,7 +335,7 @@ def test_base_url_normalization():
 
 
 def test_timeout_configuration():
-    with patch("app.dns.router.httpx.AsyncClient") as client_mock:
+    with patch("app.dns.router.httpx2.AsyncClient") as client_mock:
         MCRouterClient("http://localhost:26666")
 
         client_mock.assert_called_once_with(timeout=10.0)

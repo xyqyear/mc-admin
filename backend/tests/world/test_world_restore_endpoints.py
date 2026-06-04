@@ -1,11 +1,11 @@
-"""End-to-end tests for the world-restore router using httpx.AsyncClient.
+"""End-to-end tests for the world-restore router using httpx2.AsyncClient.
 
 These exercise the HTTP/SSE surface against a real ``WorldRestoreOrchestrator``
 backed by a real restic repository and a real ``mcmap`` binary (chunks-scope
 tests skip themselves if mcmap is unavailable). The Docker side of MCInstance
 is replaced with a fake instance so tests don't need containers.
 
-We use ``httpx.AsyncClient`` with ``ASGITransport`` (rather than the synchronous
+We use ``httpx2.AsyncClient`` with ``ASGITransport`` (rather than the synchronous
 ``TestClient``) so the request handler runs in the same event loop as the test
 — that's what lets the per-server ``asyncio.Lock`` tests observe each other's
 state.
@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings

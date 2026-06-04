@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-import httpx
+import httpx2
 
 from ..logger import log_exception, logger
 
@@ -11,7 +11,7 @@ from ..logger import log_exception, logger
 async def fetch_player_uuid_from_mojang(player_name: str) -> Optional[str]:
     """Return the dashless UUID for ``player_name``, or ``None`` if not found."""
     url = f"https://api.mojang.com/users/profiles/minecraft/{player_name}"
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx2.AsyncClient(timeout=10.0) as client:
         response = await client.get(url)
 
         if response.status_code == 404:
@@ -36,7 +36,7 @@ async def fetch_player_name_from_mojang(uuid: str) -> Optional[str]:
     """Return the current player name for ``uuid``, or ``None`` if not found."""
     uuid_clean = uuid.replace("-", "")
     url = f"https://sessionserver.mojang.com/session/minecraft/profile/{uuid_clean}"
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx2.AsyncClient(timeout=10.0) as client:
         response = await client.get(url)
 
         if response.status_code == 404:

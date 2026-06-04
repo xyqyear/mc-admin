@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated, List, Optional, cast
 
 import aiofiles.os as aioos
-import httpx
+import httpx2
 from pydantic import Field, field_validator, model_validator
 
 from ...config import settings
@@ -136,9 +136,9 @@ async def _send_uptimekuma_notification(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx2.AsyncClient(timeout=10) as client:
             response = await client.get(uptimekuma_url, params=params)
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         context.log(f"发送 Uptime Kuma 通知失败: {str(e)}")
         return
     except Exception as e:

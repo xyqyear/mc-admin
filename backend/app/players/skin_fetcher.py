@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import httpx
+import httpx2
 
 from ..dynamic_config import config
 from ..logger import log_exception, logger
@@ -33,11 +33,11 @@ class SkinFetcher:
         uuid_clean = uuid.replace("-", "")
 
         request_timeout = config.players.skin_fetcher.request_timeout_seconds
-        async with httpx.AsyncClient(timeout=request_timeout) as client:
+        async with httpx2.AsyncClient(timeout=request_timeout) as client:
             url = self.session_server_url.format(uuid=uuid_clean)
             try:
                 response = await client.get(url)
-            except httpx.TimeoutException:
+            except httpx2.TimeoutException:
                 logger.error(f"Timeout fetching profile for {uuid_clean}")
                 return None
 
