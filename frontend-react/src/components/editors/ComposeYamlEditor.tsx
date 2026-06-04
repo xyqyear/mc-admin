@@ -51,7 +51,7 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
         hover: true,
         completion: true,
         validate: true,
-        format: true,
+        format: {},
         schemas: [
           {
             uri: window.location.origin + '/static/mc-server-compose-schema.json',
