@@ -1,13 +1,13 @@
 import React from 'react';
 import { Play, Square, RotateCw, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useServerMutations } from '@/hooks/mutations/useServerMutations';
 import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog';
 import { serverStatusUtils } from '@/utils/serverUtils';
-import { ServerStatus } from '@/types/ServerInfo';
+import type { ServerStatus } from '@/types/ServerInfo';
 
 interface ServerOperationButtonsProps {
   serverId: string;

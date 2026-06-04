@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { ServerInfo } from '@/types/ServerInfo';
+import type { ServerInfo } from '@/types/ServerInfo';
 
 interface ServerResourcesCardProps {
   cpuPercentage?: number;

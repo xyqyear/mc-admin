@@ -1,9 +1,9 @@
-import React, { useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { useXTerm } from 'react-xtermjs';
-import { ITerminalOptions } from '@xterm/xterm';
+import { useEffect, useCallback, useMemo, forwardRef, useImperativeHandle, useRef } from 'react';
+import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
+import type { WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
+import '@xterm/xterm/css/xterm.css';
 
 export interface ServerTerminalRef {
   clear: () => void;
@@ -28,6 +28,13 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
   className = "h-full",
   height
 }, ref) => {
+  const terminalElementRef = useRef<HTMLDivElement | null>(null);
+  const terminalInstanceRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const onSendInputRef = useRef(onSendInput);
+  const onReadyRef = useRef(onReady);
+  const onResizeRef = useRef(onResize);
+
   const terminalOptions: ITerminalOptions = useMemo(() => ({
     theme: {
       background: '#000000',
@@ -42,19 +49,20 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
     scrollback: 10000,
   }), []);
 
-  const terminalAddons = useMemo(() => [new FitAddon(), new WebLinksAddon()], []);
+  useEffect(() => {
+    onSendInputRef.current = onSendInput;
+  }, [onSendInput]);
 
-  const fitAddon = terminalAddons[0] as FitAddon;
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
-  const terminal = useXTerm({
-    options: terminalOptions,
-    addons: terminalAddons,
-  });
-
-  const terminalRef = terminal.ref;
-  const terminalInstance = terminal.instance;
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  }, [onResize]);
 
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+    const terminalInstance = terminalInstanceRef.current;
     if (!terminalInstance) return;
 
     switch (message.type) {
@@ -78,97 +86,92 @@ const ServerTerminal = forwardRef<ServerTerminalRef, ServerTerminalProps>(({
         }
         break;
     }
-  }, [terminalInstance]);
-
-  const handleTerminalData = useCallback((data: string) => {
-    if (onSendInput) {
-      onSendInput(data);
-    }
-  }, [onSendInput]);
+  }, []);
 
   const terminalMethods = useMemo(() => ({
     clear: () => {
+      const terminalInstance = terminalInstanceRef.current;
       if (terminalInstance) {
         terminalInstance.clear();
       }
     },
     write: (data: string) => {
+      const terminalInstance = terminalInstanceRef.current;
       if (terminalInstance) {
         terminalInstance.write(data);
       }
     },
     fit: () => {
+      const fitAddon = fitAddonRef.current;
       if (fitAddon) {
         fitAddon.fit();
       }
     },
     getSize: () => {
+      const terminalInstance = terminalInstanceRef.current;
       if (terminalInstance) {
         return { cols: terminalInstance.cols, rows: terminalInstance.rows };
       }
       return null;
     },
     onMessage: handleWebSocketMessage,
-  }), [terminalInstance, fitAddon, handleWebSocketMessage]);
+  }), [handleWebSocketMessage]);
 
   useImperativeHandle(ref, () => terminalMethods, [terminalMethods]);
 
   useEffect(() => {
-    if (terminalInstance) {
-      const disposable = terminalInstance.onData(handleTerminalData);
-      return () => {
-        disposable?.dispose();
-      };
+    const element = terminalElementRef.current;
+    if (!element) return;
+
+    const terminalInstance = new Terminal(terminalOptions);
+    const fitAddon = new FitAddon();
+    const disposables: IDisposable[] = [];
+
+    terminalInstance.loadAddon(fitAddon);
+    terminalInstance.loadAddon(new WebLinksAddon());
+    terminalInstance.open(element);
+    terminalInstance.attachCustomKeyEventHandler((event) => {
+      if (event.ctrlKey && (event.key === 'c' || event.key === 'v')) {
+        return false;
+      }
+      return true;
+    });
+
+    terminalInstanceRef.current = terminalInstance;
+    fitAddonRef.current = fitAddon;
+
+    disposables.push(
+      terminalInstance.onData((data) => {
+        onSendInputRef.current?.(data);
+      }),
+    );
+    disposables.push(
+      terminalInstance.onResize(({ cols, rows }) => {
+        onResizeRef.current?.(cols, rows);
+      }),
+    );
+
+    const fitTimer = window.setTimeout(() => fitAddon.fit(), 0);
+    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    resizeObserver.observe(element);
+
+    onReadyRef.current?.(terminalMethods);
+
+    return () => {
+      window.clearTimeout(fitTimer);
+      resizeObserver.disconnect();
+      for (const disposable of disposables) {
+        disposable.dispose();
+      }
+      terminalInstance.dispose();
+      terminalInstanceRef.current = null;
+      fitAddonRef.current = null;
     }
-  }, [terminalInstance, handleTerminalData]);
-
-  // Let browser handle Ctrl+C / Ctrl+V (copy/paste) instead of xterm.
-  useEffect(() => {
-    if (terminalInstance) {
-      terminalInstance.attachCustomKeyEventHandler((event) => {
-        if (event.ctrlKey && (event.key === 'c' || event.key === 'v')) {
-          return false;
-        }
-        return true;
-      });
-    }
-  }, [terminalInstance]);
-
-  useEffect(() => {
-    if (fitAddon && terminalInstance && terminalRef.current) {
-      setTimeout(() => fitAddon.fit(), 0);
-
-      const resizeObserver = new ResizeObserver(() => {
-        fitAddon.fit();
-      });
-
-      resizeObserver.observe(terminalRef.current);
-      return () => {
-        resizeObserver.disconnect();
-      };
-    }
-  }, [fitAddon, terminalInstance, terminalRef]);
-
-  useEffect(() => {
-    if (terminalInstance && onResize) {
-      const disposable = terminalInstance.onResize(({ cols, rows }) => {
-        onResize(cols, rows);
-      });
-      return () => {
-        disposable?.dispose();
-      };
-    }
-  }, [terminalInstance, onResize]);
-
-  useEffect(() => {
-    if (terminalInstance && onReady) {
-      onReady(terminalMethods);
-    }
-  }, [terminalInstance, onReady, terminalMethods]);
+  }, [terminalOptions, terminalMethods]);
 
   return (
     <div
-      ref={terminalRef as React.LegacyRef<HTMLDivElement>}
+      ref={terminalElementRef}
       className={className}
       style={{ overflow: 'hidden', ...(height ? { height } : {}) }}
     />

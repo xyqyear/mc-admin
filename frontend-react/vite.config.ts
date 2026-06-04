@@ -5,38 +5,23 @@ import { defineConfig } from "vite";
 
 const fontAssetPattern = /\.(eot|otf|ttf|woff2?)$/i;
 const imageAssetPattern = /\.(avif|gif|ico|jpe?g|png|svg|webp)$/i;
-
-function normalizeModuleId(id: string) {
-  return id.split(path.sep).join(path.posix.sep);
-}
-
-function manualChunks(id: string) {
-  const moduleId = normalizeModuleId(id);
-
-  if (!moduleId.includes("node_modules/")) {
-    return undefined;
-  }
-
-  if (
-    moduleId.includes("monaco-editor/") ||
-    moduleId.includes("monaco-yaml/")
-  ) {
-    return "vendor/monaco";
-  }
-
-  if (moduleId.includes("leaflet/")) {
-    return "vendor/map";
-  }
-
-  return "vendor/vendor";
-}
+const monacoVendorPattern = /node_modules[\\/](?:monaco-editor|monaco-yaml)[\\/]/;
+const mapVendorPattern = /node_modules[\\/]leaflet[\\/]/;
+const vendorPattern = /node_modules[\\/]/;
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
+        codeSplitting: {
+          groups: [
+            { name: "vendor/monaco", test: monacoVendorPattern },
+            { name: "vendor/map", test: mapVendorPattern },
+            { name: "vendor/vendor", test: vendorPattern },
+          ],
+        },
         assetFileNames: (assetInfo) => {
           const name = assetInfo.name ?? "";
 
@@ -66,12 +51,11 @@ export default defineConfig({
           return "assets/app/[name]-[hash].js";
         },
         entryFileNames: "assets/app/[name]-[hash].js",
-        manualChunks,
       },
     },
   },
   worker: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         chunkFileNames: "assets/workers/[name]-[hash].js",
         entryFileNames: "assets/workers/[name]-[hash].js",

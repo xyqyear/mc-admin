@@ -2,13 +2,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys } from "@/utils/api";
 import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
+import { templateApi } from "@/hooks/api/templateApi";
 import {
-  templateApi,
-  TemplateCreateRequest,
-  TemplateUpdateRequest,
-  VariableDefinition,
-  ExtractVariablesResponse,
-  CheckConversionResponse,
+  type TemplateCreateRequest,
+  type TemplateUpdateRequest,
+  type VariableDefinition,
+  type ExtractVariablesResponse,
+  type CheckConversionResponse,
 } from "@/hooks/api/templateApi";
 
 export const useTemplateMutations = () => {

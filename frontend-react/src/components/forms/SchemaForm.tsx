@@ -1,7 +1,7 @@
 import { withTheme } from '@rjsf/core'
 import { Theme as ShadcnTheme } from '@rjsf/shadcn'
 import validator from '@rjsf/validator-ajv8'
-import { RJSFSchema } from '@rjsf/utils'
+import type { RJSFSchema } from '@rjsf/utils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 

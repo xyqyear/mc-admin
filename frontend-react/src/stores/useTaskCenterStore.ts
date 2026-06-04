@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/shallow'
 
 export type TaskCenterTab = 'background' | 'download'
 
@@ -28,8 +29,10 @@ export const useTaskCenterActiveTab = () =>
   useTaskCenterStore((state) => state.activeTab)
 
 export const useTaskCenterActions = () =>
-  useTaskCenterStore((state) => ({
-    setOpen: state.setOpen,
-    toggleOpen: state.toggleOpen,
-    setActiveTab: state.setActiveTab,
-  }))
+  useTaskCenterStore(
+    useShallow((state) => ({
+      setOpen: state.setOpen,
+      toggleOpen: state.toggleOpen,
+      setActiveTab: state.setActiveTab,
+    }))
+  )

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from 'react-router'
 import { toast } from "sonner"
 import { ArrowLeft, Save, Settings, GitCompare } from "lucide-react"
 

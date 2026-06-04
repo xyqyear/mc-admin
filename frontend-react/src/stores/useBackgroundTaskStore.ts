@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useShallow } from 'zustand/shallow'
 
 export type BackgroundTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
@@ -113,20 +114,24 @@ export const useBackgroundTasks = () =>
   useBackgroundTaskStore((state) => state.tasks)
 
 export const useActiveBackgroundTasks = () =>
-  useBackgroundTaskStore((state) =>
-    state.tasks.filter(
-      (task) => task.status === 'pending' || task.status === 'running'
+  useBackgroundTaskStore(
+    useShallow((state) =>
+      state.tasks.filter(
+        (task) => task.status === 'pending' || task.status === 'running'
+      )
     )
   )
 
 export const useBackgroundTaskActions = () =>
-  useBackgroundTaskStore((state) => ({
-    addTask: state.addTask,
-    updateTask: state.updateTask,
-    removeTask: state.removeTask,
-    clearCompletedTasks: state.clearCompletedTasks,
-    getTask: state.getTask,
-    getActiveTasksCount: state.getActiveTasksCount,
-    getRunningTasks: state.getRunningTasks,
-    getPendingTasks: state.getPendingTasks,
-  }))
+  useBackgroundTaskStore(
+    useShallow((state) => ({
+      addTask: state.addTask,
+      updateTask: state.updateTask,
+      removeTask: state.removeTask,
+      clearCompletedTasks: state.clearCompletedTasks,
+      getTask: state.getTask,
+      getActiveTasksCount: state.getActiveTasksCount,
+      getRunningTasks: state.getRunningTasks,
+      getPendingTasks: state.getPendingTasks,
+    }))
+  )

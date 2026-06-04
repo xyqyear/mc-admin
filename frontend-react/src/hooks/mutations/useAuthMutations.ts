@@ -2,7 +2,7 @@ import { authApi, type LoginRequest } from "@/hooks/api/authApi";
 import type { ApiError } from "@/utils/api";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from 'react-router';
 import { toast } from "sonner";
 
 export const useAuthMutations = () => {

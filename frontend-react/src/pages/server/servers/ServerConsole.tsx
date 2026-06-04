@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import {
   Terminal,
   RotateCw,
@@ -13,10 +13,12 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
-import { useServerConsoleWebSocket, WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
+import { useServerConsoleWebSocket } from '@/hooks/useServerConsoleWebSocket';
+import type { WebSocketMessage } from '@/hooks/useServerConsoleWebSocket';
 import PageHeader from '@/components/layout/PageHeader';
 import ServerOperationButtons from '@/components/server/ServerOperationButtons';
-import ServerTerminal, { ServerTerminalRef } from '@/components/server/ServerTerminal';
+import ServerTerminal from '@/components/server/ServerTerminal';
+import type { ServerTerminalRef } from '@/components/server/ServerTerminal';
 import ServerStateTag from '@/components/overview/ServerStateTag';
 import { serverStatusUtils } from '@/utils/serverUtils';
 

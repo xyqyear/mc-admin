@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { Map as MapIcon, RefreshCw } from 'lucide-react'
 

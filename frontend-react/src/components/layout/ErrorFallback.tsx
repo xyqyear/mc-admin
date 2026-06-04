@@ -1,5 +1,5 @@
 import { AlertCircle } from 'lucide-react'
-import { FallbackProps } from 'react-error-boundary'
+import type { FallbackProps } from 'react-error-boundary'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 

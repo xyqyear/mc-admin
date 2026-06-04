@@ -1,5 +1,5 @@
 import { api } from '@/utils/api'
-import { RJSFSchema } from '@rjsf/utils'
+import type { RJSFSchema } from '@rjsf/utils'
 
 export interface RegisteredCronJob {
   identifier: string

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Folder, Search } from 'lucide-react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -35,7 +35,8 @@ import { queryKeys } from '@/utils/api'
 import FileTable from '@/components/server/FileTable'
 import FileToolbar from '@/components/server/FileToolbar'
 import FileBreadcrumb from '@/components/server/FileBreadcrumb'
-import FileSearchBox, { FileSearchBoxRef } from '@/components/server/FileSearchBox'
+import FileSearchBox from '@/components/server/FileSearchBox'
+import type { FileSearchBoxRef } from '@/components/server/FileSearchBox'
 import { searchFiles } from '@/utils/fileSearchUtils'
 import type { FileItem } from '@/types/Server'
 

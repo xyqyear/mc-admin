@@ -18,17 +18,18 @@ The page header reuses `ServerOperationButtons` so the user can stop/start a stu
 
 ## `ServerTerminal.tsx`
 
-Wraps xterm.js with three addons:
+Owns the xterm.js `Terminal` instance directly and loads two addons:
 
 - **FitAddon** — sizes the terminal to the container; refits on window resize and on prop changes.
 - **WebLinksAddon** — makes URLs in output clickable.
 
 10k-line scrollback, 14px Consolas font (`font-family: Consolas, monospace`).
+The component imports the xterm CSS, opens the terminal into its container, observes container resizes, and disposes the terminal, addons, subscriptions, and observer on unmount.
 
 Imperative ref API:
 
 - `clear()`, `write(text)`, `fit()`, `getSize()`
-- `onMessage(handler)` — observer pattern for incoming WebSocket messages
+- `onMessage(message)` — writes incoming WebSocket messages to the terminal
 
 Incoming JSON message types:
 
@@ -48,10 +49,10 @@ Connection states: `DISCONNECTED → CONNECTING → CONNECTED | ERROR`.
 
 ## Lifecycle
 
-- Mount → `useServerConsoleWebSocket(serverId, onMessage)` → opens connection
+- Mount → `ServerTerminal` opens xterm; `ServerConsole` connects the WebSocket after the terminal reports its size
 - Window resize / drawer toggle → `term.fit()` → `sendResize(rows, cols)`
 - Keyboard input → xterm `onData` → `sendInput(data)`
-- Unmount → close + clear retry timer
+- Unmount → dispose terminal resources, close WebSocket, and clear retry timer
 
 ## Files
 

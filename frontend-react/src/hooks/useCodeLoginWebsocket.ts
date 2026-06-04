@@ -4,7 +4,7 @@ import { queryKeys } from "@/utils/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from 'react-router';
 
 interface CodeMessage {
   type: "code";

@@ -1,6 +1,6 @@
 # MC Admin Frontend
 
-React 19 + TypeScript + Vite. Path alias: `@` → `src/`.
+React 19 + TypeScript + Vite 8 on Node 24. Path alias: `@` → `src/`.
 
 ## Commands
 
@@ -14,6 +14,8 @@ pnpm lint
 Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
 Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
+
+React Router 7 is used in declarative mode; import router APIs from `react-router`.
 
 ## Three-layer data architecture
 
