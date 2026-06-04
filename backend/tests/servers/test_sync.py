@@ -49,6 +49,15 @@ def _auth():
     return {"Authorization": "Bearer test-master-token"}
 
 
+def _set_session_cookies(client: TestClient, user):
+    from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, create_session_token
+
+    token, csrf_token = create_session_token(user)
+    client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
+    client.cookies.set(CSRF_COOKIE_NAME, csrf_token, path="/")
+    return csrf_token
+
+
 @pytest.fixture
 def temp_server_path():
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -284,33 +293,25 @@ class TestSyncOwnerOnly:
     def test_non_owner_forbidden(self, test_client):
         client, _mgr, _db = test_client
 
-        # Build a JWT as ADMIN role to test the 403 path
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone
 
-        from joserfc import jwt
+        from app.auth.session import CSRF_HEADER_NAME
+        from app.models import UserPublic, UserRole
 
-        from app.auth.jwt_utils import key
-        from app.config import settings
-
-        token = jwt.encode(
-            {"alg": settings.jwt.algorithm},
-            {
-                "sub": "tester",
-                "user_id": 7,
-                "username": "tester",
-                "role": "admin",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "exp": int(
-                    (datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp()
-                ),
-            },
-            key,
+        csrf_token = _set_session_cookies(
+            client,
+            UserPublic(
+                id=7,
+                username="tester",
+                role=UserRole.ADMIN,
+                created_at=datetime.now(timezone.utc),
+            ),
         )
 
         response = client.post(
             "/api/servers/sync",
             json={},
-            headers={"Authorization": f"Bearer {token}"},
+            headers={CSRF_HEADER_NAME: csrf_token},
         )
 
         assert response.status_code == 403
