@@ -18,6 +18,15 @@ import {
   chunksToFullyCoveredRegions,
   regionToChunkKeys,
 } from './coords'
+import {
+  blockToLatLng,
+  clampServerMapZoom,
+  regionKeysToLatLngBounds,
+  SERVER_MAP_MAX_ZOOM,
+  SERVER_MAP_MIN_ZOOM,
+  SERVER_MAP_NATIVE_ZOOM,
+  type LatLngPair,
+} from './mapConfig'
 import { ServerMapTileLayer } from './ServerMapTileLayer'
 
 const REGION_OVERLAY_THRESHOLD = 5_000
@@ -50,13 +59,6 @@ export interface ServerMapProps {
   className?: string
   initialView?: ServerMapView
   onViewChange?: (view: ServerMapView) => void
-}
-
-// CRS.Simple convention: lat = -z, lng = x, 1 block = 1 unit.
-type LatLngPair = [number, number]
-
-function blockToLatLng(bx: number, bz: number): LatLngPair {
-  return [-bz, bx]
 }
 
 function chunkBounds(cx: number, cz: number): [LatLngPair, LatLngPair] {
@@ -144,15 +146,19 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     if (typeof window === 'undefined' || !window.matchMedia) return false
     return window.matchMedia('(pointer: coarse)').matches
   }, [])
+  const tileBounds = useMemo(
+    () => regionKeysToLatLngBounds(regions.keys()),
+    [regions],
+  )
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     const initial = initialViewRef.current
     const map = L.map(containerRef.current, {
       crs: L.CRS.Simple,
-      minZoom: -4,
-      maxZoom: 4,
-      zoom: initial?.zoom ?? 0,
+      minZoom: SERVER_MAP_MIN_ZOOM,
+      maxZoom: SERVER_MAP_MAX_ZOOM,
+      zoom: clampServerMapZoom(initial?.zoom ?? 0),
       center: initial ? blockToLatLng(initial.cx, initial.cz) : [0, 0],
       attributionControl: false,
       zoomControl: false,
@@ -327,18 +333,19 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       serverId,
       regionPath,
       regions,
+      bounds: tileBounds,
       noWrap: true,
       keepBuffer: 2,
       // mcmap emits a single resolution; pin native zoom so Leaflet scales
       // the same tiles across all zoom levels.
-      minZoom: -4,
-      maxZoom: 4,
-      minNativeZoom: 0,
-      maxNativeZoom: 0,
+      minZoom: SERVER_MAP_MIN_ZOOM,
+      maxZoom: SERVER_MAP_MAX_ZOOM,
+      minNativeZoom: SERVER_MAP_NATIVE_ZOOM,
+      maxNativeZoom: SERVER_MAP_NATIVE_ZOOM,
     })
     layer.addTo(map)
     tileLayerRef.current = layer
-  }, [serverId, regionPath, regions])
+  }, [serverId, regionPath, regions, tileBounds])
 
   useEffect(() => {
     const map = mapRef.current

@@ -18,8 +18,14 @@ import { useWorldRestoreMutations } from '@/hooks/mutations/useWorldRestoreMutat
 import {
   BLOCKS_PER_REGION,
   chunksToCoveredRegions,
-
 } from '@/components/map/coords'
+import {
+  blockToLatLng,
+  regionCoordsToLatLngBounds,
+  SERVER_MAP_MAX_ZOOM,
+  SERVER_MAP_MIN_ZOOM,
+  SERVER_MAP_NATIVE_ZOOM,
+} from '@/components/map/mapConfig'
 import type {
   PreviewEvent,
   RestorationSelection,
@@ -67,10 +73,6 @@ const STAGE_LABEL: Record<string, string> = {
 
 // 30s heartbeat — well under the backend's 30-min TTL.
 const HEARTBEAT_MS = 30_000
-
-function blockToLatLng(bx: number, bz: number): [number, number] {
-  return [-bz, bx]
-}
 
 interface BlockBounds {
   bxMin: number
@@ -148,6 +150,10 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     () => new Set(affected.regions.map((r) => `${r.rx},${r.rz}`)),
     [affected.regions],
   )
+  const tileBounds = useMemo(
+    () => regionCoordsToLatLngBounds(affected.regions),
+    [affected.regions],
+  )
 
   // Object identity is the trigger; callers create a new request on each open.
   useEffect(() => {
@@ -211,16 +217,19 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
 
       const map = L.map(node, {
         crs: L.CRS.Simple,
-        minZoom: -4,
-        maxZoom: 4,
+        minZoom: SERVER_MAP_MIN_ZOOM,
+        maxZoom: SERVER_MAP_MAX_ZOOM,
         attributionControl: false,
         zoomControl: false,
+        fadeAnimation: false,
         preferCanvas: true,
       })
       const sw = blockToLatLng(bounds.bxMin, bounds.bzMax)
       const ne = blockToLatLng(bounds.bxMax, bounds.bzMin)
-      // maxZoom: 2 keeps single-chunk selections from zooming past surrounding context.
-      map.fitBounds([sw, ne], { padding: [20, 20], maxZoom: 2 })
+      map.fitBounds([sw, ne], {
+        padding: [20, 20],
+        maxZoom: SERVER_MAP_MAX_ZOOM,
+      })
       mapRef.current = map
       overlayRef.current = L.layerGroup().addTo(map)
       setMapInstance(map)
@@ -243,16 +252,17 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       serverId,
       sessionId: state.sessionId,
       available: availableSet,
+      bounds: tileBounds,
       noWrap: true,
       keepBuffer: 2,
-      minZoom: -4,
-      maxZoom: 4,
-      minNativeZoom: 0,
-      maxNativeZoom: 0,
+      minZoom: SERVER_MAP_MIN_ZOOM,
+      maxZoom: SERVER_MAP_MAX_ZOOM,
+      minNativeZoom: SERVER_MAP_NATIVE_ZOOM,
+      maxNativeZoom: SERVER_MAP_NATIVE_ZOOM,
     })
     layer.addTo(mapInstance)
     layerRef.current = layer
-  }, [serverId, state.sessionId, availableSet, mapInstance])
+  }, [serverId, state.sessionId, availableSet, tileBounds, mapInstance])
 
   // Paint affected regions so the boundary is visible before tiles load.
   useEffect(() => {
