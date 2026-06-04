@@ -5,7 +5,7 @@ Web platform for managing Minecraft servers via Docker Compose. Two components:
 - `backend/` — FastAPI + SQLAlchemy 2.0 async (see `backend/CLAUDE.md`)
 - `frontend-react/` — React 19 + TanStack Query (see `frontend-react/CLAUDE.md`)
 
-Everything ships as a single Docker image (`Dockerfile` at the repo root); the backend serves the built frontend as static files in production.
+Everything ships as a single Docker image (`Dockerfile` at the repo root); the backend serves the built frontend as static files in production. Base images are pinned by digest, and runtime layers keep Python dependencies, backend code, frontend vendor chunks, workers, fonts, styles, and app chunks separate so pulls reuse unchanged blobs.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 
 - `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests, and it installs pinned `fd`, Restic, and `mcmap` versions from `Dockerfile`.
 - `.github/workflows/static-checks.yml` runs frontend lint/build and backend Pyright on every push.
-- `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags.
+- `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags and exports a registry BuildKit cache.
 
 ## Cross-component conventions
 

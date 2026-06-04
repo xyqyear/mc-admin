@@ -13,6 +13,8 @@ pnpm lint
 
 Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
+Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
+
 ## Three-layer data architecture
 
 Every server-state operation goes through one of three layers. **Don't mix concerns across layers.**

@@ -1,4 +1,4 @@
-FROM node:24-alpine AS frontend-build
+FROM node:24.16.0-alpine3.23@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14 AS frontend-build
 
 WORKDIR /frontend
 
@@ -7,8 +7,15 @@ RUN npm install -g pnpm@11.0.9 && pnpm install --frozen-lockfile
 
 COPY frontend-react/ ./
 RUN pnpm build
+RUN mkdir -p \
+    dist/assets/app \
+    dist/assets/fonts \
+    dist/assets/media \
+    dist/assets/styles \
+    dist/assets/vendor \
+    dist/assets/workers
 
-FROM ghcr.io/astral-sh/uv:python3.13-alpine AS backend-venv
+FROM python:3.13.13-alpine3.23@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc AS backend-venv
 
 ENV UV_LINK_MODE=copy \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -16,17 +23,21 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
+ARG UV_VERSION=0.11.19
+
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     libffi-dev
+
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
 
 COPY backend/pyproject.toml backend/uv.lock /app/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 
-FROM python:3.13-alpine AS app
+FROM python:3.13.13-alpine3.23@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc AS app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -75,9 +86,20 @@ RUN curl -L "https://github.com/xyqyear/mcmap/releases/download/${MCMAP_VERSION}
 
 WORKDIR /data
 
-COPY --link backend/ /app/
 COPY --link --from=backend-venv /app/.venv /app/.venv
-COPY --link --from=frontend-build /frontend/dist /app/static
+COPY --link backend/pyproject.toml /app/pyproject.toml
+COPY --link backend/alembic.ini /app/alembic.ini
+COPY --link backend/alembic /app/alembic
+COPY --link backend/app /app/app
+COPY --link --from=frontend-build /frontend/dist/static /app/static/static
+COPY --link --from=frontend-build /frontend/dist/assets/vendor /app/static/assets/vendor
+COPY --link --from=frontend-build /frontend/dist/assets/workers /app/static/assets/workers
+COPY --link --from=frontend-build /frontend/dist/assets/fonts /app/static/assets/fonts
+COPY --link --from=frontend-build /frontend/dist/assets/media /app/static/assets/media
+COPY --link --from=frontend-build /frontend/dist/assets/styles /app/static/assets/styles
+COPY --link --from=frontend-build /frontend/dist/assets/app /app/static/assets/app
+COPY --link --from=frontend-build /frontend/dist/robots.txt /app/static/robots.txt
+COPY --link --from=frontend-build /frontend/dist/index.html /app/static/index.html
 
 RUN mkdir -p /data
 
