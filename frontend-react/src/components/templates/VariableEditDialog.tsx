@@ -71,25 +71,27 @@ const VariableEditDialog: React.FC<VariableEditDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] max-h-[85vh] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{mode === "add" ? "添加变量" : "编辑变量"}</DialogTitle>
         </DialogHeader>
-        {open && (
-          <ThemedForm
-            ref={formRef}
-            schema={singleVariableSchema}
-            uiSchema={singleVariableUiSchema}
-            formData={initialData ?? DEFAULT_INITIAL}
-            validator={validator}
-            onSubmit={handleSubmit}
-            customValidate={customValidate}
-            liveValidate
-            showErrorList={false}
-          >
-            <div />
-          </ThemedForm>
-        )}
+        <div className="-mx-4 min-h-0 overflow-y-auto px-4">
+          {open && (
+            <ThemedForm
+              ref={formRef}
+              schema={singleVariableSchema}
+              uiSchema={singleVariableUiSchema}
+              formData={initialData ?? DEFAULT_INITIAL}
+              validator={validator}
+              onSubmit={handleSubmit}
+              customValidate={customValidate}
+              liveValidate
+              showErrorList={false}
+            >
+              <div />
+            </ThemedForm>
+          )}
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>取消</Button>
           <Button onClick={handleOk}>确定</Button>
