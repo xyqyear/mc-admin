@@ -13,7 +13,7 @@ import { AUTH_EXPIRED_EVENT } from '@/utils/api'
 import { toast } from 'sonner'
 
 const Login = React.lazy(() => import('@/pages/Login'))
-const Home = React.lazy(() => import('@/pages/Home'))
+const SelfCheck = React.lazy(() => import('@/pages/SelfCheck'))
 const Overview = React.lazy(() => import('@/pages/Overview'))
 const Snapshots = React.lazy(() => import('@/pages/Snapshots'))
 const ArchiveManagement = React.lazy(() => import('@/pages/ArchiveManagement'))
@@ -104,7 +104,7 @@ function App() {
         </Route>
 
         <Route element={<ProtectedRoutes />}>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<SelfCheck />} />
           <Route path="/overview" element={<Overview />} />
           <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/archives" element={<ArchiveManagement />} />

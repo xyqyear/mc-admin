@@ -269,8 +269,8 @@ async def test_get_dimension_labels_returns_dynamic_mapping(http: AsyncClient):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["dimension_labels"]["."] == "Overworld"
-    assert data["dimension_labels"]["DIM-1"] == "Nether"
+    assert data["dimension_labels"]["."] == "主世界"
+    assert data["dimension_labels"]["DIM-1"] == "下界"
 
 
 # --- Eligible snapshots ----------------------------------------------------

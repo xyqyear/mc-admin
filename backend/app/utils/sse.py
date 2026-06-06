@@ -4,15 +4,14 @@ import json
 from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 def sse_encode(payload: Any) -> bytes:
-    if isinstance(payload, BaseModel):
-        payload = payload.model_dump(exclude_none=True)
+    payload = jsonable_encoder(payload, exclude_none=True)
     return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
 
 

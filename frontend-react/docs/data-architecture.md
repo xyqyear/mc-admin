@@ -8,7 +8,7 @@ Mixing Axios calls, query keys, and cache invalidation inside components produce
 
 ## Layer 1 — `hooks/api/*Api.ts`
 
-Raw Axios. Per-domain modules: `serverApi`, `playerApi`, `snapshotApi`, `archiveApi`, `cronApi`, `dnsApi`, `configApi`, `mapApi`, `worldRestoreApi`, `templateApi`, `taskApi`, `fileApi`, `userApi`, `authApi`, `systemApi`. Each exports typed functions returning typed responses (`ApiResponse<T>`).
+Raw Axios. Per-domain modules: `serverApi`, `playerApi`, `snapshotApi`, `archiveApi`, `cronApi`, `selfCheckApi`, `dnsApi`, `configApi`, `mapApi`, `worldRestoreApi`, `templateApi`, `taskApi`, `fileApi`, `userApi`, `authApi`, `systemApi`. Each exports typed functions returning typed responses (`ApiResponse<T>`).
 
 The shared Axios instance lives in `utils/api.ts`:
 
@@ -63,6 +63,7 @@ Defined in `utils/api.ts`. Hierarchical: `all` → `list / detail / sub-resource
 - `queryKeys.players.detailByUUID(uuid)` / `.serverOnline(serverId)` / `.sessions(playerDbId, params)`
 - `queryKeys.snapshots.global()` / `.repositoryUsage()` / `.locks()` / `.forPath(serverId, path)`
 - `queryKeys.cron.detail(id)` / `.executions(id, limit)` / `.nextRunTime(id)`
+- `queryKeys.selfCheck.status()` / `.runs(params)` / `.run(id)`
 - `queryKeys.dns.status()` / `.records()` / `.routes()` / `.enabled()`
 - `queryKeys.map.status(serverId)` / `.regions(serverId, region)`
 - `queryKeys.worldRestore.layout(serverId)` / `.eligible(serverId, selection)` / `.history(serverId)` / `.restoration(serverId, id)`

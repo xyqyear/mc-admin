@@ -2,7 +2,7 @@
 
 from typing import Annotated, List
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from ..schemas import BaseConfigSchema
 
@@ -14,9 +14,12 @@ class LogParserConfig(BaseConfigSchema):
     ! Note: Please change the patterns here and test them before modifying the values in the UI.
     """
 
+    model_config = ConfigDict(title="日志解析配置")
+
     uuid_patterns: Annotated[
         List[str],
         Field(
+            title="UUID 解析规则",
             description="正则表达式模式列表，用于解析玩家UUID信息",
             default_factory=lambda: [
                 r"^(?!.*<).*UUID of player (\S+) is (\S{8}-\S{4}-\S{4}-\S{4}-\S{12})",
@@ -28,6 +31,7 @@ class LogParserConfig(BaseConfigSchema):
     join_pattern: Annotated[
         str,
         Field(
+            title="玩家加入解析规则",
             description="正则表达式模式，用于解析玩家加入事件",
             default=r"^(?!.*<).* (\S+)\[/.*?\] logged in with entity",
         ),
@@ -36,6 +40,7 @@ class LogParserConfig(BaseConfigSchema):
     leave_pattern: Annotated[
         str,
         Field(
+            title="玩家离开解析规则",
             description="正则表达式模式，用于解析玩家离开事件",
             default=r"^(?!.*<).* (\S+) lost connection: (.*)",
         ),
@@ -44,6 +49,7 @@ class LogParserConfig(BaseConfigSchema):
     server_stop_pattern: Annotated[
         str,
         Field(
+            title="服务器停止解析规则",
             description="正则表达式模式，用于检测服务器停止事件",
             default=r"^(?!.*<).*Stopping server",
         ),
@@ -52,6 +58,7 @@ class LogParserConfig(BaseConfigSchema):
     chat_pattern: Annotated[
         str,
         Field(
+            title="聊天消息解析规则",
             description="正则表达式模式，用于解析聊天消息",
             default=r": (\[Not Secure\] )?<(\S+)> (.*)",
         ),
@@ -60,6 +67,7 @@ class LogParserConfig(BaseConfigSchema):
     achievement_patterns: Annotated[
         List[str],
         Field(
+            title="成就解析规则",
             description="正则表达式模式列表，用于解析玩家获得成就事件",
             default_factory=lambda: [
                 r"^(?!.*<).*\]: (.+) has made the advancement \[(.*)\]",

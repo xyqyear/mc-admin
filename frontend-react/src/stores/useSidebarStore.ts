@@ -75,7 +75,7 @@ export const getOpenKeysFromPath = (pathname: string): string[] => {
   } else if (pathname === "/overview" || pathname === "/backups") {
     // Top-level pages with no submenu by default.
   } else if (pathname === "/") {
-    // Home page leaves submenus collapsed.
+    // Self-check page leaves submenus collapsed.
   } else {
     if (pathname.includes("/server/")) {
       openKeys.push("服务器管理");

@@ -24,7 +24,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { DataTable } from '@/components/common/DataTable'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { RefreshButton } from '@/components/common/RefreshButton'
-import { useCronJob, useCronJobExecutions, useCronJobNextRunTime } from '@/hooks/queries/base/useCronQueries'
+import { useCronJob, useCronJobExecutions, useCronJobNextRunTime, useRegisteredCronJobs } from '@/hooks/queries/base/useCronQueries'
 import { CronJobStatusTag, ExecutionStatusTag, NextRunTimeDisplay, CronExpressionDisplay } from '@/components/cron'
 import { formatDateTime } from '@/utils/formatUtils'
 import type { CronJobExecution } from '@/hooks/api/cronApi'
@@ -110,6 +110,65 @@ const executionColumns: ColumnDef<CronJobExecution, any>[] = [
   },
 ]
 
+const paramLabel: Record<string, string> = {
+  enable_forget: '运行 forget',
+  keep_daily: '每天保留',
+  keep_hourly: '每小时保留',
+  keep_last: '保留最近快照数',
+  keep_monthly: '每月保留',
+  keep_tag: '保留标签',
+  keep_weekly: '每周保留',
+  keep_within: '按时间范围保留',
+  keep_yearly: '每年保留',
+  path: '备份路径',
+  prune: '运行 prune',
+  scope: '检查范围',
+  server_id: '服务器 ID',
+  uptimekuma_url: 'Uptime Kuma 推送 URL',
+}
+
+function localizeParamValue(value: unknown): React.ReactNode {
+  if (value === null || value === undefined || value === '') {
+    return <span className="text-muted-foreground">未设置</span>
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? '是' : '否'
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <span className="text-muted-foreground">未设置</span>
+    }
+    return value.join(', ')
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  return String(value)
+}
+
+function CronParamsDisplay({ params }: { params: Record<string, any> }) {
+  const entries = Object.entries(params)
+
+  if (entries.length === 0) {
+    return <span className="text-sm text-muted-foreground">无参数</span>
+  }
+
+  return (
+    <div className="grid gap-2 text-sm">
+      {entries.map(([key, value]) => (
+        <div key={key} className="grid grid-cols-[10rem_minmax(0,1fr)] gap-3">
+          <span className="text-muted-foreground">{paramLabel[key] ?? key}</span>
+          <span className="break-words">{localizeParamValue(value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
   open,
   cronjobId,
@@ -135,6 +194,11 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
     data: nextRunTime,
     refetch: refetchNextRun,
   } = useCronJobNextRunTime(cronjobId)
+  const { data: registeredJobs } = useRegisteredCronJobs()
+
+  const jobTypeLabel = jobDetail
+    ? registeredJobs?.find(job => job.identifier === jobDetail.identifier)?.description ?? jobDetail.identifier
+    : ''
 
   const table = useReactTable({
     data: executions || [],
@@ -219,8 +283,11 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                           <div>
                             <span className="text-muted-foreground">任务类型:</span>
                             <StatusBadge tone="info" badgeStyle="soft" className="ml-2">
-                              {jobDetail.identifier}
+                              {jobTypeLabel}
                             </StatusBadge>
+                            {jobDetail.is_system && (
+                              <Badge variant="outline" className="ml-2">系统</Badge>
+                            )}
                           </div>
                           <div>
                             <span className="text-muted-foreground">状态:</span>
@@ -275,9 +342,7 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                         <CardTitle className="text-sm">任务参数</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <pre className="bg-muted p-3 rounded text-sm overflow-auto">
-                          {JSON.stringify(jobDetail.params, null, 2)}
-                        </pre>
+                        <CronParamsDisplay params={jobDetail.params} />
                       </CardContent>
                     </Card>
                   </>

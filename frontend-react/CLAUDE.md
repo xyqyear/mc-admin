@@ -56,6 +56,10 @@ shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific
 
 Browser auth is an HttpOnly JWT cookie plus a readable CSRF cookie. Route guards use `useCurrentUser()` (`GET /api/user/me`) as the session source of truth. Axios is configured in `utils/api.ts` with credentials and XSRF cookie/header names; fetch-based SSE adds the CSRF header manually.
 
+## Routes
+
+The protected root route `/` is the system self-check dashboard. The former feature-card home page is not part of the app.
+
 ## Stores (Zustand, persisted to localStorage)
 
 - `useSidebarStore` — sidebar collapse state, `openKeys` for nested sections
@@ -80,6 +84,7 @@ Browser auth is an HttpOnly JWT cookie plus a readable CSRF cookie. Route guards
 Long-form, current-state design docs live under `frontend-react/docs/`:
 
 - `docs/data-architecture.md` — three-layer hooks pattern, query keys, invalidation rules, polling cadences
+- `docs/self-check.md` — root dashboard, streamed manual runs, retained history, cron-system-job UI handling
 - `docs/task-center.md` — global task panel, backend task polling, browser download tracking
 - `docs/player-management.md` — global page, detail drawer tabs, online-players card
 - `docs/file-management.md` — file browser, multi-file upload session flow, deep search, compression tasks

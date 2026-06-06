@@ -23,6 +23,7 @@ async def create_cronjob(
     cron: str,
     params_json: str,
     second: Optional[str] = None,
+    is_system: bool = False,
 ) -> None:
     cronjob = CronJob(
         cronjob_id=cronjob_id,
@@ -31,6 +32,7 @@ async def create_cronjob(
         cron=cron,
         second=second,
         params_json=params_json,
+        is_system=is_system,
         status=CronJobStatus.ACTIVE,
     )
     session.add(cronjob)

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Home,
+  ShieldCheck,
   LayoutDashboard,
   Database,
   Plus,
@@ -32,6 +32,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -55,6 +56,7 @@ import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/useSidebarStore'
 import { useServerQueries } from '@/hooks/queries/base/useServerQueries'
 import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
+import { useSelfCheckHealth } from '@/hooks/useSelfCheckHealth'
 import { authApi } from '@/hooks/api/authApi'
 import { UserRole } from '@/types/User'
 import ServerMenuIcon from '@/components/layout/ServerMenuIcon'
@@ -75,6 +77,9 @@ const AppSidebar: React.FC = () => {
   const { useServers } = useServerQueries()
   const serversQuery = useServers()
   const servers = serversQuery.data || []
+  const selfCheckHealth = useSelfCheckHealth()
+  const selfCheckIssueCount = selfCheckHealth.issueCount
+  const selfCheckIssueCritical = selfCheckHealth.status === 'critical'
 
   const currentUserQuery = useCurrentUser()
   const currentUser = currentUserQuery.data
@@ -112,11 +117,29 @@ const AppSidebar: React.FC = () => {
                 <SidebarMenuButton
                   isActive={isActive('/')}
                   onClick={() => navigateTo('/')}
-                  tooltip="首页"
+                  tooltip="系统自检"
                 >
-                  <Home />
-                  <span>首页</span>
+                  <ShieldCheck />
+                  <span>系统自检</span>
                 </SidebarMenuButton>
+                {selfCheckIssueCount > 0 && (
+                  <>
+                    <SidebarMenuBadge
+                      className={cn(
+                        'text-white',
+                        selfCheckIssueCritical ? 'bg-red-600' : 'bg-yellow-600'
+                      )}
+                    >
+                      {selfCheckIssueCount}
+                    </SidebarMenuBadge>
+                    <span
+                      className={cn(
+                        'absolute right-2 top-2 hidden h-2 w-2 rounded-full group-data-[collapsible=icon]:block',
+                        selfCheckIssueCritical ? 'bg-red-500' : 'bg-yellow-500'
+                      )}
+                    />
+                  </>
+                )}
               </SidebarMenuItem>
 
               <SidebarMenuItem>

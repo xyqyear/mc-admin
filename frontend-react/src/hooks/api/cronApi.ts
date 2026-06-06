@@ -5,6 +5,11 @@ export interface RegisteredCronJob {
   identifier: string
   description: string
   parameter_schema: RJSFSchema
+  is_system: boolean
+  default_cron?: string | null
+  default_second?: string | null
+  default_params?: Record<string, any> | null
+  default_name?: string | null
 }
 
 export interface CronJob {
@@ -15,6 +20,7 @@ export interface CronJob {
   second?: string
   params: Record<string, any>
   execution_count: number
+  is_system: boolean
   status: string // lowercase 'active' | 'paused' | 'cancelled'
   created_at: string
   updated_at: string
@@ -47,6 +53,7 @@ export interface UpdateCronJobRequest {
   identifier: string
   params: Record<string, any>
   cron: string
+  name?: string
   second?: string
 }
 

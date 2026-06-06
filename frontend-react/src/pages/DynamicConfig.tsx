@@ -192,7 +192,7 @@ const DynamicConfig: React.FC = () => {
   }
 
   const moduleOptions = Object.entries(modules?.modules || {}).map(([key, module]) => ({
-    label: `${module.module_name} (${module.schema_class})`,
+    label: String(module.json_schema?.title ?? module.module_name),
     value: key,
   }))
 
@@ -292,9 +292,9 @@ const DynamicConfig: React.FC = () => {
                   <div className="mb-4">
                     <h4 className="text-lg font-semibold">配置表单</h4>
                     <p className="text-sm text-muted-foreground">
-                      模块: {moduleSchema.module_name} |
+                      配置: {moduleSchema.json_schema?.title ?? moduleSchema.module_name} |
                       版本: {moduleSchema.version} |
-                      类型: {moduleSchema.schema_class}
+                      内部模块: {moduleSchema.module_name}
                     </p>
                   </div>
 

@@ -27,6 +27,11 @@ class CronJobRegistration:
     function: AsyncCronJobFunction
     description: str
     schema_cls: Type[BaseConfigSchema]
+    is_system: bool = False
+    default_cron: Optional[str] = None
+    default_second: Optional[str] = None
+    default_params: Optional[BaseConfigSchema] = None
+    default_name: Optional[str] = None
 
 
 class ExecutionContext(BaseModel):
@@ -91,6 +96,7 @@ class CronJobConfig(BaseModel):
     second: Optional[str] = None
     params: BaseConfigSchema
     execution_count: int = 0
+    is_system: bool = False
     status: CronJobStatus = CronJobStatus.ACTIVE
     created_at: datetime
     updated_at: datetime

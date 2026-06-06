@@ -15,6 +15,7 @@ from .helpers import (
 
 REVISION = "2026052400"
 DOWN_REVISION = "f2ee81a56fee"
+CURRENT_HEAD = "2026060500"
 
 
 async def test_startup_upgrade_and_downgrade_restoration_schema(
@@ -29,6 +30,10 @@ async def test_startup_upgrade_and_downgrade_restoration_schema(
     assert not has_table(db_path, "restoration")
 
     await migrations.ensure_database_schema()
+
+    assert version(db_path) == CURRENT_HEAD
+
+    run_alembic(db_path, "downgrade", REVISION)
 
     assert version(db_path) == REVISION
     assert has_table(db_path, "restoration")

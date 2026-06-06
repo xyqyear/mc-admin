@@ -32,10 +32,14 @@ jobs:
             pytest_target: tests/ftb_claims
           - test_group: mcmap
             pytest_target: tests/mcmap
+          - test_group: migrations
+            pytest_target: tests/migrations
           - test_group: player_locations
             pytest_target: tests/player_locations
           - test_group: players
             pytest_target: tests/players
+          - test_group: self_check
+            pytest_target: tests/self_check
           - test_group: servers
             pytest_target: tests/servers
           - test_group: snapshots

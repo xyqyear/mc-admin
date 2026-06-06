@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...models import UserPublic
+from ...self_check.constants import SERVER_CREATED_TRIGGER
+from ...self_check.events import schedule_self_check_event
 from ...servers.lifecycle import (
     CreateServerResult,
     CreateServerSpec,
@@ -44,7 +46,7 @@ async def create_server(
     server_id: str,
     create_request: CreateServerRequest,
     db: AsyncSession = Depends(get_db),
-    _: UserPublic = Depends(get_current_user),
+    user: UserPublic = Depends(get_current_user),
 ) -> CreateServerResult:
     """Create a new Minecraft server.
 
@@ -56,4 +58,6 @@ async def create_server(
     the same operation. DNS is updated as the final step (best-effort).
     """
     spec = CreateServerSpec.model_validate(create_request.model_dump())
-    return await create_server_full(db, server_id, spec)
+    result = await create_server_full(db, server_id, spec)
+    schedule_self_check_event(SERVER_CREATED_TRIGGER, user.id)
+    return result

@@ -19,6 +19,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 
 import PageHeader from '@/components/layout/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
@@ -109,9 +110,13 @@ const CronManagement: React.FC = () => {
   }
 
   const identifierOptions = registeredJobs?.map(job => ({
-    label: `${job.identifier} - ${job.description}`,
+    label: job.description,
     value: job.identifier,
   })) || []
+
+  const getJobTypeLabel = (identifier: string) => (
+    registeredJobs?.find(job => job.identifier === identifier)?.description ?? identifier
+  )
 
   const columns: ColumnDef<CronJob, any>[] = [
     {
@@ -120,7 +125,10 @@ const CronManagement: React.FC = () => {
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.original.name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.identifier}</div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{getJobTypeLabel(row.original.identifier)}</span>
+            {row.original.is_system && <Badge variant="outline">系统</Badge>}
+          </div>
         </div>
       ),
     },
@@ -185,7 +193,7 @@ const CronManagement: React.FC = () => {
             >
               <Pencil className="h-4 w-4" />
             </Button>
-            {record.status === 'active' && (
+            {!record.is_system && record.status === 'active' && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -196,7 +204,7 @@ const CronManagement: React.FC = () => {
                 <Pause className="h-4 w-4" />
               </Button>
             )}
-            {(record.status === 'paused' || record.status === 'cancelled') && (
+            {!record.is_system && (record.status === 'paused' || record.status === 'cancelled') && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -207,7 +215,7 @@ const CronManagement: React.FC = () => {
                 <Play className="h-4 w-4" />
               </Button>
             )}
-            {record.status !== 'cancelled' && (
+            {!record.is_system && record.status !== 'cancelled' && (
               <Button
                 variant="ghost"
                 size="icon-sm"

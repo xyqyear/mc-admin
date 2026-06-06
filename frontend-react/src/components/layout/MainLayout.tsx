@@ -2,6 +2,7 @@ import React from 'react'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import AppSidebar from '@/components/layout/AppSidebar'
 import { TaskCenterPanel, TaskCenterTrigger } from '@/components/task-center'
+import SelfCheckGlobalIndicator from '@/components/self-check/SelfCheckGlobalIndicator'
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -15,6 +16,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
+        <SelfCheckGlobalIndicator />
         <main className="flex-1 p-4 overflow-auto">{children}</main>
       </SidebarInset>
       <TaskCenterPanel />

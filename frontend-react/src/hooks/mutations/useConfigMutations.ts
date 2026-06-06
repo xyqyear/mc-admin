@@ -49,6 +49,10 @@ export const useUpdateModuleConfig = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
       }
+
+      if (variables.moduleName === 'self_check') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
+      }
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.detail || error.message || '配置更新失败'
@@ -77,6 +81,10 @@ export const useResetModuleConfig = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
+      }
+
+      if (moduleName === 'self_check') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
       }
     },
     onError: (error: any) => {

@@ -5,7 +5,7 @@ from typing import Annotated, List, Optional, cast
 
 import aiofiles.os as aioos
 import httpx2
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
@@ -22,54 +22,75 @@ from ..types import ExecutionContext
 
 
 class BackupJobParams(BaseConfigSchema):
-    """Parameters for backup cron job"""
+    """备份定时任务参数。"""
+
+    model_config = ConfigDict(title="备份任务参数")
 
     # Backup target configuration
     server_id: Annotated[
         Optional[str],
-        Field(description="可选要备份的服务器 (None = 备份所有服务器)"),
+        Field(
+            title="服务器 ID",
+            description="可选要备份的服务器；留空表示备份所有服务器。",
+        ),
     ] = None
-    path: Annotated[Optional[str], Field(description="服务器数据目录内的可选路径")] = (
-        None
-    )
+    path: Annotated[
+        Optional[str],
+        Field(title="备份路径", description="服务器数据目录内的可选路径。"),
+    ] = None
 
     # Forget configuration
-    enable_forget: Annotated[bool, Field(description="是否在备份后运行 forget")] = True
+    enable_forget: Annotated[
+        bool,
+        Field(title="运行 forget", description="是否在备份后运行 restic forget。"),
+    ] = True
 
     # Forget retention policies (all optional, but at least one must be specified if enable_forget=True)
-    keep_last: Annotated[Optional[int], Field(description="保留最近的 n 个快照")] = None
+    keep_last: Annotated[
+        Optional[int], Field(title="保留最近快照数", description="保留最近的 n 个快照。")
+    ] = None
     keep_hourly: Annotated[
-        Optional[int], Field(description="在最近 n 小时内每小时保留一次")
+        Optional[int],
+        Field(title="每小时保留", description="在最近 n 小时内每小时保留一次。"),
     ] = None
     keep_daily: Annotated[
-        Optional[int], Field(description="在最近 n 天内每天保留一次")
+        Optional[int],
+        Field(title="每天保留", description="在最近 n 天内每天保留一次。"),
     ] = None
     keep_weekly: Annotated[
-        Optional[int], Field(description="在最近 n 周内每周保留一次")
+        Optional[int],
+        Field(title="每周保留", description="在最近 n 周内每周保留一次。"),
     ] = None
     keep_monthly: Annotated[
-        Optional[int], Field(description="在最近 n 月内每月保留一次")
+        Optional[int],
+        Field(title="每月保留", description="在最近 n 月内每月保留一次。"),
     ] = None
     keep_yearly: Annotated[
-        Optional[int], Field(description="在最近 n 年内每年保留一次")
+        Optional[int],
+        Field(title="每年保留", description="在最近 n 年内每年保留一次。"),
     ] = None
     keep_tag: Annotated[
         Optional[List[str]],
-        Field(description="保留带有这些标签的所有快照"),
+        Field(title="保留标签", description="保留带有这些标签的所有快照。"),
     ] = None
     keep_within: Annotated[
         Optional[str],
-        Field(description='在指定时长内保留所有快照 (例如 "4d", "2y5m7d3h")'),
+        Field(
+            title="按时间范围保留",
+            description='在指定时长内保留所有快照，例如 "4d" 或 "2y5m7d3h"。',
+        ),
     ] = None
 
     # Forget options
     prune: Annotated[
-        bool, Field(description="是否在 forget 后运行 prune (默认 True)")
+        bool,
+        Field(title="运行 prune", description="是否在 forget 后运行 restic prune。"),
     ] = True
 
     # Uptime Kuma integration
     uptimekuma_url: Annotated[
-        Optional[str], Field(description="Uptime Kuma 推送监控 URL (可选)")
+        Optional[str],
+        Field(title="Uptime Kuma 推送 URL", description="Uptime Kuma 推送监控 URL，可选。"),
     ] = None
 
     @model_validator(mode="after")
@@ -200,7 +221,7 @@ async def backup_cronjob(context: ExecutionContext):
         kind=ServerOperationKind.BACKUP,
         started_at=datetime.now(timezone.utc),
         user_id=None,
-        description=f"scheduled backup ({lock_key})",
+        description=f"定时备份（{lock_key}）",
     )
 
     try:
@@ -208,8 +229,13 @@ async def backup_cronjob(context: ExecutionContext):
             if not acquired:
                 current = server_operation_lock.get_holder(lock_key)
                 if current is not None:
+                    current_kind = (
+                        "备份"
+                        if current.kind == ServerOperationKind.BACKUP
+                        else "恢复"
+                    )
                     skip_msg = (
-                        f"跳过备份: 服务器 '{lock_key}' 被 {current.kind.value} 占用"
+                        f"跳过备份: 服务器 '{lock_key}' 被{current_kind}占用"
                         f" ({current.description}, 起始 {current.started_at.isoformat()})"
                     )
                 else:

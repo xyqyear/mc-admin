@@ -27,6 +27,7 @@ from .routers import (
     cron,
     dns,
     snapshots,
+    self_check,
     system,
     tasks,
     templates,
@@ -133,6 +134,7 @@ api_app.include_router(system.router)
 api_app.include_router(snapshots.router)
 api_app.include_router(archive.router)
 api_app.include_router(cron.router)
+api_app.include_router(self_check.router)
 api_app.include_router(dns.router)
 api_app.include_router(config_router)
 api_app.include_router(tasks.router)

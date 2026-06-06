@@ -265,8 +265,8 @@ class TestCronJobNextRunTime:
             "/api/cron/nonexistent_job/next-run-time", headers=authenticated_headers
         )
 
-        assert response.status_code == 400
-        assert "not found" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "不存在" in response.json()["detail"]
 
     def test_get_next_run_time_paused_job(self, test_db, client, authenticated_headers):
         cronjob_data = {
@@ -291,8 +291,8 @@ class TestCronJobNextRunTime:
             f"/api/cron/{cronjob_id}/next-run-time", headers=authenticated_headers
         )
 
-        assert response.status_code == 400
-        assert "not in active state" in response.json()["detail"]
+        assert response.status_code == 409
+        assert "未处于运行中" in response.json()["detail"]
 
     def test_get_next_run_time_cancelled_job(
         self, test_db, client, authenticated_headers
@@ -319,8 +319,8 @@ class TestCronJobNextRunTime:
             f"/api/cron/{cronjob_id}/next-run-time", headers=authenticated_headers
         )
 
-        assert response.status_code == 400
-        assert "not in active state" in response.json()["detail"]
+        assert response.status_code == 409
+        assert "未处于运行中" in response.json()["detail"]
 
     def test_multiple_cron_expressions(self, test_db, client, authenticated_headers):
         cronjob_data = {

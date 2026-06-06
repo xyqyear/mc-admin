@@ -34,11 +34,13 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 ## CI
 
 - `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests, and it installs pinned `fd`, Restic, and `mcmap` versions from `Dockerfile`.
+- When adding a new first-level backend test directory under `backend/tests/`, add a matching matrix entry to `.github/workflows/backend-tests.yml` in the same change.
 - `.github/workflows/static-checks.yml` runs frontend lint/build and backend Pyright on every push.
 - `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags and exports a registry BuildKit cache.
 
 ## Cross-component conventions
 
 - All three CLAUDE.md files describe **current** state; never write changelog-style notes ("recently added X", "previously did Y", "now uses Z").
+- User-facing application text is Chinese, including frontend UI copy and backend-provided names, descriptions, errors, and messages that may be displayed to users.
 - Long-form design background — business logic, invariants, lifecycle ordering, component graphs — lives in `backend/docs/` and `frontend-react/docs/`. Each `docs/<topic>.md` is self-contained, current-state, no changelog. CLAUDE.md carries day-to-day rules and points at the doc.
 - `.claude/` holds historical artifacts (plans, migration notes, agent sessions). Don't extend these for new design work — write to `docs/` instead.

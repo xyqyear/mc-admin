@@ -1,4 +1,6 @@
-from typing import cast
+from typing import Annotated, cast
+
+from pydantic import ConfigDict, Field
 
 from ...dynamic_config.schemas import BaseConfigSchema
 from ...minecraft import docker_mc_manager
@@ -6,7 +8,14 @@ from ..types import ExecutionContext
 
 
 class ServerRestartParams(BaseConfigSchema):
-    server_id: str
+    """服务器重启任务参数。"""
+
+    model_config = ConfigDict(title="服务器重启任务参数")
+
+    server_id: Annotated[
+        str,
+        Field(title="服务器 ID", description="要重启的服务器 ID。"),
+    ]
 
 
 async def restart_server_cronjob(context: ExecutionContext):

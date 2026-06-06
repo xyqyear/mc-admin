@@ -8,6 +8,7 @@ from ..dynamic_config.schemas import BaseConfigSchema
 from .jobs.backup import BackupJobParams, backup_cronjob
 from .jobs.restart import ServerRestartParams, restart_server_cronjob
 from .types import AsyncCronJobFunction, CronJobRegistration
+from ..self_check.job import SelfCheckJobParams, self_check_cronjob
 
 
 class CronRegistry:
@@ -27,6 +28,11 @@ class CronRegistry:
         schema_cls: Type[BaseConfigSchema],
         identifier: Optional[str] = None,
         description: str = "",
+        is_system: bool = False,
+        default_cron: Optional[str] = None,
+        default_second: Optional[str] = None,
+        default_params: Optional[BaseConfigSchema] = None,
+        default_name: Optional[str] = None,
     ):
         """
         Decorator to register a cron job function.
@@ -62,6 +68,11 @@ class CronRegistry:
                 schema_cls=schema_cls,
                 identifier=identifier,
                 description=description,
+                is_system=is_system,
+                default_cron=default_cron,
+                default_second=default_second,
+                default_params=default_params,
+                default_name=default_name,
             )
 
         return decorator
@@ -72,6 +83,11 @@ class CronRegistry:
         schema_cls: Type[BaseConfigSchema],
         identifier: Optional[str] = None,
         description: str = "",
+        is_system: bool = False,
+        default_cron: Optional[str] = None,
+        default_second: Optional[str] = None,
+        default_params: Optional[BaseConfigSchema] = None,
+        default_name: Optional[str] = None,
     ):
         """
         Register a cron job function.
@@ -84,7 +100,14 @@ class CronRegistry:
         """
         cronjob_identifier = identifier or func.__name__
         self._cronjobs[cronjob_identifier] = CronJobRegistration(
-            function=func, description=description, schema_cls=schema_cls
+            function=func,
+            description=description,
+            schema_cls=schema_cls,
+            is_system=is_system,
+            default_cron=default_cron,
+            default_second=default_second,
+            default_params=default_params,
+            default_name=default_name,
         )
 
         return func
@@ -154,4 +177,16 @@ cron_registry.register_func(
     schema_cls=BackupJobParams,
     identifier="backup",
     description="创建备份快照并清理旧快照",
+)
+
+cron_registry.register_func(
+    func=self_check_cronjob,
+    schema_cls=SelfCheckJobParams,
+    identifier="self_check",
+    description="自动运行系统自检",
+    is_system=True,
+    default_cron="0 * * * *",
+    default_second="0",
+    default_params=SelfCheckJobParams(),
+    default_name="自动系统自检",
 )

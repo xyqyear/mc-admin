@@ -82,6 +82,10 @@ class LogMonitor:
         self._file_pointers.pop(server_id, None)
         logger.info(f"Stopped watching logs for server {server_id}")
 
+    def is_watching(self, server_id: str) -> bool:
+        task = self._watch_tasks.get(server_id)
+        return task is not None and not task.done()
+
     async def stop_all(self) -> None:
         """Stop watching all servers."""
         self._stop_flag = True

@@ -64,6 +64,12 @@ SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
 CHUNKS_PER_REGION_AXIS = 32
 SUBDIR_KINDS = ("region", "entities", "poi")
 PREVIEW_BASE_DIR = Path(tempfile.gettempdir()) / "mc-admin-world-restore"
+RESTORATION_TYPE_LABELS = {
+    RestorationType.WORLD: "整个世界",
+    RestorationType.DIMENSION: "维度",
+    RestorationType.REGIONS: "区域",
+    RestorationType.CHUNKS: "区块",
+}
 
 
 class RestoreEvent(BaseModel):
@@ -118,6 +124,10 @@ class SelectionResolutionError(RestoreError):
 
 def _new_restoration_id() -> str:
     return secrets.token_hex(16)
+
+
+def _selection_label(selection: RestorationSelection) -> str:
+    return RESTORATION_TYPE_LABELS.get(selection.type, selection.type.value)
 
 
 def _group_chunks_by_region(
@@ -192,13 +202,14 @@ class WorldRestoreOrchestrator:
         paths = await self._resolve_paths_for_selection(server_id, selection)
         if not paths:
             raise SelectionResolutionError(
-                f"selection resolved to no paths: {selection.model_dump()}"
+                f"选择范围没有解析到任何文件路径: {selection.model_dump()}"
             )
+        selection_label = _selection_label(selection)
         holder = LockHolder(
             kind=ServerOperationKind.BACKUP,
             started_at=datetime.now(timezone.utc),
             user_id=user_id,
-            description=f"world snapshot ({selection.type.value})",
+            description=f"世界快照（{selection_label}）",
         )
         async with self._lock.acquire(server_id, holder):
             return await self._restic.backup(paths)
@@ -227,12 +238,12 @@ class WorldRestoreOrchestrator:
     ) -> AsyncGenerator[RestoreEvent, None]:
         """Acquire RESTORE lock, take a safety snapshot, persist a row, and run the scope flow."""
         restoration_id = _new_restoration_id()
+        selection_label = _selection_label(selection)
         holder = LockHolder(
             kind=ServerOperationKind.RESTORE,
             started_at=datetime.now(timezone.utc),
             user_id=user_id,
-            description=f"world restore ({selection.type.value})"
-            + (" rollback" if is_rollback else ""),
+            description=f"世界恢复（{selection_label}{'，回档' if is_rollback else ''}）",
             restoration_id=restoration_id,
         )
 
@@ -241,19 +252,19 @@ class WorldRestoreOrchestrator:
             paths = await self._resolve_paths_for_selection(server_id, selection)
             if not paths:
                 raise SelectionResolutionError(
-                    f"selection resolved to no paths: {selection.model_dump()}"
+                    f"选择范围没有解析到任何文件路径: {selection.model_dump()}"
                 )
 
             yield RestoreEvent(
                 event_type="start",
                 restoration_id=restoration_id,
-                message=f"starting {selection.type.value} restore",
+                message=f"开始恢复{selection_label}",
             )
 
             yield RestoreEvent(
                 event_type="safety_snapshot",
                 restoration_id=restoration_id,
-                message="creating safety snapshot",
+                message="正在创建安全快照",
             )
             safety = await self._restic.backup(paths)
             safety_snapshot_id = safety.id
@@ -261,7 +272,7 @@ class WorldRestoreOrchestrator:
                 event_type="safety_snapshot",
                 restoration_id=restoration_id,
                 safety_snapshot_id=safety_snapshot_id,
-                message=f"safety snapshot {safety.short_id}",
+                message=f"安全快照 {safety.short_id}",
             )
 
             await self._insert_restoration_row(
@@ -316,7 +327,7 @@ class WorldRestoreOrchestrator:
             yield RestoreEvent(
                 event_type="invalidate_cache",
                 restoration_id=restoration_id,
-                message=f"invalidated {invalidated} map tile(s)",
+                message=f"已使 {invalidated} 个地图瓦片缓存失效",
             )
 
             await self._update_restoration_row(
@@ -325,7 +336,7 @@ class WorldRestoreOrchestrator:
             yield RestoreEvent(
                 event_type="complete",
                 restoration_id=restoration_id,
-                message="restore complete",
+                message="恢复完成",
             )
 
     async def rollback(
@@ -339,10 +350,10 @@ class WorldRestoreOrchestrator:
                 )
             ).scalar_one_or_none()
         if row is None:
-            raise RestoreError(f"restoration not found: {restoration_id}")
+            raise RestoreError(f"恢复记录不存在: {restoration_id}")
         if not row.safety_snapshot_id:
             raise RestoreError(
-                f"restoration {restoration_id} has no safety snapshot to roll back to"
+                f"恢复记录 {restoration_id} 没有可用于回档的安全快照"
             )
 
         selection = RestorationSelection.model_validate_json(row.selection_json)
@@ -370,7 +381,7 @@ class WorldRestoreOrchestrator:
         paths = await self._resolve_paths_for_selection(server_id, selection)
         if not paths:
             raise SelectionResolutionError(
-                f"selection resolved to no paths: {selection.model_dump()}"
+                f"选择范围没有解析到任何文件路径: {selection.model_dump()}"
             )
 
         affected_regions = _count_affected_regions(selection)
@@ -383,7 +394,7 @@ class WorldRestoreOrchestrator:
             yield PreviewEvent(
                 event_type="start",
                 session_id=session_id,
-                message=f"preview staging from snapshot {source_snapshot_id[:8]}",
+                message=f"正在从快照 {source_snapshot_id[:8]} 准备预览",
             )
             await aioos.makedirs(session_dir / "source", exist_ok=True)
             async for _ in self._restic.restore(
@@ -395,7 +406,7 @@ class WorldRestoreOrchestrator:
             yield PreviewEvent(
                 event_type="stage",
                 session_id=session_id,
-                message="snapshot MCAs staged",
+                message="快照 MCA 文件准备完成",
             )
 
             if selection.type is RestorationType.CHUNKS:
@@ -418,7 +429,7 @@ class WorldRestoreOrchestrator:
             yield PreviewEvent(
                 event_type="ready",
                 session_id=session_id,
-                message="preview ready",
+                message="预览已就绪",
             )
         except Exception as exc:
             logger.exception("preview failed for server=%s", server_id)
@@ -443,7 +454,7 @@ class WorldRestoreOrchestrator:
         roots = await discover_world_roots(data_path)
         if selection.region_dir_relpath is None:
             raise SelectionResolutionError(
-                "chunks selection requires region_dir_relpath"
+                "区块恢复选择范围需要指定维度路径"
             )
         dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
@@ -518,8 +529,7 @@ class WorldRestoreOrchestrator:
         cache = ServerMapCache(data_path=data_path)
         if not await aioos.path.exists(cache.palette_json):
             raise RestoreError(
-                "Cannot render preview: live map palette is not initialized; "
-                "open the world map page and run initialization first."
+                "无法渲染预览：当前地图调色板尚未初始化；请先打开世界地图页面并运行初始化。"
             )
 
         roots = await discover_world_roots(data_path)
@@ -593,11 +603,11 @@ class WorldRestoreOrchestrator:
         queue = sess.render_queue
         if queue is None:
             raise FileNotFoundError(
-                f"preview tile ({rx}, {rz}) not available — render queue not attached"
+                f"预览瓦片 ({rx}, {rz}) 不可用：渲染队列尚未挂载"
             )
         if sess.affected_keys is not None and (rx, rz) not in sess.affected_keys:
             raise FileNotFoundError(
-                f"preview tile ({rx}, {rz}) is outside the preview's affected region set"
+                f"预览瓦片 ({rx}, {rz}) 不在本次预览受影响的区域范围内"
             )
 
         effective_timeout = (
@@ -632,7 +642,7 @@ class WorldRestoreOrchestrator:
         yield RestoreEvent(
             event_type="restore",
             restoration_id=restoration_id,
-            message=f"restoring {len(paths)} path(s) from snapshot {source_snapshot_id[:8]}",
+            message=f"正在从快照 {source_snapshot_id[:8]} 恢复 {len(paths)} 个路径",
             percent=0.0,
         )
         async for ev in self._restic.restore(
@@ -666,7 +676,7 @@ class WorldRestoreOrchestrator:
         roots = await discover_world_roots(data_path)
         if selection.region_dir_relpath is None:
             raise SelectionResolutionError(
-                "chunks selection requires region_dir_relpath"
+                "区块恢复选择范围需要指定维度路径"
             )
         dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
@@ -696,7 +706,7 @@ class WorldRestoreOrchestrator:
             yield RestoreEvent(
                 event_type="stage",
                 restoration_id=restoration_id,
-                message=f"staging {len(grouped)} region(s) from snapshot {source_snapshot_id[:8]}",
+                message=f"正在从快照 {source_snapshot_id[:8]} 准备 {len(grouped)} 个区域",
                 percent=0.0,
             )
             async for ev in self._restic.restore(
@@ -760,16 +770,16 @@ class WorldRestoreOrchestrator:
             completed_count: Optional[int] = None
             async for event in proc.events(event_adapter):
                 if isinstance(event, MCMapErrorEvent):
-                    raise MCMapError(event.message or f"{op_name} failed")
+                    raise MCMapError(event.message or f"mcmap {op_name} 操作失败")
                 if isinstance(event, MCMapReplaceChunksResultEvent):
                     completed_count = event.replaced
                 elif isinstance(event, MCMapRemoveChunksResultEvent):
                     completed_count = event.removed
         if proc.returncode != 0:
-            raise MCMapError(f"mcmap {op_name} exited with {proc.returncode}")
+            raise MCMapError(f"mcmap {op_name} 退出码为 {proc.returncode}")
         if completed_count != expected_count:
             raise MCMapError(
-                f"mcmap {op_name} reported {completed_count} for {expected_count} requested chunks"
+                f"mcmap {op_name} 处理了 {completed_count} 个区块，但请求了 {expected_count} 个区块"
             )
 
     async def _merge_replace(
@@ -868,7 +878,7 @@ class WorldRestoreOrchestrator:
 
         if selection.region_dir_relpath is None:
             raise SelectionResolutionError(
-                f"selection type '{selection.type.value}' requires region_dir_relpath"
+                f"{_selection_label(selection)}选择范围需要指定维度路径"
             )
         dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
 
@@ -889,7 +899,7 @@ class WorldRestoreOrchestrator:
             grouped = _group_chunks_by_region(selection.chunks)
             return expand(dim, list(grouped.keys()))
 
-        raise SelectionResolutionError(f"unsupported selection type: {selection.type}")
+        raise SelectionResolutionError(f"不支持的选择范围类型: {selection.type}")
 
     async def _resolve_paths_for_selection(
         self, server_id: str, selection: RestorationSelection
@@ -911,7 +921,7 @@ class WorldRestoreOrchestrator:
             MCServerStatus.HEALTHY,
         ):
             raise ServerNotStoppedError(
-                f"server '{server_id}' must be stopped before restore (current status: {status.value})"
+                f"服务器 '{server_id}' 必须先停止才能恢复世界（当前状态: {status.value}）"
             )
 
     async def _insert_restoration_row(
@@ -977,7 +987,7 @@ def _find_dimension(
             except ValueError:
                 continue
     raise SelectionResolutionError(
-        f"dimension with region_dir_relpath '{region_dir_relpath}' not found"
+        f"未找到维度路径 '{region_dir_relpath}'"
     )
 
 

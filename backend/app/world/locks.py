@@ -80,5 +80,8 @@ class ServerOperationLock:
     def get_holder(self, server_id: str) -> Optional[LockHolder]:
         return self._holders.get(server_id)
 
+    def get_holders(self) -> dict[str, LockHolder]:
+        return dict(self._holders)
+
 
 server_operation_lock = ServerOperationLock()

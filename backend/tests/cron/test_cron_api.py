@@ -124,7 +124,7 @@ class TestCronJobAPI:
 
         assert "cronjob_id" in data
         assert "message" in data
-        assert data["message"] == "CronJob created successfully"
+        assert data["message"] == "定时任务创建成功"
 
         created_cronjob_id = data["cronjob_id"]
         assert created_cronjob_id.startswith("test_cronjob_")
@@ -164,7 +164,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 400
-        assert "not registered" in response.json()["detail"]
+        assert "未注册" in response.json()["detail"]
 
     def test_create_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
@@ -183,7 +183,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 400
-        assert "Invalid parameters" in response.json()["detail"]
+        assert "任务参数无效" in response.json()["detail"]
 
     def test_get_cronjob_success(self, test_db, client, authenticated_headers):
         cronjob_data = {
@@ -222,7 +222,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "不存在" in response.json()["detail"]
 
     def test_pause_cronjob(self, test_db, client, authenticated_headers):
         cronjob_data = {
@@ -242,7 +242,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 200
-        assert "paused successfully" in response.json()["message"]
+        assert "已暂停" in response.json()["message"]
 
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
@@ -269,7 +269,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 200
-        assert "resumed successfully" in response.json()["message"]
+        assert "已恢复" in response.json()["message"]
 
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
@@ -294,7 +294,7 @@ class TestCronJobAPI:
         )
 
         assert response.status_code == 200
-        assert "cancelled successfully" in response.json()["message"]
+        assert "已取消" in response.json()["message"]
 
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
@@ -351,10 +351,10 @@ class TestCronJobAPI:
 
         test_cases = [
             ("GET", f"/api/cron/{nonexistent_cronjob_id}", 404),
-            ("POST", f"/api/cron/{nonexistent_cronjob_id}/pause", 500),
-            ("POST", f"/api/cron/{nonexistent_cronjob_id}/resume", 500),
-            ("DELETE", f"/api/cron/{nonexistent_cronjob_id}", 500),
-            ("GET", f"/api/cron/{nonexistent_cronjob_id}/executions", 500),
+            ("POST", f"/api/cron/{nonexistent_cronjob_id}/pause", 404),
+            ("POST", f"/api/cron/{nonexistent_cronjob_id}/resume", 404),
+            ("DELETE", f"/api/cron/{nonexistent_cronjob_id}", 404),
+            ("GET", f"/api/cron/{nonexistent_cronjob_id}/executions", 404),
         ]
 
         for method, endpoint, expected_status in test_cases:
@@ -601,8 +601,8 @@ class TestCronJobAPI:
         resume_response = client.post(
             f"/api/cron/{cronjob_id}/resume", headers=authenticated_headers
         )
-        assert resume_response.status_code == 500
-        assert "already active" in resume_response.json()["detail"]
+        assert resume_response.status_code == 409
+        assert "已在运行中" in resume_response.json()["detail"]
 
         pause_response = client.post(
             f"/api/cron/{cronjob_id}/pause", headers=authenticated_headers
@@ -655,7 +655,7 @@ class TestCronJobAPI:
             f"/api/cron/{cronjob_id}", json=update_data, headers=authenticated_headers
         )
         assert update_response.status_code == 200
-        assert "updated successfully" in update_response.json()["message"]
+        assert "更新成功" in update_response.json()["message"]
 
         get_response = client.get(
             f"/api/cron/{cronjob_id}", headers=authenticated_headers
@@ -685,7 +685,7 @@ class TestCronJobAPI:
             headers=authenticated_headers,
         )
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "不存在" in response.json()["detail"]
 
     def test_update_cronjob_invalid_identifier(
         self, test_db, client, authenticated_headers
@@ -712,7 +712,7 @@ class TestCronJobAPI:
             f"/api/cron/{cronjob_id}", json=update_data, headers=authenticated_headers
         )
         assert response.status_code == 400
-        assert "not registered" in response.json()["detail"]
+        assert "未注册" in response.json()["detail"]
 
     def test_update_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
@@ -742,7 +742,7 @@ class TestCronJobAPI:
             f"/api/cron/{cronjob_id}", json=update_data, headers=authenticated_headers
         )
         assert response.status_code == 400
-        assert "Invalid parameters" in response.json()["detail"]
+        assert "任务参数无效" in response.json()["detail"]
 
     def test_update_cronjob_scheduler_integration(
         self, test_db, client, authenticated_headers

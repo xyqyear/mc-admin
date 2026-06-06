@@ -219,6 +219,16 @@ export const queryKeys = {
     routes: () => [...queryKeys.dns.all, "routes"] as const,
   },
 
+  selfCheck: {
+    all: ["self-check"] as const,
+    status: () => [...queryKeys.selfCheck.all, "status"] as const,
+    catalog: () => [...queryKeys.selfCheck.all, "catalog"] as const,
+    runs: (params?: { limit?: number; offset?: number }) =>
+      [...queryKeys.selfCheck.all, "runs", params] as const,
+    run: (runId: string) =>
+      [...queryKeys.selfCheck.all, "runs", runId] as const,
+  },
+
   // mcmap init status + region manifest, consumed by the world-restore page.
   map: {
     all: ["map"] as const,

@@ -37,7 +37,8 @@ app/
 ├── log_monitor/           # watchfiles-based latest.log parser
 ├── files/                 # CRUD, deep search, multi-file upload
 ├── snapshots/             # Restic wrapper
-├── cron/                  # APScheduler jobs (backup, restart)
+├── cron/                  # APScheduler jobs (backup, restart, system self-check)
+├── self_check/            # health-check orchestration, category checks, retained run history, event triggers
 ├── dns/                   # DNSPod + Huawei Cloud
 ├── templates/             # server template system (typed variables)
 ├── dynamic_config/        # schema-versioned runtime config
@@ -93,7 +94,8 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search
 - `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 SSE
 - `docs/snapshots.md` — Restic wrapper, retention, restore streaming, lock interaction
-- `docs/cron.md` — APScheduler integration, registry, backup + restart jobs, Uptime Kuma push
+- `docs/cron.md` — APScheduler integration, registry metadata, system jobs, built-in jobs
+- `docs/self-check.md` — check catalog, triggers, persistence, notification extension point
 - `docs/dns.md` — DNSPod / Huawei providers, mc-router sync, reconciliation flow
 - `docs/templates.md` — variable definitions, `TemplateSnapshot`, two-mode editing, conversion
 - `docs/dynamic-config.md` — schema-versioned runtime config with Pydantic migration

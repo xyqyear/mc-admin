@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
@@ -108,6 +109,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
           identifier: selectedJobType,
           params: jobParams,
           cron: cronExpression,
+          name: values.name,
           second: secondField || undefined,
         }
         await updateMutation.mutateAsync({ cronjobId, request: updateRequest })
@@ -135,7 +137,14 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
   }
 
   const selectedJobSchema = registeredJobs?.find(job => job.identifier === selectedJobType)
+  const selectableJobs = isEdit
+    ? registeredJobs
+    : registeredJobs?.filter(job => !job.is_system)
   const isPending = isEdit ? updateMutation.isPending : createMutation.isPending
+  const getJobTypeLabel = (identifier: string) => {
+    const job = registeredJobs?.find(item => item.identifier === identifier)
+    return job?.description ?? identifier
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
@@ -158,18 +167,17 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
                 onValueChange={handleJobTypeChange}
                 disabled={isEdit || jobsLoading}
                 itemToStringLabel={(v) => {
-                  const job = registeredJobs?.find(j => j.identifier === v)
-                  return job ? `${job.identifier} - ${job.description}` : String(v)
+                  return getJobTypeLabel(String(v))
                 }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="请选择任务类型" />
                 </SelectTrigger>
                 <SelectContent>
-                  {registeredJobs?.map(job => (
+                  {selectableJobs?.map(job => (
                     <SelectItem key={job.identifier} value={job.identifier}>
-                      <span className="font-medium">{job.identifier}</span>
-                      <span className="text-xs text-muted-foreground ml-2">- {job.description}</span>
+                      <span className="font-medium">{job.description}</span>
+                      {job.is_system && <Badge variant="outline" className="ml-2">系统</Badge>}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -207,7 +215,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
                       <Input
                         id="cron-name"
                         placeholder="为任务起一个描述性的名称"
-                        disabled={isEdit}
+                        disabled={isPending}
                         {...field}
                       />
                       {fieldState.error && (

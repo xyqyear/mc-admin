@@ -1,6 +1,6 @@
 # Dynamic Configuration (`app.dynamic_config`)
 
-Runtime-editable configuration with schema migration. Settings that change behavior of running services (DNS provider credentials, snapshot retention, log-parsing regex, mcmap render parallelism, world layout discovery, world-restore preview behavior) live here, not in `config.toml`. Editable through the web UI; persisted in the `DynamicConfig` table; cached in memory; survives schema upgrades.
+Runtime-editable configuration with schema migration. Settings that change behavior of running services (DNS provider credentials, snapshot retention, log-parsing regex, mcmap render parallelism, world layout discovery, world-restore preview behavior, self-check thresholds) live here, not in `config.toml`. Editable through the web UI; persisted in the `DynamicConfig` table; cached in memory; survives schema upgrades.
 
 ## Why a separate config layer
 
@@ -10,7 +10,7 @@ Runtime-editable configuration with schema migration. Settings that change behav
 
 One row per registered config module. The row holds:
 
-- `module_name` — the schema's namespace key (`dns`, `snapshots`, `players`, `log_parser`, `mcmap`, `world`)
+- `module_name` — the schema's namespace key (`dns`, `snapshots`, `players`, `log_parser`, `mcmap`, `world`, `self_check`)
 - `version` — the schema version this row was written against
 - `data_json` — the serialized Pydantic model
 
@@ -52,6 +52,7 @@ In `dynamic_config/configs/`:
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
 - `mcmap.py` — `batch_size`, `thread_count`, `request_timeout_seconds`
 - `world.py` — region stat workers, dimension scan depth, dimension labels
+- `self_check.py` — per-check toggles, thresholds, retained-run retention, event-trigger switches
 
 ## JSON schema → frontend forms
 

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from ..schemas import BaseConfigSchema
 
@@ -8,10 +8,13 @@ from ..schemas import BaseConfigSchema
 class MCMapConfig(BaseConfigSchema):
     """Server map (mcmap) rendering configuration."""
 
+    model_config = ConfigDict(title="地图渲染配置")
+
     batch_size: Annotated[
         int,
         Field(
-            description="Maximum regions rendered in a single mcmap invocation",
+            title="单次渲染区域上限",
+            description="单次调用 mcmap 时最多渲染的 region 数量。",
             ge=1,
             le=256,
         ),
@@ -19,7 +22,8 @@ class MCMapConfig(BaseConfigSchema):
     thread_count: Annotated[
         int,
         Field(
-            description="Worker thread count passed to mcmap as -j",
+            title="渲染线程数",
+            description="传递给 mcmap -j 参数的工作线程数量。",
             ge=1,
             le=64,
         ),
@@ -27,7 +31,8 @@ class MCMapConfig(BaseConfigSchema):
     request_timeout_seconds: Annotated[
         int,
         Field(
-            description="Maximum seconds a tile HTTP request waits on a render to complete",
+            title="瓦片请求超时时间",
+            description="瓦片 HTTP 请求等待渲染完成的最长秒数。",
             ge=1,
             le=600,
         ),

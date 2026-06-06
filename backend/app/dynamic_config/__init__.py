@@ -17,6 +17,7 @@ from .configs.dns import DNSManagerConfig
 from .configs.log_parser import LogParserConfig
 from .configs.mcmap import MCMapConfig
 from .configs.players import PlayersConfig
+from .configs.self_check import SelfCheckConfig
 from .configs.snapshots import SnapshotsConfig
 from .configs.world import WorldConfig
 from .manager import config_manager
@@ -69,6 +70,10 @@ class ConfigProxy:
     def world(self):
         return cast(WorldConfig, self._manager.get_config("world"))
 
+    @property
+    def self_check(self):
+        return cast(SelfCheckConfig, self._manager.get_config("self_check"))
+
     def __getattr__(self, module_name: str):
         """
         Get configuration instance for the specified module.
@@ -97,6 +102,7 @@ config_manager.register_config("log_parser", LogParserConfig)
 config_manager.register_config("players", PlayersConfig)
 config_manager.register_config("mcmap", MCMapConfig)
 config_manager.register_config("world", WorldConfig)
+config_manager.register_config("self_check", SelfCheckConfig)
 
 # Global configuration proxy instance
 # This is the main interface that application code should import and use
@@ -114,4 +120,5 @@ __all__ = [
     "PlayersConfig",
     "MCMapConfig",
     "WorldConfig",
+    "SelfCheckConfig",
 ]

@@ -247,7 +247,7 @@ class TestBasicCronJobFunctionality:
         cron_manager = fresh_cron_manager
         params = SampleCronJobParams(message="Invalid test")
 
-        with pytest.raises(ValueError, match="not registered"):
+        with pytest.raises(ValueError, match="未注册"):
             await cron_manager.create_cronjob(
                 identifier="nonexistent_cronjob", params=params, cron="0 * * * *"
             )

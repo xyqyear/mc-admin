@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -7,6 +9,8 @@ from ...config import settings
 from ...dependencies import get_current_user
 from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
+from ...self_check.constants import SERVER_POPULATED_TRIGGER
+from ...self_check.events import schedule_self_check_event
 from ...utils.decompression import extract_minecraft_server
 
 router = APIRouter(
@@ -27,7 +31,7 @@ class PopulateServerResponse(BaseModel):
 async def populate_server(
     server_id: str,
     populate_request: PopulateServerRequest,
-    _: UserPublic = Depends(get_current_user),
+    user: UserPublic = Depends(get_current_user),
 ):
     """Populate server data directory from an archive file (background task)"""
     instance = docker_mc_manager.get_instance(server_id)
@@ -62,5 +66,12 @@ async def populate_server(
         server_id=server_id,
         cancellable=False,  # Extraction shouldn't be cancelled mid-way
     )
+
+    async def _schedule_after_completion() -> None:
+        task_result = await result.awaitable
+        if task_result.success:
+            schedule_self_check_event(SERVER_POPULATED_TRIGGER, user.id)
+
+    asyncio.create_task(_schedule_after_completion())
 
     return PopulateServerResponse(task_id=result.task_id)
