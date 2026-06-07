@@ -1,6 +1,6 @@
 # Background Tasks (`app.background_tasks`)
 
-In-memory async-task manager for long-running operations the user wants to track. Used for archive compression / extraction, server populate, server rebuild, and the world-restore flows that stage data before a restore. Not persisted — restarting the backend cancels everything in flight, by design.
+In-memory async-task manager for long-running operations the user wants to track. Used for archive compression / extraction, server populate, server rebuild, file ownership repair, and the world-restore flows that stage data before a restore. Not persisted — restarting the backend cancels everything in flight, by design.
 
 ## Why generators, not coroutines
 
@@ -42,6 +42,7 @@ The manager wraps the generator in an `asyncio.Task`, intercepts each yield to u
 `TaskType` (in `types.py`):
 
 - `ARCHIVE_CREATE` / `ARCHIVE_EXTRACT` — archive compression / extraction
+- `FILE_OWNERSHIP_REPAIR` — non-cancellable recursive `chown` for server data files
 - `SERVER_REBUILD` — template-config update triggering compose rewrite + `docker compose up -d`
 - `WORLD_RESTORE` — world-restore staging tasks (the SSE flows themselves are *not* background tasks; they stream live)
 

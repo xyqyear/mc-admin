@@ -35,7 +35,7 @@ app/
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
 ├── players/               # identity resolution, dynamic name filtering, cleanup, tracking, sessions, chat, achievements, skins
 ├── log_monitor/           # watchfiles-based latest.log parser
-├── files/                 # CRUD, deep search, multi-file upload
+├── files/                 # CRUD, deep search, ownership repair, multi-file upload
 ├── snapshots/             # Restic wrapper
 ├── cron/                  # APScheduler jobs (backup, restart, system self-check)
 ├── self_check/            # health-check orchestration, category checks, retained run history, event triggers
@@ -63,7 +63,7 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The frontend polls `/api/tasks/{id}`. Used by archive compression, server population, server rebuild, world restore. Implementation guide: `.claude/background-tasks-guide.md`.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The frontend polls `/api/tasks/{id}`. Used by archive compression, server population, server rebuild, file ownership repair, world restore. Implementation guide: `.claude/background-tasks-guide.md`.
 
 ## Dynamic config
 

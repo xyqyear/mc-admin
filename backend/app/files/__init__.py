@@ -25,6 +25,7 @@ from .multi_file import (
     set_upload_policy,
     upload_multiple_files,
 )
+from .ownership import restore_tree_ownership_task
 from .search import search_files
 from .types import (
     CreateFileRequest,
@@ -37,6 +38,7 @@ from .types import (
     FileType,
     MultiFileUploadRequest,
     MultiFileUploadResult,
+    OwnershipRestoreTaskResponse,
     OverwriteConflict,
     OverwriteDecision,
     OverwritePolicy,
@@ -49,7 +51,11 @@ from .types import (
 
 # Utilities
 # Internal utilities for testing
-from .utils import _SESSION_TIMEOUT, _upload_sessions, get_upload_session
+from .utils import (
+    _SESSION_TIMEOUT,
+    _upload_sessions,
+    get_upload_session,
+)
 
 __all__ = [
     # Types
@@ -63,6 +69,7 @@ __all__ = [
     "FileType",
     "MultiFileUploadRequest",
     "MultiFileUploadResult",
+    "OwnershipRestoreTaskResponse",
     "OverwriteConflict",
     "OverwriteDecision",
     "OverwritePolicy",
@@ -84,6 +91,7 @@ __all__ = [
     "upload_multiple_files",
     # Utilities
     "get_upload_session",
+    "restore_tree_ownership_task",
     "search_files",
     # Internal utilities for testing
     "_SESSION_TIMEOUT",

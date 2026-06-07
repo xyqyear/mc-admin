@@ -5,6 +5,7 @@ Tests the shared file operations utilities used by both servers and archive endp
 
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -19,6 +20,7 @@ from app.files import (
     get_file_content,
     get_file_items,
     rename_file_or_directory,
+    restore_tree_ownership_task,
     update_file_content,
 )
 
@@ -155,6 +157,47 @@ class TestCommonFileOperations:
             await update_file_content(base_path, "/nonexistent.txt", "content")
 
         assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_restore_tree_ownership_task_uses_chown_recursive(
+        self, test_structure
+    ):
+        """Test recursive ownership restore command arguments."""
+        stat_info = test_structure.stat()
+
+        with patch("app.files.ownership.exec_command", new=AsyncMock()) as exec_mock:
+            progress = [
+                item async for item in restore_tree_ownership_task(test_structure)
+            ]
+
+        assert progress[0].progress is None
+        assert progress[-1].progress == 100
+        assert progress[-1].result == {
+            "uid": stat_info.st_uid,
+            "gid": stat_info.st_gid,
+        }
+        exec_mock.assert_awaited_once_with(
+            "chown",
+            "-R",
+            f"{stat_info.st_uid}:{stat_info.st_gid}",
+            str(test_structure),
+        )
+
+    @pytest.mark.asyncio
+    async def test_restore_tree_ownership_task_raises_runtime_error_on_failure(
+        self, test_structure
+    ):
+        """Test failed chown is converted to a task error."""
+        with patch(
+            "app.files.ownership.exec_command",
+            new=AsyncMock(side_effect=RuntimeError("denied")),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                _ = [
+                    item async for item in restore_tree_ownership_task(test_structure)
+                ]
+
+        assert "修复文件所有权失败" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_create_file(self, test_structure):

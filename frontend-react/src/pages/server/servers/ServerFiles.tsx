@@ -73,6 +73,7 @@ const ServerFiles: React.FC = () => {
     useDeleteFile,
     useBulkDeleteFiles,
     useRenameFile,
+    useRestoreFileOwnership,
     downloadFile
   } = useFileMutations(id)
 
@@ -81,6 +82,7 @@ const ServerFiles: React.FC = () => {
   const deleteFileMutation = useDeleteFile()
   const bulkDeleteMutation = useBulkDeleteFiles()
   const renameFileMutation = useRenameFile()
+  const restoreOwnershipMutation = useRestoreFileOwnership()
 
   const { usePopulateServer } = useServerMutations()
   const populateServerMutation = usePopulateServer()
@@ -114,8 +116,10 @@ const ServerFiles: React.FC = () => {
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
   const [compressionTaskId, setCompressionTaskId] = useState<string | null>(null)
+  const [ownershipTaskId, setOwnershipTaskId] = useState<string | null>(null)
 
   const { data: compressionTask } = useTask(compressionTaskId || '')
+  const { data: ownershipTask } = useTask(ownershipTaskId || '')
 
   const [isDeepSearchDialogOpen, setIsDeepSearchDialogOpen] = useState(false)
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
@@ -185,6 +189,27 @@ const ServerFiles: React.FC = () => {
       setCompressionTaskId(null)
     }
   }, [compressionTask, compressionTaskId, queryClient])
+
+  useEffect(() => {
+    if (!ownershipTask || !ownershipTaskId) return
+
+    if (ownershipTask.status === 'completed') {
+      const uid = ownershipTask.result?.uid
+      const gid = ownershipTask.result?.gid
+      const owner = typeof uid === 'number' && typeof gid === 'number'
+        ? `为 ${uid}:${gid}`
+        : ''
+      toast.success(`文件所有权已修复${owner}`)
+      setOwnershipTaskId(null)
+      void refetch()
+    } else if (ownershipTask.status === 'failed') {
+      toast.error(`修复文件所有权失败: ${ownershipTask.error || '未知错误'}`)
+      setOwnershipTaskId(null)
+    } else if (ownershipTask.status === 'cancelled') {
+      toast.info('文件所有权修复已取消')
+      setOwnershipTaskId(null)
+    }
+  }, [ownershipTask, ownershipTaskId, refetch])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -410,6 +435,22 @@ const ServerFiles: React.FC = () => {
   const handleCompressServer = () => handleCompress(undefined, 'server')
   const handleReplaceServerFiles = () => setIsArchiveDialogOpen(true)
 
+  const handleRestoreOwnership = () => {
+    confirm({
+      title: '修复文件所有权',
+      description: '将递归修改该服务器全部文件的 UID/GID，使其与服务器根目录一致。确定继续吗？',
+      confirmText: '开始修复',
+      cancelText: '取消',
+      variant: 'destructive',
+      onConfirm: async () => {
+        if (id) {
+          const result = await restoreOwnershipMutation.mutateAsync()
+          setOwnershipTaskId(result.task_id)
+        }
+      },
+    })
+  }
+
   const handleDeepSearchNavigate = (path: string, query?: string, regex?: boolean) => {
     setIsDeepSearchDialogOpen(false)
     const newSearchParams = new URLSearchParams(location.search)
@@ -458,6 +499,12 @@ const ServerFiles: React.FC = () => {
             createArchiveMutation={createArchiveMutation}
             populateServerMutation={populateServerMutation}
             bulkDeleteMutation={bulkDeleteMutation}
+            restoreOwnershipMutation={{
+              isPending:
+                restoreOwnershipMutation.isPending ||
+                ownershipTask?.status === 'pending' ||
+                ownershipTask?.status === 'running',
+            }}
             onNavigateToParent={handleNavigateToParent}
             onRefresh={handleRefresh}
             onUpload={() => setIsMultiFileUploadDialogOpen(true)}
@@ -465,6 +512,7 @@ const ServerFiles: React.FC = () => {
             onBulkDelete={handleBulkDelete}
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
+            onRestoreOwnership={handleRestoreOwnership}
             onRefreshSnapshot={refetch}
           />
         }

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Loader2,
   Clock,
+  Wrench,
 } from 'lucide-react'
 
 import { Progress } from '@/components/ui/progress'
@@ -34,6 +35,8 @@ const getTaskTypeIcon = (taskType: BackgroundTaskType) => {
     case 'archive_create':
     case 'archive_extract':
       return <FileArchive className="h-3.5 w-3.5" />
+    case 'file_ownership_repair':
+      return <Wrench className="h-3.5 w-3.5" />
     case 'server_rebuild':
       return <Hammer className="h-3.5 w-3.5" />
     default:
@@ -47,6 +50,8 @@ const getTaskTypeName = (taskType: BackgroundTaskType): string => {
       return '创建压缩包'
     case 'archive_extract':
       return '解压文件'
+    case 'file_ownership_repair':
+      return '修复文件所有权'
     case 'server_rebuild':
       return '重建服务器'
     default:
@@ -99,6 +104,9 @@ const getTaskDisplayName = (task: BackgroundTask): string => {
   }
   if (task.taskType === 'archive_extract' && task.name) {
     return `解压 ${truncatePath(task.name)}`
+  }
+  if (task.taskType === 'file_ownership_repair' && task.name) {
+    return `修复 ${truncatePath(task.name)}`
   }
   return task.name || getTaskTypeName(task.taskType)
 }

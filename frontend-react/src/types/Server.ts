@@ -50,3 +50,7 @@ export interface RenameFileRequest {
   old_path: string;
   new_name: string;
 }
+
+export interface OwnershipRestoreTaskResponse {
+  task_id: string;
+}

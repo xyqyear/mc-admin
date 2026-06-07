@@ -1,6 +1,6 @@
 # File Operations (`app.files`)
 
-CRUD for files inside a server's data directory, plus deep search and multi-file upload with conflict resolution.
+CRUD for files inside a server's data directory, deep search, ownership repair, and multi-file upload with conflict resolution.
 
 ## Why a session-based upload flow
 
@@ -19,7 +19,8 @@ Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry
 - `multi_file.py` — session orchestrator: `check_upload_conflicts`, `set_upload_policy`, `upload_multiple_files`.
 - `search.py` — `search_files` shells out to `fd` for fast regex search; filters cover regex, case sensitivity, max depth, min/max size, newer-than / older-than dates. Result rows are parsed from `stat` output into `SearchFileItem`.
 - `types.py` — `FileItem`, `FileContent`, `MultiFileUploadRequest`, `FileStructureItem`, `OverwritePolicy`, `UploadSession`, plus the result models.
-- `utils.py` — session create/get/remove helpers; TTL enforcement.
+- `ownership.py` — background-task generator that runs `chown -R` against a server data tree using the data-root UID/GID.
+- `utils.py` — session create/get/remove helpers; TTL enforcement; ownership helpers for new files and directories.
 
 ## Why `fd` for deep search
 

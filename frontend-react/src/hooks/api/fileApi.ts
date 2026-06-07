@@ -2,6 +2,7 @@ import type {
   CreateFileRequest,
   FileContent,
   FileListResponse,
+  OwnershipRestoreTaskResponse,
   RenameFileRequest,
 } from "@/types/Server";
 import { api } from "@/utils/api";
@@ -171,6 +172,16 @@ export const fileApi = {
     const response = await api.post(
       `/servers/${serverId}/files/rename`,
       renameRequest
+    );
+    return response.data;
+  },
+
+  restoreFileOwnership: async (
+    serverId: string
+  ): Promise<OwnershipRestoreTaskResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/ownership/restore`,
+      {},
     );
     return response.data;
   },

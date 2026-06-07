@@ -1,4 +1,5 @@
 import type { CreateFileRequest, RenameFileRequest } from "@/types/Server";
+import { taskQueryKeys } from "@/hooks/queries/base/useTaskQueries";
 import { queryKeys } from "@/utils/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -105,6 +106,19 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
+  const useRestoreFileOwnership = () => {
+    return useMutation({
+      mutationFn: () => fileApi.restoreFileOwnership(serverId!),
+      onSuccess: () => {
+        toast.success("已开始修复文件所有权");
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
+      },
+      onError: (error: any) => {
+        toast.error(error.message || "修复文件所有权失败");
+      },
+    });
+  };
+
   const useCheckUploadConflicts = () => {
     return useMutation({
       mutationFn: ({ path, uploadRequest }: { path: string; uploadRequest: MultiFileUploadRequest }) =>
@@ -183,6 +197,7 @@ export const useFileMutations = (serverId: string | undefined) => {
     useDeleteFile,
     useBulkDeleteFiles,
     useRenameFile,
+    useRestoreFileOwnership,
     useCheckUploadConflicts,
     useSetUploadPolicy,
     useUploadMultipleFiles,

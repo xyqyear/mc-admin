@@ -7,6 +7,7 @@ export type BackgroundTaskStatus = 'pending' | 'running' | 'completed' | 'failed
 export type BackgroundTaskType =
   | 'archive_create'
   | 'archive_extract'
+  | 'file_ownership_repair'
   | 'server_rebuild'
   | 'world_restore'
 

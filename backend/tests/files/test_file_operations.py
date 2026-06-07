@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.background_tasks import TaskType
 from app.main import api_app
 
 
@@ -30,6 +31,10 @@ class MockMCInstance:
     def get_data_path(self) -> Path:
         """Return the data path."""
         return self.data_path
+
+    def get_name(self) -> str:
+        """Return the server name."""
+        return self.server_id
 
     async def exists(self):
         """Return True to indicate server exists."""
@@ -446,6 +451,49 @@ class TestFileOperations:
 
             assert response.status_code == 409
             assert "already exists" in response.json()["detail"]
+
+    def test_restore_file_ownership(self, client, mock_instance):
+        """Test starting a server file ownership restore task."""
+        server_id, instance = mock_instance
+
+        with mock_file_operations_setup(instance):
+            with patch(
+                "app.routers.servers.files.task_manager.submit",
+            ) as submit_mock:
+                submit_mock.return_value.task_id = "ownership-task-id"
+                response = client.post(
+                    f"/servers/{server_id}/files/ownership/restore",
+                    headers={"Authorization": "Bearer test_master_token"},
+                )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data == {"task_id": "ownership-task-id"}
+            submit_mock.assert_called_once()
+            submit_kwargs = submit_mock.call_args.kwargs
+            assert submit_kwargs["task_type"] == TaskType.FILE_OWNERSHIP_REPAIR
+            assert submit_kwargs["name"] == instance.get_name()
+            assert submit_kwargs["task_generator"] is not None
+            assert submit_kwargs["server_id"] == server_id
+            assert submit_kwargs["cancellable"] is False
+
+    def test_restore_file_ownership_server_not_found(self, client):
+        """Test restoring file ownership on nonexistent server."""
+        mock_instance = MockMCInstance("nonexistent", Path("/tmp"))
+
+        async def mock_exists():
+            return False
+
+        mock_instance.exists = mock_exists  # type: ignore
+
+        with mock_file_operations_setup(mock_instance):
+            response = client.post(
+                "/servers/nonexistent/files/ownership/restore",
+                headers={"Authorization": "Bearer test_master_token"},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"]
 
     def test_server_not_found(self, client):
         """Test operations on nonexistent server."""

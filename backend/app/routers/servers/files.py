@@ -4,6 +4,7 @@ from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from ...background_tasks import TaskType, task_manager
 from ...dependencies import get_current_user
 from ...files import (
     CreateFileRequest,
@@ -12,6 +13,7 @@ from ...files import (
     FileSearchRequest,
     FileSearchResponse,
     MultiFileUploadRequest,
+    OwnershipRestoreTaskResponse,
     OverwritePolicy,
     RenameFileRequest,
     UploadConflictResponse,
@@ -21,6 +23,7 @@ from ...files import (
     get_file_content,
     get_file_items,
     rename_file_or_directory,
+    restore_tree_ownership_task,
     search_files,
     set_upload_policy,
     update_file_content,
@@ -171,6 +174,34 @@ async def rename_file_or_directory_endpoint(
     message = await rename_file_or_directory(base_path, rename_request)
 
     return {"message": message}
+
+
+@router.post(
+    "/{server_id}/files/ownership/restore",
+    response_model=OwnershipRestoreTaskResponse,
+)
+async def restore_file_ownership_endpoint(
+    server_id: str, _: UserPublic = Depends(get_current_user)
+):
+    """Restore all server files to the server root owner as a background task."""
+    instance = docker_mc_manager.get_instance(server_id)
+
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
+
+    base_path = instance.get_data_path()
+    if not await aioos.path.exists(base_path):
+        raise HTTPException(status_code=404, detail="服务器数据目录不存在")
+
+    result = task_manager.submit(
+        task_type=TaskType.FILE_OWNERSHIP_REPAIR,
+        name=instance.get_name(),
+        task_generator=restore_tree_ownership_task(base_path),
+        server_id=server_id,
+        cancellable=False,
+    )
+
+    return OwnershipRestoreTaskResponse(task_id=result.task_id)
 
 
 # Multi-file upload endpoints

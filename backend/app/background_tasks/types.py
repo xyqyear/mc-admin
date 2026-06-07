@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class TaskType(str, Enum):
     ARCHIVE_CREATE = "archive_create"
     ARCHIVE_EXTRACT = "archive_extract"
+    FILE_OWNERSHIP_REPAIR = "file_ownership_repair"
     SERVER_REBUILD = "server_rebuild"
     WORLD_RESTORE = "world_restore"
 

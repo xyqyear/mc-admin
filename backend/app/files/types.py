@@ -38,6 +38,10 @@ class RenameFileRequest(BaseModel):
     new_name: str
 
 
+class OwnershipRestoreTaskResponse(BaseModel):
+    task_id: str
+
+
 # Multi-file upload models
 class FileStructureItem(BaseModel):
     """Represents a file or directory in the upload structure"""

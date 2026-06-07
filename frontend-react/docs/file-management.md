@@ -1,12 +1,13 @@
 # Server File Management
 
-Per-server file browser, editor, search, and upload UI. Reached from a server's overview at `/server/{id}/files`. Exposes everything the user might want to do to the server's data directory short of opening a shell.
+Per-server file browser, editor, search, upload, and ownership-repair UI. Reached from a server's overview at `/server/{id}/files`. Exposes everything the user might want to do to the server's data directory short of opening a shell.
 
 ## Layout
 
 ```
 ┌────────────────────────────────────────────────┐
-│ FileBreadcrumb · FileToolbar (upload/create…)  │
+│ FileBreadcrumb · FileToolbar                  │
+│ (upload/create/repair…)                       │
 ├────────────────────────────────────────────────┤
 │ FileSearchBox (basic in-folder)                │
 ├────────────────────────────────────────────────┤
@@ -19,6 +20,10 @@ Per-server file browser, editor, search, and upload UI. Reached from a server's 
 ```
 
 URL is the source of truth: `?path=<dir>&q=<query>&regex=<bool>`. Reload preserves location and search state.
+
+## Ownership repair
+
+`FileToolbar.tsx` exposes a confirmed "修复文件所有权" action at the top of the file manager. The mutation calls `POST /servers/{id}/files/ownership/restore`, receives a `task_id`, and `ServerFiles.tsx` polls that task with `useTask(task_id)`. The backend task recursively sets every file in the server data directory to the UID/GID of that directory; completion invalidates the file-list cache. The task is also visible in the global task center.
 
 ## Single-file editing
 

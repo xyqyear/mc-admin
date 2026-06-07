@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Upload,
   Archive,
+  Wrench,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ interface FileToolbarProps {
   createArchiveMutation: { isPending: boolean }
   populateServerMutation: { isPending: boolean }
   bulkDeleteMutation: { isPending: boolean }
+  restoreOwnershipMutation: { isPending: boolean }
   onNavigateToParent: () => void
   onRefresh: () => void
   onUpload: () => void
@@ -27,6 +29,7 @@ interface FileToolbarProps {
   onBulkDelete: () => void
   onCompressServer: () => void
   onReplaceServerFiles: () => void
+  onRestoreOwnership: () => void
   onRefreshSnapshot?: () => void
 }
 
@@ -38,6 +41,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   createArchiveMutation,
   populateServerMutation,
   bulkDeleteMutation,
+  restoreOwnershipMutation,
   onNavigateToParent,
   onRefresh,
   onUpload,
@@ -45,6 +49,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   onBulkDelete,
   onCompressServer,
   onReplaceServerFiles,
+  onRestoreOwnership,
   onRefreshSnapshot
 }) => {
   return (
@@ -89,6 +94,17 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
         </>
       )}
 
+      <Button
+        variant="outline"
+        onClick={onRestoreOwnership}
+        disabled={restoreOwnershipMutation.isPending}
+      >
+        {restoreOwnershipMutation.isPending
+          ? <Spinner className="mr-2 size-4" />
+          : <Wrench className="mr-2 h-4 w-4" />
+        }
+        修复文件所有权
+      </Button>
       <Button variant="outline" onClick={onUpload}>
         <Upload className="mr-2 h-4 w-4" />
         上传文件
