@@ -8,8 +8,8 @@ Floating panel that surfaces every long-running operation in one place — backe
 
 ## Components
 
-- `TaskCenterTrigger.tsx` — fixed-position button with a badge for active task count. Mounted at app root in `MainLayout` so every page can see it.
-- `TaskCenterPanel.tsx` — `<Card>` with `<Tabs>` (background tasks + downloads). Open/close + active-tab state lives in `useTaskCenterStore`.
+- `TaskCenterTrigger.tsx` — draggable fixed-position button with a badge for active task count. Mounted at app root in `MainLayout` so every page can see it.
+- `TaskCenterPanel.tsx` — `<Card>` with `<Tabs>` (background tasks + downloads). Open/close, active-tab state, and launcher position live in `useTaskCenterStore`.
 - `BackgroundTaskList.tsx` / `BackgroundTaskItem.tsx` — backend task list. Polls `useBackgroundTasks` (1 s when at least one task is active, 10 s otherwise — the polling cadence flips automatically based on the result set).
 - `DownloadTaskList.tsx` / `DownloadTaskItem.tsx` — browser download list, sourced from `useDownloadStore` (Zustand, persisted to localStorage so a refresh doesn't lose progress).
 
@@ -30,7 +30,7 @@ The progress modal that *initiates* a task (e.g. `RebuildProgressModal`) owns th
 
 ## Stores
 
-- `useTaskCenterStore` — `{ open: boolean, activeTab: 'background' | 'downloads' }`. Not persisted; resets on reload.
+- `useTaskCenterStore` — `{ open: boolean, activeTab: 'background' | 'download', triggerPosition: { right: number, bottom: number } }`. Only the launcher position is persisted.
 - `useBackgroundTaskStore` — mirrors backend task list locally for the badge count + offline rendering.
 - `useDownloadStore` — pure-client downloads, persisted to localStorage so an in-progress download survives a refresh.
 
@@ -45,3 +45,4 @@ The progress modal that *initiates* a task (e.g. `RebuildProgressModal`) owns th
 - `hooks/queries/base/useTaskQueries.ts`
 - `hooks/mutations/useTaskMutations.ts`
 - `stores/useTaskCenterStore.ts`, `useBackgroundTaskStore.ts`, `useDownloadStore.ts`
+- `config/taskCenterLayout.ts`

@@ -9,12 +9,35 @@ import { useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
 import { useDownloadTasks } from '@/stores/useDownloadStore'
 import BackgroundTaskList from './BackgroundTaskList'
 import DownloadTaskList from './DownloadTaskList'
+import { getTaskCenterPanelStyle } from '@/config/taskCenterLayout'
 
 const TaskCenterPanel: React.FC = () => {
-  const { isOpen, activeTab, setOpen, setActiveTab } = useTaskCenterStore()
+  const {
+    isOpen,
+    activeTab,
+    triggerPosition,
+    setOpen,
+    setActiveTab,
+  } = useTaskCenterStore()
   const { useActiveTasks } = useTaskQueries()
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
+  const [viewportSize, setViewportSize] = React.useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }))
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const activeBackgroundCount = activeTasks?.length || 0
   const activeDownloadCount = downloadTasks.filter(
@@ -26,8 +49,15 @@ const TaskCenterPanel: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-24 right-6 z-50 w-90 animate-in fade-in slide-in-from-bottom-4 duration-200">
-      <Card className="shadow-lg py-0 gap-0 overflow-hidden">
+    <div
+      className="fixed z-50 w-90 animate-in fade-in slide-in-from-bottom-4 duration-200"
+      style={getTaskCenterPanelStyle(
+        triggerPosition,
+        viewportSize.width,
+        viewportSize.height
+      )}
+    >
+      <Card className="max-h-full shadow-lg py-0 gap-0 overflow-hidden">
         <CardHeader className="py-2 px-3 border-b">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold">任务中心</CardTitle>

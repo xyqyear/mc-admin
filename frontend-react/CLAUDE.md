@@ -66,7 +66,7 @@ The protected root route `/` is the system self-check dashboard. The former feat
 - `useLoginPreferenceStore` — user's preferred auth method
 - `useDownloadStore` — download tasks
 - `useBackgroundTaskStore` — background task state (mirrors backend)
-- `useTaskCenterStore` — task center panel open + tab
+- `useTaskCenterStore` — task center panel open, tab, and persisted launcher position
 - `useWorldRestoreSelectionStore` — per-server world-restore selection (**not** persisted; selection is transient)
 
 ## SSE consumer
