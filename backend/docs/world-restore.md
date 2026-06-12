@@ -116,7 +116,7 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 - `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
 - `GET /claims` — FTB claims extracted from the primary world root via mcmap; returns `available=false` when no supported FTB data is detected
 - `GET /player-locations` — saved player positions extracted from the primary world root via mcmap, with dimension ids resolved to `region_dir_relpath` when possible
-- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* MCA paths the selection resolves to (uses `ResticManager.find_snapshots_covering`; speculative MCC sidecars are excluded from eligibility)
+- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* MCA paths the selection resolves to (uses `SnapshotService.find_snapshots_covering`; speculative MCC sidecars are excluded from eligibility)
 - `POST /snapshots` (body: `{type: "world"|"dimension", region_dir_relpath?}`) — creates a manual snapshot at world or dimension scope; returns 423 if the server lock is held
 - `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (`start` → `stage` → optional `merge_region` → `ready`, or `error`); returns `session_id` in the `ready` event
 - `POST /preview/{session_id}/heartbeat` — extends the TTL; 404 if the session is unknown

@@ -94,3 +94,56 @@ class TestBackupJobBasic:
         assert params.keep_weekly == 12
         assert params.keep_monthly == 6
         assert params.prune is True
+
+
+class TestBackupPathContainment:
+    """_resolve_backup_path must reject paths escaping the servers root."""
+
+    @pytest.fixture
+    def servers_root(self, tmp_path, monkeypatch):
+        root = tmp_path / "servers"
+        (root / "alpha" / "data" / "world").mkdir(parents=True)
+        (tmp_path / "outside").mkdir()
+
+        from unittest.mock import patch
+
+        from app.minecraft import DockerMCManager
+
+        with (
+            patch("app.cron.jobs.backup.settings") as mock_settings,
+            patch(
+                "app.cron.jobs.backup.docker_mc_manager", DockerMCManager(root)
+            ),
+        ):
+            mock_settings.server_path = root
+            yield root
+
+    async def test_valid_paths_resolve(self, servers_root):
+        from app.cron.jobs.backup import _resolve_backup_path
+
+        assert await _resolve_backup_path("alpha", None) == (
+            servers_root / "alpha"
+        ).resolve()
+        assert await _resolve_backup_path("alpha", "world") == (
+            servers_root / "alpha" / "data" / "world"
+        ).resolve()
+
+    async def test_server_id_traversal_rejected(self, servers_root):
+        from app.cron.jobs.backup import _resolve_backup_path
+
+        with pytest.raises(ValueError, match="越界"):
+            await _resolve_backup_path("../outside", None)
+
+    async def test_path_traversal_rejected(self, servers_root):
+        from app.cron.jobs.backup import _resolve_backup_path
+
+        with pytest.raises(ValueError, match="越界"):
+            await _resolve_backup_path("alpha", "../../../outside")
+
+    async def test_symlink_escape_rejected(self, servers_root):
+        from app.cron.jobs.backup import _resolve_backup_path
+
+        link = servers_root / "alpha" / "data" / "escape"
+        link.symlink_to(servers_root.parent / "outside")
+        with pytest.raises(ValueError, match="越界"):
+            await _resolve_backup_path("alpha", "escape")

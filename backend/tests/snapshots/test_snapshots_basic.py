@@ -1,9 +1,4 @@
-"""
-Basic unit tests for snapshot functionality.
-
-For comprehensive integration tests with real restic commands,
-see test_snapshots_integrated.py
-"""
+"""Unit tests for ResticClient construction, validation, and models."""
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,197 +6,135 @@ from pathlib import Path
 import pytest
 
 from app.config import ResticSettings
-from app.snapshots import ResticManager, ResticRestorePreviewAction, ResticSnapshot
+from app.snapshots import ResticClient, ResticRestoreEvent, ResticSnapshot
 
 
-class TestResticManagerBasic:
-    """Basic tests for ResticManager initialization and validation"""
-
-    def test_restic_manager_initialization(self):
-        """Test ResticManager initialization"""
-        manager = ResticManager(
+class TestResticClientConstruction:
+    def test_initialization(self):
+        client = ResticClient(
             repository_path="/test/repo/path", password="test-password"
         )
 
-        assert manager.repository_path == "/test/repo/path"
-        assert manager.password == "test-password"
-        assert manager.env["RESTIC_REPOSITORY"] == "/test/repo/path"
-        assert manager.env["RESTIC_PASSWORD"] == "test-password"
+        assert client.repository_path == "/test/repo/path"
+        assert client.use_password is True
+        assert client.env["RESTIC_REPOSITORY"] == "/test/repo/path"
+        assert client.env["RESTIC_PASSWORD"] == "test-password"
 
-    def test_restic_manager_binary_path(self):
-        """Test ResticManager binary path configuration"""
-        manager = ResticManager(
+    def test_binary_path(self):
+        client = ResticClient(
             repository_path="/test/repo/path",
             password="test-password",
             binary_path="/custom/bin/restic",
         )
 
-        assert manager.binary_path == Path("/custom/bin/restic")
-        assert manager._args("version") == ["/custom/bin/restic", "version"]
+        assert client.binary_path == Path("/custom/bin/restic")
+        assert client._build_args("version") == ["/custom/bin/restic", "version"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.parametrize("password", [None, "", "   "])
+    def test_no_password_modes(self, password):
+        client = ResticClient(repository_path="/test/repo", password=password)
+
+        assert client.use_password is False
+        assert "RESTIC_PASSWORD" not in client.env
+        assert client._build_args("snapshots")[-1] == "--insecure-no-password"
+
+    def test_password_mode_omits_insecure_flag(self):
+        client = ResticClient(repository_path="/test/repo", password="secret")
+        assert "--insecure-no-password" not in client._build_args("snapshots")
+
+
+class TestValidation:
     async def test_backup_requires_absolute_path(self):
-        """Test that backup method validates absolute paths"""
-        manager = ResticManager("/test/repo", "password")
-
-        relative_path = Path("relative/path")
+        client = ResticClient("/test/repo", "password")
         with pytest.raises(ValueError, match="Path must be absolute"):
-            await manager.backup([relative_path])
+            await client.backup([Path("relative/path")])
 
-    @pytest.mark.asyncio
     async def test_backup_requires_non_empty_paths(self):
-        """Test that backup method rejects an empty paths list"""
-        manager = ResticManager("/test/repo", "password")
-
+        client = ResticClient("/test/repo", "password")
         with pytest.raises(ValueError, match="At least one path"):
-            await manager.backup([])
+            await client.backup([])
 
-    def test_environment_variables_setup(self):
-        """Test that environment variables are set correctly"""
-        repo_path = "/custom/repo/location"
-        password = "secure-password-123"
-
-        manager = ResticManager(repo_path, password)
-
-        assert "RESTIC_REPOSITORY" in manager.env
-        assert "RESTIC_PASSWORD" in manager.env
-        assert manager.env["RESTIC_REPOSITORY"] == repo_path
-        assert manager.env["RESTIC_PASSWORD"] == password
-
-    @pytest.mark.asyncio
-    async def test_forget_validation_requires_policy(self):
-        """Test that forget method requires at least one retention policy"""
-        manager = ResticManager("/test/repo", "password")
-
-        # Test that calling forget without any parameters raises ValueError
-        with pytest.raises(
-            ValueError,
-            match="At least one retention policy parameter must be specified",
-        ):
-            await manager.forget()
-
-        # Test that calling forget with all None parameters raises ValueError
-        with pytest.raises(
-            ValueError,
-            match="At least one retention policy parameter must be specified",
-        ):
-            await manager.forget(
-                keep_last=None,
-                keep_hourly=None,
-                keep_daily=None,
-                keep_weekly=None,
-                keep_monthly=None,
-                keep_yearly=None,
-                keep_tag=None,
-                keep_within=None,
-            )
-
-        # Test that calling forget with empty keep_tag list raises ValueError
-        with pytest.raises(
-            ValueError,
-            match="At least one retention policy parameter must be specified",
-        ):
-            await manager.forget(keep_tag=[])
-
-    def test_forget_parameter_validation(self):
-        """Test that forget method validates parameters correctly"""
-        manager = ResticManager("/test/repo", "password")
-
-        # Test that valid parameters don't raise exceptions during validation
-        # (we can't test actual execution without mocking exec_command)
-        try:
-            # This would normally call exec_command, but we just test parameter validation
-            retention_params = [
-                1,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ]  # keep_last=1
-            if all(
-                param is None or (isinstance(param, list) and len(param) == 0)
-                for param in retention_params
+    async def test_restore_forbids_includes_with_excludes(self):
+        client = ResticClient("/test/repo", "password")
+        with pytest.raises(ValueError, match="forbids"):
+            async for _ in client.restore(
+                "snap",
+                source_dir=Path("/a"),
+                target_dir=Path("/a"),
+                excludes=["/x"],
+                includes=["/y"],
             ):
-                raise ValueError(
-                    "At least one retention policy parameter must be specified"
-                )
-        except ValueError:
-            pytest.fail("Valid parameters should not raise ValueError")
+                pass
 
-        # Test that keep_tag with valid list doesn't raise exception
-        try:
-            retention_params = [
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                ["tag1", "tag2"],
-                None,
-            ]  # keep_tag=["tag1", "tag2"]
-            if all(
-                param is None or (isinstance(param, list) and len(param) == 0)
-                for param in retention_params
+    async def test_restore_requires_absolute_dirs(self):
+        client = ResticClient("/test/repo", "password")
+        with pytest.raises(ValueError, match="absolute"):
+            async for _ in client.restore(
+                "snap", source_dir=Path("rel"), target_dir=Path("/abs")
             ):
-                raise ValueError(
-                    "At least one retention policy parameter must be specified"
-                )
-        except ValueError:
-            pytest.fail("Valid keep_tag parameters should not raise ValueError")
+                pass
+
+    async def test_ls_requires_absolute_path(self):
+        client = ResticClient("/test/repo", "password")
+        with pytest.raises(ValueError, match="absolute"):
+            await client.ls("snap", Path("relative"))
+
+    async def test_forget_requires_policy(self):
+        client = ResticClient("/test/repo", "password")
+
+        with pytest.raises(
+            ValueError,
+            match="At least one retention policy parameter must be specified",
+        ):
+            await client.forget()
+
+        with pytest.raises(ValueError):
+            await client.forget(keep_tag=[])
+
+        with pytest.raises(ValueError):
+            await client.forget(keep_within="   ")
 
 
-class TestSnapshotModels:
-    """Test Pydantic models for snapshot data"""
-
+class TestModels:
     def test_restic_snapshot_model(self):
-        """Test ResticSnapshot model validation"""
-        snapshot_data = {
-            "time": datetime.now(timezone.utc),
-            "paths": ["/test/path1", "/test/path2"],
-            "hostname": "test-host",
-            "username": "test-user",
-            "program_version": "restic 0.18.0",
-            "id": "abc123def456",
-            "short_id": "abc123",
-        }
+        snapshot = ResticSnapshot(
+            time=datetime.now(timezone.utc),
+            paths=["/test/path1", "/test/path2"],
+            hostname="test-host",
+            username="test-user",
+            program_version="restic 0.18.1",
+            id="abc123def456",
+            short_id="abc123",
+        )
 
-        snapshot = ResticSnapshot(**snapshot_data)
-
+        assert snapshot.excludes == []
         assert snapshot.hostname == "test-host"
-        assert snapshot.username == "test-user"
-        assert snapshot.program_version == "restic 0.18.0"
-        assert snapshot.id == "abc123def456"
-        assert snapshot.short_id == "abc123"
         assert len(snapshot.paths) == 2
 
-    def test_restic_restore_preview_action_model(self):
-        """Test ResticRestorePreviewAction model validation"""
+    def test_restic_snapshot_model_with_excludes(self):
+        snapshot = ResticSnapshot(
+            time=datetime.now(timezone.utc),
+            paths=["/srv/x"],
+            excludes=["/srv/x/data/.mcmap"],
+            hostname="h",
+            username="u",
+            id="i" * 64,
+            short_id="i" * 8,
+        )
+        assert snapshot.excludes == ["/srv/x/data/.mcmap"]
 
-        action_data = {
-            "message_type": "verbose_status",
-            "action": "updated",
-            "item": "/test/file.txt",
-            "size": 1024,
-        }
-
-        action = ResticRestorePreviewAction(**action_data)
-
-        assert action.message_type == "verbose_status"
-        assert action.action == "updated"
-        assert action.item == "/test/file.txt"
-        assert action.size == 1024
+    def test_restore_event_model(self):
+        event = ResticRestoreEvent(
+            kind="file", action="updated", item="/test/file.txt", size=1024
+        )
+        assert event.kind == "file"
+        assert event.action == "updated"
+        assert event.item == "/test/file.txt"
+        assert event.size == 1024
 
 
 class TestConfigurationIntegration:
-    """Test configuration integration"""
-
     def test_restic_settings_validation(self):
-        """Test ResticSettings model"""
-
         settings = ResticSettings(
             repository_path="/backup/repo", password="strong-password"
         )

@@ -30,6 +30,25 @@ async def resolve(path: Path, *, strict: bool = False) -> Path:
     return await asyncio.to_thread(path.resolve, strict)
 
 
+class PathOutsideBaseError(ValueError):
+    """A user-supplied path resolved outside its required base directory."""
+
+
+async def resolve_inside(base: Path, candidate: Path) -> Path:
+    """Resolve ``candidate`` and require it to stay under (or equal) resolved ``base``.
+
+    Symlinks are followed before the containment check, so a link pointing
+    outside ``base`` is rejected. Raises ``PathOutsideBaseError`` on escape.
+    """
+    resolved_base = await resolve(base)
+    resolved = await resolve(candidate)
+    if not resolved.is_relative_to(resolved_base):
+        raise PathOutsideBaseError(
+            f"Path {candidate} resolves to {resolved}, outside {resolved_base}"
+        )
+    return resolved
+
+
 async def touch(path: Path, *, exist_ok: bool = True) -> None:
     await asyncio.to_thread(_touch_sync, path, exist_ok)
 

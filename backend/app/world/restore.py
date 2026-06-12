@@ -50,7 +50,11 @@ from ..models import (
     RestorationStatus,
     RestorationType,
 )
-from ..snapshots.restic import ResticManager, ResticSnapshot, ResticSnapshotWithSummary
+from ..snapshots import (
+    ResticSnapshot,
+    ResticSnapshotWithSummary,
+    SnapshotService,
+)
 from .layout import DimensionInfo, WorldRoot, discover_world_roots
 from .locks import (
     LockHolder,
@@ -158,8 +162,8 @@ def _mcc_paths_for_region(
 
 
 async def _stage_destination(stage_dir: Path, live_path: Path) -> Path:
-    """Where ``live_path`` will land under ``stage_dir`` after a restic restore."""
-    return ResticManager.compute_restore_destination(
+    """Where ``live_path`` will land under ``stage_dir`` after a staged restore."""
+    return SnapshotService.stage_destination(
         stage_dir, await async_fs.resolve(live_path)
     )
 
@@ -174,12 +178,12 @@ class WorldRestoreOrchestrator:
     def __init__(
         self,
         *,
-        restic_manager: ResticManager,
+        snapshot_service: SnapshotService,
         docker_mc_manager: DockerMCManager,
         server_operation_lock: ServerOperationLock,
         session_factory: SessionFactory,
     ) -> None:
-        self._restic = restic_manager
+        self._snapshots = snapshot_service
         self._docker = docker_mc_manager
         self._lock = server_operation_lock
         self._session_factory = session_factory
@@ -196,8 +200,9 @@ class WorldRestoreOrchestrator:
     ) -> ResticSnapshotWithSummary:
         """Acquire BACKUP lock and snapshot the selection paths.
 
-        Safety snapshots created during a restore call ``_restic.backup``
-        directly under the outer RESTORE lock instead.
+        Safety snapshots created during a restore call
+        ``_snapshots.create_snapshot`` directly under the outer RESTORE lock
+        instead.
         """
         paths = await self._resolve_paths_for_selection(server_id, selection)
         if not paths:
@@ -212,7 +217,7 @@ class WorldRestoreOrchestrator:
             description=f"世界快照（{selection_label}）",
         )
         async with self._lock.acquire(server_id, holder):
-            return await self._restic.backup(paths)
+            return await self._snapshots.create_snapshot(paths)
 
     async def list_eligible_snapshots(
         self, server_id: str, selection: RestorationSelection
@@ -226,7 +231,7 @@ class WorldRestoreOrchestrator:
         paths = await self._resolve_eligibility_paths(server_id, selection)
         if not paths:
             return []
-        return await self._restic.find_snapshots_covering(paths)
+        return await self._snapshots.find_snapshots_covering(paths)
 
     async def begin_restore(
         self,
@@ -266,7 +271,7 @@ class WorldRestoreOrchestrator:
                 restoration_id=restoration_id,
                 message="正在创建安全快照",
             )
-            safety = await self._restic.backup(paths)
+            safety = await self._snapshots.create_snapshot(paths)
             safety_snapshot_id = safety.id
             yield RestoreEvent(
                 event_type="safety_snapshot",
@@ -397,10 +402,8 @@ class WorldRestoreOrchestrator:
                 message=f"正在从快照 {source_snapshot_id[:8]} 准备预览",
             )
             await aioos.makedirs(session_dir / "source", exist_ok=True)
-            async for _ in self._restic.restore(
-                snapshot_id=source_snapshot_id,
-                target_path=session_dir / "source",
-                include_paths=paths,
+            async for _ in self._snapshots.stage(
+                source_snapshot_id, paths, session_dir / "source"
             ):
                 pass
             yield PreviewEvent(
@@ -645,11 +648,7 @@ class WorldRestoreOrchestrator:
             message=f"正在从快照 {source_snapshot_id[:8]} 恢复 {len(paths)} 个路径",
             percent=0.0,
         )
-        async for ev in self._restic.restore(
-            snapshot_id=source_snapshot_id,
-            target_path=Path("/"),
-            include_paths=paths,
-        ):
+        async for ev in self._snapshots.restore(source_snapshot_id, paths):
             if ev.kind == "status" and ev.percent_done is not None:
                 yield RestoreEvent(
                     event_type="restore",
@@ -709,10 +708,8 @@ class WorldRestoreOrchestrator:
                 message=f"正在从快照 {source_snapshot_id[:8]} 准备 {len(grouped)} 个区域",
                 percent=0.0,
             )
-            async for ev in self._restic.restore(
-                snapshot_id=source_snapshot_id,
-                target_path=stage_root,
-                include_paths=include_paths,
+            async for ev in self._snapshots.stage(
+                source_snapshot_id, include_paths, stage_root
             ):
                 if ev.kind == "status" and ev.percent_done is not None:
                     yield RestoreEvent(

@@ -1,8 +1,12 @@
 """Minecraft server.properties parser and model."""
 
+import asyncio
+from pathlib import Path
 from typing import Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
+
+DEFAULT_LEVEL_NAME = "world"
 
 
 class ServerProperties(BaseModel):
@@ -143,3 +147,20 @@ class ServerProperties(BaseModel):
                 data[key] = value
 
         return cls(**data)
+
+
+def read_level_name_sync(data_path: Path) -> str:
+    """Level name from ``<data_path>/server.properties``; defaults to ``world``."""
+    properties_path = data_path / "server.properties"
+    try:
+        content = properties_path.read_text()
+    except OSError:
+        return DEFAULT_LEVEL_NAME
+    parsed = ServerProperties.from_server_properties(content)
+    if parsed.level_name and parsed.level_name.strip():
+        return parsed.level_name.strip()
+    return DEFAULT_LEVEL_NAME
+
+
+async def read_level_name(data_path: Path) -> str:
+    return await asyncio.to_thread(read_level_name_sync, data_path)

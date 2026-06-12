@@ -16,10 +16,11 @@ from ..logger import logger
 from ..minecraft import docker_mc_manager
 from ..models import UserPublic
 from ..snapshots import (
-    ResticRestorePreviewAction,
+    ResticRestoreAction,
     ResticSnapshot,
     ResticSnapshotWithSummary,
-    restic_manager,
+    TargetIgnoredError,
+    snapshot_service,
 )
 from ..system.resources import get_disk_info
 from ..utils import async_fs
@@ -90,13 +91,13 @@ async def _check_backup_time_restriction():
                 )
 
 
-def _get_restic_manager():
-    if not restic_manager:
+def _get_snapshot_service():
+    if not snapshot_service:
         raise HTTPException(
             status_code=500,
             detail="Restic is not configured. Please add restic settings to config.toml",
         )
-    return restic_manager
+    return snapshot_service
 
 
 async def _resolve_backup_paths(
@@ -104,6 +105,10 @@ async def _resolve_backup_paths(
 ) -> List[Path]:
     """
     Resolve the absolute backup paths from request parameters.
+
+    Every resolved path (symlinks followed) must stay inside the servers
+    root — and, for ``paths``, inside the server's data directory — so
+    traversal like ``../`` can never reach other servers or the host.
 
     Args:
         server_id: Optional server identifier
@@ -115,21 +120,35 @@ async def _resolve_backup_paths(
     if not server_id and not paths:
         # Backup entire servers directory
         return [await async_fs.resolve(settings.server_path)]
-    elif server_id and not paths:
-        # Backup specific server directory
-        instance = docker_mc_manager.get_instance(server_id)
-        return [await async_fs.resolve(instance.get_project_path())]
-    elif server_id and paths:
-        # Backup specific paths within server's data directory
-        instance = docker_mc_manager.get_instance(server_id)
-        data_path = instance.get_data_path()
-        return [await async_fs.resolve(data_path / p.lstrip("/")) for p in paths]
-    else:
+
+    if not server_id:
         error_msg = "Cannot specify paths without server_id"
         logger.error(
             f"Snapshot path resolution failed: {error_msg} (server_id={server_id}, paths={paths})"
         )
         raise HTTPException(status_code=400, detail=error_msg)
+
+    instance = docker_mc_manager.get_instance(server_id)
+    try:
+        project_path = await async_fs.resolve_inside(
+            Path(settings.server_path), instance.get_project_path()
+        )
+        if not paths:
+            return [project_path]
+
+        data_path = instance.get_data_path()
+        return [
+            await async_fs.resolve_inside(data_path, data_path / p.lstrip("/"))
+            for p in paths
+        ]
+    except async_fs.PathOutsideBaseError as e:
+        logger.warning(
+            "Snapshot path escape rejected (server_id=%s, paths=%s): %s",
+            server_id,
+            paths,
+            e,
+        )
+        raise HTTPException(status_code=400, detail="路径越界：目标路径不在服务器目录内")
 
 
 # Request/Response models
@@ -159,8 +178,14 @@ class ListSnapshotsResponse(BaseModel):
     snapshots: List[ResticSnapshot]
 
 
+class RestorePreviewAction(BaseModel):
+    action: ResticRestoreAction
+    item: Optional[str] = None
+    size: Optional[int] = None
+
+
 class RestorePreviewResponse(BaseModel):
-    actions: List[ResticRestorePreviewAction]
+    actions: List[RestorePreviewAction]
     preview_summary: str
 
 
@@ -178,8 +203,11 @@ async def create_global_snapshot(
         if not await aioos.path.exists(backup_path):
             raise HTTPException(status_code=404, detail=f"Path not found: {backup_path}")
 
-    restic_manager = _get_restic_manager()
-    snapshot = await restic_manager.backup(backup_paths)
+    service = _get_snapshot_service()
+    try:
+        snapshot = await service.create_snapshot(backup_paths)
+    except TargetIgnoredError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     logger.info(
         "Snapshot created: %s (server_id=%s)", snapshot.short_id, request.server_id
@@ -197,7 +225,7 @@ async def list_global_snapshots(
     _: UserPublic = Depends(get_current_user),
 ):
     """List all snapshots, or snapshots that touch the specified server/path"""
-    restic_manager = _get_restic_manager()
+    service = _get_snapshot_service()
 
     if server_id:
         resolved = await _resolve_backup_paths(
@@ -207,7 +235,7 @@ async def list_global_snapshots(
     else:
         filter_path = None
 
-    snapshots = await restic_manager.list_snapshots(path_filter=filter_path)
+    snapshots = await service.list_snapshots(path_filter=filter_path)
     return ListSnapshotsResponse(snapshots=snapshots)
 
 
@@ -218,12 +246,17 @@ async def preview_global_restore(
     """Preview restore operation (dry run)"""
     target_paths = await _resolve_backup_paths(request.server_id, request.paths)
 
-    restic_manager = _get_restic_manager()
-    actions = await restic_manager.restore_preview(
-        snapshot_id=request.snapshot_id,
-        target_path=Path("/"),
-        include_paths=target_paths,
-    )
+    service = _get_snapshot_service()
+    try:
+        events = await service.preview(request.snapshot_id, target_paths)
+    except TargetIgnoredError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    actions = [
+        RestorePreviewAction(action=ev.action, item=ev.item, size=ev.size)
+        for ev in events
+        if ev.action is not None
+    ]
 
     updated_count = sum(1 for a in actions if a.action == "updated")
     deleted_count = sum(1 for a in actions if a.action == "deleted")
@@ -265,7 +298,7 @@ async def restore_global_snapshot(
     the stream with an ``error`` event.
     """
     target_paths = await _resolve_backup_paths(request.server_id, request.paths)
-    restic = _get_restic_manager()
+    service = _get_snapshot_service()
 
     async def event_gen() -> AsyncGenerator[bytes, None]:
         try:
@@ -283,7 +316,7 @@ async def restore_global_snapshot(
                 }
             )
             try:
-                safety_snapshot = await restic.backup(target_paths)
+                safety_snapshot = await service.create_snapshot(target_paths)
             except Exception as e:
                 logger.error(
                     "Safety snapshot failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
@@ -303,7 +336,7 @@ async def restore_global_snapshot(
             yield sse_encode(
                 {
                     "event_type": "safety_snapshot",
-                    "safety_snapshot_id": safety_snapshot.short_id,
+                    "safety_snapshot_id": safety_snapshot.id,
                     "message": f"safety snapshot {safety_snapshot.short_id}",
                 }
             )
@@ -317,10 +350,8 @@ async def restore_global_snapshot(
             )
             touched_items: list[str] = []
             try:
-                async for ev in restic.restore(
-                    snapshot_id=request.snapshot_id,
-                    target_path=Path("/"),
-                    include_paths=target_paths,
+                async for ev in service.restore(
+                    request.snapshot_id, target_paths
                 ):
                     if ev.kind == "status" and ev.percent_done is not None:
                         yield sse_encode(
@@ -369,7 +400,7 @@ async def restore_global_snapshot(
                 {
                     "event_type": "complete",
                     "message": f"restored snapshot {request.snapshot_id[:8]}",
-                    "safety_snapshot_id": safety_snapshot.short_id,
+                    "safety_snapshot_id": safety_snapshot.id,
                 }
             )
         except Exception as e:
@@ -384,8 +415,8 @@ async def restore_global_snapshot(
 @router.delete("/{snapshot_id}")
 async def delete_snapshot(snapshot_id: str, _: UserPublic = Depends(get_current_user)):
     """Delete a specific snapshot by ID"""
-    restic_manager = _get_restic_manager()
-    await restic_manager.forget_id(snapshot_id=snapshot_id, prune=True)
+    service = _get_snapshot_service()
+    await service.forget_id(snapshot_id=snapshot_id, prune=True)
     logger.info("Snapshot deleted: %s", snapshot_id)
     return {"message": f"Snapshot {snapshot_id} deleted successfully"}
 
@@ -429,15 +460,15 @@ class UnlockResponse(BaseModel):
 @router.get("/locks", response_model=ListLocksResponse)
 async def list_locks(_: UserPublic = Depends(get_current_user)):
     """List all locks in the repository"""
-    restic_manager = _get_restic_manager()
-    locks_output = await restic_manager.list_locks()
+    service = _get_snapshot_service()
+    locks_output = await service.list_locks()
     return ListLocksResponse(locks=locks_output)
 
 
 @router.post("/unlock", response_model=UnlockResponse)
 async def unlock_repository(_: UserPublic = Depends(get_current_user)):
     """Remove stale locks from the repository"""
-    restic_manager = _get_restic_manager()
-    unlock_output = await restic_manager.unlock()
+    service = _get_snapshot_service()
+    unlock_output = await service.unlock()
     logger.info("Repository unlocked")
     return UnlockResponse(message="Repository unlocked successfully", output=unlock_output)

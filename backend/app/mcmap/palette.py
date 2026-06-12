@@ -5,11 +5,9 @@ from typing import Optional
 import aiofiles
 import aiofiles.os as aioos
 
-from ..minecraft.properties import ServerProperties
+from ..minecraft.properties import read_level_name
 from ..utils import async_fs
 from .cache import ServerMapCache
-
-DEFAULT_LEVEL_NAME = "world"
 
 
 async def compute_palette_hash(version: str, mods_dir: Optional[Path]) -> str:
@@ -53,18 +51,7 @@ async def discover_mods_dir(data_path: Path) -> Optional[Path]:
 
 
 async def discover_level_dat(data_path: Path) -> Optional[Path]:
-    properties_path = data_path / "server.properties"
-    level_name = DEFAULT_LEVEL_NAME
-    if await aioos.path.isfile(properties_path):
-        try:
-            async with aiofiles.open(properties_path) as f:
-                content = await f.read()
-            parsed = ServerProperties.from_server_properties(content)
-            if parsed.level_name and parsed.level_name.strip():
-                level_name = parsed.level_name.strip()
-        except OSError:
-            pass
-
+    level_name = await read_level_name(data_path)
     candidate = data_path / level_name / "level.dat"
     if await aioos.path.isfile(candidate):
         return candidate

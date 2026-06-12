@@ -10,10 +10,14 @@ from app.dynamic_config.configs.world import WorldConfig
 def world_runtime_config(monkeypatch):
     runtime_config = SimpleNamespace(
         world=WorldConfig(),
-        snapshots=SimpleNamespace(world_restore=WorldRestoreConfig()),
+        snapshots=SimpleNamespace(
+            world_restore=WorldRestoreConfig(),
+            ignored_paths=[],
+        ),
     )
     monkeypatch.setattr("app.world.dimension_labels.config", runtime_config)
     monkeypatch.setattr("app.world.layout.config", runtime_config)
     monkeypatch.setattr("app.world.preview.config", runtime_config)
     monkeypatch.setattr("app.world.region_manifest.config", runtime_config)
     monkeypatch.setattr("app.routers.servers.world_restore.config", runtime_config)
+    monkeypatch.setattr("app.snapshots.service.config", runtime_config)

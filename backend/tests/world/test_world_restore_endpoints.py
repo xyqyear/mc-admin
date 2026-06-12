@@ -35,7 +35,7 @@ from app.models import (
     RestorationStatus,
     RestorationType,
 )
-from app.snapshots.restic import ResticManager
+from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 from app.world import (
     ServerOperationKind,
@@ -106,6 +106,9 @@ class _FakeDockerMC:
     def get_instance(self, server_id: str) -> _FakeInstance:
         return self._instance
 
+    async def get_all_instances(self) -> list[_FakeInstance]:
+        return [self._instance]
+
 
 def _empty_mca() -> bytes:
     return b"\x00" * 8192
@@ -144,12 +147,12 @@ def repo_path() -> Iterator[Path]:
 
 
 @pytest_asyncio.fixture
-async def restic_manager(repo_path: Path) -> ResticManager:
-    manager = ResticManager(repository_path=str(repo_path), password=None)
+async def restic_client(repo_path: Path) -> ResticClient:
+    client = ResticClient(repository_path=str(repo_path), password=None)
     await exec_command(
-        str(manager.binary_path), "init", "--insecure-no-password", env=manager.env
+        str(client.binary_path), "init", "--insecure-no-password", env=client.env
     )
-    return manager
+    return client
 
 
 @pytest_asyncio.fixture
@@ -182,9 +185,9 @@ def lock() -> ServerOperationLock:
 
 
 @pytest.fixture
-def orchestrator(restic_manager, fake_docker, lock, session_factory):
+def orchestrator(restic_client, fake_docker, lock, session_factory):
     return WorldRestoreOrchestrator(
-        restic_manager=restic_manager,
+        snapshot_service=SnapshotService(restic_client, fake_docker),
         docker_mc_manager=fake_docker,
         server_operation_lock=lock,
         session_factory=session_factory,
@@ -211,8 +214,8 @@ def _patch_router(orchestrator, fake_docker, lock, session_factory):
             ),
             patch.object(
                 world_restore_module,
-                "restic_manager",
-                orchestrator._restic,
+                "snapshot_service",
+                orchestrator._snapshots,
             ),
             patch("app.dependencies.settings") as mock_dep_settings,
         ):

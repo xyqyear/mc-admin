@@ -25,7 +25,7 @@ from app.models import (
     RestorationStatus,
     RestorationType,
 )
-from app.snapshots.restic import ResticManager
+from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 from app.world import (
     LockHolder,
@@ -89,6 +89,9 @@ class _FakeDockerMC:
     def get_instance(self, server_id: str) -> _FakeInstance:
         return self._instance
 
+    async def get_all_instances(self) -> list[_FakeInstance]:
+        return [self._instance]
+
 
 # --- Fixtures ---------------------------------------------------------------
 
@@ -142,12 +145,12 @@ async def session_factory():
 
 
 @pytest.fixture
-async def restic_manager(repo_path):
-    manager = ResticManager(repository_path=str(repo_path), password=None)
+async def restic_client(repo_path):
+    client = ResticClient(repository_path=str(repo_path), password=None)
     await exec_command(
-        str(manager.binary_path), "init", "--insecure-no-password", env=manager.env
+        str(client.binary_path), "init", "--insecure-no-password", env=client.env
     )
-    return manager
+    return client
 
 
 @pytest.fixture
@@ -163,9 +166,9 @@ def lock():
 
 
 @pytest.fixture
-def orchestrator(restic_manager, fake_docker, lock, session_factory):
+def orchestrator(restic_client, fake_docker, lock, session_factory):
     return WorldRestoreOrchestrator(
-        restic_manager=restic_manager,
+        snapshot_service=SnapshotService(restic_client, fake_docker),
         docker_mc_manager=fake_docker,
         server_operation_lock=lock,
         session_factory=session_factory,
@@ -489,7 +492,7 @@ async def test_safety_snapshot_recorded_on_row(orchestrator, data_path, session_
     assert row is not None
     assert row.safety_snapshot_id is not None
     # The safety snapshot exists in the repo.
-    snapshots = await orchestrator._restic.list_snapshots()
+    snapshots = await orchestrator._snapshots.list_snapshots()
     assert any(s.id == row.safety_snapshot_id for s in snapshots)
 
 
@@ -554,7 +557,7 @@ async def test_restore_failure_marks_row_failed(
 
     # Force a failure by pointing at a bogus snapshot id after the safety snapshot
     # is created. Easiest path: monkeypatch the orchestrator's restore to raise.
-    real_restore = orchestrator._restic.restore
+    real_restore = orchestrator._snapshots.restore
 
     call_count = {"n": 0}
 
@@ -567,7 +570,7 @@ async def test_restore_failure_marks_row_failed(
         async for ev in real_restore(*args, **kwargs):
             yield ev
 
-    orchestrator._restic.restore = flaky_restore  # type: ignore[assignment]
+    orchestrator._snapshots.restore = flaky_restore  # type: ignore[assignment]
     try:
         events = await _drain(
             orchestrator.begin_restore(
@@ -578,7 +581,7 @@ async def test_restore_failure_marks_row_failed(
             )
         )
     finally:
-        orchestrator._restic.restore = real_restore  # type: ignore[assignment]
+        orchestrator._snapshots.restore = real_restore  # type: ignore[assignment]
 
     assert events[-1].event_type == "error"
     assert events[-1].message is not None
@@ -620,9 +623,9 @@ def fake_docker_multi(multi_root_data_path):
 
 
 @pytest.fixture
-def orchestrator_multi(restic_manager, fake_docker_multi, lock, session_factory):
+def orchestrator_multi(restic_client, fake_docker_multi, lock, session_factory):
     return WorldRestoreOrchestrator(
-        restic_manager=restic_manager,
+        snapshot_service=SnapshotService(restic_client, fake_docker_multi),
         docker_mc_manager=fake_docker_multi,
         server_operation_lock=lock,
         session_factory=session_factory,
@@ -752,3 +755,57 @@ async def test_regions_restore_invalidates_only_selected_tiles(
 
 # Silence "unused import" warnings.
 _ = shutil
+
+
+# --- Tests: ignored paths ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_world_restore_preserves_ignored_paths(
+    orchestrator, data_path, monkeypatch
+):
+    """A WORLD-scope restore must leave configured ignored paths untouched
+    (neither overwritten nor deleted by --delete) while reverting world data.
+
+    The <LEVEL_NAME> token expands to "world" — data_path has no
+    server.properties, so the default level name applies.
+    """
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "app.snapshots.service.config",
+        SimpleNamespace(
+            snapshots=SimpleNamespace(ignored_paths=["<LEVEL_NAME>/ignored_cache"])
+        ),
+    )
+
+    ignored_dir = data_path / "world" / "ignored_cache"
+    ignored_dir.mkdir()
+    (ignored_dir / "tile.bin").write_bytes(b"before-snapshot")
+
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+    assert snap.excludes == [str((data_path / "world" / "ignored_cache").resolve())]
+
+    mca = data_path / "world" / "region" / "r.0.0.mca"
+    original_mca = mca.read_bytes()
+    mca.write_bytes(b"\xde\xad" * 4096)
+    extraneous = data_path / "world" / "extraneous.dat"
+    extraneous.write_bytes(b"junk")
+    (ignored_dir / "tile.bin").write_bytes(b"changed-after-snapshot")
+    (ignored_dir / "new.bin").write_bytes(b"created-after-snapshot")
+
+    events = []
+    async for ev in orchestrator.begin_restore(
+        server_id="srv1",
+        source_snapshot_id=snap.id,
+        selection=selection,
+        user_id=None,
+    ):
+        events.append(ev)
+
+    assert events[-1].event_type == "complete"
+    assert mca.read_bytes() == original_mca
+    assert not extraneous.exists()
+    assert (ignored_dir / "tile.bin").read_bytes() == b"changed-after-snapshot"
+    assert (ignored_dir / "new.bin").read_bytes() == b"created-after-snapshot"

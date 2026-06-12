@@ -20,8 +20,8 @@ interface SnapshotSummary {
 
 interface Snapshot {
   time: string;
-  tree: string;
   paths: string[];
+  excludes: string[];
   hostname: string;
   username: string;
   id: string;
@@ -82,8 +82,7 @@ interface RestorePreviewRequest {
 }
 
 interface RestorePreviewAction {
-  message_type: string;
-  action?: string;
+  action: string;
   item?: string;
   size?: number;
 }

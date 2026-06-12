@@ -6,10 +6,8 @@ from typing import Optional
 
 from ..config import settings
 from ..dynamic_config import config
-from ..minecraft.properties import ServerProperties
+from ..minecraft.properties import DEFAULT_LEVEL_NAME, read_level_name_sync
 from .region_files import parse_region_filename
-
-DEFAULT_LEVEL_NAME = "world"
 
 
 @dataclass(frozen=True)
@@ -40,20 +38,6 @@ class DimensionFolderResolution:
 
 class WorldLayoutDiscoveryError(RuntimeError):
     pass
-
-
-def _read_level_name_sync(data_path: Path) -> str:
-    properties_path = data_path / "server.properties"
-    if not properties_path.exists():
-        return DEFAULT_LEVEL_NAME
-    try:
-        content = properties_path.read_text()
-    except OSError:
-        return DEFAULT_LEVEL_NAME
-    parsed = ServerProperties.from_server_properties(content)
-    if parsed.level_name and parsed.level_name.strip():
-        return parsed.level_name.strip()
-    return DEFAULT_LEVEL_NAME
 
 
 def _has_level_dat_sync(directory: Path) -> bool:
@@ -99,7 +83,7 @@ def _world_root_paths_sync(data_path: Path) -> list[WorldRootPath]:
     if not data_path.is_dir():
         return []
 
-    level_name = _read_level_name_sync(data_path)
+    level_name = read_level_name_sync(data_path)
     primary_path = data_path / level_name
     if not primary_path.is_dir():
         primary_path = data_path / DEFAULT_LEVEL_NAME

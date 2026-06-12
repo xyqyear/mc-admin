@@ -47,13 +47,13 @@ def initialize_world_restore_orchestrator() -> Optional[WorldRestoreOrchestrator
 
     from ..db.database import get_async_session
     from ..minecraft import docker_mc_manager
-    from ..snapshots import restic_manager
+    from ..snapshots import snapshot_service
 
-    if restic_manager is None:
+    if snapshot_service is None:
         return None
 
     world_restore_orchestrator = WorldRestoreOrchestrator(
-        restic_manager=restic_manager,
+        snapshot_service=snapshot_service,
         docker_mc_manager=docker_mc_manager,
         server_operation_lock=server_operation_lock,
         session_factory=get_async_session,

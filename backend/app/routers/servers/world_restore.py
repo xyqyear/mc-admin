@@ -31,7 +31,7 @@ from ...player_locations import (
     PlayerLocationsResponse,
     extract_player_locations_for_server,
 )
-from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, restic_manager
+from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, snapshot_service
 from ...self_check.constants import WORLD_RESTORED_TRIGGER, WORLD_ROLLED_BACK_TRIGGER
 from ...self_check.events import schedule_self_check_event
 from ...utils.sse import sse_encode, sse_response
@@ -165,9 +165,9 @@ class ListRestorationsResponse(BaseModel):
 
 async def _existing_snapshot_ids() -> Optional[set[str]]:
     # None when restic is unconfigured — existence checks are then skipped.
-    if restic_manager is None:
+    if snapshot_service is None:
         return None
-    snapshots = await restic_manager.list_snapshots()
+    snapshots = await snapshot_service.list_snapshots()
     return {s.id for s in snapshots}
 
 

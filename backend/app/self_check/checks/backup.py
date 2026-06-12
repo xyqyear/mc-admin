@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from ...config import settings
 from ...minecraft import docker_mc_manager
-from ...snapshots import restic_manager
+from ...snapshots import snapshot_service
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, skipped, success
 
@@ -11,7 +11,7 @@ async def check_restic_configured(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.restic_configured"]
-    if settings.restic is None or restic_manager is None:
+    if settings.restic is None or snapshot_service is None:
         return [
             finding(
                 check_id=definition.check_id,
@@ -30,7 +30,7 @@ async def check_restic_reachable(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.restic_reachable"]
-    if restic_manager is None:
+    if snapshot_service is None:
         return skipped(definition, "未配置 Restic。")
 
     snapshots, error = await context.snapshots()
@@ -54,7 +54,7 @@ async def check_server_snapshot_coverage(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.server_snapshot_coverage"]
-    if restic_manager is None:
+    if snapshot_service is None:
         return skipped(definition, "未配置 Restic。")
 
     _, error = await context.snapshots()
@@ -115,7 +115,7 @@ async def check_server_snapshot_freshness(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.server_snapshot_freshness"]
-    if restic_manager is None:
+    if snapshot_service is None:
         return skipped(definition, "未配置 Restic。")
 
     _, error = await context.snapshots()

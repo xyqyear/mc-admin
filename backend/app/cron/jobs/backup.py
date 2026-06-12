@@ -10,7 +10,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
 from ...minecraft import docker_mc_manager
-from ...snapshots import restic_manager
+from ...snapshots import snapshot_service
 from ...utils import async_fs
 from ...world import (
     GLOBAL_LOCK_KEY,
@@ -128,11 +128,11 @@ class BackupJobParams(BaseConfigSchema):
         return v
 
 
-def _get_restic_manager():
-    """Get configured restic manager instance"""
-    if not restic_manager:
+def _get_snapshot_service():
+    """Get configured snapshot service instance"""
+    if not snapshot_service:
         raise RuntimeError("Restic未配置。请在config.toml中添加restic设置")
-    return restic_manager
+    return snapshot_service
 
 
 async def _send_uptimekuma_notification(
@@ -176,6 +176,9 @@ async def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) ->
     """
     Resolve the actual backup path based on server_id and path parameters
 
+    The resolved path (symlinks followed) must stay inside the servers root
+    — and, for ``path``, inside the server's data directory.
+
     Args:
         server_id: Optional server identifier
         path: Optional path within server (relative to data directory)
@@ -187,18 +190,24 @@ async def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) ->
     if not server_id and not path:
         # Backup entire servers directory
         return await async_fs.resolve(settings.server_path)
-    elif server_id and not path:
-        # Backup specific server directory
-        instance = docker_mc_manager.get_instance(server_id)
-        return await async_fs.resolve(instance.get_project_path())
-    elif server_id and path:
-        # Backup specific path within server's data directory
-        instance = docker_mc_manager.get_instance(server_id)
-        data_path = instance.get_data_path()
-        target_path = data_path / path.lstrip("/")
-        return await async_fs.resolve(target_path)
-    else:
+
+    if not server_id:
         raise ValueError("不能在未指定server_id的情况下指定路径")
+
+    instance = docker_mc_manager.get_instance(server_id)
+    try:
+        project_path = await async_fs.resolve_inside(
+            Path(settings.server_path), instance.get_project_path()
+        )
+        if not path:
+            return project_path
+
+        data_path = instance.get_data_path()
+        return await async_fs.resolve_inside(
+            data_path, data_path / path.lstrip("/")
+        )
+    except async_fs.PathOutsideBaseError as e:
+        raise ValueError(f"备份路径越界，不在服务器目录内: {e}")
 
 
 async def backup_cronjob(context: ExecutionContext):
@@ -247,8 +256,8 @@ async def backup_cronjob(context: ExecutionContext):
                         context, params.uptimekuma_url, True, f"skipped: {skip_msg}", running_time
                     )
                 return
-            # Get restic manager
-            restic_manager_local = _get_restic_manager()
+            # Get snapshot service
+            service = _get_snapshot_service()
 
             # Resolve backup path
             backup_path = await _resolve_backup_path(params.server_id, params.path)
@@ -270,7 +279,7 @@ async def backup_cronjob(context: ExecutionContext):
 
             # Create backup
             context.log(f"正在创建快照: {backup_path}")
-            snapshot = await restic_manager_local.backup([backup_path])
+            snapshot = await service.create_snapshot([backup_path])
 
             context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
             if snapshot.summary:
@@ -284,7 +293,7 @@ async def backup_cronjob(context: ExecutionContext):
                 context.log("开始清理旧快照...")
 
                 try:
-                    await restic_manager_local.forget(
+                    await service.forget(
                         keep_last=params.keep_last,
                         keep_hourly=params.keep_hourly,
                         keep_daily=params.keep_daily,

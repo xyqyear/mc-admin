@@ -83,7 +83,7 @@ uptimekuma_url?)`.
 1. Resolve backup paths.
 2. Check `server_operation_lock` and skip rather than block if a conflicting
    backup or restore lock is active.
-3. Run `restic_manager.backup(...)`.
+3. Run `snapshot_service.create_snapshot(...)` — configured ignored paths are excluded automatically.
 4. Apply configured forget/prune retention.
 5. Push optional Uptime Kuma status.
 

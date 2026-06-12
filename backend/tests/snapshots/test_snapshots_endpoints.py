@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import api_app
-from app.snapshots import ResticManager
+from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 
 
@@ -199,7 +199,10 @@ world-settings:
 
 @contextmanager
 def mock_snapshot_dependencies_setup(
-    instance, temp_restic_repo: Path, restic_password: str | None = "test-password"
+    instance,
+    temp_restic_repo: Path,
+    restic_password: str | None = "test-password",
+    ignored_paths: list[str] | None = None,
 ):
     """Context manager for mocking snapshot dependencies.
 
@@ -207,6 +210,7 @@ def mock_snapshot_dependencies_setup(
         instance: The MockMCInstance to use for testing
         temp_restic_repo: Path to temporary restic repository
         restic_password: Password for restic repository (None for no password)
+        ignored_paths: ignored_paths dynamic config seen by the service
     """
     # Create mock dynamic config
     mock_time_restriction = MagicMock()
@@ -216,14 +220,21 @@ def mock_snapshot_dependencies_setup(
 
     mock_snapshots_config = MagicMock()
     mock_snapshots_config.time_restriction = mock_time_restriction
+    mock_snapshots_config.ignored_paths = ignored_paths or []
 
     mock_config = MagicMock()
     mock_config.snapshots = mock_snapshots_config
 
-    # Create a test ResticManager instance with the test repository
-    test_restic_manager = ResticManager(
-        repository_path=str(temp_restic_repo),
-        password=restic_password,
+    # A real SnapshotService against the test repository; the instance
+    # provider drives ignored-path resolution.
+    instance_provider = MagicMock()
+    instance_provider.get_all_instances = AsyncMock(return_value=[instance])
+    test_snapshot_service = SnapshotService(
+        ResticClient(
+            repository_path=str(temp_restic_repo),
+            password=restic_password,
+        ),
+        instance_provider,
     )
 
     with (
@@ -232,12 +243,12 @@ def mock_snapshot_dependencies_setup(
         patch("app.routers.servers.files.docker_mc_manager") as mock_file_manager,
         patch("app.dependencies.settings") as mock_dep_settings,
         patch("app.routers.snapshots.config", mock_config),
+        patch("app.snapshots.service.config", mock_config),
         patch(
             "app.routers.snapshots.restart_scheduler.get_backup_minutes",
             return_value=set(),
         ),  # No backup jobs by default
-        # Mock the restic_manager singleton to use test repository
-        patch("app.routers.snapshots.restic_manager", test_restic_manager),
+        patch("app.routers.snapshots.snapshot_service", test_snapshot_service),
     ):
         # Mock settings for snapshots
         mock_settings.server_path = instance.base_path
@@ -450,13 +461,12 @@ class TestSnapshotEndpoints:
                 f"Preview summary should contain file operation indicators: {summary}"
             )
 
-            # Verify actions contain required fields
+            # Verify actions contain required fields; items are absolute on-disk paths
             for action in data["actions"]:
-                assert "message_type" in action
-                assert action["message_type"] == "verbose_status"
                 assert "action" in action
                 assert action["action"] in ["updated", "deleted", "restored"]
                 assert "item" in action
+                assert Path(action["item"]).is_absolute()
                 assert "size" in action
 
     @pytest.mark.asyncio
@@ -649,9 +659,8 @@ class TestSnapshotEndpoints:
             assert plugins_snapshots_response.status_code == 200
             plugins_snapshots = plugins_snapshots_response.json()["snapshots"]
 
-            # Should include the full server snapshots (because they contain plugins)
-            # Note: plugins-specific snapshot (plugins_snapshot_id) may or may not appear
-            # based on the path filtering implementation logic
+            # All three snapshots cover /plugins: the two full-server ones by
+            # ancestor match, the plugins-only one by exact recorded path.
             plugins_snapshot_ids = {s["id"] for s in plugins_snapshots}
             assert full_snapshot_id in plugins_snapshot_ids, (
                 "Full snapshot should be included (contains plugins)"
@@ -659,10 +668,10 @@ class TestSnapshotEndpoints:
             assert modified_snapshot_id in plugins_snapshot_ids, (
                 "Modified snapshot should be included (contains plugins)"
             )
-
-            # Verify plugins snapshot was created (even if not in filtered list)
-            assert plugins_snapshot_id != full_snapshot_id
-            assert plugins_snapshot_id != modified_snapshot_id
+            assert plugins_snapshot_id in plugins_snapshot_ids, (
+                "Plugins-only snapshot must match the /plugins filter exactly"
+            )
+            assert len(plugins_snapshot_ids) == 3
 
     @pytest.mark.asyncio
     async def test_snapshot_error_handling(
@@ -760,26 +769,36 @@ class TestSnapshotEndpoints:
 
             # Simulate server modifications (corrupt configs, add unwanted files)
             corrupted_props = "# CORRUPTED\nserver-port=invalid\nmax-players=999999"
-            client.post(
+            corrupt_response = client.post(
                 f"/servers/{server_id}/files/content",
                 headers={"Authorization": "Bearer test_master_token"},
                 params={"path": "/server.properties"},
                 json={"content": corrupted_props},
             )
+            assert corrupt_response.status_code == 200
 
             # Add unwanted files
-            client.post(
+            create_unwanted_response = client.post(
                 f"/servers/{server_id}/files/create",
                 headers={"Authorization": "Bearer test_master_token"},
                 json={"name": "malware.exe", "type": "file", "path": "/"},
             )
+            assert create_unwanted_response.status_code == 200
 
             # Delete important files
-            client.delete(
+            delete_response = client.delete(
                 f"/servers/{server_id}/files",
                 headers={"Authorization": "Bearer test_master_token"},
                 params={"path": "/bukkit.yml"},
             )
+            assert delete_response.status_code == 200
+
+            # Confirm the damage actually happened before restoring.
+            assert (
+                instance.get_data_path() / "server.properties"
+            ).read_text() == corrupted_props
+            assert (instance.get_data_path() / "malware.exe").exists()
+            assert not (instance.get_data_path() / "bukkit.yml").exists()
 
             # Restore (will automatically create safety snapshot)
             restore_response = client.post(
@@ -893,6 +912,28 @@ modified=true
             assert server_props_check.status_code == 200
             assert server_props_check.json()["content"] == server_props_modified_content
 
+            # Create a file in /world after the snapshot but before the
+            # restore: a plugins-only restore must leave it untouched even
+            # though it doesn't exist in the snapshot.
+            world_test_content = "This file should not be affected by plugins restore"
+            world_create_response = client.post(
+                f"/servers/{server_id}/files/create",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={
+                    "name": "test_after_snapshot.txt",
+                    "type": "file",
+                    "path": "/world",
+                },
+            )
+            assert world_create_response.status_code == 200
+            world_content_response = client.post(
+                f"/servers/{server_id}/files/content",
+                headers={"Authorization": "Bearer test_master_token"},
+                params={"path": "/world/test_after_snapshot.txt"},
+                json={"content": world_test_content},
+            )
+            assert world_content_response.status_code == 200
+
             # Restore ONLY the plugins subdirectory to the original snapshot
             # (will automatically create safety snapshot)
             restore_response = client.post(
@@ -932,37 +973,17 @@ modified=true
                 "Server properties should remain modified (not affected by plugins-only restore)"
             )
 
-            # Additional verification: Check that other subdirectories weren't affected
-            # Create a test file in world directory before restore and verify it persists
-            world_test_content = "This file should not be affected by plugins restore"
-            world_test_response = client.post(
-                f"/servers/{server_id}/files/create",
+            # The /world file created after the snapshot survived the
+            # plugins-only restore — proof the restore never touched /world.
+            world_final_check = client.get(
+                f"/servers/{server_id}/files/content",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={
-                    "name": "test_after_snapshot.txt",
-                    "type": "file",
-                    "path": "/world",
-                },
+                params={"path": "/world/test_after_snapshot.txt"},
             )
-            if world_test_response.status_code == 200:
-                # Set content for the test file
-                client.post(
-                    f"/servers/{server_id}/files/content",
-                    headers={"Authorization": "Bearer test_master_token"},
-                    params={"path": "/world/test_after_snapshot.txt"},
-                    json={"content": world_test_content},
-                )
-
-                # Verify the world directory file persists after plugins restore
-                world_final_check = client.get(
-                    f"/servers/{server_id}/files/content",
-                    headers={"Authorization": "Bearer test_master_token"},
-                    params={"path": "/world/test_after_snapshot.txt"},
-                )
-                assert world_final_check.status_code == 200, (
-                    "Files in other subdirectories should not be affected by plugins-only restore"
-                )
-                assert world_final_check.json()["content"] == world_test_content
+            assert world_final_check.status_code == 200, (
+                "Files in other subdirectories should not be affected by plugins-only restore"
+            )
+            assert world_final_check.json()["content"] == world_test_content
 
     @pytest.mark.asyncio
     async def test_create_snapshot_no_password(
@@ -1318,5 +1339,443 @@ modified=true
             assert delete_response.status_code in [401, 422]
 
 
+class TestIgnoredPathsEndpoints:
+    """API tests for ignored_paths behavior: excluded from backups, never
+    overwritten or deleted by restores."""
+
+    @pytest.fixture
+    def client(self):
+        return TestClient(api_app)
+
+    @pytest.fixture
+    def temp_server_dir(self):
+        with tempfile.TemporaryDirectory(prefix="mc_ignored_test_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def temp_restic_repo(self):
+        with tempfile.TemporaryDirectory(prefix="restic_repo_ignored_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def mock_instance(self, temp_server_dir):
+        server_id = "test_server"
+        instance = MockMCInstance(server_id, temp_server_dir)
+        instance.setup_mc_server_structure()
+        # Tile cache the ignore config protects (level-name defaults to world).
+        mcmap = instance.get_data_path() / ".mcmap" / "tiles"
+        mcmap.mkdir(parents=True)
+        (mcmap / "r.0.0.png").write_bytes(b"tile")
+        return server_id, instance
+
+    @pytest.fixture
+    async def initialized_restic_repo(self, temp_restic_repo):
+        env = {
+            "RESTIC_REPOSITORY": str(temp_restic_repo),
+            "RESTIC_PASSWORD": "test-password",
+        }
+        await exec_command(str(settings.restic_binary_path), "init", env=env)
+        return temp_restic_repo
+
+    def _auth(self):
+        return {"Authorization": "Bearer test_master_token"}
+
+    def test_create_snapshot_records_excludes(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+        data_path = instance.get_data_path()
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=[".mcmap", "cache"]
+        ):
+            response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            assert response.status_code == 200
+            excludes = response.json()["snapshot"]["excludes"]
+            assert sorted(excludes) == [
+                str((data_path / ".mcmap").resolve()),
+                str((data_path / "cache").resolve()),
+            ]
+
+    def test_restore_preserves_ignored_paths(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """End-to-end: ignored paths survive a full-server restore with
+        --delete while everything else reverts."""
+        server_id, instance = mock_instance
+        data_path = instance.get_data_path()
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=[".mcmap", "cache"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            assert create_response.status_code == 200
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            # Mutate: config corruption, extraneous file, ignored-path growth.
+            properties = data_path / "server.properties"
+            original_properties = properties.read_text()
+            properties.write_text("# corrupted\n")
+            extraneous = data_path / "uploaded.bin"
+            extraneous.write_bytes(b"junk")
+            tile = data_path / ".mcmap" / "tiles" / "r.0.0.png"
+            tile.write_bytes(b"tile-rendered-after-snapshot")
+            new_cache = data_path / "cache" / "new_download.jar"
+            new_cache.write_bytes(b"downloaded-after-snapshot")
+
+            restore_response = client.post(
+                "/snapshots/restore",
+                headers=self._auth(),
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+            assert restore_response.status_code == 200
+            assert _restore_safety_snapshot_id(restore_response) is not None
+
+            assert properties.read_text() == original_properties
+            assert not extraneous.exists()
+            assert tile.read_bytes() == b"tile-rendered-after-snapshot"
+            assert new_cache.read_bytes() == b"downloaded-after-snapshot"
+
+    def test_safety_snapshot_also_excludes_ignored_paths(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=[".mcmap"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            restore_response = client.post(
+                "/snapshots/restore",
+                headers=self._auth(),
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+            safety_id = _restore_safety_snapshot_id(restore_response)
+
+            list_response = client.get("/snapshots", headers=self._auth())
+            safety = next(
+                s
+                for s in list_response.json()["snapshots"]
+                if s["id"] == safety_id
+            )
+            assert safety["excludes"] == [
+                str((instance.get_data_path() / ".mcmap").resolve())
+            ]
+
+    def test_preview_reports_nothing_for_ignored_paths(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+        data_path = instance.get_data_path()
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=[".mcmap"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            (data_path / ".mcmap" / "tiles" / "r.0.1.png").write_bytes(b"new-tile")
+            (data_path / "extraneous.txt").write_text("x")
+
+            preview_response = client.post(
+                "/snapshots/restore/preview",
+                headers=self._auth(),
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+            assert preview_response.status_code == 200
+            actions = preview_response.json()["actions"]
+            items = [a["item"] for a in actions]
+            assert str(data_path / "extraneous.txt") in items
+            assert not any(".mcmap" in item for item in items)
+
+    def test_create_snapshot_of_ignored_path_rejected(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=["cache"]
+        ):
+            response = client.post(
+                "/snapshots",
+                headers=self._auth(),
+                json={"server_id": server_id, "paths": ["/cache"]},
+            )
+            assert response.status_code == 400
+            assert "忽略" in response.json()["detail"]
+
+    def test_preview_of_ignored_path_rejected(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=["cache"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            response = client.post(
+                "/snapshots/restore/preview",
+                headers=self._auth(),
+                json={
+                    "snapshot_id": snapshot_id,
+                    "server_id": server_id,
+                    "paths": ["/cache"],
+                },
+            )
+            assert response.status_code == 400
+            assert "忽略" in response.json()["detail"]
+
+    def test_restore_of_ignored_path_fails_in_stream(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """The restore SSE flow fails at the safety-snapshot stage when the
+        target itself is ignored — before any disk mutation."""
+        server_id, instance = mock_instance
+        data_path = instance.get_data_path()
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=["cache"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            marker = data_path / "cache" / "mojang_1.20.4.jar"
+            before = marker.read_bytes()
+
+            response = client.post(
+                "/snapshots/restore",
+                headers=self._auth(),
+                json={
+                    "snapshot_id": snapshot_id,
+                    "server_id": server_id,
+                    "paths": ["/cache"],
+                },
+            )
+            assert response.status_code == 200
+            events = _parse_sse_events(response)
+            assert events[-1]["event_type"] == "error"
+            assert "忽略" in events[-1]["message"]
+            assert marker.read_bytes() == before
+
+    def test_list_filter_excludes_snapshots_that_ignored_the_path(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """A snapshot taken while a path was ignored must not be listed as
+        covering that path."""
+        server_id, instance = mock_instance
+
+        with mock_snapshot_dependencies_setup(
+            instance, initialized_restic_repo, ignored_paths=["cache"]
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            assert create_response.status_code == 200
+            snapshot_id = create_response.json()["snapshot"]["id"]
+
+            cache_filtered = client.get(
+                "/snapshots",
+                headers=self._auth(),
+                params={"server_id": server_id, "path": "/cache"},
+            )
+            assert cache_filtered.status_code == 200
+            assert snapshot_id not in {
+                s["id"] for s in cache_filtered.json()["snapshots"]
+            }
+
+            plugins_filtered = client.get(
+                "/snapshots",
+                headers=self._auth(),
+                params={"server_id": server_id, "path": "/plugins"},
+            )
+            assert plugins_filtered.status_code == 200
+            assert snapshot_id in {
+                s["id"] for s in plugins_filtered.json()["snapshots"]
+            }
+
+    def test_level_name_token_via_api(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """<LEVEL_NAME> expands against server.properties (level-name=world
+        in the mock structure)."""
+        server_id, instance = mock_instance
+        data_path = instance.get_data_path()
+
+        with mock_snapshot_dependencies_setup(
+            instance,
+            initialized_restic_repo,
+            ignored_paths=["<LEVEL_NAME>/session.lock"],
+        ):
+            create_response = client.post(
+                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+            )
+            assert create_response.status_code == 200
+            snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.json()["snapshot"]["excludes"] == [
+                str((data_path / "world" / "session.lock").resolve())
+            ]
+
+            lock = data_path / "world" / "session.lock"
+            lock.write_bytes(b"\xff" * 8)
+
+            restore_response = client.post(
+                "/snapshots/restore",
+                headers=self._auth(),
+                json={"snapshot_id": snapshot_id, "server_id": server_id},
+            )
+            assert restore_response.status_code == 200
+            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert lock.read_bytes() == b"\xff" * 8
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestPathContainmentEndpoints:
+    """Traversal and symlink escapes in snapshot requests must be rejected
+    before any restic invocation."""
+
+    @pytest.fixture
+    def client(self):
+        return TestClient(api_app)
+
+    @pytest.fixture
+    def temp_server_dir(self):
+        with tempfile.TemporaryDirectory(prefix="mc_containment_test_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def temp_restic_repo(self):
+        with tempfile.TemporaryDirectory(prefix="restic_repo_containment_") as temp_dir:
+            yield Path(temp_dir)
+
+    @pytest.fixture
+    def mock_instance(self, temp_server_dir):
+        server_id = "test_server"
+        instance = MockMCInstance(server_id, temp_server_dir)
+        instance.setup_mc_server_structure()
+        return server_id, instance
+
+    @pytest.fixture
+    async def initialized_restic_repo(self, temp_restic_repo):
+        env = {
+            "RESTIC_REPOSITORY": str(temp_restic_repo),
+            "RESTIC_PASSWORD": "test-password",
+        }
+        await exec_command(str(settings.restic_binary_path), "init", env=env)
+        return temp_restic_repo
+
+    def _auth(self):
+        return {"Authorization": "Bearer test_master_token"}
+
+    @pytest.mark.parametrize(
+        "escape_path",
+        ["../escape", "/../escape", "a/../../escape", "../../etc/passwd"],
+    )
+    def test_paths_traversal_rejected(
+        self, client, mock_instance, initialized_restic_repo, escape_path
+    ):
+        server_id, instance = mock_instance
+        outside = instance.base_path.parent / "escape"
+        outside.mkdir(exist_ok=True)
+        (outside / "victim.txt").write_text("do not touch")
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            for endpoint, payload in [
+                ("/snapshots", {"server_id": server_id, "paths": [escape_path]}),
+                (
+                    "/snapshots/restore/preview",
+                    {
+                        "snapshot_id": "irrelevant",
+                        "server_id": server_id,
+                        "paths": [escape_path],
+                    },
+                ),
+                (
+                    "/snapshots/restore",
+                    {
+                        "snapshot_id": "irrelevant",
+                        "server_id": server_id,
+                        "paths": [escape_path],
+                    },
+                ),
+            ]:
+                response = client.post(endpoint, headers=self._auth(), json=payload)
+                assert response.status_code == 400, (
+                    f"{endpoint} accepted escaping path {escape_path!r}"
+                )
+                assert "越界" in response.json()["detail"]
+        assert (outside / "victim.txt").read_text() == "do not touch"
+
+    def test_server_id_traversal_rejected(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        """server_id is joined into the project path, so it traverses too."""
+        from app.minecraft.instance import MCInstance
+
+        server_id, instance = mock_instance
+        outside = instance.base_path.parent / "other"
+        outside.mkdir(exist_ok=True)
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            with patch(
+                "app.routers.snapshots.docker_mc_manager.get_instance",
+                side_effect=lambda sid: MCInstance(instance.base_path, sid),
+            ):
+                response = client.post(
+                    "/snapshots",
+                    headers=self._auth(),
+                    json={"server_id": "../other"},
+                )
+            assert response.status_code == 400
+            assert "越界" in response.json()["detail"]
+
+    def test_symlink_escape_rejected(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+        outside = instance.base_path.parent / "outside"
+        outside.mkdir(exist_ok=True)
+        (instance.get_data_path() / "escape_link").symlink_to(outside)
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            response = client.post(
+                "/snapshots",
+                headers=self._auth(),
+                json={"server_id": server_id, "paths": ["/escape_link"]},
+            )
+            assert response.status_code == 400
+            assert "越界" in response.json()["detail"]
+
+    def test_symlink_inside_data_dir_allowed(
+        self, client, mock_instance, initialized_restic_repo
+    ):
+        server_id, instance = mock_instance
+        (instance.get_data_path() / "world_alias").symlink_to(
+            instance.get_data_path() / "world"
+        )
+
+        with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
+            response = client.post(
+                "/snapshots",
+                headers=self._auth(),
+                json={"server_id": server_id, "paths": ["/world_alias"]},
+            )
+            assert response.status_code == 200

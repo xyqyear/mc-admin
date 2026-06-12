@@ -1,4 +1,4 @@
-from ...snapshots import restic_manager
+from ...snapshots import snapshot_service
 from ...world import GLOBAL_LOCK_KEY, server_operation_lock
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, skipped, success
@@ -38,11 +38,11 @@ async def check_repo_restic_active(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["locks.repo_restic_active"]
-    if restic_manager is None:
+    if snapshot_service is None:
         return skipped(definition, "未配置 Restic。")
 
     try:
-        output = await restic_manager.list_locks()
+        output = await snapshot_service.list_locks()
     except Exception as exc:
         return [
             finding(

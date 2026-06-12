@@ -281,8 +281,8 @@ const PreviewDialog: React.FC<PreviewDialogProps> = ({
               <div key={index} className="p-3 border rounded-md bg-muted/50">
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const tone = actionToneMap[action.action || '']
-                    const label = actionLabelMap[action.action || ''] || action.action || action.message_type
+                    const tone = actionToneMap[action.action]
+                    const label = actionLabelMap[action.action] || action.action
                     return tone ? (
                       <StatusBadge tone={tone} badgeStyle="soft">{label}</StatusBadge>
                     ) : (

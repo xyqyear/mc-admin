@@ -36,7 +36,7 @@ app/
 ├── players/               # identity resolution, dynamic name filtering, cleanup, tracking, sessions, chat, achievements, skins
 ├── log_monitor/           # watchfiles-based latest.log parser
 ├── files/                 # CRUD, deep search, ownership repair, multi-file upload
-├── snapshots/             # Restic wrapper
+├── snapshots/             # restic client, ignored paths, restore planner, SnapshotService
 ├── cron/                  # APScheduler jobs (backup, restart, system self-check)
 ├── self_check/            # health-check orchestration, category checks, retained run history, event triggers
 ├── dns/                   # DNSPod + Huawei Cloud
@@ -93,7 +93,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain, dispatch to tracking functions
 - `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search
 - `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 SSE
-- `docs/snapshots.md` — Restic wrapper, retention, restore streaming, lock interaction
+- `docs/snapshots.md` — restic client, ignored paths (`<LEVEL_NAME>`), restore planner, retention, lock interaction
 - `docs/cron.md` — APScheduler integration, registry metadata, system jobs, built-in jobs
 - `docs/self-check.md` — check catalog, triggers, persistence, notification extension point
 - `docs/dns.md` — DNSPod / Huawei providers, mc-router sync, reconciliation flow

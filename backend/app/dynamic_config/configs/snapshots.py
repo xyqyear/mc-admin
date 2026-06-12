@@ -1,8 +1,12 @@
+from pathlib import PurePosixPath
 from typing import Annotated
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from ..schemas import BaseConfigSchema
+
+LEVEL_NAME_TOKEN = "<LEVEL_NAME>"
+_GLOB_CHARS = set("*?[]")
 
 
 class TimeRestrictionConfig(BaseConfigSchema):
@@ -55,3 +59,33 @@ class SnapshotsConfig(BaseConfigSchema):
     world_restore: Annotated[
         WorldRestoreConfig, Field(title="世界恢复预览", description="世界恢复临时目录与预览会话配置")
     ] = WorldRestoreConfig()
+    # 忽略路径配置
+    ignored_paths: Annotated[
+        list[str],
+        Field(
+            title="忽略路径",
+            description=(
+                "相对于服务器数据目录的路径列表；备份时排除这些路径，恢复时不会覆盖或删除它们。"
+                f"支持 {LEVEL_NAME_TOKEN} 占位符（须为完整路径段），展开为 server.properties 中的 level-name。"
+                "不支持通配符。"
+            ),
+        ),
+    ] = [".mcmap"]
+
+    @field_validator("ignored_paths")
+    @classmethod
+    def validate_ignored_paths(cls, v: list[str]) -> list[str]:
+        for raw in v:
+            path = PurePosixPath(raw)
+            if path.is_absolute() or not path.parts:
+                raise ValueError(f"忽略路径必须是非空的相对路径: {raw!r}")
+            for part in path.parts:
+                if part in (".", ".."):
+                    raise ValueError(f"忽略路径不允许包含 '.' 或 '..': {raw!r}")
+                if _GLOB_CHARS & set(part):
+                    raise ValueError(f"忽略路径不支持通配符: {raw!r}")
+                if LEVEL_NAME_TOKEN in part and part != LEVEL_NAME_TOKEN:
+                    raise ValueError(
+                        f"{LEVEL_NAME_TOKEN} 必须作为完整的路径段使用: {raw!r}"
+                    )
+        return v

@@ -11,7 +11,8 @@ from ...dynamic_config import config
 from ...minecraft import docker_mc_manager
 from ...models import Server
 from ...servers.crud import get_active_servers
-from ...snapshots import ResticSnapshot, restic_manager
+from ...snapshots import ResticSnapshot, snapshot_service
+from ...snapshots.coverage import covers
 from ...utils import async_fs
 from ..types import SelfCheckFindingResult
 
@@ -34,7 +35,7 @@ class SelfCheckContext:
         self._filesystem_servers: set[str] | None = None
         self._snapshots: list[ResticSnapshot] | None = None
         self._snapshot_error: str | None = None
-        self._resolved_snapshot_paths: dict[str, list[Path]] = {}
+        self._resolved_coverage: dict[str, tuple[list[Path], list[Path]]] = {}
 
     async def active_servers(self) -> list[Server]:
         if self._active_servers is None:
@@ -49,11 +50,11 @@ class SelfCheckContext:
         return self._filesystem_servers
 
     async def snapshots(self) -> tuple[list[ResticSnapshot] | None, str | None]:
-        if restic_manager is None:
+        if snapshot_service is None:
             return None, None
         if self._snapshots is None and self._snapshot_error is None:
             try:
-                self._snapshots = await restic_manager.list_snapshots()
+                self._snapshots = await snapshot_service.list_snapshots()
             except Exception as exc:
                 self._snapshot_error = str(exc)
         return self._snapshots, self._snapshot_error
@@ -66,18 +67,14 @@ class SelfCheckContext:
         resolved_target = await async_fs.resolve(target)
         matches: list[ResticSnapshot] = []
         for snapshot in snapshots:
-            if snapshot.id not in self._resolved_snapshot_paths:
-                self._resolved_snapshot_paths[snapshot.id] = [
-                    await async_fs.resolve(Path(snapshot_path))
-                    for snapshot_path in snapshot.paths
-                ]
-            for snapshot_path in self._resolved_snapshot_paths[snapshot.id]:
-                try:
-                    resolved_target.relative_to(snapshot_path)
-                    matches.append(snapshot)
-                    break
-                except ValueError:
-                    continue
+            if snapshot.id not in self._resolved_coverage:
+                self._resolved_coverage[snapshot.id] = (
+                    [await async_fs.resolve(Path(p)) for p in snapshot.paths],
+                    [await async_fs.resolve(Path(e)) for e in snapshot.excludes],
+                )
+            paths, excludes = self._resolved_coverage[snapshot.id]
+            if covers(resolved_target, paths, excludes):
+                matches.append(snapshot)
 
         matches.sort(key=lambda item: item.time, reverse=True)
         return matches
