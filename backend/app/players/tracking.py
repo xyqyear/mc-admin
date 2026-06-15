@@ -8,6 +8,14 @@ import asyncio
 from datetime import datetime, timezone
 
 from ..db.database import get_async_session
+from ..events import (
+    ChatEvent,
+    EventPlayer,
+    PlayerJoinEvent,
+    PlayerLeaveEvent,
+    ServerStoppingEvent,
+    event_bus,
+)
 from ..logger import log_exception, logger
 from ..servers.crud import get_server_db_id
 from .crud import (
@@ -32,6 +40,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _event_player(player_db_id: int, uuid: str, name: str) -> EventPlayer:
+    return EventPlayer(player_db_id=player_db_id, uuid=uuid, name=name)
+
+
 @log_exception("Error processing player join: ")
 async def process_player_join(
     server_id: str,
@@ -48,6 +60,8 @@ async def process_player_join(
     if is_ignored_player_name(player_name):
         logger.info(f"Skipping ignored player join: {player_name}")
         return
+
+    event: PlayerJoinEvent | None = None
 
     async with get_async_session() as session:
         player = await get_or_add_player_by_name(session, server_id, player_name)
@@ -74,6 +88,14 @@ async def process_player_join(
         player_db_id = player.player_db_id
         player_uuid = player.uuid
         player_current_name = player.current_name
+        event = PlayerJoinEvent(
+            server_id=server_id,
+            timestamp=timestamp,
+            player=_event_player(player_db_id, player_uuid, player_current_name),
+        )
+
+    if event is not None:
+        event_bus.publish(event)
 
     asyncio.create_task(
         update_player_skin(player_db_id, player_uuid, player_current_name)
@@ -93,6 +115,8 @@ async def process_player_left(
     """
     if timestamp is None:
         timestamp = _now()
+
+    event: PlayerLeaveEvent | None = None
 
     async with get_async_session() as session:
         server_db_id = await get_server_db_id(session, server_id)
@@ -121,6 +145,19 @@ async def process_player_left(
         if reason:
             msg += f" ({reason})"
         logger.info(msg)
+        event = PlayerLeaveEvent(
+            server_id=server_id,
+            timestamp=timestamp,
+            player=_event_player(
+                player.player_db_id,
+                player.uuid,
+                player.current_name,
+            ),
+            reason=reason or None,
+        )
+
+    if event is not None:
+        event_bus.publish(event)
 
 
 @log_exception("Error recording chat message: ")
@@ -138,6 +175,8 @@ async def record_chat_message(
         logger.info(f"Skipping ignored player chat message: {player_name}")
         return
 
+    event: ChatEvent | None = None
+
     async with get_async_session() as session:
         server_db_id = await get_server_db_id(session, server_id)
         if server_db_id is None:
@@ -149,11 +188,25 @@ async def record_chat_message(
             logger.warning(f"Player not found and could not be fetched: {player_name}")
             return
 
-        await create_chat_message(
+        message_row = await create_chat_message(
             session, player.player_db_id, server_db_id, message, timestamp
         )
 
         logger.info(f"Saved chat message from {player_name} on {server_id}")
+        event = ChatEvent(
+            cursor=str(message_row.message_id),
+            server_id=server_id,
+            timestamp=timestamp,
+            player=_event_player(
+                player.player_db_id,
+                player.uuid,
+                player.current_name,
+            ),
+            message=message,
+        )
+
+    if event is not None:
+        event_bus.publish(event)
 
 
 @log_exception("Error recording achievement: ")
@@ -225,6 +278,8 @@ async def close_server_sessions(
     if timestamp is None:
         timestamp = _now()
 
+    event: ServerStoppingEvent | None = None
+
     async with get_async_session() as session:
         server_db_id = await get_server_db_id(session, server_id)
         if server_db_id is None:
@@ -236,6 +291,10 @@ async def close_server_sessions(
         logger.info(
             f"Ended {count} session(s) for server {server_id} (server stopping)"
         )
+        event = ServerStoppingEvent(server_id=server_id, timestamp=timestamp)
+
+    if event is not None:
+        event_bus.publish(event)
 
 
 @log_exception("Error updating player skin: ")

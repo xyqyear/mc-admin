@@ -26,6 +26,8 @@ jobs:
             pytest_target: tests/dns
           - test_group: dynamic_config
             pytest_target: tests/dynamic_config
+          - test_group: events
+            pytest_target: tests/events
           - test_group: files
             pytest_target: tests/files
           - test_group: ftb_claims

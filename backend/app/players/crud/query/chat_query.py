@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import PlayerChatMessage, Server
+from ....models import Player, PlayerChatMessage, Server
 from ....servers.crud import get_server_db_id
 
 
@@ -17,6 +17,16 @@ class ChatMessageInfo(BaseModel):
     message_id: int
     server_db_id: int
     server_id: str
+    message_text: str
+    sent_at: datetime
+
+
+class ChatEventInfo(BaseModel):
+    message_id: int
+    server_id: str
+    player_db_id: int
+    player_name: str
+    player_uuid: str
     message_text: str
     sent_at: datetime
 
@@ -92,3 +102,49 @@ async def get_player_chat_messages(
         )
 
     return messages
+
+
+async def get_chat_messages_after(
+    session: AsyncSession,
+    after_id: int,
+    limit: int = 500,
+) -> List[ChatEventInfo]:
+    """Get persisted chat messages after a stream cursor."""
+    query = (
+        select(
+            PlayerChatMessage.message_id,
+            Server.server_id,
+            Player.player_db_id,
+            Player.current_name,
+            Player.uuid,
+            PlayerChatMessage.message_text,
+            PlayerChatMessage.sent_at,
+        )
+        .join(Server, PlayerChatMessage.server_db_id == Server.id)
+        .join(Player, PlayerChatMessage.player_db_id == Player.player_db_id)
+        .where(PlayerChatMessage.message_id > after_id)
+        .order_by(PlayerChatMessage.message_id.asc())
+        .limit(limit)
+    )
+
+    result = await session.execute(query)
+    return [
+        ChatEventInfo(
+            message_id=message_id,
+            server_id=server_id,
+            player_db_id=player_db_id,
+            player_name=player_name,
+            player_uuid=player_uuid,
+            message_text=message_text,
+            sent_at=sent_at,
+        )
+        for (
+            message_id,
+            server_id,
+            player_db_id,
+            player_name,
+            player_uuid,
+            message_text,
+            sent_at,
+        ) in result.all()
+    ]

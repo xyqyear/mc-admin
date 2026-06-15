@@ -26,6 +26,7 @@ from .routers import (
     auth,
     cron,
     dns,
+    events,
     snapshots,
     self_check,
     system,
@@ -48,6 +49,7 @@ from .routers.servers import map as server_map
 from .routers.servers import misc as server_misc
 from .routers.servers import operations as server_operations
 from .routers.servers import populate as server_populate
+from .routers.servers import rcon as server_rcon
 from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
 from .routers.servers import sync as server_sync
@@ -139,6 +141,7 @@ api_app.include_router(dns.router)
 api_app.include_router(config_router)
 api_app.include_router(tasks.router)
 api_app.include_router(templates.router)
+api_app.include_router(events.router)
 
 api_app.include_router(players.router)
 api_app.include_router(sessions.router)
@@ -150,6 +153,7 @@ api_app.include_router(server_misc.router)
 api_app.include_router(server_resources.router)
 api_app.include_router(server_compose.router)
 api_app.include_router(server_operations.router)
+api_app.include_router(server_rcon.router)
 # server_sync must be registered before server_create so POST /servers/sync
 # matches before the catch-all POST /servers/{server_id}.
 api_app.include_router(server_sync.router)

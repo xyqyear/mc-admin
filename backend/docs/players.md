@@ -2,9 +2,11 @@
 
 Tracks who's online, when they joined and left, what they said in chat, and what achievements they earned. Skin avatars are mirrored locally so the frontend doesn't have to call Mojang from the browser.
 
-## Direct function calls, not events
+## Direct function calls
 
-There is no event dispatcher. Producers (LogMonitor, HeartbeatManager, PlayerSyncer, REST handlers) call composite functions in `app/players/tracking.py` directly. The composites handle "ensure player exists in DB" + the side effect:
+Internal producers (LogMonitor, HeartbeatManager, PlayerSyncer, REST handlers)
+call composite functions in `app/players/tracking.py` directly. The composites
+handle "ensure player exists in DB" + the side effect:
 
 - `process_player_join(server_id, player_name, timestamp)` — `get_or_add_player_by_name` (reuses v4 DB identities, otherwise resolves via server `usercache.json` with Mojang fallback), open a `PlayerSession`, schedule a skin update task.
 - `process_player_left(server_id, player_name, reason, timestamp)` — close every open session for that (player, server).
@@ -12,6 +14,12 @@ There is no event dispatcher. Producers (LogMonitor, HeartbeatManager, PlayerSyn
 - `record_achievement(server_id, player_name, achievement_name, timestamp)` — match the in-game name against known v4 players (longest-first to avoid prefix collisions), insert `PlayerAchievement` (unique on `(player, server, achievement)`).
 - `close_server_sessions(server_id, timestamp)` — close every open session on that server (called when the server stops).
 - `update_player_skin(player_db_id, uuid, player_name)` — fetch skin via `skin_fetcher`, write `Player.skin_data` and `Player.avatar_data`.
+
+The external subscriber event bus in `app/events` is the only exception to the
+no-dispatcher rule. Tracking functions publish public wire events after their
+database side effects complete; chat is published only after the
+`PlayerChatMessage` row is committed and its `message_id` cursor is assigned.
+Internal code does not consume the event bus.
 
 Identity resolution and UUID validity rules are documented in
 `docs/player-identity.md`. Player storage and skin/profile fetches accept only
@@ -52,7 +60,7 @@ stop_player_system():
 
 - **`Player`** — `uuid` (unique), `current_name`, `skin_data` (bytes), `avatar_data` (bytes), `last_skin_update`, `created_at`.
 - **`PlayerSession`** — `(player_db_id, server_db_id)`, `joined_at`, `left_at` (nullable), `duration_seconds` (nullable). Indexes on `(player, time)`, `(server, time)`, and the open-session shape.
-- **`PlayerChatMessage`** — `(player_db_id, server_db_id)`, `message_text`, `sent_at`. Indexes on `(player, time)` and `(server, time)`.
+- **`PlayerChatMessage`** — `message_id` cursor, `(player_db_id, server_db_id)`, `message_text`, `sent_at`. Indexes on `(player, time)` and `(server, time)`.
 - **`PlayerAchievement`** — `(player_db_id, server_db_id, achievement_name)` unique, `earned_at`.
 - **`SystemHeartbeat`** — single-row crash detector.
 

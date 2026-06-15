@@ -7,8 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...logger import logger
-from ...minecraft import docker_mc_manager
+from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
+from ...players.crud.query.session_query import (
+    OnlinePlayerLite,
+    get_online_players_grouped_by_server,
+)
 from ...servers.crud import get_active_servers
 from .utils.server_list import ServerListItem, get_server_list_item
 
@@ -32,6 +36,21 @@ class ServerInfo(BaseModel):
 
 class ServerStatus(BaseModel):
     status: str
+
+
+class ServerOverviewItem(BaseModel):
+    id: str
+    name: str
+    gamePort: int
+    status: str
+    online_players: list[OnlinePlayerLite]
+
+
+PLAYER_VISIBLE_STATUSES = {
+    MCServerStatus.RUNNING,
+    MCServerStatus.STARTING,
+    MCServerStatus.HEALTHY,
+}
 
 
 @router.get("/", response_model=list[ServerListItem])
@@ -66,6 +85,58 @@ async def get_servers(
         valid_servers.append(result)
 
     return valid_servers
+
+
+@router.get("/overview", response_model=list[ServerOverviewItem])
+async def get_servers_overview(
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    active_rows = await get_active_servers(db)
+
+    if not active_rows:
+        return []
+
+    online_players_by_server = await get_online_players_grouped_by_server(db)
+
+    async def load_server(row):
+        instance = docker_mc_manager.get_instance(row.server_id)
+        server_info, server_status = await asyncio.gather(
+            get_server_list_item(instance),
+            instance.get_status(),
+        )
+        return server_info, server_status
+
+    results = await asyncio.gather(
+        *[load_server(row) for row in active_rows],
+        return_exceptions=True,
+    )
+
+    overview: list[ServerOverviewItem] = []
+    for row, result in zip(active_rows, results):
+        if isinstance(result, BaseException):
+            logger.warning(
+                f"GET /servers/overview: skipping '{row.server_id}' (cannot read compose): {result}"
+            )
+            continue
+
+        server_info, server_status = result
+        online_players = (
+            online_players_by_server.get(row.server_id, [])
+            if server_status in PLAYER_VISIBLE_STATUSES
+            else []
+        )
+        overview.append(
+            ServerOverviewItem(
+                id=server_info.id,
+                name=server_info.name,
+                gamePort=server_info.gamePort,
+                status=server_status.name,
+                online_players=online_players,
+            )
+        )
+
+    return overview
 
 
 @router.get("/{server_id}", response_model=ServerInfo)

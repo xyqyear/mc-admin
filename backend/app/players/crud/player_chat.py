@@ -13,7 +13,7 @@ async def create_chat_message(
     server_db_id: int,
     message_text: str,
     sent_at: datetime,
-) -> None:
+) -> PlayerChatMessage:
     """Create a chat message record.
 
     Args:
@@ -22,6 +22,9 @@ async def create_chat_message(
         server_db_id: Server database ID
         message_text: Message content
         sent_at: Message timestamp
+
+    Returns:
+        Created chat message record with its primary key assigned.
     """
     chat_message = PlayerChatMessage(
         player_db_id=player_db_id,
@@ -30,4 +33,6 @@ async def create_chat_message(
         sent_at=sent_at,
     )
     session.add(chat_message)
+    await session.flush()
     await session.commit()
+    return chat_message

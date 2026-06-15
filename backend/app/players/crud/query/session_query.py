@@ -35,6 +35,12 @@ class OnlinePlayerInfo(BaseModel):
     session_duration_seconds: int
 
 
+class OnlinePlayerLite(BaseModel):
+    name: str
+    uuid: str
+    player_db_id: int
+
+
 class SessionStatsResponse(BaseModel):
     """Session statistics response."""
 
@@ -169,6 +175,36 @@ async def get_server_online_players(
         )
 
     return online_players
+
+
+async def get_online_players_grouped_by_server(
+    session: AsyncSession,
+) -> dict[str, list[OnlinePlayerLite]]:
+    """Get online players for all servers in one query."""
+    result = await session.execute(
+        select(
+            Server.server_id,
+            Player.current_name,
+            Player.uuid,
+            Player.player_db_id,
+        )
+        .join(PlayerSession, PlayerSession.server_db_id == Server.id)
+        .join(Player, PlayerSession.player_db_id == Player.player_db_id)
+        .where(PlayerSession.left_at == None)  # noqa: E711
+        .order_by(Server.server_id.asc(), PlayerSession.joined_at.desc())
+    )
+
+    players_by_server: dict[str, list[OnlinePlayerLite]] = {}
+    for server_id, current_name, uuid, player_db_id in result.all():
+        players_by_server.setdefault(server_id, []).append(
+            OnlinePlayerLite(
+                name=current_name,
+                uuid=uuid,
+                player_db_id=player_db_id,
+            )
+        )
+
+    return players_by_server
 
 
 async def get_player_session_stats(
