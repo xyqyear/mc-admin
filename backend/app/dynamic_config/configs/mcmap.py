@@ -37,3 +37,12 @@ class MCMapConfig(BaseConfigSchema):
             le=600,
         ),
     ] = 30
+    prune_default_threshold_seconds: Annotated[
+        int,
+        Field(
+            title="区块清理默认阈值",
+            description="区块清理页面默认使用的低活跃时间阈值，执行时会转换为 Minecraft tick。",
+            ge=0,
+            le=60 * 60 * 24 * 365,
+        ),
+    ] = 30

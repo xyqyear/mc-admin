@@ -91,6 +91,64 @@ class MCMapRemoveChunksResultEvent(MCMapEventModel):
     removed: int
 
 
+MCMapPruneMode: TypeAlias = Literal["chunks", "regions"]
+
+
+class MCMapPruneRegionDirEvent(MCMapEventModel):
+    type: Literal["region_dir"]
+    path: str
+    regions: int
+
+
+class MCMapPruneProgressEvent(MCMapEventModel):
+    type: Literal["progress"]
+    phase: Literal["scan", "prune"] | str
+    regions_processed: int
+    regions_total: int
+
+
+class MCMapPrunedChunk(MCMapEventModel):
+    chunk_x: int
+    chunk_z: int
+    rel_x: int
+    rel_z: int
+    inhabited_time: int
+
+
+class MCMapChunksPrunedEvent(MCMapEventModel):
+    type: Literal["chunks_pruned"]
+    region: str
+    region_x: int
+    region_z: int
+    chunks: list[MCMapPrunedChunk]
+    dry_run: bool
+
+
+class MCMapRegionPrunedEvent(MCMapEventModel):
+    type: Literal["region_pruned"]
+    region: str
+    region_x: int
+    region_z: int
+    chunks: int
+    max_inhabited_time: int
+    dry_run: bool
+
+
+class MCMapPruneResultEvent(MCMapEventModel):
+    type: Literal["result"]
+    mode: MCMapPruneMode
+    dry_run: bool
+    region_dirs: int
+    regions_scanned: int
+    chunks_scanned: int
+    chunks_selected: int
+    regions_selected: int
+    claims_loaded: Optional[int] = None
+    claimed_chunks_protected: Optional[int] = None
+    chunks_skipped_by_claims: Optional[int] = None
+    regions_skipped_by_claims: Optional[int] = None
+
+
 MCMapDetectedFtbFormat: TypeAlias = Literal[
     "snbt",
     "per_team_nbt",
@@ -238,6 +296,15 @@ MCMapPlayersEvent: TypeAlias = Annotated[
     MCMapPlayersResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
+MCMapPruneEvent: TypeAlias = Annotated[
+    MCMapPruneRegionDirEvent
+    | MCMapPruneProgressEvent
+    | MCMapChunksPrunedEvent
+    | MCMapRegionPrunedEvent
+    | MCMapPruneResultEvent
+    | MCMapErrorEvent,
+    Field(discriminator="type"),
+]
 
 MCMAP_GENERIC_EVENT_ADAPTER = TypeAdapter(MCMapGenericEvent)
 MCMAP_RENDER_EVENT_ADAPTER = TypeAdapter(MCMapRenderEvent)
@@ -247,3 +314,4 @@ MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER = TypeAdapter(MCMapReplaceChunksEvent)
 MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER = TypeAdapter(MCMapRemoveChunksEvent)
 MCMAP_FTB_CLAIMS_EVENT_ADAPTER = TypeAdapter(MCMapFtbClaimsEvent)
 MCMAP_PLAYERS_EVENT_ADAPTER = TypeAdapter(MCMapPlayersEvent)
+MCMAP_PRUNE_EVENT_ADAPTER = TypeAdapter(MCMapPruneEvent)

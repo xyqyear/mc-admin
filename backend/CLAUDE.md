@@ -45,6 +45,7 @@ app/
 ├── dynamic_config/        # schema-versioned runtime config
 ├── background_tasks/      # in-memory async-generator task manager
 ├── mcmap/                 # server map: typed mcmap CLI integration, tile cache under data/.mcmap/
+├── chunk_prune/           # server-level mcmap prune-inhabited preview/apply tasks and FTB-claim protection
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
 ├── world/                 # world root/dimension layout, mcmap folder resolution, restore locks/previews
@@ -105,6 +106,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/ftb-claims.md` — `app.ftb_claims` mcmap subprocess, dim resolution, clustering, no-cache rationale
 - `docs/player-locations.md` — `app.player_locations`, saved positions, dim resolution, profile cache fallback
 - `docs/world-restore.md` — `app.world` scopes, locks, safety snapshots, preview sessions, crash recovery
+- `docs/chunk-prune.md` — `app.chunk_prune`, server-level prune-inhabited tasks, terminal preview geometry, FTB-claim protection
 - `docs/websocket-console.md` — docker-py attach socket bridge, message protocol
 - `docs/auth.md` — JWT cookies, CSRF, password login, master token, WebSocket-code login flow
 - `docs/audit.md` — middleware, sensitive-field masking, log rotation

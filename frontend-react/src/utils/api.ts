@@ -259,6 +259,12 @@ export const queryKeys = {
       [...queryKeys.ftbClaims.all, "claims", serverId] as const,
   },
 
+  chunkPrune: {
+    all: ["chunk-prune"] as const,
+    settings: (serverId: string) =>
+      [...queryKeys.chunkPrune.all, "settings", serverId] as const,
+  },
+
   templates: {
     all: ["templates"] as const,
     list: () => [...queryKeys.templates.all, "list"] as const,

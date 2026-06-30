@@ -35,6 +35,7 @@ interface TeamClusterListProps {
   mode: WorldRestoreSelectionMode
   selection: Set<ChunkKey>
   overlayVisible: boolean
+  selectable?: boolean
   onOverlayVisibleChange: (visible: boolean) => void
   onRefresh: () => void
   onClusterHover: (clusterIds: Set<string> | null) => void
@@ -85,6 +86,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
   mode,
   selection,
   overlayVisible,
+  selectable = true,
   onOverlayVisibleChange,
   onRefresh,
   onClusterHover,
@@ -210,6 +212,7 @@ export const TeamClusterList: React.FC<TeamClusterListProps> = ({
             currentDimRelpath={currentDimRelpath}
             dimensionLabelByRelpath={dimensionLabelByRelpath}
             selection={selection}
+            selectable={selectable}
             onTeamHover={onTeamHover}
             onTeamSelectInDim={onTeamSelectInDim}
             onClusterHover={onClusterHover}
@@ -230,6 +233,7 @@ interface TeamRowProps {
   currentDimRelpath: string | null
   dimensionLabelByRelpath: Map<string, string>
   selection: Set<ChunkKey>
+  selectable: boolean
   onTeamHover: (clusterIds: Set<string> | null) => void
   onTeamSelectInDim: (team: FtbTeamEntry) => void
   onClusterHover: (clusterIds: Set<string> | null) => void
@@ -245,6 +249,7 @@ const TeamRow: React.FC<TeamRowProps> = ({
   currentDimRelpath,
   dimensionLabelByRelpath,
   selection,
+  selectable,
   onTeamHover,
   onTeamSelectInDim,
   onClusterHover,
@@ -304,12 +309,13 @@ const TeamRow: React.FC<TeamRowProps> = ({
               mode={mode}
               dimensionLabelByRelpath={dimensionLabelByRelpath}
               selection={selection}
+              selectable={selectable}
               onClusterHover={onClusterHover}
               onClusterClick={onClusterClick}
               onClusterSelect={onClusterSelect}
             />
           ))}
-          {hasInDimClusters && (
+          {selectable && hasInDimClusters && (
             <Button
               size="sm"
               variant="ghost"
@@ -335,6 +341,7 @@ interface ClusterRowProps {
   mode: WorldRestoreSelectionMode
   dimensionLabelByRelpath: Map<string, string>
   selection: Set<ChunkKey>
+  selectable: boolean
   onClusterHover: (clusterIds: Set<string> | null) => void
   onClusterClick: (cluster: FtbClusterEntry) => void
   onClusterSelect: (cluster: FtbClusterEntry) => void
@@ -347,6 +354,7 @@ const ClusterRow: React.FC<ClusterRowProps> = ({
   mode,
   dimensionLabelByRelpath,
   selection,
+  selectable,
   onClusterHover,
   onClusterClick,
   onClusterSelect,
@@ -385,7 +393,7 @@ const ClusterRow: React.FC<ClusterRowProps> = ({
           已选
         </Badge>
       )}
-      {isCurrentDim && !fullySelected && (
+      {selectable && isCurrentDim && !fullySelected && (
         <Button
           size="sm"
           variant="outline"

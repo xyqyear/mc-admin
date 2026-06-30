@@ -27,6 +27,7 @@ const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'
 const ServerCompose = React.lazy(() => import('@/pages/server/servers/ServerCompose'))
 const ServerConsole = React.lazy(() => import('@/pages/server/servers/ServerConsole'))
 const ServerWorldRestore = React.lazy(() => import('@/pages/server/servers/ServerWorldRestore'))
+const ServerChunkPrune = React.lazy(() => import('@/pages/server/servers/ServerChunkPrune'))
 const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
 const TemplateList = React.lazy(() => import('@/pages/templates/TemplateList'))
 const TemplateEdit = React.lazy(() => import('@/pages/templates/TemplateEdit'))
@@ -119,6 +120,7 @@ function App() {
             <Route path=":id/compose" element={<ServerCompose />} />
             <Route path=":id/console" element={<ServerConsole />} />
             <Route path=":id/world-restore" element={<ServerWorldRestore />} />
+            <Route path=":id/chunk-prune" element={<ServerChunkPrune />} />
           </Route>
           <Route path="/admin">
             <Route path="users" element={<UserManagement />} />

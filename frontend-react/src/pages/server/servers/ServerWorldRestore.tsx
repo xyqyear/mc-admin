@@ -23,14 +23,19 @@ import MapInitDialog from '@/components/dialogs/MapInitDialog'
 import WorldRestoreSelectionPanel from '@/components/world-restore/WorldRestoreSelectionPanel'
 import { ServerStopGuard } from '@/components/world-restore/ServerStopGuard'
 import {
+  buildDimensionOptions,
+  relpathOf,
+  selectWorldDimension,
+} from '@/components/map/worldDimensions'
+import {
   clusterToChunkKeys,
   teamDimChunkKeys,
-} from '@/components/world-restore/claims/claimSelection'
-import { ClusterPopover } from '@/components/world-restore/claims/ClusterPopover'
-import { TeamClusterList } from '@/components/world-restore/claims/TeamClusterList'
-import { useClaimsOverlay } from '@/components/world-restore/claims/useClaimsOverlay'
-import { PlayerLocationList } from '@/components/world-restore/players/PlayerLocationList'
-import { usePlayersOverlay } from '@/components/world-restore/players/usePlayersOverlay'
+} from '@/components/map/layers/claims/claimSelection'
+import { ClusterPopover } from '@/components/map/layers/claims/ClusterPopover'
+import { TeamClusterList } from '@/components/map/layers/claims/TeamClusterList'
+import { useClaimsOverlay } from '@/components/map/layers/claims/useClaimsOverlay'
+import { PlayerLocationList } from '@/components/map/layers/players/PlayerLocationList'
+import { usePlayersOverlay } from '@/components/map/layers/players/usePlayersOverlay'
 import { useConfirm } from '@/hooks/useConfirm'
 import {
   readHashUrlParams,
@@ -59,7 +64,7 @@ import type { FtbClusterEntry, FtbTeamEntry } from '@/types/FtbClaims'
 import type { ChunkKey, SelectionMode } from '@/types/MapTypes'
 import type { PlayerLocationEntry } from '@/types/PlayerLocations'
 import { queryKeys } from '@/utils/api'
-import { normalizePlayerUuid } from '@/components/world-restore/players/playerLocationDisplay'
+import { normalizePlayerUuid } from '@/components/map/layers/players/playerLocationDisplay'
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
 const EMPTY_SELECTION = new Set<ChunkKey>()
@@ -143,33 +148,10 @@ const ServerWorldRestore: React.FC = () => {
   const setStoreDimension = useWorldRestoreSelectionStore((s) => s.setDimension)
   const setStoreMode = useWorldRestoreSelectionStore((s) => s.setMode)
 
-  // Relpath uniquely identifies (root, dim) because the root name is the first segment.
-  const { rootList, currentDimension, currentRoot } = useMemo(() => {
-    const roots = layoutQ.data?.world_roots ?? []
-    if (roots.length === 0) {
-      return { rootList: [], currentDimension: null, currentRoot: null }
-    }
-    if (dimensionRelpath) {
-      for (const root of roots) {
-        const match = root.dimensions.find(
-          (d) => relpathOf(d.region_dir, root.path) === dimensionRelpath,
-        )
-        if (match) {
-          return {
-            rootList: roots,
-            currentDimension: match,
-            currentRoot: root,
-          }
-        }
-      }
-    }
-    const root = roots[0]
-    const dim =
-      root.dimensions.find((d) => dimensionPathOf(d.region_dir, root.path) === '.') ??
-      root.dimensions[0] ??
-      null
-    return { rootList: roots, currentDimension: dim, currentRoot: root }
-  }, [layoutQ.data, dimensionRelpath])
+  const { rootList, currentDimension, currentRoot } = useMemo(
+    () => selectWorldDimension(layoutQ.data, dimensionRelpath),
+    [dimensionRelpath, layoutQ.data],
+  )
 
   const regionRelpath = useMemo(() => {
     if (!currentDimension || !currentRoot) return null
@@ -456,21 +438,14 @@ const ServerWorldRestore: React.FC = () => {
     return null
   }, [claimsPopover, teams])
 
-  const dimensionOptions = useMemo(() => {
-    if (!layoutQ.data) return []
-    const multipleRoots = layoutQ.data.world_roots.length > 1
-    const labels = labelsQ.data?.dimension_labels
-    const out: Array<{ value: string; label: string }> = []
-    for (const r of layoutQ.data.world_roots) {
-      for (const d of r.dimensions) {
-        const rel = relpathOf(d.region_dir, r.path)
-        const dimLabel = labelForDimension(d.region_dir, r.path, labels)
-        const label = multipleRoots ? `${r.name} / ${dimLabel}` : dimLabel
-        out.push({ value: rel, label })
-      }
-    }
-    return out
-  }, [layoutQ.data, labelsQ.data])
+  const dimensionOptions = useMemo(
+    () =>
+      buildDimensionOptions(
+        layoutQ.data,
+        labelsQ.data?.dimension_labels,
+      ),
+    [labelsQ.data?.dimension_labels, layoutQ.data],
+  )
 
   const dimensionLabelByRelpath = useMemo(
     () => new Map(dimensionOptions.map((o) => [o.value, o.label])),
@@ -759,39 +734,6 @@ const ServerWorldRestore: React.FC = () => {
       {modeChangeConfirmDialog}
     </div>
   )
-}
-
-function relpathOf(regionDir: string, worldRootPath: string): string {
-  const sep = '/'
-  const rootBase = worldRootPath.split(sep).pop() ?? ''
-  if (!rootBase) return regionDir
-  const idx = regionDir.lastIndexOf(`${sep}${rootBase}${sep}`)
-  if (idx < 0) {
-    return `${rootBase}/${regionDir.split(sep).pop() ?? ''}`
-  }
-  return regionDir.slice(idx + 1)
-}
-
-function dimensionPathOf(regionDir: string, worldRootPath: string): string {
-  const region = regionDir.replace(/\/+$/, '')
-  const root = worldRootPath.replace(/\/+$/, '')
-  const suffix = '/region'
-  const dimensionDir = region.endsWith(suffix)
-    ? region.slice(0, -suffix.length)
-    : region
-  if (dimensionDir === root) return '.'
-  const prefix = `${root}/`
-  if (dimensionDir.startsWith(prefix)) return dimensionDir.slice(prefix.length)
-  return dimensionDir.split('/').pop() ?? dimensionDir
-}
-
-function labelForDimension(
-  regionDir: string,
-  worldRootPath: string,
-  labels: Record<string, string> | undefined,
-): string {
-  const dimensionPath = dimensionPathOf(regionDir, worldRootPath)
-  return labels?.[dimensionPath] ?? dimensionPath.replace(/^dimensions\//, '')
 }
 
 export default ServerWorldRestore

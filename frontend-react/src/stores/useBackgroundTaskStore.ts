@@ -10,6 +10,8 @@ export type BackgroundTaskType =
   | 'file_ownership_repair'
   | 'server_rebuild'
   | 'world_restore'
+  | 'chunk_prune_preview'
+  | 'chunk_prune_apply'
 
 export interface BackgroundTask {
   taskId: string

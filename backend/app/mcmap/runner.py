@@ -2,7 +2,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, List, Optional, TypeVar
+from typing import Any, AsyncIterator, List, Literal, Optional, TypeVar
 
 import aiofiles.os as aioos
 from pydantic import TypeAdapter, ValidationError
@@ -201,6 +201,32 @@ async def remove_chunks(
         "-c",
         _serialize_chunks(chunks),
     ]
+    async with _run(args, owned_by) as p:
+        yield p
+
+
+@asynccontextmanager
+async def prune_inhabited(
+    *,
+    path: Path,
+    threshold_ticks: int,
+    mode: Literal["chunks", "regions"],
+    dry_run: bool,
+    owned_by: Path,
+    exclude_ftb_claims: Optional[Path] = None,
+) -> AsyncIterator[MCMapProcess]:
+    args: List[str] = [
+        "prune-inhabited",
+        str(path),
+        "--threshold",
+        str(threshold_ticks),
+        "--mode",
+        mode,
+    ]
+    if dry_run:
+        args.append("--dry-run")
+    if exclude_ftb_claims is not None:
+        args.extend(["--exclude-ftb-claims", str(exclude_ftb_claims)])
     async with _run(args, owned_by) as p:
         yield p
 

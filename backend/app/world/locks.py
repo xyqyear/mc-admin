@@ -13,6 +13,7 @@ GLOBAL_LOCK_KEY = "__global__"
 class ServerOperationKind(str, Enum):
     BACKUP = "backup"
     RESTORE = "restore"
+    PRUNE = "prune"
 
 
 @dataclass
@@ -30,7 +31,7 @@ class ServerOperationLock:
     Acquired via the ``acquire`` async context manager, which guarantees
     release via ``try/finally`` even on exception. Map render queues
     intentionally do NOT use this lock — only mutating world operations
-    (backup, restore) take it.
+    (backup, restore, prune) take it.
     """
 
     def __init__(self) -> None:

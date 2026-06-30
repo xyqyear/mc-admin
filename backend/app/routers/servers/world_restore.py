@@ -251,6 +251,10 @@ async def get_dimension_labels(
 
 
 @router.get(
+    "/{server_id}/claims",
+    response_model=ClaimsResponse,
+)
+@router.get(
     "/{server_id}/world-restore/claims",
     response_model=ClaimsResponse,
 )
@@ -276,6 +280,10 @@ async def get_ftb_claims(
 # --- Player locations ------------------------------------------------------
 
 
+@router.get(
+    "/{server_id}/player-locations",
+    response_model=PlayerLocationsResponse,
+)
 @router.get(
     "/{server_id}/world-restore/player-locations",
     response_model=PlayerLocationsResponse,

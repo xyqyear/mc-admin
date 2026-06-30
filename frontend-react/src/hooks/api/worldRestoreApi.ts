@@ -29,7 +29,7 @@ export const worldRestoreApi = {
   getPlayerLocations: (serverId: string) =>
     api
       .get<PlayerLocationsResponse>(
-        `/servers/${serverId}/world-restore/player-locations`,
+        `/servers/${serverId}/player-locations`,
       )
       .then((r) => r.data),
 

@@ -69,6 +69,10 @@ The protected root route `/` is the system self-check dashboard. The former feat
 - `useTaskCenterStore` — task center panel open, tab, and persisted launcher position
 - `useWorldRestoreSelectionStore` — per-server world-restore selection (**not** persisted; selection is transient)
 
+## Server Map Reuse
+
+`components/map/ServerMap.tsx` is the shared Leaflet surface. Map pages compose optional `ServerMapOverlay` layers; FTB claims and player locations are imported from `components/map/layers/*`, and world/dimension relpath helpers live in `components/map/worldDimensions.ts`.
+
 ## SSE consumer
 
 `utils/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. `hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`, so pass stable bodies when stream restarts matter.
@@ -98,6 +102,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/server-lifecycle.md` — bundled create/remove round-trips, OWNER-only filesystem↔DB sync dialog, `types/lifecycle.ts`
 - `docs/server-map.md` — embedded Leaflet map, native Leaflet tile URLs, sparse manifest, browser image cache
 - `docs/world-restore-page.md` — URL-driven dim/mode, selection state, preview/restore/rollback flows, history drawer
+- `docs/chunk-prune-page.md` — server-level chunk prune map page, task-polled progress, dimension-filtered connected-shape overlay, apply guard
 - `docs/ftb-claims-overlay.md` — always-on FTB claims overlay (when detected), polygon clustering, team/cluster side panel, popover-driven selection
 - `docs/player-locations-overlay.md` — saved player positions, bulk streamed profile resolution, online-state filtering, translucent Leaflet markers
 

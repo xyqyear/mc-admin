@@ -23,6 +23,7 @@ import {
   PanelLeftIcon,
   Sun,
   Moon,
+  Eraser,
 } from 'lucide-react'
 
 import {
@@ -243,6 +244,16 @@ const AppSidebar: React.FC = () => {
                                   >
                                     <MapIcon />
                                     <span>地图回档</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    isActive={isActive(`/server/${server.id}/chunk-prune`)}
+                                    onClick={() => navigateTo(`/server/${server.id}/chunk-prune`)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Eraser />
+                                    <span>区块清理</span>
                                   </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
                               </SidebarMenuSub>

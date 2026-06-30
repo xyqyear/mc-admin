@@ -9,6 +9,7 @@ import {
   Loader2,
   Clock,
   Wrench,
+  Eraser,
 } from 'lucide-react'
 
 import { Progress } from '@/components/ui/progress'
@@ -39,6 +40,9 @@ const getTaskTypeIcon = (taskType: BackgroundTaskType) => {
       return <Wrench className="h-3.5 w-3.5" />
     case 'server_rebuild':
       return <Hammer className="h-3.5 w-3.5" />
+    case 'chunk_prune_preview':
+    case 'chunk_prune_apply':
+      return <Eraser className="h-3.5 w-3.5" />
     default:
       return <Loader2 className="h-3.5 w-3.5 animate-spin" />
   }
@@ -54,6 +58,10 @@ const getTaskTypeName = (taskType: BackgroundTaskType): string => {
       return '修复文件所有权'
     case 'server_rebuild':
       return '重建服务器'
+    case 'chunk_prune_preview':
+      return '区块清理预览'
+    case 'chunk_prune_apply':
+      return '区块清理删除'
     default:
       return '未知任务'
   }
@@ -107,6 +115,12 @@ const getTaskDisplayName = (task: BackgroundTask): string => {
   }
   if (task.taskType === 'file_ownership_repair' && task.name) {
     return `修复 ${truncatePath(task.name)}`
+  }
+  if (task.taskType === 'chunk_prune_preview' && task.name) {
+    return task.name
+  }
+  if (task.taskType === 'chunk_prune_apply' && task.name) {
+    return task.name
   }
   return task.name || getTaskTypeName(task.taskType)
 }

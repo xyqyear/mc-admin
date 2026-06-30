@@ -11,8 +11,14 @@ from app.mcmap import runner
 from app.mcmap.events import (
     MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER,
     MCMAP_GEN_PALETTE_EVENT_ADAPTER,
+    MCMAP_PRUNE_EVENT_ADAPTER,
     MCMAP_RENDER_EVENT_ADAPTER,
+    MCMapChunksPrunedEvent,
     MCMapProtocolError,
+    MCMapPruneProgressEvent,
+    MCMapPruneRegionDirEvent,
+    MCMapPruneResultEvent,
+    MCMapRegionPrunedEvent,
     MCMapRenderRegionEvent,
 )
 
@@ -188,6 +194,58 @@ async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
     Path(str(fake) + ".args").unlink()
     assert "gen-palette" in args_text
     assert "--level-dat" not in args_text
+
+
+async def test_prune_inhabited_passes_mode_threshold_and_claims(fake_owned_dir):
+    fake = _write_fake_mcmap(
+        "#!/bin/sh\n"
+        'echo "$@" > "$0.args"\n'
+        'echo \'{"type":"result","mode":"chunks","dry_run":true,"region_dirs":1,"regions_scanned":0,"chunks_scanned":0,"chunks_selected":0,"regions_selected":0}\'\n'
+    )
+    claims = fake_owned_dir / "claims.json"
+    claims.write_text("{}")
+    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        async with runner.prune_inhabited(
+            path=fake_owned_dir / "world" / "region",
+            threshold_ticks=1200,
+            mode="chunks",
+            dry_run=True,
+            owned_by=fake_owned_dir,
+            exclude_ftb_claims=claims,
+        ) as proc:
+            events = [e async for e in proc.events(MCMAP_PRUNE_EVENT_ADAPTER)]
+        assert proc.returncode == 0
+    args_text = Path(str(fake) + ".args").read_text()
+    fake.unlink()
+    Path(str(fake) + ".args").unlink()
+    assert "prune-inhabited" in args_text
+    assert "--threshold" in args_text
+    assert "1200" in args_text
+    assert "--mode" in args_text
+    assert "chunks" in args_text
+    assert "--dry-run" in args_text
+    assert "--exclude-ftb-claims" in args_text
+    assert str(claims) in args_text
+    assert isinstance(events[-1], MCMapPruneResultEvent)
+
+
+async def test_prune_adapter_parses_streaming_events():
+    lines = [
+        b'{"type":"region_dir","path":"world/region","regions":2}',
+        b'{"type":"chunks_pruned","region":"world/region/r.0.0.mca","region_x":0,"region_z":0,"chunks":[{"chunk_x":4,"chunk_z":15,"rel_x":4,"rel_z":15,"inhabited_time":480},{"chunk_x":5,"chunk_z":15,"rel_x":5,"rel_z":15,"inhabited_time":481}],"dry_run":true}',
+        b'{"type":"region_pruned","region":"world/region/r.1.0.mca","region_x":1,"region_z":0,"chunks":1024,"max_inhabited_time":800,"dry_run":true}',
+        b'{"type":"progress","phase":"scan","regions_processed":2,"regions_total":2}',
+        b'{"type":"result","mode":"regions","dry_run":true,"region_dirs":1,"regions_scanned":2,"chunks_scanned":1536,"chunks_selected":1025,"regions_selected":2,"claims_loaded":3,"claimed_chunks_protected":3,"chunks_skipped_by_claims":1,"regions_skipped_by_claims":1}',
+    ]
+    events = [MCMAP_PRUNE_EVENT_ADAPTER.validate_json(line) for line in lines]
+    assert isinstance(events[0], MCMapPruneRegionDirEvent)
+    assert isinstance(events[1], MCMapChunksPrunedEvent)
+    assert len(events[1].chunks) == 2
+    assert isinstance(events[2], MCMapRegionPrunedEvent)
+    assert isinstance(events[3], MCMapPruneProgressEvent)
+    assert isinstance(events[4], MCMapPruneResultEvent)
+    assert events[4].mode == "regions"
+    assert events[4].chunks_skipped_by_claims == 1
 
 
 # Silence "unused import" for sys; keep available for diagnosing test failures

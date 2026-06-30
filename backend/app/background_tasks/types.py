@@ -10,6 +10,8 @@ class TaskType(str, Enum):
     FILE_OWNERSHIP_REPAIR = "file_ownership_repair"
     SERVER_REBUILD = "server_rebuild"
     WORLD_RESTORE = "world_restore"
+    CHUNK_PRUNE_PREVIEW = "chunk_prune_preview"
+    CHUNK_PRUNE_APPLY = "chunk_prune_apply"
 
 
 class TaskStatus(str, Enum):

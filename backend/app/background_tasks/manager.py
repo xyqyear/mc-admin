@@ -34,6 +34,7 @@ class BackgroundTaskManager:
         task_generator: AsyncGenerator[TaskProgress, None],
         server_id: str | None = None,
         cancellable: bool = True,
+        task_id: str | None = None,
     ) -> SubmitResult:
         """
         Submit a background task.
@@ -66,12 +67,18 @@ class BackgroundTaskManager:
             # Or wait for completion
             task_result = await result.awaitable
         """
-        task = BackgroundTask(
-            task_type=task_type,
-            name=name,
-            server_id=server_id,
-            cancellable=cancellable,
-        )
+        if task_id is not None and task_id in self._tasks:
+            raise ValueError(f"Task {task_id} already exists")
+
+        task_kwargs = {
+            "task_type": task_type,
+            "name": name,
+            "server_id": server_id,
+            "cancellable": cancellable,
+        }
+        if task_id is not None:
+            task_kwargs["task_id"] = task_id
+        task = BackgroundTask(**task_kwargs)
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[TaskResult] = loop.create_future()

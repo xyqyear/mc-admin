@@ -16,6 +16,7 @@ export type RegionList = Array<[number, number, number]>
 export type ChunkKey = `${number},${number}`
 
 export type SelectionMode = 'none' | 'chunk' | 'region'
+export type MapLayerMode = 'chunk' | 'region' | 'none'
 
 export type InitStage = 'client' | 'palette' | 'complete'
 
