@@ -31,7 +31,7 @@ from .routers import (
     self_check,
     system,
     tasks,
-    templates,
+    templates as template_routes,
     user,
 )
 from .routers.config import router as config_router
@@ -141,7 +141,7 @@ api_app.include_router(self_check.router)
 api_app.include_router(dns.router)
 api_app.include_router(config_router)
 api_app.include_router(tasks.router)
-api_app.include_router(templates.router)
+api_app.include_router(template_routes.router)
 api_app.include_router(events.router)
 
 api_app.include_router(players.router)
@@ -224,9 +224,9 @@ async def robots_txt():
         return await f.read()
 
 
-templates = Jinja2Templates(directory=settings.static_path.resolve())
+spa_templates = Jinja2Templates(directory=settings.static_path.resolve())
 
 
 @app.get("/{full_path:path}")
 async def serve_spa(request: Request, full_path: str):
-    return templates.TemplateResponse("index.html", {"request": request})  # type: ignore
+    return spa_templates.TemplateResponse(request=request, name="index.html")
