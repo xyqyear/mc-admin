@@ -21,7 +21,7 @@ result = task_manager.submit(
     server_id="survival",
     cancellable=True,
 )
-# result.task_id → returned to the frontend; poll /api/tasks/{id}.
+# result.task_id → returned to the frontend; poll /api/tasks/{id} for detail.
 ```
 
 The manager wraps the generator in an `asyncio.Task`, intercepts each yield to update the in-memory `BackgroundTask` row, and resolves the `Future[TaskResult]` on the final yield. Cancellation flips the cooperative `cancel_requested` flag on the task; the generator is expected to check it and clean up.
@@ -54,11 +54,13 @@ The manager wraps the generator in an `asyncio.Task`, intercepts each yield to u
 
 Mounted at `/api/tasks/`:
 
-- `GET /` — list (with filters)
-- `GET /{id}` — detail (the frontend polls this; cadence depends on whether the user is viewing the task)
+- `GET /` — summary list with filters; `result` is omitted so task center
+  polling never serializes feature-specific payloads.
+- `GET /{id}` — detail including `result`; feature pages use this only when
+  the result is intentionally small or is the feature's dedicated payload.
 - `POST /{id}/cancel`
 - `DELETE /{id}` — drop a finished entry from memory
-- `POST /clear` — bulk cleanup
+- `DELETE /` — bulk cleanup
 
 ## Files
 

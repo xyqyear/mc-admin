@@ -44,6 +44,7 @@ app/
 ├── templates/             # server template system (typed variables)
 ├── dynamic_config/        # schema-versioned runtime config
 ├── background_tasks/      # in-memory async-generator task manager
+├── grid_geometry.py       # shared 4-connected grid components and boundary-ring geometry
 ├── mcmap/                 # server map: typed mcmap CLI integration, tile cache under data/.mcmap/
 ├── chunk_prune/           # server-level mcmap prune-inhabited preview/apply tasks and FTB-claim protection
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
@@ -65,7 +66,7 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The global task center polls `/api/tasks/{id}`; feature pages may expose server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The global task center polls summary-only `/api/tasks` lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
 
 ## Dynamic config
 

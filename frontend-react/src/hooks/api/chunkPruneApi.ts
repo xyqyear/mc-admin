@@ -6,6 +6,7 @@ import {
 import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 import type {
   ChunkPruneApplyRequest,
+  ChunkPrunePreviewGeometryResponse,
   ChunkPrunePreviewRequest,
   ChunkPruneSettingsResponse,
   ChunkPruneStartResponse,
@@ -40,6 +41,16 @@ export const chunkPruneApi = {
           ? transformTask(r.data.apply_task)
           : null,
       })),
+
+  getPreviewGeometry: (
+    serverId: string,
+    previewTaskId: string,
+  ): Promise<ChunkPrunePreviewGeometryResponse> =>
+    api
+      .get<ChunkPrunePreviewGeometryResponse>(
+        `/servers/${serverId}/chunk-prune/previews/${previewTaskId}/geometry`,
+      )
+      .then((r) => r.data),
 
   startPreview: (serverId: string, request: ChunkPrunePreviewRequest) =>
     api

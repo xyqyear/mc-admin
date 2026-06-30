@@ -1,4 +1,5 @@
 from .models import (
+    ChunkPrunePreviewGeometryResponse,
     ChunkPrunePreviewRequest,
     ChunkPruneSettingsResponse,
     ChunkPruneStartResponse,
@@ -14,6 +15,7 @@ from .service import (
 __all__ = [
     "ChunkPruneConflictError",
     "ChunkPruneError",
+    "ChunkPrunePreviewGeometryResponse",
     "ChunkPrunePreviewRequest",
     "ChunkPruneSettingsResponse",
     "ChunkPruneStartResponse",

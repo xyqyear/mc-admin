@@ -17,22 +17,32 @@ export interface ChunkPruneApplyRequest {
   preview_task_id: string
 }
 
-export interface ChunkPruneSelectedChunk {
-  chunk_x: number
-  chunk_z: number
-  region_x: number
-  region_z: number
+export type ChunkPruneGeometryUnit = 'chunk' | 'region'
+
+export type GridVertex = [number, number]
+export type GridRing = GridVertex[]
+
+export interface GridShape {
+  id: string
+  cell_count: number
+  bbox: [number, number, number, number]
+  rings: GridRing[]
 }
 
-export interface ChunkPruneSelectedRegion {
-  region_x: number
-  region_z: number
-}
-
-export interface ChunkPruneDimensionResult {
+export interface ChunkPruneGeometryDimension {
   region_dir_relpath: string
-  selected_chunks: ChunkPruneSelectedChunk[]
-  selected_regions: ChunkPruneSelectedRegion[]
+  unit: ChunkPruneGeometryUnit
+  cell_count: number
+  shapes: GridShape[]
+}
+
+export interface ChunkPrunePreviewGeometryResponse {
+  task_id: string
+  server_id: string
+  mode: ChunkPruneMode
+  threshold_seconds: number
+  threshold_ticks: number
+  dimensions: ChunkPruneGeometryDimension[]
 }
 
 export interface ChunkPruneResultData {
@@ -45,8 +55,7 @@ export interface ChunkPruneResultData {
   chunks_scanned: number
   chunks_selected: number
   regions_selected: number
-  affected_regions_by_dimension?: Record<string, Array<[number, number]>>
-  dimensions?: ChunkPruneDimensionResult[]
+  affected_region_counts_by_dimension?: Record<string, number>
   claims_loaded?: number
   claimed_chunks_protected?: number
   chunks_skipped_by_claims?: number

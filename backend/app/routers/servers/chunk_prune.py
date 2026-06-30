@@ -7,6 +7,7 @@ from ...background_tasks import TaskType, task_manager
 from ...background_tasks.models import BackgroundTask
 from ...chunk_prune import (
     ChunkPruneConflictError,
+    ChunkPrunePreviewGeometryResponse,
     ChunkPrunePreviewRequest,
     ChunkPruneSettingsResponse,
     ChunkPruneStartResponse,
@@ -94,6 +95,26 @@ async def get_chunk_prune_state(
             else None
         ),
     )
+
+
+@router.get(
+    "/{server_id}/chunk-prune/previews/{preview_task_id}/geometry",
+    response_model=ChunkPrunePreviewGeometryResponse,
+)
+async def get_chunk_prune_preview_geometry(
+    server_id: str,
+    preview_task_id: str,
+    _: UserPublic = Depends(get_current_user),
+) -> ChunkPrunePreviewGeometryResponse:
+    try:
+        return chunk_prune_service.get_preview_geometry(
+            server_id=server_id,
+            preview_task_id=preview_task_id,
+        )
+    except ChunkPruneTaskNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ChunkPruneValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post(

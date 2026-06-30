@@ -265,6 +265,13 @@ export const queryKeys = {
       [...queryKeys.chunkPrune.all, "settings", serverId] as const,
     state: (serverId: string) =>
       [...queryKeys.chunkPrune.all, "state", serverId] as const,
+    previewGeometry: (serverId: string, previewTaskId: string) =>
+      [
+        ...queryKeys.chunkPrune.all,
+        "preview-geometry",
+        serverId,
+        previewTaskId,
+      ] as const,
   },
 
   templates: {

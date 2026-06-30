@@ -49,6 +49,7 @@ import { normalizePlayerUuid } from '@/components/map/layers/players/playerLocat
 import { chunkPruneApi } from '@/hooks/api/chunkPruneApi'
 import { useTaskMutations } from '@/hooks/mutations/useTaskMutations'
 import {
+  useChunkPrunePreviewGeometry,
   useChunkPruneSettings,
   useChunkPruneState,
 } from '@/hooks/queries/base/useChunkPruneQueries'
@@ -374,14 +375,19 @@ const ServerChunkPrune: React.FC = () => {
     !!previewResult &&
     previewResult.threshold_seconds === thresholdSeconds &&
     previewResult.mode === urlMode
+  const previewGeometryQ = useChunkPrunePreviewGeometry(
+    serverId,
+    previewTaskId ?? undefined,
+    previewStatus === 'completed' && previewMatchesCurrentControls,
+  )
   const currentPreviewDimension = useMemo(
     () =>
       previewMatchesCurrentControls && regionRelpath
-        ? previewResult?.dimensions?.find(
+        ? previewGeometryQ.data?.dimensions.find(
             (dim) => dim.region_dir_relpath === regionRelpath,
           ) ?? null
         : null,
-    [previewMatchesCurrentControls, previewResult, regionRelpath],
+    [previewGeometryQ.data, previewMatchesCurrentControls, regionRelpath],
   )
 
   const pruneOverlay = useMemo<ServerMapOverlay[] | undefined>(() => {
@@ -393,11 +399,7 @@ const ServerChunkPrune: React.FC = () => {
     ) {
       return undefined
     }
-    const hasCells =
-      urlMode === 'regions'
-        ? currentPreviewDimension.selected_regions.length > 0
-        : currentPreviewDimension.selected_chunks.length > 0
-    if (!hasCells) return undefined
+    if (currentPreviewDimension.shapes.length === 0) return undefined
     return [
       {
         id: `chunk-prune-preview-${previewTaskId}-${regionRelpath ?? 'none'}`,

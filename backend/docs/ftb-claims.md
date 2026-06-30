@@ -88,6 +88,11 @@ Cluster ids are stable across reloads: `f"{team_id}#{region_dir_relpath|_}#{idx}
 Two reloads of the same world produce the same cluster set with the same ids,
 so the frontend's "fully selected" indicator survives a page refresh.
 
+The flood-fill implementation is shared with `app.grid_geometry`, which also
+builds grid boundary rings for chunk-prune preview overlays. Claims still return
+raw chunk lists because world-restore selection expands those exact chunks and
+regions in the frontend.
+
 ## Display name fallback
 
 Pre-1.13 FTB families return `team.name = null`. The orchestrator walks

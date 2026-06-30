@@ -7,7 +7,7 @@ import posixpath
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional
 
 import aiofiles
 import aiofiles.os as aioos
@@ -15,6 +15,7 @@ import aiofiles.os as aioos
 from ..background_tasks import task_manager
 from ..background_tasks.types import TaskProgress, TaskStatus, TaskType
 from ..ftb_claims.extract import NoFtbDataError, _run_extract
+from ..grid_geometry import build_grid_shapes
 from ..logger import logger
 from ..mcmap import runner as mcmap_runner
 from ..mcmap.events import (
@@ -37,8 +38,11 @@ from ..world.locks import (
 )
 from ..world.region_files import parse_region_filename
 from .models import (
+    ChunkPrunePreviewGeometryResponse,
     ChunkPrunePreviewRequest,
     ChunkPruneTaskMetadata,
+    GridGeometryDimension,
+    GridShape,
 )
 
 TICKS_PER_SECOND = 20
@@ -153,6 +157,21 @@ class ChunkPruneService:
         )
         return task_id
 
+    def get_preview_geometry(
+        self, *, server_id: str, preview_task_id: str
+    ) -> ChunkPrunePreviewGeometryResponse:
+        metadata = self._metadata.get(preview_task_id)
+        if metadata is None or metadata.operation != "preview":
+            raise ChunkPruneTaskNotFound("Preview task not found")
+        if metadata.server_id != server_id:
+            raise ChunkPruneTaskNotFound("Preview task not found")
+        task = task_manager.get_task(preview_task_id)
+        if task is None or task.status != TaskStatus.COMPLETED:
+            raise ChunkPruneValidationError("Preview task has not completed")
+        if metadata.geometry is None:
+            raise ChunkPruneValidationError("Preview geometry is not available")
+        return metadata.geometry
+
     async def _run_apply_task(
         self, metadata: ChunkPruneTaskMetadata
     ) -> AsyncGenerator[TaskProgress, None]:
@@ -186,7 +205,7 @@ class ChunkPruneService:
     async def _run_prune_task(
         self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool
     ) -> AsyncGenerator[TaskProgress, None]:
-        dimensions: dict[str, dict[str, Any]] = {}
+        selected_cells_by_dimension: dict[str, set[tuple[int, int]]] = {}
         path_mapper = PruneEventPathMapper(metadata.data_path)
         progress_percent = 0.0
         saw_result = False
@@ -241,15 +260,8 @@ class ChunkPruneService:
                         metadata, relpath, event.region_x, event.region_z
                     )
                     if dry_run:
-                        bucket = dimension_result_bucket(dimensions, relpath)
-                        bucket["selected_chunks"].extend(
-                            {
-                                "chunk_x": chunk.chunk_x,
-                                "chunk_z": chunk.chunk_z,
-                                "region_x": event.region_x,
-                                "region_z": event.region_z,
-                            }
-                            for chunk in event.chunks
+                        selected_cells_by_dimension.setdefault(relpath, set()).update(
+                            (chunk.chunk_x, chunk.chunk_z) for chunk in event.chunks
                         )
                 elif isinstance(event, MCMapRegionPrunedEvent):
                     relpath = path_mapper.region_relpath(event.region)
@@ -263,28 +275,24 @@ class ChunkPruneService:
                         metadata, relpath, event.region_x, event.region_z
                     )
                     if dry_run:
-                        bucket = dimension_result_bucket(dimensions, relpath)
-                        bucket["selected_regions"].append(
-                            {
-                                "region_x": event.region_x,
-                                "region_z": event.region_z,
-                            }
+                        selected_cells_by_dimension.setdefault(relpath, set()).add(
+                            (event.region_x, event.region_z)
                         )
                 elif isinstance(event, MCMapPruneResultEvent):
                     saw_result = True
                     result = event.model_dump(exclude_none=True)
                     result["threshold_seconds"] = metadata.threshold_seconds
                     result["threshold_ticks"] = metadata.threshold_ticks
-                    result["affected_regions_by_dimension"] = {
-                        relpath: sorted(regions)
+                    result["affected_region_counts_by_dimension"] = {
+                        relpath: len(regions)
                         for relpath, regions in sorted(
                             metadata.affected_regions_by_dimension.items()
                         )
                     }
                     if dry_run:
-                        result["dimensions"] = sorted(
-                            dimensions.values(),
-                            key=lambda d: d["region_dir_relpath"],
+                        metadata.geometry = build_preview_geometry(
+                            metadata,
+                            selected_cells_by_dimension,
                         )
                     metadata.result = result
                     yield TaskProgress(
@@ -366,18 +374,38 @@ def seconds_to_ticks(seconds: int) -> int:
     return max(0, int(seconds) * TICKS_PER_SECOND)
 
 
-def dimension_result_bucket(
-    dimensions: dict[str, dict[str, Any]], region_dir_relpath: str
-) -> dict[str, Any]:
-    bucket = dimensions.get(region_dir_relpath)
-    if bucket is None:
-        bucket = {
-            "region_dir_relpath": region_dir_relpath,
-            "selected_chunks": [],
-            "selected_regions": [],
-        }
-        dimensions[region_dir_relpath] = bucket
-    return bucket
+def build_preview_geometry(
+    metadata: ChunkPruneTaskMetadata,
+    selected_cells_by_dimension: dict[str, set[tuple[int, int]]],
+) -> ChunkPrunePreviewGeometryResponse:
+    unit = "chunk" if metadata.mode == "chunks" else "region"
+    dimensions: list[GridGeometryDimension] = []
+    for relpath, cells in sorted(selected_cells_by_dimension.items()):
+        shapes = [
+            GridShape(
+                id=shape.id,
+                cell_count=shape.cell_count,
+                bbox=shape.bbox,
+                rings=shape.rings,
+            )
+            for shape in build_grid_shapes(cells, id_prefix=relpath)
+        ]
+        dimensions.append(
+            GridGeometryDimension(
+                region_dir_relpath=relpath,
+                unit=unit,
+                cell_count=len(cells),
+                shapes=shapes,
+            )
+        )
+    return ChunkPrunePreviewGeometryResponse(
+        task_id=metadata.task_id,
+        server_id=metadata.server_id,
+        mode=metadata.mode,
+        threshold_seconds=metadata.threshold_seconds,
+        threshold_ticks=metadata.threshold_ticks,
+        dimensions=dimensions,
+    )
 
 
 class PruneEventPathMapper:

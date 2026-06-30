@@ -4,12 +4,14 @@ from datetime import timedelta
 import pytest
 
 from app.background_tasks import TaskProgress, TaskStatus, TaskType, task_manager
-from app.chunk_prune.models import ChunkPruneTaskMetadata
+from app.chunk_prune.models import (
+    ChunkPrunePreviewGeometryResponse,
+    ChunkPruneTaskMetadata,
+)
 from app.chunk_prune.service import (
     ChunkPruneService,
     ChunkPruneTaskNotFound,
     ChunkPruneValidationError,
-    dimension_result_bucket,
     region_relpath_for_event,
     seconds_to_ticks,
 )
@@ -21,6 +23,11 @@ from app.mcmap.events import (
 from app.minecraft import MCServerStatus
 from app.routers.servers import chunk_prune as chunk_prune_router
 from app.world.locks import ServerOperationLock
+
+
+def _normalize_ring(ring):
+    rotations = [ring[i:] + ring[:i] for i in range(len(ring))]
+    return min(rotations)
 
 
 class _FakeInstance:
@@ -65,21 +72,6 @@ def test_region_relpath_for_event_accepts_relative_and_absolute_paths(tmp_path):
     assert region_relpath_for_event(data_path, "world/entities/r.-1.2.mca") is None
     assert region_relpath_for_event(data_path, "../world/region/r.0.0.mca") is None
     assert region_relpath_for_event(data_path, "/outside/world/region/r.0.0.mca") is None
-
-
-def test_dimension_result_bucket_groups_selected_cells():
-    dimensions = {}
-    bucket = dimension_result_bucket(dimensions, "world/region")
-    bucket["selected_chunks"].append({"chunk_x": 1, "chunk_z": 2})
-
-    assert dimension_result_bucket(dimensions, "world/region") is bucket
-    assert dimensions == {
-        "world/region": {
-            "region_dir_relpath": "world/region",
-            "selected_chunks": [{"chunk_x": 1, "chunk_z": 2}],
-            "selected_regions": [],
-        }
-    }
 
 
 async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch):
@@ -159,18 +151,24 @@ async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch
     ]
 
     assert progress[-1].result is not None
-    assert progress[-1].result["affected_regions_by_dimension"] == {
-        "world/region": [(0, 0)]
+    assert progress[-1].result["affected_region_counts_by_dimension"] == {
+        "world/region": 1
     }
-    assert progress[-1].result["dimensions"] == [
-        {
-            "region_dir_relpath": "world/region",
-            "selected_chunks": [
-                {"chunk_x": 4, "chunk_z": 15, "region_x": 0, "region_z": 0},
-                {"chunk_x": 5, "chunk_z": 15, "region_x": 0, "region_z": 0},
-            ],
-            "selected_regions": [],
-        }
+    assert "dimensions" not in progress[-1].result
+    assert metadata.geometry is not None
+    assert metadata.geometry.mode == "chunks"
+    assert metadata.geometry.threshold_seconds == 60
+    assert len(metadata.geometry.dimensions) == 1
+    dimension = metadata.geometry.dimensions[0]
+    assert dimension.region_dir_relpath == "world/region"
+    assert dimension.unit == "chunk"
+    assert dimension.cell_count == 2
+    assert len(dimension.shapes) == 1
+    shape = dimension.shapes[0]
+    assert shape.cell_count == 2
+    assert shape.bbox == (4, 15, 5, 15)
+    assert [_normalize_ring(ring) for ring in shape.rings] == [
+        _normalize_ring([(6, 15), (4, 15), (4, 16), (6, 16)])
     ]
 
 
@@ -359,3 +357,57 @@ async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
             await future
         for task_id in task_ids:
             task_manager.remove_task(task_id)
+
+
+async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
+    tmp_path, monkeypatch
+):
+    service = ChunkPruneService(
+        docker=_FakeDocker(tmp_path),  # type: ignore[arg-type]
+        operation_lock=ServerOperationLock(),
+    )
+    task_id = "chunk-prune-geometry-completed"
+    task_manager.remove_task(task_id)
+
+    async def task_gen():
+        yield TaskProgress(progress=100, message="done", result={"dry_run": True})
+
+    submit = task_manager.submit(
+        TaskType.CHUNK_PRUNE_PREVIEW,
+        "preview",
+        task_gen(),
+        server_id="srv1",
+        task_id=task_id,
+    )
+    service._metadata[task_id] = ChunkPruneTaskMetadata(
+        task_id=task_id,
+        server_id="srv1",
+        operation="preview",
+        data_path=tmp_path,
+        threshold_seconds=30,
+        threshold_ticks=600,
+        mode="regions",
+        result={"dry_run": True},
+        geometry=ChunkPrunePreviewGeometryResponse(
+            task_id=task_id,
+            server_id="srv1",
+            mode="regions",
+            threshold_seconds=30,
+            threshold_ticks=600,
+            dimensions=[],
+        ),
+    )
+    monkeypatch.setattr(chunk_prune_router, "chunk_prune_service", service)
+
+    try:
+        await submit.awaitable
+        response = await chunk_prune_router.get_chunk_prune_preview_geometry(
+            "srv1",
+            task_id,
+        )
+
+        assert response.task_id == task_id
+        assert response.mode == "regions"
+        assert response.dimensions == []
+    finally:
+        task_manager.remove_task(task_id)

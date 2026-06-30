@@ -28,8 +28,10 @@ The mcmap event stream is consumed inside the background task:
 - `result` with scanned/selected totals and FTB-claim skip counters.
 
 Progress events update the generic background task progress. Selected chunk and
-region events are accumulated only in memory during a dry-run preview and are
-attached to the final task result, grouped by data-relative `region/` directory.
+region events are accumulated only in memory during a dry-run preview. When the
+terminal `result` event arrives, the service merges selected cells into
+connected grid-ring shapes and stores that geometry on chunk-prune metadata, not
+on the generic background task.
 
 ## Preview Lifecycle
 
@@ -43,10 +45,16 @@ directory. That file is passed to `--exclude-ftb-claims`, so claimed chunks are
 skipped in chunk mode and claimed regions are protected in region mode.
 
 The background task result contains the mcmap result fields plus
-`threshold_seconds`, `threshold_ticks`, `affected_regions_by_dimension`, and
-dry-run-only `dimensions`. Each dimension entry contains `region_dir_relpath`
-and the selected chunk or region geometry for that dimension. The frontend uses
-that terminal result to render the selected dimension's preview overlay once.
+`threshold_seconds`, `threshold_ticks`, and
+`affected_region_counts_by_dimension`. It intentionally does not contain raw
+selected chunks/regions or map geometry, so the global task center can list
+tasks without serializing large preview payloads.
+
+Completed preview geometry is exposed separately through
+`GET /servers/{server_id}/chunk-prune/previews/{task_id}/geometry`. The response
+contains one entry per dimension with `unit` (`chunk` or `region`), `cell_count`,
+and merged `shapes`. Shape rings are grid coordinates; the frontend multiplies
+them by 16 blocks for chunk mode or 512 blocks for region mode before rendering.
 
 ## Apply Lifecycle
 
@@ -77,10 +85,10 @@ background task manager:
 - state returns the latest preview task for the server and the latest apply
   task created after that preview, so starting a new preview hides older apply
   progress/results;
-- the global task center still uses the generic `/tasks/{task_id}` API;
+- the global task center uses summary-only `/tasks` list responses;
 - the preview overlay is rendered only after the preview task completes;
 - switching the map dimension selects a different dimension entry from the same
-  completed preview result;
+  completed preview geometry;
 - apply progress is shown as task progress, and the map is refreshed after a
   successful apply.
 

@@ -27,3 +27,18 @@ export const useChunkPruneState = (serverId: string | undefined) =>
     staleTime: 1000,
     refetchOnMount: 'always',
   })
+
+export const useChunkPrunePreviewGeometry = (
+  serverId: string | undefined,
+  previewTaskId: string | undefined,
+  enabled: boolean,
+) =>
+  useQuery({
+    queryKey: queryKeys.chunkPrune.previewGeometry(
+      serverId ?? '',
+      previewTaskId ?? '',
+    ),
+    queryFn: () => chunkPruneApi.getPreviewGeometry(serverId!, previewTaskId!),
+    enabled: !!serverId && !!previewTaskId && enabled,
+    staleTime: Infinity,
+  })
