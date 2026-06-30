@@ -263,6 +263,8 @@ export const queryKeys = {
     all: ["chunk-prune"] as const,
     settings: (serverId: string) =>
       [...queryKeys.chunkPrune.all, "settings", serverId] as const,
+    state: (serverId: string) =>
+      [...queryKeys.chunkPrune.all, "state", serverId] as const,
   },
 
   templates: {

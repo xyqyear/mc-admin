@@ -1,10 +1,25 @@
 import { api } from '@/utils/api'
+import {
+  transformTask,
+  type BackgroundTaskResponse,
+} from '@/hooks/api/taskApi'
+import type { BackgroundTask } from '@/stores/useBackgroundTaskStore'
 import type {
   ChunkPruneApplyRequest,
   ChunkPrunePreviewRequest,
   ChunkPruneSettingsResponse,
   ChunkPruneStartResponse,
 } from '@/types/ChunkPrune'
+
+export interface ChunkPruneState {
+  previewTask: BackgroundTask | null
+  applyTask: BackgroundTask | null
+}
+
+interface ChunkPruneStateResponse {
+  preview_task: BackgroundTaskResponse | null
+  apply_task: BackgroundTaskResponse | null
+}
 
 export const chunkPruneApi = {
   getSettings: (serverId: string) =>
@@ -13,6 +28,18 @@ export const chunkPruneApi = {
         `/servers/${serverId}/chunk-prune/settings`,
       )
       .then((r) => r.data),
+
+  getState: (serverId: string): Promise<ChunkPruneState> =>
+    api
+      .get<ChunkPruneStateResponse>(`/servers/${serverId}/chunk-prune/state`)
+      .then((r) => ({
+        previewTask: r.data.preview_task
+          ? transformTask(r.data.preview_task)
+          : null,
+        applyTask: r.data.apply_task
+          ? transformTask(r.data.apply_task)
+          : null,
+      })),
 
   startPreview: (serverId: string, request: ChunkPrunePreviewRequest) =>
     api

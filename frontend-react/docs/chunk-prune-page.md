@@ -41,9 +41,11 @@ default is 30 seconds.
 
 `chunkPruneApi.startPreview()` submits one server-level background task and
 returns a task id. The request contains the threshold and prune mode only; the
-backend scans all dimensions under the server data directory. The page stores
-that id in the hash URL as `task`, so a reload polls the same task again
-through the shared task query hook.
+backend scans all dimensions under the server data directory. The page polls
+`GET /servers/{id}/chunk-prune/state`, which returns the latest preview task
+for this server and the latest apply task created after that preview. Refreshing
+the page or navigating away and back restores the same task state from the
+backend without storing task ids in the URL.
 
 Preview progress is the generic background task progress. The page does not
 render selected chunks while mcmap is scanning; it waits for a completed task

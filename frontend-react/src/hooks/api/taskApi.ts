@@ -26,7 +26,7 @@ export interface BackgroundTaskListResponse {
   total: number
 }
 
-const transformTask = (task: BackgroundTaskResponse): BackgroundTask => ({
+export const transformTask = (task: BackgroundTaskResponse): BackgroundTask => ({
   taskId: task.task_id,
   taskType: task.task_type,
   name: task.name,

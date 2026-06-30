@@ -10,3 +10,20 @@ export const useChunkPruneSettings = (serverId: string | undefined) =>
     enabled: !!serverId,
     staleTime: 60_000,
   })
+
+export const useChunkPruneState = (serverId: string | undefined) =>
+  useQuery({
+    queryKey: queryKeys.chunkPrune.state(serverId ?? ''),
+    queryFn: () => chunkPruneApi.getState(serverId!),
+    enabled: !!serverId,
+    refetchInterval: (query) => {
+      const state = query.state.data
+      const tasks = [state?.previewTask, state?.applyTask]
+      const hasActiveTask = tasks.some(
+        (task) => task?.status === 'pending' || task?.status === 'running',
+      )
+      return hasActiveTask ? 1000 : 10000
+    },
+    staleTime: 1000,
+    refetchOnMount: 'always',
+  })

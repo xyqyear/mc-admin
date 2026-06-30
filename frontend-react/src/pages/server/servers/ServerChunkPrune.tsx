@@ -48,7 +48,10 @@ import { usePlayersOverlay } from '@/components/map/layers/players/usePlayersOve
 import { normalizePlayerUuid } from '@/components/map/layers/players/playerLocationDisplay'
 import { chunkPruneApi } from '@/hooks/api/chunkPruneApi'
 import { useTaskMutations } from '@/hooks/mutations/useTaskMutations'
-import { useChunkPruneSettings } from '@/hooks/queries/base/useChunkPruneQueries'
+import {
+  useChunkPruneSettings,
+  useChunkPruneState,
+} from '@/hooks/queries/base/useChunkPruneQueries'
 import { useFtbClaims } from '@/hooks/queries/base/useFtbClaimsQueries'
 import { useMapRegions, useMapStatus } from '@/hooks/queries/base/useMapQueries'
 import {
@@ -68,15 +71,12 @@ import {
   useHashUrlParams,
   type HashUrlParamsUpdater,
 } from '@/hooks/useHashUrlParams'
-import { taskQueryKeys, useTaskQueries } from '@/hooks/queries/base/useTaskQueries'
+import { taskQueryKeys } from '@/hooks/queries/base/useTaskQueries'
 import type { FtbClusterEntry, FtbTeamEntry } from '@/types/FtbClaims'
 import type { ChunkPruneMode, ChunkPruneResultData } from '@/types/ChunkPrune'
 import type { ChunkKey } from '@/types/MapTypes'
 import type { PlayerLocationEntry } from '@/types/PlayerLocations'
-import type {
-  BackgroundTask,
-  BackgroundTaskStatus,
-} from '@/stores/useBackgroundTaskStore'
+import type { BackgroundTaskStatus } from '@/stores/useBackgroundTaskStore'
 import { queryKeys } from '@/utils/api'
 
 const STOPPED_STATUSES = new Set(['EXISTS', 'CREATED', 'REMOVED'])
@@ -86,7 +86,6 @@ const CHUNK_PRUNE_URL_KEYS = [
   'z',
   'cx',
   'cz',
-  'task',
 ] as const
 
 function replaceChunkPruneUrlParams(update: HashUrlParamsUpdater): void {
@@ -116,16 +115,6 @@ function isChunkPruneResultData(
   )
 }
 
-const taskStatus = (
-  taskId: string | null,
-  task: Pick<BackgroundTask, 'status'> | undefined,
-  isError: boolean,
-): BackgroundTaskStatus | 'idle' => {
-  if (!taskId) return 'idle' as const
-  if (isError) return 'failed' as const
-  return task?.status ?? ('running' as const)
-}
-
 const isTaskActive = (status: string): boolean =>
   status === 'pending' || status === 'running'
 
@@ -149,7 +138,6 @@ const ServerChunkPrune: React.FC = () => {
   const serverInfoQ = useServerInfo(serverId)
   const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false
   const { useCancelTask } = useTaskMutations()
-  const { useTask } = useTaskQueries()
   const cancelTask = useCancelTask()
   const { confirm, confirmDialog } = useConfirm()
 
@@ -179,22 +167,16 @@ const ServerChunkPrune: React.FC = () => {
     [thresholdUnit, thresholdValue],
   )
 
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(() => {
-    const params = readHashUrlParams(CHUNK_PRUNE_URL_KEYS)
-    return params.get('task')
-  })
-  const [applyTaskId, setApplyTaskId] = useState<string | null>(null)
   const [previewStarting, setPreviewStarting] = useState(false)
-  const previewTaskQ = useTask(previewTaskId ?? '')
-  const applyTaskQ = useTask(applyTaskId ?? '')
-  const previewTask = previewTaskQ.data
-  const applyTask = applyTaskQ.data
-  const previewStatus = taskStatus(
-    previewTaskId,
-    previewTask,
-    previewTaskQ.isError,
-  )
-  const applyStatus = taskStatus(applyTaskId, applyTask, applyTaskQ.isError)
+  const stateQ = useChunkPruneState(serverId)
+  const previewTask = stateQ.data?.previewTask ?? null
+  const applyTask = stateQ.data?.applyTask ?? null
+  const previewTaskId = previewTask?.taskId ?? null
+  const applyTaskId = applyTask?.taskId ?? null
+  const previewStatus: BackgroundTaskStatus | 'idle' =
+    previewTask?.status ?? (stateQ.isError ? 'failed' : 'idle')
+  const applyStatus: BackgroundTaskStatus | 'idle' =
+    applyTask?.status ?? (stateQ.isError ? 'failed' : 'idle')
   const previewResult =
     previewTask?.taskType === 'chunk_prune_preview' &&
     isChunkPruneResultData(previewTask.result) &&
@@ -207,9 +189,9 @@ const ServerChunkPrune: React.FC = () => {
     ? applyTask.result
     : null
   const previewError =
-    previewTask?.error ?? (previewTaskQ.isError ? '无法读取预览任务' : null)
+    previewTask?.error ?? (stateQ.isError ? '无法读取区块清理任务状态' : null)
   const applyError =
-    applyTask?.error ?? (applyTaskQ.isError ? '无法读取删除任务' : null)
+    applyTask?.error ?? (stateQ.isError ? '无法读取区块清理任务状态' : null)
   const previewActive = isTaskActive(previewStatus)
   const applyActive = isTaskActive(applyStatus)
 
@@ -231,13 +213,6 @@ const ServerChunkPrune: React.FC = () => {
       params.set('dim', wantedRel)
     })
   }, [currentDimension, currentRoot, dimensionRelpath])
-
-  useEffect(() => {
-    replaceChunkPruneUrlParams((params) => {
-      if (previewTaskId) params.set('task', previewTaskId)
-      else params.delete('task')
-    })
-  }, [previewTaskId])
 
   useEffect(() => {
     if (applyStatus !== 'completed') return
@@ -546,19 +521,13 @@ const ServerChunkPrune: React.FC = () => {
 
   const startPreview = useCallback(async () => {
     setPreviewStarting(true)
-    setPreviewTaskId(null)
-    setApplyTaskId(null)
-    replaceChunkPruneUrlParams((params) => {
-      params.delete('task')
-    })
     try {
-      const res = await chunkPruneApi.startPreview(serverId, {
+      await chunkPruneApi.startPreview(serverId, {
         threshold_seconds: thresholdSeconds,
         mode: urlMode,
       })
-      setPreviewTaskId(res.task_id)
-      replaceChunkPruneUrlParams((params) => {
-        params.set('task', res.task_id)
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.chunkPrune.state(serverId),
       })
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     } catch (e) {
@@ -571,8 +540,15 @@ const ServerChunkPrune: React.FC = () => {
 
   const cancelPreview = useCallback(() => {
     if (!previewTaskId) return
-    cancelTask.mutate(previewTaskId)
-  }, [cancelTask, previewTaskId])
+    cancelTask.mutate(previewTaskId, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.chunkPrune.state(serverId),
+        })
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+      },
+    })
+  }, [cancelTask, previewTaskId, queryClient, serverId])
 
   const startApply = useCallback(() => {
     if (!previewTaskId) return
@@ -584,12 +560,13 @@ const ServerChunkPrune: React.FC = () => {
       cancelText: '取消',
       variant: 'destructive',
       onConfirm: async () => {
-        setApplyTaskId(null)
         try {
-          const res = await chunkPruneApi.startApply(serverId, {
+          await chunkPruneApi.startApply(serverId, {
             preview_task_id: previewTaskId,
           })
-          setApplyTaskId(res.task_id)
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.chunkPrune.state(serverId),
+          })
           queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
         } catch (e) {
           const message = (e as Error).message || '启动区块删除失败'
@@ -601,8 +578,15 @@ const ServerChunkPrune: React.FC = () => {
 
   const cancelApply = useCallback(() => {
     if (!applyTaskId) return
-    cancelTask.mutate(applyTaskId)
-  }, [applyTaskId, cancelTask])
+    cancelTask.mutate(applyTaskId, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.chunkPrune.state(serverId),
+        })
+        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+      },
+    })
+  }, [applyTaskId, cancelTask, queryClient, serverId])
 
   if (!serverId) {
     return (

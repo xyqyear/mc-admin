@@ -65,7 +65,7 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The frontend polls `/api/tasks/{id}`. Used by archive compression, server population, server rebuild, file ownership repair, world restore. Implementation guide: `.claude/background-tasks-guide.md`.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The global task center polls `/api/tasks/{id}`; feature pages may expose server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
 
 ## Dynamic config
 

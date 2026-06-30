@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 import pytest
 
@@ -18,6 +19,7 @@ from app.mcmap.events import (
     MCMapPrunedChunk,
 )
 from app.minecraft import MCServerStatus
+from app.routers.servers import chunk_prune as chunk_prune_router
 from app.world.locks import ServerOperationLock
 
 
@@ -222,3 +224,138 @@ async def test_task_manager_accepts_stable_task_id():
     assert found_task is not None
     assert found_task.status == TaskStatus.COMPLETED
     assert task_manager.remove_task(task_id)
+
+
+async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
+    monkeypatch,
+):
+    async def task_gen():
+        yield TaskProgress(progress=100, message="done")
+
+    task_ids = [
+        "chunk-prune-state-preview-old",
+        "chunk-prune-state-apply-old",
+        "chunk-prune-state-preview-new",
+        "chunk-prune-state-apply-new",
+    ]
+    for task_id in task_ids:
+        task_manager.remove_task(task_id)
+
+    class _StateInstance:
+        async def exists(self):
+            return True
+
+    class _StateDocker:
+        def get_instance(self, server_id):
+            return _StateInstance()
+
+    monkeypatch.setattr(chunk_prune_router, "docker_mc_manager", _StateDocker())
+
+    submissions = []
+    try:
+        old_preview = task_manager.submit(
+            TaskType.CHUNK_PRUNE_PREVIEW,
+            "old preview",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[0],
+        ).task
+        old_apply = task_manager.submit(
+            TaskType.CHUNK_PRUNE_APPLY,
+            "old apply",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[1],
+        ).task
+        new_preview = task_manager.submit(
+            TaskType.CHUNK_PRUNE_PREVIEW,
+            "new preview",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[2],
+        ).task
+        new_apply = task_manager.submit(
+            TaskType.CHUNK_PRUNE_APPLY,
+            "new apply",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[3],
+        ).task
+        submissions = [
+            future
+            for task_id in task_ids
+            if (future := task_manager.get_future(task_id)) is not None
+        ]
+
+        old_apply.created_at = old_preview.created_at + timedelta(seconds=1)
+        new_preview.created_at = old_apply.created_at + timedelta(seconds=1)
+        new_apply.created_at = new_preview.created_at + timedelta(seconds=1)
+
+        state = await chunk_prune_router.get_chunk_prune_state("srv1")
+
+        assert state.preview_task is not None
+        assert state.preview_task.task_id == new_preview.task_id
+        assert state.apply_task is not None
+        assert state.apply_task.task_id == new_apply.task_id
+    finally:
+        for future in submissions:
+            await future
+        for task_id in task_ids:
+            task_manager.remove_task(task_id)
+
+
+async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
+    async def task_gen():
+        yield TaskProgress(progress=100, message="done")
+
+    task_ids = [
+        "chunk-prune-state-stale-apply",
+        "chunk-prune-state-new-preview",
+    ]
+    for task_id in task_ids:
+        task_manager.remove_task(task_id)
+
+    class _StateInstance:
+        async def exists(self):
+            return True
+
+    class _StateDocker:
+        def get_instance(self, server_id):
+            return _StateInstance()
+
+    monkeypatch.setattr(chunk_prune_router, "docker_mc_manager", _StateDocker())
+
+    submissions = []
+    try:
+        stale_apply = task_manager.submit(
+            TaskType.CHUNK_PRUNE_APPLY,
+            "stale apply",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[0],
+        ).task
+        new_preview = task_manager.submit(
+            TaskType.CHUNK_PRUNE_PREVIEW,
+            "new preview",
+            task_gen(),
+            server_id="srv1",
+            task_id=task_ids[1],
+        ).task
+        submissions = [
+            future
+            for task_id in task_ids
+            if (future := task_manager.get_future(task_id)) is not None
+        ]
+
+        new_preview.created_at = stale_apply.created_at + timedelta(seconds=1)
+
+        state = await chunk_prune_router.get_chunk_prune_state("srv1")
+
+        assert state.preview_task is not None
+        assert state.preview_task.task_id == new_preview.task_id
+        assert state.apply_task is None
+    finally:
+        for future in submissions:
+            await future
+        for task_id in task_ids:
+            task_manager.remove_task(task_id)

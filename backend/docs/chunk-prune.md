@@ -34,8 +34,8 @@ attached to the final task result, grouped by data-relative `region/` directory.
 ## Preview Lifecycle
 
 `POST /servers/{server_id}/chunk-prune/preview` accepts `threshold_seconds` and
-`mode`, then creates a background task whose task id can be polled through
-`/tasks/{task_id}`.
+`mode`, then creates a background task. The page reads the current server
+workflow through `GET /servers/{server_id}/chunk-prune/state`.
 
 Preview extracts FTB claims once from the primary world root when available and
 writes the mcmap-compatible JSON payload into a temp file under the system temp
@@ -70,9 +70,14 @@ MCA files.
 ## Frontend Task Shape
 
 The backend does not expose prune-specific SSE. Preview and apply use the
-generic task API:
+background task manager:
 
-- live progress comes from `/tasks/{task_id}` polling;
+- live progress comes from polling
+  `/servers/{server_id}/chunk-prune/state`;
+- state returns the latest preview task for the server and the latest apply
+  task created after that preview, so starting a new preview hides older apply
+  progress/results;
+- the global task center still uses the generic `/tasks/{task_id}` API;
 - the preview overlay is rendered only after the preview task completes;
 - switching the map dimension selects a different dimension entry from the same
   completed preview result;
