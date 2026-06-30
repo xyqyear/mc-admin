@@ -571,6 +571,15 @@ export const versionUpdates: VersionUpdate[] = [
     fixes: [
       '修复模板变量弹窗内容过长时无法滚动的问题 #157',
     ]
+  },
+  {
+    version: '5.2.0',
+    date: '2026-06-30',
+    title: '区块清理功能',
+    description: '新增服务器区块清理页面，支持按低活跃时间预览并清理服务器所有维度的区块或区域。',
+    features: [
+      '新增区块清理页面，支持阈值预览、区域/区块模式、FTB 领地保护和删除进度显示 #84'
+    ]
   }
 ]
 
