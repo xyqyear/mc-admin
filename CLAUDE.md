@@ -43,4 +43,6 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 - All three CLAUDE.md files describe **current** state; never write changelog-style notes ("recently added X", "previously did Y", "now uses Z").
 - User-facing application text is Chinese, including frontend UI copy and backend-provided names, descriptions, errors, and messages that may be displayed to users.
 - Long-form design background — business logic, invariants, lifecycle ordering, component graphs — lives in `backend/docs/` and `frontend-react/docs/`. Each `docs/<topic>.md` is self-contained, current-state, no changelog. CLAUDE.md carries day-to-day rules and points at the doc.
-- `.claude/` holds historical artifacts (plans, migration notes, agent sessions). Don't extend these for new design work — write to `docs/` instead.
+- `.claude/skills/` contains generated agent skills and repository-specific skills. Do not hand-edit generated `openspec-*` skills; run `openspec update` after upgrading the CLI.
+- `.agents/skills/` contains generated Codex skills and is refreshed by `openspec update`.
+- `openspec/specs/` is the source of truth for observable behavior, while `openspec/changes/` contains proposed behavior changes and their implementation plans. Keep technical design rationale in `backend/docs/` and `frontend-react/docs/`.

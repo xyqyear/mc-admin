@@ -1,0 +1,31 @@
+schema: spec-driven
+
+context: |
+  MC Admin is a web platform for managing Minecraft servers through Docker Compose.
+  It is one product with a FastAPI/SQLAlchemy async backend and a React 19/TypeScript
+  frontend, shipped together in one Docker image.
+
+  Read the root CLAUDE.md and the relevant scoped CLAUDE.md before planning. Existing
+  backend/docs/ and frontend-react/docs/ files describe current technical design,
+  invariants, and lifecycle ordering; reference them instead of duplicating them.
+
+  OpenSpec specs describe observable behavior, not implementation structure. Code,
+  specs, technical docs, and comments are English. User-facing application text is Chinese.
+
+rules:
+  proposal:
+    - State one clear intent and explicit non-goals.
+    - Identify affected backend, frontend, APIs, persistence, and Docker behavior.
+    - Mark breaking API, configuration, or data changes explicitly.
+  specs:
+    - Describe observable behavior without class, function, or library details.
+    - Cover authorization, failures, concurrency, and destructive-action safety where relevant.
+    - Include important edge cases, not only successful scenarios.
+  design:
+    - Read and reference the relevant existing design documents before proposing new patterns.
+    - Address migrations, rollback, compatibility, and operational safety where applicable.
+    - Identify required CLAUDE.md and design-document updates.
+  tasks:
+    - Include targeted tests and the required frontend or backend static checks.
+    - Include documentation updates when architecture, contracts, or invariants change.
+    - Keep tasks dependency-ordered and independently verifiable.

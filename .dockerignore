@@ -2,6 +2,8 @@
 .gitignore
 .github
 .claude
+.agents
+openspec
 **/.DS_Store
 **/.cache
 **/.coverage
