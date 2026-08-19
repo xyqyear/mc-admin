@@ -31,6 +31,26 @@ System defaults live in code registration metadata, not dynamic config. Dynamic
 config may tune the behavior the job performs, but it does not rewrite an
 already persisted schedule.
 
+## Cron Expression Contract
+
+MC Admin accepts, returns, and persists five-field expressions using conventional
+crontab weekday numbering in the fifth field:
+
+- `0` and `7` are Sunday
+- `1` is Monday through `6` as Saturday
+- `sun` through `sat` are case-insensitive calendar-day names
+- lists, ascending ranges, and positive steps are evaluated in that convention
+
+The original expression remains unchanged in the database and API. When a trigger
+is constructed, `weekdays.py` expands the fifth field to a calendar-day set and
+translates that set to APScheduler 3's internal Monday-zero numbering. The shared
+trigger builder applies this to creation, update, resume, startup recovery, and
+system jobs.
+
+Deployments containing numeric expressions deliberately written in APScheduler's
+Monday-zero convention must review those schedules before rollout. Named weekday
+expressions are unaffected because their calendar-day meaning is unambiguous.
+
 ## System Jobs
 
 System jobs use deterministic IDs: `system:{identifier}`. During
@@ -112,6 +132,7 @@ Backup jobs notify via plain HTTP GET to the configured push URL:
 - `registry.py` — `CronRegistry`, `register_func`, optional decorator helper
 - `instance.py` — `cron_manager` singleton
 - `restart_scheduler.py` — restart-minute selection
+- `weekdays.py` — conventional-crontab weekday normalization for APScheduler 3
 - `types.py` — `ExecutionContext`, registration/config/record types
 - `crud.py` — DB operations on `CronJob` and `CronJobExecution`
 - `jobs/backup.py` — backup job

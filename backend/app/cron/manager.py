@@ -16,6 +16,7 @@ from ..models import CronJobStatus, ExecutionStatus
 from . import crud
 from .registry import cron_registry
 from .types import CronJobConfig, CronJobExecutionRecord, ExecutionContext
+from .weekdays import normalize_crontab_weekday
 
 
 class CronManager:
@@ -362,7 +363,7 @@ class CronManager:
             hour=cron_parts[1],
             day=cron_parts[2],
             month=cron_parts[3],
-            day_of_week=cron_parts[4],
+            day_of_week=normalize_crontab_weekday(cron_parts[4]),
         )
 
     async def _execute_cronjob_wrapper(

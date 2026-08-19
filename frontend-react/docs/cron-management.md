@@ -17,6 +17,12 @@ System jobs display a `System` badge. The UI hides pause/resume/cancel controls 
 
 Toggling between modes parses/serializes — you can paste a raw expression, switch to visual, and the dropdowns reflect the parsed values when the expression fits one of the recognized shapes.
 
+The weekday field follows conventional crontab numbering: `0` and `7` are Sunday,
+`1` is Monday, and `6` is Saturday. Numeric lists, ranges, and steps use that
+ordering. The backend preserves the submitted expression and normalizes only the
+internal APScheduler 3 trigger field, so the visual builder, raw mode, API, and
+human-readable display share the same weekday meaning.
+
 `CronExpressionDisplay.tsx` renders an expression as human-readable Chinese (`每天 0:00`). Used in the table and detail modal.
 
 ## Schema-driven job params

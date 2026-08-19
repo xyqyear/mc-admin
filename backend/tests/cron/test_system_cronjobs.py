@@ -64,7 +64,7 @@ async def test_system_cronjob_created_and_protected(
         identifier="system_test",
         description="System test job",
         is_system=True,
-        default_cron="0 5 * * *",
+        default_cron="0 5 * * 1",
         default_second="0",
         default_params=SystemCronParams(value="default"),
         default_name="System Test",
@@ -89,13 +89,15 @@ async def test_system_cronjob_created_and_protected(
         assert config is not None
         assert config.identifier == "system_test"
         assert config.name == "System Test"
-        assert config.cron == "0 5 * * *"
+        assert config.cron == "0 5 * * 1"
         assert config.second == "0"
         assert config.is_system is True
         assert config.status == CronJobStatus.ACTIVE
         assert isinstance(config.params, SystemCronParams)
         assert config.params.value == "default"
-        assert manager.scheduler.get_job(cronjob_id) is not None
+        scheduled_job = manager.scheduler.get_job(cronjob_id)
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "0"
 
         with pytest.raises(ValueError, match="不能手动创建"):
             await manager.create_cronjob(
@@ -108,7 +110,7 @@ async def test_system_cronjob_created_and_protected(
             cronjob_id=cronjob_id,
             identifier="system_test",
             params=SystemCronParams(value="changed"),
-            cron="30 6 * * *",
+            cron="30 6 * * 2",
             second="10",
             name="Renamed System Test",
         )
@@ -116,11 +118,14 @@ async def test_system_cronjob_created_and_protected(
         updated = await manager.get_cronjob_config(cronjob_id)
         assert updated is not None
         assert updated.name == "Renamed System Test"
-        assert updated.cron == "30 6 * * *"
+        assert updated.cron == "30 6 * * 2"
         assert updated.second == "10"
         assert isinstance(updated.params, SystemCronParams)
         assert updated.params.value == "changed"
         assert updated.is_system is True
+        scheduled_job = manager.scheduler.get_job(cronjob_id)
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "1"
 
         with pytest.raises(ValueError, match="不能修改任务类型"):
             await manager.update_cronjob(
@@ -165,7 +170,7 @@ async def test_system_cronjob_repairs_invalid_params_on_startup(
             cronjob_id="system:system_test",
             identifier="system_test",
             name="System Test",
-            cron="10 7 * * *",
+            cron="10 7 * * 1",
             second="5",
             params_json="{",
             is_system=True,
@@ -181,10 +186,12 @@ async def test_system_cronjob_repairs_invalid_params_on_startup(
         config = await manager.get_cronjob_config("system:system_test")
 
         assert config is not None
-        assert config.cron == "10 7 * * *"
+        assert config.cron == "10 7 * * 1"
         assert config.second == "5"
         assert isinstance(config.params, SystemCronParams)
         assert config.params.value == "default"
-        assert manager.scheduler.get_job("system:system_test") is not None
+        scheduled_job = manager.scheduler.get_job("system:system_test")
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "0"
     finally:
         await manager.shutdown()

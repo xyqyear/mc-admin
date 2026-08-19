@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_async_session
-from app.models import Base, CronJobExecution, ExecutionStatus
+from app.models import Base, CronJob, CronJobExecution, ExecutionStatus
 
 from .test_cronjobs import SampleCronJobParams
 
@@ -191,3 +191,52 @@ class TestCronScheduling:
                     keyword in error_msg
                     for keyword in ["cron", "invalid", "error", "value", "expression"]
                 ), f"Expected cron-related error for '{invalid_cron}', got: {e}"
+
+    async def test_weekday_expression_is_preserved_and_update_is_atomic(
+        self, fresh_cron_manager
+    ):
+        cron_manager = fresh_cron_manager
+        params = SampleCronJobParams(message="Weekday lifecycle test")
+
+        cronjob_id = await cron_manager.create_cronjob(
+            identifier="test_cronjob",
+            params=params,
+            cron="0 1 * * 1",
+        )
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
+            )
+            row = result.scalar_one()
+            assert row.cron == "0 1 * * 1"
+
+        scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "0"
+
+        with pytest.raises(ValueError, match="星期字段"):
+            await cron_manager.update_cronjob(
+                cronjob_id=cronjob_id,
+                identifier="test_cronjob",
+                params=params,
+                cron="0 1 * * 8",
+            )
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(CronJob).where(CronJob.cronjob_id == cronjob_id)
+            )
+            row = result.scalar_one()
+            assert row.cron == "0 1 * * 1"
+
+        scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "0"
+
+        await cron_manager.pause_cronjob(cronjob_id)
+        await cron_manager.resume_cronjob(cronjob_id)
+
+        scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
+        assert scheduled_job is not None
+        assert str(scheduled_job.trigger.fields[4]) == "0"

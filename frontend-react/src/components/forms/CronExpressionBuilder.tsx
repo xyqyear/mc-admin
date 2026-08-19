@@ -285,7 +285,7 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
                 disabled={disabled}
               />
               <div className="mt-2 text-xs text-muted-foreground">
-                <div>格式说明: 分钟(0-59) 小时(0-23) 日期(1-31) 月份(1-12) 星期(1-7)</div>
+                <div>格式说明: 分钟(0-59) 小时(0-23) 日期(1-31) 月份(1-12) 星期(0-7，0和7均表示周日)</div>
                 <div>特殊字符: * (任意) / (间隔) - (范围) , (列表) ? (忽略)</div>
               </div>
             </CardContent>

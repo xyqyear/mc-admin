@@ -63,7 +63,7 @@ class TestCronJobPersistence:
         active_cronjob_id = await manager1.create_cronjob(
             identifier="test_cronjob",
             params=params1,
-            cron="* * * * *",
+            cron="0 1 * * 1",
             second="*",
             name="Active CronJob",
         )
@@ -97,6 +97,9 @@ class TestCronJobPersistence:
         assert manager2.scheduler.get_job(active_cronjob_id) is not None, (
             "Active cron job should be recovered after restart"
         )
+        recovered_job = manager2.scheduler.get_job(active_cronjob_id)
+        assert recovered_job is not None
+        assert str(recovered_job.trigger.fields[4]) == "0"
 
         assert manager2.scheduler.get_job(paused_cronjob_id) is None, (
             "Paused cron job should not be recovered after restart"
@@ -110,6 +113,7 @@ class TestCronJobPersistence:
         assert active_config is not None
         assert active_config.identifier == "test_cronjob"
         assert active_config.name == "Active CronJob"
+        assert active_config.cron == "0 1 * * 1"
         assert active_config.status == CronJobStatus.ACTIVE
         assert isinstance(active_config.params, SampleCronJobParams)
         assert active_config.params.message == "Recovery test 1"
@@ -133,7 +137,7 @@ class TestCronJobPersistence:
         cronjob_id = await manager1.create_cronjob(
             identifier="test_cronjob",
             params=params,
-            cron="* * * * *",
+            cron="0 1 * * 1",
             second="*",
             name="Resume Test CronJob",
         )
@@ -151,7 +155,9 @@ class TestCronJobPersistence:
 
         await manager2.resume_cronjob(cronjob_id)
 
-        assert manager2.scheduler.get_job(cronjob_id) is not None
+        resumed_job = manager2.scheduler.get_job(cronjob_id)
+        assert resumed_job is not None
+        assert str(resumed_job.trigger.fields[4]) == "0"
 
         config = await manager2.get_cronjob_config(cronjob_id)
         assert config is not None

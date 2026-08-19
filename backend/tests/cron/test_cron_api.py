@@ -189,7 +189,7 @@ class TestCronJobAPI:
         cronjob_data = {
             "identifier": "test_cronjob",
             "name": "Get Test CronJob",
-            "cron": "0 12 * * *",
+            "cron": "0 12 * * 1-5",
             "second": "30",
             "params": {"message": "Get cronjob test", "delay_seconds": 10},
         }
@@ -207,7 +207,7 @@ class TestCronJobAPI:
         assert data["cronjob_id"] == cronjob_id
         assert data["identifier"] == "test_cronjob"
         assert data["name"] == "Get Test CronJob"
-        assert data["cron"] == "0 12 * * *"
+        assert data["cron"] == "0 12 * * 1-5"
         assert data["second"] == "30"
         assert data["status"] == "active"
         assert data["params"]["message"] == "Get cronjob test"
