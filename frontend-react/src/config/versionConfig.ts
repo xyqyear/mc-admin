@@ -580,6 +580,15 @@ export const versionUpdates: VersionUpdate[] = [
     features: [
       '新增区块清理页面，支持阈值预览、区域/区块模式、FTB 领地保护和删除进度显示 #84'
     ]
+  },
+  {
+    version: '5.2.4',
+    date: '2026-08-22',
+    title: '定时任务星期修复',
+    description: '修复定时任务设置中的星期与实际执行日期相差一天的问题。',
+    fixes: [
+      '修复定时任务按界面选择的星期执行时实际日期相差一天的问题 #171'
+    ]
   }
 ]
 
