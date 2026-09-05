@@ -45,6 +45,7 @@ class SelfCheckEnabledChecksConfig(BaseConfigSchema):
         "dependency.binaries": "dependency_binaries",
         "log_monitor.active": "log_monitor_active",
         "server.backup_mod_removed": "server_backup_mod_removed",
+        "server.game_port_consistency": "server_game_port_consistency",
         "files.permission_consistency": "files_permission_consistency",
         "server.filesystem_db_sync": "server_filesystem_db_sync",
     }
@@ -131,6 +132,13 @@ class SelfCheckEnabledChecksConfig(BaseConfigSchema):
         Field(
             title=CHECK_LABELS["server.backup_mod_removed"],
             description="是否检查服务器 mods/plugins 目录中是否仍存在已知备份 Mod 或插件。",
+        ),
+    ] = True
+    server_game_port_consistency: Annotated[
+        bool,
+        Field(
+            title=CHECK_LABELS["server.game_port_consistency"],
+            description="是否比较 server.properties 的游戏端口与 Compose 容器目标端口。",
         ),
     ] = True
     files_permission_consistency: Annotated[

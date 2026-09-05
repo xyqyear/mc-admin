@@ -2,7 +2,10 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...minecraft import docker_mc_manager
+import aiofiles
+
+from ...minecraft import MCServerStatus, docker_mc_manager
+from ...minecraft.game_port import get_game_port_mapping, get_properties_game_port
 from ..jar_metadata import extract_jar_metadata, normalize_jar_id
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, success
@@ -153,9 +156,96 @@ async def check_filesystem_db_sync(
     ]
 
 
+async def check_game_port_consistency(
+    context: SelfCheckContext,
+) -> list[SelfCheckFindingResult]:
+    definition = DEFINITIONS["server.game_port_consistency"]
+    servers = await context.active_servers()
+    if not servers:
+        return success(definition, "没有需要检查游戏端口的服务器。")
+
+    findings: list[SelfCheckFindingResult] = []
+    for server in servers:
+        evidence = {}
+        remediation = []
+        stage = "status"
+        try:
+            instance = docker_mc_manager.get_instance(server.server_id)
+            status = await instance.get_status()
+            if status == MCServerStatus.STARTING:
+                severity, finding_status = "info", "skipped"
+                message = "服务器正在启动，暂时跳过端口比较，请稍后重新检测。"
+            else:
+                stage = "properties"
+                properties_path = instance.get_data_path() / "server.properties"
+                evidence["properties_path"] = str(properties_path)
+                try:
+                    async with aiofiles.open(properties_path, encoding="utf-8") as file:
+                        content = await file.read()
+                except FileNotFoundError:
+                    if status in (MCServerStatus.RUNNING, MCServerStatus.HEALTHY):
+                        raise
+                    content = None
+
+                if content is None:
+                    severity, finding_status = "info", "skipped"
+                    message = "server.properties 尚未生成，已跳过端口比较。"
+                else:
+                    properties_port = get_properties_game_port(content)
+                    evidence["properties_server_port"] = properties_port
+                    stage = "compose"
+                    mapping = get_game_port_mapping(await instance.get_compose_file())
+                    evidence["expected_container_port"] = mapping.target
+                    evidence["published_game_port"] = mapping.published
+                    if properties_port == mapping.target:
+                        severity, finding_status = "success", "passed"
+                        message = "server.properties 的游戏端口与 Compose 容器目标端口一致。"
+                    else:
+                        severity, finding_status = "warning", "warning"
+                        message = (
+                            f"server.properties 的游戏端口为 {properties_port}，"
+                            f"与 Compose 容器目标端口 {mapping.target} 不一致。"
+                        )
+                        remediation = [
+                            f"将 server.properties 中的 server-port 设置为 {mapping.target}，保存后重启服务器。",
+                            "如果 Compose 显式设置了不同的 SERVER_PORT，启动时可能再次覆盖文件；"
+                            "请修改 Compose 并重建容器，普通重启不会应用新的环境变量。",
+                        ]
+        except Exception as exc:
+            severity, finding_status = "warning", "failed"
+            evidence["error_stage"] = stage
+            evidence["error_type"] = type(exc).__name__
+            message = {
+                "status": "无法获取服务器状态，未能检查游戏端口。",
+                "properties": "无法读取有效的 server.properties 游戏端口，请检查文件及 server-port 值。",
+                "compose": "无法读取 Compose 的 TCP 游戏容器目标端口，请检查映射配置。",
+            }[stage]
+            remediation = [message]
+
+        findings.append(finding(
+            check_id=definition.check_id,
+            category=definition.category,
+            severity=severity,
+            status=finding_status,
+            title=definition.title,
+            message=message,
+            server_id=server.server_id,
+            evidence=evidence,
+            remediation=remediation,
+        ))
+    return findings
+
+
 DEFINITIONS: dict[str, CheckDefinition] = {
     definition.check_id: definition
     for definition in [
+        CheckDefinition(
+            "server.game_port_consistency",
+            "server",
+            "游戏端口一致性",
+            "比较 server.properties 的游戏端口与 Compose 容器目标端口，不检查网络连通性。",
+            check_game_port_consistency,
+        ),
         CheckDefinition(
             "server.backup_mod_removed",
             "server",

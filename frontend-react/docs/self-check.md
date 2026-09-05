@@ -44,6 +44,20 @@ Selecting a retained run switches the result panel to that historical result.
 The result header offers a return action that clears the selected history run
 and displays the current health state again.
 
+For `server.game_port_consistency`, server-associated mismatches and failed
+properties reads/parses include a `定位 server.properties` link in the remediation
+area. The shared current/history finding renderer derives it from `server_id`,
+status, and `evidence.error_stage`; Compose/status failures do not offer this
+file repair link. Evidence keys have Chinese display labels. Backend remediation
+remains plain text, with no new action fields or Markdown parsing.
+
+The route is `/server/<encoded-server-id>/files` with `path=/`,
+`q=server.properties`, and `regex=false` built by `URLSearchParams`. The existing
+file browser owns filtering, reload/back navigation, authentication, and editor
+opening. The link does not open or change a file automatically. Remediation
+explains saving and restarting, plus conditional Compose correction/recreation
+when an explicit environment setting would override the file.
+
 ## Navigation
 
 The sidebar labels `/` as `系统自检`. Submenus stay collapsed on the root route.

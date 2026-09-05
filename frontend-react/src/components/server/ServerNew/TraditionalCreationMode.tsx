@@ -95,7 +95,7 @@ const TraditionalCreationMode: React.FC<TraditionalCreationModeProps> = ({
         <CardContent className="space-y-4">
           <Alert>
             <AlertTitle>配置说明</AlertTitle>
-            <AlertDescription>注意编辑container_name为mc-{'{服务器名}'}; 注意编辑服务器端口，不与现有冲突</AlertDescription>
+            <AlertDescription>container_name 请使用 mc-{'{服务器名}'}。新建服务器必须显式设置 SERVER_PORT=25565，容器内 TCP 游戏端口也保持 25565；调整宿主机端口以避免冲突。</AlertDescription>
           </Alert>
 
           <ComposeYamlEditor

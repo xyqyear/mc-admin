@@ -76,6 +76,8 @@ Read runtime-tunable dynamic config at the point of behavior, not in long-lived 
 
 Import lifecycle orchestration symbols from `app.servers.lifecycle`. The `app.servers` package init stays limited to CRUD, port utilities, and rebuild exports so player tracking and log monitoring do not form import cycles.
 
+Keep game-port initialization validation at reusable template save and new-server creation boundaries. Legacy reads, snapshot edits, rebuilds, and lifecycle operations use the permissive Compose parser; see `docs/minecraft.md` and `docs/self-check.md`.
+
 ## Audit middleware
 
 `app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Sensitive field names (`password`, `token`, `secret`, `key`) are masked. Configured via `[audit]` in `config.toml`.

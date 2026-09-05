@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -165,6 +166,9 @@ const evidenceKeyLabel: Record<string, string> = {
   dns_records_to_update: '待更新 DNS 记录',
   error: '错误',
   errors: '扫描错误',
+  error_stage: '失败阶段',
+  error_type: '错误类型',
+  expected_container_port: '容器内游戏端口',
   files: '文件',
   servers: '服务器',
   filesystem_only: '仅存在于文件系统',
@@ -180,6 +184,9 @@ const evidenceKeyLabel: Record<string, string> = {
   open_session_count: '未关闭会话数',
   output: '输出',
   path: '路径',
+  properties_path: '配置文件路径',
+  properties_server_port: '配置文件游戏端口',
+  published_game_port: '宿主机游戏端口',
   restart_cronjob_count: '重启定时任务数',
   restoration_id: '恢复记录 ID',
   root: '根目录',
@@ -348,8 +355,18 @@ function FindingCard({
   rerunning: boolean
   onRerun: () => void
 }) {
+  const propertiesLink =
+    finding.check_id === 'server.game_port_consistency' &&
+    finding.server_id &&
+    (finding.status === 'warning' ||
+      (finding.status === 'failed' && finding.evidence.error_stage === 'properties'))
+      ? {
+          pathname: `/server/${encodeURIComponent(finding.server_id)}/files`,
+          search: `?${new URLSearchParams({ path: '/', q: 'server.properties', regex: 'false' })}`,
+        }
+      : null
   const hasDetails =
-    finding.remediation.length > 0 || Object.keys(finding.evidence ?? {}).length > 0
+    propertiesLink || finding.remediation.length > 0 || Object.keys(finding.evidence ?? {}).length > 0
   const tone = finding.running ? 'neutral' : severityTone[finding.severity]
 
   return (
@@ -412,13 +429,18 @@ function FindingCard({
           <>
             <Separator className="my-2" />
             <div className="grid gap-3 text-sm md:grid-cols-2">
-              {finding.remediation.length > 0 && (
+              {(finding.remediation.length > 0 || propertiesLink) && (
                 <div>
                   <div className="mb-1 font-medium">处理建议</div>
                   <div className="space-y-1 text-muted-foreground">
                     {finding.remediation.map((item) => (
                       <div key={item}>{item}</div>
                     ))}
+                    {propertiesLink && (
+                      <Link to={propertiesLink} className="text-primary underline underline-offset-4">
+                        定位 server.properties
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}

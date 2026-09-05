@@ -35,9 +35,15 @@ Every state-changing method shells out via `ComposeManager.run_compose_command(.
 
 `MCComposeFile.get_game_version()` returns the `VERSION` env, used by `app.mcmap` to download the matching client jar.
 
+`game_port.py` separates read-only game-target extraction from initialization validation. `get_game_port_mapping()` selects the supported TCP container target `25565` from short or long port mappings; its optional published port is evidence, not the comparison target. `validate_game_port_initialization()` requires explicit matching `SERVER_PORT`, accepts omitted or true `OVERRIDE_SERVER_PROPERTIES`, and accepts omitted or false `SKIP_SERVER_PROPERTIES`. It handles map/list environment forms and rejects unresolved critical values.
+
+Initialization validation runs on reusable template saves and final YAML in `create_server_full()` before resource creation. It does not tighten `MCComposeFile` or existing-server lifecycle/edit/rebuild/adoption paths. Legacy Compose files and template snapshots remain readable without `SERVER_PORT`, and port-conflict scans still include them. There is no bulk migration.
+
 ## `ServerProperties`
 
 Read-only Pydantic model parsing `<data>/server.properties`. ~80 optional fields with field validators that coerce difficulty/gamemode int values to canonical strings. Used wherever we need `level-name`, `server-port`, `motd`, etc.
+
+The game-port self-check uses `get_properties_game_port()` to extract only the final `server-port=value` assignment, using the same key/value convention without validating unrelated properties. Blank, missing, Boolean, fractional, or out-of-range values fail comparison instead of defaulting to `25565`. See [self-check](self-check.md) for state handling and remediation.
 
 ## Resource monitoring
 
@@ -53,6 +59,7 @@ Read-only Pydantic model parsing `<data>/server.properties`. ~80 optional fields
 - `manager.py` — `DockerMCManager` (multi-instance facade)
 - `instance.py` — `MCInstance`
 - `compose.py` — `MCComposeFile` (Minecraft-specific compose wrapper)
+- `game_port.py` — game target/properties extraction and scoped initialization validation
 - `properties.py` — `ServerProperties` parser
 - `utils.py` — small async helpers
 - `docker/manager.py` — generic `ComposeManager` and `DockerManager`

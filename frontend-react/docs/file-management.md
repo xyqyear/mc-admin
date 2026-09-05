@@ -21,6 +21,8 @@ Per-server file browser, editor, search, upload, and ownership-repair UI. Reache
 
 URL is the source of truth: `?path=<dir>&q=<query>&regex=<bool>`. Reload preserves location and search state.
 
+Game-port self-check remediation links to `/server/<encoded-server-id>/files?path=%2F&q=server.properties&regex=false`. `/` is the server data root. The search input and results follow URL changes, including browser back/forward; literal search keeps the dot from acting as a regex wildcard. Users open the file through the normal editor, which retains its Compose-override reminder. The route uses the existing session guard and server/file error handling.
+
 ## Ownership repair
 
 `FileToolbar.tsx` exposes a confirmed "修复文件所有权" action at the top of the file manager. The mutation calls `POST /servers/{id}/files/ownership/restore`, receives a `task_id`, and `ServerFiles.tsx` polls that task with `useTask(task_id)`. The backend task recursively sets every file in the server data directory to the UID/GID of that directory; completion invalidates the file-list cache. The task is also visible in the global task center.

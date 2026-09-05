@@ -18,14 +18,14 @@ Five types, all sharing `name`, `display_name`, `description`, `default`:
 | `enum`   | `options: list[str]` (default validated ∈)    |
 | `bool`   | —                                             |
 
-Validation happens twice: when an admin saves a template (variable definitions consistent), and when a server is rendered (values match the definitions).
+Template saves validate placeholder definitions and fixed game-port initialization. Rendering validates supplied variable values; new-server creation also validates the final rendered initialization configuration before creating resources.
 
 ## `TemplateManager`
 
 Pure functions, no state:
 
 - `extract_variables_from_yaml(yaml)` → `set[str]` — finds every `{name}` placeholder.
-- `validate_template(yaml, variables)` → `list[str]` errors. The bidirectional check: every YAML placeholder must have a definition, every definition must appear in the YAML, no duplicates.
+- `validate_template(yaml, variables)` → `list[str]` errors. Every YAML placeholder must have a definition, every definition must appear in the YAML, and names cannot repeat. Once those checks pass, validate game-port initialization through `app.minecraft.game_port`.
 - `render_yaml(yaml, values)` → `str`. Substitutes `{var}`; raises on missing.
 - `generate_json_schema(variables)` → dict. rjsf-compatible JSON Schema; the frontend's `SchemaForm` renders the variable form from this.
 - `validate_variable_values(variables, values)` → `list[str]` errors.
@@ -33,6 +33,10 @@ Pure functions, no state:
 - `extract_variables_from_compose(yaml_template, compose_yaml, variables)` → `(values, warnings)`. Reverse-extraction: line-by-line regex match against the template to infer what a hand-edited compose's variable values would be. Used by the direct-→-template mode conversion.
 
 ## Two server modes
+
+Reusable template creation and partial updates validate the effective YAML before persistence. Templates must contain literal `SERVER_PORT=25565` and a TCP container target of `25565`. Explicit `OVERRIDE_SERVER_PROPERTIES` must be true and explicit `SKIP_SERVER_PROPERTIES` must be false; both may be omitted. Critical fields cannot be supplied only by placeholders, Compose interpolation, or `env_file`. Host-port and unrelated placeholders remain supported without requiring defaults. Scalar markers allow parsing their structure without rendering a sample configuration.
+
+An older reusable template must be corrected before it can be saved or used to create a new server. Existing servers continue using their immutable snapshots for reads, edits, and rebuilds without adding `SERVER_PORT`. The shared renderer does not enforce initialization policy, and no stored template or server is rewritten automatically.
 
 A server is in **template mode** if `Server.template_id` is set; otherwise **direct mode**.
 

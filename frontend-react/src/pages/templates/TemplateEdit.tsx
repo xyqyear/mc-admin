@@ -256,6 +256,12 @@ const TemplateEdit: React.FC = () => {
               当前 YAML 中使用的变量：{yamlVariables.length > 0 ? yamlVariables.join(", ") : "无"}
             </AlertDescription>
           </Alert>
+          <Alert>
+            <AlertTitle>固定容器内游戏端口</AlertTitle>
+            <AlertDescription>
+              保存模板时必须显式设置 SERVER_PORT=25565，ports 中的容器内 TCP 游戏端口也必须固定为 25565。宿主机端口可使用变量。OVERRIDE_SERVER_PROPERTIES 请省略或固定为 true，SKIP_SERVER_PROPERTIES 请省略或固定为 false。
+            </AlertDescription>
+          </Alert>
 
           <ComposeYamlEditor
             value={yamlContent}

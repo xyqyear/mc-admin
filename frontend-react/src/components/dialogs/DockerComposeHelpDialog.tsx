@@ -118,6 +118,8 @@ const DockerComposeHelpDialog: React.FC<DockerComposeHelpDialogProps> = ({
                 <h5 className="font-semibold mb-2">基础配置</h5>
                 <div className="space-y-2 ml-4">
                   <div><span className="font-semibold">VERSION:</span> 游戏版本 (如: <code className="text-xs bg-muted px-1 py-0.5 rounded">1.20.1</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">1.19.4</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">LATEST</code>)</div>
+                  <div><span className="font-semibold">SERVER_PORT:</span> 新建服务器和保存模板时必须显式设置为 <code className="text-xs bg-muted px-1 py-0.5 rounded">25565</code>，与 ports 中的容器内 TCP 游戏端口一致；宿主机端口可按需调整。</div>
+                  <div>为确保启动时更新 server.properties，<code>OVERRIDE_SERVER_PROPERTIES</code> 请省略或设为 true，<code>SKIP_SERVER_PROPERTIES</code> 请省略或设为 false；这些值不能使用模板变量。</div>
                   <div><span className="font-semibold">INIT_MEMORY:</span> 初始内存 (推荐: <code className="text-xs bg-muted px-1 py-0.5 rounded">2G</code> 或 <code className="text-xs bg-muted px-1 py-0.5 rounded">0G</code>)</div>
                   <div>
                     <span className="font-semibold">MAX_MEMORY:</span> 最大堆内存 (如: <code className="text-xs bg-muted px-1 py-0.5 rounded">4G</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">8G</code>)
@@ -247,6 +249,7 @@ const DockerComposeHelpDialog: React.FC<DockerComposeHelpDialogProps> = ({
       EULA: true
       TZ: Asia/Shanghai
       VERSION: 1.20.1
+      SERVER_PORT: "25565"
       INIT_MEMORY: 0G
       MAX_MEMORY: 4G
       ONLINE_MODE: true

@@ -60,6 +60,8 @@ Browser auth is an HttpOnly JWT cookie plus a readable CSRF cookie. Route guards
 
 The protected root route `/` is the system self-check dashboard. The former feature-card home page is not part of the app.
 
+Self-check file remediation reuses `/server/:id/files` with URL-driven `path`, `q`, and `regex` state; see `docs/self-check.md`. Shared Compose editor hints remain compatible with legacy YAML; initialization requirements belong to template-save/new-server flows.
+
 ## Stores (Zustand, persisted to localStorage)
 
 - `useSidebarStore` — sidebar collapse state, `openKeys` for nested sections

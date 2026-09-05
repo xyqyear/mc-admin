@@ -21,8 +21,17 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "{game_version}"
+"""
+
+GAME_PORT_CONFIG = """
+services:
+  mc:
+    ports: ["25517:25565"]
+    environment:
+      SERVER_PORT: "25565"
 """
 
 
@@ -97,6 +106,25 @@ class TestCreateTemplate:
         assert data["name"] == "test-template"
         assert len(data["variable_definitions"]) == 4
 
+    @pytest.mark.parametrize("settings", [
+        "{}", "{SERVER_PORT: 25566}",
+        "{SERVER_PORT: 25565, OVERRIDE_SERVER_PROPERTIES: false}",
+        "{SERVER_PORT: 25565, SKIP_SERVER_PROPERTIES: true}",
+    ])
+    def test_unsafe_initialization_is_not_saved(self, test_client, settings):
+        response = test_client.post(
+            "/api/templates/",
+            json={
+                "name": "unsafe-port",
+                "yaml_template": f'services:\n  mc:\n    ports: ["25517:25565"]\n    environment: {settings}',
+                "variable_definitions": [],
+            },
+            headers=auth_headers(),
+        )
+        assert response.status_code == 400
+        assert "SERVER_" in response.json()["detail"][0]
+        assert test_client.get("/api/templates/", headers=auth_headers()).json() == []
+
     def test_create_template_validation_failure(self, test_client):
         """Test template creation fails with undefined variables (error)."""
         response = test_client.post(
@@ -136,7 +164,7 @@ class TestCreateTemplate:
         """Test template creation fails with duplicate name."""
         payload = {
             "name": "duplicate-name",
-            "yaml_template": "test: {var}",
+            "yaml_template": "test: {var}" + GAME_PORT_CONFIG,
             "variable_definitions": [
                 {"type": "string", "name": "var", "display_name": "Var"}
             ],
@@ -158,7 +186,7 @@ class TestGetTemplate:
             "/api/templates/",
             json={
                 "name": "list-test",
-                "yaml_template": "test: {var}",
+                "yaml_template": "test: {var}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {"type": "string", "name": "var", "display_name": "Var"}
                 ],
@@ -175,7 +203,7 @@ class TestGetTemplate:
             "/api/templates/",
             json={
                 "name": "detail-test",
-                "yaml_template": "test: {var}",
+                "yaml_template": "test: {var}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {"type": "string", "name": "var", "display_name": "Var"}
                 ],
@@ -199,13 +227,29 @@ class TestGetTemplate:
 class TestUpdateTemplate:
     """Test template update endpoint."""
 
+    def test_invalid_port_edit_preserves_saved_template(self, test_client):
+        created = test_client.post(
+            "/api/templates/",
+            json={"name": "port-edit", "yaml_template": GAME_PORT_CONFIG, "variable_definitions": []},
+            headers=auth_headers(),
+        )
+        assert created.status_code == 201
+        url = f'/api/templates/{created.json()["id"]}'
+        response = test_client.put(
+            url,
+            json={"yaml_template": GAME_PORT_CONFIG.replace('SERVER_PORT: "25565"', 'SERVER_PORT: "25566"')},
+            headers=auth_headers(),
+        )
+        assert response.status_code == 400
+        assert test_client.get(url, headers=auth_headers()).json()["yaml_template"] == GAME_PORT_CONFIG
+
     def test_update_template(self, test_client):
         """Test updating template fields."""
         create_resp = test_client.post(
             "/api/templates/",
             json={
                 "name": "update-test",
-                "yaml_template": "test: {var}",
+                "yaml_template": "test: {var}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {"type": "string", "name": "var", "display_name": "Var"}
                 ],
@@ -232,7 +276,7 @@ class TestDeleteTemplate:
             "/api/templates/",
             json={
                 "name": "delete-test",
-                "yaml_template": "test: {var}",
+                "yaml_template": "test: {var}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {"type": "string", "name": "var", "display_name": "Var"}
                 ],
@@ -256,7 +300,7 @@ class TestTemplateSchema:
             "/api/templates/",
             json={
                 "name": "schema-test",
-                "yaml_template": "port: {port}",
+                "yaml_template": "port: {port}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {
                         "type": "int",
@@ -287,7 +331,7 @@ class TestTemplatePreview:
             "/api/templates/",
             json={
                 "name": "preview-test",
-                "yaml_template": "name: {name}\nport: {port}",
+                "yaml_template": "name: {name}\nport: {port}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {"type": "string", "name": "name", "display_name": "Name"},
                     {"type": "int", "name": "port", "display_name": "Port"},
@@ -311,7 +355,7 @@ class TestTemplatePreview:
             "/api/templates/",
             json={
                 "name": "preview-fail-test",
-                "yaml_template": "port: {port}",
+                "yaml_template": "port: {port}" + GAME_PORT_CONFIG,
                 "variable_definitions": [
                     {
                         "type": "int",

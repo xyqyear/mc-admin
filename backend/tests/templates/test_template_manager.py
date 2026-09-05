@@ -50,7 +50,7 @@ class TestValidateTemplate:
 
     def test_validate_success(self):
         """Test validation passes when variables match exactly."""
-        yaml = "container_name: mc-{name}\nport: {port}"
+        yaml = "services:\n  mc:\n    container_name: mc-{name}\n    ports: [\"{port}:25565\"]\n    environment: {SERVER_PORT: 25565}"
         variables = [
             StringVariableDefinition(name="name", display_name="Name"),
             IntVariableDefinition(name="port", display_name="Port"),

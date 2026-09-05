@@ -25,6 +25,7 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -52,6 +53,7 @@ services:
       - "25568:25565"
       - "25579:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       MEMORY: "2G"
     volumes:
@@ -68,6 +70,7 @@ services:
     ports:
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -85,6 +88,7 @@ services:
     ports:
       - "25565:25565"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -111,6 +115,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -129,6 +134,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -235,6 +241,18 @@ def generate_yaml(
 
 class TestCreateServerSuccess:
     """Test successful server creation scenarios."""
+
+    @pytest.mark.parametrize("setting", ["", '      SERVER_PORT: "25566"\n', '      SERVER_PORT: "25565"\n      SKIP_SERVER_PROPERTIES: true\n'])
+    def test_invalid_initialization_creates_no_files(self, test_client_with_temp_path, temp_server_path, setting):
+        content = generate_yaml("unsafe-port").replace('      SERVER_PORT: "25565"\n', setting)
+        response = test_client_with_temp_path.post(
+            "/api/servers/unsafe-port",
+            json={"yaml_content": content},
+            headers={"Authorization": "Bearer test-master-token"},
+        )
+        assert response.status_code == 400
+        assert "SERVER_" in response.json()["detail"]
+        assert not (temp_server_path / "unsafe-port").exists()
 
     def test_successful_server_creation(self, test_client_with_temp_path):
         """Test successful server creation with unique ports."""

@@ -77,6 +77,7 @@ config.
 - `dependency.binaries`
 - `log_monitor.active`
 - `server.backup_mod_removed`
+- `server.game_port_consistency`
 - `files.permission_consistency`
 - `server.filesystem_db_sync`
 
@@ -93,6 +94,41 @@ for backup Mod/plugin detection.
 `files.permission_consistency` checks only file owner UID consistency. It uses
 `fd --owner` to find entries whose owner UID differs from the server project
 root and does not compare group IDs or mode bits.
+
+## Game-Port Consistency
+
+`server.game_port_consistency` compares the final `server-port` assignment in
+the server data root's `server.properties` with the Compose TCP container game
+target (`25565`), never the published host port. It scans active database records,
+including stopped servers, using asynchronous file reads. The check defaults to
+enabled even when an older saved self-check configuration lacks its toggle.
+
+| Condition | Severity / status |
+| --- | --- |
+| No active servers | success / passed |
+| Status is STARTING | info / skipped |
+| Properties file absent on a non-running server | info / skipped |
+| Valid file and container ports match | success / passed |
+| Valid ports differ | warning / warning |
+| Unavailable status, unreadable/invalid Compose or properties, missing port, or missing file while running | warning / failed |
+
+Each server failure is isolated. Missing or invalid values never default to
+`25565`. STARTING servers are checked on the next ordinary run, without waiting
+for startup or scheduling extra work. Evidence contains only port values, the
+properties path, and error stage/type; full files and environment data are not
+included. Current-state projection, retained history, disabling, and single-check
+reruns use the standard runner.
+
+The check does not inspect `SERVER_PORT`, override flags, deployed container
+configuration, or network listeners. Agreement establishes file/configuration
+consistency, not runtime connectivity. Remediation directs users to edit the file
+and restart after saving. Static conditional advice explains that a conflicting
+Compose `SERVER_PORT`, if present, needs correction and container recreation;
+ordinary restart does not adopt changed environment settings. This advice does
+not claim an environment conflict was detected. The frontend links mismatches
+and properties failures to the existing file browser with a literal
+`server.properties` search. No file changes, migration, lifecycle gates, or extra
+event triggers run as part of this check.
 
 ## API
 

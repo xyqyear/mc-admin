@@ -10,6 +10,7 @@ from ...dns import simple_dns_manager
 from ...log_monitor import log_monitor
 from ...logger import logger
 from ...minecraft import docker_mc_manager
+from ...minecraft.game_port import validate_game_port_initialization
 from ...routers.servers.restart_schedule import schedule_auto_restart
 from ...templates import (
     TemplateSnapshot,
@@ -97,6 +98,7 @@ async def create_server_full(
 
     try:
         game_port, rcon_port = extract_ports_from_yaml(yaml_content)
+        validate_game_port_initialization(yaml_content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

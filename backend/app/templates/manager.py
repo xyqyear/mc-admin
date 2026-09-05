@@ -4,6 +4,7 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
+from ..minecraft.game_port import validate_game_port_initialization
 from .models import (
     BoolVariableDefinition,
     EnumVariableDefinition,
@@ -29,7 +30,7 @@ class TemplateManager:
         yaml_template: str,
         user_variables: Sequence[VariableDefinition],
     ) -> list[str]:
-        """Verify no duplicate names and that YAML/definition variable sets match exactly."""
+        """Validate template variables and fixed game-port initialization settings."""
         errors = []
 
         yaml_vars = cls.extract_variables_from_yaml(yaml_template)
@@ -55,6 +56,12 @@ class TemplateManager:
             errors.append(
                 f"已定义但未在 YAML 中使用的变量: {', '.join(sorted(unused))}"
             )
+
+        if not errors:
+            try:
+                validate_game_port_initialization(yaml_template, template=True)
+            except ValueError as exc:
+                errors.append(str(exc))
 
         return errors
 

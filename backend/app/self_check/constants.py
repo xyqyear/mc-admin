@@ -13,6 +13,7 @@ CHECK_IDS: tuple[str, ...] = (
     "dependency.binaries",
     "log_monitor.active",
     "server.backup_mod_removed",
+    "server.game_port_consistency",
     "files.permission_consistency",
     "server.filesystem_db_sync",
 )
@@ -30,6 +31,7 @@ CHECK_LABELS: dict[str, str] = {
     "dependency.binaries": "命令行依赖",
     "log_monitor.active": "日志监控状态",
     "server.backup_mod_removed": "备份 Mod 清理",
+    "server.game_port_consistency": "游戏端口一致性",
     "files.permission_consistency": "文件所有者一致性",
     "server.filesystem_db_sync": "文件系统与数据库同步",
 }

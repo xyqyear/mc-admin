@@ -1,7 +1,10 @@
 """Integration tests for template configuration endpoints."""
 
 import tempfile
+import asyncio
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,6 +26,7 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "{game_version}"
       MEMORY: "2G"
@@ -46,6 +50,7 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -229,3 +234,64 @@ class TestTemplateConfigPreview:
         )
         assert response.status_code == 200
         assert response.json()["is_template_based"] is False
+
+
+async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_db, temp_server_path):
+    from app.background_tasks import BackgroundTaskManager
+    from app.minecraft import MCServerStatus
+    from app.routers.servers.template_config import TemplateConfigUpdateRequest, update_template_config
+    from app.servers.crud import create_server_record, get_active_server_by_id
+    from app.templates import StringVariableDefinition, TemplateSnapshot, VariableDefinition
+    from app.templates.crud import create_template
+
+    manager = DockerMCManager(temp_server_path)
+    instance = manager.get_instance("legacy-template")
+    legacy = get_traditional_yaml("legacy-template").replace('      SERVER_PORT: "25565"\n', '')
+    await instance.create(legacy)
+    template_yaml = legacy.replace('MEMORY: "2G"', 'MEMORY: "{memory}"')
+    variables: list[VariableDefinition] = [StringVariableDefinition(name="memory", display_name="Memory")]
+    async with test_db() as session:
+        template = await create_template(session, "legacy", None, template_yaml, variables)
+        snapshot = TemplateSnapshot(
+            template_id=template.id, template_name="legacy", yaml_template=template_yaml,
+            variable_definitions=variables, snapshot_time="2026-09-05T00:00:00Z",
+        )
+        await create_server_record(session, "legacy-template", template_id=template.id,
+                                   template_snapshot_json=snapshot.model_dump_json(),
+                                   variable_values_json=json.dumps({"memory": "2G"}))
+
+    tasks = BackgroundTaskManager()
+    callbacks = []
+
+    def start_callback(coro):
+        task = asyncio.create_task(coro)
+        callbacks.append(task)
+        return task
+
+    with (
+        patch("app.routers.servers.template_config.docker_mc_manager", manager),
+        patch("app.routers.servers.template_config.task_manager", tasks),
+        patch("app.routers.servers.template_config.get_async_session", test_db),
+        patch("app.routers.servers.template_config.asyncio", SimpleNamespace(create_task=start_callback)),
+        patch("app.servers.rebuild.docker_mc_manager", manager),
+        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.EXISTS)),
+        patch.object(manager, "get_instance", return_value=instance),
+    ):
+        async with test_db() as session:
+            response = await update_template_config(
+                "legacy-template", TemplateConfigUpdateRequest(variable_values={"memory": "3G"}), session,
+            )
+        future = tasks.get_future(response.task_id)
+        assert future is not None
+        assert (await future).success
+        await asyncio.gather(*callbacks)
+
+    rendered = await instance.get_compose_file()
+    assert 'MEMORY: "3G"' in rendered
+    assert "SERVER_PORT" not in rendered
+    async with test_db() as session:
+        record = await get_active_server_by_id(session, "legacy-template")
+        assert record is not None
+        assert json.loads(record.variable_values_json or "{}") == {"memory": "3G"}
+        assert record.template_snapshot_json == snapshot.model_dump_json()

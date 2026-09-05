@@ -107,6 +107,45 @@ async def test_successful_self_check_is_persisted(
         assert finding_count == 1
 
 
+async def test_game_port_correction_updates_current_state_and_retains_evidence(
+    self_check_db, monkeypatch, tmp_path,
+):
+    from unittest.mock import AsyncMock
+    from app.minecraft import MCServerStatus
+    from app.self_check import crud
+    from app.self_check.checks.base import SelfCheckContext
+    from app.self_check.checks.server import check_game_port_consistency
+
+    check_id = "server.game_port_consistency"
+    properties = tmp_path / "server.properties"
+    properties.write_text("server-port=25566\n")
+    instance = SimpleNamespace(
+        get_data_path=lambda: tmp_path,
+        get_status=AsyncMock(return_value=MCServerStatus.CREATED),
+        get_compose_file=AsyncMock(return_value='services:\n  mc:\n    ports: ["25517:25565"]'),
+    )
+    monkeypatch.setattr(SelfCheckContext, "active_servers", AsyncMock(return_value=[SimpleNamespace(server_id="survival")]))
+    monkeypatch.setattr("app.self_check.checks.server.docker_mc_manager", SimpleNamespace(get_instance=lambda _: instance))
+    runner = _install_checks(monkeypatch, {check_id: check_game_port_consistency})
+    initial = await runner.run_self_check(trigger="manual")
+    assert initial.status == "warning"
+    properties.write_text("server-port=25565\n")
+    corrected = await runner.run_self_check(trigger="manual", check_ids=(check_id,), scope="check")
+    assert corrected.status == "success"
+    async with self_check_db() as session:
+        current = await crud.get_current_state(session, enabled_check_ids={check_id})
+        assert current is not None
+        assert current.findings[0].status == "passed"
+        historical = await crud.get_run(session, initial.id)
+        assert historical is not None
+        assert historical.findings[0].evidence["properties_server_port"] == 25566
+        assert "重启" in historical.findings[0].remediation[0]
+        disabled = await crud.get_current_state(session, enabled_check_ids=set())
+        assert disabled is not None
+        assert disabled.summary.warning == 0
+        assert disabled.findings == []
+
+
 async def test_problem_self_check_is_persisted(
     self_check_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:

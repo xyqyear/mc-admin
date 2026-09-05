@@ -255,6 +255,21 @@
           "markdownDescription": "接受 Minecraft 最终用户许可协议。**必须设置为 `true`**。\n\n通过设置此值为 `true`，您表示同意 [Minecraft EULA](https://www.minecraft.net/eula)。\n\n[文档](https://docker-minecraft-server.readthedocs.io/en/latest/)",
           "enum": [true, "true", "TRUE"]
         },
+        "SERVER_PORT": {
+          "type": ["integer", "string"],
+          "description": "保存模板及新建服务器时必须显式设置为固定的 25565，与容器内 TCP 游戏端口一致。宿主机端口可不同。存量服务器无需补填。",
+          "default": "25565"
+        },
+        "OVERRIDE_SERVER_PROPERTIES": {
+          "type": ["boolean", "string"],
+          "description": "保存模板及新建服务器时请省略或固定为 true，以便启动时更新上传的 server.properties。",
+          "default": true
+        },
+        "SKIP_SERVER_PROPERTIES": {
+          "type": ["boolean", "string"],
+          "description": "保存模板及新建服务器时请省略或固定为 false，以便启动时更新上传的 server.properties。",
+          "default": false
+        },
         "VERSION": {
           "type": "string",
           "description": "Minecraft 版本。",

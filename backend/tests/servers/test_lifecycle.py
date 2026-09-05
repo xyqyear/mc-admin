@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.background_tasks import BackgroundTaskManager, TaskProgress, TaskType
 from app.cron.jobs.backup import BackupJobParams
 from app.cron.jobs.restart import ServerRestartParams
-from app.minecraft import DockerMCManager
+from app.minecraft import DockerMCManager, MCServerStatus
 from app.models import Base
 from app.servers.crud import create_server_record, get_active_server_by_id
 from app.servers.lifecycle import (
@@ -31,6 +31,8 @@ from app.servers.lifecycle import (
     remove_server_full,
     validate_adoption,
 )
+from app.servers.port_utils import get_server_used_ports
+from app.servers.rebuild import rebuild_server_task
 
 
 YAML_TEMPLATE = """
@@ -43,6 +45,7 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -344,6 +347,48 @@ class TestValidateAdoption:
 # ---------------------------------------------------------------------------
 # create_server_full
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [MCServerStatus.EXISTS, MCServerStatus.HEALTHY])
+async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, status):
+    mgr = patch_singletons
+    instance = mgr.get_instance("legacy")
+    legacy = _yaml("legacy", 25780, 25790).replace('      SERVER_PORT: "25565"\n', '')
+    await instance.create(legacy)
+    assert (await instance.get_compose_obj()).get_game_port() == 25780
+    with patch.object(mgr, "get_all_instances", AsyncMock(return_value=[instance])):
+        assert await get_server_used_ports() == {25780, 25790}
+    with (
+        patch("app.servers.rebuild.docker_mc_manager", mgr),
+        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch.object(instance, "get_status", AsyncMock(return_value=status)),
+        patch.object(instance, "down", AsyncMock()) as down,
+        patch.object(instance, "up", AsyncMock()) as up,
+        patch.object(mgr, "get_instance", return_value=instance),
+    ):
+        progress = [item async for item in rebuild_server_task("legacy", legacy)]
+    result = progress[-1].result
+    assert result is not None
+    assert result["game_port"] == 25780
+    assert "SERVER_PORT" not in await instance.get_compose_file()
+    assert down.await_count == up.await_count == int(status == MCServerStatus.HEALTHY)
+
+
+async def test_new_server_from_legacy_template_is_rejected(patch_singletons, db_factory):
+    from fastapi import HTTPException
+    from app.templates.crud import create_template
+
+    legacy = _yaml("old-template").replace('      SERVER_PORT: "25565"\n', '')
+    async with db_factory() as session:
+        template = await create_template(session, "legacy", None, legacy, [])
+        with pytest.raises(HTTPException) as error:
+            await create_server_full(
+                session, "old-template", CreateServerSpec(template_id=template.id, variable_values={})
+            )
+        assert error.value.status_code == 400
+        assert "SERVER_PORT" in error.value.detail
+        assert await get_active_server_by_id(session, "old-template") is None
+    assert not (patch_singletons.servers_path / "old-template").exists()
 
 
 class TestCreateServerFullHappyPath:

@@ -271,6 +271,7 @@ services:
       - "{game_port}:25565"
       - "{rcon_port}:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -434,6 +435,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -481,6 +483,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -537,6 +540,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
@@ -615,6 +619,7 @@ services:
       - "25565:25565"
       - "25575:25575"
     environment:
+      SERVER_PORT: "25565"
       EULA: "TRUE"
       VERSION: "1.20.1"
       MEMORY: "2G"
