@@ -25,7 +25,7 @@ class DockerPsParsed(BaseModel):
 
     @classmethod
     def parse_labels(cls, labels_str: str) -> dict[str, str]:
-        return dict(label.split("=") for label in labels_str.split(",") if "=" in label)
+        return dict(label.split("=", 1) for label in labels_str.split(",") if "=" in label)
 
     @classmethod
     def from_docker_ps(cls, data: dict[str, Any]) -> "DockerPsParsed":

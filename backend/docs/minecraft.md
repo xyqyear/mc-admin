@@ -21,7 +21,7 @@ Per-server façade. Methods fall into three groups:
 - **State queries**: `exists()`, `created()`, `running()`, plus the hierarchical `MCServerStatus` enum: `REMOVED < EXISTS < CREATED < RUNNING < STARTING < HEALTHY`.
 - **File access**: `get_compose_file()`, `get_compose_obj()`, `get_server_properties()`, `get_data_path()`.
 
-Every state-changing method shells out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. Reads happen via docker-py.
+Every state-changing method shells out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. Lifecycle status also reads Compose output; container details use docker-py. Docker and Compose label parsing splits each key/value pair at its first equals sign, preserving equals signs inside label values so they do not prevent healthy-state detection.
 
 ## Compose file validation
 
