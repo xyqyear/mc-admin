@@ -11,10 +11,8 @@ from .models import (
 )
 
 __all__ = [
-    "EventBus",
-    "Subscription",
-    "event_bus",
     "ChatEvent",
+    "EventBus",
     "EventPlayer",
     "HeartbeatFrame",
     "PlayerJoinEvent",
@@ -22,4 +20,6 @@ __all__ = [
     "PublicEventFrame",
     "ServerStoppingEvent",
     "StreamResetFrame",
+    "Subscription",
+    "event_bus",
 ]

@@ -1,8 +1,9 @@
 import asyncio
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, List, Literal, Optional, TypeVar
+from typing import Any, Literal, TypeVar
 
 import aiofiles.os as aioos
 from pydantic import TypeAdapter, ValidationError
@@ -55,7 +56,7 @@ class MCMapProcess:
             return
         try:
             await asyncio.wait_for(self._proc.wait(), timeout=TERMINATE_GRACE_SECONDS)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 self._proc.kill()
             except ProcessLookupError:
@@ -69,11 +70,11 @@ class MCMapProcess:
         return data.decode(errors="replace")
 
     @property
-    def returncode(self) -> Optional[int]:
+    def returncode(self) -> int | None:
         return self._proc.returncode
 
 
-async def _chown_args_for(owned_by: Path) -> List[str]:
+async def _chown_args_for(owned_by: Path) -> list[str]:
     if os.geteuid() != 0:
         return []
     try:
@@ -86,8 +87,8 @@ async def _chown_args_for(owned_by: Path) -> List[str]:
     return ["--chown", f"{st.st_uid}:{st.st_gid}"]
 
 
-async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
-    full_args: List[str] = ["--json", *args, *await _chown_args_for(owned_by)]
+async def _spawn(args: list[str], owned_by: Path) -> asyncio.subprocess.Process:
+    full_args: list[str] = ["--json", *args, *await _chown_args_for(owned_by)]
     return await asyncio.create_subprocess_exec(
         str(settings.mcmap_binary_path),
         *full_args,
@@ -98,7 +99,7 @@ async def _spawn(args: List[str], owned_by: Path) -> asyncio.subprocess.Process:
 
 
 @asynccontextmanager
-async def _run(args: List[str], owned_by: Path) -> AsyncIterator[MCMapProcess]:
+async def _run(args: list[str], owned_by: Path) -> AsyncIterator[MCMapProcess]:
     proc = await _spawn(args, owned_by=owned_by)
     wrapper = MCMapProcess(proc)
     try:
@@ -117,13 +118,13 @@ async def download_client(
 
 @asynccontextmanager
 async def gen_palette(
-    packs: List[Path],
+    packs: list[Path],
     output: Path,
     *,
-    level_dat: Optional[Path],
+    level_dat: Path | None,
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    args: List[str] = ["gen-palette", "-o", str(output)]
+    args: list[str] = ["gen-palette", "-o", str(output)]
     if level_dat is not None:
         args.extend(["--level-dat", str(level_dat)])
     for pack in packs:
@@ -136,12 +137,12 @@ async def gen_palette(
 async def render(
     palette: Path,
     output_dir: Path,
-    mcas: List[Path],
+    mcas: list[Path],
     threads: int,
     *,
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
-    args: List[str] = [
+    args: list[str] = [
         "render",
         "-p",
         str(palette),
@@ -158,7 +159,7 @@ async def render(
         yield p
 
 
-def _serialize_chunks(chunks: List[tuple[int, int]]) -> str:
+def _serialize_chunks(chunks: list[tuple[int, int]]) -> str:
     return ";".join(f"{x},{z}" for x, z in chunks)
 
 
@@ -167,12 +168,12 @@ async def replace_chunks(
     *,
     source_mca: Path,
     target_mca: Path,
-    chunks: List[tuple[int, int]],
+    chunks: list[tuple[int, int]],
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
     if not chunks:
         raise ValueError("replace_chunks requires at least one chunk coord")
-    args: List[str] = [
+    args: list[str] = [
         "replace-chunks",
         "-s",
         str(source_mca),
@@ -189,12 +190,12 @@ async def replace_chunks(
 async def remove_chunks(
     *,
     target_mca: Path,
-    chunks: List[tuple[int, int]],
+    chunks: list[tuple[int, int]],
     owned_by: Path,
 ) -> AsyncIterator[MCMapProcess]:
     if not chunks:
         raise ValueError("remove_chunks requires at least one chunk coord")
-    args: List[str] = [
+    args: list[str] = [
         "remove-chunks",
         "-t",
         str(target_mca),
@@ -213,9 +214,9 @@ async def prune_inhabited(
     mode: Literal["chunks", "regions"],
     dry_run: bool,
     owned_by: Path,
-    exclude_ftb_claims: Optional[Path] = None,
+    exclude_ftb_claims: Path | None = None,
 ) -> AsyncIterator[MCMapProcess]:
-    args: List[str] = [
+    args: list[str] = [
         "prune-inhabited",
         str(path),
         "--threshold",

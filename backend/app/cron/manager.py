@@ -3,8 +3,7 @@
 import asyncio
 import json
 import secrets
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -45,9 +44,9 @@ class CronManager:
         identifier: str,
         params: BaseConfigSchema,
         cron: str,
-        cronjob_id: Optional[str] = None,
-        name: Optional[str] = None,
-        second: Optional[str] = None,
+        cronjob_id: str | None = None,
+        name: str | None = None,
+        second: str | None = None,
         is_system: bool = False,
     ) -> str:
         """Create a new cron job, or revive an existing cancelled one."""
@@ -104,8 +103,8 @@ class CronManager:
         identifier: str,
         params: BaseConfigSchema,
         cron: str,
-        second: Optional[str] = None,
-        name: Optional[str] = None,
+        second: str | None = None,
+        name: str | None = None,
     ) -> None:
         if not cron_registry.is_registered(identifier):
             raise ValueError(f"定时任务类型 '{identifier}' 未注册")
@@ -212,7 +211,7 @@ class CronManager:
         if self.scheduler.get_job(cronjob_id):
             self.scheduler.remove_job(cronjob_id)
 
-    async def get_cronjob_config(self, cronjob_id: str) -> Optional[CronJobConfig]:
+    async def get_cronjob_config(self, cronjob_id: str) -> CronJobConfig | None:
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -241,10 +240,10 @@ class CronManager:
 
     async def get_all_cronjobs(
         self,
-        identifier: Optional[str] = None,
-        status: Optional[List[CronJobStatus]] = None,
-        name: Optional[str] = None,
-    ) -> List[CronJobConfig]:
+        identifier: str | None = None,
+        status: list[CronJobStatus] | None = None,
+        name: str | None = None,
+    ) -> list[CronJobConfig]:
         async with get_async_session() as session:
             cronjob_rows = await crud.get_all_cronjobs(
                 session, identifier=identifier, status=status, name=name
@@ -258,7 +257,11 @@ class CronManager:
 
                 try:
                     params = schema_cls.model_validate_json(cronjob_row.params_json)
+                except (ValueError, TypeError):
+                    logger.warning("Skipping invalid parameters for cron job %s", cronjob_row.cronjob_id)
+                    continue
                 except Exception:
+                    logger.exception("Unexpected parameter validation failure for cron job %s", cronjob_row.cronjob_id)
                     continue
 
                 configs.append(
@@ -281,7 +284,7 @@ class CronManager:
 
     async def get_execution_history(
         self, cronjob_id: str, limit: int = 50
-    ) -> List[CronJobExecutionRecord]:
+    ) -> list[CronJobExecutionRecord]:
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
@@ -305,7 +308,7 @@ class CronManager:
                 for ex in executions
             ]
 
-    async def get_next_run_time(self, cronjob_id: str) -> Optional[datetime]:
+    async def get_next_run_time(self, cronjob_id: str) -> datetime | None:
         """Raises ``ValueError`` if the job is missing or not active."""
         async with get_async_session() as session:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
@@ -328,7 +331,7 @@ class CronManager:
         identifier: str,
         params: BaseConfigSchema,
         cron: str,
-        second: Optional[str] = None,
+        second: str | None = None,
     ) -> None:
         trigger = self._build_cron_trigger(cron, second)
 
@@ -349,7 +352,7 @@ class CronManager:
     def _build_cron_trigger(
         self,
         cron: str,
-        second: Optional[str] = None,
+        second: str | None = None,
     ) -> CronTrigger:
         cron_parts = cron.strip().split()
         if len(cron_parts) != 5:
@@ -374,7 +377,7 @@ class CronManager:
         cronjob_function,
     ) -> None:
         """Run ``cronjob_function`` with execution context, recording the outcome."""
-        timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+        timestamp = int(datetime.now(UTC).timestamp() * 1000)
         random_suffix = secrets.token_urlsafe(4)
         execution_id = f"{timestamp}_{random_suffix}"
 
@@ -383,7 +386,7 @@ class CronManager:
             identifier=identifier,
             execution_id=execution_id,
             params=params,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status=ExecutionStatus.RUNNING,
         )
 
@@ -395,10 +398,11 @@ class CronManager:
             context.log("定时任务执行已取消")
             raise
         except Exception as e:
+            logger.exception("Cron job %s failed", cronjob_id)
             context.status = ExecutionStatus.FAILED
-            context.log(f"定时任务执行失败: {str(e)}")
+            context.log(f"定时任务执行失败: {e!s}")
         finally:
-            context.ended_at = datetime.now(timezone.utc)
+            context.ended_at = datetime.now(UTC)
             if context.ended_at and context.started_at:
                 context.duration_ms = int(
                     (context.ended_at - context.started_at).total_seconds() * 1000
@@ -429,6 +433,7 @@ class CronManager:
                         "failed to recover cron job %s: %s",
                         cronjob_row.cronjob_id,
                         e,
+                        exc_info=True,
                     )
                     continue
 
@@ -445,6 +450,7 @@ class CronManager:
                         "failed to schedule recovered cron job %s: %s",
                         cronjob_row.cronjob_id,
                         e,
+                        exc_info=True,
                     )
                     continue
 
@@ -512,6 +518,7 @@ class CronManager:
                             "repairing system cron job %s params from defaults: %s",
                             cronjob_id,
                             exc,
+                            exc_info=True,
                         )
                         params = registration.default_params
                         await crud.update_cronjob(
@@ -528,6 +535,7 @@ class CronManager:
                             "repairing system cron job %s schedule from defaults: %s",
                             cronjob_id,
                             exc,
+                            exc_info=True,
                         )
                         cron = registration.default_cron
                         second = registration.default_second

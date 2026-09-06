@@ -5,6 +5,7 @@ Tests for the DNS API router
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from app.dns.types import ReturnRecordT
@@ -283,12 +284,9 @@ def test_dns_router_authentication_required():
     # Find the update endpoint
     update_route = None
     for route in router.routes:
-        # Type guard: check if route has path attribute before accessing
-        if hasattr(route, "path"):
-            route_path = getattr(route, "path")
-            if "/update" in route_path:
-                update_route = route
-                break
+        if isinstance(route, APIRoute) and "/update" in route.path:
+            update_route = route
+            break
 
     assert update_route is not None
     # The route should have dependencies (authentication)

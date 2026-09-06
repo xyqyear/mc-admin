@@ -1,7 +1,7 @@
 """Test playtime calculation including ongoing sessions."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,9 +17,8 @@ from app.players.crud.query.player_query import (
 async def create_test_db():
     """Create a temporary test database and return session."""
     # Create temporary database file
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db_path = Path(temp_db.name)
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        temp_db_path = Path(temp_db.name)
 
     # Create async engine for test database
     database_url = f"sqlite+aiosqlite:///{temp_db_path}"
@@ -65,7 +64,7 @@ async def test_playtime_with_finished_and_ongoing_sessions():
         # Create test server
         test_server = Server(
             server_id=test_server_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -74,14 +73,14 @@ async def test_playtime_with_finished_and_ongoing_sessions():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="TestPlayer",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.flush()
 
         # Create finished sessions
         # Session 1: 1 hour ago, played for 3600 seconds (1 hour)
-        session1_joined = datetime.now(timezone.utc) - timedelta(hours=2)
+        session1_joined = datetime.now(UTC) - timedelta(hours=2)
         session1_left = session1_joined + timedelta(hours=1)
         session1 = PlayerSession(
             player_db_id=test_player.player_db_id,
@@ -93,7 +92,7 @@ async def test_playtime_with_finished_and_ongoing_sessions():
         db.add(session1)
 
         # Session 2: 30 minutes ago, played for 1800 seconds (30 minutes)
-        session2_joined = datetime.now(timezone.utc) - timedelta(minutes=60)
+        session2_joined = datetime.now(UTC) - timedelta(minutes=60)
         session2_left = session2_joined + timedelta(minutes=30)
         session2 = PlayerSession(
             player_db_id=test_player.player_db_id,
@@ -106,7 +105,7 @@ async def test_playtime_with_finished_and_ongoing_sessions():
 
         # Create ongoing session (no left_at, no duration_seconds)
         # Joined 10 minutes ago, still playing
-        ongoing_joined = datetime.now(timezone.utc) - timedelta(minutes=10)
+        ongoing_joined = datetime.now(UTC) - timedelta(minutes=10)
         session3 = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
@@ -185,7 +184,7 @@ async def test_playtime_with_only_ongoing_sessions():
         # Create test server
         test_server = Server(
             server_id=test_server_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -194,14 +193,14 @@ async def test_playtime_with_only_ongoing_sessions():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="OngoingPlayer",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.flush()
 
         # Create only ongoing session
         # Joined 5 minutes ago
-        ongoing_joined = datetime.now(timezone.utc) - timedelta(minutes=5)
+        ongoing_joined = datetime.now(UTC) - timedelta(minutes=5)
         session = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
@@ -252,7 +251,7 @@ async def test_playtime_with_only_finished_sessions():
         # Create test server
         test_server = Server(
             server_id=test_server_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -261,13 +260,13 @@ async def test_playtime_with_only_finished_sessions():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="FinishedPlayer",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.flush()
 
         # Create only finished sessions
-        session1_joined = datetime.now(timezone.utc) - timedelta(hours=3)
+        session1_joined = datetime.now(UTC) - timedelta(hours=3)
         session1_left = session1_joined + timedelta(hours=2)
         session1 = PlayerSession(
             player_db_id=test_player.player_db_id,

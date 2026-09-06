@@ -2,7 +2,6 @@
 
 import asyncio
 from pathlib import Path
-from typing import Dict
 
 import aiofiles
 from aiofiles import os as aioos
@@ -38,10 +37,10 @@ class LogMonitor:
         self.log_parser = LogParser()
 
         # Track file pointers for each server
-        self._file_pointers: Dict[str, int] = {}
+        self._file_pointers: dict[str, int] = {}
 
         # Track watch tasks for each server
-        self._watch_tasks: Dict[str, asyncio.Task] = {}
+        self._watch_tasks: dict[str, asyncio.Task] = {}
 
         # Flag to stop all watches
         self._stop_flag = False
@@ -147,8 +146,8 @@ class LogMonitor:
         except asyncio.CancelledError:
             logger.debug(f"Watch loop cancelled for {server_id}")
             raise
-        except Exception as e:
-            logger.error(f"Error in watch loop for {server_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error in watch loop for {server_id}")
 
     async def _process_log_changes(self, server_id: str, log_path: Path) -> None:
         """Process changes to a log file."""
@@ -187,9 +186,9 @@ class LogMonitor:
                     if event:
                         await self._handle_event(event)
 
-        except Exception as e:
-            logger.error(
-                f"Error processing log changes for {server_id}: {e}", exc_info=True
+        except Exception:
+            logger.exception(
+                f"Error processing log changes for {server_id}"
             )
 
     async def _handle_event(self, event: LogEvent) -> None:
@@ -234,9 +233,9 @@ class LogMonitor:
                     await close_server_sessions(event.server_id, event.timestamp)
                 case _:
                     logger.warning(f"Unhandled event type: {type(event).__name__}")
-        except Exception as e:
-            logger.error(
-                f"Error handling event {type(event).__name__}: {e}", exc_info=True
+        except Exception:
+            logger.exception(
+                f"Error handling event {type(event).__name__}"
             )
 
 

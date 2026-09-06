@@ -38,7 +38,7 @@ async def cancel_and_wait_for_tasks(
             futures.append(fut)
 
     if futures:
-        done, pending = await asyncio.wait(futures, timeout=timeout)
+        _done, pending = await asyncio.wait(futures, timeout=timeout)
         if pending:
             logger.warning(
                 f"cancel_and_wait_for_tasks: {len(pending)} task(s) for "
@@ -57,10 +57,10 @@ async def cancel_restart_cronjobs_for_server(
         try:
             await cron_manager.cancel_cronjob(job.cronjob_id)
             cancelled.append(job.cronjob_id)
-        except Exception as e:
-            logger.error(
+        except Exception:
+            logger.exception(
                 f"Failed to cancel restart cronjob {job.cronjob_id} for "
-                f"server '{server_id}': {e}"
+                f"server '{server_id}'"
             )
     return cancelled
 
@@ -88,7 +88,7 @@ async def validate_adoption(
     except ValueError:
         raise
     except Exception as e:
-        raise ValueError(f"无法解析 compose 文件: {e}")
+        raise ValueError(f"无法解析 compose 文件: {e}") from e
 
     if mc_compose.get_server_name() != server_id:
         raise ValueError(

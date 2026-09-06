@@ -3,7 +3,7 @@ Configuration migration system for version management and field handling.
 """
 
 import logging
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any
 
 from .schemas import BaseConfigSchema
 
@@ -21,10 +21,10 @@ class ConfigMigrator:
 
     @staticmethod
     def migrate_config(
-        current_data: Dict[str, Any],
-        schema_cls: Type[BaseConfigSchema],
+        current_data: dict[str, Any],
+        schema_cls: type[BaseConfigSchema],
         stored_version: str,
-    ) -> Tuple[Dict[str, Any], List[str]]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """
         Migrate configuration data to match the current schema.
 
@@ -54,15 +54,18 @@ class ConfigMigrator:
         try:
             migrated_instance = schema_cls.model_validate(current_data)
             migrated_data = migrated_instance.model_dump()
+        except (ValueError, TypeError) as e:
+            logger.warning("Invalid configuration for migration of %s", schema_cls.__name__)
+            raise ValueError(f"Failed to migrate configuration: {e}") from e
         except Exception as e:
-            logger.error(f"Migration failed for {schema_cls.__name__}: {e}")
+            logger.exception("Migration failed for %s", schema_cls.__name__)
             raise ValueError(f"Failed to migrate configuration: {e}")
 
         logger.info(f"Migration completed for {schema_cls.__name__}")
         return migrated_data, migration_messages
 
     @staticmethod
-    def create_default_config(schema_cls: Type[BaseConfigSchema]) -> Dict[str, Any]:
+    def create_default_config(schema_cls: type[BaseConfigSchema]) -> dict[str, Any]:
         """
         Create a default configuration dictionary for the given schema.
 
@@ -78,8 +81,8 @@ class ConfigMigrator:
 
     @staticmethod
     def validate_config(
-        data: Dict[str, Any], schema_cls: Type[BaseConfigSchema]
-    ) -> List[str]:
+        data: dict[str, Any], schema_cls: type[BaseConfigSchema]
+    ) -> list[str]:
         """
         Validate configuration data against schema without migration.
 
@@ -94,5 +97,8 @@ class ConfigMigrator:
             # Try to create instance - this will validate all fields
             schema_cls.model_validate(data)
             return []
+        except (ValueError, TypeError) as e:
+            return [str(e)]
         except Exception as e:
+            logger.exception("Operation validate_config failed")
             return [str(e)]

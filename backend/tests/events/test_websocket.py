@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,7 +16,7 @@ def auth_headers() -> dict[str, str]:
 
 
 def timestamp() -> datetime:
-    return datetime(2026, 6, 15, tzinfo=timezone.utc)
+    return datetime(2026, 6, 15, tzinfo=UTC)
 
 
 def chat_info(message_id: int, message: str) -> ChatEventInfo:
@@ -69,13 +69,12 @@ def test_websocket_replays_chat_since_cursor(client):
         patch(
             "app.routers.events.event_bus.subscribe",
             return_value=subscription_with(),
-        ),
+        ),client.websocket_connect(
+        "/events?since=1",
+        headers=auth_headers(),
+    ) as websocket
     ):
-        with client.websocket_connect(
-            "/events?since=1",
-            headers=auth_headers(),
-        ) as websocket:
-            frame = websocket.receive_json()
+        frame = websocket.receive_json()
 
     assert frame["type"] == "chat"
     assert frame["cursor"] == "2"
@@ -89,9 +88,8 @@ def test_websocket_forwards_live_events(client):
     with patch(
         "app.routers.events.event_bus.subscribe",
         return_value=subscription_with(live),
-    ):
-        with client.websocket_connect("/events", headers=auth_headers()) as websocket:
-            frame = websocket.receive_json()
+    ), client.websocket_connect("/events", headers=auth_headers()) as websocket:
+        frame = websocket.receive_json()
 
     assert frame["type"] == "chat"
     assert frame["cursor"] == "4"
@@ -111,14 +109,13 @@ def test_websocket_dedupes_live_event_already_seen_in_replay(client):
         patch(
             "app.routers.events.event_bus.subscribe",
             return_value=subscription_with(duplicate, live),
-        ),
+        ),client.websocket_connect(
+        "/events?since=1",
+        headers=auth_headers(),
+    ) as websocket
     ):
-        with client.websocket_connect(
-            "/events?since=1",
-            headers=auth_headers(),
-        ) as websocket:
-            replayed = websocket.receive_json()
-            fresh = websocket.receive_json()
+        replayed = websocket.receive_json()
+        fresh = websocket.receive_json()
 
     assert replayed["cursor"] == "2"
     assert replayed["message"] == "replayed"
@@ -132,13 +129,12 @@ def test_websocket_invalid_cursor_sends_stream_reset_and_goes_live(client):
     with patch(
         "app.routers.events.event_bus.subscribe",
         return_value=subscription_with(live),
-    ):
-        with client.websocket_connect(
-            "/events?since=not-an-int",
-            headers=auth_headers(),
-        ) as websocket:
-            reset = websocket.receive_json()
-            frame = websocket.receive_json()
+    ), client.websocket_connect(
+        "/events?since=not-an-int",
+        headers=auth_headers(),
+    ) as websocket:
+        reset = websocket.receive_json()
+        frame = websocket.receive_json()
 
     assert reset == {"type": "stream_reset", "reason": "invalid_cursor"}
     assert frame["type"] == "chat"
@@ -149,9 +145,8 @@ def test_websocket_lag_reset_frame_is_sent_then_closed(client):
     with patch(
         "app.routers.events.event_bus.subscribe",
         return_value=subscription_with(StreamResetFrame(reason="cursor_too_old")),
-    ):
-        with client.websocket_connect("/events", headers=auth_headers()) as websocket:
-            frame = websocket.receive_json()
+    ), client.websocket_connect("/events", headers=auth_headers()) as websocket:
+        frame = websocket.receive_json()
 
     assert frame == {"type": "stream_reset", "reason": "cursor_too_old"}
 
@@ -162,10 +157,9 @@ def test_websocket_sends_heartbeat_after_silence(client):
         patch(
             "app.routers.events.event_bus.subscribe",
             return_value=subscription_with(),
-        ),
+        ),client.websocket_connect("/events", headers=auth_headers()) as websocket
     ):
-        with client.websocket_connect("/events", headers=auth_headers()) as websocket:
-            frame = websocket.receive_json()
+        frame = websocket.receive_json()
 
     assert frame["type"] == "heartbeat"
     assert "timestamp" in frame

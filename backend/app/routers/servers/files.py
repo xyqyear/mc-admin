@@ -1,4 +1,3 @@
-from typing import List
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -13,8 +12,8 @@ from ...files import (
     FileSearchRequest,
     FileSearchResponse,
     MultiFileUploadRequest,
-    OwnershipRestoreTaskResponse,
     OverwritePolicy,
+    OwnershipRestoreTaskResponse,
     RenameFileRequest,
     UploadConflictResponse,
     check_upload_conflicts,
@@ -29,8 +28,8 @@ from ...files import (
     update_file_content,
     upload_multiple_files,
 )
-from ...minecraft import docker_mc_manager
 from ...files.paths import resolve_file_path
+from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 
 router = APIRouter(
@@ -250,7 +249,7 @@ async def upload_multiple_files_endpoint(
     server_id: str,
     session_id: str,
     path: str,
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload multiple files using a prepared session"""

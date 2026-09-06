@@ -6,11 +6,10 @@ Direct client implementation for mc-router without wrapper abstractions.
 
 import asyncio
 import json as jsonlib
+from collections.abc import Awaitable
 from typing import (
     Any,
-    Awaitable,
     Literal,
-    Optional,
     TypedDict,
 )
 
@@ -25,6 +24,10 @@ class RoutePoseDataT(TypedDict):
 
 
 RoutesT = dict[str, str]
+
+
+class MCRouterProtocolError(ValueError):
+    """The router returned an invalid route response."""
 
 
 class MCRouterClient:
@@ -47,9 +50,9 @@ class MCRouterClient:
         self,
         method: Literal["GET", "POST", "DELETE"],
         path: str,
-        headers: Optional[dict[str, str]] = None,
-        json: Optional[RoutePoseDataT] = None,
-    ) -> Optional[dict[str, Any]]:
+        headers: dict[str, str] | None = None,
+        json: RoutePoseDataT | None = None,
+    ) -> dict[str, Any] | None:
         response = await self._client.request(
             method,
             self._base_url + path,
@@ -70,12 +73,12 @@ class MCRouterClient:
             "GET", "routes", headers={"Accept": "application/json"}
         )
         if not isinstance(response, dict):
-            raise ValueError("MC Router 路由响应必须是对象")
+            raise MCRouterProtocolError("MC Router 路由响应必须是对象")
         routes: RoutesT = {}
         for address, route in response.items():
             backend = route.get("backend") if isinstance(route, dict) else route
             if not isinstance(backend, str) or not backend:
-                raise ValueError(f"MC Router 路由 {address} 缺少有效的后端地址")
+                raise MCRouterProtocolError(f"MC Router 路由 {address} 缺少有效的后端地址")
             routes[address] = backend
         return routes
 
@@ -87,7 +90,7 @@ class MCRouterClient:
         """Remove all current routes"""
         all_routes = await self.get_routes()
         tasks = list[Awaitable[None]]()
-        for route in all_routes.keys():
+        for route in all_routes:
             tasks.append(self._remove_route(route))
 
         await asyncio.gather(*tasks)

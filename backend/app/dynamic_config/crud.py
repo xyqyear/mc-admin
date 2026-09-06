@@ -1,7 +1,6 @@
 """CRUD operations for DynamicConfig model."""
 
-from datetime import datetime, timezone
-from typing import Dict, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import DynamicConfig
 
 
-async def get_all_configs(session: AsyncSession) -> Dict[str, DynamicConfig]:
+async def get_all_configs(session: AsyncSession) -> dict[str, DynamicConfig]:
     result = await session.execute(select(DynamicConfig))
     return {
         config.module_name: config for config in result.scalars().all()
@@ -18,7 +17,7 @@ async def get_all_configs(session: AsyncSession) -> Dict[str, DynamicConfig]:
 
 async def get_config_by_module(
     session: AsyncSession, module_name: str
-) -> Optional[DynamicConfig]:
+) -> DynamicConfig | None:
     result = await session.execute(
         select(DynamicConfig).where(DynamicConfig.module_name == module_name)
     )
@@ -36,7 +35,7 @@ async def create_config(
         module_name=module_name,
         config_data=config_data,
         config_schema_version=config_schema_version,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
     session.add(db_config)
     return db_config
@@ -53,7 +52,7 @@ async def upsert_config(
     if db_config:
         db_config.config_data = config_data
         db_config.config_schema_version = config_schema_version
-        db_config.updated_at = datetime.now(timezone.utc)
+        db_config.updated_at = datetime.now(UTC)
     else:
         await create_config(
             session,

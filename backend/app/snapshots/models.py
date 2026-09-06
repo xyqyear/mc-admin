@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -16,34 +16,34 @@ class NodeKind(StrEnum):
 
 class ResticSnapshot(BaseModel):
     time: datetime
-    paths: List[str]
-    excludes: List[str] = []
+    paths: list[str]
+    excludes: list[str] = []
     hostname: str
     username: str
-    program_version: Optional[str] = None
+    program_version: str | None = None
     id: str
     short_id: str
 
 
 class ResticSnapshotSummary(BaseModel):
-    backup_start: Optional[datetime] = None
-    backup_end: Optional[datetime] = None
-    files_new: Optional[int] = None
-    files_changed: Optional[int] = None
-    files_unmodified: Optional[int] = None
-    dirs_new: Optional[int] = None
-    dirs_changed: Optional[int] = None
-    dirs_unmodified: Optional[int] = None
-    data_blobs: Optional[int] = None
-    tree_blobs: Optional[int] = None
-    data_added: Optional[int] = None
-    data_added_packed: Optional[int] = None
-    total_files_processed: Optional[int] = None
-    total_bytes_processed: Optional[int] = None
+    backup_start: datetime | None = None
+    backup_end: datetime | None = None
+    files_new: int | None = None
+    files_changed: int | None = None
+    files_unmodified: int | None = None
+    dirs_new: int | None = None
+    dirs_changed: int | None = None
+    dirs_unmodified: int | None = None
+    data_blobs: int | None = None
+    tree_blobs: int | None = None
+    data_added: int | None = None
+    data_added_packed: int | None = None
+    total_files_processed: int | None = None
+    total_bytes_processed: int | None = None
 
 
 class ResticSnapshotWithSummary(ResticSnapshot):
-    summary: Optional[ResticSnapshotSummary] = None
+    summary: ResticSnapshotSummary | None = None
 
 
 ResticRestoreAction = Literal["unchanged", "updated", "restored", "deleted"]
@@ -61,14 +61,14 @@ class ResticRestoreEvent(BaseModel):
     """
 
     kind: Literal["status", "file", "summary"]
-    percent_done: Optional[float] = None
-    total_files: Optional[int] = None
-    files_restored: Optional[int] = None
-    files_skipped: Optional[int] = None
-    files_deleted: Optional[int] = None
-    total_bytes: Optional[int] = None
-    bytes_restored: Optional[int] = None
-    bytes_skipped: Optional[int] = None
-    action: Optional[ResticRestoreAction] = None
-    item: Optional[str] = None
-    size: Optional[int] = None
+    percent_done: float | None = None
+    total_files: int | None = None
+    files_restored: int | None = None
+    files_skipped: int | None = None
+    files_deleted: int | None = None
+    total_bytes: int | None = None
+    bytes_restored: int | None = None
+    bytes_skipped: int | None = None
+    action: ResticRestoreAction | None = None
+    item: str | None = None
+    size: int | None = None

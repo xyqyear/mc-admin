@@ -1,6 +1,6 @@
 """Unit tests for ResticClient construction, validation, and models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -98,7 +98,7 @@ class TestValidation:
 class TestModels:
     def test_restic_snapshot_model(self):
         snapshot = ResticSnapshot(
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             paths=["/test/path1", "/test/path2"],
             hostname="test-host",
             username="test-user",
@@ -113,7 +113,7 @@ class TestModels:
 
     def test_restic_snapshot_model_with_excludes(self):
         snapshot = ResticSnapshot(
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             paths=["/srv/x"],
             excludes=["/srv/x/data/.mcmap"],
             hostname="h",

@@ -16,10 +16,10 @@ from .test_cron_manager import test_cron_manager, test_cron_registry
 
 @pytest.fixture(scope="function")
 async def test_db():
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -66,7 +66,7 @@ async def test_db():
     cron_router_module.cron_registry = original_cron_registry
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

@@ -6,14 +6,13 @@ Tests database operations for server records.
 
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import Base
-from app.models import Server, ServerStatus
+from app.models import Base, Server, ServerStatus
 from app.servers.crud import (
     create_server_record,
     get_active_servers,
@@ -63,7 +62,7 @@ async def _create_server_directly(
     updated_at: datetime | None = None,
 ) -> Server:
     """Helper to create server directly for testing (bypasses duplicate check)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     server = Server(
         server_id=server_id,
         status=status,
@@ -211,7 +210,7 @@ async def test_mark_server_removed(test_database):
 
     # Mark as removed
     async with db() as session:
-        updated_at = datetime.now(timezone.utc)
+        updated_at = datetime.now(UTC)
         await mark_server_removed(session, "test_server", updated_at)
 
     # Verify status
@@ -228,7 +227,7 @@ async def test_mark_server_removed_only_active(test_database):
     """Test mark_server_removed only affects active servers."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create already removed server
     async with db() as session:
@@ -242,7 +241,7 @@ async def test_mark_server_removed_only_active(test_database):
 
     # Try to mark as removed again
     async with db() as session:
-        new_time = datetime.now(timezone.utc)
+        new_time = datetime.now(UTC)
         await mark_server_removed(session, "already_removed", new_time)
 
     # Verify timestamp not updated (WHERE clause prevents update)
@@ -276,7 +275,7 @@ async def test_multiple_server_operations(test_database):
 
     # Remove one
     async with db() as session:
-        await mark_server_removed(session, "server2", datetime.now(timezone.utc))
+        await mark_server_removed(session, "server2", datetime.now(UTC))
 
     # Verify only 2 active
     async with db() as session:
@@ -318,7 +317,7 @@ async def test_get_server_by_id_prefers_active_over_removed(test_database):
     """Test that ACTIVE server is preferred over REMOVED when both exist."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create first server (will be marked as REMOVED)
     async with db() as session:
@@ -349,7 +348,7 @@ async def test_get_server_by_id_multiple_active_returns_newest(test_database):
     """Test that when multiple ACTIVE servers exist, the newest one is returned."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create older ACTIVE server
     async with db() as session:
@@ -386,7 +385,7 @@ async def test_get_server_by_id_only_removed_returns_newest(test_database):
     """Test that when only REMOVED servers exist, the newest one is returned."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create older REMOVED server
     async with db() as session:
@@ -423,7 +422,7 @@ async def test_get_server_by_id_race_condition_scenario(test_database):
     """Test race condition scenario: server marked REMOVED but player events still processing."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create and then mark server as REMOVED (simulating server shutdown)
     async with db() as session:
@@ -450,7 +449,7 @@ async def test_get_server_db_id_with_multiple_servers(test_database):
     """Test get_server_db_id returns correct ID when multiple servers exist."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create old REMOVED server
     async with db() as session:
@@ -479,7 +478,7 @@ async def test_server_recreate_lifecycle(test_database):
     """Test complete server lifecycle: create -> remove -> recreate."""
     db = test_database
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Step 1: Create first server
     async with db() as session:

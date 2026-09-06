@@ -43,9 +43,9 @@ def temp_server_path():
 @pytest.fixture
 async def test_db():
     """Create a test database."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -57,7 +57,7 @@ async def test_db():
     yield TestSessionLocal
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -70,30 +70,22 @@ def test_client(temp_server_path, test_db):
 
     api_app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.config.settings.server_path", temp_server_path):
-        with patch("app.config.settings.master_token", "test-master-token"):
-            real_mc_manager = DockerMCManager(temp_server_path)
-            with patch(
-                "app.servers.lifecycle.orchestrators.docker_mc_manager",
-                real_mc_manager,
-            ):
-                with patch("app.servers.port_utils.docker_mc_manager", real_mc_manager):
-                    with patch(
-                        "app.servers.port_utils.get_system_used_ports",
-                        return_value=set(),
-                    ):
-                        with patch(
-                            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
-                            new_callable=AsyncMock,
-                        ):
-                            with patch(
-                                "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
-                                new_callable=AsyncMock,
-                            ):
-                                client = TestClient(
-                                    api_app, raise_server_exceptions=False
-                                )
-                                yield client
+    with (
+        patch('app.config.settings.server_path', temp_server_path),
+        patch('app.config.settings.master_token', 'test-master-token'),
+    ):
+        real_mc_manager = DockerMCManager(temp_server_path)
+        with (
+            patch('app.servers.lifecycle.orchestrators.docker_mc_manager', real_mc_manager),
+            patch('app.servers.port_utils.docker_mc_manager', real_mc_manager),
+            patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
+            patch('app.servers.lifecycle.orchestrators.log_monitor.start_server', new_callable=AsyncMock),
+            patch('app.servers.lifecycle.orchestrators.simple_dns_manager.update', new_callable=AsyncMock),
+        ):
+            client = TestClient(
+                api_app, raise_server_exceptions=False
+            )
+            yield client
 
     api_app.dependency_overrides.pop(get_db, None)
 

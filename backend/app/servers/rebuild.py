@@ -1,6 +1,6 @@
 """Server rebuild background task."""
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from ..background_tasks import TaskProgress
 from ..minecraft import MCServerStatus, docker_mc_manager
@@ -10,7 +10,7 @@ from .port_utils import check_port_conflicts, extract_ports_from_yaml
 async def rebuild_server_task(
     server_id: str,
     yaml_content: str,
-) -> AsyncGenerator[TaskProgress, None]:
+) -> AsyncGenerator[TaskProgress]:
     """Background task to rebuild server with new configuration.
 
     Steps:
@@ -37,7 +37,7 @@ async def rebuild_server_task(
     try:
         game_port, rcon_port = extract_ports_from_yaml(yaml_content)
     except Exception as e:
-        raise RuntimeError(f"无效的 YAML 配置: {e}")
+        raise RuntimeError(f"无效的 YAML 配置: {e}") from e
 
     yield TaskProgress(progress=5, message="检查端口冲突...")
 

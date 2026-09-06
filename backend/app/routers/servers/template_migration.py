@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -106,7 +106,7 @@ async def convert_to_direct_mode(
     server.template_id = None
     server.template_snapshot_json = None
     server.variable_values_json = None
-    server.updated_at = datetime.now(timezone.utc)
+    server.updated_at = datetime.now(UTC)
 
     await db.commit()
 
@@ -292,13 +292,13 @@ async def convert_to_template_mode(
             template_name=template.name,
             yaml_template=template.yaml_template,
             variable_definitions=variable_definitions,
-            snapshot_time=datetime.now(timezone.utc).isoformat(),
+            snapshot_time=datetime.now(UTC).isoformat(),
         )
 
         server.template_id = template.id
         server.template_snapshot_json = snapshot.model_dump_json()
         server.variable_values_json = json.dumps(request.variable_values)
-        server.updated_at = datetime.now(timezone.utc)
+        server.updated_at = datetime.now(UTC)
         await db.commit()
 
         logger.info(
@@ -335,13 +335,13 @@ async def convert_to_template_mode(
                 template_name=template.name,
                 yaml_template=template.yaml_template,
                 variable_definitions=variable_definitions,
-                snapshot_time=datetime.now(timezone.utc).isoformat(),
+                snapshot_time=datetime.now(UTC).isoformat(),
             )
 
             server.template_id = template.id
             server.template_snapshot_json = snapshot.model_dump_json()
             server.variable_values_json = json.dumps(request.variable_values)
-            server.updated_at = datetime.now(timezone.utc)
+            server.updated_at = datetime.now(UTC)
             await session.commit()
 
             logger.info(f"Server {server_id} converted to template mode")

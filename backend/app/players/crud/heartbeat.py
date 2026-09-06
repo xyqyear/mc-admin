@@ -1,7 +1,6 @@
 """CRUD operations for system heartbeat."""
 
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -10,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...models import SystemHeartbeat
 
 
-async def get_heartbeat(session: AsyncSession) -> Optional[SystemHeartbeat]:
+async def get_heartbeat(session: AsyncSession) -> SystemHeartbeat | None:
     """Get the heartbeat record.
 
     Args:

@@ -1,5 +1,5 @@
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,10 +13,10 @@ from app.self_check.types import SelfCheckFindingResult
 
 @pytest.fixture
 async def self_check_db(monkeypatch: pytest.MonkeyPatch):
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{temp_db.name}", echo=False)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -34,7 +34,7 @@ async def self_check_db(monkeypatch: pytest.MonkeyPatch):
     yield session_factory
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 def _finding(check_id: str, severity: str, status: str) -> SelfCheckFindingResult:
@@ -47,7 +47,7 @@ def _finding(check_id: str, severity: str, status: str) -> SelfCheckFindingResul
         message="Test result",
         evidence={},
         remediation=[],
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -111,6 +111,7 @@ async def test_game_port_correction_updates_current_state_and_retains_evidence(
     self_check_db, monkeypatch, tmp_path,
 ):
     from unittest.mock import AsyncMock
+
     from app.minecraft import MCServerStatus
     from app.self_check import crud
     from app.self_check.checks.base import SelfCheckContext
@@ -269,7 +270,7 @@ async def test_retention_prunes_all_old_runs(
     runner_module = _install_checks(monkeypatch, {"test.pass": pass_check})
 
     async with self_check_db() as session:
-        old_started = datetime.now(timezone.utc) - timedelta(days=15, minutes=1)
+        old_started = datetime.now(UTC) - timedelta(days=15, minutes=1)
         old_finished = old_started + timedelta(seconds=1)
         session.add(
             SelfCheckRun(

@@ -6,7 +6,20 @@ import pytest
 
 from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.types import TaskProgress, TaskStatus, TaskType
-from app.utils.exec import exec_command_stream
+from app.utils.exec import exec_command, exec_command_stream
+
+
+async def test_command_environment_does_not_inherit_parent_variables(monkeypatch):
+    variable = "MC_ADMIN_TEST_EXEC_PARENT_ONLY"
+    monkeypatch.setenv(variable, "parent-value")
+    program = "import os; print(os.environ.get('MC_ADMIN_TEST_EXEC_PARENT_ONLY', 'absent'))"
+
+    assert await exec_command(sys.executable, "-c", program) == "absent\n"
+    assert await exec_command(sys.executable, "-c", program, env=None) == "absent\n"
+    assert await exec_command(sys.executable, "-c", program, env={}) == "absent\n"
+    assert await exec_command(
+        sys.executable, "-c", program, env={variable: "child-value"}
+    ) == "child-value\n"
 
 
 async def test_cancellation_closes_generator_before_publishing_terminal_state():

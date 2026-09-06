@@ -5,12 +5,12 @@ Handles real-time log streaming and command execution using docker-py APIs.
 
 import asyncio
 import json
-from typing import Any, Optional
+from typing import Any
 
 import docker
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..logger import log_exception
+from ..logger import log_exception, logger
 from ..minecraft import MCInstance
 
 # Default number of history log lines to fetch
@@ -29,9 +29,9 @@ class ConsoleWebSocketHandler:
         self.instance = instance
         self._closed: bool = False
         self._socket: Any = None
-        self._read_task: Optional[asyncio.Task] = None
-        self._docker_client: Optional[docker.APIClient] = None
-        self._container_id: Optional[str] = None
+        self._read_task: asyncio.Task | None = None
+        self._docker_client: docker.APIClient | None = None
+        self._container_id: str | None = None
 
     async def handle_connection(self, server_id: str, cols: int, rows: int):
         """Handle the WebSocket connection lifecycle."""
@@ -53,6 +53,7 @@ class ConsoleWebSocketHandler:
         except WebSocketDisconnect:
             print(f"WebSocket disconnected for server {server_id}")
         except Exception as e:
+            logger.exception("Console connection failed")
             await self._handle_connection_error(e)
         finally:
             await self._cleanup()
@@ -108,6 +109,7 @@ class ConsoleWebSocketHandler:
                 await self._send_dict({"type": "info", "content": "暂无最近日志"})
 
         except Exception as e:
+            logger.exception("Cannot read console history")
             await self._send_error(f"获取历史日志失败: {e}")
 
     async def _socket_read_loop(self):
@@ -126,6 +128,7 @@ class ConsoleWebSocketHandler:
             except BlockingIOError:
                 await asyncio.sleep(0.01)
             except Exception as e:
+                logger.debug("Console stream read failed", exc_info=True)
                 if not self._closed:
                     await self._send_error(f"Stream error: {e}")
                 break
@@ -175,6 +178,7 @@ class ConsoleWebSocketHandler:
                 self._socket._sock, raw_data.encode("utf-8")
             )
         except Exception as e:
+            logger.exception("Cannot send console input")
             await self._send_dict({"type": "info", "message": f"发送输入失败: {e}"})
 
     async def _handle_resize(self, data: dict):
@@ -198,8 +202,8 @@ class ConsoleWebSocketHandler:
             await asyncio.to_thread(
                 self._docker_client.resize, self._container_id, rows, cols
             )
-        except Exception as e:
-            print(f"Failed to resize TTY: {e}")
+        except Exception:
+            logger.exception("Failed to resize TTY")
 
     async def _send_error(self, message: str):
         """Send error message."""
@@ -208,14 +212,14 @@ class ConsoleWebSocketHandler:
     async def _handle_connection_error(self, error: Exception):
         """Handle connection errors."""
         try:
-            await self._send_error(f"Connection error: {str(error)}")
+            await self._send_error(f"Connection error: {error!s}")
         except Exception:
-            pass
+            logger.debug("Cannot send console connection error", exc_info=True)
         finally:
             try:
                 await self.websocket.close()
             except Exception:
-                pass
+                logger.debug("Cannot close failed console connection", exc_info=True)
 
     @log_exception("Failed to send data over WebSocket")
     async def _send_dict(self, data: dict):
@@ -224,12 +228,12 @@ class ConsoleWebSocketHandler:
                 self.websocket.send_text(json.dumps(data)),
                 timeout=SEND_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._closed = True
             try:
                 await self.websocket.close()
             except Exception:
-                pass
+                logger.debug("Cannot close timed-out console connection", exc_info=True)
             raise
 
     async def _cleanup(self):
@@ -246,7 +250,7 @@ class ConsoleWebSocketHandler:
             try:
                 await asyncio.to_thread(socket.close)
             except Exception:
-                pass
+                logger.warning("Cannot close console socket", exc_info=True)
 
         docker_client = self._docker_client
         self._docker_client = None
@@ -254,4 +258,4 @@ class ConsoleWebSocketHandler:
             try:
                 await asyncio.to_thread(docker_client.close)
             except Exception:
-                pass
+                logger.warning("Cannot close console Docker client", exc_info=True)

@@ -10,7 +10,6 @@ from typing import Any
 
 import yaml
 
-
 _JSON_ID_PATTERN = re.compile(r'"id"\s*:\s*"([^"]+)"')
 
 

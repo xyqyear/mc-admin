@@ -5,7 +5,7 @@ This test file covers all code branches in the validation logic to ensure
 proper Union field handling and discriminated union enforcement.
 """
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
 import pytest
 from pydantic import Field
@@ -20,7 +20,7 @@ class TestUnionFieldValidation:
         """Test valid optional field (Union[Type, None]) - should pass."""
 
         class ValidOptionalConfig(BaseConfigSchema):
-            optional_field: Optional[str] = Field(
+            optional_field: str | None = Field(
                 default=None, description="Optional string"
             )
 
@@ -32,7 +32,7 @@ class TestUnionFieldValidation:
         """Test valid optional field using Union syntax - should pass."""
 
         class ValidOptionalUnionConfig(BaseConfigSchema):
-            optional_field: Union[str, None] = Field(
+            optional_field: str | None = Field(
                 default=None, description="Optional string"
             )
 
@@ -56,7 +56,7 @@ class TestUnionFieldValidation:
         """Test valid Union of non-BaseConfigSchema types - should pass."""
 
         class ValidNonBaseUnionConfig(BaseConfigSchema):
-            mixed_field: Union[str, int, bool] = Field(
+            mixed_field: str | int | bool = Field(
                 default="test", description="Mixed types"
             )
 
@@ -95,7 +95,7 @@ class TestUnionFieldValidation:
 
         class ValidAllBaseUnionConfig(BaseConfigSchema):
             config_union: Annotated[
-                Union[ConfigA, ConfigB],
+                ConfigA | ConfigB,
                 Field(description="Config union", discriminator="type"),
             ] = ConfigA()
 
@@ -145,7 +145,7 @@ class TestUnionFieldValidation:
         # Mixed unions are now allowed - they just don't get discriminators
         class ValidMixedUnionConfig(BaseConfigSchema):
             mixed_union: Annotated[
-                Union[ConfigE, str, int],
+                ConfigE | str | int,
                 Field(description="Mixed union without discriminator"),
             ] = "test"
 
@@ -201,7 +201,7 @@ class TestUnionFieldValidation:
 
             class InvalidNoDiscriminatorConfig(BaseConfigSchema):
                 invalid_union: Annotated[
-                    Union[ConfigA, ConfigB],
+                    ConfigA | ConfigB,
                     Field(description="Invalid union without discriminator"),
                 ] = ConfigA()
 
@@ -225,7 +225,7 @@ class TestUnionFieldValidation:
 
         class ValidCustomDiscriminatorConfig(BaseConfigSchema):
             storage: Annotated[
-                Union[DatabaseConfig, FileConfig],
+                DatabaseConfig | FileConfig,
                 Field(description="Storage configuration", discriminator="backend"),
             ] = DatabaseConfig()
 
@@ -254,10 +254,10 @@ class TestUnionFieldValidation:
         class ConfigWithAnnotatedList(BaseConfigSchema):
             providers: Annotated[
                 list[
-                    Annotated[Union[ProviderA, ProviderB], Field(discriminator="type")]
+                    Annotated[ProviderA | ProviderB, Field(discriminator="type")]
                 ],
                 Field(description="List of providers"),
-            ] = []
+            ] = Field(default_factory=list)
 
         # Should not raise an exception
         schema = ConfigWithAnnotatedList.model_json_schema()
@@ -328,18 +328,18 @@ class TestUnionFieldValidation:
         class ComplexUnionConfig(BaseConfigSchema):
             # Valid: all BaseConfigSchema with discriminator
             config_union: Annotated[
-                Union[NestedConfigA, NestedConfigB],
+                NestedConfigA | NestedConfigB,
                 Field(description="Config union", discriminator="type"),
             ] = NestedConfigA()
 
             # Valid: non-BaseConfigSchema union
             value_union: Annotated[
-                Union[str, int, float], Field(description="Value union")
+                str | int | float, Field(description="Value union")
             ] = "test"
 
             # Valid: optional field
             optional_config: Annotated[
-                Optional[NestedConfigA], Field(description="Optional config")
+                NestedConfigA | None, Field(description="Optional config")
             ] = None
 
         # Should not raise an exception
@@ -367,7 +367,7 @@ class TestUnionFieldValidation:
         # This should work - mixed union is allowed
         class WorkingConfig(BaseConfigSchema):
             union_field: Annotated[
-                Union[ValidConfig, str],
+                ValidConfig | str,
                 Field(description="Working union without discriminator"),
             ] = "test"
 
@@ -381,7 +381,7 @@ class TestUnionFieldValidation:
 
             class FailingConfig(BaseConfigSchema):
                 union_field: Annotated[
-                    Union[ValidConfig, InvalidConfigMissingType],
+                    ValidConfig | InvalidConfigMissingType,
                     Field(description="Failing union without discriminator"),
                 ] = ValidConfig()
 
@@ -406,11 +406,11 @@ class TestUnionFieldValidation:
         # This should work - valid unions
         class ValidMultipleUnionsConfig(BaseConfigSchema):
             union_a: Annotated[
-                Union[ConfigJ, ConfigK],
+                ConfigJ | ConfigK,
                 Field(description="Union A", discriminator="type"),
             ] = ConfigJ()
-            union_b: Annotated[Union[str, int], Field(description="Union B")] = "test"
-            optional_field: Annotated[Optional[str], Field(description="Optional")] = (
+            union_b: Annotated[str | int, Field(description="Union B")] = "test"
+            optional_field: Annotated[str | None, Field(description="Optional")] = (
                 None
             )
 
@@ -428,11 +428,11 @@ class TestUnionFieldValidation:
 
             class InvalidMultipleUnionsConfig(BaseConfigSchema):
                 union_valid: Annotated[
-                    Union[ConfigJ, ConfigK],
+                    ConfigJ | ConfigK,
                     Field(description="Valid union", discriminator="type"),
                 ] = ConfigJ()
                 union_invalid: Annotated[
-                    Union[ConfigJ, ConfigK],
+                    ConfigJ | ConfigK,
                     Field(description="Invalid union without discriminator"),
                 ] = ConfigJ()
 

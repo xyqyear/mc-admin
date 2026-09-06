@@ -3,7 +3,6 @@ Basic file operations for single files and directories.
 """
 
 from pathlib import Path
-from typing import List
 
 import aiofiles
 from aiofiles import os as aioos
@@ -22,7 +21,7 @@ from .utils import (
 )
 
 
-async def get_file_items(base_path: Path, current_path: str = "/") -> List[FileItem]:
+async def get_file_items(base_path: Path, current_path: str = "/") -> list[FileItem]:
     """Get list of files and directories in the specified path."""
     actual_path = await resolve_file_path(base_path, current_path)
 
@@ -84,8 +83,8 @@ async def get_file_content(base_path: Path, path: str) -> str:
         try:
             async with aiofiles.open(file_path, "r", encoding="latin1") as f:
                 content = await f.read()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Unable to read file as text")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Unable to read file as text") from exc
 
     return content
 

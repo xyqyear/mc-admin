@@ -258,18 +258,20 @@ class TestFileOperations:
         """Test that backup is restored on write error."""
         server_id, instance = mock_instance
 
-        with mock_file_operations_setup(instance):
+        with (
+            mock_file_operations_setup(instance),
+            patch('aiofiles.open', side_effect=Exception('Write error')),
+        ):
             # Mock file write to raise an exception
-            with patch("aiofiles.open", side_effect=Exception("Write error")):
-                response = client.post(
-                    f"/servers/{server_id}/files/content?path=/server.properties",
-                    headers={"Authorization": "Bearer test_master_token"},
-                    json={"content": "new content"},
-                )
+            response = client.post(
+                f"/servers/{server_id}/files/content?path=/server.properties",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"content": "new content"},
+            )
 
-                assert response.status_code == 500
-                # Global exception handler now formats error messages differently
-                assert "Write error" in response.json()["detail"]
+            assert response.status_code == 500
+            # Global exception handler now formats error messages differently
+            assert "Write error" in response.json()["detail"]
 
     def test_download_file(self, client, mock_instance):
         """Test downloading a file."""

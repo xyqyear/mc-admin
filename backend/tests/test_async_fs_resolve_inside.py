@@ -1,6 +1,5 @@
 """Unit tests for async_fs.resolve_inside containment checks."""
 
-from pathlib import Path
 
 import pytest
 

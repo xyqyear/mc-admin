@@ -70,11 +70,11 @@ def test_extracts_quilt_loader_id_without_dependency_ids(tmp_path: Path) -> None
     "content",
     [
         '{"schema_version":1,"quilt_loader":{"depends":[{"id":"ftbbackups2"}],',
-        '{"schema_version":1,"quilt_loader":{"depends":[{"id":"ftbbackups2"}],'
-        '"group":"invalid.e2e","id":"ordinary_mod","version":"1.0.0",}}',
-        '{"schema_version":1,"quilt_loader":{"group":"invalid.e2e",'
+        ('{"schema_version":1,"quilt_loader":{"depends":[{"id":"ftbbackups2"}],'
+        '"group":"invalid.e2e","id":"ordinary_mod","version":"1.0.0",}}'),
+        ('{"schema_version":1,"quilt_loader":{"group":"invalid.e2e",'
         '"id":"ftbbackups2","version":"1.0.0",'
-        '"metadata":{"description":"line one\nline two"}}}',
+        '"metadata":{"description":"line one\nline two"}}}'),
     ],
     ids=["truncated-dependency-first", "trailing-comma-dependency-first", "literal-newline"],
 )

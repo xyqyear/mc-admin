@@ -17,8 +17,8 @@ from app.chunk_prune.service import (
 )
 from app.mcmap.events import (
     MCMapChunksPrunedEvent,
-    MCMapPruneResultEvent,
     MCMapPrunedChunk,
+    MCMapPruneResultEvent,
 )
 from app.minecraft import MCServerStatus
 from app.routers.servers import chunk_prune as chunk_prune_router

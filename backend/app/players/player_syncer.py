@@ -1,7 +1,6 @@
 """Player status synchronization using RCON."""
 
 import asyncio
-from typing import Optional, Set
 
 from ..db.database import get_async_session
 from ..dynamic_config import config
@@ -17,7 +16,7 @@ class PlayerSyncer:
     """Periodically reconcile DB online state with RCON ``list``."""
 
     def __init__(self):
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._stop_flag = False
 
     async def start(self) -> None:
@@ -68,11 +67,11 @@ class PlayerSyncer:
 
         try:
             online_players = await instance.list_players()
-            online_player_names: Set[str] = {
+            online_player_names: set[str] = {
                 name for name in online_players if not is_ignored_player_name(name)
             }
         except Exception as e:
-            logger.warning(f"Failed to get player list from {server_id}: {e}")
+            logger.warning(f"Failed to get player list from {server_id}: {e}", exc_info=True)
             return
 
         async with get_async_session() as session:

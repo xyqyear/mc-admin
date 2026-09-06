@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from alembic import command
 from sqlalchemy import Connection, create_engine, inspect, text
 
+from alembic import command
 from app.db import migrations
 from app.models import Base
 

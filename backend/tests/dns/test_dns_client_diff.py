@@ -2,13 +2,11 @@
 Tests for DNS client diff functionality
 """
 
-from unittest.mock import AsyncMock
 
 import pytest
 
 from app.dns.dns import DNSClient
 from app.dns.types import AddRecordT, ReturnRecordT
-from app.dns.utils import RecordDiff
 
 
 class MockDNSClient(DNSClient):

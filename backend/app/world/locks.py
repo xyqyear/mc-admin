@@ -1,11 +1,11 @@
 """Per-server async operation lock for backup/restore mutual exclusion."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import AsyncIterator, Optional
 
 GLOBAL_LOCK_KEY = "__global__"
 
@@ -20,9 +20,9 @@ class ServerOperationKind(str, Enum):
 class LockHolder:
     kind: ServerOperationKind
     started_at: datetime
-    user_id: Optional[int]
+    user_id: int | None
     description: str
-    restoration_id: Optional[str] = None
+    restoration_id: str | None = None
 
 
 class ServerOperationLock:
@@ -78,7 +78,7 @@ class ServerOperationLock:
         lock = self._locks.get(server_id)
         return lock is not None and lock.locked()
 
-    def get_holder(self, server_id: str) -> Optional[LockHolder]:
+    def get_holder(self, server_id: str) -> LockHolder | None:
         return self._holders.get(server_id)
 
     def get_holders(self) -> dict[str, LockHolder]:

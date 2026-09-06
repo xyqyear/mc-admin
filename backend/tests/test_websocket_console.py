@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.auth.session import AUTH_COOKIE_NAME, create_session_token, get_system_user
 from app.main import api_app
@@ -63,7 +64,6 @@ class MockDockerAPIClient:
 
     def close(self):
         """Mock close method."""
-        pass
 
 
 class MockSocket:
@@ -163,9 +163,11 @@ class TestWebSocketConsole:
         ):
             mock_manager.get_instance.return_value = instance
 
-            with pytest.raises(Exception):
-                with client.websocket_connect(console_url(server_id)) as websocket:
-                    websocket.receive_json()
+            with (
+                pytest.raises(WebSocketDisconnect),
+                client.websocket_connect(console_url(server_id)) as websocket,
+            ):
+                websocket.receive_json()
 
     def test_websocket_server_not_found(self, client, mock_instance):
         """Test WebSocket connection when server doesn't exist."""
@@ -303,22 +305,20 @@ class TestWebSocketConsole:
         server_id, _ = mock_instance
         client.cookies.clear()
 
-        with pytest.raises(Exception):
-            with client.websocket_connect(
-                f"/servers/{server_id}/console?cols=80&rows=24"
-            ) as websocket:
-                websocket.receive_json()
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect(
+            f"/servers/{server_id}/console?cols=80&rows=24"
+        ) as websocket:
+            websocket.receive_json()
 
     def test_websocket_missing_cols_rows(self, client, mock_instance):
         """Test WebSocket connection without required cols/rows parameters."""
         server_id, _ = mock_instance
 
         # Should fail when cols/rows are missing
-        with pytest.raises(Exception):
-            with client.websocket_connect(
-                f"/servers/{server_id}/console"
-            ) as websocket:
-                websocket.receive_json()
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect(
+            f"/servers/{server_id}/console"
+        ) as websocket:
+            websocket.receive_json()
 
     def test_websocket_connection_lifecycle(self, client, mock_instance):
         """Test the complete WebSocket connection lifecycle."""

@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +16,7 @@ PlayerSkipReason = Literal[
 class PlayerLocationDimensionEntry(BaseModel):
     dimension_id: str
     folder: str
-    region_dir_relpath: Optional[str] = None
+    region_dir_relpath: str | None = None
     exists_on_disk: bool
 
 
@@ -29,12 +29,12 @@ class PlayerLocationPosition(BaseModel):
 class PlayerLocationEntry(BaseModel):
     id: str
     id_kind: PlayerIdKind
-    uuid: Optional[str] = None
+    uuid: str | None = None
     source: str
     storage: PlayerStorageKind
-    data_version: Optional[int] = None
+    data_version: int | None = None
     dimension_id: str
-    region_dir_relpath: Optional[str] = None
+    region_dir_relpath: str | None = None
     pos: PlayerLocationPosition
 
 
@@ -42,10 +42,10 @@ class PlayerLocationSkippedFile(BaseModel):
     source: str
     storage: PlayerStorageKind
     reason: PlayerSkipReason
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class PlayerLocationsResponse(BaseModel):
-    dimensions: List[PlayerLocationDimensionEntry] = Field(default_factory=list)
-    players: List[PlayerLocationEntry] = Field(default_factory=list)
-    skipped: List[PlayerLocationSkippedFile] = Field(default_factory=list)
+    dimensions: list[PlayerLocationDimensionEntry] = Field(default_factory=list)
+    players: list[PlayerLocationEntry] = Field(default_factory=list)
+    skipped: list[PlayerLocationSkippedFile] = Field(default_factory=list)

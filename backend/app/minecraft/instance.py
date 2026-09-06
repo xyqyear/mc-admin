@@ -142,6 +142,7 @@ class MCInstance:
                 )
             return mc_compose.get_server_name() == self._name
         except (yaml.YAMLError, ValueError, Exception):
+            logger.exception("Operation _verify_compose_yaml failed")
             return False
 
     async def get_compose_file(self) -> str:
@@ -370,7 +371,7 @@ class MCInstance:
         try:
             return await self.list_players_query()
         except Exception as e:
-            logger.debug(f"Query protocol failed for server {self._name}: {e}")
+            logger.debug(f"Query protocol failed for server {self._name}: {e}", exc_info=True)
 
         return await self._list_players_rcon()
 

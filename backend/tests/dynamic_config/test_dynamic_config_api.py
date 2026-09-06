@@ -52,10 +52,10 @@ class ApiComplexConfig(BaseConfigSchema):
 async def test_api_db():
     """Create a test database for API tests."""
     # Create temporary database file
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     # Create all tables
@@ -102,7 +102,7 @@ async def test_api_db():
         config_module.config_manager = original_manager
         router_module.config_manager = original_router_manager
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

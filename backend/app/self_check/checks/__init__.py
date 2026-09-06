@@ -49,8 +49,8 @@ CHECK_DEFINITIONS = _merge_definitions()
 
 
 __all__ = [
-    "BackupJarMatch",
     "CHECK_DEFINITIONS",
+    "BackupJarMatch",
     "CheckDefinition",
     "PermissionScanResult",
     "SelfCheckContext",

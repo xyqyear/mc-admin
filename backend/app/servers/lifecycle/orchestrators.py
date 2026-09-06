@@ -1,6 +1,5 @@
 import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +29,7 @@ from .types import CreateServerResult, CreateServerSpec, RemoveServerResult
 
 async def _resolve_yaml_and_metadata(
     db: AsyncSession, spec: CreateServerSpec
-) -> tuple[str, Optional[TemplateSnapshot], Optional[dict]]:
+) -> tuple[str, TemplateSnapshot | None, dict | None]:
     if spec.yaml_content and spec.template_id:
         raise HTTPException(
             status_code=400,
@@ -79,7 +78,7 @@ async def _resolve_yaml_and_metadata(
         variable_definitions=deserialize_variable_definitions_json(
             template.variable_definitions_json
         ),
-        snapshot_time=datetime.now(timezone.utc).isoformat(),
+        snapshot_time=datetime.now(UTC).isoformat(),
     )
 
     return yaml_content, snapshot, spec.variable_values
@@ -115,7 +114,7 @@ async def create_server_full(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    restart_cronjob_id: Optional[str] = None
+    restart_cronjob_id: str | None = None
     row_inserted = False
 
     try:
@@ -136,8 +135,7 @@ async def create_server_full(
             await log_monitor.start_server(server_id)
         except Exception as e:
             logger.warning(
-                f"log_monitor.start_server failed for {server_id}: {e}"
-            )
+                f"log_monitor.start_server failed for {server_id}: {e}", exc_info=True)
 
         if spec.restart_schedule is not None:
             schedule = await schedule_auto_restart(server_id, spec.restart_schedule)
@@ -146,7 +144,7 @@ async def create_server_full(
         try:
             await simple_dns_manager.update(db)
         except Exception as e:
-            logger.warning(f"dns update failed for {server_id}: {e}")
+            logger.warning(f"dns update failed for {server_id}: {e}", exc_info=True)
 
         return CreateServerResult(
             server_id=server_id,
@@ -159,30 +157,30 @@ async def create_server_full(
         if restart_cronjob_id is not None:
             try:
                 await cron_manager.cancel_cronjob(restart_cronjob_id)
-            except Exception as e:
-                logger.error(
+            except Exception:
+                logger.exception(
                     f"rollback: failed to cancel cronjob "
-                    f"{restart_cronjob_id} for {server_id}: {e}"
+                    f"{restart_cronjob_id} for {server_id}"
                 )
         try:
             await log_monitor.stop_watching(server_id)
-        except Exception as e:
-            logger.error(
-                f"rollback: stop_watching failed for {server_id}: {e}"
+        except Exception:
+            logger.exception(
+                f"rollback: stop_watching failed for {server_id}"
             )
         if row_inserted:
             try:
                 await mark_server_removed(
-                    db, server_id, datetime.now(timezone.utc)
+                    db, server_id, datetime.now(UTC)
                 )
-            except Exception as e:
-                logger.error(
-                    f"rollback: failed to mark {server_id} removed: {e}"
+            except Exception:
+                logger.exception(
+                    f"rollback: failed to mark {server_id} removed"
                 )
         try:
             await instance.remove()
-        except Exception as e:
-            logger.error(f"rollback: failed to remove {server_id}: {e}")
+        except Exception:
+            logger.exception(f"rollback: failed to remove {server_id}")
         raise
 
 
@@ -199,13 +197,13 @@ async def remove_server_full(
 
     cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cancelled_jobs = await cancel_restart_cronjobs_for_server(db, server_id)
     closed_sessions = await close_open_sessions(server_id, now=now)
     try:
         await log_monitor.stop_watching(server_id)
     except Exception as e:
-        logger.warning(f"log_monitor.stop_watching failed for {server_id}: {e}")
+        logger.warning(f"log_monitor.stop_watching failed for {server_id}: {e}", exc_info=True)
     await mark_server_removed(db, server_id, now)
 
     await instance.remove()
@@ -214,8 +212,7 @@ async def remove_server_full(
         await simple_dns_manager.update(db)
     except Exception as e:
         logger.warning(
-            f"dns update failed after removing {server_id}: {e}"
-        )
+            f"dns update failed after removing {server_id}: {e}", exc_info=True)
 
     return RemoveServerResult(
         server_id=server_id,
@@ -234,7 +231,7 @@ async def adopt_server_partial(
     try:
         await log_monitor.start_server(server_id)
     except Exception as e:
-        logger.warning(f"adopt: log_monitor failed for {server_id}: {e}")
+        logger.warning(f"adopt: log_monitor failed for {server_id}: {e}", exc_info=True)
 
     return CreateServerResult(
         server_id=server_id,
@@ -250,13 +247,13 @@ async def deactivate_server_partial(
     # Cancel+wait on background tasks; one may be mid-write against a vanished dir.
     cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cancelled_jobs = await cancel_restart_cronjobs_for_server(db, server_id)
     closed_sessions = await close_open_sessions(server_id, now=now)
     try:
         await log_monitor.stop_watching(server_id)
     except Exception as e:
-        logger.warning(f"deactivate: log_monitor failed for {server_id}: {e}")
+        logger.warning(f"deactivate: log_monitor failed for {server_id}: {e}", exc_info=True)
     await mark_server_removed(db, server_id, now)
 
     return RemoveServerResult(

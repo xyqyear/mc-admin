@@ -70,7 +70,7 @@ class SnapshotsConfig(BaseConfigSchema):
                 "不支持通配符。"
             ),
         ),
-    ] = [".mcmap"]
+    ] = Field(default=[".mcmap"])
 
     @field_validator("ignored_paths")
     @classmethod

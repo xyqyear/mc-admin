@@ -5,9 +5,27 @@ import pytest
 
 from app.dynamic_config.configs.self_check import SelfCheckConfig
 from app.minecraft import MCServerStatus
+from app.minecraft.properties import ServerProperties
 from app.self_check.checks.server import check_game_port_consistency
 
 COMPOSE = 'services:\n  mc:\n    ports: ["25517:25565"]\n'
+
+
+@pytest.mark.parametrize("values", [
+    {"server_port": 25565, "rcon_port": 25575, "level_name": "test-world"},
+    {"server-port": 25565, "rcon.port": 25575, "level-name": "test-world"},
+])
+def test_server_properties_accepts_field_names_and_aliases(values):
+    properties = ServerProperties.model_validate(values)
+
+    assert properties.server_port == 25565
+    assert properties.rcon_port == 25575
+    assert properties.level_name == "test-world"
+    assert properties.model_dump(by_alias=True, exclude_none=True) == {
+        "server-port": 25565,
+        "rcon.port": 25575,
+        "level-name": "test-world",
+    }
 
 
 @pytest.fixture

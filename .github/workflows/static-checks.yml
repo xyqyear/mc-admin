@@ -39,7 +39,7 @@ jobs:
         run: pnpm build
 
   backend-pyright:
-    name: backend pyright
+    name: backend lint and pyright
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -64,3 +64,6 @@ jobs:
 
       - name: Run pyright
         run: uv run pyright
+
+      - name: Run Ruff
+        run: uv run ruff check .

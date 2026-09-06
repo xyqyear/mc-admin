@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -69,7 +69,7 @@ def authenticate(client: TestClient, role: str) -> None:
         id=42,
         username=f"task-{role}",
         role=UserRole(role),
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     token, csrf = create_session_token(user)
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")

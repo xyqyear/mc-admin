@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,10 +58,10 @@ class ChunkPruneTaskMetadata:
     threshold_seconds: int
     threshold_ticks: int
     mode: PruneMode
-    user_id: Optional[int] = None
-    claims_file: Optional[Path] = None
-    result: Optional[dict[str, Any]] = None
-    geometry: Optional[ChunkPrunePreviewGeometryResponse] = None
+    user_id: int | None = None
+    claims_file: Path | None = None
+    result: dict[str, Any] | None = None
+    geometry: ChunkPrunePreviewGeometryResponse | None = None
     affected_regions_by_dimension: dict[str, set[tuple[int, int]]] = field(
         default_factory=dict
     )

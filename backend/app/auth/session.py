@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import Request, Response
@@ -57,7 +57,7 @@ def get_system_user() -> UserPublic:
         id=0,
         username="SYSTEM",
         role=UserRole.OWNER,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -127,7 +127,7 @@ def decode_session_claims(token: str) -> JwtClaims:
     except (BadSignatureError, DecodeError):
         raise TokenValidationError("Could not decode jwt token")
     except Exception as e:
-        raise TokenValidationError(f"Unexpected error decoding token: {e}")
+        raise TokenValidationError(f"Unexpected error decoding token: {e}") from e
 
     if payload.claims is None:
         raise TokenValidationError("JWT token invalid: missing claims field")
@@ -137,7 +137,7 @@ def decode_session_claims(token: str) -> JwtClaims:
     except ValidationError as e:
         raise TokenValidationError(f"JWT token invalid: {e}")
 
-    if jwt_claims.exp < datetime.now(timezone.utc):
+    if jwt_claims.exp < datetime.now(UTC):
         raise TokenValidationError("Token expired")
 
     return jwt_claims

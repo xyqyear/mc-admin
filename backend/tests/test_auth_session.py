@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -30,7 +30,7 @@ def user():
         id=42,
         username="owner",
         role=UserRole.OWNER,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -84,7 +84,7 @@ def test_password_login_sets_auth_cookies_without_returning_token(client):
         username="owner",
         hashed_password="hash",
         role=UserRole.OWNER,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     api_app.dependency_overrides[get_db] = override_get_db
     try:

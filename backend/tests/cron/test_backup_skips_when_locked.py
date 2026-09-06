@@ -1,6 +1,6 @@
 """Test that backup_cronjob skips when the per-server lock is already held."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,7 +20,7 @@ def _make_context(params: BackupJobParams) -> ExecutionContext:
         identifier="backup-test",
         execution_id="exec-test",
         params=params,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
 
 
@@ -29,7 +29,7 @@ async def test_backup_skips_when_server_lock_is_held():
     server_id = "lock-test-srv"
     holder = LockHolder(
         kind=ServerOperationKind.RESTORE,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=1,
         description="restore in progress",
     )
@@ -51,7 +51,7 @@ async def test_backup_skips_when_server_lock_is_held():
 async def test_backup_skips_when_global_lock_is_held():
     holder = LockHolder(
         kind=ServerOperationKind.BACKUP,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=None,
         description="another backup",
     )

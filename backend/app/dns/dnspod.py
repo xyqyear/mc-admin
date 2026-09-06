@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import Callable, Literal, Protocol, TypedDict, cast
+from collections.abc import Callable
+from typing import Literal, Protocol, TypedDict, cast
 
 from tencentcloud.common import credential
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
@@ -172,14 +173,14 @@ class DNSPodClient(DNSClient):
 
         domain_list = response["DomainList"]
         if len(domain_list) == 0:
-            raise Exception("There is no domain in this account.")
+            raise RuntimeError("There is no domain in this account.")
 
         for domain in domain_list:
             if domain["Name"] == self._domain:
                 self._domain_id = domain["DomainId"]
                 return
 
-        raise Exception(f"There is no domain named {self._domain} in this account.")
+        raise RuntimeError(f"There is no domain named {self._domain} in this account.")
 
     async def _send_request(
         self, request_name: DNSPodAPIRequestNameT, params: DNSPodAPIRequestParamsT
@@ -209,14 +210,14 @@ class DNSPodClient(DNSClient):
         for i in range(retry_times):
             try:
                 return await self._send_request(request_name, params)
-            except TencentCloudSDKException as e:
+            except TencentCloudSDKException:
                 if i == retry_times - 1:
-                    raise e
+                    raise
                 await asyncio.sleep(1)
 
         # not actually reachable
         # just to make pylance happy
-        raise Exception(f"Failed to call {request_name} api")
+        raise RuntimeError(f"Failed to call {request_name} api")
 
     async def list_records(self) -> RecordListT:
         """

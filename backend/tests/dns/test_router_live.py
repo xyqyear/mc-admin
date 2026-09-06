@@ -6,7 +6,6 @@ import httpx2
 
 from app.dns.router import MCRouterClient
 
-
 ROUTER_IMAGE = "itzg/mc-router@sha256:e06735ea74877a7de649bcaec4cb917bf952564d32cbe258670fb7753192a1e9"
 
 

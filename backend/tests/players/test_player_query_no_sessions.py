@@ -13,7 +13,7 @@ these two cases.
 """
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -28,9 +28,8 @@ from app.players.crud.query.player_query import (
 
 async def create_test_db():
     """Create a temporary test database and return session."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db_path = Path(temp_db.name)
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        temp_db_path = Path(temp_db.name)
 
     database_url = f"sqlite+aiosqlite:///{temp_db_path}"
     engine = create_async_engine(database_url, echo=False)
@@ -69,7 +68,7 @@ async def test_player_without_sessions_has_null_last_seen():
         # Create test server
         test_server = Server(
             server_id="test_server_no_sessions",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -78,7 +77,7 @@ async def test_player_without_sessions_has_null_last_seen():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="PlayerNoSessions",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.commit()
@@ -132,7 +131,7 @@ async def test_player_with_offline_session_has_left_at_as_last_seen():
         # Create test server
         test_server = Server(
             server_id="test_server_offline",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -141,13 +140,13 @@ async def test_player_with_offline_session_has_left_at_as_last_seen():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="PlayerOffline",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.flush()
 
         # Create offline session
-        left_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        left_time = datetime.now(UTC) - timedelta(hours=1)
         session = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
@@ -195,7 +194,7 @@ async def test_player_with_online_session_has_current_time_as_last_seen():
         # Create test server
         test_server = Server(
             server_id="test_server_online",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -204,7 +203,7 @@ async def test_player_with_online_session_has_current_time_as_last_seen():
         test_player = Player(
             uuid=test_player_uuid,
             current_name="PlayerOnline",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_player)
         await db.flush()
@@ -213,7 +212,7 @@ async def test_player_with_online_session_has_current_time_as_last_seen():
         session = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
-            joined_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            joined_at=datetime.now(UTC) - timedelta(minutes=10),
             left_at=None,  # Online
             duration_seconds=None,
         )
@@ -230,7 +229,7 @@ async def test_player_with_online_session_has_current_time_as_last_seen():
 
         # last_seen should be very recent (current_timestamp)
         assert test_player_summary.last_seen is not None, "last_seen should not be NULL"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_diff = abs((test_player_summary.last_seen - now).total_seconds())
         assert time_diff < 2, (
             f"Online player's last_seen should be current_timestamp, "
@@ -261,7 +260,7 @@ async def test_multiple_players_mixed_session_states():
         # Create test server
         test_server = Server(
             server_id="test_server_mixed",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(test_server)
         await db.flush()
@@ -270,7 +269,7 @@ async def test_multiple_players_mixed_session_states():
         player1 = Player(
             uuid="uuid-no-sessions",
             current_name="Player1NoSessions",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(player1)
 
@@ -278,12 +277,12 @@ async def test_multiple_players_mixed_session_states():
         player2 = Player(
             uuid="uuid-offline",
             current_name="Player2Offline",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(player2)
         await db.flush()
 
-        left_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        left_time = datetime.now(UTC) - timedelta(hours=1)
         session2 = PlayerSession(
             player_db_id=player2.player_db_id,
             server_db_id=test_server.id,
@@ -297,7 +296,7 @@ async def test_multiple_players_mixed_session_states():
         player3 = Player(
             uuid="uuid-online",
             current_name="Player3Online",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(player3)
         await db.flush()
@@ -305,7 +304,7 @@ async def test_multiple_players_mixed_session_states():
         session3 = PlayerSession(
             player_db_id=player3.player_db_id,
             server_db_id=test_server.id,
-            joined_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            joined_at=datetime.now(UTC) - timedelta(minutes=10),
             left_at=None,
             duration_seconds=None,
         )
@@ -337,7 +336,7 @@ async def test_multiple_players_mixed_session_states():
         summary3 = next((p for p in players_summary if p.uuid == "uuid-online"), None)
         assert summary3 is not None
         assert summary3.last_seen is not None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         assert abs((summary3.last_seen - now).total_seconds()) < 2
         assert summary3.is_online is True
 

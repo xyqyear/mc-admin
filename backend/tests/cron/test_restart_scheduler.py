@@ -394,7 +394,7 @@ class TestRestartScheduler:
             day_pattern="1", month_pattern="*/2", weekday_pattern="1-5"
         )
         parts = cron_expr.split()
-        minute, hour, day, month, weekday = parts
+        _minute, _hour, day, month, weekday = parts
 
         assert day == "1"
         assert month == "*/2"

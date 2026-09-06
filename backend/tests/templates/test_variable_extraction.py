@@ -46,7 +46,7 @@ class TestExtractVariablesFromCompose:
         compose = "ratio: 0.75"
         variables = [FloatVariableDefinition(name="ratio", display_name="Ratio")]
 
-        extracted, warnings = TemplateManager.extract_variables_from_compose(
+        extracted, _warnings = TemplateManager.extract_variables_from_compose(
             template, compose, variables
         )
         assert extracted["ratio"] == 0.75
@@ -58,7 +58,7 @@ class TestExtractVariablesFromCompose:
         compose = "enabled: true"
         variables = [BoolVariableDefinition(name="flag", display_name="Flag")]
 
-        extracted, warnings = TemplateManager.extract_variables_from_compose(
+        extracted, _warnings = TemplateManager.extract_variables_from_compose(
             template, compose, variables
         )
         assert extracted["flag"] is True
@@ -414,7 +414,7 @@ services:
         # Only define 'name', not 'port'
         variables = [StringVariableDefinition(name="name", display_name="Name")]
 
-        extracted, warnings = TemplateManager.extract_variables_from_compose(
+        extracted, _warnings = TemplateManager.extract_variables_from_compose(
             template, compose, variables
         )
         assert extracted["name"] == "survival"

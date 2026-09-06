@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Tuple
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,39 +13,39 @@ TeamType = Literal["player", "party", "server", "unknown"]
 
 
 class ClaimMember(BaseModel):
-    uuid: Optional[str] = None
-    name: Optional[str] = None
-    rank: Optional[str] = None
+    uuid: str | None = None
+    name: str | None = None
+    rank: str | None = None
 
 
 class ClaimDimensionEntry(BaseModel):
     ftb_id: str
-    region_dir_relpath: Optional[str] = None
+    region_dir_relpath: str | None = None
     exists_on_disk: bool
 
 
 class ClusterEntry(BaseModel):
     id: str
-    region_dir_relpath: Optional[str] = None
-    chunks: List[Tuple[int, int]]
-    force_loaded: List[Tuple[int, int]]
-    centroid_block: Tuple[float, float]
-    bbox_chunk: Tuple[int, int, int, int]
-    regions: List[Tuple[int, int]]
+    region_dir_relpath: str | None = None
+    chunks: list[tuple[int, int]]
+    force_loaded: list[tuple[int, int]]
+    centroid_block: tuple[float, float]
+    bbox_chunk: tuple[int, int, int, int]
+    regions: list[tuple[int, int]]
 
 
 class TeamEntry(BaseModel):
     id: str
     display_name: str
     type: TeamType
-    members: List[ClaimMember] = Field(default_factory=list)
-    owner: Optional[ClaimMember] = None
+    members: list[ClaimMember] = Field(default_factory=list)
+    owner: ClaimMember | None = None
     total_chunks: int
-    clusters: List[ClusterEntry] = Field(default_factory=list)
+    clusters: list[ClusterEntry] = Field(default_factory=list)
 
 
 class ClaimsResponse(BaseModel):
     available: bool
-    detected_format: Optional[DetectedFormat] = None
-    dimensions: List[ClaimDimensionEntry] = Field(default_factory=list)
-    teams: List[TeamEntry] = Field(default_factory=list)
+    detected_format: DetectedFormat | None = None
+    dimensions: list[ClaimDimensionEntry] = Field(default_factory=list)
+    teams: list[TeamEntry] = Field(default_factory=list)

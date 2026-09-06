@@ -1,8 +1,7 @@
 """Player query functions for API endpoints."""
 
 import base64
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from sqlalchemy import Integer, case, func, select
@@ -57,7 +56,7 @@ def _get_last_seen_expression():
     online_count = func.count(
         case(
             (
-                (PlayerSession.session_id != None) & (PlayerSession.left_at == None),  # noqa: E711
+                (PlayerSession.session_id != None) & (PlayerSession.left_at == None),
                 1,
             )
         )
@@ -72,7 +71,7 @@ def _get_last_seen_expression():
 
 async def get_player_last_seen(
     session: AsyncSession, player_db_id: int
-) -> Optional[datetime]:
+) -> datetime | None:
     """Get player's last seen timestamp.
 
     Logic:
@@ -97,7 +96,7 @@ async def get_player_last_seen(
 
     # Ensure timezone-aware datetime (SQLite current_timestamp returns naive UTC)
     if last_seen is not None and last_seen.tzinfo is None:
-        last_seen = last_seen.replace(tzinfo=timezone.utc)
+        last_seen = last_seen.replace(tzinfo=UTC)
 
     return last_seen
 
@@ -108,9 +107,9 @@ class PlayerSummary(BaseModel):
     player_db_id: int
     uuid: str
     current_name: str
-    avatar_base64: Optional[str]
+    avatar_base64: str | None
     is_online: bool
-    last_seen: Optional[datetime]
+    last_seen: datetime | None
     total_playtime_seconds: int
     first_seen: datetime
 
@@ -121,11 +120,11 @@ class PlayerDetailResponse(BaseModel):
     player_db_id: int
     uuid: str
     current_name: str
-    skin_base64: Optional[str]
-    avatar_base64: Optional[str]
+    skin_base64: str | None
+    avatar_base64: str | None
     is_online: bool
-    current_servers: List[str]
-    last_seen: Optional[datetime]
+    current_servers: list[str]
+    last_seen: datetime | None
     first_seen: datetime
     total_playtime_seconds: int
     total_sessions: int
@@ -136,8 +135,8 @@ class PlayerDetailResponse(BaseModel):
 async def get_all_players_summary(
     session: AsyncSession,
     online_only: bool = False,
-    server_id: Optional[str] = None,
-) -> List[PlayerSummary]:
+    server_id: str | None = None,
+) -> list[PlayerSummary]:
     """Get all players summary.
 
     Args:
@@ -178,7 +177,7 @@ async def get_all_players_summary(
 
     # Check online status using player_session (left_at IS NULL means online)
     online_status_query = select(PlayerSession.player_db_id).where(
-        PlayerSession.left_at == None  # noqa: E711
+        PlayerSession.left_at == None
     )
     if server_db_id:
         online_status_query = online_status_query.where(
@@ -209,7 +208,7 @@ async def get_all_players_summary(
         # Ensure last_seen is timezone-aware (SQLite current_timestamp returns naive UTC)
         last_seen = row.last_seen
         if last_seen is not None and last_seen.tzinfo is None:
-            last_seen = last_seen.replace(tzinfo=timezone.utc)
+            last_seen = last_seen.replace(tzinfo=UTC)
 
         players.append(
             PlayerSummary(
@@ -229,7 +228,7 @@ async def get_all_players_summary(
 
 async def get_player_detail_by_uuid(
     session: AsyncSession, uuid: str
-) -> Optional[PlayerDetailResponse]:
+) -> PlayerDetailResponse | None:
     """Get player detail by UUID.
 
     Args:
@@ -300,7 +299,7 @@ async def _build_player_detail(
         .join(PlayerSession, PlayerSession.server_db_id == Server.id)
         .where(
             PlayerSession.player_db_id == player.player_db_id,
-            PlayerSession.left_at == None,  # noqa: E711
+            PlayerSession.left_at == None,
         )
     )
     current_servers = [server_id for (server_id,) in online_sessions_result.all()]

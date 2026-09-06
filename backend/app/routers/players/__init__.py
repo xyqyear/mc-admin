@@ -6,8 +6,8 @@ from .players import router as players_router
 from .sessions import router as sessions_router
 
 __all__ = [
+    "achievements_router",
+    "chat_router",
     "players_router",
     "sessions_router",
-    "chat_router",
-    "achievements_router",
 ]

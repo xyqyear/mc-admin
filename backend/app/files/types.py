@@ -4,7 +4,7 @@ File operation type definitions and Pydantic models.
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class FileItem(BaseModel):
 
 
 class FileListResponse(BaseModel):
-    items: List[FileItem]
+    items: list[FileItem]
     current_path: str
 
 
@@ -49,13 +49,13 @@ class FileStructureItem(BaseModel):
     path: str  # Relative path within the upload structure
     name: str  # File or directory name
     type: Literal["file", "directory"]
-    size: Optional[int] = None  # Size for files, None for directories
+    size: int | None = None  # Size for files, None for directories
 
 
 class MultiFileUploadRequest(BaseModel):
     """Request to check file structure before upload"""
 
-    files: List[FileStructureItem]  # Files and directories to upload
+    files: list[FileStructureItem]  # Files and directories to upload
 
 
 class OverwriteConflict(BaseModel):
@@ -63,15 +63,15 @@ class OverwriteConflict(BaseModel):
 
     path: str  # Full path on server
     type: Literal["file", "directory"]
-    current_size: Optional[int] = None  # Current file size if it's a file
-    new_size: Optional[int] = None  # New file size if it's a file
+    current_size: int | None = None  # Current file size if it's a file
+    new_size: int | None = None  # New file size if it's a file
 
 
 class UploadConflictResponse(BaseModel):
     """Response with overwrite conflicts"""
 
     session_id: str  # Unique session ID for this upload
-    conflicts: List[OverwriteConflict]  # Files that would be overwritten
+    conflicts: list[OverwriteConflict]  # Files that would be overwritten
 
 
 class OverwriteDecision(BaseModel):
@@ -85,7 +85,7 @@ class OverwritePolicy(BaseModel):
     """Policy for handling overwrite conflicts"""
 
     mode: Literal["always_overwrite", "never_overwrite", "per_file"]
-    decisions: Optional[List[OverwriteDecision]] = (
+    decisions: list[OverwriteDecision] | None = (
         None  # Required when mode is "per_file"
     )
 
@@ -94,8 +94,8 @@ class UploadSession(BaseModel):
     """Upload session data stored in memory"""
 
     session_id: str
-    conflicts: List[OverwriteConflict]
-    policy: Optional[OverwritePolicy] = None
+    conflicts: list[OverwriteConflict]
+    policy: OverwritePolicy | None = None
     expires_at: float  # Unix timestamp
     created_at: float  # Unix timestamp
     reusable: bool = False  # Whether session can be reused for multiple uploads
@@ -106,7 +106,7 @@ class UploadFileResult(BaseModel):
     """Result for individual file upload"""
 
     status: Literal["success", "failed", "skipped"]
-    reason: Optional[str] = (
+    reason: str | None = (
         None  # Error message for failed, reason for skipped ("exists", "no_decision")
     )
 
@@ -115,7 +115,7 @@ class MultiFileUploadResult(BaseModel):
     """Results for multi-file upload operation"""
 
     message: str
-    results: Dict[str, UploadFileResult]  # Key is file path, value is result
+    results: dict[str, UploadFileResult]  # Key is file path, value is result
 
 
 # File search models
@@ -147,16 +147,16 @@ class FileSearchRequest(BaseModel):
     search_subfolders: bool = Field(
         default=True, description="Whether to search in subfolders"
     )
-    min_size: Optional[int] = Field(
+    min_size: int | None = Field(
         default=None, description="Minimum file size in bytes", ge=0
     )
-    max_size: Optional[int] = Field(
+    max_size: int | None = Field(
         default=None, description="Maximum file size in bytes", ge=0
     )
-    newer_than: Optional[datetime] = Field(
+    newer_than: datetime | None = Field(
         default=None, description="Find files newer than this date"
     )
-    older_than: Optional[datetime] = Field(
+    older_than: datetime | None = Field(
         default=None, description="Find files older than this date"
     )
 
@@ -165,6 +165,6 @@ class FileSearchResponse(BaseModel):
     """Response containing search results"""
 
     query: FileSearchRequest
-    results: List[SearchFileItem]
+    results: list[SearchFileItem]
     total_count: int
     search_path: str

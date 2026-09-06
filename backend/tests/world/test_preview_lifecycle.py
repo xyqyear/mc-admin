@@ -3,7 +3,7 @@ disk guard, one-preview-per-server enforcement."""
 
 import asyncio
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -111,7 +111,7 @@ async def test_reap_stale_sessions(manager):
     stale = await manager.create_session("srv2")
     stale_sid = stale.name
     # Force stale session's last_seen to be older than TTL.
-    manager._sessions[stale_sid].last_seen = datetime.now(timezone.utc) - timedelta(
+    manager._sessions[stale_sid].last_seen = datetime.now(UTC) - timedelta(
         seconds=60 + 60
     )
     reaped = await manager.reap_stale()
@@ -142,9 +142,8 @@ async def test_disk_guard_raises_when_free_too_low(manager):
     """Mock disk_free_bytes to simulate near-full disk."""
     with patch.object(
         manager, "disk_free_bytes", new=AsyncMock(return_value=default_region_bytes)
-    ):
-        with pytest.raises(PreviewDiskGuardError) as exc:
-            await manager.create_session("srv1", affected_regions=100)
+    ), pytest.raises(PreviewDiskGuardError) as exc:
+        await manager.create_session("srv1", affected_regions=100)
     assert exc.value.free == default_region_bytes
     assert exc.value.required > exc.value.free
 
@@ -155,9 +154,11 @@ async def test_disk_guard_uses_dynamic_region_size(manager, monkeypatch):
         "app.world.preview.config",
         _runtime_config(region_bytes=4096),
     )
-    with patch.object(manager, "disk_free_bytes", new=AsyncMock(return_value=4096)):
-        with pytest.raises(PreviewDiskGuardError) as exc:
-            await manager.create_session("srv1", affected_regions=1)
+    with (
+        patch.object(manager, 'disk_free_bytes', new=AsyncMock(return_value=4096)),
+        pytest.raises(PreviewDiskGuardError) as exc,
+    ):
+        await manager.create_session("srv1", affected_regions=1)
     assert exc.value.required == 4096 * 2
 
 
@@ -199,7 +200,7 @@ async def test_janitor_reaps_stale_in_background(base_dir, monkeypatch):
     session_dir = await manager.create_session("srv1")
     sid = session_dir.name
     # Backdate last_seen so it's already stale.
-    manager._sessions[sid].last_seen = datetime.now(timezone.utc) - timedelta(seconds=10)
+    manager._sessions[sid].last_seen = datetime.now(UTC) - timedelta(seconds=10)
     manager.start_janitor()
     try:
         # Wait up to 5s for the janitor to reap.

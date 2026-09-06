@@ -2,7 +2,7 @@
 Server restart schedule management API endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi import status as http_status
 from pydantic import BaseModel
 
@@ -130,7 +130,10 @@ async def schedule_auto_restart(
 @router.post("/{server_id}/restart-schedule", response_model=RestartScheduleResponse)
 async def create_or_update_restart_schedule(
     server_id: str,
-    request: RestartScheduleRequest = RestartScheduleRequest(),
+    request: RestartScheduleRequest = Body(
+        default_factory=RestartScheduleRequest,
+        json_schema_extra={"default": {}},
+    ),
     current_user: UserPublic = Depends(get_current_user),
 ):
     """

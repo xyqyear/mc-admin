@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 
@@ -92,10 +92,10 @@ async def events_websocket(
                     subscription.queue.get(),
                     timeout=HEARTBEAT_INTERVAL,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await _send_frame(
                     websocket,
-                    HeartbeatFrame(timestamp=datetime.now(timezone.utc)),
+                    HeartbeatFrame(timestamp=datetime.now(UTC)),
                 )
                 continue
 

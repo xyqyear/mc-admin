@@ -45,12 +45,10 @@ class TestDNSBasicFunctionality:
         mock_config = MagicMock()
         mock_config.dns.enabled = True
 
-        with patch("app.dns.manager.config", mock_config):
-            with patch.object(
-                manager, "_ensure_up_to_date_config", new_callable=AsyncMock
-            ):
-                with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-                    await manager.get_current_diff(AsyncMock())
+        with patch("app.dns.manager.config", mock_config), patch.object(
+            manager, "_ensure_up_to_date_config", new_callable=AsyncMock
+        ), pytest.raises(RuntimeError, match="DNS manager not initialized"):
+            await manager.get_current_diff(AsyncMock())
 
     def test_record_diff_structure(self):
         diff = RecordDiff(records_to_add=[], records_to_remove=[], records_to_update=[])

@@ -1,3 +1,4 @@
+from ...logger import logger
 from ...snapshots import snapshot_service
 from ...world import GLOBAL_LOCK_KEY, server_operation_lock
 from ..types import SelfCheckFindingResult
@@ -44,6 +45,7 @@ async def check_repo_restic_active(
     try:
         output = await snapshot_service.list_locks()
     except Exception as exc:
+        logger.warning("Cannot query Restic repository locks", exc_info=True)
         return [
             finding(
                 check_id=definition.check_id,

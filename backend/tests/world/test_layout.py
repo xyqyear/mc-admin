@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
+import app.world.layout as layout_module
 from app.config import settings
 from app.dynamic_config.configs.world import WorldConfig
-import app.world.layout as layout_module
 from app.world.layout import (
-    WorldRootPath,
     WorldLayoutDiscoveryError,
     WorldRoot,
+    WorldRootPath,
     discover_world_root_paths,
     discover_world_roots,
     resolve_dimension_folder,

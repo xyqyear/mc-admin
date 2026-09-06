@@ -7,7 +7,6 @@ from pydantic import ConfigDict, Field
 from ..dynamic_config.schemas import BaseConfigSchema
 from .constants import SCHEDULED_TRIGGER
 
-
 RUN_STATUS_LABELS = {
     "success": "正常",
     "warning": "警告",

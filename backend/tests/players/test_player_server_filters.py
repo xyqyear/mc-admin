@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -29,7 +29,7 @@ async def player_history():
             servers = [Server(server_id=name) for name in ("alpha", "beta")]
             session.add_all([player, other, *servers])
             await session.flush()
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for owner in (player, other):
                 for server in servers:
                     session.add_all(

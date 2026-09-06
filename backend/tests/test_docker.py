@@ -104,17 +104,12 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
     server2_create_coroutine = server2.create(server2_compose_yaml)
     await aioos.makedirs(TEST_ROOT_PATH / "irrelevant_dir", exist_ok=True)
     await asyncio.gather(server1_create_coroutine, server2_create_coroutine)
-    assert set(await docker_mc_manager.get_all_server_names()) == set(
-        ["testserver1", "testserver2"]
-    )
-    assert set(await docker_mc_manager.get_all_server_compose_paths()) == set(
-        [
+    assert set(await docker_mc_manager.get_all_server_names()) == {"testserver1", "testserver2"}
+    assert set(await docker_mc_manager.get_all_server_compose_paths()) == {
             TEST_ROOT_PATH / "testserver1/docker-compose.yml",
             TEST_ROOT_PATH / "testserver2/docker-compose.yml",
-        ]
-    )
-    assert set(await docker_mc_manager.get_all_server_info()) == set(
-        [
+        }
+    assert set(await docker_mc_manager.get_all_server_info()) == {
             MCServerInfo(
                 name="testserver1",
                 path=server1.get_project_path(),
@@ -135,8 +130,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
                 game_port=34554,
                 rcon_port=34554 + 1,
             ),
-        ]
-    )
+        }
     assert set(await docker_mc_manager.get_running_server_names()) == set()
 
     print("servers created")
@@ -149,9 +143,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
     wait_server2_coroutine = server2.wait_until_healthy()
     await asyncio.gather(wait_server1_coroutine, wait_server2_coroutine)
 
-    assert set(await docker_mc_manager.get_running_server_names()) == set(
-        ["testserver1", "testserver2"]
-    )
+    assert set(await docker_mc_manager.get_running_server_names()) == {"testserver1", "testserver2"}
 
     print("servers healthy")
 
@@ -171,7 +163,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
 
     print("client2 connected")
 
-    assert set(await server1.list_players()) == set(["client1", "client2"])
+    assert set(await server1.list_players()) == {"client1", "client2"}
 
     random_text1 = str(random.random())
     random_text2 = str(random.random())

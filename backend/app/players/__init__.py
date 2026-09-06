@@ -17,7 +17,6 @@ async def start_player_system() -> None:
     from ..db.database import get_async_session
     from ..log_monitor import log_monitor
     from ..servers.crud import get_active_servers
-
     from .heartbeat import heartbeat_manager
     from .player_syncer import player_syncer
 
@@ -29,20 +28,18 @@ async def start_player_system() -> None:
         async with get_async_session() as db:
             rows = await get_active_servers(db)
             server_ids = [r.server_id for r in rows]
-    except Exception as e:
-        logger.error(
-            f"Error reading active servers for log monitoring: {e}",
-            exc_info=True,
+    except Exception:
+        logger.exception(
+            "Error reading active servers for log monitoring",
         )
 
     for server_id in server_ids:
         try:
             await log_monitor.start_server(server_id)
-        except Exception as e:
-            logger.error(
-                f"Error starting log monitoring for {server_id}: {e}",
-                exc_info=True,
-            )
+        except Exception:
+            logger.exception(
+                f"Error starting log monitoring for {server_id}",
+                )
 
     await player_syncer.start()
 
@@ -52,7 +49,6 @@ async def start_player_system() -> None:
 async def stop_player_system() -> None:
     """Stop all player tracking subsystems."""
     from ..log_monitor import log_monitor
-
     from .heartbeat import heartbeat_manager
     from .player_syncer import player_syncer
 

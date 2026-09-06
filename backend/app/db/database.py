@@ -1,10 +1,9 @@
 import re
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from ..config import settings
-from ..models import Base
 
 # SQLite needs the aiosqlite driver for async access.
 async_database_url = re.sub(
@@ -21,7 +20,7 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """FastAPI dependency for async database sessions."""
     async with AsyncSessionLocal() as session:
         yield session

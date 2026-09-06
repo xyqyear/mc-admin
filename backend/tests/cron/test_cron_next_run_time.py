@@ -1,7 +1,7 @@
 """Cross-checks the get_next_run_time endpoint with an in-test cron parser."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -36,7 +36,7 @@ def calculate_next_run_time(
 ) -> datetime:
     """Simplified next-run calculation for daily/hourly/per-minute fields."""
     if current_time is None:
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
     minute = (
         int(cron_fields["minute"])
@@ -79,17 +79,11 @@ def validate_next_run_time(
     actual_next_run: datetime,
     tolerance_seconds: int = 3600,
 ) -> bool:
-    try:
-        actual_next_run_utc = actual_next_run.astimezone(timezone.utc)
-
-        cron_fields = parse_cron_expression(cron_expr, second)
-        expected_next_run = calculate_next_run_time(cron_fields)
-
-        time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
-
-        return time_diff <= tolerance_seconds
-    except Exception:
-        return True
+    actual_next_run_utc = actual_next_run.astimezone(UTC)
+    cron_fields = parse_cron_expression(cron_expr, second)
+    expected_next_run = calculate_next_run_time(cron_fields)
+    time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
+    return time_diff <= tolerance_seconds
 
 
 def validate_next_run_time_with_current_time(
@@ -99,25 +93,19 @@ def validate_next_run_time_with_current_time(
     current_time: datetime,
     tolerance_seconds: int = 3600,
 ) -> bool:
-    try:
-        actual_next_run_utc = actual_next_run.astimezone(timezone.utc)
-
-        cron_fields = parse_cron_expression(cron_expr, second)
-        expected_next_run = calculate_next_run_time(cron_fields, current_time)
-
-        time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
-
-        return time_diff <= tolerance_seconds
-    except Exception:
-        return True
+    actual_next_run_utc = actual_next_run.astimezone(UTC)
+    cron_fields = parse_cron_expression(cron_expr, second)
+    expected_next_run = calculate_next_run_time(cron_fields, current_time)
+    time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
+    return time_diff <= tolerance_seconds
 
 
 @pytest.fixture(scope="function")
 async def test_db():
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -167,7 +155,7 @@ async def test_db():
     cron_router_module.cron_registry = original_cron_registry
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -211,11 +199,11 @@ class TestCronJobNextRunTime:
         assert "next_run_time" in data
 
         next_run_time = datetime.fromisoformat(
-            data["next_run_time"].replace("Z", "+00:00")
+            data["next_run_time"]
         )
 
-        current_time_utc = datetime.now(timezone.utc)
-        next_run_utc = next_run_time.astimezone(timezone.utc)
+        current_time_utc = datetime.now(UTC)
+        next_run_utc = next_run_time.astimezone(UTC)
 
         assert next_run_utc > current_time_utc
 
@@ -246,11 +234,11 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         next_run_time = datetime.fromisoformat(
-            data["next_run_time"].replace("Z", "+00:00")
+            data["next_run_time"]
         )
 
-        current_time_utc = datetime.now(timezone.utc)
-        next_run_utc = next_run_time.astimezone(timezone.utc)
+        current_time_utc = datetime.now(UTC)
+        next_run_utc = next_run_time.astimezone(UTC)
 
         assert next_run_utc > current_time_utc
 
@@ -344,11 +332,11 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         next_run_time = datetime.fromisoformat(
-            data["next_run_time"].replace("Z", "+00:00")
+            data["next_run_time"]
         )
 
-        current_time_utc = datetime.now(timezone.utc)
-        next_run_utc = next_run_time.astimezone(timezone.utc)
+        current_time_utc = datetime.now(UTC)
+        next_run_utc = next_run_time.astimezone(UTC)
 
         assert next_run_utc > current_time_utc
 
@@ -385,11 +373,11 @@ class TestCronJobNextRunTime:
         data = response.json()
 
         next_run_time = datetime.fromisoformat(
-            data["next_run_time"].replace("Z", "+00:00")
+            data["next_run_time"]
         )
 
-        current_time_utc = datetime.now(timezone.utc)
-        next_run_utc = next_run_time.astimezone(timezone.utc)
+        current_time_utc = datetime.now(UTC)
+        next_run_utc = next_run_time.astimezone(UTC)
 
         assert next_run_utc > current_time_utc
 
@@ -421,7 +409,7 @@ class TestCronExpressionValidation:
             parse_cron_expression("0 12 * * * *")
 
     def test_calculate_next_run_time_daily(self):
-        current_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        current_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
         cron_fields = parse_cron_expression("0 12 * * *")
 
         next_run = calculate_next_run_time(cron_fields, current_time)
@@ -430,7 +418,7 @@ class TestCronExpressionValidation:
         assert next_run.minute == 0
         assert next_run.day == 1
 
-        current_time = datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc)
+        current_time = datetime(2024, 1, 1, 14, 0, 0, tzinfo=UTC)
         next_run = calculate_next_run_time(cron_fields, current_time)
 
         assert next_run.hour == 12
@@ -438,7 +426,7 @@ class TestCronExpressionValidation:
         assert next_run.day == 2
 
     def test_calculate_next_run_time_hourly(self):
-        current_time = datetime(2024, 1, 1, 10, 20, 0, tzinfo=timezone.utc)
+        current_time = datetime(2024, 1, 1, 10, 20, 0, tzinfo=UTC)
         cron_fields = parse_cron_expression("30 * * * *")
 
         next_run = calculate_next_run_time(cron_fields, current_time)
@@ -446,14 +434,14 @@ class TestCronExpressionValidation:
         assert next_run.hour == 10
         assert next_run.minute == 30
 
-        current_time = datetime(2024, 1, 1, 10, 40, 0, tzinfo=timezone.utc)
+        current_time = datetime(2024, 1, 1, 10, 40, 0, tzinfo=UTC)
         next_run = calculate_next_run_time(cron_fields, current_time)
 
         assert next_run.hour == 11
         assert next_run.minute == 30
 
     def test_validate_next_run_time_function(self):
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         cron_fields = parse_cron_expression("0 12 * * *", None)
         expected_next_run = calculate_next_run_time(cron_fields, current_time)

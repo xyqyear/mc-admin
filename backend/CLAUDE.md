@@ -10,11 +10,14 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 uv run alembic upgrade head   # optional manual maintenance; startup also migrates
 uv run pytest tests/ -v -k "not _with_docker and not integrated"
 uv run pyright
+uv run ruff check .
 ```
 
 - **Use `uv`**, never `pip`/`venv` directly.
 - **Do not run `black`** — formatting is not enforced.
 - **Run `uv run pyright` after backend code changes.**
+- **Run `uv run ruff check .` after backend code changes.** Ruff is pinned in development dependencies; configuration identifies the shared logger and FastAPI declaration factories without disabling rule families.
+- Pydantic models use `model_config = ConfigDict(...)`; preserve field aliases and defaults when changing model configuration.
 - **Alembic migrations run during startup** before DB-backed subsystems start; see `docs/database-migrations.md`.
 - Tests whose function names end in `_with_docker` or live in files containing `integrated` start real Docker containers; they're slow and excluded by the default `-k` filter above.
 - Observable backend feature changes require real API E2E coverage in `../e2e/suites/` and an update to `../e2e/docs/coverage.md`. The standalone runner deploys the current application image; see `../e2e/README.md` and `../e2e/docs/architecture.md` for execution and environment contracts.

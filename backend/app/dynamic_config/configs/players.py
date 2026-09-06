@@ -112,4 +112,4 @@ class PlayersConfig(BaseConfigSchema):
             title="忽略的玩家名前缀",
             description="不写入玩家数据库的玩家名前缀列表，忽略大小写，默认包含 bot_",
         ),
-    ] = ["bot_"]
+    ] = Field(default=["bot_"])

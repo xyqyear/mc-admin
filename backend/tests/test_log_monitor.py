@@ -72,10 +72,7 @@ class TestLogMonitor:
         server_id = "test_server"
 
         async def dummy_coro():
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                raise
+            await asyncio.sleep(10)
 
         task = asyncio.create_task(dummy_coro())
         log_monitor_instance._watch_tasks[server_id] = task
@@ -101,10 +98,7 @@ class TestLogMonitor:
         """Test stopping all watches."""
 
         async def dummy_coro():
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                raise
+            await asyncio.sleep(10)
 
         task1 = asyncio.create_task(dummy_coro())
         task2 = asyncio.create_task(dummy_coro())

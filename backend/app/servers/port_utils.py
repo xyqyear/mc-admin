@@ -1,6 +1,5 @@
 """Port conflict checking utilities for server management."""
 
-from typing import Optional
 
 import psutil
 import yaml
@@ -43,7 +42,7 @@ def get_system_used_ports() -> set[int]:
 
 
 async def get_server_used_ports(
-    exclude_server_id: Optional[str] = None,
+    exclude_server_id: str | None = None,
 ) -> set[int]:
     """Get ports used by Minecraft servers.
 
@@ -69,8 +68,7 @@ async def get_server_used_ports(
         except Exception:
             logger.warning(
                 f"Failed to parse compose file for {instance.get_name()} "
-                "while checking port conflicts"
-            )
+                "while checking port conflicts", exc_info=True)
             continue
 
     return ports
@@ -79,7 +77,7 @@ async def get_server_used_ports(
 async def check_port_conflicts(
     game_port: int,
     rcon_port: int,
-    exclude_server_id: Optional[str] = None,
+    exclude_server_id: str | None = None,
 ) -> list[str]:
     """Check for port conflicts with existing servers and system ports.
 

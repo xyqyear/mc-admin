@@ -191,11 +191,10 @@ class TestCommonFileOperations:
         with patch(
             "app.files.ownership.exec_command",
             new=AsyncMock(side_effect=RuntimeError("denied")),
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                _ = [
-                    item async for item in restore_tree_ownership_task(test_structure)
-                ]
+        ), pytest.raises(RuntimeError) as exc_info:
+            _ = [
+                item async for item in restore_tree_ownership_task(test_structure)
+            ]
 
         assert "修复文件所有权失败" in str(exc_info.value)
 

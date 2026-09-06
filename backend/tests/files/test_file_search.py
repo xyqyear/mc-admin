@@ -3,10 +3,11 @@ Test file search functionality.
 """
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from app.files import FileSearchRequest, search_files
 
@@ -99,13 +100,13 @@ class TestFileSearch:
             (temp_path / "file2.txt").write_text("content2")
 
             # Test newer_than filter (should find all files as they're just created)
-            yesterday = datetime.now() - timedelta(days=1)
+            yesterday = datetime.now(UTC).astimezone().replace(tzinfo=None) - timedelta(days=1)
             search_request = FileSearchRequest(regex=r".*\.txt$", newer_than=yesterday)
             results = await search_files(temp_path, search_request)
             assert len(results) == 2
 
             # Test older_than filter (should find no files as they're just created)
-            tomorrow = datetime.now() + timedelta(days=1)
+            tomorrow = datetime.now(UTC).astimezone().replace(tzinfo=None) + timedelta(days=1)
             search_request = FileSearchRequest(regex=r".*\.txt$", older_than=tomorrow)
             results = await search_files(temp_path, search_request)
             assert len(results) == 2  # All files should be older than tomorrow
@@ -136,8 +137,9 @@ class TestFileSearch:
         nonexistent_path = Path("/nonexistent/path")
         search_request = FileSearchRequest(regex=r".*")
 
-        with pytest.raises(Exception):  # Should raise HTTPException
+        with pytest.raises(HTTPException) as error:
             await search_files(nonexistent_path, search_request)
+        assert error.value.status_code == 404
 
     async def test_search_empty_results(self):
         """Test search that returns no results"""

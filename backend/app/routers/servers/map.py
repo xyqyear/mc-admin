@@ -1,6 +1,6 @@
 import asyncio
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional, Tuple
 
 import aiofiles.os as aioos
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,7 +59,7 @@ async def _resolve_region_path(data_path: Path, region_path: str) -> Path:
     return resolved
 
 
-async def _list_regions(region_dir: Path) -> List[Tuple[int, int, int]]:
+async def _list_regions(region_dir: Path) -> list[tuple[int, int, int]]:
     return await list_region_manifest(region_dir)
 
 
@@ -74,11 +74,14 @@ async def get_status(
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
 
-    version: Optional[str] = None
+    version: str | None = None
     try:
         compose = await instance.get_compose_obj()
         version = compose.get_game_version()
     except Exception:
+        logger.warning(
+            "读取地图状态时无法解析服务器配置: server_id=%s", server_id, exc_info=True
+        )
         version = None
 
     palette_current = False
@@ -97,12 +100,12 @@ async def get_status(
     )
 
 
-@router.get("/{server_id}/map/regions", response_model=List[Tuple[int, int, int]])
+@router.get("/{server_id}/map/regions", response_model=list[tuple[int, int, int]])
 async def get_regions(
     server_id: str,
     region: str = Query(..., description="Region folder relative to data/"),
     _: UserPublic = Depends(get_current_user),
-) -> List[Tuple[int, int, int]]:
+) -> list[tuple[int, int, int]]:
     data_path = await _get_data_path(server_id)
     region_dir = await _resolve_region_path(data_path, region)
     return await _list_regions(region_dir)
@@ -120,7 +123,7 @@ async def _initialize_stream(
     server_id: str,
     *,
     force: bool = False,
-) -> AsyncGenerator[bytes, None]:
+) -> AsyncGenerator[bytes]:
     instance = docker_mc_manager.get_instance(server_id)
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
@@ -143,6 +146,7 @@ async def _initialize_stream(
         compose = await instance.get_compose_obj()
         version = compose.get_game_version()
     except Exception as e:
+        logger.exception("初始化地图时无法解析服务器配置: server_id=%s", server_id)
         yield sse_encode(
             {
                 "stage": "client",
@@ -228,7 +232,7 @@ async def _initialize_stream(
         return
 
     yield sse_encode({"stage": "palette", "phase": "starting", "percent": 0})
-    packs: List[Path] = []
+    packs: list[Path] = []
     if mods_dir is not None:
         packs.append(mods_dir)
     packs.append(cache.client_jar)
@@ -348,7 +352,7 @@ async def get_tile(
         png = await asyncio.wait_for(
             queue.request(x, z), timeout=cfg.request_timeout_seconds
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=503, detail="Render timed out, retry")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Region not present")

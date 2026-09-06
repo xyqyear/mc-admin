@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.player_locations import runner
 from app.mcmap.events import MCMAP_PLAYERS_EVENT_ADAPTER
+from app.player_locations import runner
 
 
 def _write_fake_mcmap(content: str) -> Path:

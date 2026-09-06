@@ -1,4 +1,8 @@
-from app.grid_geometry import build_grid_shapes, compute_boundary_rings, connected_components
+from app.grid_geometry import (
+    build_grid_shapes,
+    compute_boundary_rings,
+    connected_components,
+)
 
 
 def normalize_ring(ring):

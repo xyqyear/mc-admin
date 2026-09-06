@@ -4,7 +4,7 @@ Integration tests for the dynamic configuration system with real database.
 
 import tempfile
 from pathlib import Path
-from typing import List, cast
+from typing import cast
 
 import pytest
 from pydantic import Field
@@ -52,10 +52,10 @@ class ComplexTestConfig(BaseConfigSchema):
     )
 
     # List of nested configurations
-    items: List[ListItemTestConfig] = Field(default=[], description="List of items")
+    items: list[ListItemTestConfig] = Field(default=[], description="List of items")
 
     # Regular list
-    tags: List[str] = Field(default=["default"], description="List of tags")
+    tags: list[str] = Field(default=["default"], description="List of tags")
 
     # Deprecated field at top level
     deprecated_field: str = Field(
@@ -77,10 +77,10 @@ class SimpleTestConfig(BaseConfigSchema):
 async def test_db_engine():
     """Create a test database engine."""
     # Create temporary database file
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     # Create all tables
@@ -91,7 +91,7 @@ async def test_db_engine():
 
     # Cleanup
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

@@ -2,8 +2,8 @@
 
 import asyncio
 import secrets
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 from ..db.database import get_async_session
 from ..dynamic_config import config
@@ -31,7 +31,6 @@ from .types import (
     SelfCheckRunScope,
     SelfCheckSummary,
 )
-
 
 _run_lock = asyncio.Lock()
 
@@ -100,7 +99,7 @@ async def iter_self_check_events(
 
     selected_check_ids = check_ids or CHECK_IDS
     run_id = secrets.token_hex(16)
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     findings: list[SelfCheckFindingResult] = []
     error_message: str | None = None
     retention_keep_days = 14
@@ -166,7 +165,7 @@ async def iter_self_check_events(
                     findings=findings[-1:],
                 )
 
-            finished_at = datetime.now(timezone.utc)
+            finished_at = datetime.now(UTC)
             summary = _summarize(findings)
             result = SelfCheckRunResult(
                 id=run_id,
@@ -224,8 +223,8 @@ async def run_self_check(
 
 
 __all__ = [
-    "BackupJarMatch",
     "CHECK_DEFINITIONS",
+    "BackupJarMatch",
     "CheckDefinition",
     "PermissionScanResult",
     "SelfCheckContext",

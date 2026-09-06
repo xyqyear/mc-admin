@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -176,7 +176,7 @@ async def update_template_config(
                 )
                 return
             server.variable_values_json = json.dumps(request.variable_values)
-            server.updated_at = datetime.now(timezone.utc)
+            server.updated_at = datetime.now(UTC)
             await session.commit()
 
     asyncio.create_task(update_variable_values_after_rebuild())

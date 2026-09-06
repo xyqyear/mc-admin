@@ -7,7 +7,7 @@ Tests system crash recovery and RCON validation scenarios.
 import asyncio
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.dynamic_config.configs.players import PlayersConfig
-from app.db.database import Base
 from app.minecraft.instance import MCServerStatus
 from app.models import (
+    Base,
     Player,
     PlayerSession,
     Server,
@@ -112,7 +112,7 @@ def mock_config():
 async def create_server(db, server_id: str, is_active: bool = True) -> int:
     """Create server in database."""
     async with db() as session:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         server = Server(
             server_id=server_id,
             status=ServerStatus.ACTIVE if is_active else ServerStatus.REMOVED,
@@ -178,7 +178,7 @@ async def set_player_online(db, player_db_id: int, server_db_id: int):
         player_session = PlayerSession(
             player_db_id=player_db_id,
             server_db_id=server_db_id,
-            joined_at=datetime.now(timezone.utc),
+            joined_at=datetime.now(UTC),
             left_at=None,
             duration_seconds=None,
         )
@@ -205,7 +205,7 @@ async def test_heartbeat_normal_startup(test_database, mock_config):
     db = test_database
 
     # Create recent heartbeat (30 seconds ago)
-    recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+    recent_time = datetime.now(UTC) - timedelta(seconds=30)
     await create_heartbeat(db, recent_time)
 
     patches = [
@@ -247,7 +247,7 @@ async def test_heartbeat_crash_detection(
     server_db_id = await create_server(db, "server1")
 
     # Create stale heartbeat (2 hours ago - beyond threshold)
-    stale_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    stale_time = datetime.now(UTC) - timedelta(hours=2)
     await create_heartbeat(db, stale_time)
 
     # Manually set players online
@@ -256,7 +256,7 @@ async def test_heartbeat_crash_detection(
             player = Player(
                 uuid=make_online_uuid(name),
                 current_name=name,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
         await session.commit()
@@ -385,7 +385,7 @@ async def test_player_syncer_corrects_false_positives(
             player = Player(
                 uuid=make_online_uuid(name),
                 current_name=name,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
         await session.commit()
@@ -463,7 +463,7 @@ async def test_player_syncer_corrects_false_negatives(
             player = Player(
                 uuid=make_online_uuid(name),
                 current_name=name,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
         await session.commit()
@@ -526,7 +526,7 @@ async def test_player_syncer_filters_ignored_rcon_players(
         player = Player(
             uuid=make_online_uuid("Steve"),
             current_name="Steve",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         session.add(player)
         await session.commit()
@@ -677,7 +677,7 @@ async def test_crash_recovery_triggers_rcon_validation(
     server_db_id = await create_server(db, "server1", is_active=True)
 
     # Create stale heartbeat
-    stale_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    stale_time = datetime.now(UTC) - timedelta(hours=2)
     await create_heartbeat(db, stale_time)
 
     # Create players marked online (but may not actually be online)
@@ -686,7 +686,7 @@ async def test_crash_recovery_triggers_rcon_validation(
             player = Player(
                 uuid=make_online_uuid(name),
                 current_name=name,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
         await session.commit()

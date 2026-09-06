@@ -3,7 +3,6 @@ Cron job management API endpoints.
 """
 
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -11,6 +10,7 @@ from pydantic import BaseModel
 
 from ..cron import cron_manager, cron_registry
 from ..dependencies import get_current_user
+from ..logger import logger
 from ..models import CronJobStatus, UserPublic
 
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -38,9 +38,9 @@ class CreateCronJobRequest(BaseModel):
     identifier: str
     params: dict  # Will be validated against the schema class
     cron: str
-    cronjob_id: Optional[str] = None
-    name: Optional[str] = None
-    second: Optional[str] = None
+    cronjob_id: str | None = None
+    name: str | None = None
+    second: str | None = None
 
 
 class UpdateCronJobRequest(BaseModel):
@@ -49,8 +49,8 @@ class UpdateCronJobRequest(BaseModel):
     identifier: str
     params: dict  # Will be validated against the schema class
     cron: str
-    name: Optional[str] = None
-    second: Optional[str] = None
+    name: str | None = None
+    second: str | None = None
 
 
 class CronJobResponse(BaseModel):
@@ -60,7 +60,7 @@ class CronJobResponse(BaseModel):
     identifier: str
     name: str
     cron: str
-    second: Optional[str] = None
+    second: str | None = None
     params: dict
     execution_count: int
     is_system: bool
@@ -73,11 +73,11 @@ class CronJobExecutionResponse(BaseModel):
     """Response model for cron job execution information."""
 
     execution_id: str
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
-    duration_ms: Optional[int]
+    started_at: datetime | None
+    ended_at: datetime | None
+    duration_ms: int | None
     status: str
-    messages: List[str]
+    messages: list[str]
 
 
 class CronJobNextRunTimeResponse(BaseModel):
@@ -94,13 +94,13 @@ class RegisteredCronJobResponse(BaseModel):
     description: str
     parameter_schema: dict
     is_system: bool
-    default_cron: Optional[str] = None
-    default_second: Optional[str] = None
-    default_params: Optional[dict] = None
-    default_name: Optional[str] = None
+    default_cron: str | None = None
+    default_second: str | None = None
+    default_params: dict | None = None
+    default_name: str | None = None
 
 
-@router.get("/registered", response_model=List[RegisteredCronJobResponse])
+@router.get("/registered", response_model=list[RegisteredCronJobResponse])
 async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
     """
     List all registered cron job types.
@@ -131,12 +131,12 @@ async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
     return result
 
 
-@router.get("/", response_model=List[CronJobResponse])
+@router.get("/", response_model=list[CronJobResponse])
 async def list_cronjobs(
-    identifier: Optional[str] = Query(
+    identifier: str | None = Query(
         None, description="Filter by job type identifier"
     ),
-    status: List[CronJobStatus] = Query(
+    status: list[CronJobStatus] = Query(
         default=[CronJobStatus.ACTIVE, CronJobStatus.PAUSED],
         description="Filter by job status (default: active and paused jobs)",
     ),
@@ -199,9 +199,10 @@ async def create_cronjob(
     try:
         params = schema_cls.model_validate(request.params)
     except Exception as e:
+        logger.exception("定时任务参数校验失败: identifier=%s", request.identifier)
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"任务参数无效: {str(e)}",
+            detail=f"任务参数无效: {e!s}",
         )
 
     # Create the cron job
@@ -221,9 +222,10 @@ async def create_cronjob(
             detail=str(e),
         )
     except Exception as e:
+        logger.exception("创建定时任务失败: identifier=%s", request.identifier)
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"创建定时任务失败: {str(e)}",
+            detail=f"创建定时任务失败: {e!s}",
         )
 
 
@@ -278,9 +280,10 @@ async def update_cronjob(
     try:
         params = schema_cls.model_validate(request.params)
     except Exception as e:
+        logger.exception("定时任务参数校验失败: identifier=%s", request.identifier)
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"任务参数无效: {str(e)}",
+            detail=f"任务参数无效: {e!s}",
         )
 
     # Update the cron job
@@ -300,9 +303,10 @@ async def update_cronjob(
             detail=str(e),
         )
     except Exception as e:
+        logger.exception("更新定时任务失败: cronjob_id=%s", cronjob_id)
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新定时任务失败: {str(e)}",
+            detail=f"更新定时任务失败: {e!s}",
         )
 
 
@@ -358,7 +362,7 @@ async def cancel_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     return {"message": "定时任务已取消"}
 
 
-@router.get("/{cronjob_id}/executions", response_model=List[CronJobExecutionResponse])
+@router.get("/{cronjob_id}/executions", response_model=list[CronJobExecutionResponse])
 async def get_cronjob_executions(
     cronjob_id: str, limit: int = 50, _: UserPublic = Depends(get_current_user)
 ):

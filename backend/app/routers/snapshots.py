@@ -1,8 +1,8 @@
 """Global snapshot management endpoints using restic"""
 
-from datetime import datetime
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,7 +44,7 @@ async def _check_backup_time_restriction():
     if not config.snapshots.time_restriction.enabled:
         return
 
-    now = datetime.now()
+    now = datetime.now(UTC).astimezone()
     current_minute = now.minute
     current_second = now.second
 
@@ -101,8 +101,8 @@ def _get_snapshot_service():
 
 
 async def _resolve_backup_paths(
-    server_id: Optional[str], paths: Optional[List[str]]
-) -> List[Path]:
+    server_id: str | None, paths: list[str] | None
+) -> list[Path]:
     """
     Resolve the absolute backup paths from request parameters.
 
@@ -153,20 +153,20 @@ async def _resolve_backup_paths(
 
 # Request/Response models
 class CreateSnapshotRequest(BaseModel):
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class RestorePreviewRequest(BaseModel):
     snapshot_id: str
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class RestoreRequest(BaseModel):
     snapshot_id: str
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -175,17 +175,17 @@ class CreateSnapshotResponse(BaseModel):
 
 
 class ListSnapshotsResponse(BaseModel):
-    snapshots: List[ResticSnapshot]
+    snapshots: list[ResticSnapshot]
 
 
 class RestorePreviewAction(BaseModel):
     action: ResticRestoreAction
-    item: Optional[str] = None
-    size: Optional[int] = None
+    item: str | None = None
+    size: int | None = None
 
 
 class RestorePreviewResponse(BaseModel):
-    actions: List[RestorePreviewAction]
+    actions: list[RestorePreviewAction]
     preview_summary: str
 
 
@@ -220,8 +220,8 @@ async def create_global_snapshot(
 
 @router.get("", response_model=ListSnapshotsResponse)
 async def list_global_snapshots(
-    server_id: Optional[str] = None,
-    path: Optional[str] = None,
+    server_id: str | None = None,
+    path: str | None = None,
     _: UserPublic = Depends(get_current_user),
 ):
     """List all snapshots, or snapshots that touch the specified server/path"""
@@ -300,7 +300,7 @@ async def restore_global_snapshot(
     target_paths = await _resolve_backup_paths(request.server_id, request.paths)
     service = _get_snapshot_service()
 
-    async def event_gen() -> AsyncGenerator[bytes, None]:
+    async def event_gen() -> AsyncGenerator[bytes]:
         try:
             yield sse_encode(
                 {
@@ -318,13 +318,11 @@ async def restore_global_snapshot(
             try:
                 safety_snapshot = await service.create_snapshot(target_paths)
             except Exception as e:
-                logger.error(
-                    "Safety snapshot failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
+                logger.exception(
+                    "Safety snapshot failed (snapshot_id=%s, server_id=%s, paths=%s)",
                     request.snapshot_id,
                     request.server_id,
                     request.paths,
-                    e,
-                    exc_info=True,
                 )
                 yield sse_encode(
                     {
@@ -360,21 +358,18 @@ async def restore_global_snapshot(
                                 "percent": ev.percent_done * 100.0,
                             }
                         )
-                    elif ev.kind == "file" and ev.action in (
-                        "updated",
-                        "restored",
-                        "deleted",
+                    elif (
+                        ev.kind == "file"
+                        and ev.action in ("updated", "restored", "deleted")
+                        and ev.item is not None
                     ):
-                        if ev.item is not None:
-                            touched_items.append(ev.item)
+                        touched_items.append(ev.item)
             except Exception as e:
-                logger.error(
-                    "Restore failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
+                logger.exception(
+                    "Restore failed (snapshot_id=%s, server_id=%s, paths=%s)",
                     request.snapshot_id,
                     request.server_id,
                     request.paths,
-                    e,
-                    exc_info=True,
                 )
                 yield sse_encode({"event_type": "error", "message": str(e)})
                 return

@@ -6,6 +6,7 @@ empty-fs safety guard, and concurrent 409.
 
 import asyncio
 import tempfile
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -18,7 +19,6 @@ from app.main import api_app
 from app.minecraft import DockerMCManager
 from app.models import Base
 from app.servers.crud import create_server_record
-
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -50,7 +50,11 @@ def _auth():
 
 
 def _set_session_cookies(client: TestClient, user):
-    from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, create_session_token
+    from app.auth.session import (
+        AUTH_COOKIE_NAME,
+        CSRF_COOKIE_NAME,
+        create_session_token,
+    )
 
     token, csrf_token = create_session_token(user)
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
@@ -66,10 +70,10 @@ def temp_server_path():
 
 @pytest.fixture
 async def test_db():
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
     engine = create_async_engine(
-        f"sqlite+aiosqlite:///{temp_db.name}", echo=False
+        f"sqlite+aiosqlite:///{database_path}", echo=False
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -78,7 +82,7 @@ async def test_db():
     )
     yield TestSessionLocal
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -293,7 +297,7 @@ class TestSyncOwnerOnly:
     def test_non_owner_forbidden(self, test_client):
         client, _mgr, _db = test_client
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from app.auth.session import CSRF_HEADER_NAME
         from app.models import UserPublic, UserRole
@@ -304,7 +308,7 @@ class TestSyncOwnerOnly:
                 id=7,
                 username="tester",
                 role=UserRole.ADMIN,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         )
 

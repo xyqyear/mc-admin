@@ -289,9 +289,7 @@ def test_mc_compose_file_default_ports():
 
     # 手动设置published为None来测试默认端口
     for port in mc_compose.mc_service.ports:
-        if str(port.target) == "25565":
-            port.published = None
-        elif str(port.target) == "25575":
+        if str(port.target) == "25565" or str(port.target) == "25575":
             port.published = None
 
     assert mc_compose.get_game_port() == 25565  # 默认端口

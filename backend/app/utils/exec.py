@@ -3,7 +3,6 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
-
 _TERMINATE_GRACE_SECONDS = 2.0
 
 
@@ -18,7 +17,7 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
     try:
         await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
         return
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     try:
         process.kill()
@@ -30,7 +29,7 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
 async def exec_command(
     command: str,
     *args: str,
-    env: dict[str, str] = dict(),
+    env: dict[str, str] | None = None,
     cwd: str | None = None,
     timeout: float | None = None,
 ) -> str:
@@ -41,7 +40,7 @@ async def exec_command(
     process = await asyncio.create_subprocess_exec(
         command,
         *args,
-        env=env,
+        env={} if env is None else env,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -54,7 +53,7 @@ async def exec_command(
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
             )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await _kill_process(process)
         raise TimeoutError(
             f"Command timed out after {timeout}s: {command} {' '.join(args)}"
@@ -81,7 +80,7 @@ async def exec_command_stream(
     *args: str,
     cwd: str | None = None,
     delimiters: set[int] | None = None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Stream stdout segments from ``command``.
 
     ``delimiters=None`` yields whole lines. Pass a set of byte values (e.g.

@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Any, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import CronJob, CronJobExecution, CronJobStatus
 
 
-async def get_cronjob(session: AsyncSession, cronjob_id: str) -> Optional[CronJob]:
+async def get_cronjob(session: AsyncSession, cronjob_id: str) -> CronJob | None:
     result = await session.execute(
         select(CronJob).where(CronJob.cronjob_id == cronjob_id)
     )
@@ -22,7 +22,7 @@ async def create_cronjob(
     name: str,
     cron: str,
     params_json: str,
-    second: Optional[str] = None,
+    second: str | None = None,
     is_system: bool = False,
 ) -> None:
     cronjob = CronJob(
@@ -42,7 +42,7 @@ async def create_cronjob(
 async def update_cronjob(
     session: AsyncSession, cronjob_id: str, **values: Any
 ) -> None:
-    values["updated_at"] = datetime.now(timezone.utc)
+    values["updated_at"] = datetime.now(UTC)
     await session.execute(
         update(CronJob).where(CronJob.cronjob_id == cronjob_id).values(**values)
     )
@@ -52,10 +52,10 @@ async def update_cronjob(
 async def get_all_cronjobs(
     session: AsyncSession,
     *,
-    identifier: Optional[str] = None,
-    status: Optional[List[CronJobStatus]] = None,
-    name: Optional[str] = None,
-) -> List[CronJob]:
+    identifier: str | None = None,
+    status: list[CronJobStatus] | None = None,
+    name: str | None = None,
+) -> list[CronJob]:
     query = select(CronJob)
 
     if identifier:
@@ -72,7 +72,7 @@ async def get_all_cronjobs(
 
 async def get_cronjobs_by_status(
     session: AsyncSession, status: CronJobStatus
-) -> List[CronJob]:
+) -> list[CronJob]:
     result = await session.execute(
         select(CronJob).where(CronJob.status == status)
     )
@@ -81,7 +81,7 @@ async def get_cronjobs_by_status(
 
 async def get_active_restart_cronjobs_for_server(
     session: AsyncSession, server_id: str
-) -> List[CronJob]:
+) -> list[CronJob]:
     result = await session.execute(
         select(CronJob).where(
             CronJob.identifier == "restart_server",
@@ -94,7 +94,7 @@ async def get_active_restart_cronjobs_for_server(
 
 async def get_execution_history(
     session: AsyncSession, cronjob_id: str, limit: int = 50
-) -> List[CronJobExecution]:
+) -> list[CronJobExecution]:
     result = await session.execute(
         select(CronJobExecution)
         .where(CronJobExecution.cronjob_id == cronjob_id)

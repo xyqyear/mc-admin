@@ -1,6 +1,6 @@
 """Log parser configuration."""
 
-from typing import Annotated, List
+from typing import Annotated
 
 from pydantic import ConfigDict, Field
 
@@ -17,7 +17,7 @@ class LogParserConfig(BaseConfigSchema):
     model_config = ConfigDict(title="日志解析配置")
 
     uuid_patterns: Annotated[
-        List[str],
+        list[str],
         Field(
             title="UUID 解析规则",
             description="正则表达式模式列表，用于解析玩家UUID信息",
@@ -65,7 +65,7 @@ class LogParserConfig(BaseConfigSchema):
     ]
 
     achievement_patterns: Annotated[
-        List[str],
+        list[str],
         Field(
             title="成就解析规则",
             description="正则表达式模式列表，用于解析玩家获得成就事件",

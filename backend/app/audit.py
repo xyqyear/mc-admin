@@ -4,9 +4,9 @@ import json
 import logging
 import logging.handlers
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar
 from urllib.parse import parse_qs
 
 from fastapi import Request, Response
@@ -19,7 +19,7 @@ from .config import settings
 
 
 class OperationAuditMiddleware(BaseHTTPMiddleware):
-    AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    AUDIT_METHODS: ClassVar[set[str]] = {"POST", "PUT", "PATCH", "DELETE"}
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
@@ -75,7 +75,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             }
         return data
 
-    async def _get_user_info(self, request: Request) -> Optional[Dict[str, Any]]:
+    async def _get_user_info(self, request: Request) -> dict[str, Any] | None:
         try:
             user = get_user_from_request(request)
         except TokenValidationError:
@@ -109,7 +109,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {"content_type": content_type, "bytes": len(body_bytes)}
 
-    def _get_client_ip(self, request: Request) -> Optional[str]:
+    def _get_client_ip(self, request: Request) -> str | None:
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
             return forwarded_for.split(",")[0].strip()
@@ -127,7 +127,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         self,
         request: Request,
         response: Response,
-        user_info: Optional[Dict[str, Any]],
+        user_info: dict[str, Any] | None,
         request_body: Any,
         processing_time: float,
     ) -> str:
@@ -137,7 +137,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         query_params = dict(request.query_params) if request.query_params else {}
 
         log_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).astimezone().replace(tzinfo=None).isoformat(),
             "method": request.method,
             "path": request.url.path,
             "status_code": response.status_code,
@@ -179,7 +179,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-        except Exception as e:
+        except Exception:
             processing_time = time.perf_counter() - start_time
 
             error_response = JSONResponse(
@@ -193,7 +193,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             if self.logger:
                 self.logger.info(log_entry)
 
-            raise e
+            raise
 
         processing_time = time.perf_counter() - start_time
 

@@ -2,7 +2,6 @@ import asyncio
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Optional
 
 from ..config import settings
 from ..dynamic_config import config
@@ -13,8 +12,8 @@ from .region_files import parse_region_filename
 @dataclass(frozen=True)
 class DimensionInfo:
     region_dir: Path
-    entities_dir: Optional[Path]
-    poi_dir: Optional[Path]
+    entities_dir: Path | None
+    poi_dir: Path | None
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,7 @@ class WorldRootPath:
 
 @dataclass(frozen=True)
 class DimensionFolderResolution:
-    region_dir_relpath: Optional[str]
+    region_dir_relpath: str | None
     exists_on_disk: bool
 
 
@@ -66,7 +65,7 @@ def _scandir_sorted(directory: Path) -> list[os.DirEntry[str]]:
         return sorted(entries, key=lambda e: e.name)
 
 
-def _dimension_info(world_root: Path, directory: Path) -> Optional[DimensionInfo]:
+def _dimension_info(world_root: Path, directory: Path) -> DimensionInfo | None:
     region_dir = directory / "region"
     if not _has_region_mca(region_dir):
         return None
@@ -145,7 +144,7 @@ def resolve_dimension_folder(
     dimension_dir = world_root.path.joinpath(*parts) if parts else world_root.path
     region_dir = dimension_dir / "region"
     has_region_mca = _has_region_mca(region_dir)
-    relpath: Optional[str] = None
+    relpath: str | None = None
     if has_region_mca:
         try:
             relpath = region_dir.relative_to(data_path).as_posix()

@@ -2,7 +2,7 @@
 
 import json
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -99,7 +99,7 @@ async def test_restoration_terminal_state_update(session_maker):
             await session.execute(select(Restoration).where(Restoration.id == rest_id))
         ).scalar_one()
         row.status = RestorationStatus.SUCCEEDED
-        row.finished_at = datetime.now(timezone.utc)
+        row.finished_at = datetime.now(UTC)
         await session.commit()
 
     async with session_maker() as session:
@@ -130,7 +130,7 @@ async def test_restoration_rollback_record(session_maker):
                 safety_snapshot_id="snap-safety",
                 selection_json=selection.model_dump_json(),
                 status=RestorationStatus.SUCCEEDED,
-                finished_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(UTC),
             )
         )
         session.add(

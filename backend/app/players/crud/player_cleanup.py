@@ -1,7 +1,7 @@
 """Cleanup helpers for player records excluded by identity rules."""
 
-from datetime import datetime, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
@@ -20,7 +20,7 @@ class PlayerCleanupCandidate(BaseModel):
     uuid: str
     current_name: str
     first_seen: datetime
-    last_seen: Optional[datetime]
+    last_seen: datetime | None
     session_count: int
     chat_message_count: int
     achievement_count: int
@@ -76,7 +76,7 @@ async def _get_last_seen_by_player_id(
     last_seen_by_id: dict[int, datetime] = {}
     for player_db_id, last_seen in result.all():
         if last_seen is not None and last_seen.tzinfo is None:
-            last_seen = last_seen.replace(tzinfo=timezone.utc)
+            last_seen = last_seen.replace(tzinfo=UTC)
         if last_seen is not None:
             last_seen_by_id[player_db_id] = last_seen
     return last_seen_by_id

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -27,7 +27,7 @@ async def self_check_db(tmp_path: Path):
     await engine.dispose()
 
 
-BASE_TIME = datetime(2026, 6, 6, 12, 0, tzinfo=timezone.utc)
+BASE_TIME = datetime(2026, 6, 6, 12, 0, tzinfo=UTC)
 
 
 def at(minutes: int) -> datetime:

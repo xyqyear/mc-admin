@@ -4,7 +4,6 @@ Provides CRUD operations for archive files using the configured archive director
 """
 
 from pathlib import Path
-from typing import Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -37,8 +36,8 @@ from ..files import (
     get_file_items,
     rename_file_or_directory,
 )
-from ..minecraft import docker_mc_manager
 from ..files.paths import resolve_file_path
+from ..minecraft import docker_mc_manager
 from ..models import UserPublic
 from ..utils.compression import create_server_archive_stream
 from ..utils.sse import sse_response
@@ -51,7 +50,7 @@ router = APIRouter(
 
 class CreateArchiveRequest(BaseModel):
     server_id: str
-    path: Optional[str] = None
+    path: str | None = None
 
 
 class CreateArchiveResponse(BaseModel):

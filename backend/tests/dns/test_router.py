@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import httpx2
+import pytest
 
 from app.dns.router import MCRouterClient
 

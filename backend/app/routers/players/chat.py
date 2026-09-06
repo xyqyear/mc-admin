@@ -1,7 +1,6 @@
 """Player chat message API endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,14 +16,14 @@ from ...players.crud.query.chat_query import (
 router = APIRouter(prefix="/players", tags=["player-chat"])
 
 
-@router.get("/{player_db_id}/chat", response_model=List[ChatMessageInfo])
+@router.get("/{player_db_id}/chat", response_model=list[ChatMessageInfo])
 async def get_player_chat(
     player_db_id: int,
     limit: int = Query(100, ge=1, le=500, description="Maximum messages to return"),
-    server_id: Optional[str] = Query(None, description="Filter by server ID"),
-    search: Optional[str] = Query(None, description="Search in message text"),
-    start_date: Optional[datetime] = Query(None, description="Filter by start date"),
-    end_date: Optional[datetime] = Query(None, description="Filter by end date"),
+    server_id: str | None = Query(None, description="Filter by server ID"),
+    search: str | None = Query(None, description="Search in message text"),
+    start_date: datetime | None = Query(None, description="Filter by start date"),
+    end_date: datetime | None = Query(None, description="Filter by end date"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

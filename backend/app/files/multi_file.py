@@ -3,14 +3,13 @@ Multi-file upload operations with conflict detection and session management.
 """
 
 from pathlib import Path
-from typing import Dict, List
 
 import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
+from ..logger import logger
 from .paths import resolve_file_path
-
 from .types import (
     MultiFileUploadRequest,
     MultiFileUploadResult,
@@ -96,7 +95,7 @@ async def set_upload_policy(
 
 
 async def upload_multiple_files(
-    base_path: Path, session_id: str, upload_path: str, files: List[UploadFile]
+    base_path: Path, session_id: str, upload_path: str, files: list[UploadFile]
 ) -> MultiFileUploadResult:
     """Upload multiple files using the prepared session"""
     session = get_upload_session(session_id)
@@ -133,7 +132,7 @@ async def upload_multiple_files(
         for decision in policy.decisions or []:
             overwrite_decisions[decision.path] = decision.overwrite
 
-    results: Dict[str, UploadFileResult] = {}
+    results: dict[str, UploadFileResult] = {}
 
     try:
         # Process each uploaded file directly
@@ -189,12 +188,13 @@ async def upload_multiple_files(
                 results[result_key] = UploadFileResult(status="success")
 
             except Exception as file_error:
+                logger.exception("Upload failed for %s", file_relative_path)
                 results[result_key] = UploadFileResult(
                     status="failed", reason=str(file_error)
                 )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e!s}") from e
 
     # Count successful uploads
     success_count = sum(1 for result in results.values() if result.status == "success")

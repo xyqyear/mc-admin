@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import pytest
 from sqlalchemy import select
@@ -42,7 +41,7 @@ def _restic_available() -> bool:
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -52,7 +51,7 @@ def _restic_available() -> bool:
 def _mcmap_available() -> bool:
     try:
         result = subprocess.run(
-            ["mcmap", "--version"], capture_output=True, text=True, timeout=5
+            ["mcmap", "--version"], capture_output=True, text=True, timeout=5, check=False
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -185,7 +184,7 @@ async def _drain(gen) -> list:
     return out
 
 
-async def _read_restoration(session_factory, rid: str) -> Optional[Restoration]:
+async def _read_restoration(session_factory, rid: str) -> Restoration | None:
     async with session_factory() as session:
         return (
             await session.execute(select(Restoration).where(Restoration.id == rid))
@@ -425,7 +424,7 @@ async def test_lock_held_during_restore(orchestrator, data_path, lock):
     selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
-    holders_seen: list[Optional[LockHolder]] = []
+    holders_seen: list[LockHolder | None] = []
 
     async for ev in orchestrator.begin_restore(
         server_id="srv1",

@@ -1,8 +1,6 @@
 """CRUD operations for PlayerSession model."""
-# flake8: noqa: E711
 
 from datetime import datetime
-from typing import List
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,7 +100,7 @@ async def end_all_open_sessions(
 
 async def get_all_open_sessions_on_server(
     session: AsyncSession, server_db_id: int
-) -> List[PlayerSession]:
+) -> list[PlayerSession]:
     """Get all open sessions on a server.
 
     Args:
@@ -170,7 +168,7 @@ async def get_online_players_with_names_grouped_by_server(
         select(Server.server_id, Player.current_name)
         .join(PlayerSession, PlayerSession.server_db_id == Server.id)
         .join(Player, PlayerSession.player_db_id == Player.player_db_id)
-        .where(PlayerSession.left_at == None)  # noqa: E711
+        .where(PlayerSession.left_at == None)
     )
 
     players_by_server: dict[str, list[str]] = {}
@@ -203,7 +201,7 @@ async def get_online_player_names_on_server(
         .join(PlayerSession, PlayerSession.player_db_id == Player.player_db_id)
         .where(
             PlayerSession.server_db_id == server_db_id,
-            PlayerSession.left_at == None,  # noqa: E711
+            PlayerSession.left_at == None,
         )
     )
 

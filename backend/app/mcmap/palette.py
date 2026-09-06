@@ -1,6 +1,5 @@
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 import aiofiles
 import aiofiles.os as aioos
@@ -10,7 +9,7 @@ from ..utils import async_fs
 from .cache import ServerMapCache
 
 
-async def compute_palette_hash(version: str, mods_dir: Optional[Path]) -> str:
+async def compute_palette_hash(version: str, mods_dir: Path | None) -> str:
     parts = [version]
     if mods_dir is not None and await aioos.path.isdir(mods_dir):
         entries = await async_fs.iterdir(mods_dir)
@@ -19,7 +18,7 @@ async def compute_palette_hash(version: str, mods_dir: Optional[Path]) -> str:
 
 
 async def palette_is_current(
-    cache: ServerMapCache, version: str, mods_dir: Optional[Path]
+    cache: ServerMapCache, version: str, mods_dir: Path | None
 ) -> bool:
     if not await aioos.path.exists(cache.palette_json):
         return False
@@ -32,7 +31,7 @@ async def palette_is_current(
 
 
 async def write_palette_hash(
-    cache: ServerMapCache, version: str, mods_dir: Optional[Path]
+    cache: ServerMapCache, version: str, mods_dir: Path | None
 ) -> None:
     digest = await compute_palette_hash(version, mods_dir)
     async with aiofiles.open(cache.palette_hash_file, "w") as f:
@@ -40,7 +39,7 @@ async def write_palette_hash(
     await cache.chown_to_data_owner(cache.palette_hash_file)
 
 
-async def discover_mods_dir(data_path: Path) -> Optional[Path]:
+async def discover_mods_dir(data_path: Path) -> Path | None:
     mods = data_path / "mods"
     if not await aioos.path.isdir(mods):
         return None
@@ -50,7 +49,7 @@ async def discover_mods_dir(data_path: Path) -> Optional[Path]:
     return mods
 
 
-async def discover_level_dat(data_path: Path) -> Optional[Path]:
+async def discover_level_dat(data_path: Path) -> Path | None:
     level_name = await read_level_name(data_path)
     candidate = data_path / level_name / "level.dat"
     if await aioos.path.isfile(candidate):

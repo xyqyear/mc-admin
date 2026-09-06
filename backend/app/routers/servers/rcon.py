@@ -74,7 +74,7 @@ async def _run_rcon_command(instance: MCInstance, command: str) -> str:
             instance.send_command_rcon(command),
             timeout=RCON_COMMAND_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="命令执行超时",

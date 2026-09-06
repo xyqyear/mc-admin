@@ -5,7 +5,6 @@ Utility functions for file operations including session management and async hel
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
 
 from aiofiles import os as aioos
 
@@ -13,7 +12,7 @@ from ..utils import async_fs
 from .types import UploadSession
 
 # Global upload session storage
-_upload_sessions: Dict[str, UploadSession] = {}
+_upload_sessions: dict[str, UploadSession] = {}
 _SESSION_TIMEOUT = 3600  # 1 hour timeout
 
 
@@ -34,7 +33,7 @@ def _create_session_id() -> str:
     return str(uuid.uuid4())
 
 
-def get_upload_session(session_id: str) -> Optional[UploadSession]:
+def get_upload_session(session_id: str) -> UploadSession | None:
     """Get upload session by ID"""
     _cleanup_expired_sessions()
     return _upload_sessions.get(session_id)

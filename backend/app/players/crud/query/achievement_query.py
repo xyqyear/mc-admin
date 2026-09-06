@@ -1,7 +1,6 @@
 """Achievement query functions for API endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -24,8 +23,8 @@ class AchievementInfo(BaseModel):
 async def get_player_achievements(
     session: AsyncSession,
     player_db_id: int,
-    server_id: Optional[str] = None,
-) -> List[AchievementInfo]:
+    server_id: str | None = None,
+) -> list[AchievementInfo]:
     """Get player achievements.
 
     Args:

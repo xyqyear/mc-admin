@@ -40,6 +40,6 @@ def schedule_self_check_event(trigger: str, requested_by_user_id: int | None = N
                 requested_by_user_id=requested_by_user_id,
             )
         except Exception as exc:
-            logger.warning("event-triggered self-check failed: %s", exc)
+            logger.warning("event-triggered self-check failed: %s", exc, exc_info=True)
 
     asyncio.create_task(_run())

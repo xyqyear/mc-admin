@@ -1,7 +1,5 @@
 """World subsystem: layout discovery, per-server locking, restore orchestration."""
 
-from typing import Optional
-
 from .dimension_labels import (
     dimension_path_for_dir,
     label_for_dimension_dir,
@@ -34,12 +32,11 @@ from .restore import (
     WorldRestoreOrchestrator,
 )
 
-
 # Built at lifespan startup; routers do attribute lookup so they observe the latest binding.
-world_restore_orchestrator: Optional[WorldRestoreOrchestrator] = None
+world_restore_orchestrator: WorldRestoreOrchestrator | None = None
 
 
-def initialize_world_restore_orchestrator() -> Optional[WorldRestoreOrchestrator]:
+def initialize_world_restore_orchestrator() -> WorldRestoreOrchestrator | None:
     """Build the orchestrator singleton; ``None`` if restic isn't configured. Idempotent."""
     global world_restore_orchestrator
     if world_restore_orchestrator is not None:
@@ -69,9 +66,9 @@ def reset_world_restore_orchestrator() -> None:
 
 __all__ = [
     "DEFAULT_LEVEL_NAME",
+    "GLOBAL_LOCK_KEY",
     "DimensionFolderResolution",
     "DimensionInfo",
-    "GLOBAL_LOCK_KEY",
     "LockHolder",
     "PreviewEvent",
     "RestoreError",
@@ -80,18 +77,18 @@ __all__ = [
     "ServerNotStoppedError",
     "ServerOperationKind",
     "ServerOperationLock",
-    "WorldRestoreOrchestrator",
     "WorldLayoutDiscoveryError",
+    "WorldRestoreOrchestrator",
     "WorldRoot",
     "WorldRootPath",
+    "dimension_path_for_dir",
     "discover_world_root_paths",
     "discover_world_roots",
-    "dimension_path_for_dir",
     "initialize_world_restore_orchestrator",
     "label_for_dimension_dir",
     "label_for_dimension_path",
-    "resolve_dimension_folder",
     "reset_world_restore_orchestrator",
+    "resolve_dimension_folder",
     "server_operation_lock",
     "world_restore_orchestrator",
 ]

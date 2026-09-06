@@ -10,14 +10,14 @@ from .instance import (
 from .manager import DockerMCManager, docker_mc_manager
 
 __all__ = [
+    "ComposeFile",
+    "ComposeManager",
+    "DiskSpaceInfo",
     "DockerMCManager",
-    "docker_mc_manager",
+    "DockerManager",
+    "MCComposeFile",
     "MCInstance",
     "MCServerInfo",
     "MCServerStatus",
-    "DiskSpaceInfo",
-    "ComposeManager",
-    "ComposeFile",
-    "MCComposeFile",
-    "DockerManager",
+    "docker_mc_manager",
 ]

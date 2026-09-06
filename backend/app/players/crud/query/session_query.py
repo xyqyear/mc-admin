@@ -1,8 +1,7 @@
 """Session query functions for API endpoints."""
 
 import base64
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
@@ -19,8 +18,8 @@ class SessionInfo(BaseModel):
     server_db_id: int
     server_id: str
     joined_at: datetime
-    left_at: Optional[datetime]
-    duration_seconds: Optional[int]
+    left_at: datetime | None
+    duration_seconds: int | None
     is_active: bool
 
 
@@ -30,7 +29,7 @@ class OnlinePlayerInfo(BaseModel):
     player_db_id: int
     uuid: str
     current_name: str
-    avatar_base64: Optional[str]
+    avatar_base64: str | None
     joined_at: datetime
     session_duration_seconds: int
 
@@ -48,18 +47,18 @@ class SessionStatsResponse(BaseModel):
     total_playtime_seconds: int
     average_session_seconds: int
     longest_session_seconds: int
-    sessions_by_server: Dict[str, int]
-    playtime_by_server: Dict[str, int]
+    sessions_by_server: dict[str, int]
+    playtime_by_server: dict[str, int]
 
 
 async def get_player_sessions(
     session: AsyncSession,
     player_db_id: int,
     limit: int = 100,
-    server_id: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-) -> List[SessionInfo]:
+    server_id: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[SessionInfo]:
     """Get player sessions.
 
     Args:
@@ -120,7 +119,7 @@ async def get_player_sessions(
 
 async def get_server_online_players(
     session: AsyncSession, server_id: str
-) -> List[OnlinePlayerInfo]:
+) -> list[OnlinePlayerInfo]:
     """Get currently online players on a server.
 
     Args:
@@ -140,7 +139,7 @@ async def get_server_online_players(
         .join(Player, PlayerSession.player_db_id == Player.player_db_id)
         .where(
             PlayerSession.server_db_id == server_db_id,
-            PlayerSession.left_at == None,  # noqa: E711
+            PlayerSession.left_at == None,
         )
         .order_by(PlayerSession.joined_at.desc())
     )
@@ -148,7 +147,7 @@ async def get_server_online_players(
     result = await session.execute(query)
     rows = result.all()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     online_players = []
 
     for row in rows:
@@ -191,7 +190,7 @@ async def get_online_players_grouped_by_server(
         )
         .join(PlayerSession, PlayerSession.server_db_id == Server.id)
         .join(Player, PlayerSession.player_db_id == Player.player_db_id)
-        .where(PlayerSession.left_at == None)  # noqa: E711
+        .where(PlayerSession.left_at == None)
         .order_by(Server.server_id.asc(), PlayerSession.joined_at.desc())
     )
 
@@ -226,11 +225,11 @@ async def get_player_session_stats(
     # Calculate date filter based on period
     start_date = None
     if period == "week":
-        start_date = datetime.now(timezone.utc) - timedelta(days=7)
+        start_date = datetime.now(UTC) - timedelta(days=7)
     elif period == "month":
-        start_date = datetime.now(timezone.utc) - timedelta(days=30)
+        start_date = datetime.now(UTC) - timedelta(days=30)
     elif period == "year":
-        start_date = datetime.now(timezone.utc) - timedelta(days=365)
+        start_date = datetime.now(UTC) - timedelta(days=365)
 
     # Base filter
     filters = [PlayerSession.player_db_id == player_db_id]
@@ -247,7 +246,7 @@ async def get_player_session_stats(
     total_playtime_result = await session.execute(
         select(func.coalesce(func.sum(PlayerSession.duration_seconds), 0)).where(
             and_(*filters),
-            PlayerSession.duration_seconds != None,  # noqa: E711
+            PlayerSession.duration_seconds != None,
         )
     )
     total_playtime = total_playtime_result.scalar_one() or 0
@@ -286,7 +285,7 @@ async def get_player_session_stats(
         .join(Server, PlayerSession.server_db_id == Server.id)
         .where(
             and_(*filters),
-            PlayerSession.duration_seconds != None,  # noqa: E711
+            PlayerSession.duration_seconds != None,
         )
         .group_by(Server.server_id)
     )

@@ -4,7 +4,6 @@ File search utilities using fd command for fast file searching.
 
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 from aiofiles import os as aioos
 from fastapi import HTTPException
@@ -67,7 +66,7 @@ async def _run_fd_command(search_request: FileSearchRequest, search_path: Path) 
         )
 
 
-def _parse_fd_output(output: str, base_path: Path) -> List[SearchFileItem]:
+def _parse_fd_output(output: str, base_path: Path) -> list[SearchFileItem]:
     """Parse fd command output into SearchFileItem objects"""
     if not output.strip():
         return []
@@ -161,7 +160,7 @@ def _parse_fd_output(output: str, base_path: Path) -> List[SearchFileItem]:
 
 async def search_files(
     base_path: Path, search_request: FileSearchRequest
-) -> List[SearchFileItem]:
+) -> list[SearchFileItem]:
     """Search for files using fd command"""
     if not await aioos.path.exists(base_path):
         raise HTTPException(status_code=404, detail="Search path does not exist")

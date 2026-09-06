@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, TypeAlias
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -53,7 +53,7 @@ class StreamResetFrame(BaseModel):
     reason: Literal["cursor_too_old", "invalid_cursor"]
 
 
-PublicEventFrame: TypeAlias = (
+type PublicEventFrame = (
     ChatEvent
     | PlayerJoinEvent
     | PlayerLeaveEvent

@@ -4,9 +4,10 @@ import asyncio
 import hashlib
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncGenerator, Literal
+from typing import Literal
 
 import aiofiles
 from aiofiles import os as aioos
@@ -338,7 +339,7 @@ async def ensure_archive_upload_ready_for_sha256(upload_id: str) -> None:
 
 async def _iter_file_sha256_events(
     file_path: Path, filename: str
-) -> AsyncGenerator[ArchiveSHA256Event, None]:
+) -> AsyncGenerator[ArchiveSHA256Event]:
     total = (await aioos.stat(file_path)).st_size
     loaded = 0
     hasher = hashlib.sha256()
@@ -377,7 +378,7 @@ async def _iter_file_sha256_events(
 
 async def iter_archive_upload_sha256_events(
     upload_id: str,
-) -> AsyncGenerator[ArchiveSHA256Event, None]:
+) -> AsyncGenerator[ArchiveSHA256Event]:
     session = await _get_session(upload_id)
     async with session.lock:
         offset = await _session_offset(session)

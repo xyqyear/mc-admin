@@ -1,6 +1,13 @@
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Header, HTTPException, WebSocket, WebSocketException
+from fastapi import (
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketException,
+)
 from starlette import status
 
 from .auth.session import (

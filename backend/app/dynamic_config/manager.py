@@ -1,13 +1,12 @@
 """Dynamic configuration manager: in-memory cache backed by the database."""
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Type
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_async_session
-
 from . import crud
 from .migration import ConfigMigrator
 from .schemas import BaseConfigSchema
@@ -15,24 +14,28 @@ from .schemas import BaseConfigSchema
 logger = logging.getLogger(__name__)
 
 
+class ConfigRegistrationError(ValueError):
+    """A configuration module cannot be registered with this schema."""
+
+
 class ConfigManager:
     """In-memory cache of registered config modules with DB persistence and schema migration."""
 
     def __init__(self):
-        self._configs: Dict[str, BaseConfigSchema] = {}
-        self._schemas: Dict[str, Type[BaseConfigSchema]] = {}
+        self._configs: dict[str, BaseConfigSchema] = {}
+        self._schemas: dict[str, type[BaseConfigSchema]] = {}
         self._initialized = False
 
     def register_config(
-        self, module_name: str, schema_cls: Type[BaseConfigSchema]
+        self, module_name: str, schema_cls: type[BaseConfigSchema]
     ) -> None:
         if not issubclass(schema_cls, BaseConfigSchema):
-            raise ValueError(
+            raise ConfigRegistrationError(
                 f"Schema class {schema_cls} must inherit from BaseConfigSchema"
             )
 
         if module_name in self._schemas:
-            raise ValueError(
+            raise ConfigRegistrationError(
                 f"Configuration module '{module_name}' is already registered"
             )
 
@@ -83,7 +86,7 @@ class ConfigManager:
     async def _load_and_migrate_config(
         self,
         module_name: str,
-        schema_cls: Type[BaseConfigSchema],
+        schema_cls: type[BaseConfigSchema],
         db_config,
     ) -> None:
         """Load ``db_config``, run any schema migration, and write back if it changed."""
@@ -103,7 +106,7 @@ class ConfigManager:
         if db_config.config_schema_version != current_version or migration_messages:
             db_config.config_data = migrated_data
             db_config.config_schema_version = current_version
-            db_config.updated_at = datetime.now(timezone.utc)
+            db_config.updated_at = datetime.now(UTC)
             logger.info(
                 f"Updated database configuration for module '{module_name}' to version {current_version}"
             )
@@ -112,7 +115,7 @@ class ConfigManager:
         self,
         session: AsyncSession,
         module_name: str,
-        schema_cls: Type[BaseConfigSchema],
+        schema_cls: type[BaseConfigSchema],
     ) -> None:
         logger.info(f"Creating default configuration for new module '{module_name}'")
 
@@ -129,7 +132,7 @@ class ConfigManager:
         logger.info(f"Created default configuration for module '{module_name}'")
 
     async def update_config(
-        self, module_name: str, new_data: Dict[str, Any]
+        self, module_name: str, new_data: dict[str, Any]
     ) -> BaseConfigSchema:
         """Validate, persist, and cache ``new_data`` for ``module_name``."""
         if not self._initialized:
@@ -144,7 +147,12 @@ class ConfigManager:
 
         try:
             new_config_instance = schema_cls.model_validate(new_data)
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Invalid configuration data for module '{module_name}': {e}"
+            ) from e
         except Exception as e:
+            logger.exception("Unexpected validation failure in module %s", module_name)
             raise ValueError(
                 f"Invalid configuration data for module '{module_name}': {e}"
             )
@@ -173,7 +181,7 @@ class ConfigManager:
 
         return self._configs[module_name]
 
-    def get_all_configs(self) -> Dict[str, BaseConfigSchema]:
+    def get_all_configs(self) -> dict[str, BaseConfigSchema]:
         if not self._initialized:
             raise RuntimeError(
                 "ConfigManager not initialized. Call initialize_all_configs() first."
@@ -181,7 +189,7 @@ class ConfigManager:
 
         return self._configs.copy()
 
-    def get_schema_info(self, module_name: str) -> Dict[str, Any]:
+    def get_schema_info(self, module_name: str) -> dict[str, Any]:
         if module_name not in self._schemas:
             raise ValueError(f"Module '{module_name}' not registered")
 
@@ -193,10 +201,10 @@ class ConfigManager:
             "json_schema": schema_cls.model_json_schema(),
         }
 
-    def get_all_schema_info(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_schema_info(self) -> dict[str, dict[str, Any]]:
         return {
             module_name: self.get_schema_info(module_name)
-            for module_name in self._schemas.keys()
+            for module_name in self._schemas
         }
 
     async def reset_config(self, module_name: str) -> BaseConfigSchema:

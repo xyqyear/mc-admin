@@ -5,12 +5,12 @@ This module provides data classes and utilities to read and parse cgroup v2 stat
 for Docker containers, including memory usage and block I/O statistics.
 """
 
-from typing import Dict, List
 
 import aiofiles
 from pydantic import BaseModel
 
 from ...config import settings
+from ...logger import logger
 
 
 class MemoryStats(BaseModel):
@@ -48,7 +48,7 @@ class MemoryStats(BaseModel):
     @classmethod
     def from_memory_stat_content(cls, content: str) -> "MemoryStats":
         """Parse memory.stat file content into MemoryStats object."""
-        stats: Dict[str, int] = {}
+        stats: dict[str, int] = {}
         for line in content.strip().split("\n"):
             if line:
                 parts = line.split()
@@ -104,12 +104,12 @@ class BlockIODevice(BaseModel):
 class BlockIOStats(BaseModel):
     """Block I/O statistics from cgroup v2 io.stat file."""
 
-    devices: List[BlockIODevice] = []
+    devices: list[BlockIODevice] = []
 
     @classmethod
     def from_io_stat_content(cls, content: str) -> "BlockIOStats":
         """Parse io.stat file content into BlockIOStats object."""
-        devices: List[BlockIODevice] = []
+        devices: list[BlockIODevice] = []
         for line in content.strip().split("\n"):
             if line:
                 parts = line.split()
@@ -118,7 +118,7 @@ class BlockIOStats(BaseModel):
                     major, minor = map(int, device_id.split(":"))
 
                     # Parse key=value pairs
-                    stats: Dict[str, int] = {"major": major, "minor": minor}
+                    stats: dict[str, int] = {"major": major, "minor": minor}
                     for part in parts[1:]:
                         if "=" in part:
                             key, value = part.split("=", 1)
@@ -177,6 +177,7 @@ async def read_memory_stats(container_id: str) -> MemoryStats:
     except FileNotFoundError:
         raise FileNotFoundError(f"Memory stats not found for container {container_id}")
     except Exception as e:
+        logger.exception("Operation read_memory_stats failed")
         raise RuntimeError(
             f"Failed to read memory stats for container {container_id}: {e}"
         )
@@ -197,6 +198,7 @@ async def read_block_io_stats(container_id: str) -> BlockIOStats:
             f"Block I/O stats not found for container {container_id}"
         )
     except Exception as e:
+        logger.exception("Operation read_block_io_stats failed")
         raise RuntimeError(
             f"Failed to read block I/O stats for container {container_id}: {e}"
         )

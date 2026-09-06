@@ -1,7 +1,7 @@
 """Persistence helpers for retained self-check runs."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, literal, select, true, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -383,7 +383,7 @@ async def prune_runs(session: AsyncSession, *, keep_days: int) -> int:
     if keep_days <= 0:
         return 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    cutoff = datetime.now(UTC) - timedelta(days=keep_days)
     old_run_ids = [
         row_id
         for row_id in (

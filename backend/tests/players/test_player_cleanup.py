@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -52,7 +52,7 @@ async def _add_player(
         player_db_id=player_db_id,
         uuid=uuid,
         current_name=name,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     session.add(player)
     await session.commit()
@@ -79,8 +79,8 @@ async def test_offline_uuid_cleanup_deletes_player_and_related_rows(
         make_online_uuid("OnlinePlayer"),
     )
 
-    joined_at = datetime.now(timezone.utc) - timedelta(minutes=10)
-    left_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    joined_at = datetime.now(UTC) - timedelta(minutes=10)
+    left_at = datetime.now(UTC) - timedelta(minutes=5)
     test_db_session.add_all(
         [
             PlayerSession(

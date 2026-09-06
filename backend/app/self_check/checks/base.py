@@ -1,13 +1,15 @@
 """Shared primitives for built-in self-check implementations."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dynamic_config import config
+from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import Server
 from ...servers.crud import get_active_servers
@@ -30,7 +32,7 @@ class SelfCheckContext:
     def __init__(self, db: AsyncSession, self_check_config: Any | None = None) -> None:
         self.db = db
         self.config = self_check_config or config.self_check
-        self.now = datetime.now(timezone.utc)
+        self.now = datetime.now(UTC)
         self._active_servers: list[Server] | None = None
         self._filesystem_servers: set[str] | None = None
         self._snapshots: list[ResticSnapshot] | None = None
@@ -56,6 +58,7 @@ class SelfCheckContext:
             try:
                 self._snapshots = await snapshot_service.list_snapshots()
             except Exception as exc:
+                logger.warning("Cannot list snapshots for self-check", exc_info=True)
                 self._snapshot_error = str(exc)
         return self._snapshots, self._snapshot_error
 
@@ -102,7 +105,7 @@ def finding(
         server_id=server_id,
         evidence=evidence or {},
         remediation=remediation or [],
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

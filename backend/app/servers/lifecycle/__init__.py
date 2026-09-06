@@ -21,22 +21,22 @@ from .types import (
 )
 
 __all__ = [
-    # Orchestrators
-    "create_server_full",
-    "remove_server_full",
+    "CreateServerResult",
+    # Types
+    "CreateServerSpec",
+    "RemoveServerResult",
+    "SyncDryRunEntry",
+    "SyncEntryError",
+    "SyncResult",
     "adopt_server_partial",
-    "deactivate_server_partial",
     # Primitives
     "cancel_and_wait_for_tasks",
     "cancel_restart_cronjobs_for_server",
     "close_open_sessions",
-    "validate_adoption",
+    # Orchestrators
+    "create_server_full",
+    "deactivate_server_partial",
     "preview_deactivation",
-    # Types
-    "CreateServerSpec",
-    "CreateServerResult",
-    "RemoveServerResult",
-    "SyncResult",
-    "SyncDryRunEntry",
-    "SyncEntryError",
+    "remove_server_full",
+    "validate_adoption",
 ]

@@ -14,14 +14,14 @@ from .types import (
 )
 
 __all__ = [
-    "mcmap_manager",
-    "ServerMapCache",
-    "compute_palette_hash",
-    "palette_is_current",
-    "write_palette_hash",
-    "discover_mods_dir",
-    "discover_level_dat",
-    "MapStatus",
     "InitEvent",
     "MCMapError",
+    "MapStatus",
+    "ServerMapCache",
+    "compute_palette_hash",
+    "discover_level_dat",
+    "discover_mods_dir",
+    "mcmap_manager",
+    "palette_is_current",
+    "write_palette_hash",
 ]

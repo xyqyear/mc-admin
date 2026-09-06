@@ -10,7 +10,7 @@ from .utils import get_uid_gid
 
 async def restore_tree_ownership_task(
     base_path: Path,
-) -> AsyncGenerator[TaskProgress, None]:
+) -> AsyncGenerator[TaskProgress]:
     try:
         uid, gid = await get_uid_gid(base_path)
     except FileNotFoundError:

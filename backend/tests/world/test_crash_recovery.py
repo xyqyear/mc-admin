@@ -3,7 +3,7 @@ backend startup should flip to interrupted with an error message and a
 finished_at timestamp."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -37,7 +37,7 @@ async def session_factory():
 
 @pytest.mark.asyncio
 async def test_running_rows_become_interrupted(session_factory):
-    started = datetime.now(timezone.utc) - timedelta(minutes=10)
+    started = datetime.now(UTC) - timedelta(minutes=10)
     async with session_factory() as session:
         session.add(
             Restoration(

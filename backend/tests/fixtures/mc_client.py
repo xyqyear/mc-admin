@@ -6,10 +6,10 @@ import json
 import logging
 import struct
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -165,20 +165,20 @@ class MinecraftClient:
     def __init__(
         self,
         username: str,
-        on_chat: Optional[Callable[[ChatMessage], None]] = None,
+        on_chat: Callable[[ChatMessage], None] | None = None,
     ):
         self._username = username
         self._on_chat = on_chat
         self._uuid = generate_offline_uuid(username)
 
-        self._reader: Optional[asyncio.StreamReader] = None
-        self._writer: Optional[asyncio.StreamWriter] = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
         self._state = ConnectionState.DISCONNECTED
         self._connected_event = asyncio.Event()
 
         self._compression_threshold = -1  # -1 means disabled
 
-        self._read_task: Optional[asyncio.Task] = None
+        self._read_task: asyncio.Task | None = None
 
     async def connect(self, host: str, port: int) -> None:
         logger.debug(f"Connecting to {host}:{port} as {self._username}")
@@ -202,7 +202,7 @@ class MinecraftClient:
 
         # Chat packet layout for 1.21.5+ (protocol 770+).
         data = write_string(message)
-        data += write_long(int(datetime.now().timestamp() * 1000))  # timestamp
+        data += write_long(int(datetime.now(UTC).astimezone().replace(tzinfo=None).timestamp() * 1000))  # timestamp
         data += write_long(0)  # salt
         data += bytes([0])  # has signature
         data += write_varint(0)  # message count (lastSeen offset)
@@ -229,8 +229,8 @@ class MinecraftClient:
             self._writer.close()
             try:
                 await self._writer.wait_closed()
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Connection closed while disconnecting", exc_info=True)
             self._writer = None
             self._reader = None
 
@@ -304,7 +304,7 @@ class MinecraftClient:
             pass
         except asyncio.IncompleteReadError:
             logger.debug("Connection closed by server")
-        except Exception as e:
+        except (OSError, ValueError, zlib.error, struct.error) as e:
             if self._state != ConnectionState.DISCONNECTED:
                 logger.error(f"Error reading packet: {e}")
         finally:
@@ -399,14 +399,14 @@ class MinecraftClient:
             await self._handle_player_chat(data)
 
     async def _handle_system_chat(self, data: bytes) -> None:
-        content, offset = read_string(data)
+        content, _offset = read_string(data)
         # overlay (boolean) at data[offset]
 
         message_text = self._extract_text_from_json(content)
         if message_text and self._on_chat:
             self._on_chat(
                 ChatMessage(
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(UTC).astimezone().replace(tzinfo=None),
                     sender="SYSTEM",
                     message=message_text,
                 )
@@ -442,19 +442,21 @@ class MinecraftClient:
             if self._on_chat:
                 self._on_chat(
                     ChatMessage(
-                        timestamp=datetime.fromtimestamp(timestamp_ms / 1000),
+                        timestamp=datetime.fromtimestamp(timestamp_ms / 1000, UTC)
+                        .astimezone()
+                        .replace(tzinfo=None),
                         sender=sender_uuid,
                         message=message,
                     )
                 )
-        except Exception as e:
+        except (ValueError, IndexError, struct.error, OverflowError, OSError) as e:
             logger.debug(f"Error parsing player chat: {e}")
 
     def _parse_text_component(self, data: bytes) -> str:
         try:
             content, _ = read_string(data)
             return self._extract_text_from_json(content)
-        except Exception:
+        except (ValueError, TypeError):
             return "<unknown>"
 
     def _extract_text_from_json(self, json_str: str) -> str:

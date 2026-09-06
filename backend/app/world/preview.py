@@ -10,10 +10,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 import aiofiles.os as aioos
 
@@ -48,8 +49,8 @@ class _Session:
     base_dir: Path
     last_seen: datetime
     affected_regions: int = 0
-    render_queue: Optional["ServerRenderQueue"] = None
-    affected_keys: Optional[set[tuple[int, int]]] = None
+    render_queue: ServerRenderQueue | None = None
+    affected_keys: set[tuple[int, int]] | None = None
 
 
 @dataclass
@@ -81,7 +82,7 @@ class PreviewMapCache:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PreviewSessionManager:
@@ -91,7 +92,7 @@ class PreviewSessionManager:
         self.base_dir = base_dir
         self._sessions: dict[str, _Session] = {}
         self._server_to_session: dict[str, str] = {}
-        self._janitor_task: Optional[asyncio.Task] = None
+        self._janitor_task: asyncio.Task | None = None
         self._now: Callable[[], datetime] = _utcnow
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,17 +145,17 @@ class PreviewSessionManager:
             self._server_to_session.pop(sess.server_id, None)
         await async_fs.rmtree(sess.base_dir, ignore_errors=True)
 
-    def get_active_for_server(self, server_id: str) -> Optional[str]:
+    def get_active_for_server(self, server_id: str) -> str | None:
         return self._server_to_session.get(server_id)
 
-    def get_session(self, session_id: str) -> Optional[_Session]:
+    def get_session(self, session_id: str) -> _Session | None:
         return self._sessions.get(session_id)
 
-    def get_session_dir(self, session_id: str) -> Optional[Path]:
+    def get_session_dir(self, session_id: str) -> Path | None:
         sess = self._sessions.get(session_id)
         return sess.base_dir if sess else None
 
-    async def get_tile_path(self, session_id: str, rx: int, rz: int) -> Optional[Path]:
+    async def get_tile_path(self, session_id: str, rx: int, rz: int) -> Path | None:
         sess = self._sessions.get(session_id)
         if sess is None:
             return None
@@ -165,7 +166,7 @@ class PreviewSessionManager:
         self,
         session_id: str,
         *,
-        queue: "ServerRenderQueue",
+        queue: ServerRenderQueue,
         affected_keys: set[tuple[int, int]],
     ) -> None:
         """Bind ``queue`` and the staged (rx, rz) set; callers must 404 keys outside it."""
@@ -239,5 +240,7 @@ class PreviewSessionManager:
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("Preview janitor failed during shutdown")

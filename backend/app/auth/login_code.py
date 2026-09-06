@@ -2,7 +2,7 @@ import asyncio
 import random
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -55,10 +55,13 @@ class LoginCodeManager:
             try:
                 logger.info("Login code sent to client")
                 await websocket.send_json({"type": "code", "code": code, "timeout": 60})
-            except Exception:
-                logger.info("Client already disconnected")
+            except (WebSocketDisconnect, RuntimeError, OSError):
+                logger.info("Failed to deliver login code to client")
                 self.websocket_code_map.pop(websocket, None)
                 break
+            except Exception:
+                self.websocket_code_map.pop(websocket, None)
+                raise
             await asyncio.sleep(60)
             logger.info("Login code expired")
 
@@ -69,7 +72,7 @@ class LoginCodeManager:
         return None
 
     def _remove_expired_tickets(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for ticket, completion in list(self.completion_tickets.items()):
             if completion.expires_at <= now:
                 self.completion_tickets.pop(ticket, None)
@@ -91,7 +94,7 @@ class LoginCodeManager:
         ticket = self.generate_ticket()
         self.completion_tickets[ticket] = LoginCompletion(
             user=public_user,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
         )
         try:
             await websocket.send_json({"type": "verified", "ticket": ticket})

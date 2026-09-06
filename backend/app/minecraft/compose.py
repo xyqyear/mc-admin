@@ -1,10 +1,11 @@
 import re
 from enum import Enum
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from .docker.compose_file import ComposeFile, Ports, Volumes
+from .errors import ComposeValidationError
 
 
 class ServerType(str, Enum):
@@ -21,9 +22,9 @@ class ServerType(str, Enum):
 class MCService(BaseModel):
     container_name: str
     image: str
-    ports: List[Ports]
-    volumes: List[Volumes]
-    environment: Dict[str, str | float | bool]
+    ports: list[Ports]
+    volumes: list[Volumes]
+    environment: dict[str, str | float | bool]
     stdin_open: bool
     tty: bool
     restart: str
@@ -39,7 +40,7 @@ class MCComposeFile(BaseModel):
     version: str | None = None
     name: str | None = None
     services: MCServices
-    volumes: Dict[str, Any] | None = None
+    volumes: dict[str, Any] | None = None
 
     def __init__(self, compose_obj: ComposeFile):
         """Raises ``ValueError`` if ``compose_obj`` doesn't meet Minecraft server requirements."""
@@ -55,31 +56,31 @@ class MCComposeFile(BaseModel):
     @staticmethod
     def _validate_and_convert_services(compose_obj: ComposeFile) -> MCServices:
         if compose_obj.services is None:
-            raise ValueError("Could not find services in compose file")
+            raise ComposeValidationError("Could not find services in compose file")
 
         if "mc" not in compose_obj.services:
-            raise ValueError("Could not find service mc in compose file")
+            raise ComposeValidationError("Could not find service mc in compose file")
 
         mc_service = compose_obj.services["mc"]
 
         if not isinstance(mc_service.container_name, str):
-            raise ValueError("Invalid container name in compose file")
+            raise ComposeValidationError("Invalid container name in compose file")
         if not mc_service.container_name.startswith("mc-"):
-            raise ValueError("Container name must start with 'mc-'")
+            raise ComposeValidationError("Container name must start with 'mc-'")
 
         if mc_service.image is None or "itzg/minecraft-server" not in mc_service.image:
-            raise ValueError("Service must use itzg/minecraft-server image")
+            raise ComposeValidationError("Service must use itzg/minecraft-server image")
 
         if not isinstance(mc_service.environment, dict):
-            raise ValueError("Invalid environment in compose file")
-        environment = cast(Dict[str, str | float | bool], mc_service.environment)
+            raise ComposeValidationError("Invalid environment in compose file")
+        environment = cast(dict[str, str | float | bool], mc_service.environment)
 
         if "VERSION" not in environment:
-            raise ValueError("Could not find VERSION in environment")
+            raise ComposeValidationError("Could not find VERSION in environment")
 
         if mc_service.ports is None:
-            raise ValueError("Could not find ports in compose file")
-        ports = cast(List[Ports], mc_service.ports)
+            raise ComposeValidationError("Could not find ports in compose file")
+        ports = cast(list[Ports], mc_service.ports)
 
         has_game_port = False
         has_rcon_port = False
@@ -90,14 +91,14 @@ class MCComposeFile(BaseModel):
                 has_rcon_port = True
 
         if not has_game_port:
-            raise ValueError("Could not find game port (25565) in compose file")
+            raise ComposeValidationError("Could not find game port (25565) in compose file")
         if not has_rcon_port:
-            raise ValueError("Could not find rcon port (25575) in compose file")
+            raise ComposeValidationError("Could not find rcon port (25575) in compose file")
 
         if mc_service.volumes is None:
             volumes = []
         else:
-            volumes = cast(List[Volumes], mc_service.volumes)
+            volumes = cast(list[Volumes], mc_service.volumes)
 
         return MCServices(
             mc=MCService(
@@ -125,7 +126,7 @@ class MCComposeFile(BaseModel):
                 if port.published is None:
                     return 25565
                 return int(port.published)
-        raise ValueError("Could not find game port in compose file")
+        raise ComposeValidationError("Could not find game port in compose file")
 
     def get_rcon_port(self) -> int:
         for port in self.mc_service.ports:
@@ -133,7 +134,7 @@ class MCComposeFile(BaseModel):
                 if port.published is None:
                     return 25575
                 return int(port.published)
-        raise ValueError("Could not find rcon port in compose file")
+        raise ComposeValidationError("Could not find rcon port in compose file")
 
     def get_game_version(self) -> str:
         version = self.mc_service.environment["VERSION"]

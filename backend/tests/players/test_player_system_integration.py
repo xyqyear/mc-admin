@@ -8,7 +8,7 @@ Only mocks: skin_fetcher, mojang_api, and uses isolated test databases.
 import asyncio
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -16,8 +16,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import Base
 from app.models import (
+    Base,
     Player,
     PlayerAchievement,
     PlayerChatMessage,
@@ -120,7 +120,7 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
 async def create_server(db, server_id: str) -> int:
     """Create server in database and return server database id."""
     async with db() as session:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         server = Server(
             server_id=server_id,
             status=ServerStatus.ACTIVE,
@@ -295,7 +295,7 @@ async def test_session_duration_calculation(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins
-    join_time = datetime.now(timezone.utc)
+    join_time = datetime.now(UTC)
     await process_player_join("server1", "Steve", timestamp=join_time)
 
     player = await get_player(db, "Steve")
@@ -326,7 +326,7 @@ async def test_multiple_sessions_recorded(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Session 1: 3 minutes
-    t1 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC)
     await process_player_join("server1", "Steve", timestamp=t1)
     await process_player_left("server1", "Steve", timestamp=t1 + timedelta(minutes=3))
 
@@ -360,7 +360,7 @@ async def test_server_stop_ends_sessions(player_system):
     server_db_id = await create_server(db, "server1")
 
     # Two players join
-    join_time = datetime.now(timezone.utc)
+    join_time = datetime.now(UTC)
     for name in ["Steve", "Alex"]:
         async with db() as session:
             await upsert_player(session, make_online_uuid(name), name)
@@ -543,7 +543,7 @@ async def test_rapid_join_leave_cycles(player_system):
     player = await get_player(db, "Steve")
 
     # 5 rapid join/leave cycles
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
     for i in range(5):
         join_time = base_time + timedelta(minutes=i * 2)
         leave_time = join_time + timedelta(minutes=1)
@@ -638,7 +638,7 @@ async def test_player_last_seen_update(player_system):
     await create_server(db, "server1")
 
     # Upsert UUID and join
-    time1 = datetime.now(timezone.utc)
+    time1 = datetime.now(UTC)
     async with db() as session:
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
@@ -649,7 +649,7 @@ async def test_player_last_seen_update(player_system):
         first_last_seen = await get_player_last_seen(session, player.player_db_id)
     assert first_last_seen is not None
     # Player is online, so last_seen should be very recent (close to now)
-    assert (datetime.now(timezone.utc) - first_last_seen).total_seconds() < 5
+    assert (datetime.now(UTC) - first_last_seen).total_seconds() < 5
 
     # Leave 30 minutes later (realistic session duration)
     leave_time = time1 + timedelta(minutes=30)
@@ -669,7 +669,7 @@ async def test_player_last_seen_update(player_system):
     async with db() as session:
         third_last_seen = await get_player_last_seen(session, player.player_db_id)
     assert third_last_seen is not None
-    assert (datetime.now(timezone.utc) - third_last_seen).total_seconds() < 5
+    assert (datetime.now(UTC) - third_last_seen).total_seconds() < 5
 
 
 @pytest.mark.asyncio

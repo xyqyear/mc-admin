@@ -3,7 +3,6 @@
 import base64
 import json
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import httpx2
 
@@ -15,8 +14,8 @@ from ..utils import async_fs
 @dataclass(frozen=True)
 class PlayerProfileFetchResult:
     name: str
-    skin_data: Optional[bytes]
-    avatar_data: Optional[bytes]
+    skin_data: bytes | None
+    avatar_data: bytes | None
 
 
 class SkinFetcher:
@@ -28,7 +27,7 @@ class SkinFetcher:
     @log_exception("Error fetching player profile for {uuid}: ")
     async def fetch_player_profile(
         self, uuid: str
-    ) -> Optional[PlayerProfileFetchResult]:
+    ) -> PlayerProfileFetchResult | None:
         """Return Mojang profile data for ``uuid``, or ``None`` on failure."""
         uuid_clean = uuid.replace("-", "")
 
@@ -98,9 +97,9 @@ class SkinFetcher:
             # PIL is CPU-bound; keep the avatar extraction off the event loop.
             try:
                 avatar_bytes = await async_fs.extract_skin_avatar(skin_bytes)
-            except Exception as e:
-                logger.error(
-                    f"Failed to extract avatar for player {uuid_clean}: {e}"
+            except Exception:
+                logger.exception(
+                    f"Failed to extract avatar for player {uuid_clean}"
                 )
                 return PlayerProfileFetchResult(
                     name=name,
@@ -115,7 +114,7 @@ class SkinFetcher:
             )
 
     @log_exception("Error fetching player skin for {uuid}: ")
-    async def fetch_player_skin(self, uuid: str) -> Optional[Tuple[bytes, bytes]]:
+    async def fetch_player_skin(self, uuid: str) -> tuple[bytes, bytes] | None:
         """Return ``(skin_png, avatar_png)`` for ``uuid``, or ``None`` on failure."""
         result = await self.fetch_player_profile(uuid)
         if not result or not result.skin_data or not result.avatar_data:

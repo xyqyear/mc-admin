@@ -1,7 +1,6 @@
 """Restart-task scheduler that avoids existing backup-task minutes."""
 
 from datetime import time
-from typing import Optional, Set, Tuple
 
 from ..models import CronJobStatus
 from .instance import cron_manager
@@ -17,7 +16,7 @@ class RestartScheduler:
         self.cron_manager = cron_manager
         self.restart_start_time = restart_start_time
 
-    async def get_backup_minutes(self) -> Set[int]:
+    async def get_backup_minutes(self) -> set[int]:
         backup_jobs = await self.cron_manager.get_all_cronjobs(
             identifier="backup", status=[CronJobStatus.ACTIVE, CronJobStatus.PAUSED]
         )
@@ -35,8 +34,8 @@ class RestartScheduler:
         return backup_minutes
 
     async def get_restart_time_slots(
-        self, exclude_server_id: Optional[str] = None
-    ) -> Set[Tuple[int, int]]:
+        self, exclude_server_id: str | None = None
+    ) -> set[tuple[int, int]]:
         """``(hour, minute)`` pairs already taken by active restart_server jobs."""
         restart_jobs = await self.cron_manager.get_all_cronjobs(
             identifier="restart_server",
@@ -66,7 +65,7 @@ class RestartScheduler:
 
         return restart_time_slots
 
-    def _parse_cron_field(self, field_value: str, max_value: int) -> Set[int]:
+    def _parse_cron_field(self, field_value: str, max_value: int) -> set[int]:
         """Expand a cron field to its concrete value set; supports `*`, lists, ranges, steps."""
         values = set()
 
@@ -100,15 +99,15 @@ class RestartScheduler:
 
         return values
 
-    def _parse_cron_minute_field(self, minute_field: str) -> Set[int]:
+    def _parse_cron_minute_field(self, minute_field: str) -> set[int]:
         return self._parse_cron_field(minute_field, 60)
 
-    def _parse_cron_hour_field(self, hour_field: str) -> Set[int]:
+    def _parse_cron_hour_field(self, hour_field: str) -> set[int]:
         return self._parse_cron_field(hour_field, 24)
 
     async def find_next_available_restart_time(
-        self, exclude_server_id: Optional[str] = None
-    ) -> Tuple[int, int]:
+        self, exclude_server_id: str | None = None
+    ) -> tuple[int, int]:
         """First 5-minute slot from ``restart_start_time`` not used by backups or other restarts."""
         backup_minutes = await self.get_backup_minutes()
         restart_time_slots = await self.get_restart_time_slots(exclude_server_id)
@@ -119,9 +118,11 @@ class RestartScheduler:
         current_minute = (current_minute // 5) * 5
 
         for _ in range(24 * 60 // 5):
-            if current_minute not in backup_minutes:
-                if (current_hour, current_minute) not in restart_time_slots:
-                    return (current_hour, current_minute)
+            if (
+                current_minute not in backup_minutes
+                and (current_hour, current_minute) not in restart_time_slots
+            ):
+                return (current_hour, current_minute)
 
             current_minute += 5
             if current_minute >= 60:
@@ -137,14 +138,14 @@ class RestartScheduler:
         day_pattern: str = "*",
         month_pattern: str = "*",
         weekday_pattern: str = "*",
-        exclude_server_id: Optional[str] = None,
+        exclude_server_id: str | None = None,
     ) -> str:
         hour, minute = await self.find_next_available_restart_time(exclude_server_id)
 
         return f"{minute} {hour} {day_pattern} {month_pattern} {weekday_pattern}"
 
     async def check_time_conflict(
-        self, hour: int, minute: int, exclude_server_id: Optional[str] = None
+        self, hour: int, minute: int, exclude_server_id: str | None = None
     ) -> bool:
         """Whether ``(hour, minute)`` collides with any active backup or other restart slot."""
         backup_minutes = await self.get_backup_minutes()
@@ -153,10 +154,7 @@ class RestartScheduler:
         if minute in backup_minutes:
             return True
 
-        if (hour, minute) in restart_time_slots:
-            return True
-
-        return False
+        return (hour, minute) in restart_time_slots
 
 
 restart_scheduler = RestartScheduler(cron_manager)

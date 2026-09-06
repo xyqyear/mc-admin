@@ -2,6 +2,7 @@
 
 import asyncio
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,10 +10,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.cron.manager as manager_module
+from app.cron.types import CronJobConfig
 from app.db.database import get_async_session
 from app.models import Base, CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
 
-from .test_cron_manager import test_cron_registry
+from .test_cron_manager import TestCronManager, test_cron_registry
 from .test_cronjobs import SampleCronJobParams
 
 
@@ -63,6 +66,41 @@ async def fresh_cron_manager():
 
 
 class TestBasicCronJobFunctionality:
+    async def test_repeated_manager_lifecycle_restores_global_registry(self):
+        original_registry = manager_module.cron_registry
+        manager = TestCronManager()
+
+        for _ in range(2):
+            try:
+                await manager.initialize()
+                assert manager_module.cron_registry is test_cron_registry
+                assert manager.scheduler.running
+            finally:
+                await manager.shutdown()
+            await asyncio.sleep(0)
+
+            assert manager_module.cron_registry is original_registry
+            assert not manager.scheduler.running
+            assert not manager._initialized
+
+    def test_config_preserves_dynamic_parameter_instance(self):
+        params = SampleCronJobParams(message="Typed configuration", delay_seconds=5)
+        now = datetime.now(UTC)
+        config = CronJobConfig(
+            cronjob_id="typed-config",
+            identifier="test_cronjob",
+            name="Typed configuration",
+            cron="0 0 * * *",
+            params=params,
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert config.params is params
+        assert isinstance(config.params, SampleCronJobParams)
+        assert config.params.message == "Typed configuration"
+        assert config.params.delay_seconds == 5
+
     async def test_cronjob_registry_basics(self):
         assert test_cron_registry.is_registered("test_cronjob")
 

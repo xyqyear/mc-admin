@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional, Tuple
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
@@ -27,7 +26,7 @@ class TZDatetime(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value
 
 
@@ -43,14 +42,14 @@ class UserRole(str, Enum):
 class User(Base):
     __tablename__ = "user"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[int | None] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(
         SQLAlchemyEnum(UserRole), default=UserRole.ADMIN
     )
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -78,7 +77,7 @@ class DynamicConfig(Base):
     config_data: Mapped[dict] = mapped_column(JSON)
     config_schema_version: Mapped[str] = mapped_column(String(50))
     updated_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -103,7 +102,7 @@ class CronJob(Base):
     identifier: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(255))
     cron: Mapped[str] = mapped_column(String(100))
-    second: Mapped[Optional[str]] = mapped_column(String(20))
+    second: Mapped[str | None] = mapped_column(String(20))
     params_json: Mapped[str] = mapped_column(TEXT)
     execution_count: Mapped[int] = mapped_column(Integer, default=0)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -111,10 +110,10 @@ class CronJob(Base):
         SQLAlchemyEnum(CronJobStatus), default=CronJobStatus.ACTIVE
     )
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -125,8 +124,8 @@ class CronJobExecution(Base):
     cronjob_id: Mapped[str] = mapped_column(String(255), index=True)
     execution_id: Mapped[str] = mapped_column(String(50), unique=True)
     started_at: Mapped[datetime] = mapped_column(TZDatetime())
-    ended_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
-    duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    ended_at: Mapped[datetime | None] = mapped_column(TZDatetime())
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[ExecutionStatus] = mapped_column(SQLAlchemyEnum(ExecutionStatus))
     messages_json: Mapped[str] = mapped_column(TEXT, default="[]")
 
@@ -147,15 +146,15 @@ class SelfCheckRun(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     trigger: Mapped[str] = mapped_column(String(32))
     scope: Mapped[str] = mapped_column(String(20))
-    check_id: Mapped[Optional[str]] = mapped_column(
+    check_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
     status: Mapped[str] = mapped_column(String(32))
     started_at: Mapped[datetime] = mapped_column(TZDatetime())
     finished_at: Mapped[datetime] = mapped_column(TZDatetime(), index=True)
     summary_json: Mapped[str] = mapped_column(TEXT)
-    requested_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    requested_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
 
 class SelfCheckFinding(Base):
@@ -170,13 +169,13 @@ class SelfCheckFinding(Base):
     category: Mapped[str] = mapped_column(String(50))
     severity: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(20))
-    server_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    server_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(TEXT)
     evidence_json: Mapped[str] = mapped_column(TEXT)
-    remediation_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    remediation_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -193,14 +192,14 @@ class Server(Base):
     status: Mapped[ServerStatus] = mapped_column(
         SQLAlchemyEnum(ServerStatus), default=ServerStatus.ACTIVE
     )
-    template_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    template_snapshot_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    variable_values_json: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    template_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    template_snapshot_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    variable_values_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -209,14 +208,14 @@ class ServerTemplate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     yaml_template: Mapped[str] = mapped_column(TEXT)
     variable_definitions_json: Mapped[str] = mapped_column(TEXT, default="[]")
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -227,7 +226,7 @@ class SystemHeartbeat(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     timestamp: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -237,11 +236,11 @@ class Player(Base):
     player_db_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uuid: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     current_name: Mapped[str] = mapped_column(String(16))
-    skin_data: Mapped[Optional[bytes]] = mapped_column()
-    avatar_data: Mapped[Optional[bytes]] = mapped_column()
-    last_skin_update: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
+    skin_data: Mapped[bytes | None] = mapped_column()
+    avatar_data: Mapped[bytes | None] = mapped_column()
+    last_skin_update: Mapped[datetime | None] = mapped_column(TZDatetime())
     created_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -264,8 +263,8 @@ class PlayerSession(Base):
     player_db_id: Mapped[int] = mapped_column(Integer, index=True)
     server_db_id: Mapped[int] = mapped_column(Integer, index=True)
     joined_at: Mapped[datetime] = mapped_column(TZDatetime())
-    left_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime())
-    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    left_at: Mapped[datetime | None] = mapped_column(TZDatetime())
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
 
 
 class PlayerChatMessage(Base):
@@ -312,7 +311,7 @@ class DefaultVariableConfig(Base):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     variable_definitions_json: Mapped[str] = mapped_column(TEXT, default="[]")
     updated_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
 
 
@@ -341,18 +340,18 @@ class Restoration(Base):
     server_id: Mapped[str] = mapped_column(String(100), index=True)
     type: Mapped[RestorationType] = mapped_column(SQLAlchemyEnum(RestorationType))
     source_snapshot_id: Mapped[str] = mapped_column(String(64))
-    safety_snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    safety_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     selection_json: Mapped[str] = mapped_column(TEXT)
     is_rollback: Mapped[bool] = mapped_column(Boolean, default=False)
-    initiated_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    initiated_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
-        TZDatetime(), default=lambda: datetime.now(timezone.utc)
+        TZDatetime(), default=lambda: datetime.now(UTC)
     )
-    finished_at: Mapped[Optional[datetime]] = mapped_column(TZDatetime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(TZDatetime(), nullable=True)
     status: Mapped[RestorationStatus] = mapped_column(
         SQLAlchemyEnum(RestorationStatus), default=RestorationStatus.RUNNING
     )
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
 
 class RestorationSelection(BaseModel):
@@ -362,6 +361,6 @@ class RestorationSelection(BaseModel):
     # Required for DIMENSION/REGIONS/CHUNKS; ignored for WORLD. Path relative
     # to the server's data/ dir (e.g. "world/region"); the world root dir name
     # is its prefix, so it uniquely identifies a dimension across roots.
-    region_dir_relpath: Optional[str] = None
-    regions: list[Tuple[int, int]] = PydanticField(default_factory=list)
-    chunks: list[Tuple[int, int]] = PydanticField(default_factory=list)
+    region_dir_relpath: str | None = None
+    regions: list[tuple[int, int]] = PydanticField(default_factory=list)
+    chunks: list[tuple[int, int]] = PydanticField(default_factory=list)

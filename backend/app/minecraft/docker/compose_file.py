@@ -1,6 +1,7 @@
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, Any, Mapping, Self, Sequence
+from typing import Annotated, Any, Self
 
 import aiofiles
 import yaml

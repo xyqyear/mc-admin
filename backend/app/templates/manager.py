@@ -189,9 +189,8 @@ class TemplateManager:
                 if value not in var.options:
                     errors.append(f"变量 '{var.name}' 必须是以下之一: {var.options}")
 
-            elif isinstance(var, BoolVariableDefinition):
-                if not isinstance(value, bool):
-                    errors.append(f"变量 '{var.name}' 必须是布尔值")
+            elif isinstance(var, BoolVariableDefinition) and not isinstance(value, bool):
+                errors.append(f"变量 '{var.name}' 必须是布尔值")
 
         return errors
 

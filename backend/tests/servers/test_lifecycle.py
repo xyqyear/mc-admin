@@ -34,7 +34,6 @@ from app.servers.lifecycle import (
 from app.servers.port_utils import get_server_used_ports
 from app.servers.rebuild import rebuild_server_task
 
-
 YAML_TEMPLATE = """
 version: '3.8'
 services:
@@ -69,10 +68,10 @@ def temp_server_path():
 
 @pytest.fixture
 async def db_factory():
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
     engine = create_async_engine(
-        f"sqlite+aiosqlite:///{temp_db.name}", echo=False
+        f"sqlite+aiosqlite:///{database_path}", echo=False
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -81,7 +80,7 @@ async def db_factory():
     )
     yield Session
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -317,7 +316,7 @@ class TestValidateAdoption:
 
     async def test_invalid_compose_raises(self, patch_singletons, db_factory):
         mgr = patch_singletons
-        instance = mgr.get_instance("bad")
+        mgr.get_instance("bad")
         # Write a structurally broken compose to disk
         (mgr.servers_path / "bad").mkdir()
         (mgr.servers_path / "bad" / "docker-compose.yml").write_text(
@@ -376,6 +375,7 @@ async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, 
 
 async def test_new_server_from_legacy_template_is_rejected(patch_singletons, db_factory):
     from fastapi import HTTPException
+
     from app.templates.crud import create_template
 
     legacy = _yaml("old-template").replace('      SERVER_PORT: "25565"\n', '')
@@ -496,7 +496,6 @@ class TestCreateServerFullRollback:
         # schedule_auto_restart itself. So we patch it to do its work
         # (logically create a cronjob) and then raise. We expose the
         # cronjob_id via a side channel for the test.
-        leaked_id_seen = {"value": None}
 
         async def schedule_create_then_raise(server_id, request):
             # Simulate that the cronjob was successfully created inside
@@ -530,25 +529,24 @@ class TestCreateServerFullRollback:
         # cancel is NOT called (negative test).
         with patch.object(
             cron_manager, "cancel_cronjob", new=AsyncMock(side_effect=fake_cancel)
+        ), patch(
+            "app.servers.lifecycle.orchestrators.schedule_auto_restart",
+            new=schedule_create_then_raise,
         ):
-            with patch(
-                "app.servers.lifecycle.orchestrators.schedule_auto_restart",
-                new=schedule_create_then_raise,
-            ):
-                from app.routers.servers.restart_schedule import (
-                    RestartScheduleRequest,
-                )
+            from app.routers.servers.restart_schedule import (
+                RestartScheduleRequest,
+            )
 
-                async with db_factory() as session:
-                    with pytest.raises(RuntimeError, match="schedule failed"):
-                        await create_server_full(
-                            session,
-                            "rb-cron",
-                            CreateServerSpec(
-                                yaml_content=_yaml("rb-cron", 26000, 26010),
-                                restart_schedule=RestartScheduleRequest(),
-                            ),
-                        )
+            async with db_factory() as session:
+                with pytest.raises(RuntimeError, match="schedule failed"):
+                    await create_server_full(
+                        session,
+                        "rb-cron",
+                        CreateServerSpec(
+                            yaml_content=_yaml("rb-cron", 26000, 26010),
+                            restart_schedule=RestartScheduleRequest(),
+                        ),
+                    )
 
         # Cronjob id was never assigned (schedule raised before return),
         # so cancel must NOT have been called. This validates the

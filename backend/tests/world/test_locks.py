@@ -1,7 +1,7 @@
 """Tests for ServerOperationLock — acquire/release semantics, holder metadata."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,7 +15,7 @@ from app.world.locks import (
 def _holder(kind: ServerOperationKind = ServerOperationKind.BACKUP) -> LockHolder:
     return LockHolder(
         kind=kind,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=None,
         description="test",
     )
@@ -82,7 +82,7 @@ async def test_holder_reflects_metadata():
     lock = ServerOperationLock()
     holder = LockHolder(
         kind=ServerOperationKind.RESTORE,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=42,
         description="restore from snap",
         restoration_id="rest-abc",

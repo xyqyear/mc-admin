@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import json
-from typing import Dict, List, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -134,7 +134,7 @@ class SimpleDNSManager:
             return_exceptions=True,
         )
 
-        servers: Dict[str, int] = {}
+        servers: dict[str, int] = {}
         for row, result in zip(active_rows, port_results):
             if isinstance(result, BaseException):
                 logger.warning(
@@ -206,7 +206,7 @@ class SimpleDNSManager:
 
     def _get_addresses_from_config(
         self, addresses_config: list
-    ) -> Dict[str, AddressInfo]:
+    ) -> dict[str, AddressInfo]:
         addresses = {}
 
         for addr_config in addresses_config:
@@ -221,11 +221,11 @@ class SimpleDNSManager:
 
     def _generate_dns_records(
         self,
-        addresses: Dict[str, AddressInfo],
-        server_list: List[str],
+        addresses: dict[str, AddressInfo],
+        server_list: list[str],
         managed_sub_domain: str,
         dns_ttl: int,
-    ) -> List[DNSRecord]:
+    ) -> list[DNSRecord]:
         records = []
 
         for address_name, address_info in addresses.items():
@@ -263,15 +263,15 @@ class SimpleDNSManager:
 
     def _generate_routes(
         self,
-        addresses: Dict[str, AddressInfo],
-        servers: Dict[str, int],
+        addresses: dict[str, AddressInfo],
+        servers: dict[str, int],
         managed_sub_domain: str,
         domain: str,
-    ) -> List[RouteEntry]:
+    ) -> list[RouteEntry]:
         routes = []
 
         for server_name, server_port in servers.items():
-            for address_name in addresses.keys():
+            for address_name in addresses:
                 if address_name == "*":
                     sub_domain_base = managed_sub_domain
                 else:
@@ -286,7 +286,7 @@ class SimpleDNSManager:
 
         return routes
 
-    async def _update_dns_records(self, target_records: List[DNSRecord]):
+    async def _update_dns_records(self, target_records: list[DNSRecord]):
         if not self._dns_client:
             return
 
@@ -306,7 +306,7 @@ class SimpleDNSManager:
             target_add_records, dns_config.managed_sub_domain
         )
 
-    async def _update_mc_router(self, target_routes: List[RouteEntry]):
+    async def _update_mc_router(self, target_routes: list[RouteEntry]):
         if not self._mc_router_client:
             return
 

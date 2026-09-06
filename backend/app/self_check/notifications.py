@@ -22,7 +22,7 @@ class SelfCheckNotificationBus:
             try:
                 await sink.publish(result)
             except Exception as exc:
-                logger.warning("self-check notification sink failed: %s", exc)
+                logger.warning("self-check notification sink failed: %s", exc, exc_info=True)
 
 
 self_check_notification_bus = SelfCheckNotificationBus()

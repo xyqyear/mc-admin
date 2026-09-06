@@ -23,6 +23,7 @@ See proposal.md. The implementation builds on `e2e/docs/architecture.md` and the
 - The production image uses Uvicorn INFO logging so WebSocket protocol DEBUG frames do not disclose login credentials. Credential checks include truncated ticket fragments because protocol diagnostics can abbreviate long frame payloads.
 - Keep directory confinement, protect the managed data root and prevalidate multipart destinations before writing. These are explicit operation policies, not separately reproduced security findings; Linux backslashes remain legal filename characters. An already-absent mc-router route satisfies deletion, while other HTTP failures remain errors.
 - Preserve equals signs inside Docker label values in the shared Docker/Compose parser. The lifecycle scenario saves such a label through the API and verifies real health and restart behavior using the configured Minecraft dependency.
+- Pin Ruff for repeatable backend lint checks in development and CI. Preserve Pydantic model configuration, API dependency injection, cancellation boundaries and timestamp representations during lint cleanup; lint findings are not automatically behavioral defects.
 - Qualification records distinguish deployed API evidence, real dependency integration, isolated original-code reproductions, deliberate policy changes and unresolved product semantics. Empty DNS target behavior remains unchanged until explicit empty state can be distinguished from unavailable target data.
 
 ## Risks / Trade-offs

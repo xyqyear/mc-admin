@@ -10,7 +10,6 @@ stay protected as well.
 
 from collections.abc import AsyncGenerator, Callable, Sequence
 from pathlib import Path
-from typing import List, Optional
 
 from ..dynamic_config import config
 from ..utils import async_fs
@@ -77,7 +76,7 @@ class SnapshotService:
         targets: Sequence[Path],
         *,
         dry_run: bool = False,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         """In-place restore with ``--delete``, ignored paths protected.
 
         Yields normalized events: ``status`` percents rescaled across plan
@@ -92,13 +91,13 @@ class SnapshotService:
 
     async def preview(
         self, snapshot_id: str, targets: Sequence[Path]
-    ) -> List[ResticRestoreEvent]:
+    ) -> list[ResticRestoreEvent]:
         """Dry-run restore returning meaningful per-file actions.
 
         Zero-size ``restored`` items (directory entries restic reports but
         doesn't really restore) and ``unchanged`` items are dropped.
         """
-        actions: List[ResticRestoreEvent] = []
+        actions: list[ResticRestoreEvent] = []
         async for event in self.restore(snapshot_id, targets, dry_run=True):
             if event.kind != "file":
                 continue
@@ -114,7 +113,7 @@ class SnapshotService:
         snapshot_id: str,
         targets: Sequence[Path],
         stage_root: Path,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         """Restore targets under ``stage_root``, mirroring absolute paths.
 
         No ``--delete``: staging directories start empty. Use
@@ -143,7 +142,7 @@ class SnapshotService:
         target_for: Callable[[RestoreStep], Path],
         delete: bool,
         dry_run: bool,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         total_steps = len(plan.steps)
         summary = ResticRestoreEvent(
             kind="summary",
@@ -183,7 +182,7 @@ class SnapshotService:
         target_dir: Path,
         delete: bool,
         dry_run: bool,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         if isinstance(step, DirStep):
             return self._client.restore(
                 snapshot_id,
@@ -206,8 +205,8 @@ class SnapshotService:
         return await self._client.get_snapshot(snapshot_id)
 
     async def list_snapshots(
-        self, path_filter: Optional[Path] = None
-    ) -> List[ResticSnapshot]:
+        self, path_filter: Path | None = None
+    ) -> list[ResticSnapshot]:
         """All snapshots; with ``path_filter`` keep those whose recorded paths
         cover it and whose recorded excludes don't disqualify it."""
         snapshots = await self._client.list_snapshots()
@@ -215,7 +214,7 @@ class SnapshotService:
             return snapshots
 
         resolved_filter = await async_fs.resolve(path_filter)
-        filtered: List[ResticSnapshot] = []
+        filtered: list[ResticSnapshot] = []
         for snapshot in snapshots:
             paths, excludes = await self._resolved_coverage_paths(snapshot)
             if covers(resolved_filter, paths, excludes):
@@ -224,7 +223,7 @@ class SnapshotService:
 
     async def find_snapshots_covering(
         self, paths: Sequence[Path]
-    ) -> List[ResticSnapshot]:
+    ) -> list[ResticSnapshot]:
         """Snapshots that cover *every* input path; newest-first.
 
         Coverage is exclude-aware: a snapshot whose recorded excludes contain
@@ -239,7 +238,7 @@ class SnapshotService:
         all_snapshots = await self._client.list_snapshots()
         resolved_targets = [await async_fs.resolve(p) for p in paths]
 
-        matching: List[ResticSnapshot] = []
+        matching: list[ResticSnapshot] = []
         for snapshot in all_snapshots:
             snap_paths, snap_excludes = await self._resolved_coverage_paths(snapshot)
             if all(
@@ -263,14 +262,14 @@ class SnapshotService:
 
     async def forget(
         self,
-        keep_last: Optional[int] = None,
-        keep_hourly: Optional[int] = None,
-        keep_daily: Optional[int] = None,
-        keep_weekly: Optional[int] = None,
-        keep_monthly: Optional[int] = None,
-        keep_yearly: Optional[int] = None,
-        keep_tag: Optional[List[str]] = None,
-        keep_within: Optional[str] = None,
+        keep_last: int | None = None,
+        keep_hourly: int | None = None,
+        keep_daily: int | None = None,
+        keep_weekly: int | None = None,
+        keep_monthly: int | None = None,
+        keep_yearly: int | None = None,
+        keep_tag: list[str] | None = None,
+        keep_within: str | None = None,
         prune: bool = True,
     ) -> str:
         return await self._client.forget(

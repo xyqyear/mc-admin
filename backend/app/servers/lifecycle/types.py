@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -7,17 +6,17 @@ from ...routers.servers.restart_schedule import RestartScheduleRequest
 
 class CreateServerSpec(BaseModel):
     # Either yaml_content OR (template_id + variable_values) must be set.
-    yaml_content: Optional[str] = None
-    template_id: Optional[int] = None
-    variable_values: Optional[dict] = None
-    restart_schedule: Optional[RestartScheduleRequest] = None
+    yaml_content: str | None = None
+    template_id: int | None = None
+    variable_values: dict | None = None
+    restart_schedule: RestartScheduleRequest | None = None
 
 
 class CreateServerResult(BaseModel):
     server_id: str
     game_port: int
     rcon_port: int
-    restart_cronjob_id: Optional[str] = None
+    restart_cronjob_id: str | None = None
 
 
 class RemoveServerResult(BaseModel):
@@ -36,10 +35,10 @@ class SyncEntryError(BaseModel):
 class SyncDryRunEntry(BaseModel):
     server_id: str
     action: str  # adopt | deactivate
-    game_port: Optional[int] = None
-    rcon_port: Optional[int] = None
-    restart_cronjob_count: Optional[int] = None
-    open_session_count: Optional[int] = None
+    game_port: int | None = None
+    rcon_port: int | None = None
+    restart_cronjob_count: int | None = None
+    open_session_count: int | None = None
 
 
 class SyncResult(BaseModel):

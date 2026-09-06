@@ -200,9 +200,11 @@ async def test_extract_error_other_than_no_data_propagates(world_data_path):
     from app.ftb_claims import FtbExtractError
 
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
-        with pytest.raises(FtbExtractError):
-            await extract_claims_for_server(world_data_path)
+    with (
+        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        pytest.raises(FtbExtractError),
+    ):
+        await extract_claims_for_server(world_data_path)
     fake.unlink()
 
 
@@ -232,9 +234,11 @@ async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
         ],
     }
     fake = _write_fake_mcmap(payload)
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
-        with pytest.raises(FtbExtractError, match="invalid JSON event"):
-            await extract_claims_for_server(world_data_path)
+    with (
+        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        pytest.raises(FtbExtractError, match='invalid JSON event'),
+    ):
+        await extract_claims_for_server(world_data_path)
     fake.unlink()
 
 

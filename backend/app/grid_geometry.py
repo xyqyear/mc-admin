@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 Cell = tuple[int, int]
 Vertex = tuple[int, int]

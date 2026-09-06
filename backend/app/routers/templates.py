@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
 from ..dependencies import get_current_user
+from ..logger import logger
 from ..minecraft import docker_mc_manager
 from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
@@ -87,6 +88,7 @@ async def get_available_ports(
             used_game_ports.add(mc_compose.get_game_port())
             used_rcon_ports.add(mc_compose.get_rcon_port())
         except Exception:
+            logger.warning("统计可用端口时无法解析服务器配置", exc_info=True)
             continue
 
     # Find available ports starting from common defaults
@@ -236,9 +238,10 @@ async def update_template(
         raise HTTPException(status_code=404, detail="模板不存在")
 
     # Check name uniqueness if name is being updated
-    if request.name is not None:
-        if await check_name_exists(db, request.name, exclude_id=template_id):
-            raise HTTPException(status_code=409, detail="模板名称已存在")
+    if request.name is not None and await check_name_exists(
+        db, request.name, exclude_id=template_id
+    ):
+        raise HTTPException(status_code=409, detail="模板名称已存在")
 
     # Get current values for validation
     yaml_template = (
