@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   frontend:
-    name: frontend lint and build
+    name: frontend lint, types and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,8 +35,11 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
-      - name: Run build
-        run: pnpm build
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Build frontend assets
+        run: pnpm build:bundle
 
   backend-pyright:
     name: backend lint and pyright
@@ -67,3 +70,22 @@ jobs:
 
       - name: Run Ruff
         run: uv run ruff check .
+
+  go:
+    name: Go format and vet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: e2e/go.mod
+          cache-dependency-path: e2e/go.sum
+
+      - name: Run format and static analysis checks
+        run: make lint

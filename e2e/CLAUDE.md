@@ -5,6 +5,8 @@ Independent Go module and Linux executable; scenarios exercise the real applicat
 ## Commands
 
 ```bash
+make lint
+make test
 make check
 make build
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e
@@ -12,7 +14,7 @@ make build
 ./bin/mc-admin-e2e coverage --require-complete --output coverage /path/to/run-one /path/to/run-two
 ```
 
-Build the application image from the repository root with `docker build -t mc-admin:e2e .`. Go version and dependency checksums live in this module's `go.mod` and `go.sum`. The runtime binary needs no Go installation. Framework unit tests run through `make check`; real scenarios run through the executable. Default local selection is `smoke`; CI selects `regression`, including smoke. Explicit external selections fail if required configuration or dependencies are absent.
+Build the application image from the repository root with `docker build -t mc-admin:e2e .`. Go version and dependency checksums live in this module's `go.mod` and `go.sum`. The runtime binary needs no Go installation. `make lint` checks formatting and runs vet in the independent Static Checks push workflow. `make test` runs race-enabled framework tests with implicit vet disabled; `make check` runs both targets locally. The E2E workflow runs `make test` and `make build`; real scenarios run through the executable. Default local selection is `smoke`; CI selects `regression`, including smoke. Explicit external selections fail if required configuration or dependencies are absent.
 
 ## Module map
 

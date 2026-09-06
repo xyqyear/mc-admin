@@ -7,13 +7,17 @@ React 19 + TypeScript + Vite 8 on Node 24. Path alias: `@` → `src/`.
 ```bash
 pnpm install
 pnpm dev        # port 3000
-pnpm build      # tsc + vite build
+pnpm build      # typecheck + bundle
+pnpm typecheck  # tsc -b
+pnpm build:bundle # vite build
 pnpm lint
 ```
 
 Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
 Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
+
+The Static Checks push workflow runs lint, typecheck and bundling as separate steps. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
 
 React Router 7 is used in declarative mode; import router APIs from `react-router`.
 

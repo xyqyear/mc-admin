@@ -101,13 +101,15 @@ Use the original canonical directory on the original Docker host. Cleanup refuse
 ## Development and CI
 
 ```bash
-make check
 gofmt -w cmd internal suites
+make check
 make build
 ```
 
-`make check` runs `go vet` and race-enabled framework tests. The scenarios are compiled into the executable and run with `mc-admin-e2e run`; `go test ./...` verifies framework and domain fixture behavior.
+`make lint` checks Go formatting and runs `go vet`. `make test` runs race-enabled framework tests with implicit vet disabled; `make check` runs both targets. The scenarios are compiled into the executable and run with `mc-admin-e2e run`; framework tests verify infrastructure and domain fixture behavior.
 
-[The E2E workflow](../.github/workflows/e2e-tests.yml) builds the application and executable once, then distributes them to three independent regression shards. Each shard runs cleanup and uploads diagnostics even when testing fails; a final job audits the complete case/shard union and publishes operation observations. Manual dispatch can disable reuse or select smoke, Mojang, DNSPod or Huawei qualification. DNS selections read the repository's `E2E_EXTERNAL_CONFIG` secret into a private temporary file. New scenarios participate through the catalog without directory-specific CI matrix edits.
+[Static Checks](../.github/workflows/static-checks.yml) runs independently on every push: frontend lint and TypeScript checks, backend Ruff and Pyright, and Go formatting/vet. The Docker build bundles frontend assets without invoking the separate TypeScript check.
+
+[The E2E workflow](../.github/workflows/e2e-tests.yml) runs framework unit tests and builds the application and executable once, then distributes them to three independent regression shards. Each shard runs cleanup and uploads diagnostics even when testing fails; a final job audits the complete case/shard union and publishes operation observations. Manual dispatch can disable reuse or select smoke, Mojang, DNSPod or Huawei qualification. DNS selections read the repository's `E2E_EXTERNAL_CONFIG` secret into a private temporary file. New scenarios participate through the catalog without directory-specific CI matrix edits.
 
 New backend features and bug fixes that change observable behavior require an API E2E scenario or an extension to an existing scenario in the same change. Update the coverage inventory, choose explicit isolation, and verify both the normal run and `--no-reuse` for affected cases. Existing pytest tests continue to cover focused internals and broad boundary conditions.

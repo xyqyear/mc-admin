@@ -47,11 +47,13 @@ jobs:
           go-version-file: e2e/go.mod
           cache-dependency-path: e2e/go.sum
 
-      - name: Check framework and build executable
+      - name: Run framework tests
         working-directory: e2e
-        run: |
-          test -z "$(gofmt -l cmd internal suites)"
-          make check build
+        run: make test
+
+      - name: Build executable
+        working-directory: e2e
+        run: make build
 
       - name: Build application image from this revision
         run: docker build -t mc-admin:e2e .

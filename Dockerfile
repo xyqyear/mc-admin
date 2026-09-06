@@ -6,7 +6,7 @@ COPY frontend-react/package.json frontend-react/pnpm-lock.yaml frontend-react/pn
 RUN npm install -g pnpm@11.0.9 && pnpm install --frozen-lockfile
 
 COPY frontend-react/ ./
-RUN pnpm build
+RUN pnpm build:bundle
 RUN mkdir -p \
     dist/assets/app \
     dist/assets/fonts \
