@@ -17,6 +17,7 @@ uv run pyright
 - **Run `uv run pyright` after backend code changes.**
 - **Alembic migrations run during startup** before DB-backed subsystems start; see `docs/database-migrations.md`.
 - Tests whose function names end in `_with_docker` or live in files containing `integrated` start real Docker containers; they're slow and excluded by the default `-k` filter above.
+- Observable backend feature changes require real API E2E coverage in `../e2e/suites/` and an update to `../e2e/docs/coverage.md`. The standalone runner deploys the current application image; see `../e2e/README.md` and `../e2e/docs/architecture.md` for execution and environment contracts.
 
 ## Module map
 
@@ -35,8 +36,8 @@ app/
 ├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
 ├── players/               # identity resolution, dynamic name filtering, cleanup, tracking, sessions, chat, achievements, skins
-├── log_monitor/           # watchfiles-based latest.log parser
-├── files/                 # CRUD, deep search, ownership repair, multi-file upload
+├── log_monitor/           # latest.log parsing, watchfiles notifications and idle tail reconciliation
+├── files/                 # confined CRUD/search/upload paths, ownership repair
 ├── snapshots/             # restic client, ignored paths, restore planner, SnapshotService
 ├── cron/                  # APScheduler jobs (backup, restart, system self-check)
 ├── self_check/            # health-check orchestration, category checks, retained run history, event triggers
@@ -66,7 +67,9 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The global task center polls summary-only `/api/tasks` lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). Every `/api/tasks` operation requires a current user; cookie-authenticated mutations also require CSRF protection. The global task center polls summary-only lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
+
+Cancellation closes the operation generator before publishing the terminal cancelled status. The subprocess stream reaps its direct child, and compression attempts to remove partial output; filesystem deletion failures may leave output behind. See `docs/background-tasks.md`.
 
 ## Dynamic config
 
@@ -78,9 +81,11 @@ Import lifecycle orchestration symbols from `app.servers.lifecycle`. The `app.se
 
 Keep game-port initialization validation at reusable template save and new-server creation boundaries. Legacy reads, snapshot edits, rebuilds, and lifecycle operations use the permissive Compose parser; see `docs/minecraft.md` and `docs/self-check.md`.
 
+Docker and Compose label values may contain equals signs. The shared label parser preserves them so valid labels do not cause lifecycle health checks to report a running container as unready.
+
 ## Audit middleware
 
-`app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Sensitive field names (`password`, `token`, `secret`, `key`) are masked. Configured via `[audit]` in `config.toml`.
+`app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Configured `sensitive_fields` substrings (default `password`, `token`, `secret`, `key`) and `sensitive_exact_fields` names (default `ak`, `sk`, `code`, `ticket`) are masked recursively in JSON and form fields; unstructured bodies retain only content type and size. Configured via `[audit]` in `config.toml`. Login-code values are excluded from ordinary application logs.
 
 ## Validation error shape
 

@@ -1,0 +1,195 @@
+name: API E2E Tests
+
+on:
+  push:
+    paths:
+      - backend/**
+      - frontend-react/**
+      - e2e/**
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/e2e-tests.yml
+  pull_request:
+    paths:
+      - backend/**
+      - frontend-react/**
+      - e2e/**
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/e2e-tests.yml
+  workflow_dispatch:
+    inputs:
+      selection:
+        description: Regression or explicit external qualification (DNS needs E2E_EXTERNAL_CONFIG)
+        type: choice
+        options: [regression, smoke, mojang, dnspod, huawei]
+        default: regression
+      no_reuse:
+        description: Create a fresh environment for every case
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build deployment and test executable
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: e2e/go.mod
+          cache-dependency-path: e2e/go.sum
+
+      - name: Check framework and build executable
+        working-directory: e2e
+        run: |
+          test -z "$(gofmt -l cmd internal suites)"
+          make check build
+
+      - name: Build application image from this revision
+        run: docker build -t mc-admin:e2e .
+
+      - name: Package runtime inputs
+        run: |
+          mkdir -p e2e-artifacts
+          cp e2e/bin/mc-admin-e2e e2e-artifacts/mc-admin-e2e
+          docker save --output e2e-artifacts/application.tar mc-admin:e2e
+
+      - name: Share immutable inputs with shards
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-runtime-inputs
+          path: e2e-artifacts/
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  regression:
+    name: API regression (shard ${{ matrix.shard }}/3)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
+      E2E_RUN_ID: e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+      E2E_SHARD: ${{ matrix.shard }}/3
+      E2E_SEED: ${{ github.run_id }}
+      E2E_NO_REUSE: ${{ inputs.no_reuse || false }}
+      E2E_SELECTION: ${{ inputs.selection || 'regression' }}
+    steps:
+      - name: Download runtime inputs
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-runtime-inputs
+          path: e2e-artifacts
+
+      - name: Prepare runtime inputs
+        run: |
+          chmod +x e2e-artifacts/mc-admin-e2e
+          docker load --input e2e-artifacts/application.tar
+
+      - name: Run real API scenarios
+        env:
+          E2E_EXTERNAL_CONFIG: ${{ secrets.E2E_EXTERNAL_CONFIG }}
+        run: |
+          umask 077
+          selection_args=(--tag "$E2E_SELECTION")
+          if [ "$E2E_SELECTION" = dnspod ] || [ "$E2E_SELECTION" = huawei ]; then
+            config_file=$(mktemp "$RUNNER_TEMP/e2e-external.XXXXXX")
+            trap 'rm -f "$config_file"' EXIT
+            printf '%s' "$E2E_EXTERNAL_CONFIG" > "$config_file"
+            selection_args=(--tag dns --case "^dns\.$E2E_SELECTION-" --external-config "$config_file")
+          fi
+          reuse_args=()
+          if [ "$E2E_NO_REUSE" = true ]; then
+            reuse_args+=(--no-reuse)
+          fi
+          ./e2e-artifacts/mc-admin-e2e run \
+            --backend-image mc-admin:e2e \
+            --output "$E2E_DIRECTORY" \
+            --run-id "$E2E_RUN_ID" \
+            --shard "$E2E_SHARD" \
+            --seed "$E2E_SEED" \
+            --workers 2 --mc-slots 1 \
+            "${selection_args[@]}" \
+            "${reuse_args[@]}"
+
+      - name: Recover owned resources
+        if: always()
+        run: |
+          if [ -f "$E2E_DIRECTORY/$E2E_RUN_ID/manifest.json" ]; then
+            ./e2e-artifacts/mc-admin-e2e cleanup --run-dir "$E2E_DIRECTORY/$E2E_RUN_ID"
+          fi
+
+      - name: Upload reports and redacted diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results-${{ matrix.shard }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
+
+  coverage:
+    name: Audit complete case and shard coverage
+    if: always() && needs.build.result == 'success'
+    needs: [build, regression]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download executable
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-runtime-inputs
+          path: e2e-artifacts
+
+      - name: Download separate shard reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: e2e-results-*
+          path: shard-reports
+          merge-multiple: false
+
+      - name: Check coverage union and publish summary
+        env:
+          E2E_SELECTION: ${{ inputs.selection || 'regression' }}
+        run: |
+          chmod +x e2e-artifacts/mc-admin-e2e
+          coverage_args=(--require-complete)
+          if [ "$E2E_SELECTION" = regression ]; then
+            coverage_args+=(--require-observed)
+          fi
+          ./e2e-artifacts/mc-admin-e2e coverage "${coverage_args[@]}" --output coverage shard-reports/e2e-results-*
+
+      - name: Add API observations to job summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage.md ]; then
+            cat coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-coverage
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: warn
