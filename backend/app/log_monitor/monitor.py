@@ -116,9 +116,19 @@ class LogMonitor:
             await asyncio.sleep(1)
 
         try:
-            async for changes in awatch(log_path.parent, stop_event=None):
+            async for changes in awatch(
+                log_path.parent,
+                stop_event=None,
+                rust_timeout=1000,
+                yield_on_timeout=True,
+            ):
                 if self._stop_flag:
                     break
+
+                # Polling watchers can miss same-second writes; reconcile the tail on idle ticks.
+                if not changes:
+                    await self._process_log_changes(server_id, log_path)
+                    continue
 
                 for change_type, changed_path in changes:
                     if changed_path != str(log_path):
