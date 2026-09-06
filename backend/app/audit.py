@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -57,21 +58,22 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
 
         return method in self.AUDIT_METHODS
 
-    def _mask_sensitive_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        if not isinstance(data, dict):
-            return data
-
-        masked_data = {}
-        for key, value in data.items():
-            if key.lower() in [
-                field.lower() for field in settings.audit.sensitive_fields
-            ]:
-                masked_data[key] = "***MASKED***"
-            elif isinstance(value, dict):
-                masked_data[key] = self._mask_sensitive_data(value)
-            else:
-                masked_data[key] = value
-        return masked_data
+    def _mask_sensitive_data(self, data: Any) -> Any:
+        if isinstance(data, list):
+            return [self._mask_sensitive_data(value) for value in data]
+        if isinstance(data, dict):
+            sensitive = [field.lower() for field in settings.audit.sensitive_fields]
+            exact = {field.lower() for field in settings.audit.sensitive_exact_fields}
+            return {
+                key: (
+                    "***MASKED***"
+                    if key.lower() in exact
+                    or any(field in key.lower() for field in sensitive)
+                    else self._mask_sensitive_data(value)
+                )
+                for key, value in data.items()
+            }
+        return data
 
     async def _get_user_info(self, request: Request) -> Optional[Dict[str, Any]]:
         try:
@@ -85,7 +87,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             "role": user.role.value,
         }
 
-    async def _read_request_body(self, request: Request) -> Optional[Dict[str, Any]]:
+    async def _read_request_body(self, request: Request) -> Any:
         if not settings.audit.log_request_body:
             return None
 
@@ -97,12 +99,15 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         if len(body_bytes) > settings.audit.max_body_size:
             return {"error": "Request body too large for logging"}
 
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
         try:
-            body_json = json.loads(body_bytes.decode("utf-8"))
-            return self._mask_sensitive_data(body_json)
+            if content_type == "application/x-www-form-urlencoded":
+                body = parse_qs(body_bytes.decode("utf-8"), keep_blank_values=True)
+            else:
+                body = json.loads(body_bytes.decode("utf-8"))
+            return self._mask_sensitive_data(body)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return {"raw_body": body_bytes.decode("utf-8", errors="replace")}
-
+            return {"content_type": content_type, "bytes": len(body_bytes)}
 
     def _get_client_ip(self, request: Request) -> Optional[str]:
         forwarded_for = request.headers.get("X-Forwarded-For")
@@ -123,7 +128,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         request: Request,
         response: Response,
         user_info: Optional[Dict[str, Any]],
-        request_body: Optional[Dict[str, Any]],
+        request_body: Any,
         processing_time: float,
     ) -> str:
         path_params = (

@@ -39,6 +39,10 @@ Designed for "I'm sitting at a new browser, I don't want to type my password —
 
 `auth/login_code.py` — `LoginCodeManager`:
 
+Ordinary application logs record code delivery and expiry without the code value. Default operation-audit rules mask both the confirmation `code` and completion `ticket`; see `audit.md` for configurable matching rules.
+
+The production image starts Uvicorn at INFO level. Explicitly enabling protocol DEBUG logging can emit WebSocket frames containing codes or abbreviated tickets; application-field masking does not sanitize that protocol output.
+
 1. Browser opens a WebSocket to `/api/auth/code`.
 2. Backend generates an 8-digit numeric code, stores it against the WebSocket id, sends `{"type": "code", "code": "...", "timeout": 60}`.
 3. Browser shows the code.

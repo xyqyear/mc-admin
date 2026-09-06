@@ -43,6 +43,7 @@ class AuditSettings(BaseModel):
     log_request_body: bool = True
     max_body_size: int = 10240
     sensitive_fields: list[str] = ["password", "token", "secret", "key"]
+    sensitive_exact_fields: list[str] = ["ak", "sk", "code", "ticket"]
 
 
 class ResticSettings(BaseModel):

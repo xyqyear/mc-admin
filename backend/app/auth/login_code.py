@@ -53,14 +53,14 @@ class LoginCodeManager:
             code = self.generate_code()
             self.websocket_code_map[websocket] = code
             try:
-                logger.info(f"Sending code {code} to client")
+                logger.info("Login code sent to client")
                 await websocket.send_json({"type": "code", "code": code, "timeout": 60})
             except Exception:
                 logger.info("Client already disconnected")
                 self.websocket_code_map.pop(websocket, None)
                 break
             await asyncio.sleep(60)
-            logger.info(f"Code {code} expired")
+            logger.info("Login code expired")
 
     def find_websocket_by_code(self, code: str):
         for websocket, ws_code in self.websocket_code_map.items():
