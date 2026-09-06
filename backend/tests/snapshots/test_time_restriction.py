@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simple test script to verify the backup time restriction logic.
 Run this to test different time scenarios.
