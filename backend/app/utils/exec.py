@@ -96,32 +96,35 @@ async def exec_command_stream(
         stderr=asyncio.subprocess.PIPE,
     )
 
-    if process.stdout is None:
-        raise RuntimeError("Failed to capture stdout")
+    try:
+        if process.stdout is None:
+            raise RuntimeError("Failed to capture stdout")
 
-    if delimiters is None:
-        async for line in process.stdout:
-            yield line.decode()
-    else:
-        buffer = b""
-        while True:
-            byte = await process.stdout.read(1)
-            if not byte:
-                break
+        if delimiters is None:
+            async for line in process.stdout:
+                yield line.decode()
+        else:
+            buffer = b""
+            while True:
+                byte = await process.stdout.read(1)
+                if not byte:
+                    break
 
-            if byte[0] in delimiters:
-                if buffer:
-                    yield buffer.decode(errors="replace")
-                    buffer = b""
-            else:
-                buffer += byte
+                if byte[0] in delimiters:
+                    if buffer:
+                        yield buffer.decode(errors="replace")
+                        buffer = b""
+                else:
+                    buffer += byte
 
-        if buffer:
-            yield buffer.decode(errors="replace")
+            if buffer:
+                yield buffer.decode(errors="replace")
 
-    await process.wait()
-    if process.returncode != 0:
-        stderr_content = b""
-        if process.stderr:
-            stderr_content = await process.stderr.read()
-        raise RuntimeError(f"Command failed: {stderr_content.decode()}")
+        await process.wait()
+        if process.returncode != 0:
+            stderr_content = b""
+            if process.stderr:
+                stderr_content = await process.stderr.read()
+            raise RuntimeError(f"Command failed: {stderr_content.decode()}")
+    finally:
+        await _kill_process(process)

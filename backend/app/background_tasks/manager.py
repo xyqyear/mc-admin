@@ -93,6 +93,7 @@ class BackgroundTaskManager:
             try:
                 async for progress in task_generator:
                     if task.cancel_requested:
+                        await task_generator.aclose()
                         task.status = TaskStatus.CANCELLED
                         task.ended_at = datetime.now()
                         task.message = "已取消"

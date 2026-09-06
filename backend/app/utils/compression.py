@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from datetime import datetime
 from typing import Optional
 
@@ -95,7 +96,7 @@ async def create_server_archive_stream(
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
     try:
-        async for segment in exec_command_stream(
+        async with aclosing(exec_command_stream(
             "7z",
             "a",
             "-t7z",
@@ -104,13 +105,14 @@ async def create_server_archive_stream(
             source_name,
             cwd=str(source_parent),
             delimiters=progress_delimiters,
-        ):
-            match = re.search(r"^\s*(\d+)%", segment)
-            if match:
-                progress = int(match.group(1))
-                yield TaskProgress(
-                    progress=progress, message=f"Compressing: {progress}%"
-                )
+        )) as stream:
+            async for segment in stream:
+                match = re.search(r"^\s*(\d+)%", segment)
+                if match:
+                    progress = int(match.group(1))
+                    yield TaskProgress(
+                        progress=progress, message=f"Compressing: {progress}%"
+                    )
 
         archive_size = (await aioos.stat(archive_path)).st_size
 
@@ -119,7 +121,7 @@ async def create_server_archive_stream(
             message="Compression complete",
             result={"filename": archive_filename, "size": archive_size},
         )
-    except Exception:
+    except BaseException:
         if await aioos.path.exists(archive_path):
             try:
                 await aioos.remove(archive_path)

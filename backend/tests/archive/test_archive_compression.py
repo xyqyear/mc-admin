@@ -415,6 +415,7 @@ class TestBackgroundTaskIntegration:
             if cancelled:
                 assert task.status == TaskStatus.CANCELLED
                 assert not task_result.success
+                assert list(archive_dir.iterdir()) == []
             else:
                 assert task.status == TaskStatus.COMPLETED
 
