@@ -32,6 +32,10 @@ that predate those gates. Cleanup previews list all matching players and their
 related session/chat/achievement counts. Cleanup deletes recompute the current
 candidate set before removing player rows and dependent records.
 
+Player session, chat and achievement history queries apply an optional server
+filter to every returned row. An unknown server yields an empty list; omitting
+the filter returns that player's history across servers.
+
 ## Singletons
 
 Each owns its own lifecycle and runs as a background task.

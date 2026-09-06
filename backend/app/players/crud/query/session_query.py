@@ -85,8 +85,9 @@ async def get_player_sessions(
     # Apply filters
     if server_id:
         server_db_id = await get_server_db_id(session, server_id)
-        if server_db_id:
-            query = query.where(PlayerSession.server_db_id == server_db_id)
+        if server_db_id is None:
+            return []
+        query = query.where(PlayerSession.server_db_id == server_db_id)
 
     if start_date:
         query = query.where(PlayerSession.joined_at >= start_date)
