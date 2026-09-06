@@ -1,6 +1,8 @@
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from app.self_check.checks.server import find_backup_jars_sync
 
 
@@ -54,3 +56,27 @@ def test_backup_mod_scan_ignores_invalid_jars(tmp_path: Path) -> None:
     matches = find_backup_jars_sync(tmp_path, ["ftbbackups"])
 
     assert matches == []
+
+
+@pytest.mark.parametrize("malformed", [False, True], ids=["valid", "malformed"])
+def test_quilt_backup_dependency_is_not_a_backup_mod(
+    tmp_path: Path, malformed: bool
+) -> None:
+    mods_dir = tmp_path / "mods"
+    mods_dir.mkdir()
+    content = '''{
+        "schema_version": 1,
+        "quilt_loader": {
+            "depends": [{"id": "ftbbackups2", "versions": "*"}],
+            "group": "invalid.e2e",
+            "id": "ordinary_mod",
+            "version": "1.0.0",
+            "intermediate_mappings": "net.fabricmc:intermediary"
+        }
+    }'''
+    write_jar(
+        mods_dir / "ordinary.jar",
+        {"quilt.mod.json": content[:-1] if malformed else content},
+    )
+
+    assert find_backup_jars_sync(tmp_path, ["ftbbackups2"]) == []
