@@ -9,6 +9,8 @@ import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
+from .paths import resolve_file_path
+
 from .types import (
     MultiFileUploadRequest,
     MultiFileUploadResult,
@@ -32,11 +34,11 @@ async def check_upload_conflicts(
 ) -> UploadConflictResponse:
     """Check for conflicts before multi-file upload"""
     conflicts = []
-    target_base = base_path / upload_path.lstrip("/")
+    target_base = await resolve_file_path(base_path, upload_path)
 
     for file_item in upload_request.files:
         if file_item.type == "file":
-            target_path = target_base / file_item.path.lstrip("/")
+            target_path = await resolve_file_path(target_base, file_item.path)
             if await aioos.path.exists(target_path):
                 current_size = None
                 if await aioos.path.isfile(target_path):
@@ -106,14 +108,17 @@ async def upload_multiple_files(
     if not session.policy:
         raise HTTPException(status_code=400, detail="Upload policy not set")
 
+    target_base = await resolve_file_path(base_path, upload_path)
+    for file in files:
+        if file.filename:
+            await resolve_file_path(target_base, file.filename)
+
     # Create a copy of session data to prevent concurrent modification
     session_copy = session.model_copy()
 
     # Only remove session if it's not reusable
     if not session.reusable:
         remove_upload_session(session_id)
-
-    target_base = base_path / upload_path.lstrip("/")
 
     # Process upload policy - build overwrite decisions map
     overwrite_decisions = {}
@@ -138,7 +143,7 @@ async def upload_multiple_files(
 
             # file.filename contains the complete relative path (e.g., "config/settings.yml")
             file_relative_path = file.filename.lstrip("/")
-            target_path = target_base / file_relative_path
+            target_path = await resolve_file_path(target_base, file_relative_path)
 
             # Use file relative path as the key instead of just filename
             result_key = file_relative_path

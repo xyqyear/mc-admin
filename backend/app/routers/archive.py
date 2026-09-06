@@ -38,6 +38,7 @@ from ..files import (
     rename_file_or_directory,
 )
 from ..minecraft import docker_mc_manager
+from ..files.paths import resolve_file_path
 from ..models import UserPublic
 from ..utils.compression import create_server_archive_stream
 from ..utils.sse import sse_response
@@ -80,7 +81,7 @@ async def list_archive_files(
 async def download_archive_file(path: str, _: UserPublic = Depends(get_current_user)):
     """Download a specific archive file"""
     base_path = await _get_archive_base_path()
-    file_path = base_path / path.lstrip("/")
+    file_path = await resolve_file_path(base_path, path)
 
     # Validate file exists and is a file (not a directory)
     if not await aioos.path.exists(file_path):
@@ -210,7 +211,7 @@ async def create_server_archive_endpoint(
 
         data_dir = instance.get_data_path()
         if request.path != "/":
-            target_path = data_dir / request.path.lstrip("/")
+            target_path = await resolve_file_path(data_dir, request.path)
             if not await aioos.path.exists(target_path):
                 raise HTTPException(
                     status_code=404,

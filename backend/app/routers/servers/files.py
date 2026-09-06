@@ -30,8 +30,8 @@ from ...files import (
     upload_multiple_files,
 )
 from ...minecraft import docker_mc_manager
+from ...files.paths import resolve_file_path
 from ...models import UserPublic
-from ...utils import async_fs
 
 router = APIRouter(
     prefix="/servers",
@@ -106,7 +106,7 @@ async def download_file(
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
     base_path = instance.get_data_path()
-    file_path = base_path / path.lstrip("/")
+    file_path = await resolve_file_path(base_path, path)
 
     if not await aioos.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -290,7 +290,7 @@ async def search_server_files(
         search_path = base_path / path.lstrip("/")
         search_path_str = "/" + path.lstrip("/")
 
-    search_path = await async_fs.resolve(search_path)
+    search_path = await resolve_file_path(base_path, path)
     # Perform search
     results = await search_files(search_path, search_request)
 
