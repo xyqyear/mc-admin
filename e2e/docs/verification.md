@@ -2,7 +2,62 @@
 
 验证日期：2026-09-06（Asia/Shanghai）。当前目录包含 **62 个场景：59 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。本轮复核与上一轮验收分别记录，不能合并不同镜像的运行来声称全部通过。DNSPod／华为 DNS 云端变更仍缺少专用测试域名凭据。
 
-## 缺陷复核后的验证
+## Ruff 清理后的验证
+
+本轮固定 Ruff `0.16.6` 并纳入 `uv` 开发依赖及 GitHub 静态检查。首次默认规则检查为 1,766 条诊断、252 个文件；安全自动修复处理 1,250 条，其余逐项处理，并准确配置共享 `logging.Logger`、FastAPI 声明式工厂和只读角色依赖的识别。没有禁用规则组或增加全局忽略规则。
+
+- `uv run ruff check .`：通过，0 条诊断。
+- `uv run pyright`：0 个错误、0 条诊断警告；仍有工具自身的版本更新提示。
+- 两处 Pydantic `class Config` 迁移为 `ConfigDict`。专项使用 `-W error::pydantic.warnings.PydanticDeprecatedSince20` 验证字段名／别名输入、输出及动态参数实例身份；该弃用不再出现。
+- 子进程辅助函数移除可变默认参数，保持默认空环境行为，并用真实子进程验证默认／None／空字典不继承父变量，显式环境正常生效。
+- 路由请求体采用按请求创建的默认模型，缺省／null／空对象六种输入验证通过；完整 OpenAPI 前后相同。29 个 MCMap 模型和 9 个 TypeAdapter 的 JSON Schema 与原实现相同。
+- 凭据边界的预期异常只记录常量或异常类型；测试确认错误文本中的模拟凭据不会写入日志。
+- 前端在 Node `24.16.0` 下执行 lint 和 build 均通过；构建仍提示已有的大体积 vendor／Monaco chunk，不属于 Ruff 诊断。
+- E2E 与静态检查工作流通过 actionlint `1.7.12`。
+- 本轮最终应用镜像为 `mc-admin:e2e-ruff-final`，`sha256:cc878c4814058a4771445a90ab90b0fc0523e8ea0e6212a985fdc15420e3f3c2`。本地真实 Minecraft 依赖沿用下文记录的已校验本地 JAR 镜像 `472dbd20…`。应用源码对应提交 `9a1bdcf8f0a3a0fb6810fad5eabe40a8e9aebab7`；随后 `2851807` 仅移除两处测试文件 shebang。
+
+首次全后端测试中的真实 router 容器启动失败，Docker 报告默认网桥 `docker0` 不存在。检查确认默认网络没有挂接容器后，按 Docker 已记录的网关／子网恢复接口；真实 router 专项重新通过。该失败保存在 `/tmp/mc-admin-ruff-router-live-recheck.log`，恢复后的结果在 `/tmp/mc-admin-ruff-router-live-restored.log`，没有修改测试断言或增加跳过条件。
+
+首次全量后端检查为 **1,578 通过、9 失败、2 个原有跳过、5 条警告**。除上述 router 环境失败外，其余八项是 Ruff 清理改变了异常日志首行格式。修复恢复原有参数、前缀、异常类型和详情，保留 traceback 和调用位置；原有 31 项日志测试全部通过，未修改断言。Cron 测试管理器改用显式初始化／关闭恢复全局 registry，避免解释器退出时的析构异常；日志与完整 Cron 组合为 **174 通过**，最后增强后的四个生命周期专项也通过。两次测试结果分别保留，不能相加作为去重用例数。
+
+最终本地全量命令 `uv run python -m pytest tests -q -o addopts= -W error::pydantic.warnings.PydanticDeprecatedSince20 --maxfail=3`：**1,602 通过、2 个原有跳过、5 条运行警告**，耗时 1,171.67 秒。两处 `class Config` 的弃用被提升为错误后仍全部通过；剩余五条为一次测试辅助模型收集提示及四次主动访问弃用字段的提示，退出时没有 Cron 析构异常。完整日志：`/tmp/mc-admin-ruff-final-full-pytest.log`。
+
+最终镜像上的真实 API 验证：
+
+| 运行标识 | 配置 | 结果 |
+| --- | --- | --- |
+| `e2e-ruff-final-shard-1` | regression，分片 1/3，种子 20260912，2 workers／1 Minecraft slot | 28/28 通过；24 个环境；4 次复用 |
+| `e2e-ruff-final-shard-2` | 同镜像、同种子，独立并发分片 2/3 | 16/16 通过；16 个环境 |
+| `e2e-ruff-final-shard-3` | 同镜像、同种子，独立并发分片 3/3 | 15/15 通过；15 个环境 |
+| `e2e-ruff-final-no-reuse` | 6 个重点用例，`--no-reuse`，种子 20260913 | 6/6 通过；6 个独立环境 |
+
+完整回归 **59/59 通过**，覆盖合并使用 `coverage --require-complete --require-observed`，确认用例无遗漏、无重复，154 个 API 操作均被访问，150 个有成功响应。四个 DNS 操作仍只验证未启用服务时的行为，云端成功行为没有计为通过。禁用复用的六项仍是任务权限、登录码与 CSRF、审计脱敏、JAR 元数据与所有权、文件边界和 Minecraft 生命周期。
+
+上述 61 个环境全部标记清理完成，运行时目录为空，没有残留 E2E 容器或网络。报告位于 `/tmp/mc-admin-e2e-regression/e2e-ruff-final-*`；静态二进制 SHA256 仍为 `6102f6a8aeeed63f602a842e124a4cc37da5fda0b4e52bd457eb4f800634646a`。中间 `00ed635e…` 镜像也完成过 59/59 及 6/6，但其结果不替代最终镜像验证。
+
+GitHub 首次静态检查发现两个 `EXE001`：`tests/snapshots/test_time_restriction.py` 与 `tests/test_audit.py` 带 shebang，但 Git 中均为不可执行文件。根据 [Ruff 官方说明](https://docs.astral.sh/ruff/rules/shebang-not-executable/)，该规则不在 WSL 上执行，所以本地没有报出。两个 pytest 模块移除不需要的 shebang，未增加忽略规则；修复提交为 `2851807`。首次失败记录：[Static Checks 34032258754](https://github.com/xyqyear/mc-admin/actions/runs/34032258754)。
+
+### GitHub 实际执行结果
+
+代码提交 `2851807723e5283ffa22fce5145fc943a86746a3` 已推送至 `test/api-e2e-and-ruff`，由 push 事件触发以下检查，均已完成：
+
+| 工作流 | 结果与证据 |
+| --- | --- |
+| [Static Checks 34032419870](https://github.com/xyqyear/mc-admin/actions/runs/34032419870) | Ruff、Pyright、前端 lint 与 build 全部通过 |
+| [Backend Tests 34032419775](https://github.com/xyqyear/mc-admin/actions/runs/34032419775) | 18/18 分组成功；逐组日志合计 **1,602 通过、2 个原有跳过** |
+| [API E2E Tests 34032419717](https://github.com/xyqyear/mc-admin/actions/runs/34032419717) | 构建、三个独立回归分片和覆盖汇总全部成功；**59/59 通过** |
+
+GitHub 应用镜像为 `sha256:708e3ce2616791004c685051f2c63429ef26f8c8e246e2aa25a8445a5ef34418`，由上述提交的 Dockerfile 构建。三个分片分别为 28、16、15 个通过，使用相同应用镜像与目录；55 个环境全部标记已清理，其中四次复用仅发生在首个分片。已下载并检查三个 `results.json`、`manifest.json` 和覆盖报告，证据保存在 `/tmp/mc-admin-github-2851807/`。
+
+GitHub 使用项目默认的 `itzg/minecraft-server:java25@sha256:59feb0a1ef286f20a20560c56adf5b927155bfa842951f5db8b8bbc5a1a3ebde` 和在线安装流程，没有使用本机的临时 JAR 镜像。覆盖报告确认 154 个 API 操作被访问、150 个成功、0 个未访问；上述四个 DNS 云端成功行为仍不在本轮验证范围。
+
+此前提交 `9a1bdcf` 的 [API E2E 34032258749](https://github.com/xyqyear/mc-admin/actions/runs/34032258749) 也完成了 59/59，后端 18 个分组全部通过；其静态检查因上述 shebang 问题失败。两次 push 的工作流曾并行运行，报告使用各自运行标识；没有将前一次结果补入后一次覆盖统计。
+
+**诊断与运行警告分别记录**：Ruff／Pyright 为零诊断不表示运行时完全无提示。GitHub pytest 的 19 次警告分别为 14 次既有 CI 短测试 JWT 密钥提示、一次测试辅助模型 `TestConfigSchema` 的收集提示、四次测试主动访问弃用字段的提示；它们不是已修复的 `class Config` 弃用。前端的大 chunk 提示及 Pyright 工具更新提示也单独保留，没有计作代码诊断。
+
+下面各节保留此前镜像的历史验证，不替代本轮结果。收尾的验证文档提交只记录结果，不改变已经通过上述检查的应用、测试或工作流；提交消息中的 `[skip ci]` 避免文档回填再次触发相同代码的全部测试。
+
+## 缺陷复核后的验证（历史记录）
 
 - 应用：仓库 Dockerfile 构建的 `mc-admin:e2e-reviewed-labels`，`sha256:8ba6943c76c6de61f6f0c52462bde3211c57222b83fc9be53557bb2c4aa979b6`，包含 Docker 标签修复及生产默认 Uvicorn INFO 日志。
 - 新增 `archive.task-permissions`；增强真实登录日志、审计配置、Quilt 元数据、Linux 文件名兼容性及带等号 Docker 标签的生命周期断言。缺陷判定、修复范围及保留策略见[缺陷复核记录](defect-review.md)。

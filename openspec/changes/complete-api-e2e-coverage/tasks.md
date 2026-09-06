@@ -32,3 +32,9 @@
 - [x] 5.4 Preserve Linux filename compatibility while retaining directory confinement, and document deliberate root-operation and multipart validation policies.
 - [x] 5.5 Rebuild the application and runner, validate the affected scenarios with reuse disabled and the complete local regression, and correct the Chinese coverage and evidence records.
 - [x] 5.6 Preserve equals signs in Docker label values so real healthy containers are reported correctly; verify both Docker parsers and the deployed Minecraft lifecycle.
+
+## 6. Lint cleanup and published validation
+
+- [x] 6.1 Migrate legacy Pydantic configuration while preserving model behavior and remove all Ruff diagnostics under the pinned current rule set.
+- [x] 6.2 Add repeatable Ruff checks to development dependencies and CI, update documentation, and validate static checks, backend behavior and deployed API regressions.
+- [x] 6.3 Commit all intended workspace changes in focused commits, push the tested revision, and attempt GitHub E2E execution with recorded results.
