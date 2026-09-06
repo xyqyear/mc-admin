@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import httpx2
 
 from app.dns.router import MCRouterClient
 
@@ -53,9 +54,89 @@ async def test_get_routes(router_client):
 async def test_get_routes_empty_response(router_client):
     router_client._send_request = AsyncMock(return_value=None)
 
-    routes = await router_client.get_routes()
+    with pytest.raises(ValueError, match="路由响应必须是对象"):
+        await router_client.get_routes()
 
-    assert routes is None
+
+async def test_get_routes_normalizes_modern_router_response(router_client):
+    router_client._send_request = AsyncMock(return_value={
+        "new.example.com": {"backend": "localhost:25565", "scalingTarget": "proxy:25566"},
+        "old.example.com": "localhost:25567",
+    })
+
+    assert await router_client.get_routes() == {
+        "new.example.com": "localhost:25565",
+        "old.example.com": "localhost:25567",
+    }
+    assert await router_client.get_routes_diff({"new.example.com": "localhost:25565", "old.example.com": "localhost:25567"}) == {
+        "routes_to_add": {}, "routes_to_remove": {}, "routes_to_update": {},
+    }
+
+
+@pytest.mark.parametrize("route", [{"scalingTarget": "ignored"}, {"backend": 123}, "", None])
+async def test_get_routes_rejects_invalid_backend_values(router_client, route):
+    router_client._send_request = AsyncMock(return_value={"invalid.example.com": route})
+
+    with pytest.raises(ValueError, match="缺少有效的后端地址"):
+        await router_client.get_routes()
+
+
+@pytest.mark.parametrize(
+    ("method", "status_code"),
+    [("GET", 404), ("POST", 404), ("GET", 503), ("POST", 503), ("DELETE", 503), ("DELETE", 403)],
+)
+async def test_upstream_failure_is_not_acknowledged_as_success(
+    router_client, method, status_code
+):
+    router_client._client.request.return_value = httpx2.Response(
+        status_code, text="upstream rejected request",
+        request=httpx2.Request(method, "http://localhost:26666/routes"),
+    )
+
+    with pytest.raises(httpx2.HTTPStatusError) as error:
+        if method == "GET":
+            await router_client.get_routes()
+        elif method == "POST":
+            await router_client._add_route("test.example.com", "localhost:25565")
+        else:
+            await router_client._remove_route("test.example.com")
+    assert error.value.response.status_code == status_code
+
+
+async def test_remove_missing_route_is_idempotent(router_client):
+    router_client._client.request.return_value = httpx2.Response(
+        404, text="404 page not found\n",
+        request=httpx2.Request("DELETE", "http://localhost:26666/routes/missing.example.com"),
+    )
+
+    await router_client._remove_route("missing.example.com")
+    await router_client._remove_route("missing.example.com")
+
+    assert router_client._client.request.await_count == 2
+
+
+async def test_override_routes_tolerates_route_removed_after_listing(router_client):
+    router_client._client.request.side_effect = [
+        httpx2.Response(
+            200, json={"stale.example.com": {"backend": "localhost:25565"}},
+            request=httpx2.Request("GET", "http://localhost:26666/routes"),
+        ),
+        httpx2.Response(
+            404, text="404 page not found\n",
+            request=httpx2.Request("DELETE", "http://localhost:26666/routes/stale.example.com"),
+        ),
+        httpx2.Response(
+            201, request=httpx2.Request("POST", "http://localhost:26666/routes"),
+        ),
+    ]
+
+    await router_client.override_routes({"new.example.com": "localhost:25566"})
+
+    router_client._client.request.assert_any_await(
+        "POST", "http://localhost:26666/routes",
+        headers={"Content-Type": "application/json"},
+        json={"serverAddress": "new.example.com", "backend": "localhost:25566"},
+    )
 
 
 @pytest.mark.asyncio

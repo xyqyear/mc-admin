@@ -7,11 +7,11 @@ Direct client implementation for mc-router without wrapper abstractions.
 import asyncio
 import json as jsonlib
 from typing import (
+    Any,
     Awaitable,
     Literal,
     Optional,
     TypedDict,
-    cast,
 )
 
 import httpx2
@@ -49,13 +49,16 @@ class MCRouterClient:
         path: str,
         headers: Optional[dict[str, str]] = None,
         json: Optional[RoutePoseDataT] = None,
-    ) -> Optional[RoutesT]:
+    ) -> Optional[dict[str, Any]]:
         response = await self._client.request(
             method,
             self._base_url + path,
             headers=headers,
             json=json,
         )
+        if method == "DELETE" and response.status_code == 404:
+            return None
+        response.raise_for_status()
         response_str = response.text
 
         if response_str:
@@ -66,7 +69,15 @@ class MCRouterClient:
         response = await self._send_request(
             "GET", "routes", headers={"Accept": "application/json"}
         )
-        return cast(RoutesT, response)
+        if not isinstance(response, dict):
+            raise ValueError("MC Router 路由响应必须是对象")
+        routes: RoutesT = {}
+        for address, route in response.items():
+            backend = route.get("backend") if isinstance(route, dict) else route
+            if not isinstance(backend, str) or not backend:
+                raise ValueError(f"MC Router 路由 {address} 缺少有效的后端地址")
+            routes[address] = backend
+        return routes
 
     async def _remove_route(self, route: str):
         """Remove a single route"""
