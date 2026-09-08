@@ -92,7 +92,7 @@
 | 备份自检 | `selfcheck.repository-health` | 配置真实 Restic 仓库；验证服务器快照覆盖与新鲜度、仓库访问、空闲锁状态，并核对相应自检发现。 |
 | 依赖与文件系统恢复 | `selfcheck.dependency-and-filesystem-recovery` | 移除再恢复测试部署内可执行文件的执行权限，移走再恢复测试项目目录；对应检查项反映失败与恢复状态。 |
 | DNS 禁用与配置校验 | `dns.disabled-and-validation` | 覆盖全部五个 DNS 路由，验证禁用时的状态与更新行为、匿名访问拒绝、非法供应商和地址配置；不访问云服务。 |
-| DNSPod，需要显式选择 | `dns.dnspod-reconciliation` | 使用真实供应商及测试独占的 mc-router；验证启用状态、无修改的差异预览、A/AAAA/SRV 创建、幂等性、配置重载、路由偏差、地址与端口变化、CNAME 转换、部分删除及启用状态下的 DNS 自检。 |
+| DNSPod，需要显式选择 | `dns.dnspod-reconciliation` | 使用真实供应商及测试独占的 mc-router；独立 SDK 核对每条记录的唯一性、值和 TTL；验证启用状态、无修改的差异预览、A/AAAA/SRV 创建、幂等性、配置重载、路由偏差、地址与端口变化、CNAME 转换、部分删除及启用状态下的 DNS 自检；热禁用后生命周期触发不修改云端记录。 |
 | 华为 DNS，需要显式选择 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证与 DNSPod 相同的业务约定；在发生修改之前，注册仅清理本次命名空间的云端资源回收操作。 |
 | Mojang 真实访问，需要显式选择 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
 

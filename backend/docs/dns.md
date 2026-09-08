@@ -42,7 +42,11 @@ The DNS API supports explicit reconciliation. Application startup and server cre
 
 ## Re-initialization on config change
 
-Provider credentials (DNSPod id+key, Huawei ak+sk+region), managed sub-domain, addresses, TTL and router URL are stored in `config.dns`. Before updates and diff calculation, a hash of enabled state, provider configuration and router URL determines whether to rebuild clients. Managed sub-domain, addresses and TTL are read when calculating the desired state.
+Provider credentials (DNSPod id+key, Huawei ak+sk+region), managed sub-domain, addresses, TTL and router URL are stored in `config.dns`. Before updates, diff calculation and current records/routes reads, a hash of enabled state, provider configuration and router URL determines whether to rebuild clients. Managed sub-domain, addresses and TTL are read when calculating the desired state.
+
+Initialization, updates, diff calculation, current records/routes reads and shutdown share the manager lock. Each operation refreshes its clients and reads using one captured configuration; routers do not access provider clients directly. The DNS page's three concurrent queries therefore share one initialization and cannot close a router client while another query is using it. Disabled API operations return 503 before entering the manager.
+
+Disabling DNS closes the old router client, clears both clients and stops synchronization before enumerating servers or writing records. Re-enabling initializes clients from the current configuration. DNS and router writes may run together, but each parallel batch waits for its issued requests to settle before reporting the first failure, including nested route replacement and Huawei record creation batches. The manager retains ownership through both branches; this does not provide cross-provider rollback.
 
 ## Files
 

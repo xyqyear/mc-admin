@@ -143,7 +143,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if err := waitClean(ctx, client); err != nil {
 				return err
 			}
-			if err := checkState(ctx, client, expectedRecords(primary, secondary), map[string]string{route("primary"): backend, route("secondary"): backend}, config.TTL); err != nil {
+			if err := checkState(ctx, t, client, expectedRecords(primary, secondary), map[string]string{route("primary"): backend, route("secondary"): backend}, config.TTL); err != nil {
 				return err
 			}
 			if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
@@ -176,7 +176,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if err := waitClean(ctx, client); err != nil {
 				return err
 			}
-			return checkState(ctx, client, expectedRecords(primary, secondary), map[string]string{route("primary"): backend, route("secondary"): backend}, config.TTL)
+			return checkState(ctx, t, client, expectedRecords(primary, secondary), map[string]string{route("primary"): backend, route("secondary"): backend}, config.TTL)
 		}); err != nil {
 			return err
 		}
@@ -200,7 +200,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if err := waitClean(ctx, client); err != nil {
 				return err
 			}
-			if err := checkState(ctx, client, expectedRecords(primary), map[string]string{route("primary"): backend}, config.TTL); err != nil {
+			if err := checkState(ctx, t, client, expectedRecords(primary), map[string]string{route("primary"): backend}, config.TTL); err != nil {
 				return err
 			}
 			var health struct {
@@ -214,7 +214,9 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if len(health.Findings) != 1 || health.Findings[0].Status != "passed" {
 				return fmt.Errorf("self-check still reports DNS drift after successful reconciliation")
 			}
+			retainedRecords := expectedRecords(primary)
 			dynamic["enabled"] = false
+			primary["value"] = "disabled.example.com"
 			if err := client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200); err != nil {
 				return err
 			}
@@ -224,7 +226,17 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if enabled.Enabled {
 				return fmt.Errorf("provider remained enabled after configuration disable")
 			}
-			return client.JSON(ctx, "GET", "/api/dns/routes", nil, nil, 503)
+			if err := client.JSON(ctx, "GET", "/api/dns/routes", nil, nil, 503); err != nil {
+				return err
+			}
+			owner, err := fixtures.Session(ctx, t, "owner")
+			if err != nil {
+				return err
+			}
+			if err := owner.JSON(ctx, "POST", "/api/servers/sync", map[string]any{"dry_run": false}, nil, 200); err != nil {
+				return err
+			}
+			return checkProviderRecords(ctx, t, retainedRecords, config.TTL)
 		})
 	}
 }
@@ -239,7 +251,7 @@ func waitClean(ctx context.Context, c *api.Client) error {
 	})
 }
 
-func checkState(ctx context.Context, c *api.Client, expectedRecords, expectedRoutes map[string]string, ttl int) error {
+func checkState(ctx context.Context, t *engine.Scope, c *api.Client, expectedRecords, expectedRoutes map[string]string, ttl int) error {
 	var records []record
 	if err := c.JSON(ctx, "GET", "/api/dns/records", nil, &records, 200); err != nil {
 		return err
@@ -260,6 +272,39 @@ func checkState(ctx context.Context, c *api.Client, expectedRecords, expectedRou
 	}
 	if !reflect.DeepEqual(routes, expectedRoutes) {
 		return fmt.Errorf("router maps differ from desired backend addresses")
+	}
+	return checkProviderRecords(ctx, t, expectedRecords, ttl)
+}
+
+func checkProviderRecords(ctx context.Context, t *engine.Scope, expected map[string]string, ttl int) error {
+	output, err := fixtures.DeploymentCommand(ctx, t.Env, "dns-provider-inspect", "python", "/data/dns-cleanup.py", "/data/dns-external.json", "inspect")
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Records []struct {
+			Name, Type string
+			ID         any
+			Values     []string
+			TTL        int
+		}
+	}
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
+		return err
+	}
+	if len(response.Records) != len(expected) {
+		return fmt.Errorf("provider returned %d scoped records, expected %d", len(response.Records), len(expected))
+	}
+	actual := map[string]string{}
+	for _, record := range response.Records {
+		key := record.Name + "|" + record.Type
+		if _, exists := actual[key]; exists || len(record.Values) != 1 || record.TTL != ttl || record.ID == nil {
+			return fmt.Errorf("provider returned duplicate, multi-valued or invalid record %s", key)
+		}
+		actual[key] = strings.TrimSuffix(record.Values[0], ".")
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		return fmt.Errorf("independent provider records differ: actual=%v expected=%v", actual, expected)
 	}
 	return nil
 }

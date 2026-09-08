@@ -1,5 +1,6 @@
 """MC Router client tests."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import httpx2
@@ -162,6 +163,43 @@ async def test_remove_route(router_client):
     router_client._send_request.assert_called_once_with(
         "DELETE", "routes/vanilla.mc.example.com"
     )
+
+
+@pytest.mark.parametrize("phase", ["remove", "add"])
+async def test_failed_route_batch_waits_for_other_issued_request(router_client, phase):
+    entered = asyncio.Event()
+    finish = asyncio.Event()
+    settled = asyncio.Event()
+    failure = RuntimeError("router rejected one route")
+
+    async def change_route(route, *args):
+        if route == "failed.example.com":
+            raise failure
+        entered.set()
+        await finish.wait()
+        settled.set()
+
+    routes = {"failed.example.com": "localhost:25565", "slow.example.com": "localhost:25566"}
+    router_client.get_routes = AsyncMock(return_value=routes)
+    if phase == "remove":
+        router_client._remove_route = AsyncMock(side_effect=change_route)
+        batch = asyncio.create_task(router_client._remove_all_routes())
+    else:
+        router_client._add_route = AsyncMock(side_effect=change_route)
+        batch = asyncio.create_task(router_client._add_routes(routes))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        await asyncio.sleep(0)
+        assert not batch.done()
+        assert not settled.is_set()
+        finish.set()
+        with pytest.raises(RuntimeError, match="router rejected one route") as error:
+            await asyncio.wait_for(batch, 1)
+        assert error.value is failure
+        assert settled.is_set()
+    finally:
+        finish.set()
+        await asyncio.gather(batch, return_exceptions=True)
 
 
 @pytest.mark.asyncio

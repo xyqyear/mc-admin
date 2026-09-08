@@ -4,7 +4,6 @@ Simplified MC Router Client
 Direct client implementation for mc-router without wrapper abstractions.
 """
 
-import asyncio
 import json as jsonlib
 from collections.abc import Awaitable
 from typing import (
@@ -16,6 +15,7 @@ from typing import (
 import httpx2
 
 from ..logger import logger
+from .utils import wait_for_updates
 
 
 class RoutePoseDataT(TypedDict):
@@ -93,7 +93,7 @@ class MCRouterClient:
         for route in all_routes:
             tasks.append(self._remove_route(route))
 
-        await asyncio.gather(*tasks)
+        await wait_for_updates(*tasks)
 
     async def _add_route(self, route: str, backend: str):
         """Add a single route"""
@@ -110,7 +110,7 @@ class MCRouterClient:
         for route, backend in routes.items():
             tasks.append(self._add_route(route, backend))
 
-        await asyncio.gather(*tasks)
+        await wait_for_updates(*tasks)
 
     async def override_routes(self, routes: RoutesT):
         """

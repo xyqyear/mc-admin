@@ -1,5 +1,6 @@
 """SimpleDNSManager tests."""
 
+import asyncio
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -8,6 +9,8 @@ import pytest
 from app.dns.dns import DNSClient
 from app.dns.manager import AddressInfo, SimpleDNSManager
 from app.dns.router import MCRouterClient
+from app.dns.types import ReturnRecordT
+from app.dynamic_config.configs.dns import DNSManagerConfig
 from app.minecraft import MCServerInfo
 from app.minecraft.compose import ServerType
 
@@ -190,8 +193,7 @@ async def test_initialize_with_huawei(dns_manager):
 async def test_initialize_disabled():
     dns_manager = SimpleDNSManager()
 
-    mock_config = Mock()
-    mock_config.enabled = False
+    mock_config = DNSManagerConfig.model_validate({"enabled": False})
 
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_config
@@ -370,8 +372,203 @@ async def test_update_not_initialized():
 
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
-    with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-        await dns_manager.update(AsyncMock())
+    with patch("app.dns.manager.config") as config_mock:
+        config_mock.dns = DNSManagerConfig.model_validate({"enabled": True})
+        with pytest.raises(RuntimeError, match="DNS manager not initialized"):
+            await dns_manager.update(AsyncMock())
+
+
+async def test_hot_disable_clears_clients_without_writing_and_can_reenable():
+    manager = SimpleDNSManager()
+    enabled = DNSManagerConfig.model_validate({"enabled": True, "dns": {"type": "dnspod"}})
+    router = MockMCRouterClient("http://localhost:26666")
+    router.close = AsyncMock()
+    manager._get_target_records_and_routes = AsyncMock()
+    with (
+        patch("app.dns.manager.config") as settings,
+        patch("app.dns.manager.DNSPodClient", side_effect=lambda *args: MockDNSClient()) as provider,
+        patch("app.dns.manager.MCRouterClient", return_value=router),
+    ):
+        settings.dns = enabled
+        await manager.initialize()
+        original_client = manager._dns_client
+        assert manager.is_initialized
+        settings.dns = enabled.model_copy(update={"enabled": False})
+        await manager.update(AsyncMock())
+        await manager.update(AsyncMock())
+        assert not manager.is_initialized
+        manager._get_target_records_and_routes.assert_not_called()
+        router.close.assert_awaited_once()
+        assert provider.call_count == 1
+        settings.dns = enabled
+        await manager._ensure_up_to_date_config()
+        assert manager.is_initialized
+        assert manager._dns_client is not original_client
+
+
+async def test_failed_update_settles_other_branch_before_next_update():
+    manager = SimpleDNSManager()
+    manager._dns_client = MockDNSClient()
+    manager._mc_router_client = MockMCRouterClient("http://localhost:26666")
+    manager._ensure_up_to_date_config = AsyncMock()
+    manager._get_target_records_and_routes = AsyncMock(return_value=([], [], {}, {}))
+    manager._update_dns_records = AsyncMock(side_effect=[RuntimeError("provider failed"), None])
+    entered = asyncio.Event()
+    finish = asyncio.Event()
+    calls = []
+
+    async def update_router(target_routes):
+        calls.append(target_routes)
+        entered.set()
+        await finish.wait()
+
+    manager._update_mc_router = update_router
+    with patch("app.dns.manager.config") as settings:
+        settings.dns = DNSManagerConfig.model_validate({"enabled": True})
+        first = asyncio.create_task(manager.update(AsyncMock()))
+        second = None
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            assert not first.done()
+            second = asyncio.create_task(manager.update(AsyncMock()))
+            await asyncio.sleep(0)
+            assert len(calls) == 1
+            finish.set()
+            with pytest.raises(RuntimeError, match="provider failed"):
+                await first
+            await second
+            assert len(calls) == 2
+        finally:
+            finish.set()
+            await asyncio.gather(first, *([second] if second is not None else []), return_exceptions=True)
+
+
+async def test_dns_page_parallel_reads_initialize_clients_once():
+    from app.routers.dns import get_dns_records, get_dns_status, get_router_routes
+
+    manager = SimpleDNSManager()
+    manager._get_target_records_and_routes = AsyncMock(return_value=([], [], {}, {}))
+    provider = MockDNSClient()
+    provider._initialized = False
+    provider.records = [ReturnRecordT("*.mc", "192.0.2.1", "1", "A", 300)]
+    entered = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def initialize_provider():
+        entered.set()
+        await finish.wait()
+        provider._initialized = True
+
+    provider.init = AsyncMock(side_effect=initialize_provider)
+    router = MockMCRouterClient("http://localhost:26666")
+    router.routes = {"server.mc.example.com": "localhost:25565"}
+    router.close = AsyncMock()
+    settings = Mock(dns=DNSManagerConfig.model_validate({"enabled": True, "dns": {"type": "dnspod"}}))
+    with (
+        patch("app.dns.manager.config", settings),
+        patch("app.routers.dns.config", settings),
+        patch("app.routers.dns.simple_dns_manager", manager),
+        patch("app.dns.manager.DNSPodClient", return_value=provider) as make_provider,
+        patch("app.dns.manager.MCRouterClient", return_value=router) as make_router,
+    ):
+        queries = [
+            asyncio.create_task(get_dns_status(Mock(), AsyncMock())),
+            asyncio.create_task(get_dns_records(Mock())),
+            asyncio.create_task(get_router_routes(Mock())),
+        ]
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            await asyncio.sleep(0)
+            make_provider.assert_called_once()
+            assert all(not query.done() for query in queries)
+            finish.set()
+            status, records, routes = await asyncio.wait_for(asyncio.gather(*queries), 1)
+            assert status.initialized
+            assert records[0].model_dump() == provider.records[0]._asdict()
+            assert routes == router.routes
+            provider.init.assert_awaited_once()
+            make_provider.assert_called_once()
+            make_router.assert_called_once()
+            router.close.assert_not_awaited()
+        finally:
+            finish.set()
+            await asyncio.gather(*queries, return_exceptions=True)
+
+
+@pytest.mark.parametrize("read_method", ["get_dns_records", "get_router_routes"])
+async def test_current_reads_refresh_clients_inside_read_boundary(read_method):
+    manager = SimpleDNSManager()
+    enabled = DNSManagerConfig.model_validate({"enabled": True, "dns": {"type": "dnspod"}})
+    first_provider = MockDNSClient()
+    next_provider = MockDNSClient("next.example.com")
+    next_provider.records = [ReturnRecordT("*.next", "192.0.2.2", "2", "A", 300)]
+    next_provider.list_relevant_records = AsyncMock(return_value=next_provider.records)
+    first_router = MockMCRouterClient("http://first:26666")
+    close_first_router = AsyncMock()
+    first_router.close = close_first_router
+    next_router = MockMCRouterClient("http://next:26666")
+    next_router.routes = {"server.next.example.com": "localhost:25566"}
+    with (
+        patch("app.dns.manager.config") as settings,
+        patch("app.dns.manager.DNSPodClient", side_effect=[first_provider, next_provider]),
+        patch("app.dns.manager.MCRouterClient", side_effect=[first_router, next_router]),
+    ):
+        settings.dns = enabled
+        await manager.initialize()
+        settings.dns = enabled.model_copy(update={
+            "mc_router_base_url": "http://next:26666",
+            "managed_sub_domain": "next",
+        })
+        result = await getattr(manager, read_method)()
+        first_router.close.assert_awaited_once()
+        if read_method == "get_dns_records":
+            assert result == next_provider.records
+            next_provider.list_relevant_records.assert_awaited_once_with("next")
+        else:
+            assert result == next_router.routes
+
+
+async def test_explicit_initialize_waits_for_active_router_read():
+    manager = SimpleDNSManager()
+    first_router = MockMCRouterClient("http://first:26666")
+    close_first_router = AsyncMock()
+    first_router.close = close_first_router
+    next_router = MockMCRouterClient("http://next:26666")
+    entered = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def read_routes():
+        entered.set()
+        await finish.wait()
+        close_first_router.assert_not_awaited()
+        return {"first.example.com": "localhost:25565"}
+
+    first_router.get_routes = AsyncMock(side_effect=read_routes)
+    with (
+        patch("app.dns.manager.config") as settings,
+        patch("app.dns.manager.DNSPodClient", side_effect=lambda *args: MockDNSClient()) as provider,
+        patch("app.dns.manager.MCRouterClient", side_effect=[first_router, next_router]),
+    ):
+        settings.dns = DNSManagerConfig.model_validate({"enabled": True, "dns": {"type": "dnspod"}})
+        await manager.initialize()
+        read = asyncio.create_task(manager.get_router_routes())
+        refresh = None
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            settings.dns = settings.dns.model_copy(update={"mc_router_base_url": "http://next:26666"})
+            refresh = asyncio.create_task(manager.initialize())
+            await asyncio.sleep(0)
+            assert not refresh.done()
+            provider.assert_called_once()
+            close_first_router.assert_not_awaited()
+            finish.set()
+            assert await read == {"first.example.com": "localhost:25565"}
+            await asyncio.wait_for(refresh, 1)
+            assert provider.call_count == 2
+            first_router.close.assert_awaited_once()
+        finally:
+            finish.set()
+            await asyncio.gather(read, *([refresh] if refresh else []), return_exceptions=True)
 
 
 def test_get_addresses_from_config():
@@ -473,11 +670,11 @@ async def test_ensure_up_to_date_config_no_change():
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_dns_config
 
-        dns_manager.initialize = AsyncMock()
+        dns_manager._initialize = AsyncMock()
 
         await dns_manager._ensure_up_to_date_config()
 
-        dns_manager.initialize.assert_not_called()
+        dns_manager._initialize.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -499,11 +696,11 @@ async def test_ensure_up_to_date_config_with_change():
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_dns_config
 
-        dns_manager.initialize = AsyncMock()
+        dns_manager._initialize = AsyncMock()
 
         await dns_manager._ensure_up_to_date_config()
 
-        dns_manager.initialize.assert_called_once()
+        dns_manager._initialize.assert_called_once()
 
         expected_hash = dns_manager._calculate_config_hash(mock_dns_config)
         assert dns_manager._last_config_hash == expected_hash
@@ -528,11 +725,11 @@ async def test_ensure_up_to_date_config_first_time():
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_dns_config
 
-        dns_manager.initialize = AsyncMock()
+        dns_manager._initialize = AsyncMock()
 
         await dns_manager._ensure_up_to_date_config()
 
-        dns_manager.initialize.assert_called_once()
+        dns_manager._initialize.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -554,7 +751,7 @@ async def test_ensure_up_to_date_config_initialization_failure():
     with patch("app.dns.manager.config") as config_mock:
         config_mock.dns = mock_dns_config
 
-        dns_manager.initialize = AsyncMock(side_effect=Exception("Init failed"))
+        dns_manager._initialize = AsyncMock(side_effect=Exception("Init failed"))
 
         with pytest.raises(Exception, match="Init failed"):
             await dns_manager._ensure_up_to_date_config()

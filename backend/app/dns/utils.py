@@ -2,9 +2,18 @@
 DNS utility functions for record management
 """
 
+import asyncio
+from collections.abc import Awaitable
 from typing import NamedTuple
 
 from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
+
+
+async def wait_for_updates(*updates: Awaitable[None]) -> None:
+    results = await asyncio.gather(*updates, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
 
 class RecordKey(NamedTuple):

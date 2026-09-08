@@ -25,6 +25,7 @@ from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
 from ..logger import logger
 from .dns import DNSClient
 from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
+from .utils import wait_for_updates
 
 
 class ZoneInfoT:
@@ -220,4 +221,4 @@ class HuaweiDNSClient(DNSClient):
                 self._try_request(self._huawei_client.create_record_set, request)
             )
 
-        await asyncio.gather(*task_list)
+        await wait_for_updates(*task_list)

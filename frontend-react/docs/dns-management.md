@@ -31,7 +31,7 @@ The page renders different shells depending on what the backend reports:
 - **Update** — POST `/api/dns/update` (mutation), invalidates `dns.all` on success
 - **Settings** — link to dynamic config
 
-The update flow is intentionally manual: applying DNS changes can take seconds and may flap a live game. Auto-update is opt-in via `dynamic_config.dns.auto_update`.
+The page applies changes through its Update action. Server creation, removal and filesystem synchronization also ask the backend DNS manager to reconcile when `dynamic_config.dns.enabled` is true. There is no separate `auto_update` setting. Disabling DNS makes later lifecycle updates no-ops; the manager releases its old router client and does not write through stale provider clients.
 
 ## Tables
 
@@ -50,12 +50,12 @@ Routes columns: server address → forwarded host:port.
 | Query                  | Endpoint                | Cadence   |
 | ---------------------- | ----------------------- | --------- |
 | `dns.enabled()`        | `GET /api/dns/enabled`  | manual    |
-| `dns.status()`         | `GET /api/dns/status`   | manual    |
-| `dns.records()`        | `GET /api/dns/records`  | manual    |
-| `dns.routes()`         | `GET /api/dns/routes`   | manual    |
+| `dns.status()`         | `GET /api/dns/status`   | 60 seconds |
+| `dns.records()`        | `GET /api/dns/records`  | 10 seconds |
+| `dns.routes()`         | `GET /api/dns/routes`   | 10 seconds |
 | `useUpdateDns()`       | `POST /api/dns/update`  | mutation  |
 
-All polling is manual — DNS state doesn't change behind our back, so an admin clicking Refresh is the right trigger.
+Queries poll while enabled and also support explicit refresh. The tables paginate the records returned by the provider; page navigation does not fetch additional provider-side pages.
 
 ## Files
 

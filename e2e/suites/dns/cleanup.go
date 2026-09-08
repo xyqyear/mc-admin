@@ -34,7 +34,7 @@ def dnspod():
             req.from_json_string(json.dumps({"Domain": domain, "Offset": offset, "Limit": 100}))
             response = client.DescribeRecordList(req)
             page = response.RecordList or []
-            result.extend((r.Name, r.Type, r.RecordId) for r in page if owned(r.Name, r.Type))
+            result.extend((r.Name, r.Type, r.RecordId, [r.Value], r.TTL) for r in page if owned(r.Name, r.Type))
             if len(page) < 100:
                 return result
             offset += len(page)
@@ -66,7 +66,7 @@ def huawei():
                 if record.name.endswith(suffix):
                     name = record.name[:-len(suffix)]
                     if owned(name, record.type):
-                        result.append((name, record.type, record.id))
+                        result.append((name, record.type, record.id, record.records, record.ttl))
             if len(page) < 500:
                 return result
             offset += len(page)
@@ -77,7 +77,10 @@ def huawei():
 try:
     records, delete = dnspod() if provider == "dnspod" else huawei()
     current = records()
-    if sys.argv[2] == "check":
+    if sys.argv[2] == "inspect":
+        print(json.dumps({"records": [{"name": r[0], "type": r[1], "id": r[2], "values": r[3], "ttl": r[4]} for r in current]}))
+        sys.exit(0)
+    elif sys.argv[2] == "check":
         if current:
             raise ValueError("generated test scope already contains records; refusing mutation")
     elif sys.argv[2] == "cleanup":
