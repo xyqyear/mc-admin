@@ -17,7 +17,7 @@ Browser authentication uses a JWT stored in an HttpOnly cookie, paired with a re
 - `X-CSRF-Token` — required header for unsafe cookie-authenticated requests
 - Claims include `sub`, `user_id`, `username`, `role`, `created_at`, `csrf`, and `exp`.
 
-`get_current_user` (in `app.dependencies`) reads the session cookie, validates the JWT, and returns a `UserPublic`. It also accepts `Authorization: Bearer <master_token>` for operational calls. `RequireRole(UserRole.OWNER)` is the role guard.
+`get_current_user` (in `app.dependencies`) reads the session cookie, validates the JWT, and loads the current account from the database before returning `UserPublic`. The account ID, username, and creation time must still match the signed identity, so deleting and recreating an account cannot revive its old cookie. HTTP, WebSocket handshakes, and audit identity resolution use this same lookup. It also accepts `Authorization: Bearer <master_token>` for operational calls. `RequireRole(UserRole.OWNER)` is the role guard.
 
 ## Password Login
 

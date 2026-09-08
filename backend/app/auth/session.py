@@ -12,6 +12,8 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp
 
 from ..config import settings
+from ..db.crud.user import get_user_by_id
+from ..db.database import get_async_session
 from ..logger import logger
 from ..models import User, UserPublic, UserRole
 from .jwt_utils import create_access_token, get_token_expiry, key
@@ -174,7 +176,7 @@ def is_master_authorization(
     )
 
 
-def get_user_from_auth_values(
+async def get_user_from_auth_values(
     session_token: str | None,
     authorization: str | None,
     master_token: str | None = None,
@@ -184,14 +186,26 @@ def get_user_from_auth_values(
         return get_system_user()
 
     if session_token:
-        user, _ = validate_session_token(session_token)
-        return user
+        claims = decode_session_claims(session_token)
+        return await _get_current_session_user(claims)
 
     raise TokenValidationError("Not authenticated")
 
 
-def get_user_from_request(request: HTTPConnection) -> UserPublic:
-    return get_user_from_auth_values(
+async def _get_current_session_user(claims: JwtClaims) -> UserPublic:
+    async with get_async_session() as session:
+        user = await get_user_by_id(session, claims.user_id)
+        if (
+            user is None
+            or user.username != claims.username
+            or user.created_at != datetime.fromisoformat(claims.created_at)
+        ):
+            raise TokenValidationError("登录会话对应的用户已不存在")
+        return user_to_public(user)
+
+
+async def get_user_from_request(request: HTTPConnection) -> UserPublic:
+    return await get_user_from_auth_values(
         request.cookies.get(AUTH_COOKIE_NAME),
         request.headers.get("authorization"),
     )

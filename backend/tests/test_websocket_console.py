@@ -3,7 +3,7 @@ Tests for the WebSocket console endpoint with docker-py integration.
 Tests real-time console functionality with mocked dependencies.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,9 +109,13 @@ def mock_instance():
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """Create test client."""
     client = TestClient(api_app)
+    monkeypatch.setattr(
+        "app.auth.session._get_current_session_user",
+        AsyncMock(return_value=get_system_user()),
+    )
     token, _ = create_session_token(get_system_user())
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/")
     return client

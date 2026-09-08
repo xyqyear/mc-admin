@@ -77,7 +77,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
 
     async def _get_user_info(self, request: Request) -> dict[str, Any] | None:
         try:
-            user = get_user_from_request(request)
+            user = await get_user_from_request(request)
         except TokenValidationError:
             return None
 

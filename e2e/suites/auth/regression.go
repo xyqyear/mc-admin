@@ -67,7 +67,7 @@ func userAdministration(ctx context.Context, t *engine.Scope) error {
 	if identity.ID != created.ID {
 		return fmt.Errorf("new account login returned another user")
 	}
-	return t.Step("deletion preserves the owner and removes credentials and inventory", func() error {
+	return t.Step("deletion preserves the owner and revokes existing sessions and credentials", func() error {
 		path := fmt.Sprintf("/api/admin/users/%d", created.ID)
 		if err := admin.JSON(ctx, "DELETE", path, nil, nil, 403); err != nil {
 			return err
@@ -76,6 +76,9 @@ func userAdministration(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		if err := owner.JSON(ctx, "DELETE", path, nil, nil, 200); err != nil {
+			return err
+		}
+		if err := managed.JSON(ctx, "GET", "/api/user/me", nil, nil, 401); err != nil {
 			return err
 		}
 		if err := owner.JSON(ctx, "DELETE", path, nil, nil, 404); err != nil {

@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from app.auth.session import (
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
     create_session_token,
+    user_from_claims,
 )
 from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.models import BackgroundTask
@@ -47,6 +49,10 @@ def task_api(
             result={"test": "retained"},
         )
     monkeypatch.setattr(task_router, "task_manager", manager)
+    monkeypatch.setattr(
+        "app.auth.session._get_current_session_user",
+        AsyncMock(side_effect=user_from_claims),
+    )
     client = TestClient(app, raise_server_exceptions=False)
     try:
         yield client, manager

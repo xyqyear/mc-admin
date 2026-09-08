@@ -22,12 +22,12 @@ from .config import settings
 from .models import UserPublic, UserRole
 
 
-def get_current_user(
+async def get_current_user(
     session_token: Annotated[str | None, Cookie(alias=AUTH_COOKIE_NAME)] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> UserPublic:
     try:
-        return get_user_from_auth_values(session_token, authorization, settings.master_token)
+        return await get_user_from_auth_values(session_token, authorization, settings.master_token)
     except TokenValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -56,9 +56,9 @@ def verify_master_token(authorization: Annotated[str | None, Header()] = None):
         )
 
 
-def get_websocket_user(websocket: WebSocket) -> UserPublic:
+async def get_websocket_user(websocket: WebSocket) -> UserPublic:
     try:
         verify_websocket_origin(websocket)
-        return get_user_from_request(websocket)
+        return await get_user_from_request(websocket)
     except TokenValidationError:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)

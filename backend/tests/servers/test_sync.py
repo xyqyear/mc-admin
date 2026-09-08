@@ -95,6 +95,7 @@ def test_client(temp_server_path, test_db):
 
     real_mc_manager = DockerMCManager(temp_server_path)
     patches = [
+        patch("app.auth.session.get_async_session", test_db),
         patch("app.config.settings.server_path", temp_server_path),
         patch("app.config.settings.master_token", "test-master-token"),
         patch("app.routers.servers.sync.docker_mc_manager", real_mc_manager),
@@ -294,22 +295,27 @@ class TestSyncDryRun:
 
 
 class TestSyncOwnerOnly:
-    def test_non_owner_forbidden(self, test_client):
+    @pytest.mark.asyncio
+    async def test_non_owner_forbidden(self, test_client):
         client, _mgr, _db = test_client
 
         from datetime import datetime
 
-        from app.auth.session import CSRF_HEADER_NAME
-        from app.models import UserPublic, UserRole
+        from app.auth.session import CSRF_HEADER_NAME, user_to_public
+        from app.models import User, UserRole
+
+        async with _db() as session:
+            user = User(
+                username="tester", hashed_password="unused", role=UserRole.ADMIN,
+                created_at=datetime.now(UTC),
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
 
         csrf_token = _set_session_cookies(
             client,
-            UserPublic(
-                id=7,
-                username="tester",
-                role=UserRole.ADMIN,
-                created_at=datetime.now(UTC),
-            ),
+            user_to_public(user),
         )
 
         response = client.post(

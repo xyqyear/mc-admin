@@ -14,7 +14,7 @@
 | 支持的数据库升级 | `startup.versioned-database-upgrade` | 使用镜像附带的 Alembic，将测试独占数据库降级至指定基线版本；正常重启后验证升级至最新版本，同时保留用户、登录会话、配置和服务器清单。 |
 | 不支持的数据库状态 | `startup.unknown-revision-refused`、`startup.unversioned-schema-refused` | 数据库包含未知迁移版本，或已经存在业务表但缺少迁移版本元数据时，应用启动以非零退出码失败，并输出相应诊断信息。 |
 | 密码登录、角色与 CSRF | `auth.sessions-and-permissions` | 拒绝匿名访问和错误密码；验证真实登录、当前身份、owner/admin 权限边界；缺少 CSRF 时拒绝请求且不产生修改；注销后拒绝继续访问。 |
-| 管理员用户管理 | `auth.user-administration` | 创建可实际登录的账号；拒绝重复账号、非法角色和 admin 角色无权执行的管理写操作；防止 owner 删除自己；删除账号后清单与登录能力同步失效；拒绝重复删除。 |
+| 管理员用户管理 | `auth.user-administration` | 创建可实际登录的账号；拒绝重复账号、非法角色和 admin 角色无权执行的管理写操作；防止 owner 删除自己；删除账号后清单、密码登录和已签发会话同步失效；拒绝重复删除。 |
 | 登录码交接流程 | `auth.code-login-and-csrf` | 建立真实登录码 WebSocket；通过主令牌确认登录码，交换浏览器登录票据并一次性完成登录；拒绝非法登录码、票据和重复使用；验证会话 Cookie 及 CSRF 不匹配时的拒绝行为；读取普通容器日志与审计，确认本次真实 code/ticket 的完整值、截断片段及原始凭据帧未泄露，成功审计记录的对应字段已脱敏。 |
 | 启动后的服务发现 | `system.discovery` | 验证健康与系统接口、已注册的定时任务与自检服务、空业务清单、禁用状态的 DNS 及玩家相关接口。本用例验证可发现性，具体业务效果由对应领域用例验证。 |
 | 动态配置模块与结构 | `system.configuration-catalog` | 检查 `dns`、`snapshots`、`players`、`log_parser`、`mcmap`、`world`、`self_check` 七个模块的目录和 Schema；拒绝不存在的模块。 |
