@@ -11,13 +11,14 @@ pnpm build      # typecheck + bundle
 pnpm typecheck  # tsc -b
 pnpm build:bundle # vite build
 pnpm lint
+pnpm test       # Vitest operation-flow tests
 ```
 
 Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
 Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
 
-The Static Checks push workflow runs lint, typecheck and bundling as separate steps. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
+The Static Checks push workflow runs lint, typecheck, operation-flow tests and bundling as separate steps. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
 
 React Router 7 is used in declarative mode; import router APIs from `react-router`.
 
@@ -32,6 +33,8 @@ Every server-state operation goes through one of three layers. **Don't mix conce
 Mutations live in `hooks/mutations/use*Mutations.ts` (writes + cache invalidation on success).
 
 When to bypass the query layer: one-off flow-local requests that should not be globally cached (e.g. modal-only preview/check calls), or stream/progress operations.
+
+`hooks/uploads/` owns each dialog's local queue and cancellation. The archive flow owns pause/resume and verification; the ordinary-file flow owns conflict checking and sequential batch uploads. Dialogs render flow state; raw API functions each issue one request.
 
 ## Query keys & invalidation (mandatory)
 

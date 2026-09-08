@@ -253,8 +253,15 @@ async def _publish_archive_upload(session: ArchiveUploadSession) -> None:
         staged_size = (await aioos.stat(staging_path)).st_size
         if staged_size != session.size:
             raise HTTPException(status_code=500, detail="Finalized file size mismatch")
-        await aioos.replace(staging_path, session.target_path)
-        await set_file_ownership(session.target_path, session.base_path)
+        await set_file_ownership(staging_path, session.base_path)
+        if session.allow_overwrite:
+            await aioos.replace(staging_path, session.target_path)
+        else:
+            try:
+                await aioos.link(staging_path, session.target_path)
+            except FileExistsError:
+                raise HTTPException(status_code=409, detail="File already exists")
+            await aioos.unlink(staging_path)
         await _delete_upload_temp(session)
     except Exception:
         try:

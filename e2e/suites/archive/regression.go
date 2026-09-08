@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -135,6 +136,9 @@ func management(ctx context.Context, t *engine.Scope) error {
 	if !bytes.Equal(response.Body, changed) {
 		return fmt.Errorf("overwrite did not replace archive bytes")
 	}
+	if err = concurrentPublication(ctx, c, data, changed); err != nil {
+		return err
+	}
 	if err = c.JSON(ctx, "POST", "/api/archive/create", map[string]string{"path": "/", "name": "folder", "type": "directory"}, nil, 200); err != nil {
 		return err
 	}
@@ -227,4 +231,83 @@ func cancellation(ctx context.Context, t *engine.Scope) error {
 		return fmt.Errorf("cancelled compression left partial archive")
 	}
 	return c.JSON(ctx, "DELETE", "/api/tasks/"+task.ID, nil, nil, 200)
+}
+
+func concurrentPublication(ctx context.Context, c *api.Client, first, second []byte) error {
+	contents := [][]byte{first, second}
+	paths := make([]string, len(contents))
+	for i, content := range contents {
+		path, err := begin(ctx, c, "same-name.zip", content, false)
+		if err != nil {
+			return err
+		}
+		paths[i] = path
+		response, err := c.Do(ctx, "PATCH", path, content, http.Header{"Upload-Offset": {"0"}})
+		if err != nil {
+			return err
+		}
+		if err = c.Expect(response, 200); err != nil {
+			return err
+		}
+		if _, err = c.SSE(ctx, "GET", path+"/sha256/stream", nil, "complete"); err != nil {
+			return err
+		}
+	}
+	type outcome struct {
+		index, status int
+		err           error
+	}
+	outcomes := make(chan outcome, len(contents))
+	start := make(chan struct{})
+	for i, content := range contents {
+		body, err := json.Marshal(map[string]string{"sha256": fmt.Sprintf("%x", sha256.Sum256(content))})
+		if err != nil {
+			return err
+		}
+		go func() {
+			<-start
+			response, err := c.Do(ctx, "POST", paths[i]+"/verify", body, http.Header{"Content-Type": {"application/json"}})
+			if err != nil {
+				outcomes <- outcome{index: i, err: err}
+				return
+			}
+			if response.Status != 200 && response.Status != 409 {
+				err = c.Expect(response, 200)
+			}
+			outcomes <- outcome{index: i, status: response.Status, err: err}
+		}()
+	}
+	close(start)
+	winner, successes := -1, 0
+	var requestError error
+	for range contents {
+		result := <-outcomes
+		if result.err != nil {
+			requestError = result.err
+		}
+		if result.status == 200 {
+			winner = result.index
+			successes++
+		}
+	}
+	if requestError != nil {
+		return requestError
+	}
+	if successes != 1 {
+		return fmt.Errorf("no-overwrite publication accepted %d writers, want one", successes)
+	}
+	response, err := c.Do(ctx, "GET", "/api/archive/download?path=/same-name.zip", nil, nil)
+	if err != nil {
+		return err
+	}
+	if err = c.Expect(response, 200); err != nil {
+		return err
+	}
+	if !bytes.Equal(response.Body, contents[winner]) {
+		return fmt.Errorf("published bytes do not belong to the successful writer")
+	}
+	if err = c.JSON(ctx, "DELETE", paths[1-winner], nil, nil, 204); err != nil {
+		return err
+	}
+	return c.JSON(ctx, "DELETE", "/api/archive?path=/same-name.zip", nil, nil, 200)
 }

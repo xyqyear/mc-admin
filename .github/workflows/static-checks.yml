@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   frontend:
-    name: frontend lint, types and build
+    name: frontend lint, types, tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,6 +37,9 @@ jobs:
 
       - name: Run typecheck
         run: pnpm typecheck
+
+      - name: Test frontend operation flows
+        run: pnpm test
 
       - name: Build frontend assets
         run: pnpm build:bundle

@@ -189,12 +189,13 @@ export const fileApi = {
   checkUploadConflicts: async (
     serverId: string,
     path: string,
-    uploadRequest: MultiFileUploadRequest
+    uploadRequest: MultiFileUploadRequest,
+    signal?: AbortSignal
   ): Promise<UploadConflictResponse> => {
     const response = await api.post(
       `/servers/${serverId}/files/upload/check`,
       uploadRequest,
-      { params: { path } }
+      { params: { path }, signal }
     );
     return response.data;
   },
@@ -203,19 +204,18 @@ export const fileApi = {
     serverId: string,
     sessionId: string,
     policy: OverwritePolicy,
-    reusable: boolean = false
+    reusable: boolean = false,
+    signal?: AbortSignal
   ): Promise<{ message: string }> => {
     const response = await api.post(
       `/servers/${serverId}/files/upload/policy`,
       policy,
-      { params: { session_id: sessionId, reusable } }
+      { params: { session_id: sessionId, reusable }, signal }
     );
     return response.data;
   },
 
-  // Chunks files into batches when count exceeds the per-request limit;
-  // progress is normalized across all chunks so the caller sees one curve.
-  uploadMultipleFiles: async (
+  uploadFileBatch: async (
     serverId: string,
     sessionId: string,
     path: string,
@@ -223,95 +223,34 @@ export const fileApi = {
     onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
     abortSignal?: AbortSignal
   ): Promise<MultiFileUploadResult> => {
-    const CHUNK_SIZE = 1000;
-    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-    let totalLoaded = 0;
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append("files", file, file.webkitRelativePath || file.name);
+    });
 
-    const combinedResults: MultiFileUploadResult = {
-      message: "Files uploaded successfully",
-      results: {}
-    };
-
-    if (files.length <= CHUNK_SIZE) {
-      const formData = new FormData();
-      files.forEach(file => {
-        formData.append("files", file);
-      });
-
-      const response = await api.post(
-        `/servers/${serverId}/files/upload/multiple`,
-        formData,
-        {
-          params: { session_id: sessionId, path },
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          timeout: 1800000,
-          signal: abortSignal,
-          onUploadProgress: (progressEvent) => {
-            if (onProgress && progressEvent.total) {
-              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              onProgress({
-                loaded: progressEvent.loaded,
-                total: progressEvent.total,
-                percent,
-              });
-            }
-          },
-        }
-      );
-      return response.data;
-    }
-
-    const chunks: File[][] = [];
-    for (let i = 0; i < files.length; i += CHUNK_SIZE) {
-      chunks.push(files.slice(i, i + CHUNK_SIZE));
-    }
-
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex];
-      const chunkSize = chunk.reduce((sum, file) => sum + file.size, 0);
-
-      const formData = new FormData();
-      chunk.forEach(file => {
-        formData.append("files", file);
-      });
-
-      const chunkResponse = await api.post(
-        `/servers/${serverId}/files/upload/multiple`,
-        formData,
-        {
-          params: { session_id: sessionId, path },
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          timeout: 1800000,
-          signal: abortSignal,
-          onUploadProgress: (progressEvent) => {
-            if (onProgress && progressEvent.total) {
-              const chunkProgress = progressEvent.loaded / progressEvent.total;
-              const chunkRatio = chunkSize / totalSize;
-              const previousProgress = totalLoaded / totalSize;
-              const globalProgress = previousProgress + (chunkProgress * chunkRatio);
-              const globalLoaded = Math.round(globalProgress * totalSize);
-              const percent = Math.round(globalProgress * 100);
-
-              onProgress({
-                loaded: globalLoaded,
-                total: totalSize,
-                percent,
-              });
-            }
-          },
-        }
-      );
-
-      Object.assign(combinedResults.results, chunkResponse.data.results);
-
-      totalLoaded += chunkSize;
-    }
-
-    return combinedResults;
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/multiple`,
+      formData,
+      {
+        params: { session_id: sessionId, path },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 1800000,
+        signal: abortSignal,
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onProgress({
+              loaded: progressEvent.loaded,
+              total: progressEvent.total,
+              percent,
+            });
+          }
+        },
+      }
+    );
+    return response.data;
   },
 
   searchFiles: async (

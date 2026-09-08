@@ -4,6 +4,7 @@ import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from aiofiles import os as aioos
 
@@ -57,6 +58,7 @@ def _generate_archive_filename(
             filename_parts.append(safe_path)
 
     filename_parts.append(timestamp)
+    filename_parts.append(uuid4().hex)
 
     filename = "_".join(filename_parts) + ".7z"
 

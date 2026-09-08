@@ -38,7 +38,7 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 
 - `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests, and it installs pinned `fd`, Restic, and `mcmap` versions from `Dockerfile`.
 - When adding a new first-level backend test directory under `backend/tests/`, add a matching matrix entry to `.github/workflows/backend-tests.yml` in the same change.
-- `.github/workflows/static-checks.yml` independently runs frontend lint/TypeScript checks/asset build, backend Pyright/Ruff, and Go formatting/vet on every push.
+- `.github/workflows/static-checks.yml` independently runs frontend lint/TypeScript checks/operation-flow tests/asset build, backend Pyright/Ruff, and Go formatting/vet on every push.
 - `.github/workflows/e2e-tests.yml` runs race-enabled framework unit tests, builds the application image and standalone runner once, runs three independent API regression shards, always attempts cleanup/diagnostic upload, and audits the case/shard union against the deployed OpenAPI schema. Static checks belong to the separate push workflow; Docker builds frontend assets with `pnpm build:bundle`. New suite directories do not need matrix entries. Manual dispatch supports smoke, external provider qualification and disabling environment reuse; DNS credentials come from the private `E2E_EXTERNAL_CONFIG` secret.
 - `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags and exports a registry BuildKit cache.
 

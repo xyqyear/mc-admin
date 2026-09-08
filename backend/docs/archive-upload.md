@@ -17,7 +17,7 @@ Chunks are 8 MiB. Sessions expire after 60 minutes of inactivity and live only i
 
 When the received byte count reaches the declared file size, the session enters pending verification and the `/tmp` upload part remains the only copy of the uploaded bytes. The final archive path is not created yet.
 
-After SHA256 verification succeeds, the backend copies the temp file into a hidden staging file inside the archive directory, atomically replaces the final archive path from that staging file, applies archive-directory ownership to the final file, and removes the `/tmp` upload part.
+After SHA256 verification succeeds, the backend copies the temp file into a hidden staging file inside the archive directory and applies archive-directory ownership. Overwrite mode atomically replaces the final path. No-overwrite mode atomically links the staging inode to a previously absent destination, returning 409 if another writer has occupied it, then unlinks the staging name. Both modes remove the `/tmp` upload part after publication.
 
 The staging step keeps the final archive path from exposing a partial file even when `/tmp` and the archive directory are on different filesystems.
 
@@ -34,3 +34,7 @@ The server-side temp file size is authoritative. A `PATCH` whose `Upload-Offset`
 - `complete` — final hex SHA256.
 
 The frontend computes the local file hash at the same time. It then calls `POST /archive/upload/{upload_id}/verify` with the local SHA256. If the hashes match, the backend publishes the archive. If they differ, the backend deletes the temp upload and removes the session.
+
+## Compression output identity
+
+Each compression task receives a filename containing the readable server/path, timestamp, and a random identifier. Independent tasks never intentionally share an output path; failure and cancellation remove only that task's partial archive. Closing the progress dialog leaves the background task running.

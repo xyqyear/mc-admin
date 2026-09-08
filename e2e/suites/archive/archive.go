@@ -159,6 +159,44 @@ func roundtrip(ctx context.Context, t *engine.Scope) error {
 		if !bytes.HasPrefix(response.Body, []byte{'7', 'z', 0xbc, 0xaf, 0x27, 0x1c}) {
 			return fmt.Errorf("compression output is not a 7z archive")
 		}
+		firstBytes := response.Body
+		if err = client.JSON(ctx, "POST", "/api/servers/"+id+"/files/content?path=/smoke.txt", map[string]string{"content": "second archive contents\n"}, nil, 200); err != nil {
+			return err
+		}
+		if err = client.JSON(ctx, "POST", "/api/archive/compress", map[string]string{"server_id": id, "path": "/"}, &started, 200); err != nil {
+			return err
+		}
+		secondTask, err := client.Task(ctx, started.ID)
+		if err != nil {
+			return err
+		}
+		secondFilename, ok := secondTask.Result["filename"].(string)
+		if !ok || secondFilename == "" || secondFilename == filename {
+			return fmt.Errorf("separate compression tasks must have independent output paths")
+		}
+		response, err = client.Do(ctx, "GET", "/api/archive/download?path="+url.QueryEscape("/"+filename), nil, nil)
+		if err != nil {
+			return err
+		}
+		if err = client.Expect(response, 200); err != nil {
+			return err
+		}
+		if !bytes.Equal(firstBytes, response.Body) {
+			return fmt.Errorf("later compression changed the first task's output")
+		}
+		for _, expected := range []struct{ archive, content string }{
+			{filename, "archive round trip\n"}, {secondFilename, "second archive contents\n"},
+		} {
+			if err = client.JSON(ctx, "POST", "/api/servers/"+id+"/populate", map[string]string{"archive_filename": expected.archive}, &started, 200); err != nil {
+				return err
+			}
+			if _, err = client.Task(ctx, started.ID); err != nil {
+				return err
+			}
+			if err = fixtures.CheckFile(ctx, client, id, "/smoke.txt", expected.content); err != nil {
+				return err
+			}
+		}
 		var listed struct {
 			Tasks []map[string]any `json:"tasks"`
 		}
