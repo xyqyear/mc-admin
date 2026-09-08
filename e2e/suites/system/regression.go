@@ -28,7 +28,7 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 		{"dns", map[string]any{"dns_ttl": 45, "managed_sub_domain": "e2e", "dns": map[string]any{"type": "dnspod", "domain": "e2e.invalid", "id": "id", "key": "unused"}}, map[string]any{"dns": map[string]any{"type": "unknown"}}},
 		{"snapshots", map[string]any{"ignored_paths": []any{".mcmap", "<LEVEL_NAME>/protected"}}, map[string]any{"ignored_paths": []any{"../escape"}}},
 		{"players", map[string]any{"ignored_name_prefixes": []any{"bot_", "e2e_ignore_"}}, map[string]any{"heartbeat": map[string]any{"crash_threshold_minutes": 0}}},
-		{"log_parser", map[string]any{"chat_pattern": `E2E: <(\S+)> (.*)`}, map[string]any{"uuid_patterns": 1}},
+		{"log_parser", map[string]any{"chat_pattern": `^(E2E: )?<(\S+)> (.*)$`}, map[string]any{"chat_pattern": `E2E: <(\S+)> (.*)`}},
 		{"mcmap", map[string]any{"batch_size": 8, "thread_count": 2}, map[string]any{"batch_size": 0}},
 		{"world", map[string]any{"region_stat_workers": 4, "dimension_labels": map[string]any{".": "E2E 世界"}}, map[string]any{"dimension_max_depth_from_world_root": 33}},
 		{"self_check", map[string]any{"retention_runs_keep_days": 7, "backup_mod_ids": []any{"FTBBackups2"}}, map[string]any{"snapshot_freshness_minutes": 0}},

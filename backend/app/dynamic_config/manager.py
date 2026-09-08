@@ -147,6 +147,7 @@ class ConfigManager:
 
         try:
             new_config_instance = schema_cls.model_validate(new_data)
+            new_config_instance.validate_update()
         except (ValueError, TypeError) as e:
             raise ValueError(
                 f"Invalid configuration data for module '{module_name}': {e}"

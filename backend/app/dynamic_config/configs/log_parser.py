@@ -1,5 +1,6 @@
 """Log parser configuration."""
 
+import re
 from typing import Annotated
 
 from pydantic import ConfigDict, Field
@@ -8,11 +9,7 @@ from ..schemas import BaseConfigSchema
 
 
 class LogParserConfig(BaseConfigSchema):
-    """
-    Configuration for Minecraft server log parsing patterns.
-
-    ! Note: Please change the patterns here and test them before modifying the values in the UI.
-    """
+    """Configuration for Minecraft server log parsing patterns."""
 
     model_config = ConfigDict(title="日志解析配置")
 
@@ -59,7 +56,7 @@ class LogParserConfig(BaseConfigSchema):
         str,
         Field(
             title="聊天消息解析规则",
-            description="正则表达式模式，用于解析聊天消息",
+            description="正则表达式模式；第 1 组为可选前缀，第 2 组为玩家名，第 3 组为消息",
             default=r": (\[Not Secure\] )?<(\S+)> (.*)",
         ),
     ]
@@ -75,3 +72,21 @@ class LogParserConfig(BaseConfigSchema):
             ],
         ),
     ]
+
+    def validate_update(self) -> None:
+        rules = [
+            ("uuid_patterns", self.uuid_patterns, 2),
+            ("join_pattern", [self.join_pattern], 1),
+            ("leave_pattern", [self.leave_pattern], 1),
+            ("server_stop_pattern", [self.server_stop_pattern], 0),
+            ("chat_pattern", [self.chat_pattern], 3),
+            ("achievement_patterns", self.achievement_patterns, 2),
+        ]
+        for field, patterns, groups in rules:
+            for pattern in patterns:
+                try:
+                    compiled = re.compile(pattern)
+                except re.error as exc:
+                    raise ValueError(f"日志规则 {field} 的正则表达式无效：{exc}") from exc
+                if compiled.groups < groups:
+                    raise ValueError(f"日志规则 {field} 至少需要 {groups} 个捕获组")

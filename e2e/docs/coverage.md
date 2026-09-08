@@ -18,7 +18,7 @@
 | 登录码交接流程 | `auth.code-login-and-csrf` | 建立真实登录码 WebSocket；通过主令牌确认登录码，交换浏览器登录票据并一次性完成登录；拒绝非法登录码、票据和重复使用；验证会话 Cookie 及 CSRF 不匹配时的拒绝行为；读取普通容器日志与审计，确认本次真实 code/ticket 的完整值、截断片段及原始凭据帧未泄露，成功审计记录的对应字段已脱敏。 |
 | 启动后的服务发现 | `system.discovery` | 验证健康与系统接口、已注册的定时任务与自检服务、空业务清单、禁用状态的 DNS 及玩家相关接口。本用例验证可发现性，具体业务效果由对应领域用例验证。 |
 | 动态配置模块与结构 | `system.configuration-catalog` | 检查 `dns`、`snapshots`、`players`、`log_parser`、`mcmap`、`world`、`self_check` 七个模块的目录和 Schema；拒绝不存在的模块。 |
-| 配置持久化与重置 | `system.configuration-persistence`、`system.configuration-roundtrip` | 逐个模块更新和读取配置；代表性非法值被拒绝，且不覆盖原有有效配置；真实重启后保留配置及登录会话；逐个模块恢复注册默认值。运行时刷新效果还由玩家、世界、快照、自检及外部 DNS 用例验证。 |
+| 配置持久化与重置 | `system.configuration-persistence`、`system.configuration-roundtrip` | 逐个模块更新和读取配置；代表性非法值及缺少必要捕获组的日志规则被拒绝，且不覆盖原有有效配置；真实重启后保留配置及登录会话；逐个模块恢复注册默认值。已保存日志规则的实际解析还由玩家用例验证，其他运行时刷新由世界、快照、自检及外部 DNS 用例验证。 |
 | 主机指标、静态资源与参数校验 | `system.metrics-static-validation` | 检查 CPU、内存、磁盘指标为有限值、范围合理且相互一致；验证生产 HTML、单页应用路由回退、打包资源和 robots 文件；验证 API 404、结构化参数错误、匿名指标访问被拒绝及公开健康检查。 |
 | 审计日志 | `system.audit-redaction` | 执行 API 操作后读取测试部署的审计日志；核对操作者、成功与被拒绝的写操作、只读请求不被记录；正常表单登录和用户创建中的密码脱敏；在 DNS 禁用状态下通过真实配置 API 保存并读回测试 ak/sk，确认审计脱敏；嵌套额外字段验证中间件递归，同时保留普通任务与状态字段。该配置测试不访问云服务。 |
 | 公共事件连接 | `system.events-handshake` | 验证带会话认证的 WebSocket 连接，以及非法回放游标触发的重置协议。实际事件产生与持久化回放由 `players.tracking-events-and-history` 验证。 |

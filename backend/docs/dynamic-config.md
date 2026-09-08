@@ -11,19 +11,19 @@ Runtime-editable configuration with schema migration. Settings that change behav
 One row per registered config module. The row holds:
 
 - `module_name` — the schema's namespace key (`dns`, `snapshots`, `players`, `log_parser`, `mcmap`, `world`, `self_check`)
-- `version` — the schema version this row was written against
-- `data_json` — the serialized Pydantic model
+- `config_schema_version` — the schema version this row was written against
+- `config_data` — the serialized configuration
 
 ## Migration on read
 
 When a config row is loaded:
 
-1. Compare stored `version` to `schema_cls.get_schema_version()`.
+1. Compare stored `config_schema_version` to `schema_cls.get_schema_version()`.
 2. If they differ, run `ConfigMigrator.migrate_config()` — uses Pydantic `model_validate()` to coerce the stored shape, fill in defaults for new fields, drop removed ones.
 3. Validate the result through the current schema.
 4. Cache the instance.
 
-This means adding/removing/renaming a config field doesn't need a hand-written migration — Pydantic + sensible defaults handle most cases. For genuinely breaking changes, override the migration hook on the schema class.
+Compatible field changes use Pydantic validation and defaults. Renames or incompatible changes require an explicit compatibility decision; model validation does not infer renamed fields.
 
 ## Using config in code
 
@@ -38,6 +38,8 @@ if config.snapshots.time_restriction.enabled:
 
 Updates flow through `config_manager.update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
 
+After structural validation, `BaseConfigSchema.validate_update()` checks domain rules for newly submitted settings before persistence. Log-parser settings compile each pattern and require the capture groups used by the parser: UUID and achievement need two, join and leave need one, chat needs three, and stop needs none. Invalid submissions preserve the existing cache and stored configuration. The write-only check leaves legacy loading unchanged, so an administrator can still open settings to repair previously stored invalid rules.
+
 Runtime-tunable values are read at the point of behavior, not copied into
 long-lived singletons during construction. If a subsystem must cache derived
 state from dynamic config, it needs an explicit refresh/rebuild path.
@@ -46,7 +48,7 @@ state from dynamic config, it needs an explicit refresh/rebuild path.
 
 In `dynamic_config/configs/`:
 
-- `dns.py` — provider, credentials, managed sub-domain, auto-update flag
+- `dns.py` — provider, credentials, managed sub-domain and enabled flag
 - `snapshots.py` — retention, time restrictions, world-restore knobs (preview TTL, janitor interval, preview region-size estimate)
 - `players.py` — heartbeat interval, crash threshold, syncer cadence, skin fetch timeout, ignored player-name prefixes (default `["bot_"]`)
 - `log_parser.py` — regex patterns for join/leave/chat/achievement/uuid/server-stop
@@ -56,7 +58,7 @@ In `dynamic_config/configs/`:
 
 ## JSON schema → frontend forms
 
-`config_manager.get_module_schema(module_name)` returns the Pydantic JSON Schema for the module. The frontend's `SchemaForm` (rjsf) renders the editor from that schema, so adding a new field on the backend is the only change needed to expose it in the UI.
+`config_manager.get_schema_info(module_name)` returns the Pydantic JSON Schema for the module. The frontend's rjsf form renders the editor from that schema; domain validation remains at the server's save boundary.
 
 ## Lifespan wiring
 
