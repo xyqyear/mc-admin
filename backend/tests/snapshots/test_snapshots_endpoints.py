@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import api_app
+from app.minecraft import MCServerStatus
 from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 
@@ -81,6 +82,12 @@ class MockMCInstance:
         self.server_id = server_id
         self.base_path = base_path
         self.project_path = base_path / server_id
+
+    def get_name(self) -> str:
+        return self.server_id
+
+    async def get_status(self) -> MCServerStatus:
+        return MCServerStatus.EXISTS
 
     def get_project_path(self) -> Path:
         """Return the project path."""

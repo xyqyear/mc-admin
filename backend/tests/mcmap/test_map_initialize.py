@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -79,7 +79,7 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
     @asynccontextmanager
     async def fake_download_client(
         version: str, target: Path, *, owned_by: Path
-    ) -> AsyncIterator[_FakeProc]:
+    ) -> AsyncGenerator[_FakeProc]:
         assert not cache.client_jar.exists()
         assert not cache.palette_json.exists()
         assert not cache.palette_hash_file.exists()
@@ -105,7 +105,7 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
         *,
         level_dat: Path | None,
         owned_by: Path,
-    ) -> AsyncIterator[_FakeProc]:
+    ) -> AsyncGenerator[_FakeProc]:
         assert not cache.palette_json.exists()
         assert not cache.palette_hash_file.exists()
         calls.append(

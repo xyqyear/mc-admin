@@ -48,6 +48,8 @@ jobs:
             pytest_target: tests/snapshots
           - test_group: templates
             pytest_target: tests/templates
+          - test_group: utils
+            pytest_target: tests/utils
           - test_group: world
             pytest_target: tests/world
     defaults:

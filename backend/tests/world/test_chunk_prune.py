@@ -411,3 +411,38 @@ async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
         assert response.dimensions == []
     finally:
         task_manager.remove_task(task_id)
+
+
+async def test_apply_closes_worker_and_invalidates_before_releasing_lock(tmp_path, monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    lock = ServerOperationLock()
+    service = ChunkPruneService(
+        docker=_FakeDocker(tmp_path),  # type: ignore[arg-type]
+        operation_lock=lock,
+    )
+    metadata = ChunkPruneTaskMetadata(
+        task_id="prune-close", server_id="srv1", operation="apply", data_path=tmp_path,
+        threshold_seconds=60, threshold_ticks=1200, mode="chunks",
+    )
+    closed = False
+
+    async def worker(metadata, *, dry_run):
+        nonlocal closed
+        try:
+            yield TaskProgress(progress=0, message="started")
+        finally:
+            await asyncio.sleep(0)
+            assert lock.is_locked("srv1")
+            closed = True
+
+    invalidation = AsyncMock()
+    monkeypatch.setattr(service, "_run_prune_task", worker)
+    monkeypatch.setattr("app.chunk_prune.service.png_invalidate.delete_pngs", invalidation)
+    events = service._run_apply_task(metadata)
+    await anext(events)
+    await events.aclose()
+    assert closed
+    invalidation.assert_awaited_once()
+    assert not lock.is_locked("srv1")

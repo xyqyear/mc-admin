@@ -15,6 +15,8 @@ from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from pathlib import Path
 
+from anyio import CancelScope
+
 from ..config import settings
 from ..utils.exec import exec_command
 from .models import (
@@ -317,15 +319,20 @@ class ResticClient:
                     f"restic restore failed (exit {proc.returncode}): {stderr}"
                 )
         finally:
-            if proc.returncode is None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5)
-                except TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-            if not drain_task.done():
-                drain_task.cancel()
+            with CancelScope(shield=True):
+                if proc.returncode is None:
+                    try:
+                        proc.terminate()
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5)
+                    except TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                if not drain_task.done():
+                    drain_task.cancel()
+                await asyncio.gather(drain_task, return_exceptions=True)
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """Remove the snapshot ``snapshot_id``; prune the repo afterwards by default."""

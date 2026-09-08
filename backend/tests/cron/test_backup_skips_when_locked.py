@@ -65,3 +65,29 @@ async def test_backup_skips_when_global_lock_is_held():
     joined = "\n".join(context.messages)
     assert "跳过备份" in joined
     assert GLOBAL_LOCK_KEY in joined
+
+
+async def test_global_backup_skips_when_an_affected_server_is_restoring(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    from app.cron.jobs import backup
+
+    instance = Mock()
+    instance.get_name.return_value = "affected"
+    instance.get_project_path.return_value = tmp_path / "affected"
+    instance.get_data_path.return_value = tmp_path / "affected" / "data"
+    manager = Mock()
+    manager.get_all_instances = AsyncMock(return_value=[instance])
+    monkeypatch.setattr(backup, "docker_mc_manager", manager)
+    monkeypatch.setattr(backup, "settings", SimpleNamespace(server_path=tmp_path))
+    snapshots = Mock()
+    snapshots.create_snapshot = AsyncMock()
+    monkeypatch.setattr(backup, "_get_snapshot_service", lambda: snapshots)
+    holder = LockHolder(ServerOperationKind.RESTORE, datetime.now(UTC), None, "restoring")
+    context = _make_context(BackupJobParams(keep_last=1))
+    async with server_operation_lock.acquire("affected", holder):
+        await backup_cronjob(context)
+        assert not server_operation_lock.is_locked(GLOBAL_LOCK_KEY)
+    snapshots.create_snapshot.assert_not_awaited()
+    assert any("跳过备份" in message for message in context.messages)

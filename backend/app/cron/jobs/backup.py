@@ -19,6 +19,7 @@ from ...world import (
     ServerOperationKind,
     server_operation_lock,
 )
+from ...world.maintenance import affected_servers
 from ..types import ExecutionContext
 
 
@@ -236,7 +237,14 @@ async def backup_cronjob(context: ExecutionContext):
     )
 
     try:
-        async with server_operation_lock.try_acquire(lock_key, holder) as acquired:
+        if params.server_id:
+            lock_keys = [params.server_id]
+        elif server_operation_lock.is_locked(GLOBAL_LOCK_KEY):
+            lock_keys = [GLOBAL_LOCK_KEY]
+        else:
+            backup_root = await async_fs.resolve(settings.server_path)
+            lock_keys = [GLOBAL_LOCK_KEY, *await affected_servers(docker_mc_manager, [backup_root])]
+        async with server_operation_lock.try_acquire_servers(lock_keys, holder) as acquired:
             if not acquired:
                 current = server_operation_lock.get_holder(lock_key)
                 if current is not None:

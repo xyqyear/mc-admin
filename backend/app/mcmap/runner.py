@@ -1,11 +1,12 @@
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 import aiofiles.os as aioos
+from anyio import CancelScope
 from pydantic import TypeAdapter, ValidationError
 
 from ..config import settings
@@ -99,19 +100,20 @@ async def _spawn(args: list[str], owned_by: Path) -> asyncio.subprocess.Process:
 
 
 @asynccontextmanager
-async def _run(args: list[str], owned_by: Path) -> AsyncIterator[MCMapProcess]:
+async def _run(args: list[str], owned_by: Path) -> AsyncGenerator[MCMapProcess]:
     proc = await _spawn(args, owned_by=owned_by)
     wrapper = MCMapProcess(proc)
     try:
         yield wrapper
     finally:
-        await wrapper.terminate()
+        with CancelScope(shield=True):
+            await wrapper.terminate()
 
 
 @asynccontextmanager
 async def download_client(
     version: str, target: Path, *, owned_by: Path
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     async with _run(["download-client", version, str(target)], owned_by) as p:
         yield p
 
@@ -123,7 +125,7 @@ async def gen_palette(
     *,
     level_dat: Path | None,
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     args: list[str] = ["gen-palette", "-o", str(output)]
     if level_dat is not None:
         args.extend(["--level-dat", str(level_dat)])
@@ -141,7 +143,7 @@ async def render(
     threads: int,
     *,
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     args: list[str] = [
         "render",
         "-p",
@@ -170,7 +172,7 @@ async def replace_chunks(
     target_mca: Path,
     chunks: list[tuple[int, int]],
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     if not chunks:
         raise ValueError("replace_chunks requires at least one chunk coord")
     args: list[str] = [
@@ -192,7 +194,7 @@ async def remove_chunks(
     target_mca: Path,
     chunks: list[tuple[int, int]],
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     if not chunks:
         raise ValueError("remove_chunks requires at least one chunk coord")
     args: list[str] = [
@@ -215,7 +217,7 @@ async def prune_inhabited(
     dry_run: bool,
     owned_by: Path,
     exclude_ftb_claims: Path | None = None,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     args: list[str] = [
         "prune-inhabited",
         str(path),

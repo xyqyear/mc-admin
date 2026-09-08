@@ -218,7 +218,7 @@ export const RestorationHistoryDrawer: React.FC<
                 // Rollback rows are themselves rollback-able: their safety
                 // snapshot captures the pre-rollback state, undoing the rollback.
                 const canRollback =
-                  (row.status === 'succeeded' || row.status === 'interrupted') &&
+                  (row.status === 'succeeded' || row.status === 'interrupted' || row.status === 'failed') &&
                   !!row.safety_snapshot_id &&
                   row.safety_snapshot_exists
                 // Dimension/world scopes have no per-region affected set.

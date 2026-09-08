@@ -8,27 +8,33 @@ import { useServerMutations } from '@/hooks/mutations/useServerMutations';
 import { useServerOperationConfirm } from '@/components/dialogs/ServerOperationConfirmDialog';
 import { serverStatusUtils } from '@/utils/serverUtils';
 import type { ServerStatus } from '@/types/ServerInfo';
+import { useServerQueries } from '@/hooks/queries/base/useServerQueries';
 
 interface ServerOperationButtonsProps {
   serverId: string;
   serverName: string;
   status?: ServerStatus;
   showReturnButton?: boolean;
+  maintenanceActive?: boolean;
 }
 
 const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   serverId,
   serverName,
   status,
-  showReturnButton = true
+  showReturnButton = true,
+  maintenanceActive = false
 }) => {
   const navigate = useNavigate();
   const { useServerOperation } = useServerMutations();
   const serverOperationMutation = useServerOperation();
   const { showConfirm, confirmDialog } = useServerOperationConfirm();
+  const { useServerMaintenance } = useServerQueries();
+  const maintenance = useServerMaintenance(serverId);
 
   const isOperationAvailable = (operation: string) => {
     if (!status) return false;
+    if ((maintenanceActive || maintenance.data?.active) && ['start', 'up', 'restart'].includes(operation)) return false;
     return serverStatusUtils.isOperationAvailable(operation, status);
   };
 
@@ -55,7 +61,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
         variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
         disabled={serverOperationMutation.isPending || (!isOperationAvailable('start') && !isOperationAvailable('up'))}
         onClick={handleStartServer}
-        title="启动服务器"
+        title={maintenance.data?.active ? maintenance.data.description ?? '服务器正在维护' : '启动服务器'}
       >
         {serverOperationMutation.isPending
           ? <Spinner className="mr-2 size-4" />

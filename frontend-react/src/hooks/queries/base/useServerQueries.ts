@@ -4,6 +4,7 @@ import {
   type ServerDiskUsageResponse,
   type ServerIOStatsResponse,
   type ServerListItem,
+  type ServerMaintenanceResponse,
 } from "@/hooks/api/serverApi";
 import type { ServerInfo, ServerStatus } from "@/types/ServerInfo";
 import { queryKeys } from "@/utils/api";
@@ -46,6 +47,17 @@ export const useServerQueries = () => {
       ...options,
     });
   };
+
+  const useServerMaintenance = (
+    id: string,
+    options?: Omit<UseQueryOptions<ServerMaintenanceResponse>, 'queryKey' | 'queryFn'>
+  ) => useQuery({
+    queryKey: queryKeys.serverMaintenance.detail(id),
+    queryFn: () => serverApi.getServerMaintenance(id),
+    enabled: !!id,
+    refetchInterval: 1000,
+    ...options,
+  });
 
   // CPU/memory/I/O endpoints reject non-RUNNING/STARTING/HEALTHY states with 409.
   // Gate via `enabled` and skip retries on 409 so the query goes idle promptly
@@ -178,6 +190,7 @@ export const useServerQueries = () => {
     useServers,
     useServerInfo,
     useServerStatus,
+    useServerMaintenance,
     useServerCpuPercent,
     useServerMemory,
     useServerIOStats,

@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -30,7 +30,7 @@ async def extract_ftb_claims(
     world_dir: Path,
     *,
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
+) -> AsyncGenerator[MCMapProcess]:
     args: list[str] = [
         "--json",
         "extract-ftb-claims",

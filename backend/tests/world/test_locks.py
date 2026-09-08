@@ -100,3 +100,18 @@ async def test_is_locked_unknown_server_is_false():
     lock = ServerOperationLock()
     assert lock.is_locked("srv-nope") is False
     assert lock.get_holder("srv-nope") is None
+
+
+async def test_multi_server_backup_conflicts_and_releases_partial_acquisitions():
+    lock = ServerOperationLock()
+    async with (
+        lock.acquire("second", _holder(ServerOperationKind.RESTORE)),
+        lock.try_acquire_servers(["first", "second"], _holder()) as acquired,
+    ):
+        assert not acquired
+        assert not lock.is_locked("first")
+        assert lock.is_locked("second")
+    async with lock.try_acquire_servers(["second", "first"], _holder()) as acquired:
+        assert acquired
+        assert lock.is_locked("first") and lock.is_locked("second")
+    assert not lock.get_holders()

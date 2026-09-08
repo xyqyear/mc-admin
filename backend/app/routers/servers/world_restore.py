@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -506,15 +507,16 @@ async def begin_restore(
 
     async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            async for event in orch.begin_restore(
+            async with aclosing(orch.begin_restore(
                 server_id=server_id,
                 source_snapshot_id=body.source_snapshot_id,
                 selection=body.selection,
                 user_id=user.id,
-            ):
-                if event.event_type == "complete":
-                    schedule_self_check_event(WORLD_RESTORED_TRIGGER, user.id)
-                yield sse_encode(event.model_dump(exclude_none=True))
+            )) as events:
+                async for event in events:
+                    if event.event_type == "complete":
+                        schedule_self_check_event(WORLD_RESTORED_TRIGGER, user.id)
+                    yield sse_encode(event.model_dump(exclude_none=True))
         except ServerNotStoppedError as e:
             yield sse_encode({"event_type": "error", "message": str(e)})
         except SelectionResolutionError as e:
@@ -641,10 +643,11 @@ async def rollback_restoration(
 
     async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            async for event in orch.rollback(restoration_id, user.id):
-                if event.event_type == "complete":
-                    schedule_self_check_event(WORLD_ROLLED_BACK_TRIGGER, user.id)
-                yield sse_encode(event.model_dump(exclude_none=True))
+            async with aclosing(orch.rollback(restoration_id, user.id)) as events:
+                async for event in events:
+                    if event.event_type == "complete":
+                        schedule_self_check_event(WORLD_ROLLED_BACK_TRIGGER, user.id)
+                    yield sse_encode(event.model_dump(exclude_none=True))
         except Exception as e:
             logger.exception(
                 "rollback stream failed for server=%s restoration=%s",

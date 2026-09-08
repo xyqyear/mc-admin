@@ -86,6 +86,8 @@ Switching from region mode to chunk mode prompts a destructive `useConfirm` warn
 - Selected-range restore is enabled only when region mode has at least one fully-covered region, or chunk mode has at least one selected chunk.
 - Restore buttons in this tab are disabled while the server is not stopped; rollback checks the same condition when clicked. The backend still performs the authoritative 409 check for both flows.
 
+Shared server operation buttons consume `useServerMaintenance` through the server API/query layers. The maintenance endpoint prevents startup during a destructive operation even after navigating or refreshing.
+
 ## Snapshot picker (restore flow)
 
 `components/world-restore/SnapshotPicker.tsx` is a right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row always offers Restore. It offers Preview only for REGIONS/CHUNKS selections because the preview map needs an affected-region set.
@@ -102,6 +104,7 @@ Switching from region mode to chunk mode prompts a destructive `useConfirm` warn
 - Mounts the Leaflet map only after `ready` so tile requests do not race the backend render queue.
 - Heartbeats every 30 s (`POST /preview/{session_id}/heartbeat`).
 - Fires `DELETE /preview/{session_id}` on close.
+- A stream that ends before `ready` or an explicit error enters a closable connection-error state. Map initialization uses the same terminal expectation.
 - The preview tile layer is a clone of `ServerMapTileLayer` pointed at `/preview/{session_id}/tile/{rx}/{rz}.png`, gated by an `available` set so empty regions don't 404.
 - Paints affected region rectangles immediately; for chunk selections up to 5,000 chunks it also paints per-chunk rectangles.
 - Shows an in-dialog message instead of a blank canvas when invoked with a dimension/world selection.
@@ -110,11 +113,11 @@ Switching from region mode to chunk mode prompts a destructive `useConfirm` warn
 
 `components/world-restore/RestorationHistoryDrawer.tsx` lists rows from `useRestorations`, auto-refreshing every 5 s. Per-row rollback is gated on:
 
-- `status ∈ {succeeded, interrupted}`
+- `status ∈ {succeeded, failed, interrupted}`
 - `safety_snapshot_id` is set
 - `safety_snapshot_exists === true`
 
-The "needs rollback" alert highlights `interrupted` rows — the backend's crash-recovery path flips `RUNNING` rows to `INTERRUPTED` on startup so they surface here.
+The "needs rollback" alert highlights `interrupted` rows. Request disconnection finalizes an interrupted restore before releasing maintenance ownership; a backend crash is reconciled on startup. Failed rows with retained safety snapshots also offer rollback.
 
 Rollback rows are rollback-able too. Their safety snapshot captures the pre-rollback state, so rolling back a rollback is how the UI undoes that rollback.
 

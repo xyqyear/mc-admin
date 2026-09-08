@@ -8,8 +8,12 @@ snapshot being restored, so snapshots taken under an older ignore config
 stay protected as well.
 """
 
+import errno
 from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import aclosing
 from pathlib import Path
+
+import aiofiles.os as aioos
 
 from ..dynamic_config import config
 from ..utils import async_fs
@@ -44,6 +48,29 @@ class SnapshotService:
         return await resolve_all_ignores(
             self._mc_manager, config.snapshots.ignored_paths
         )
+
+    async def remove_absent_paths(self, snapshot_id: str, paths: Sequence[Path]) -> None:
+        """Restore recorded absence without deleting configured ignored descendants."""
+        ignored = await self._current_ignores()
+        snapshot = await self.get_snapshot(snapshot_id)
+        ignored.extend([await async_fs.resolve(Path(path)) for path in snapshot.excludes])
+
+        async def remove(path: Path) -> None:
+            if is_ignored(path, ignored) or (not await aioos.path.exists(path) and not await aioos.path.islink(path)):
+                return
+            if await aioos.path.islink(path) or not await aioos.path.isdir(path):
+                await aioos.remove(path)
+                return
+            for child in await async_fs.iterdir(path):
+                await remove(child)
+            try:
+                await aioos.rmdir(path)
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY:
+                    raise
+
+        for path in paths:
+            await remove(path)
 
     async def create_snapshot(
         self, paths: Sequence[Path]
@@ -84,10 +111,11 @@ class SnapshotService:
         at the end.
         """
         plan = await self.build_plan(snapshot_id, targets)
-        async for event in self._run_plan(
+        async with aclosing(self._run_plan(
             plan, target_for=lambda step: step.source_dir, delete=True, dry_run=dry_run
-        ):
-            yield event
+        )) as events:
+            async for event in events:
+                yield event
 
     async def preview(
         self, snapshot_id: str, targets: Sequence[Path]
@@ -120,13 +148,14 @@ class SnapshotService:
         ``stage_destination`` to locate staged files afterwards.
         """
         plan = await self.build_plan(snapshot_id, targets)
-        async for event in self._run_plan(
+        async with aclosing(self._run_plan(
             plan,
             target_for=lambda step: RestorePlan.stage_target(stage_root, step),
             delete=False,
             dry_run=False,
-        ):
-            yield event
+        )) as events:
+            async for event in events:
+                yield event
 
     @staticmethod
     def stage_destination(stage_root: Path, live_path: Path) -> Path:
@@ -155,23 +184,24 @@ class SnapshotService:
             bytes_skipped=0,
         )
         for index, step in enumerate(plan.steps):
-            async for event in self._restore_step(
+            async with aclosing(self._restore_step(
                 plan.snapshot_id,
                 step,
                 target_dir=target_for(step),
                 delete=delete,
                 dry_run=dry_run,
-            ):
-                if event.kind == "status":
-                    if event.percent_done is not None:
-                        event.percent_done = (
-                            index + event.percent_done
-                        ) / total_steps
-                    yield event
-                elif event.kind == "file":
-                    yield event
-                else:
-                    _accumulate_summary(summary, event)
+            )) as events:
+                async for event in events:
+                    if event.kind == "status":
+                        if event.percent_done is not None:
+                            event.percent_done = (
+                                index + event.percent_done
+                            ) / total_steps
+                        yield event
+                    elif event.kind == "file":
+                        yield event
+                    else:
+                        _accumulate_summary(summary, event)
         yield summary
 
     def _restore_step(

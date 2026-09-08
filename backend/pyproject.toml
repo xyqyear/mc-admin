@@ -29,6 +29,7 @@ dependencies = [
     "pwdlib[argon2]~=0.3.0",
     "alembic>=1.17.0,<2",
     "docker>=7.1.0",
+    "anyio>=4,<5",
 ]
 
 [dependency-groups]

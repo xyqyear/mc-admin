@@ -6,11 +6,13 @@ import os
 import posixpath
 import tempfile
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 
 import aiofiles
 import aiofiles.os as aioos
+from anyio import CancelScope
 
 from ..background_tasks import task_manager
 from ..background_tasks.types import TaskProgress, TaskStatus, TaskType
@@ -185,22 +187,25 @@ class ChunkPruneService:
             status = await self._docker.get_instance(metadata.server_id).get_status()
             if status not in STOPPED_STATUSES:
                 raise ChunkPruneConflictError("Stop the server before deleting chunks")
-            async for progress in self._run_prune_task(metadata, dry_run=False):
-                yield progress
-
-            pngs: set[Path] = set()
-            for (
-                region_dir_relpath,
-                regions,
-            ) in metadata.affected_regions_by_dimension.items():
-                pngs.update(
-                    png_invalidate.pngs_for_regions(
-                        metadata.data_path,
+            try:
+                async with aclosing(self._run_prune_task(metadata, dry_run=False)) as events:
+                    async for progress in events:
+                        yield progress
+            finally:
+                with CancelScope(shield=True):
+                    pngs: set[Path] = set()
+                    for (
                         region_dir_relpath,
                         regions,
-                    )
-                )
-            await png_invalidate.delete_pngs(pngs)
+                    ) in metadata.affected_regions_by_dimension.items():
+                        pngs.update(
+                            png_invalidate.pngs_for_regions(
+                                metadata.data_path,
+                                region_dir_relpath,
+                                regions,
+                            )
+                        )
+                    await png_invalidate.delete_pngs(pngs)
 
     async def _run_prune_task(
         self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool

@@ -52,15 +52,15 @@ dimension scan for endpoints and restore flows that need the complete layout.
 
 Before any restore touches the live world, the orchestrator creates a Restic snapshot at the same scope as the planned restore (a "safety snapshot"). Its id is recorded on the `Restoration` row. Rollback simply runs the restore in reverse: the safety snapshot is the source, the same `selection` is the target.
 
-This means every successful restore has a one-click undo. It also means **a partial / interrupted restore can still be undone** — see "Crash recovery".
+Successful, failed and interrupted restorations can be rolled back while their safety snapshot exists. Selective restore targets include the known entities/POI locations even when the current directories are missing. The persisted selection JSON also records `absent_sidecar_dirs` relative to server data, so rollback can restore their prior absence without depending on Restic traversing missing snapshot parents. Region rollback deletes only selected region/overflow files; chunk rollback removes only selected chunks and removes newly empty MCA files/directories. Unselected data and ignored descendants remain protected. Older history rows without this metadata retain their recorded scope behavior.
 
 ## Per-server lock
 
-`server_operation_lock` (in `app.world.locks`) is a singleton holding one `asyncio.Lock` per server id (or `__global__`). The lock is acquired with a `ServerOperationKind` of `BACKUP` (manual or scheduled snapshot creation) or `RESTORE` (restore + rollback) and held for the full operation including the safety snapshot.
+`server_operation_lock` (in `app.world.locks`) holds one `asyncio.Lock` per server ID. Backup, restore, prune and startup (`BACKUP`, `RESTORE`, `PRUNE`, `START`) share it. Restore/prune check stopped status after acquiring ownership; API start/up/restart hold the same ownership until the process operation completes. Read-only map and preview work remains independent.
 
-`LockHolder` records `kind`, `started_at`, optional `user_id`, a human-readable description, and the active `restoration_id` so the UI can attribute the wait to the right user and operation.
+`LockHolder` records kind, start time, optional user, description and restoration ID. `GET /api/servers/{server_id}/maintenance` exposes the current holder's active flag, kind and description. Shared frontend operation buttons poll this state; the prune page also immediately disables startup while its apply task is active.
 
-The cron backup job uses `try_acquire()` with either the target server id or `__global__`. If the lock is held, the run is skipped with a structured log entry plus an Uptime Kuma "skipped" notification when configured. Backups never collide with restores; cron pressure never pushes a backup into an active restore window. Map render queues do not take this lock because they only read source MCAs and write cached PNGs.
+Manual snapshots and scheduled backups resolve their actual server targets. A whole-server-root backup acquires the known affected server IDs in fixed order, plus the cron global key for overlapping global jobs. If any target is busy, acquired partial ownership is released and the manual request returns 423 or the cron run skips with its existing notification. The global key alone is not treated as a hierarchical lock. Concurrent server creation during target discovery is outside this single-process maintenance contract.
 
 ## Preview sessions
 
@@ -80,11 +80,13 @@ mcmap subcommands (`replace-chunks`, `remove-chunks`, `render`) run with the bac
 
 ## Map tile cache invalidation
 
-After a restore or rollback completes, `_invalidate_map_cache()` deletes cached PNG tiles for affected region MCAs and emits an `invalidate_cache` progress event. WORLD/DIMENSION invalidation derives affected regions from restic verbose-status items. REGIONS/CHUNKS invalidation uses the explicit selection because that is the authoritative affected set. Only `region/` MCAs map to PNGs; `entities/` and `poi/` sidecars are skipped.
+Restore/rollback finalization invalidates cached PNG tiles for affected region MCAs, including after partial failure or cancellation. Successful streams emit `invalidate_cache` before `complete`. WORLD/DIMENSION invalidation derives affected regions from restic verbose-status items. REGIONS/CHUNKS invalidation uses the explicit selection because that is the authoritative affected set. Only `region/` MCAs map to PNGs; `entities/` and `poi/` sidecars are skipped.
 
 The frontend invalidates world-restore and map query keys after completion. The map tile layer reloads the region manifest and uses MCA mtimes as cache-busting query params.
 
-## Crash recovery
+## Cancellation and crash recovery
+
+Disconnecting the SSE stream cancels the current restore; it does not create a detached background operation. Response, router, orchestrator and Restic generators close their owned child streams explicitly. Subprocess reaping, cache cleanup and history finalization are shielded from request cancel scopes and finish before maintenance ownership is released. An interrupted connection records `INTERRUPTED` immediately without restarting the backend; ordinary restore/cache failures record `FAILED`. Failed history with a retained safety snapshot offers rollback too. The API does not automatically retry or undo destructive operations.
 
 If the backend crashes mid-restore, the `Restoration` row is left in `RUNNING` status but no further work happens.
 

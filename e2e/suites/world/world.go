@@ -19,6 +19,8 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "world.preview-lifecycle", Suite: "world", Tags: []string{"regression", "minecraft", "restic"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 5 * time.Minute, Run: previewLifecycle},
 		{ID: "world.chunk-prune", Suite: "world", Tags: []string{"regression", "minecraft", "mcmap"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: chunkPrune},
 		{ID: "world.interrupted-restore-recovery", Suite: "world", Tags: []string{"regression", "minecraft", "restic"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: interruptedRestore},
+		{ID: "world.missing-sidecars-and-rollback", Suite: "world", Tags: []string{"regression", "minecraft", "restic", "mcmap"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 5 * time.Minute, Run: missingSidecars},
+		{ID: "world.disconnect-restore-and-maintenance", Suite: "world", Tags: []string{"regression", "minecraft", "restic"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: disconnectedRestore},
 	}
 }
 

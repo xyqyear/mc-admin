@@ -1,8 +1,8 @@
-"""Per-server async operation lock for backup/restore mutual exclusion."""
+"""Per-server maintenance ownership shared by snapshots, world writes and startup."""
 
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -14,6 +14,7 @@ class ServerOperationKind(str, Enum):
     BACKUP = "backup"
     RESTORE = "restore"
     PRUNE = "prune"
+    START = "start"
 
 
 @dataclass
@@ -30,8 +31,8 @@ class ServerOperationLock:
 
     Acquired via the ``acquire`` async context manager, which guarantees
     release via ``try/finally`` even on exception. Map render queues
-    intentionally do NOT use this lock — only mutating world operations
-    (backup, restore, prune) take it.
+    intentionally do NOT use this lock. Backup, restore, prune and startup
+    share ownership so stopped-world writes cannot overlap server startup.
     """
 
     def __init__(self) -> None:
@@ -48,7 +49,7 @@ class ServerOperationLock:
     @asynccontextmanager
     async def acquire(
         self, server_id: str, holder: LockHolder
-    ) -> AsyncIterator[None]:
+    ) -> AsyncGenerator[None]:
         lock = self._lock_for(server_id)
         await lock.acquire()
         try:
@@ -61,7 +62,7 @@ class ServerOperationLock:
     @asynccontextmanager
     async def try_acquire(
         self, server_id: str, holder: LockHolder
-    ) -> AsyncIterator[bool]:
+    ) -> AsyncGenerator[bool]:
         lock = self._lock_for(server_id)
         if lock.locked():
             yield False
@@ -77,6 +78,18 @@ class ServerOperationLock:
     def is_locked(self, server_id: str) -> bool:
         lock = self._locks.get(server_id)
         return lock is not None and lock.locked()
+
+    @asynccontextmanager
+    async def try_acquire_servers(
+        self, server_ids: list[str], holder: LockHolder
+    ) -> AsyncGenerator[bool]:
+        async with AsyncExitStack() as stack:
+            for server_id in sorted(set(server_ids)):
+                if not await stack.enter_async_context(self.try_acquire(server_id, holder)):
+                    await stack.aclose()
+                    yield False
+                    return
+            yield True
 
     def get_holder(self, server_id: str) -> LockHolder | None:
         return self._holders.get(server_id)

@@ -3,6 +3,8 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
+from anyio import CancelScope
+
 _TERMINATE_GRACE_SECONDS = 2.0
 
 
@@ -54,13 +56,15 @@ async def exec_command(
                 process.communicate(), timeout=timeout
             )
     except TimeoutError:
-        await _kill_process(process)
+        with CancelScope(shield=True):
+            await _kill_process(process)
         raise TimeoutError(
             f"Command timed out after {timeout}s: {command} {' '.join(args)}"
         )
     except BaseException:
         # Cancellation must not orphan the child process.
-        await _kill_process(process)
+        with CancelScope(shield=True):
+            await _kill_process(process)
         raise
 
     if stdout is None:  # type: ignore
@@ -126,4 +130,5 @@ async def exec_command_stream(
                 stderr_content = await process.stderr.read()
             raise RuntimeError(f"Command failed: {stderr_content.decode()}")
     finally:
-        await _kill_process(process)
+        with CancelScope(shield=True):
+            await _kill_process(process)

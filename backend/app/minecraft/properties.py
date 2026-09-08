@@ -154,10 +154,15 @@ def read_level_name_sync(data_path: Path) -> str:
         content = properties_path.read_text()
     except OSError:
         return DEFAULT_LEVEL_NAME
-    parsed = ServerProperties.from_server_properties(content)
-    if parsed.level_name and parsed.level_name.strip():
-        return parsed.level_name.strip()
-    return DEFAULT_LEVEL_NAME
+    level_name = DEFAULT_LEVEL_NAME
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "level-name" and value.strip():
+            level_name = value.strip()
+    return level_name
 
 
 async def read_level_name(data_path: Path) -> str:
