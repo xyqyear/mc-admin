@@ -273,6 +273,7 @@ class PlayerChatMessage(Base):
     __table_args__ = (
         Index("idx_player_chat_player_time", "player_db_id", "sent_at"),
         Index("idx_player_chat_server_time", "server_db_id", "sent_at"),
+        {"sqlite_autoincrement": True},
     )
 
     message_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

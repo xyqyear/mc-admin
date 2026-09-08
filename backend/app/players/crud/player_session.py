@@ -86,9 +86,9 @@ async def end_all_open_sessions(
 
     count = 0
     for player_session in open_sessions:
-        # Calculate session duration
-        duration = int((left_at - player_session.joined_at).total_seconds())
-        player_session.left_at = left_at
+        ended_at = max(left_at, player_session.joined_at)
+        duration = int((ended_at - player_session.joined_at).total_seconds())
+        player_session.left_at = ended_at
         player_session.duration_seconds = duration
         count += 1
 
@@ -138,8 +138,9 @@ async def end_all_open_sessions_on_server(
 
     count = 0
     for player_session in open_sessions:
-        duration = int((left_at - player_session.joined_at).total_seconds())
-        player_session.left_at = left_at
+        ended_at = max(left_at, player_session.joined_at)
+        duration = int((ended_at - player_session.joined_at).total_seconds())
+        player_session.left_at = ended_at
         player_session.duration_seconds = duration
         count += 1
 

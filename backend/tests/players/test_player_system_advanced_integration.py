@@ -300,7 +300,6 @@ async def test_heartbeat_crash_detection(
         online = await get_online_players(db, server_db_id)
         assert len(online) == 0
 
-        # Verify all sessions have been ended with left_at timestamp at crash time
         async with db() as session:
             result = await session.execute(
                 select(PlayerSession).where(PlayerSession.server_db_id == server_db_id)
@@ -309,8 +308,9 @@ async def test_heartbeat_crash_detection(
             for player_session in sessions:
                 assert player_session.left_at is not None
                 assert player_session.duration_seconds is not None
-                # Should be ended at stale heartbeat time
-                assert abs((player_session.left_at - stale_time).total_seconds()) < 1
+                assert player_session.joined_at > stale_time
+                assert player_session.left_at == player_session.joined_at
+                assert player_session.duration_seconds == 0
 
         # validate_all_servers should have been called during crash recovery
         mock_validate.assert_called_once()

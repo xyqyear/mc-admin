@@ -319,6 +319,22 @@ func identity(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
+	if err = s.append(ctx, "E2E: <E2EPlayer> newest chat before cleanup"); err != nil {
+		return err
+	}
+	if _, err = waitDetail(ctx, client, playerUUID, func(d detail) bool { return d.Messages == 3 }); err != nil {
+		return err
+	}
+	var newest []struct {
+		ID int `json:"message_id"`
+	}
+	if err = client.JSON(ctx, "GET", fmt.Sprintf("/api/players/%d/chat?search=newest", p.ID), nil, &newest, 200); err != nil {
+		return err
+	}
+	if len(newest) != 1 {
+		return fmt.Errorf("missing chat cursor before cleanup")
+	}
+	cursor := newest[0].ID
 	if err = client.JSON(ctx, "GET", "/api/config/modules/players", nil, &module, 200); err != nil {
 		return err
 	}
@@ -326,14 +342,14 @@ func identity(ctx context.Context, t *engine.Scope) error {
 	if err = client.JSON(ctx, "PUT", "/api/config/modules/players", map[string]any{"config_data": module.Data}, nil, 200); err != nil {
 		return err
 	}
-	return t.Step("cleanup previews and deletes only matching players and dependent history", func() error {
+	if err = t.Step("cleanup previews and deletes only matching players and dependent history", func() error {
 		var preview struct {
 			Candidates []map[string]any `json:"candidates"`
 		}
 		if err := client.JSON(ctx, "GET", "/api/players/cleanup/ignored_name_prefix/preview", nil, &preview, 200); err != nil {
 			return err
 		}
-		if len(preview.Candidates) != 1 || preview.Candidates[0]["session_count"] != float64(1) || preview.Candidates[0]["chat_message_count"] != float64(2) || preview.Candidates[0]["achievement_count"] != float64(1) {
+		if len(preview.Candidates) != 1 || preview.Candidates[0]["session_count"] != float64(1) || preview.Candidates[0]["chat_message_count"] != float64(3) || preview.Candidates[0]["achievement_count"] != float64(1) {
 			return fmt.Errorf("cleanup preview mismatches real history: %v", preview)
 		}
 		var removed struct {
@@ -367,5 +383,32 @@ func identity(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("cleanup is not idempotent")
 		}
 		return client.JSON(ctx, "GET", "/api/players/cleanup/unknown/preview", nil, nil, 422)
+	}); err != nil {
+		return err
+	}
+	return t.Step("replay after cleanup and restart keeps cursors above deleted messages", func() error {
+		if err := s.append(ctx, "E2E: <ReadyFixture> persisted after cleanup"); err != nil {
+			return err
+		}
+		if _, err := waitDetail(ctx, client, readyUUID, func(d detail) bool { return d.Messages == 2 }); err != nil {
+			return err
+		}
+		if err := fixtures.BackendOf(t.Env).Restart(ctx); err != nil {
+			return err
+		}
+		replay, err := client.OpenWebSocket(ctx, "/api/events?since="+strconv.Itoa(cursor))
+		if err != nil {
+			return err
+		}
+		defer replay.CloseNow()
+		event, err := readEvent(ctx, t, replay, "chat")
+		if err != nil {
+			return err
+		}
+		next, err := strconv.Atoi(fmt.Sprint(event["cursor"]))
+		if err != nil || next <= cursor || event["message"] != "persisted after cleanup" {
+			return fmt.Errorf("deleted cursor hid later committed chat: %v", event)
+		}
+		return nil
 	})
 }

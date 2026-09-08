@@ -19,7 +19,12 @@ The external subscriber event bus in `app/events` is the only exception to the
 no-dispatcher rule. Tracking functions publish public wire events after their
 database side effects complete; chat is published only after the
 `PlayerChatMessage` row is committed and its `message_id` cursor is assigned.
-Internal code does not consume the event bus.
+Internal code does not consume the event bus. SQLite allocates chat IDs with explicit
+AUTOINCREMENT, so cleanup does not reuse a previously committed cursor even when
+it removes the highest message or empties the table. Startup migration preserves
+existing rows and indexes; its allocation baseline is the highest retained ID.
+Identifiers already deleted before this migration cannot be reconstructed, so
+non-reuse relative to that lost historical high-water mark is not guaranteed.
 
 Identity resolution and UUID validity rules are documented in
 `docs/player-identity.md`. Player storage and skin/profile fetches accept only
@@ -63,7 +68,7 @@ stop_player_system():
 ## Database models
 
 - **`Player`** — `uuid` (unique), `current_name`, `skin_data` (bytes), `avatar_data` (bytes), `last_skin_update`, `created_at`.
-- **`PlayerSession`** — `(player_db_id, server_db_id)`, `joined_at`, `left_at` (nullable), `duration_seconds` (nullable). Indexes on `(player, time)`, `(server, time)`, and the open-session shape.
+- **`PlayerSession`** — `(player_db_id, server_db_id)`, `joined_at`, `left_at` (nullable), `duration_seconds` (nullable). Ending a session clamps `left_at` to at least `joined_at`, so a crash heartbeat preceding a recent join contributes zero seconds. Both individual-player departures and server-wide closure use this rule. Indexes on `(player, time)`, `(server, time)`, and the open-session shape.
 - **`PlayerChatMessage`** — `message_id` cursor, `(player_db_id, server_db_id)`, `message_text`, `sent_at`. Indexes on `(player, time)` and `(server, time)`.
 - **`PlayerAchievement`** — `(player_db_id, server_db_id, achievement_name)` unique, `earned_at`.
 - **`SystemHeartbeat`** — single-row crash detector.

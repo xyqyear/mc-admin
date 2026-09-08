@@ -190,3 +190,24 @@ async def test_ignored_prefix_cleanup_uses_current_config(
         await test_db_session.execute(select(Player.current_name))
     ).scalars().all()
     assert remaining_players == ["Steve"]
+
+
+async def test_cleanup_does_not_reuse_chat_replay_cursor(test_db_session, monkeypatch):
+    from app.players.crud.player_chat import create_chat_message
+    from app.players.crud.query.chat_query import get_chat_messages_after
+
+    _set_ignored_player_prefixes(monkeypatch, ["bot_"])
+    server = Server(id=1, server_id="cursor-server", status=ServerStatus.ACTIVE)
+    test_db_session.add(server)
+    retained = await _add_player(test_db_session, 1, "Retained", make_online_uuid("Retained"))
+    removed = await _add_player(test_db_session, 2, "bot_removed", make_online_uuid("Removed"))
+    now = datetime.now(UTC)
+    await create_chat_message(test_db_session, retained.player_db_id, server.id, "retained", now)
+    last = await create_chat_message(test_db_session, removed.player_db_id, server.id, "removed", now)
+    cursor = last.message_id
+    result = await delete_player_cleanup_candidates(test_db_session, "ignored_name_prefix")
+    assert result.deleted_count == 1
+    new = await create_chat_message(test_db_session, retained.player_db_id, server.id, "after cleanup", now)
+    assert new.message_id > cursor
+    replay = await get_chat_messages_after(test_db_session, cursor)
+    assert [(message.message_id, message.message_text) for message in replay] == [(new.message_id, "after cleanup")]

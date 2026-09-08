@@ -32,6 +32,9 @@ async def test_startup_upgrade_and_downgrade_self_check_schema(
 
     await migrations.ensure_database_schema()
 
+    assert version(db_path) == "2026090700"
+
+    run_alembic(db_path, "downgrade", REVISION)
     assert version(db_path) == REVISION
     assert "is_system" in columns(db_path, "cronjob")
     assert has_table(db_path, "self_check_run")

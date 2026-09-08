@@ -86,3 +86,18 @@ test helpers live in `tests/migrations/helpers.py`.
 Startup migration tests stay in `tests/test_startup_migrations.py` and use
 `ensure_database_schema()` so the app lifespan and test path share the same
 migration entry point.
+
+## Chat cursor allocation
+
+Revision `2026090700` follows `2026060500` and recreates only
+`player_chat_message` using Alembic batch reflection/copy with SQLite explicit
+AUTOINCREMENT. The existing columns, row IDs, message contents, and indexes are
+preserved. Fresh databases receive the same table option from SQLAlchemy
+metadata. Cleanup after upgrade cannot reuse committed message IDs, including
+after the message table becomes empty.
+
+The initial allocation high-water mark is the highest retained message ID.
+Previously deleted historical IDs were not recorded by the old allocator and
+cannot be reconstructed during migration. Clients holding such pre-upgrade
+cursors are outside this retention guarantee. Downgrading preserves remaining
+rows and indexes but removes explicit AUTOINCREMENT and its non-reuse guarantee.

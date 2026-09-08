@@ -300,3 +300,39 @@ async def test_playtime_with_only_finished_sessions():
 
     finally:
         await cleanup_test_db(db, engine, temp_db_path)
+
+
+@pytest.mark.parametrize("whole_server", [False, True])
+@pytest.mark.parametrize("departure_seconds", [-30, 120])
+async def test_session_end_never_precedes_join(whole_server, departure_seconds):
+    from app.players.crud.player_session import (
+        end_all_open_sessions,
+        end_all_open_sessions_on_server,
+    )
+
+    db, engine, db_path = await create_test_db()
+    try:
+        joined_at = datetime(2026, 9, 7, 12, tzinfo=UTC)
+        server = Server(server_id="end-boundary")
+        player = Player(uuid="123e4567e89b42d3a456426614174000", current_name="RecentJoin", created_at=joined_at)
+        db.add_all([server, player])
+        await db.flush()
+        active = PlayerSession(player_db_id=player.player_db_id, server_db_id=server.id, joined_at=joined_at)
+        db.add(active)
+        await db.commit()
+        departure = joined_at + timedelta(seconds=departure_seconds)
+        if whole_server:
+            ended = await end_all_open_sessions_on_server(db, server.id, departure)
+        else:
+            ended = await end_all_open_sessions(db, player.player_db_id, server.id, departure)
+        assert ended == 1
+        await db.refresh(active)
+        expected_duration = max(0, departure_seconds)
+        assert active.left_at == joined_at + timedelta(seconds=expected_duration)
+        assert active.duration_seconds == expected_duration
+        summary = await get_player_detail_by_uuid(db, player.uuid)
+        assert summary is not None
+        assert not summary.is_online
+        assert summary.total_playtime_seconds == expected_duration
+    finally:
+        await cleanup_test_db(db, engine, db_path)
