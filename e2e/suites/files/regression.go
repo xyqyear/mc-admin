@@ -258,6 +258,27 @@ func confinement(ctx context.Context, t *engine.Scope) error {
 	if err = fixtures.CreateFile(ctx, c, id, "/safe.txt", "safe"); err != nil {
 		return err
 	}
+	if err = os.Symlink("missing-target", filepath.Join(t.Env.Dir, "servers", id, "data", "broken")); err != nil {
+		return err
+	}
+	var listing struct {
+		Items []struct {
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err = c.JSON(ctx, "GET", base+"?path=/", nil, &listing, 200); err != nil {
+		return err
+	}
+	foundSafe := false
+	for _, item := range listing.Items {
+		if item.Name == "broken" {
+			return fmt.Errorf("unreadable directory entry should be omitted")
+		}
+		foundSafe = foundSafe || item.Name == "safe.txt"
+	}
+	if !foundSafe {
+		return fmt.Errorf("broken symlink hid the normal file from the listing")
+	}
 	if err = c.JSON(ctx, "POST", base+"/rename", map[string]string{"old_path": "/safe.txt", "new_name": "../escape.txt"}, nil, 400); err != nil {
 		return err
 	}

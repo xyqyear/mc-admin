@@ -3,6 +3,7 @@ Basic file operations for single files and directories.
 """
 
 from pathlib import Path
+from stat import S_ISREG
 
 import aiofiles
 from aiofiles import os as aioos
@@ -30,38 +31,31 @@ async def get_file_items(base_path: Path, current_path: str = "/") -> list[FileI
     ):
         return []
 
-    items = []
-
     try:
         file_list = await aioos.listdir(actual_path)
-        for file_name in file_list:
-            item_path = actual_path / file_name
-            relative_path = item_path.relative_to(base_path)
-            file_path = "/" + str(relative_path).replace("\\", "/")
+    except (FileNotFoundError, PermissionError):
+        return []
 
+    items = []
+    for file_name in file_list:
+        item_path = actual_path / file_name
+        relative_path = item_path.relative_to(base_path)
+        file_path = "/" + str(relative_path).replace("\\", "/")
+        try:
             stat_result = await aioos.stat(item_path)
+        except (FileNotFoundError, PermissionError):
+            continue
 
-            if await aioos.path.isfile(item_path):
-                size = stat_result.st_size
-                file_type = "file"
-            else:
-                size = 0
-                file_type = "directory"
-
-            modified_at = stat_result.st_mtime
-
-            items.append(
-                FileItem(
-                    name=file_name,
-                    type=file_type,
-                    size=size,
-                    modified_at=modified_at,
-                    path=file_path,
-                )
+        is_file = S_ISREG(stat_result.st_mode)
+        items.append(
+            FileItem(
+                name=file_name,
+                type="file" if is_file else "directory",
+                size=stat_result.st_size if is_file else 0,
+                modified_at=stat_result.st_mtime,
+                path=file_path,
             )
-    except PermissionError:
-        # Handle permission errors gracefully
-        pass
+        )
 
     return items
 

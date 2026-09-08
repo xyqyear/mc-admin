@@ -8,6 +8,8 @@ Paths are confined to the managed data directory after resolving symlinks. Exter
 
 Create and rename names are nonempty basenames other than `.` or `..`; `/` is a separator, while a backslash remains a literal Linux filename character. Root-directory deletion and renaming are rejected because server lifecycle operations own the data root. Multipart destination paths are all validated before any part is written or a single-use session is consumed; an invalid path rejects the request. Valid batches retain per-file overwrite and failure results and are not transactional for filesystem errors during writing.
 
+Directory listings omit individual entries that disappear, become unreadable, or are broken symlinks. Other entries remain available; metadata and type are derived from the same stat result.
+
 ## Why a session-based upload flow
 
 Drag-dropping a folder hits the API with potentially thousands of files, many of which may already exist. Forcing the user to confirm each conflict mid-upload is awful UX; pre-bundling the whole upload into one server-side decision is also awful (huge memory + an opaque "what just changed?" result). The session pattern is the middle path:
@@ -17,7 +19,7 @@ Drag-dropping a folder hits the API with potentially thousands of files, many of
 3. **Frontend submits policy** — `set_upload_policy(session_id, decisions)`.
 4. **Frontend posts file blobs** — backend writes per the stored decisions and returns final results.
 
-Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry, an unfinished session is GC'd.
+Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry, an unfinished session is GC'd. The frontend sends at most 1000 files per request, sequentially; uploads spanning multiple requests use `reusable=true`. Cancellation stops further requests and preserves files already written.
 
 ## Modules
 
