@@ -43,6 +43,7 @@ func (s *Scope) Step(name string, action func() error) error {
 }
 
 type Factory interface {
+	Reserve(context.Context, *environment.Recipe) (func(), error)
 	New(context.Context, *environment.Recipe) (*environment.Environment, error)
 	Capture(context.Context, *environment.Environment) error
 }
@@ -108,16 +109,20 @@ func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Res
 
 func runGroup(ctx context.Context, group Group, factory Factory, options Options) []Result {
 	var env *environment.Environment
+	var release func()
 	var results []Result
 	closeEnv := func(result *Result) {
-		if env == nil {
-			return
+		if env != nil {
+			result.issue("diagnostics", runPhase(context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
+				return factory.Capture(ctx, env)
+			}), options.Redactor)
+			result.issue("teardown", runPhase(context.Background(), options.CleanupTimeout, env.Close), options.Redactor)
+			env = nil
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), options.CleanupTimeout)
-		defer cancel()
-		result.issue("diagnostics", environment.Protect(func() error { return factory.Capture(cleanupCtx, env) }), options.Redactor)
-		result.issue("teardown", env.Close(cleanupCtx), options.Redactor)
-		env = nil
+		if release != nil {
+			release()
+			release = nil
+		}
 	}
 	for _, test := range group.Cases {
 		result := Result{ID: test.ID, Suite: test.Suite, Started: time.Now().UTC(), Status: "passed"}
@@ -137,10 +142,20 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 		} else {
 			result.Reused = env != nil
 			if env == nil {
-				setupCtx, cancel := context.WithTimeout(ctx, options.SetupTimeout)
-				err = environment.Protect(func() error { var err error; env, err = factory.New(setupCtx, test.Recipe); return err })
-				cancel()
-				result.issue("setup", err, options.Redactor)
+				err = environment.Protect(func() error {
+					var err error
+					release, err = factory.Reserve(ctx, test.Recipe)
+					return err
+				})
+				result.issue("reservation", err, options.Redactor)
+				if err == nil {
+					err = runPhase(ctx, options.SetupTimeout, func(setupCtx context.Context) error {
+						var err error
+						env, err = factory.New(setupCtx, test.Recipe)
+						return err
+					})
+					result.issue("setup", err, options.Redactor)
+				}
 			}
 			if env != nil {
 				result.Environment = env.ID
@@ -156,12 +171,12 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 				result.issue("assertion", err, options.Redactor)
 			}
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), options.CleanupTimeout)
-		result.issue("case_cleanup", environment.CleanupAll(cleanupCtx, scope.cleanups), options.Redactor)
+		result.issue("case_cleanup", runPhase(context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
+			return environment.CleanupAll(ctx, scope.cleanups)
+		}), options.Redactor)
 		if result.Status == "passed" && test.Isolation != Fresh && !options.NoReuse {
-			result.issue("verification", environment.Protect(func() error { return env.Verify(cleanupCtx) }), options.Redactor)
+			result.issue("verification", runPhase(context.Background(), options.CleanupTimeout, env.Verify), options.Redactor)
 		}
-		cancel()
 		if result.Status != "passed" || test.Isolation == Fresh || options.NoReuse {
 			closeEnv(&result)
 		}
@@ -180,4 +195,13 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 		closeEnv(&results[len(results)-1])
 	}
 	return results
+}
+
+func runPhase(parent context.Context, budget time.Duration, action func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(parent, budget)
+	defer cancel()
+	if err := environment.Protect(func() error { return action(ctx) }); err != nil {
+		return err
+	}
+	return ctx.Err()
 }

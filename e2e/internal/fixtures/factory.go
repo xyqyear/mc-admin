@@ -85,18 +85,14 @@ func (f *Factory) acquireSlots(ctx context.Context, count int) (func(), error) {
 	return release, nil
 }
 
+func (f *Factory) Reserve(ctx context.Context, recipe *environment.Recipe) (func(), error) {
+	return f.acquireSlots(ctx, recipe.MinecraftSlots)
+}
+
 func (f *Factory) New(ctx context.Context, recipe *environment.Recipe) (env *environment.Environment, err error) {
-	release, err := f.acquireSlots(ctx, recipe.MinecraftSlots)
-	if err != nil {
-		return nil, err
-	}
 	id := platform.ID()
 	dir := filepath.Join(f.Journal.Manifest.Directory, "runtime", id)
 	env = environment.New(id, dir, nil)
-	env.Defer(func(context.Context) error {
-		release()
-		return nil
-	})
 	if err = f.Journal.AddEnvironment(id); err != nil {
 		return env, err
 	}

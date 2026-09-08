@@ -53,7 +53,9 @@ func (c *Client) SSEEvents(ctx context.Context, method, path string, input any, 
 			return nil, err
 		}
 	}
-	response, err := c.request(ctx, method, path, body, http.Header{"Content-Type": {"application/json"}, "Accept": {"text/event-stream"}})
+	client := *c.HTTP
+	client.Timeout = 0
+	response, err := c.requestWithClient(ctx, &client, method, path, body, http.Header{"Content-Type": {"application/json"}, "Accept": {"text/event-stream"}})
 	if err != nil {
 		return nil, err
 	}

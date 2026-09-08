@@ -94,6 +94,49 @@ func TestRequestDeadlineCancelsBodyRead(t *testing.T) {
 	}
 }
 
+func TestSSEUsesOperationDeadlineAndSharedSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/auth/token" {
+			http.SetCookie(w, &http.Cookie{Name: "mc_admin_session", Value: "session", Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "mc_admin_csrf", Value: "csrf", Path: "/"})
+			fmt.Fprint(w, `{}`)
+			return
+		}
+		if cookie, err := r.Cookie("mc_admin_session"); err != nil || cookie.Value != "session" || r.Header.Get("X-CSRF-Token") != "csrf" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		if r.URL.Path == "/cancel" {
+			<-r.Context().Done()
+			return
+		}
+		time.Sleep(30 * time.Millisecond)
+		fmt.Fprint(w, "data: {\"event_type\":\"complete\"}\n\n")
+	}))
+	defer server.Close()
+	client := New(server.URL, nil)
+	defer client.Close()
+	if err := client.Login(context.Background(), "owner", "password"); err != nil {
+		t.Fatal(err)
+	}
+	client.HTTP.Timeout = time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := client.SSE(ctx, "POST", "/stream", nil, "complete"); err != nil {
+		t.Fatalf("valid long stream failed: %v", err)
+	}
+	if client.HTTP.Timeout != time.Millisecond {
+		t.Fatal("stream changed ordinary request timeout")
+	}
+	short, stop := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer stop()
+	if _, err := client.SSE(short, "POST", "/cancel", nil, "complete"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stream did not honor operation deadline: %v", err)
+	}
+}
+
 func TestSSETerminalVariantsAndObserverFailure(t *testing.T) {
 	for _, field := range []string{"event_type", "type", "stage"} {
 		t.Run(field, func(t *testing.T) {

@@ -62,6 +62,8 @@ Run these commands in separate terminals or jobs. On a shared Docker host, runne
 
 Additional controls: `--output`, `--docker-socket`, `--setup-timeout`, `--cleanup-timeout`, `--timeout`, `--minecraft-image` and `--minecraft-version`. Use `run -h` for defaults. Exit codes are 0 for success, 1 for test/infrastructure/reporting failure, and 2 for invalid invocation or preparation of the local run directory.
 
+Capacity waits use the overall run deadline; `--setup-timeout` starts after reservation. Each compensation, verification, diagnostic and teardown phase has its own `--cleanup-timeout` budget. Long SSE bodies use their operation deadline rather than the ordinary request timeout.
+
 ## Reports and cleanup
 
 Each run prints its new directory, normally `.runs/e2e-<random>/`:

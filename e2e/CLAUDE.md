@@ -35,6 +35,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 - Cases must run independently, in shuffled order and with reuse disabled. Do not import backend internals or another suite, share mutable cross-run data, or add feature-specific branches to the scheduler.
 - Historical database inputs use isolated, stopped deployments and standard SQLite/shipped Alembic maintenance commands. Assert behavior through public APIs and process outcomes; do not use database queries as substitutes for API assertions.
 - Propagate context through all I/O and polling. Require terminal task/SSE results and assert resulting state/content. Never retry a failed business scenario into success or silently skip missing real dependencies.
+- Reserve environment capacity before starting the deployment deadline; retain it through teardown. Give each diagnostic and cleanup phase its own budget. SSE bodies use their operation context without the ordinary HTTP client timeout.
 - Permission scenarios verify rejected requests preserve real task/resource state as well as checking status codes. Credential-log scenarios require successful audited business operations and inspect both audit and ordinary application logs.
 - Register cleanup when allocating a resource, including partial setup. Journal Docker objects before creating them; keep run/environment ownership labels. Never prune the daemon or delete by an unvalidated prefix.
 - Register secret values with the redactor before use. Upload explicit report/evidence paths; never upload `runtime/`.

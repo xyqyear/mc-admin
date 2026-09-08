@@ -66,6 +66,10 @@ func New(baseURL string, recorder *evidence.Recorder) *Client {
 func (c *Client) Close() { c.HTTP.CloseIdleConnections() }
 
 func (c *Client) request(ctx context.Context, method, path string, body []byte, headers http.Header) (*http.Response, error) {
+	return c.requestWithClient(ctx, c.HTTP, method, path, body, headers)
+}
+
+func (c *Client) requestWithClient(ctx context.Context, client *http.Client, method, path string, body []byte, headers http.Header) (*http.Response, error) {
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
 		return nil, fmt.Errorf("API path must be relative: %q", path)
 	}
@@ -86,7 +90,7 @@ func (c *Client) request(ctx context.Context, method, path string, body []byte, 
 			}
 		}
 	}
-	return c.HTTP.Do(req)
+	return client.Do(req)
 }
 
 func bodyEvidence(body []byte, contentType string) any {

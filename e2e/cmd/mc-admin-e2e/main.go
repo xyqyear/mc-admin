@@ -64,7 +64,7 @@ func mainCode(args []string) int {
 	flags.StringVar(&socket, "docker-socket", "/var/run/docker.sock", "local Docker Unix socket")
 	flags.BoolVar(&noReuse, "no-reuse", false, "create a fresh environment for every case")
 	flags.DurationVar(&setupTimeout, "setup-timeout", 8*time.Minute, "per-environment provisioning deadline")
-	flags.DurationVar(&cleanupTimeout, "cleanup-timeout", 2*time.Minute, "per-environment cleanup deadline")
+	flags.DurationVar(&cleanupTimeout, "cleanup-timeout", 2*time.Minute, "independent deadline for each cleanup, verification and diagnostic phase")
 	flags.DurationVar(&totalTimeout, "timeout", 30*time.Minute, "overall execution deadline")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2

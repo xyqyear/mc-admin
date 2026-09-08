@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"mc-admin/e2e/internal/environment"
@@ -85,6 +86,10 @@ type fakeFactory struct {
 	mu                             sync.Mutex
 	created, closed, live, maxLive int
 	setupFailure                   bool
+}
+
+func (f *fakeFactory) Reserve(context.Context, *environment.Recipe) (func(), error) {
+	return func() {}, nil
 }
 
 func (f *fakeFactory) New(ctx context.Context, recipe *environment.Recipe) (*environment.Environment, error) {
@@ -211,5 +216,90 @@ func TestWorkerBudgetBoundsLiveEnvironments(t *testing.T) {
 	results := Run(context.Background(), plan, factory, options)
 	if factory.maxLive > 3 || factory.live != 0 || len(results) != 12 {
 		t.Fatalf("worker budget violated: %+v", factory)
+	}
+}
+
+type phaseFactory struct {
+	fakeFactory
+	reserve func(context.Context) (func(), error)
+	capture func(context.Context, *environment.Environment) error
+}
+
+func (f *phaseFactory) Reserve(ctx context.Context, _ *environment.Recipe) (func(), error) {
+	return f.reserve(ctx)
+}
+
+func (f *phaseFactory) Capture(ctx context.Context, env *environment.Environment) error {
+	if f.capture != nil {
+		return f.capture(ctx, env)
+	}
+	return nil
+}
+
+func TestReservationDoesNotConsumeSetupBudget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		recipe := testRecipe()
+		released := false
+		recipe.Providers[0].Setup = func(ctx context.Context, env *environment.Environment) error {
+			deadline, ok := ctx.Deadline()
+			if !ok || time.Until(deadline) != time.Second {
+				t.Fatalf("deployment did not receive its full budget: %v", time.Until(deadline))
+			}
+			env.Defer(func(context.Context) error {
+				if released {
+					t.Error("capacity released before environment teardown")
+				}
+				return nil
+			})
+			return nil
+		}
+		factory := &phaseFactory{reserve: func(ctx context.Context) (func(), error) {
+			time.Sleep(2 * time.Second)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return func() { released = true }, nil
+		}}
+		results := runGroup(context.Background(), Group{Cases: []Case{testCase("case.wait", recipe, Fresh)}}, factory, runnerOptions(t))
+		if results[0].Status != "passed" || !released || factory.closed != 1 {
+			t.Fatalf("reservation/deployment lifetime failed: %+v, released=%v", results, released)
+		}
+	})
+}
+
+func TestDiagnosticTimeoutLeavesTeardownBudget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		recipe := testRecipe()
+		cleaned := false
+		recipe.Providers[0].Setup = func(_ context.Context, env *environment.Environment) error {
+			env.Defer(func(ctx context.Context) error {
+				cleaned = ctx.Err() == nil
+				return ctx.Err()
+			})
+			return nil
+		}
+		factory := &phaseFactory{
+			reserve: func(context.Context) (func(), error) { return func() {}, nil },
+			capture: func(ctx context.Context, _ *environment.Environment) error {
+				<-ctx.Done()
+				return nil
+			},
+		}
+		results := runGroup(context.Background(), Group{Cases: []Case{testCase("case.capture", recipe, Fresh)}}, factory, runnerOptions(t))
+		if !cleaned || factory.closed != 1 || results[0].Status != "failed" || len(results[0].Issues) != 1 || results[0].Issues[0].Phase != "diagnostics" {
+			t.Fatalf("diagnostic timeout lost cleanup or failure evidence: %+v, cleaned=%v", results, cleaned)
+		}
+	})
+}
+
+func TestSetupFailureReleasesReservation(t *testing.T) {
+	released := false
+	factory := &phaseFactory{
+		fakeFactory: fakeFactory{setupFailure: true},
+		reserve:     func(context.Context) (func(), error) { return func() { released = true }, nil },
+	}
+	results := runGroup(context.Background(), Group{Cases: []Case{testCase("case.setup", testRecipe(), Fresh)}}, factory, runnerOptions(t))
+	if results[0].Status != "failed" || !released || factory.closed != 1 {
+		t.Fatalf("setup failure retained capacity or environment: %+v", results)
 	}
 }
