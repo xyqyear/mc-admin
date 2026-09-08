@@ -1,8 +1,62 @@
 # API E2E 验证记录
 
-验证日期：2026-09-06（Asia/Shanghai）。当前目录包含 **62 个场景：59 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。本轮复核与上一轮验收分别记录，不能合并不同镜像的运行来声称全部通过。DNSPod／华为 DNS 云端变更仍缺少专用测试域名凭据。
+验证日期：2026-09-09（Asia/Shanghai）。当前目录包含 **64 个场景：61 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。不同镜像的验证分别记录。DNSPod／华为 DNS 云端变更仍缺少专用测试域名凭据。
 
-## Ruff 清理后的验证
+## 备份跳过结果验证
+
+应用镜像 `mc-admin:backup-skipped` 来自当前工作区的根目录 Dockerfile，镜像为 `sha256:8270c7fa5a48f9faedc4bc8e98a83537c6be4e4b863d50faf4c24e96956ec9d4`。runner SHA256 为 `14d6373c7ffba33bb5b22fedb217b9990a21128a9a07aff556c292b3fec4df10`。Minecraft 使用下文记录来源的真实游戏镜像 `itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed`。
+
+| 运行 | 范围 | 结果 |
+| --- | --- | --- |
+| `e2e-backup-skipped-20260909` | `cron.execution-and-recovery`、`world.disconnect-restore-and-maintenance`，种子 20260909 | 2/2 通过 |
+| `e2e-backup-skipped-no-reuse-20260909` | 同一镜像和用例，`--no-reuse`，种子 20260910 | 2/2 通过 |
+
+正常定时备份生成真实 Restic 快照，任务与历史在重启后保留；恢复占用期间，单服、全局定时备份均记录为 `skipped`，包含结束时间和跳过原因，快照数量不变。两轮均通过 `coverage --require-complete`，4 个环境全部回收，记录的容器和运行目录无残留。这是两项相关用例的验证，不是全量回归；两项用例本身均声明 `Fresh` 隔离。
+
+后端 cron pytest 为 149/149 通过，前端 Vitest 为 12/12 通过；Pyright、Ruff、Node 24 下的前端类型检查和 lint、Docker 内前端构建、Go 格式检查及 vet 均通过。测试夹具的类型调整后，另行复测的 5 项执行结果测试通过。
+
+## 操作边界改造验证
+
+本轮应用来自基于 `c53db3197b941166aa5d993ef3b7558c6621a71d` 的工作区，包含 `consolidate-operation-boundaries` 的未提交实现。通过根目录 Dockerfile 构建 `mc-admin:operation-boundaries`，镜像为 `sha256:50ce66940af093608b4dd078e325d7a680f6d35c6013869765e0a64995fb85db`。全部下述运行使用同一应用镜像、同一静态 runner；runner SHA256 为 `6d4dff11f24790090b7507f66da2d0f315255db91fe2e07b1670758b51ab156c`。
+
+Minecraft 使用显式指定的 `itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed`，镜像 `472dbd20…`，其真实游戏 JAR 来源与校验见下文历史记录。地图客户端资源仍由镜像内真实 mcmap 下载和校验，没有替换 Minecraft、Restic、mcmap 或业务 API。
+
+| 运行 | 范围 | 结果 |
+| --- | --- | --- |
+| `e2e-operation-boundaries-shard-1` | regression，分片 1/3，种子 20260907 | 29/29 通过；25 个环境，4 次复用 |
+| `e2e-operation-boundaries-shard-2-recheck` | 同镜像、目录、种子，完整重跑分片 2/3 | 17/17 通过；17 个环境 |
+| `e2e-operation-boundaries-shard-3` | 同镜像、目录、种子，分片 3/3 | 15/15 通过；15 个环境 |
+| `e2e-operation-boundaries-no-reuse` | 16 个受影响核心用例，`--no-reuse`，种子 20260908 | 16/16 通过；16 个独立环境，无复用 |
+
+完整回归 **61/61 通过**，`coverage --require-complete --require-observed` 核对了选中用例与三个分片的完整性：156 个 API／WebSocket 操作均有访问记录，152 个有成功响应。其余四个 DNS 操作验证禁用行为，没有计为云端成功。新增的服务器快照参数预览和维护状态接口都有成功行为断言。
+
+首次 `e2e-operation-boundaries-shard-2` 为 **16/17 通过**：`world.preview-lifecycle` 在地图初始化的 client 下载阶段收到 `request or response body error`，尚未进入预览断言；另外两个分片通过。第一次完整性检查因此以 **60/61** 拒绝通过，原报告保留在 `coverage-initial/`。独立使用同一应用镜像的 `mcmap download-client 1.21.11` 成功下载并校验 31,152,600 字节的客户端 JAR，SHA1 为 `ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd`；探测记录在 `/tmp/mc-admin-operation-boundaries-client-probe/`。随后保持代码、断言、镜像、种子和分片选择不变，单独重跑整个第二分片。没有新增自动重试、跳过规则或用另一用例替代失败场景。
+
+禁用复用的 16 项为：`auth.user-administration`、`files.path-confinement`、两个 `archive.upload-*`、`templates.lifecycle`、`templates.types-defaults-and-boundaries`、`servers.compose-conversions-and-rebuild`、`minecraft.lifecycle`、`minecraft.console-and-runtime-controls`、`system.configuration-roundtrip`、`players.identity-config-and-cleanup`、`players.heartbeat-crash-recovery`、`snapshots.restore-and-protection`、`world.chunk-prune`、`world.missing-sidecars-and-rollback`、`world.disconnect-restore-and-maintenance`。它是核心流程复测，不是全部 61 项的禁用复用运行。
+
+运行目录根为 `/tmp/mc-admin-operation-boundaries-runs/`。完整回归使用 `--tag regression --shard N/3 --seed 20260907 --workers 2 --mc-slots 1 --timeout 45m`，并指定上述两个镜像。完整覆盖汇总命令为：
+
+```bash
+./bin/mc-admin-e2e coverage --require-complete --require-observed \
+  --output /tmp/mc-admin-operation-boundaries-runs/coverage-final \
+  /tmp/mc-admin-operation-boundaries-runs/e2e-operation-boundaries-shard-1 \
+  /tmp/mc-admin-operation-boundaries-runs/e2e-operation-boundaries-shard-2-recheck \
+  /tmp/mc-admin-operation-boundaries-runs/e2e-operation-boundaries-shard-3
+```
+
+`coverage-no-reuse/` 另以 `--require-complete` 验证该 16 项选择。最终回归和禁用复用共 73 个环境，连同首次失败分片共 **90 个环境全部标记已清理**，各运行的 `runtime/` 为空。Docker 复查没有 E2E 容器或网络残留；已有 `syncthing` 和 `mc-router` 继续运行。
+
+本地检查与针对测试：
+
+- `uv run pytest tests/ -q -k 'not _with_docker and not integrated' -o addopts= --maxfail=5`：**1,592 通过、2 个当时已有的跳过、61 个按项目默认规则排除、5 条既有警告**，584.93 秒。该综合运行在并行收尾期间执行，最终 DNS、世界与认证文件另有下述专项验证；数量不可相加。
+- 最终 `tests/dns`、`tests/self_check/test_dns_logging.py`、`tests/test_auth_session.py`：**152 通过**，包含真实 mc-router。原 DNS 两个内部客户端状态跳过用例已按管理器读取边界改为实际错误响应测试，因此本专项没有跳过。
+- 世界、SSE 与相关备份锁专项 **110 通过**，使用真实 Restic／mcmap；原快照接口 **33 项通过**。损坏的无关 properties 属性曾暴露恢复分类问题，修正职责后对应回归通过。玩家、迁移与启动专项 **110 通过**；从旧 revision 升级后保留数据和索引、清理后聊天 ID 不复用、崩溃时长非负均已验证。
+- Node `24.16.0`：前端 lint、typecheck、bundle 通过；Vitest **11 项通过**，覆盖两类上传局部流程、维护按钮和有限 SSE 提前结束。构建仍有既有 vendor／Monaco 大 chunk 提示。
+- 最终全后端 Pyright 为 0 错误、0 诊断警告，Ruff 通过；`make check build` 的 Go 格式、vet、race 测试和编译通过。修改的三个 CI 工作流通过 actionlint；OpenSpec 严格校验及 `git diff --check` 通过。
+
+主控日志为 `/tmp/mc-admin-operation-boundaries-*.log`；世界专项记录见 `/tmp/mc-admin-world-implementation/`。测试通过不代表穷举并发、所有历史输入或浏览器交互；前端流程测试不是浏览器贯通测试。DNSPod／华为 DNS 的独立供应商记录断言已扩充，但本轮没有云端变更资格验证；Mojang 外部资格用例也未选入本轮。
+
+## Ruff 清理后的验证（历史记录）
 
 本轮固定 Ruff `0.16.6` 并纳入 `uv` 开发依赖及 GitHub 静态检查。首次默认规则检查为 1,766 条诊断、252 个文件；安全自动修复处理 1,250 条，其余逐项处理，并准确配置共享 `logging.Logger`、FastAPI 声明式工厂和只读角色依赖的识别。没有禁用规则组或增加全局忽略规则。
 
