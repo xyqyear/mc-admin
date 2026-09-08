@@ -1,17 +1,17 @@
 import asyncio
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator, List
 
 import aiofiles.os as aioos
 
 from ..config import settings
 from ..logger import logger
-from ..mcmap.runner import MCMapProcess, MCMAP_STREAM_LIMIT_BYTES
+from ..mcmap.runner import MCMAP_STREAM_LIMIT_BYTES, MCMapProcess
 
 
-async def _chown_args_for(owned_by: Path) -> List[str]:
+async def _chown_args_for(owned_by: Path) -> list[str]:
     if os.geteuid() != 0:
         return []
     try:
@@ -30,8 +30,8 @@ async def extract_ftb_claims(
     world_dir: Path,
     *,
     owned_by: Path,
-) -> AsyncIterator[MCMapProcess]:
-    args: List[str] = [
+) -> AsyncGenerator[MCMapProcess]:
+    args: list[str] = [
         "--json",
         "extract-ftb-claims",
         "--world",

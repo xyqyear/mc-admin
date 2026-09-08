@@ -73,9 +73,9 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
 }) => {
   const { confirm, confirmDialog } = useConfirm()
 
-  const { useUpdateServerTemplateConfig, usePreviewRenderedYaml } = useTemplateMutations()
+  const { useUpdateServerTemplateConfig, usePreviewServerTemplateConfig } = useTemplateMutations()
   const updateTemplateConfigMutation = useUpdateServerTemplateConfig()
-  const previewMutation = usePreviewRenderedYaml()
+  const previewMutation = usePreviewServerTemplateConfig()
 
   const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
@@ -109,7 +109,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
     try {
       await composeQuery.refetch()
       const yaml = await previewMutation.mutateAsync({
-        id: templateConfig.template_id,
+        serverId,
         variableValues: templateFormData,
       })
       setPreviewYaml(yaml)

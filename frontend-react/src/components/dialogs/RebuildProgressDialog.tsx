@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Progress } from '@/components/ui/progress'
@@ -27,39 +27,48 @@ const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
   onComplete,
 }) => {
   const queryClient = useQueryClient()
+  const handledTask = useRef<string | null>(null)
 
   const { useTask } = useTaskQueries()
   const { data: task } = useTask(taskId || '')
 
   useEffect(() => {
-    if (!task) return
+    if (!open || !task || task.taskId !== taskId || handledTask.current === taskId) return
+    if (task.status !== 'completed' && task.status !== 'failed') return
+    handledTask.current = taskId
 
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.templates.serverConfig(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.templates.serverConfigPreview(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.serverInfos.detail(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.compose.detail(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.serverStatuses.detail(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.serverRuntimes.detail(serverId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.servers(),
+    })
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.players.serverOnline(serverId),
+    })
     if (task.status === 'completed') {
       toast.success('服务器配置更新完成')
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.serverInfos.detail(serverId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.compose.detail(serverId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.serverStatuses.detail(serverId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.serverRuntimes.detail(serverId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.servers(),
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.players.serverOnline(serverId),
-      })
       onComplete()
     } else if (task.status === 'failed') {
       toast.error(`配置更新失败: ${task.error}`)
       onClose()
     }
-  }, [task, serverId, queryClient, onComplete, onClose])
+  }, [open, taskId, task, serverId, queryClient, onComplete, onClose])
 
   const isActive = task?.status === 'running' || task?.status === 'pending'
 

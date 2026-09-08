@@ -81,10 +81,10 @@ teleport-safety: true
 @pytest.fixture
 async def test_db():
     """Create a test database for testing."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -101,7 +101,7 @@ async def test_db():
     yield TestSessionLocal
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -605,7 +605,7 @@ class TestPopulateProgressTracking:
         self, async_client, mock_settings_and_auth
     ):
         """Test that task progress updates are tracked during populate."""
-        server_path, archive_path = mock_settings_and_auth
+        _server_path, archive_path = mock_settings_and_auth
         server_id = f"test_server_{random.randint(1000, 9999)}"
         archive_filename = f"progress_test_{random.randint(1000, 9999)}.zip"
 

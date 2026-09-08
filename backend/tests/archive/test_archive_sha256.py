@@ -193,3 +193,52 @@ class TestArchiveSHA256:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.asyncio
+async def test_parallel_no_overwrite_publish_keeps_one_complete_result(tmp_path, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from app.archive import uploads
+
+    target = tmp_path / "archives"
+    target.mkdir()
+    monkeypatch.setattr(uploads, "ARCHIVE_UPLOAD_TMP_DIR", tmp_path / "uploads")
+    contents = (b"first archive", b"second archive")
+    sessions = []
+    for content in contents:
+        session = await uploads.init_archive_upload(target, uploads.ArchiveUploadInitRequest(
+            filename="shared.zip", size=len(content),
+        ))
+        await uploads.append_archive_upload_chunk(session.upload_id, 0, content)
+        async for _ in uploads.iter_archive_upload_sha256_events(session.upload_id):
+            pass
+        sessions.append(session)
+
+    original_copy = uploads.async_fs.copy2
+    arrived = 0
+    both_ready = asyncio.Event()
+
+    async def synchronize_copy(source, destination):
+        nonlocal arrived
+        await original_copy(source, destination)
+        arrived += 1
+        if arrived == 2:
+            both_ready.set()
+        await both_ready.wait()
+
+    monkeypatch.setattr(uploads.async_fs, "copy2", synchronize_copy)
+    results = await asyncio.gather(*(
+        uploads.verify_archive_upload(session.upload_id, uploads.ArchiveUploadVerifyRequest(
+            sha256=hashlib.sha256(content).hexdigest(),
+        )) for session, content in zip(sessions, contents, strict=True)
+    ), return_exceptions=True)
+    winners = [i for i, result in enumerate(results) if isinstance(result, uploads.ArchiveUploadVerifyResponse)]
+    assert len(winners) == 1
+    loser = results[1 - winners[0]]
+    assert isinstance(loser, HTTPException) and loser.status_code == 409
+    assert (target / "shared.zip").read_bytes() == contents[winners[0]]
+    assert list(target.glob("*.uploading")) == []
+    await uploads.cancel_archive_upload(sessions[1 - winners[0]].upload_id)

@@ -1,8 +1,7 @@
 import asyncio
+from collections.abc import Callable, Coroutine
 from typing import (
     Any,
-    Callable,
-    Coroutine,
     Protocol,
     cast,
 )
@@ -26,6 +25,7 @@ from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
 from ..logger import logger
 from .dns import DNSClient
 from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
+from .utils import wait_for_updates
 
 
 class ZoneInfoT:
@@ -73,7 +73,6 @@ class HuaweiDNSClient(DNSClient):
     def __init__(
         self, domain: str, ak: str, sk: str, region: str | None = None
     ) -> None:
-        """ """
         if region is None:
             region = "cn-south-1"
         credentials = BasicCredentials(ak, sk)
@@ -113,15 +112,15 @@ class HuaweiDNSClient(DNSClient):
         for i in range(retry_times):
             try:
                 return await asyncio.to_thread(request_callable, *args)
-            except exceptions.ClientRequestException as e:
+            except exceptions.ClientRequestException:
                 logger.debug(f"Failed to call {request_callable.__name__} api")
                 if i == retry_times - 1:
-                    raise e
+                    raise
                 await asyncio.sleep(1)
 
         # not actually reachable
         # just to make pylance happy
-        raise Exception("How did you get here?")
+        raise RuntimeError("How did you get here?")
 
     async def init(self):
         request = ListPublicZonesRequest()
@@ -134,7 +133,7 @@ class HuaweiDNSClient(DNSClient):
                 self._zone_id = zone_info.id
                 return
 
-        raise Exception(
+        raise RuntimeError(
             f"There is no domain named {self.get_domain()} in this account."
         )
 
@@ -222,4 +221,4 @@ class HuaweiDNSClient(DNSClient):
                 self._try_request(self._huawei_client.create_record_set, request)
             )
 
-        await asyncio.gather(*task_list)
+        await wait_for_updates(*task_list)

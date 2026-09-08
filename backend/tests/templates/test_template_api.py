@@ -38,9 +38,9 @@ services:
 @pytest.fixture
 async def test_db():
     """Create a test database."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -52,7 +52,7 @@ async def test_db():
     yield TestSessionLocal
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -375,3 +375,23 @@ class TestTemplatePreview:
             headers=auth_headers(),
         )
         assert response.status_code == 400
+
+
+def test_invalid_definition_save_preserves_existing_template_and_defaults(test_client):
+    valid = {"type": "string", "name": "value", "display_name": "值", "pattern": "^[a-z]+$"}
+    definition = {
+        "name": "validated-definition", "yaml_template": GAME_PORT_CONFIG + "x-value: '{value}'\n",
+        "variable_definitions": [valid],
+    }
+    created = test_client.post("/api/templates/", json=definition, headers=auth_headers())
+    assert created.status_code == 201
+    path = f"/api/templates/{created.json()['id']}"
+    defaults_path = "/api/templates/default-variables"
+    before = test_client.put(defaults_path, json={"variable_definitions": [valid]}, headers=auth_headers())
+    assert before.status_code == 200
+    invalid = {**valid, "pattern": "["}
+    body = {"variable_definitions": [invalid]}
+    assert test_client.put(path, json=body, headers=auth_headers()).status_code == 400
+    assert test_client.put(defaults_path, json=body, headers=auth_headers()).status_code == 400
+    assert test_client.get(path, headers=auth_headers()).json() == created.json()
+    assert test_client.get(defaults_path, headers=auth_headers()).json() == before.json()

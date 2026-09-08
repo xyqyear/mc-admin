@@ -22,6 +22,12 @@ interface ServerStatusResponse {
   status: ServerStatus;
 }
 
+export interface ServerMaintenanceResponse {
+  active: boolean;
+  kind: string | null;
+  description: string | null;
+}
+
 interface ServerCpuPercentResponse {
   cpuPercentage: number;
 }
@@ -122,6 +128,11 @@ export const serverApi = {
   getServerStatus: async (id: string): Promise<ServerStatus> => {
     const res = await api.get<ServerStatusResponse>(`/servers/${id}/status`);
     return res.data.status;
+  },
+
+  getServerMaintenance: async (id: string): Promise<ServerMaintenanceResponse> => {
+    const res = await api.get<ServerMaintenanceResponse>(`/servers/${id}/maintenance`);
+    return res.data;
   },
 
   // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.

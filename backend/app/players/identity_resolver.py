@@ -3,7 +3,6 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 import aiofiles
@@ -18,8 +17,8 @@ from . import mojang_api
 class UserCacheEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    name: Optional[str] = None
-    uuid: Optional[str] = None
+    name: str | None = None
+    uuid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -30,7 +29,7 @@ class PlayerIdentity:
 
 @dataclass(frozen=True)
 class UserCacheLookup:
-    identity: Optional[PlayerIdentity]
+    identity: PlayerIdentity | None
     blocked_by_invalid_uuid: bool = False
 
 
@@ -42,7 +41,7 @@ class UserCacheData:
     invalid_uuids: set[str]
 
 
-def normalize_uuid(value: str) -> Optional[str]:
+def normalize_uuid(value: str) -> str | None:
     """Return dashless lowercase UUID text, or None for invalid UUID syntax."""
     uuid_text = value.replace("-", "").lower()
     if len(uuid_text) != 32 or any(c not in "0123456789abcdef" for c in uuid_text):
@@ -61,7 +60,7 @@ def is_online_uuid(value: str) -> bool:
     return UUID(normalized).version == 4
 
 
-def normalize_online_uuid(value: str) -> Optional[str]:
+def normalize_online_uuid(value: str) -> str | None:
     """Return normalized UUID only when it is an online-mode UUID."""
     normalized = normalize_uuid(value)
     if normalized is None:
@@ -89,7 +88,7 @@ async def _load_usercache(path: Path) -> UserCacheData:
             raw = await f.read()
         parsed = json.loads(raw)
     except Exception as e:
-        logger.warning(f"Failed to read usercache.json at {path}: {e}")
+        logger.warning(f"Failed to read usercache.json at {path}: {e}", exc_info=True)
         return UserCacheData(by_name, by_uuid, invalid_names, invalid_uuids)
 
     if not isinstance(parsed, list):
@@ -155,7 +154,7 @@ async def lookup_usercache_by_uuid(server_id: str, uuid: str) -> UserCacheLookup
 async def resolve_player_by_name(
     server_id: str,
     player_name: str,
-) -> Optional[PlayerIdentity]:
+) -> PlayerIdentity | None:
     """Resolve a player name to an online UUID, preferring usercache.json."""
     cached = await lookup_usercache_by_name(server_id, player_name)
     if cached.identity is not None:
@@ -179,7 +178,7 @@ async def resolve_player_by_name(
 async def resolve_player_by_uuid(
     server_id: str,
     uuid: str,
-) -> Optional[PlayerIdentity]:
+) -> PlayerIdentity | None:
     """Resolve an online UUID to a player name, preferring usercache.json."""
     normalized = normalize_online_uuid(uuid)
     if normalized is None:

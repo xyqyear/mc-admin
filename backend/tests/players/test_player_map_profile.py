@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -20,7 +20,7 @@ def _test_user() -> UserPublic:
     return UserPublic(
         id=1,
         username="test",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -55,7 +55,7 @@ async def test_profile_returns_cached_player_without_mojang(test_db_session, mon
         uuid="0b4c41928eb34f0b90228e2cb2ee6fc0",
         current_name="CachedName",
         avatar_data=b"avatar",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.commit()
@@ -173,7 +173,7 @@ async def test_profile_returns_cached_when_mojang_fails(test_db_session, monkeyp
     player = Player(
         uuid="0b4c41928eb34f0b90228e2cb2ee6fc0",
         current_name="CachedNoAvatar",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.commit()
@@ -239,7 +239,7 @@ async def test_profile_stream_returns_cached_players_first(
                 uuid="0b4c41928eb34f0b90228e2cb2ee6fc0",
                 current_name="CachedName",
                 avatar_data=b"avatar",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
         await session.commit()
@@ -321,7 +321,6 @@ async def test_profile_stream_dedupes_and_skips_non_online_uuids(
 
     async def fetch(uuid: str):
         calls.append(uuid)
-        return None
 
     monkeypatch.setattr(
         "app.routers.players.players.get_async_session",

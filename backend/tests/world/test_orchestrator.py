@@ -9,8 +9,8 @@ fake so tests don't need actual containers — only filesystem and DB state.
 import shutil
 import subprocess
 import tempfile
+import zlib
 from pathlib import Path
-from typing import Optional
 
 import pytest
 from sqlalchemy import select
@@ -42,7 +42,7 @@ def _restic_available() -> bool:
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -52,7 +52,7 @@ def _restic_available() -> bool:
 def _mcmap_available() -> bool:
     try:
         result = subprocess.run(
-            ["mcmap", "--version"], capture_output=True, text=True, timeout=5
+            ["mcmap", "--version"], capture_output=True, text=True, timeout=5, check=False
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -185,7 +185,7 @@ async def _drain(gen) -> list:
     return out
 
 
-async def _read_restoration(session_factory, rid: str) -> Optional[Restoration]:
+async def _read_restoration(session_factory, rid: str) -> Restoration | None:
     async with session_factory() as session:
         return (
             await session.execute(select(Restoration).where(Restoration.id == rid))
@@ -425,7 +425,7 @@ async def test_lock_held_during_restore(orchestrator, data_path, lock):
     selection = RestorationSelection(type=RestorationType.WORLD)
     snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
 
-    holders_seen: list[Optional[LockHolder]] = []
+    holders_seen: list[LockHolder | None] = []
 
     async for ev in orchestrator.begin_restore(
         server_id="srv1",
@@ -809,3 +809,78 @@ async def test_world_restore_preserves_ignored_paths(
     assert not extraneous.exists()
     assert (ignored_dir / "tile.bin").read_bytes() == b"changed-after-snapshot"
     assert (ignored_dir / "new.bin").read_bytes() == b"created-after-snapshot"
+
+
+@pytest.mark.parametrize("scope", [RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS])
+async def test_restore_missing_sidecar_directories_and_rollback_absence(
+    orchestrator, data_path, session_factory, scope
+):
+    if scope is RestorationType.CHUNKS and not _mcmap_available():
+        pytest.skip("mcmap not installed")
+    poi = data_path / "world" / "poi"
+    poi.mkdir()
+    payload = zlib.compress(b'\x0a\x00\x00\x08\x00\x06marker\x00\x04seed\x00')
+    header = bytearray(8192)
+    header[:4] = b'\x00\x00\x02\x01'
+    chunk = (len(payload) + 1).to_bytes(4, 'big') + b'\x02' + payload
+    content = bytes(header) + chunk.ljust(4096, b'\x00')
+    for name in ("entities", "poi"):
+        (data_path / "world" / name / "r.0.0.mca").write_bytes(content)
+    source = await orchestrator.create_snapshot(
+        "srv1", RestorationSelection(type=RestorationType.WORLD), None
+    )
+    for name in ("entities", "poi"):
+        shutil.rmtree(data_path / "world" / name)
+    selection = RestorationSelection(
+        type=scope, region_dir_relpath="world/region",
+        regions=[(0, 0)] if scope is RestorationType.REGIONS else [],
+        chunks=[(0, 0)] if scope is RestorationType.CHUNKS else [],
+    )
+    events = await _drain(orchestrator.begin_restore("srv1", source.id, selection, None))
+    assert events[-1].event_type == "complete", events[-1]
+    for name in ("entities", "poi"):
+        assert (data_path / "world" / name / "r.0.0.mca").exists()
+        assert payload in (data_path / "world" / name / "r.0.0.mca").read_bytes()
+    rollback = await _drain(orchestrator.rollback(events[0].restoration_id, None))
+    assert rollback[-1].event_type == "complete", rollback[-1]
+    for name in ("entities", "poi"):
+        assert not (data_path / "world" / name).exists()
+
+
+async def test_closing_restore_immediately_persists_interrupted(
+    orchestrator, session_factory, lock
+):
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    source = await orchestrator.create_snapshot("srv1", selection, None)
+    events = orchestrator.begin_restore("srv1", source.id, selection, None)
+    first = await anext(events)
+    while (await anext(events)).event_type != "restore":
+        pass
+    await events.aclose()
+    row = await _read_restoration(session_factory, first.restoration_id)
+    assert row is not None
+    assert row.status is RestorationStatus.INTERRUPTED
+    assert row.finished_at is not None
+    assert row.safety_snapshot_id
+    assert not lock.is_locked("srv1")
+    rollback = await _drain(orchestrator.rollback(row.id, None))
+    assert rollback[-1].event_type == "complete"
+
+
+async def test_cache_failure_finishes_restoration_history(
+    orchestrator, session_factory, lock, monkeypatch
+):
+    from unittest.mock import AsyncMock
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    source = await orchestrator.create_snapshot("srv1", selection, None)
+    monkeypatch.setattr(orchestrator, "_invalidate_map_cache", AsyncMock(side_effect=OSError("cache unavailable")))
+    events = await _drain(orchestrator.begin_restore("srv1", source.id, selection, None))
+    assert events[-1].event_type == "error"
+    row = await _read_restoration(session_factory, events[0].restoration_id)
+    assert row is not None
+    assert row.status is RestorationStatus.FAILED
+    assert row is not None
+    assert row.error_message is not None
+    assert "cache unavailable" in row.error_message
+    assert row.finished_at is not None
+    assert not lock.is_locked("srv1")

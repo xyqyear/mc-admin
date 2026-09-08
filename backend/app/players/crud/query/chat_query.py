@@ -1,7 +1,6 @@
 """Chat query functions for API endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import and_, select
@@ -35,11 +34,11 @@ async def get_player_chat_messages(
     session: AsyncSession,
     player_db_id: int,
     limit: int = 100,
-    server_id: Optional[str] = None,
-    search: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-) -> List[ChatMessageInfo]:
+    server_id: str | None = None,
+    search: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[ChatMessageInfo]:
     """Get player chat messages.
 
     Args:
@@ -68,8 +67,9 @@ async def get_player_chat_messages(
 
     if server_id:
         server_db_id = await get_server_db_id(session, server_id)
-        if server_db_id:
-            filters.append(PlayerChatMessage.server_db_id == server_db_id)
+        if server_db_id is None:
+            return []
+        filters.append(PlayerChatMessage.server_db_id == server_db_id)
 
     if search:
         filters.append(PlayerChatMessage.message_text.contains(search))
@@ -108,7 +108,7 @@ async def get_chat_messages_after(
     session: AsyncSession,
     after_id: int,
     limit: int = 500,
-) -> List[ChatEventInfo]:
+) -> list[ChatEventInfo]:
     """Get persisted chat messages after a stream cursor."""
     query = (
         select(

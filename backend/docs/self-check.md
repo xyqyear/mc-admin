@@ -86,10 +86,12 @@ snapshot freshness window do not produce backup coverage warnings before their
 first snapshot has had time to run.
 
 `server.backup_mod_removed` scans `mods/*.jar` and `plugins/*.jar`. It reads jar
-metadata IDs from Fabric/Quilt JSON, Forge/NeoForge TOML, legacy Forge
+metadata IDs from Fabric JSON (`id`), Quilt JSON (`quilt_loader.id`), Forge/NeoForge TOML, legacy Forge
 `mcmod.info`, and Bukkit/Paper plugin YAML, then compares those IDs with
 `config.self_check.backup_mod_ids` case-insensitively. File names are not used
 for backup Mod/plugin detection.
+
+Quilt metadata requires valid JSON with a string `quilt_loader.id`; malformed JSON does not fall back to a guessed ID elsewhere in the file. Fabric retains its legacy lenient JSON extraction. Metadata identification does not validate whether a JAR can be loaded by a Minecraft mod loader.
 
 `files.permission_consistency` checks only file owner UID consistency. It uses
 `fd --owner` to find entries whose owner UID differs from the server project

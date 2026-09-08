@@ -1,6 +1,6 @@
 # Log Monitor (`app.log_monitor`)
 
-Watches each running server's `logs/latest.log` and dispatches parsed events to the player tracking layer in real time.
+Watches each active server's `logs/latest.log` and dispatches parsed events to the player tracking layer in real time.
 
 ## Why this layer exists
 
@@ -8,7 +8,7 @@ Modern Minecraft has no first-class API for "tell me when a player joins" — th
 
 ## Implementation
 
-- **File watching**: `watchfiles` (Rust-backed, kernel inotify on Linux) per server. The monitor stores a byte offset; on file change, it reads only new bytes from that offset, handling rotation by detecting truncation.
+- **File watching**: `watchfiles` per server uses kernel notifications where available and automatically selects polling on WSL. The monitor stores a byte offset and reads only new bytes, handling creation events and truncation during rotation. Idle watcher timeouts reconcile file size and unread content every second: polling notifications can miss writes that share the same whole-second mtime, so notifications alone cannot guarantee delivery of the final log lines.
 - **Parsing** (`parser.py`): each new line runs through an ordered regex chain — UUID-discovered → join → leave → chat → achievement → server-stop. First match wins. Patterns live in `dynamic_config.log_parser` so an admin can adapt them per modpack without redeploying.
 - **Dispatch** (`monitor.py`): each parsed event maps to one tracking function:
 
@@ -27,7 +27,7 @@ Modern Minecraft has no first-class API for "tell me when a player joins" — th
 from app.log_monitor import log_monitor
 
 await log_monitor.start_server(server_id)   # begins watching latest.log
-await log_monitor.stop_server(server_id)
+await log_monitor.stop_watching(server_id)
 await log_monitor.stop_all()                # called on shutdown
 ```
 

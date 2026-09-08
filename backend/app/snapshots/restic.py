@@ -14,7 +14,8 @@ import json
 from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+
+from anyio import CancelScope
 
 from ..config import settings
 from ..utils.exec import exec_command
@@ -29,7 +30,7 @@ from .models import (
 
 def _snapshot_from_json(data: dict) -> ResticSnapshot:
     return ResticSnapshot(
-        time=datetime.fromisoformat(data["time"].replace("Z", "+00:00")),
+        time=datetime.fromisoformat(data["time"]),
         paths=data["paths"],
         excludes=data.get("excludes") or [],
         hostname=data["hostname"],
@@ -42,7 +43,7 @@ def _snapshot_from_json(data: dict) -> ResticSnapshot:
 
 def _parse_restore_event(
     data: dict, target_dir: Path
-) -> Optional[ResticRestoreEvent]:
+) -> ResticRestoreEvent | None:
     """Convert one decoded JSON line into a normalized ``ResticRestoreEvent``.
 
     Restic reports restored/updated/unchanged items relative to the restore
@@ -86,6 +87,10 @@ def _parse_restore_event(
             bytes_skipped=data.get("bytes_skipped"),
         )
     return None
+
+
+class ResticProtocolError(RuntimeError):
+    """Restic returned an unexpected response shape."""
 
 
 class ResticClient:
@@ -158,10 +163,10 @@ class ResticClient:
 
         summary = ResticSnapshotSummary(
             backup_start=datetime.fromisoformat(
-                summary_data["backup_start"].replace("Z", "+00:00")
+                summary_data["backup_start"]
             ),
             backup_end=datetime.fromisoformat(
-                summary_data["backup_end"].replace("Z", "+00:00")
+                summary_data["backup_end"]
             ),
             files_new=summary_data.get("files_new"),
             files_changed=summary_data.get("files_changed"),
@@ -192,14 +197,14 @@ class ResticClient:
             raise RuntimeError(f"Snapshot not found: {snapshot_id}")
         return _snapshot_from_json(snapshots[0])
 
-    async def list_snapshots(self) -> List[ResticSnapshot]:
+    async def list_snapshots(self) -> list[ResticSnapshot]:
         result = await self._run("snapshots", "--json")
         try:
             snapshots_data = json.loads(result)
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Could not parse snapshots JSON: {e}")
         if not isinstance(snapshots_data, list):
-            raise RuntimeError("Expected snapshots to be a list")
+            raise ResticProtocolError("Expected snapshots to be a list")
         return [_snapshot_from_json(d) for d in snapshots_data]
 
     async def ls(self, snapshot_id: str, path: Path) -> dict[Path, NodeKind]:
@@ -241,7 +246,7 @@ class ResticClient:
         includes: Sequence[str] = (),
         delete: bool = False,
         dry_run: bool = False,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         """Stream ``restic restore <snapshot>:<source_dir> --target <target_dir>``.
 
         ``excludes`` / ``includes`` are subtree-relative patterns (leading
@@ -314,15 +319,20 @@ class ResticClient:
                     f"restic restore failed (exit {proc.returncode}): {stderr}"
                 )
         finally:
-            if proc.returncode is None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-            if not drain_task.done():
-                drain_task.cancel()
+            with CancelScope(shield=True):
+                if proc.returncode is None:
+                    try:
+                        proc.terminate()
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5)
+                    except TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                if not drain_task.done():
+                    drain_task.cancel()
+                await asyncio.gather(drain_task, return_exceptions=True)
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """Remove the snapshot ``snapshot_id``; prune the repo afterwards by default."""
@@ -333,14 +343,14 @@ class ResticClient:
 
     async def forget(
         self,
-        keep_last: Optional[int] = None,
-        keep_hourly: Optional[int] = None,
-        keep_daily: Optional[int] = None,
-        keep_weekly: Optional[int] = None,
-        keep_monthly: Optional[int] = None,
-        keep_yearly: Optional[int] = None,
-        keep_tag: Optional[List[str]] = None,
-        keep_within: Optional[str] = None,
+        keep_last: int | None = None,
+        keep_hourly: int | None = None,
+        keep_daily: int | None = None,
+        keep_weekly: int | None = None,
+        keep_monthly: int | None = None,
+        keep_yearly: int | None = None,
+        keep_tag: list[str] | None = None,
+        keep_within: str | None = None,
         prune: bool = True,
     ) -> str:
         """Apply restic ``forget`` retention rules. Raises ``ValueError`` if all are empty."""

@@ -15,7 +15,8 @@ app/snapshots/
 ├── ignores.py   # ignore-path resolution (<LEVEL_NAME> expansion) and pattern translation
 ├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
-└── service.py   # SnapshotService — the app-facing API; the wired singleton lives in __init__.py
+├── service.py   # SnapshotService — Restic planning/execution; singleton lives in __init__.py
+└── restore.py   # SnapshotRestoreService — path restore maintenance, safety snapshot and finalization
 ```
 
 `snapshot_service` is the singleton (`None` when restic isn't configured, so dev environments without a repo work fine). Routers, cron jobs, self-checks, and the world-restore orchestrator all go through it; nothing outside the package touches `ResticClient` directly.
@@ -60,4 +61,8 @@ Request-supplied `server_id` and `paths` are joined into filesystem paths, so th
 
 ## Lock interaction
 
-Snapshot creation goes through `server_operation_lock.acquire(server_id, kind=BACKUP)` (see `app.world.locks` / `docs/world-restore.md`). Manual snapshot endpoints respect the same lock so they can't collide with an in-flight restore.
+Snapshot creation resolves the actual affected servers and acquires their existing operation locks with kind BACKUP; a busy target rejects manual creation or skips scheduled backup. Whole-root backups share ownership with the individual servers they cover.
+
+The generic restore router only resolves requests, maps preflight errors and encodes events. `SnapshotRestoreService` owns safety snapshot → restore → cache finalization. Whole-server/data targets and paths intersecting known world roots require stopped servers and hold their maintenance locks; ordinary configuration/plugin/file restores remain available online. Dry-run preview and reads do not acquire these locks. The running/busy checks are repeated after acquiring ownership, so a preflight check cannot race with startup. Invalid unrelated server.properties values do not prevent recovery: world-name lookup reads only level-name.
+
+Disconnecting a restore stream retains cancellation semantics, with explicit generator closing and shielded subprocess/cache cleanup before releasing maintenance ownership. See `world-restore.md` for selective world restoration history and missing-sidecar rollback metadata.

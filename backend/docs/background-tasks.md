@@ -24,7 +24,9 @@ result = task_manager.submit(
 # result.task_id → returned to the frontend; poll /api/tasks/{id} for detail.
 ```
 
-The manager wraps the generator in an `asyncio.Task`, intercepts each yield to update the in-memory `BackgroundTask` row, and resolves the `Future[TaskResult]` on the final yield. Cancellation flips the cooperative `cancel_requested` flag on the task; the generator is expected to check it and clean up.
+The manager wraps the generator in an `asyncio.Task`, intercepts each yield to update the in-memory `BackgroundTask` row, and resolves the `Future[TaskResult]` when iteration finishes. Cancellation flips the cooperative `cancel_requested` flag. At the next yield, the manager awaits the generator's `aclose()` before publishing `CANCELLED` or resolving its future. Exceptions escaping generator closure become task failures; cleanup errors handled inside the generator do not, including compression output deletion errors.
+
+Generators own their child processes and temporary output. Use `finally` or handle `GeneratorExit` during cleanup, and explicitly close nested async generators with `contextlib.aclosing`. The subprocess stream terminates and reaps its direct child when closed; archive compression closes that stream before attempting to remove its output. The manager waits for generator closure before publishing cancellation. Cancellation is cooperative at progress yields, does not terminate arbitrary descendant process trees, and cannot guarantee file removal when the filesystem rejects cleanup.
 
 ## API
 
@@ -53,6 +55,8 @@ The manager wraps the generator in an `asyncio.Task`, intercepts each yield to u
 ## REST API
 
 Mounted at `/api/tasks/`:
+
+Every operation requires the same current-user authentication as task-producing feature APIs; both admin and owner users may access the task center. Cookie-authenticated mutations also require a valid CSRF token. Anonymous or invalid-session requests are rejected before task lookup or mutation. This does not introduce per-user task ownership or per-server access control.
 
 - `GET /` — summary list with filters; `result` is omitted so task center
   polling never serializes feature-specific payloads.

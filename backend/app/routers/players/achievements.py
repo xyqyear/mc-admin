@@ -1,6 +1,5 @@
 """Player achievement API endpoints."""
 
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,10 +15,10 @@ from ...players.crud.query.achievement_query import (
 router = APIRouter(prefix="/players", tags=["player-achievements"])
 
 
-@router.get("/{player_db_id}/achievements", response_model=List[AchievementInfo])
+@router.get("/{player_db_id}/achievements", response_model=list[AchievementInfo])
 async def get_player_achievement_list(
     player_db_id: int,
-    server_id: Optional[str] = Query(None, description="Filter by server ID"),
+    server_id: str | None = Query(None, description="Filter by server ID"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

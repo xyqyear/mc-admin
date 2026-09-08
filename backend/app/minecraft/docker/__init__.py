@@ -16,20 +16,17 @@ from .network import (
 )
 
 __all__ = [
-    # Compose file and managers
-    "ComposeFile",
-    "ComposeManager",
-    "DockerManager",
-    # CGroup monitoring
-    "MemoryStats",
     "BlockIODevice",
     "BlockIOStats",
     "CGroupStats",
-    "read_memory_stats",
-    "read_block_io_stats",
-    # Network monitoring
+    "ComposeFile",
+    "ComposeManager",
+    "DockerManager",
+    "MemoryStats",
     "NetworkInterface",
     "NetworkStats",
-    "read_network_stats",
+    "read_block_io_stats",
     "read_container_network_stats",
+    "read_memory_stats",
+    "read_network_stats",
 ]

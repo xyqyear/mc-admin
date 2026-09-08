@@ -1,14 +1,17 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..background_tasks import task_manager
 from ..background_tasks.models import BackgroundTask
 from ..background_tasks.types import TaskStatus, TaskType
+from ..dependencies import get_current_user
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+router = APIRouter(
+    prefix="/tasks", tags=["tasks"], dependencies=[Depends(get_current_user)]
+)
 
 
 class BackgroundTaskResponse(BaseModel):

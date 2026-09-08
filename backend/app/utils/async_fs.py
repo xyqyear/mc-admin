@@ -12,7 +12,7 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO
 
 from PIL import Image
 

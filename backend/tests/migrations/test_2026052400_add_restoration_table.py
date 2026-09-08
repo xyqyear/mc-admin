@@ -15,7 +15,7 @@ from .helpers import (
 
 REVISION = "2026052400"
 DOWN_REVISION = "f2ee81a56fee"
-CURRENT_HEAD = "2026060500"
+CURRENT_HEAD = "2026090700"
 
 
 async def test_startup_upgrade_and_downgrade_restoration_schema(

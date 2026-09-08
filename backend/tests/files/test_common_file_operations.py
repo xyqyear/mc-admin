@@ -191,11 +191,10 @@ class TestCommonFileOperations:
         with patch(
             "app.files.ownership.exec_command",
             new=AsyncMock(side_effect=RuntimeError("denied")),
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                _ = [
-                    item async for item in restore_tree_ownership_task(test_structure)
-                ]
+        ), pytest.raises(RuntimeError) as exc_info:
+            _ = [
+                item async for item in restore_tree_ownership_task(test_structure)
+            ]
 
         assert "修复文件所有权失败" in str(exc_info.value)
 
@@ -380,3 +379,23 @@ class TestCommonFileOperations:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+@pytest.mark.asyncio
+async def test_listing_skips_broken_and_disappearing_entries(tmp_path, monkeypatch):
+    from app.files import base
+
+    (tmp_path / "kept.txt").write_text("kept")
+    (tmp_path / "broken").symlink_to("missing")
+    disappearing = tmp_path / "removed.txt"
+    disappearing.write_text("removed")
+    original_listdir = base.aioos.listdir
+
+    async def list_then_remove(path):
+        entries = await original_listdir(path)
+        disappearing.unlink()
+        return entries
+
+    monkeypatch.setattr(base.aioos, "listdir", list_then_remove)
+    items = await base.get_file_items(tmp_path)
+    assert [(item.name, item.size) for item in items] == [("kept.txt", 4)]

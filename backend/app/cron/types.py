@@ -3,11 +3,11 @@ Type definitions for the cron job management system.
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Awaitable, Callable, List, Optional, Type
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..dynamic_config.schemas import BaseConfigSchema
 from ..models import CronJobStatus, ExecutionStatus
@@ -26,12 +26,12 @@ class CronJobRegistration:
 
     function: AsyncCronJobFunction
     description: str
-    schema_cls: Type[BaseConfigSchema]
+    schema_cls: type[BaseConfigSchema]
     is_system: bool = False
-    default_cron: Optional[str] = None
-    default_second: Optional[str] = None
-    default_params: Optional[BaseConfigSchema] = None
-    default_name: Optional[str] = None
+    default_cron: str | None = None
+    default_second: str | None = None
+    default_params: BaseConfigSchema | None = None
+    default_name: str | None = None
 
 
 class ExecutionContext(BaseModel):
@@ -48,10 +48,14 @@ class ExecutionContext(BaseModel):
     execution_id: str
     params: BaseConfigSchema
     started_at: datetime
-    ended_at: Optional[datetime] = None
-    duration_ms: Optional[int] = None
+    ended_at: datetime | None = None
+    duration_ms: int | None = None
     status: ExecutionStatus = ExecutionStatus.RUNNING
-    messages: List[str] = Field(default_factory=list)
+    messages: list[str] = Field(default_factory=list)
+
+    def skip(self, reason: str) -> None:
+        self.status = ExecutionStatus.SKIPPED
+        self.log(reason)
 
     def log(self, message: str) -> None:
         """
@@ -60,7 +64,7 @@ class ExecutionContext(BaseModel):
         Args:
             message: The message to log
         """
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        timestamp = datetime.now(UTC).astimezone().strftime("%H:%M:%S.%f")[:-3]
         self.messages.append(f"[{timestamp}] {message}")
 
     def to_execution_record(self) -> dict:
@@ -93,7 +97,7 @@ class CronJobConfig(BaseModel):
     identifier: str
     name: str
     cron: str
-    second: Optional[str] = None
+    second: str | None = None
     params: BaseConfigSchema
     execution_count: int = 0
     is_system: bool = False
@@ -101,8 +105,7 @@ class CronJobConfig(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 @dataclass(frozen=True)
@@ -115,8 +118,8 @@ class CronJobExecutionRecord:
 
     cronjob_id: str
     execution_id: str
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
-    duration_ms: Optional[int]
+    started_at: datetime | None
+    ended_at: datetime | None
+    duration_ms: int | None
     status: ExecutionStatus
-    messages: List[str]
+    messages: list[str]

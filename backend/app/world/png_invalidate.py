@@ -8,8 +8,8 @@ paths) and ``pngs_for_regions`` (from explicit ``(rx, rz)`` coords). Only
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import aiofiles.os as aioos
 

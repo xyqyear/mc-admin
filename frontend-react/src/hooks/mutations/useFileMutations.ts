@@ -5,9 +5,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { fileApi } from "@/hooks/api/fileApi";
 import type {
-  MultiFileUploadRequest,
-  OverwritePolicy,
-  MultiFileUploadResult,
   FileSearchRequest
 } from "@/hooks/api/fileApi";
 import { useDownloadManager } from "@/utils/downloadUtils";
@@ -119,56 +116,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     });
   };
 
-  const useCheckUploadConflicts = () => {
-    return useMutation({
-      mutationFn: ({ path, uploadRequest }: { path: string; uploadRequest: MultiFileUploadRequest }) =>
-        fileApi.checkUploadConflicts(serverId!, path, uploadRequest),
-      onError: (error: any) => {
-        toast.error(error.response?.data?.detail || "检查冲突失败");
-      },
-    });
-  };
-
-  const useSetUploadPolicy = () => {
-    return useMutation({
-      mutationFn: ({ sessionId, policy, reusable }: { sessionId: string; policy: OverwritePolicy; reusable?: boolean }) =>
-        fileApi.setUploadPolicy(serverId!, sessionId, policy, reusable),
-      onError: (error: any) => {
-        toast.error(error.response?.data?.detail || "设置覆盖策略失败");
-      },
-    });
-  };
-
-  const useUploadMultipleFiles = () => {
-    return useMutation({
-      mutationFn: ({
-        sessionId,
-        path,
-        files,
-        onProgress,
-        abortSignal
-      }: {
-        sessionId: string;
-        path: string;
-        files: File[];
-        onProgress?: (progress: { loaded: number; total: number; percent: number }) => void;
-        abortSignal?: AbortSignal;
-      }) =>
-        fileApi.uploadMultipleFiles(serverId!, sessionId, path, files, onProgress, abortSignal),
-      onSuccess: (result: MultiFileUploadResult) => {
-        const successCount = Object.values(result.results).filter(r =>
-          r.status === 'success'
-        ).length;
-        const totalCount = Object.keys(result.results).length;
-        toast.success(`上传完成！成功: ${successCount}/${totalCount}`);
-        invalidateFileList();
-      },
-      onError: (error: any) => {
-        toast.error(error.response?.data?.detail || "上传失败");
-      },
-    });
-  };
-
   const downloadFile = async (path: string, filename: string) => {
     if (!serverId) return;
 
@@ -198,9 +145,6 @@ export const useFileMutations = (serverId: string | undefined) => {
     useBulkDeleteFiles,
     useRenameFile,
     useRestoreFileOwnership,
-    useCheckUploadConflicts,
-    useSetUploadPolicy,
-    useUploadMultipleFiles,
     useSearchFiles,
     downloadFile,
   };

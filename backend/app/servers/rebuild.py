@@ -1,35 +1,21 @@
 """Server rebuild background task."""
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from ..background_tasks import TaskProgress
+from ..db.database import get_async_session
 from ..minecraft import MCServerStatus, docker_mc_manager
+from .configuration import ServerConfiguration, save_configuration_metadata
 from .port_utils import check_port_conflicts, extract_ports_from_yaml
 
 
 async def rebuild_server_task(
     server_id: str,
-    yaml_content: str,
-) -> AsyncGenerator[TaskProgress, None]:
-    """Background task to rebuild server with new configuration.
-
-    Steps:
-    1. Validate YAML and check port conflicts (0-10%)
-    2. Stop server if running (10-40%)
-    3. Update compose file (40-60%)
-    4. Start server if was running (60-100%)
-
-    Args:
-        server_id: The server ID to rebuild
-        yaml_content: The new YAML content for the compose file
-
-    Yields:
-        TaskProgress with progress updates
-
-    Raises:
-        RuntimeError: If validation fails or port conflicts detected
-    """
+    configuration: ServerConfiguration,
+) -> AsyncGenerator[TaskProgress]:
+    """Apply configuration and its source before restoring the running intent."""
     instance = docker_mc_manager.get_instance(server_id)
+    yaml_content = configuration.yaml_content
 
     # Step 1: Validate and check ports
     yield TaskProgress(progress=0, message="验证配置...")
@@ -37,7 +23,7 @@ async def rebuild_server_task(
     try:
         game_port, rcon_port = extract_ports_from_yaml(yaml_content)
     except Exception as e:
-        raise RuntimeError(f"无效的 YAML 配置: {e}")
+        raise RuntimeError(f"无效的 YAML 配置: {e}") from e
 
     yield TaskProgress(progress=5, message="检查端口冲突...")
 
@@ -57,8 +43,8 @@ async def rebuild_server_task(
         MCServerStatus.HEALTHY,
     ]
 
-    if was_running:
-        yield TaskProgress(progress=15, message="停止服务器...")
+    if was_running or status == MCServerStatus.CREATED:
+        yield TaskProgress(progress=15, message="下线服务器...")
         await instance.down()
         yield TaskProgress(progress=40, message="服务器已停止")
     else:
@@ -68,6 +54,11 @@ async def rebuild_server_task(
     yield TaskProgress(progress=45, message="更新配置文件...")
     await instance.update_compose_file(yaml_content)
     yield TaskProgress(progress=60, message="配置文件已更新")
+
+    if configuration.template_snapshot is not None:
+        yield TaskProgress(progress=62, message="保存配置来源...")
+        async with get_async_session() as db:
+            await save_configuration_metadata(db, server_id, configuration)
 
     # Step 4: Restart if was running
     if was_running:

@@ -177,7 +177,7 @@ class TestCronScheduling:
         ]
 
         for invalid_cron in invalid_cron_expressions:
-            try:
+            with pytest.raises(ValueError) as error:
                 await cron_manager.create_cronjob(
                     identifier="test_cronjob",
                     params=params,
@@ -185,12 +185,11 @@ class TestCronScheduling:
                     name=f"Invalid Cron Test: {invalid_cron}",
                 )
 
-            except (ValueError, Exception) as e:
-                error_msg = str(e).lower()
-                assert any(
-                    keyword in error_msg
-                    for keyword in ["cron", "invalid", "error", "value", "expression"]
-                ), f"Expected cron-related error for '{invalid_cron}', got: {e}"
+            error_msg = str(error.value).lower()
+            assert any(
+                keyword in error_msg
+                for keyword in ["cron", "invalid", "error", "value", "expression"]
+            ), f"Expected cron-related error for '{invalid_cron}', got: {error.value}"
 
     async def test_weekday_expression_is_preserved_and_update_is_atomic(
         self, fresh_cron_manager

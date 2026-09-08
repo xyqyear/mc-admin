@@ -1,6 +1,6 @@
 """Tests for record_chat_message and record_achievement tracking functions."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.dynamic_config.configs.players import PlayersConfig
 from app.models import (
     Base,
     Player,
@@ -16,7 +17,6 @@ from app.models import (
     Server,
     ServerStatus,
 )
-from app.dynamic_config.configs.players import PlayersConfig
 from app.players.tracking import record_achievement, record_chat_message
 from tests.players.helpers import make_offline_uuid, make_online_uuid
 
@@ -65,7 +65,7 @@ async def test_player(test_db_session):
         player_db_id=1,
         uuid=make_online_uuid("TestPlayer"),
         current_name="TestPlayer",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.commit()
@@ -104,7 +104,7 @@ class TestRecordChatMessage:
                 server_id="test_server",
                 player_name="TestPlayer",
                 message="Hello world!",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(
@@ -133,7 +133,7 @@ class TestRecordChatMessage:
                     server_id="test_server",
                     player_name="NewPlayer",
                     message="First message!",
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                 )
 
                 result = await test_db_session.execute(
@@ -171,7 +171,7 @@ class TestRecordChatMessage:
                     server_id="test_server",
                     player_name="boT_Carpet",
                     message="Synthetic hello",
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                 )
 
         mock_fetch_uuid.assert_not_called()
@@ -198,7 +198,7 @@ class TestRecordChatMessage:
                     server_id="unknown_server",
                     player_name="TestPlayer",
                     message="Hello!",
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                 )
 
                 result = await test_db_session.execute(select(PlayerChatMessage))
@@ -220,7 +220,7 @@ class TestRecordAchievement:
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(
@@ -245,7 +245,7 @@ class TestRecordAchievement:
                 server_id="test_server",
                 player_name="UnknownPlayer",
                 achievement_name="Kill Ender Dragon",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(
@@ -264,7 +264,7 @@ class TestRecordAchievement:
             player_db_id=2,
             uuid=make_offline_uuid("OfflinePlayer"),
             current_name="OfflinePlayer",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         test_db_session.add(player)
         await test_db_session.commit()
@@ -276,7 +276,7 @@ class TestRecordAchievement:
                 server_id="test_server",
                 player_name="OfflinePlayer",
                 achievement_name="Not Recorded",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(select(PlayerAchievement))
@@ -289,7 +289,7 @@ class TestRecordAchievement:
         with patch("app.players.tracking.get_async_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            ts = datetime.now(timezone.utc)
+            ts = datetime.now(UTC)
 
             await record_achievement(
                 server_id="test_server",
@@ -321,7 +321,7 @@ class TestRecordAchievement:
             player_db_id=10,
             uuid=make_online_uuid("___Astesia"),
             current_name="___Astesia",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         test_db_session.add(player)
         await test_db_session.commit()
@@ -333,7 +333,7 @@ class TestRecordAchievement:
                 server_id="test_server",
                 player_name="___Astesia the Ugly",
                 achievement_name="Dragon Growth Hormone",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(
@@ -355,13 +355,13 @@ class TestRecordAchievement:
             player_db_id=20,
             uuid=make_online_uuid("Steve"),
             current_name="Steve",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         long_player = Player(
             player_db_id=21,
             uuid=make_online_uuid("SteveTheGreat"),
             current_name="SteveTheGreat",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         test_db_session.add(short_player)
         test_db_session.add(long_player)
@@ -374,7 +374,7 @@ class TestRecordAchievement:
                 server_id="test_server",
                 player_name="SteveTheGreat the Mighty",
                 achievement_name="Epic Achievement",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(

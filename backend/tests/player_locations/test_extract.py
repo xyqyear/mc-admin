@@ -2,7 +2,7 @@ import json
 import os
 import stat
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,7 +23,7 @@ def _test_user() -> UserPublic:
     return UserPublic(
         id=1,
         username="test",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -180,9 +180,11 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
 
 async def test_extract_error_propagates(world_data_path):
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
-        with pytest.raises(PlayerLocationExtractError):
-            await extract_player_locations_for_server(world_data_path)
+    with (
+        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        pytest.raises(PlayerLocationExtractError),
+    ):
+        await extract_player_locations_for_server(world_data_path)
     fake.unlink()
 
 
@@ -203,9 +205,11 @@ async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
         "skipped": [],
     }
     fake = _write_fake_mcmap(payload)
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
-        with pytest.raises(PlayerLocationExtractError, match="invalid JSON event"):
-            await extract_player_locations_for_server(world_data_path)
+    with (
+        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        pytest.raises(PlayerLocationExtractError, match='invalid JSON event'),
+    ):
+        await extract_player_locations_for_server(world_data_path)
     fake.unlink()
 
 

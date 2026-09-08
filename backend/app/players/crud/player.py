@@ -1,8 +1,7 @@
 """CRUD operations for Player model."""
-# flake8: noqa: E711, E712
 
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -34,7 +33,7 @@ async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> b
     stmt = insert(Player).values(
         uuid=normalized_uuid,
         current_name=player_name,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["uuid"],
@@ -47,7 +46,7 @@ async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> b
 
 async def get_player_by_name(
     session: AsyncSession, player_name: str
-) -> Optional[Player]:
+) -> Player | None:
     """Get player by name.
 
     Args:
@@ -63,7 +62,7 @@ async def get_player_by_name(
     return result.scalar_one_or_none()
 
 
-async def get_player_by_uuid(session: AsyncSession, uuid: str) -> Optional[Player]:
+async def get_player_by_uuid(session: AsyncSession, uuid: str) -> Player | None:
     """Get player by dashless UUID."""
     normalized_uuid = normalize_online_uuid(uuid)
     if normalized_uuid is None:
@@ -119,7 +118,7 @@ async def get_or_add_player_by_name(
     session: AsyncSession,
     server_id: str,
     player_name: str,
-) -> Optional[Player]:
+) -> Player | None:
     """Get player by name, or add if not exists by resolving an online UUID.
 
     Args:
@@ -162,7 +161,7 @@ async def get_or_add_player_by_name(
 
 async def get_player_by_db_id(
     session: AsyncSession, player_db_id: int
-) -> Optional[Player]:
+) -> Player | None:
     """Get player by database ID.
 
     Args:
@@ -209,10 +208,10 @@ async def upsert_player_profile(
     session: AsyncSession,
     uuid: str,
     player_name: str,
-    skin_data: Optional[bytes],
-    avatar_data: Optional[bytes],
+    skin_data: bytes | None,
+    avatar_data: bytes | None,
     timestamp: datetime,
-) -> Optional[Player]:
+) -> Player | None:
     """Upsert player identity and optional cached skin data."""
     normalized_uuid = normalize_online_uuid(uuid)
     if normalized_uuid is None:
@@ -229,7 +228,7 @@ async def upsert_player_profile(
         "skin_data": skin_data,
         "avatar_data": avatar_data,
         "last_skin_update": timestamp if skin_data or avatar_data else None,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     update_values: dict[str, object] = {"current_name": player_name}
     if skin_data is not None:

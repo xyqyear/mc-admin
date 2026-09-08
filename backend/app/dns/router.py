@@ -4,19 +4,18 @@ Simplified MC Router Client
 Direct client implementation for mc-router without wrapper abstractions.
 """
 
-import asyncio
 import json as jsonlib
+from collections.abc import Awaitable
 from typing import (
-    Awaitable,
+    Any,
     Literal,
-    Optional,
     TypedDict,
-    cast,
 )
 
 import httpx2
 
 from ..logger import logger
+from .utils import wait_for_updates
 
 
 class RoutePoseDataT(TypedDict):
@@ -25,6 +24,10 @@ class RoutePoseDataT(TypedDict):
 
 
 RoutesT = dict[str, str]
+
+
+class MCRouterProtocolError(ValueError):
+    """The router returned an invalid route response."""
 
 
 class MCRouterClient:
@@ -47,15 +50,18 @@ class MCRouterClient:
         self,
         method: Literal["GET", "POST", "DELETE"],
         path: str,
-        headers: Optional[dict[str, str]] = None,
-        json: Optional[RoutePoseDataT] = None,
-    ) -> Optional[RoutesT]:
+        headers: dict[str, str] | None = None,
+        json: RoutePoseDataT | None = None,
+    ) -> dict[str, Any] | None:
         response = await self._client.request(
             method,
             self._base_url + path,
             headers=headers,
             json=json,
         )
+        if method == "DELETE" and response.status_code == 404:
+            return None
+        response.raise_for_status()
         response_str = response.text
 
         if response_str:
@@ -66,7 +72,15 @@ class MCRouterClient:
         response = await self._send_request(
             "GET", "routes", headers={"Accept": "application/json"}
         )
-        return cast(RoutesT, response)
+        if not isinstance(response, dict):
+            raise MCRouterProtocolError("MC Router 路由响应必须是对象")
+        routes: RoutesT = {}
+        for address, route in response.items():
+            backend = route.get("backend") if isinstance(route, dict) else route
+            if not isinstance(backend, str) or not backend:
+                raise MCRouterProtocolError(f"MC Router 路由 {address} 缺少有效的后端地址")
+            routes[address] = backend
+        return routes
 
     async def _remove_route(self, route: str):
         """Remove a single route"""
@@ -76,10 +90,10 @@ class MCRouterClient:
         """Remove all current routes"""
         all_routes = await self.get_routes()
         tasks = list[Awaitable[None]]()
-        for route in all_routes.keys():
+        for route in all_routes:
             tasks.append(self._remove_route(route))
 
-        await asyncio.gather(*tasks)
+        await wait_for_updates(*tasks)
 
     async def _add_route(self, route: str, backend: str):
         """Add a single route"""
@@ -96,7 +110,7 @@ class MCRouterClient:
         for route, backend in routes.items():
             tasks.append(self._add_route(route, backend))
 
-        await asyncio.gather(*tasks)
+        await wait_for_updates(*tasks)
 
     async def override_routes(self, routes: RoutesT):
         """

@@ -35,3 +35,7 @@ servers/
     ├── primitives.py   # cancel_and_wait_for_tasks, cron lookups, validate_adoption
     └── orchestrators.py # create_server_full, remove_server_full, adopt/deactivate partials
 ```
+
+## Restart scheduling boundary
+
+`app.servers.restart_schedule` owns the restart-plan request/result models and create/update/resume orchestration shared by lifecycle creation and the HTTP endpoint. Lifecycle services do not import router modules. `CronManager` continues to own stored jobs and scheduler operations.

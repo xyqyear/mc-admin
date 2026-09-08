@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from ..logger import logger
 from ..mcmap.events import (
@@ -21,8 +20,8 @@ from .models import (
     PlayerLocationDimensionEntry,
     PlayerLocationEntry,
     PlayerLocationPosition,
-    PlayerLocationsResponse,
     PlayerLocationSkippedFile,
+    PlayerLocationsResponse,
 )
 from .runner import extract_players
 
@@ -31,7 +30,7 @@ class PlayerLocationExtractError(Exception):
     pass
 
 
-def normalize_uuid(value: str) -> Optional[str]:
+def normalize_uuid(value: str) -> str | None:
     uuid = value.replace("-", "").lower()
     if len(uuid) != 32:
         return None
@@ -59,12 +58,12 @@ async def _run_extract(world_dir: Path, data_path: Path) -> MCMapPlayersPayload:
 
 
 def _resolve_dimensions(
-    raw_dims: List[MCMapDimensionEntry],
+    raw_dims: list[MCMapDimensionEntry],
     world_root: WorldRootPath,
     data_path: Path,
-) -> Tuple[List[PlayerLocationDimensionEntry], Dict[str, Optional[str]]]:
-    entries: List[PlayerLocationDimensionEntry] = []
-    relpath_by_dim_id: Dict[str, Optional[str]] = {}
+) -> tuple[list[PlayerLocationDimensionEntry], dict[str, str | None]]:
+    entries: list[PlayerLocationDimensionEntry] = []
+    relpath_by_dim_id: dict[str, str | None] = {}
     for raw in raw_dims:
         resolved = resolve_dimension_folder(
             data_path,
@@ -86,7 +85,7 @@ def _resolve_dimensions(
 
 def _build_player_entry(
     raw: MCMapPlayerRecord,
-    relpath_by_dim_id: Dict[str, Optional[str]],
+    relpath_by_dim_id: dict[str, str | None],
 ) -> PlayerLocationEntry:
     pos = PlayerLocationPosition(
         x=raw.pos.x,
@@ -137,7 +136,7 @@ def _shape_response(
 
 
 async def extract_player_locations_for_server(
-    data_path: Path, world_root: Optional[WorldRootPath] = None
+    data_path: Path, world_root: WorldRootPath | None = None
 ) -> PlayerLocationsResponse:
     if world_root is None:
         roots = await discover_world_root_paths(data_path)

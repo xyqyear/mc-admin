@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,13 +25,17 @@ def client(monkeypatch):
 
 
 @pytest.fixture
-def user():
-    return UserPublic(
+def user(monkeypatch):
+    user = UserPublic(
         id=42,
         username="owner",
         role=UserRole.OWNER,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
+    monkeypatch.setattr(
+        "app.auth.session._get_current_session_user", AsyncMock(return_value=user)
+    )
+    return user
 
 
 def _set_session_cookies(client: TestClient, user: UserPublic) -> str:
@@ -84,7 +88,7 @@ def test_password_login_sets_auth_cookies_without_returning_token(client):
         username="owner",
         hashed_password="hash",
         role=UserRole.OWNER,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     api_app.dependency_overrides[get_db] = override_get_db
     try:
@@ -168,3 +172,39 @@ def test_logout_clears_auth_cookies(client, user):
     assert "Path=/api" in session_cookie
     assert "Max-Age=0" in csrf_cookie
     assert "Path=/" in csrf_cookie
+
+
+@pytest.mark.asyncio
+async def test_deleted_account_session_is_rejected_after_id_reuse(client, tmp_path, monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.auth.session import user_to_public
+    from app.db.crud.user import create_user, delete_user
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'auth.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(User.metadata.tables["user"].create)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("app.auth.session.get_async_session", sessions)
+    try:
+        async with sessions() as session:
+            db_user = await create_user(session, User(
+                username="removed", hashed_password="unused", role=UserRole.ADMIN,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ))
+            identity = user_to_public(db_user)
+            _set_session_cookies(client, identity)
+            assert client.get("/api/user/me").status_code == 200
+            assert await delete_user(session, identity.id)
+        assert client.get("/api/user/me").status_code == 401
+        async with sessions() as session:
+            await create_user(session, User(
+                id=identity.id, username=identity.username, hashed_password="replacement",
+                role=UserRole.OWNER, created_at=datetime(2026, 1, 2, tzinfo=UTC),
+            ))
+        assert client.get("/api/user/me").status_code == 401
+        response = client.get("/api/user/me", headers={"Authorization": f"Bearer {MASTER_TOKEN}"})
+        assert response.status_code == 200
+        assert response.json()["username"] == "SYSTEM"
+    finally:
+        await engine.dispose()

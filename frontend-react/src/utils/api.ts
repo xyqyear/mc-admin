@@ -126,6 +126,10 @@ export const queryKeys = {
     batch: (ids: readonly string[]) =>
       [...queryKeys.serverStatuses.all, "batch", ids] as const,
   },
+  serverMaintenance: {
+    all: ['serverMaintenance'] as const,
+    detail: (id: string) => [...queryKeys.serverMaintenance.all, 'detail', id] as const,
+  },
 
   players: {
     all: ["players"] as const,

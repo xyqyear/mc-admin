@@ -31,7 +31,7 @@ class TemplateManager:
         user_variables: Sequence[VariableDefinition],
     ) -> list[str]:
         """Validate template variables and fixed game-port initialization settings."""
-        errors = []
+        errors = cls.validate_variable_definitions(user_variables)
 
         yaml_vars = cls.extract_variables_from_yaml(yaml_template)
 
@@ -63,6 +63,35 @@ class TemplateManager:
             except ValueError as exc:
                 errors.append(str(exc))
 
+        return errors
+
+    @classmethod
+    def validate_variable_definitions(
+        cls, user_variables: Sequence[VariableDefinition]
+    ) -> list[str]:
+        errors = []
+        for var in user_variables:
+            if isinstance(var, (IntVariableDefinition, FloatVariableDefinition)):
+                if (
+                    var.min_value is not None
+                    and var.max_value is not None
+                    and var.min_value > var.max_value
+                ):
+                    errors.append(f"变量 '{var.name}' 的最小值不能大于最大值")
+            elif isinstance(var, StringVariableDefinition):
+                if var.max_length is not None and var.max_length < 0:
+                    errors.append(f"变量 '{var.name}' 的最大长度不能为负数")
+                if var.pattern is not None:
+                    try:
+                        re.compile(var.pattern)
+                    except re.PatternError as exc:
+                        errors.append(f"变量 '{var.name}' 的正则表达式无效: {exc}")
+                        continue
+            if var.default is not None:
+                errors.extend(
+                    f"默认值无效: {error}"
+                    for error in cls.validate_variable_values([var], {var.name: var.default})
+                )
         return errors
 
     @classmethod
@@ -189,9 +218,8 @@ class TemplateManager:
                 if value not in var.options:
                     errors.append(f"变量 '{var.name}' 必须是以下之一: {var.options}")
 
-            elif isinstance(var, BoolVariableDefinition):
-                if not isinstance(value, bool):
-                    errors.append(f"变量 '{var.name}' 必须是布尔值")
+            elif isinstance(var, BoolVariableDefinition) and not isinstance(value, bool):
+                errors.append(f"变量 '{var.name}' 必须是布尔值")
 
         return errors
 

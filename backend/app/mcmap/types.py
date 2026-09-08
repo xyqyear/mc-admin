@@ -1,6 +1,6 @@
 """Pydantic models for the mcmap module."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -11,27 +11,17 @@ class MapStatus(BaseModel):
     client_jar_present: bool
     palette_present: bool
     palette_current: bool
-    version: Optional[str] = None
+    version: str | None = None
 
 
 class InitEvent(BaseModel):
     """A single SSE event emitted by /initialize."""
 
     stage: Literal["client", "palette", "complete"]
-    phase: Optional[
-        Literal[
-            "starting",
-            "downloading",
-            "verifying",
-            "pack_loaded",
-            "resolving",
-            "done",
-            "error",
-        ]
-    ] = None
-    percent: Optional[float] = None
-    message: Optional[str] = None
-    cached: Optional[bool] = None
+    phase: Literal["starting", "downloading", "verifying", "pack_loaded", "resolving", "done", "error"] | None = None
+    percent: float | None = None
+    message: str | None = None
+    cached: bool | None = None
 
 
 class MCMapError(Exception):

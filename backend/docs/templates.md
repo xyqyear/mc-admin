@@ -18,7 +18,7 @@ Five types, all sharing `name`, `display_name`, `description`, `default`:
 | `enum`   | `options: list[str]` (default validated ∈)    |
 | `bool`   | —                                             |
 
-Template saves validate placeholder definitions and fixed game-port initialization. Rendering validates supplied variable values; new-server creation also validates the final rendered initialization configuration before creating resources.
+Template and default-variable saves reject invalid regular expressions, inverted numeric bounds, negative maximum lengths, and defaults that fail their own declared constraints. These checks run at save boundaries so legacy snapshots remain readable. Template saves also validate placeholder definitions and fixed game-port initialization. Rendering validates supplied variable values; new-server creation also validates the final rendered initialization configuration before creating resources.
 
 ## `TemplateManager`
 
@@ -40,10 +40,14 @@ An older reusable template must be corrected before it can be saved or used to c
 
 A server is in **template mode** if `Server.template_id` is set; otherwise **direct mode**.
 
-- **Template mode**: variable values live in `Server.variable_values_json`. Editing the variable form re-renders the YAML; if the rendered output differs semantically from the stored compose, a `SERVER_REBUILD` background task is submitted (the compose is replaced and `docker compose up -d` runs). DB row updated only after rebuild succeeds.
+- **Template mode**: variable values live in `Server.variable_values_json`. Editing the variable form renders the stored snapshot and submits a `SERVER_REBUILD` task. The task removes an existing container, writes Compose and matching template metadata, and starts the server only if it was running before the operation. A stopped container is removed before replacement and remains stopped.
 - **Direct mode**: the YAML in `Server.compose_file` is authoritative. No template association.
 
-Conversions both directions live in `routers/servers/template_migration.py`. Direct → template uses `extract_variables_from_compose`; if the rendered YAML matches semantically (`are_yaml_semantically_equal()` ignores formatting), the conversion is metadata-only — no rebuild.
+`app.servers.configuration` prepares the YAML and matching snapshot/variables for server creation, snapshot editing, and explicit source-template conversion. `POST /servers/{id}/template-config/preview` uses the same snapshot preparation as saving; deleting or editing the source template does not change this preview. The existing GET preview endpoint describes the server's editing mode.
+
+`routers/servers/template_migration.py` exposes conversion intents. Direct → template uses `extract_variables_from_compose`; if the rendered YAML matches semantically (`are_yaml_semantically_equal()` ignores formatting), the conversion saves metadata immediately without rebuilding. Template → direct clears the association without changing Compose. Explicit upgrades capture the live template at submission; `TemplateSnapshot.source_updated_at` records that source version separately from snapshot capture time. Legacy snapshots lacking this optional field retain the capture-time comparison.
+
+`app.servers.rebuild` owns configuration application within the existing task manager. Necessary metadata saving finishes before the task can complete, and before restarting the container. A startup failure reports task failure while the saved metadata still describes the newly applied Compose. A metadata save failure also fails the task and prevents startup; this operation does not promise cross-system rollback of already written Compose. The UI refreshes actual configuration and status after either terminal outcome.
 
 ## Default variables
 

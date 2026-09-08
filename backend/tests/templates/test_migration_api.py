@@ -12,12 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.db.database import get_db
 from app.main import api_app
 from app.models import Base, Server, ServerStatus, ServerTemplate
-from app.templates.models import serialize_variable_definitions
 from app.templates import (
     IntVariableDefinition,
     StringVariableDefinition,
-    EnumVariableDefinition,
 )
+from app.templates.models import serialize_variable_definitions
 
 YAML_TEMPLATE = """\
 version: '3.8'
@@ -70,9 +69,9 @@ services:
 @pytest.fixture
 async def test_db():
     """Create a test database."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -84,7 +83,7 @@ async def test_db():
     yield TestSessionLocal
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

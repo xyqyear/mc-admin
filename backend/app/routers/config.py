@@ -3,7 +3,7 @@ Dynamic configuration API router.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -28,27 +28,27 @@ class ConfigModuleInfo(BaseModel):
     module_name: str
     schema_class: str
     version: str
-    json_schema: Dict[str, Any]
+    json_schema: dict[str, Any]
 
 
 class ConfigModuleList(BaseModel):
     """List of all configuration modules."""
 
-    modules: Dict[str, ConfigModuleInfo]
+    modules: dict[str, ConfigModuleInfo]
 
 
 class ConfigData(BaseModel):
     """Configuration data response."""
 
     module_name: str
-    config_data: Dict[str, Any]
+    config_data: dict[str, Any]
     schema_version: str
 
 
 class ConfigUpdateRequest(BaseModel):
     """Request to update configuration."""
 
-    config_data: Dict[str, Any]
+    config_data: dict[str, Any]
 
 
 class ConfigUpdateResponse(BaseModel):
@@ -56,7 +56,7 @@ class ConfigUpdateResponse(BaseModel):
 
     success: bool
     message: str
-    updated_config: Dict[str, Any]
+    updated_config: dict[str, Any]
 
 
 @router.get("/modules", response_model=ConfigModuleList)

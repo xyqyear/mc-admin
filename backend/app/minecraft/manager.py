@@ -26,7 +26,7 @@ class DockerMCManager:
             except ValueError:
                 continue
             except Exception as e:
-                logger.warning(f"Failed to get compose object for {sub_dir}: {e}")
+                logger.warning(f"Failed to get compose object for {sub_dir}: {e}", exc_info=True)
         return compose_obj_list
 
     async def get_all_server_names(self) -> list[str]:

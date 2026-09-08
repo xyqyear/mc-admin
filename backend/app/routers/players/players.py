@@ -3,8 +3,8 @@
 import asyncio
 import base64
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
@@ -23,10 +23,12 @@ from ...players.crud import (
     PlayerCleanupPreviewResponse,
     delete_player_cleanup_candidates,
     get_player_by_db_id,
-    get_player_by_uuid as get_cached_player_by_uuid,
     get_player_cleanup_preview,
     get_players_by_uuids,
     upsert_player_profile,
+)
+from ...players.crud import (
+    get_player_by_uuid as get_cached_player_by_uuid,
 )
 from ...players.crud.query.player_query import (
     PlayerDetailResponse,
@@ -44,27 +46,27 @@ PROFILE_FETCH_CONCURRENCY = 8
 
 
 class PlayerMapProfileResponse(BaseModel):
-    player_db_id: Optional[int] = None
+    player_db_id: int | None = None
     uuid: str
-    current_name: Optional[str] = None
-    avatar_base64: Optional[str] = None
+    current_name: str | None = None
+    avatar_base64: str | None = None
     resolved: bool
-    last_skin_update: Optional[datetime] = None
+    last_skin_update: datetime | None = None
 
 
 class PlayerMapProfilesRequest(BaseModel):
-    uuids: List[str] = Field(default_factory=list, max_length=2000)
+    uuids: list[str] = Field(default_factory=list, max_length=2000)
 
 
 class PlayerMapProfilesStreamEvent(BaseModel):
     event_type: Literal["profile", "complete", "error"]
-    profile: Optional[PlayerMapProfileResponse] = None
-    message: Optional[str] = None
-    total: Optional[int] = None
-    resolved: Optional[int] = None
+    profile: PlayerMapProfileResponse | None = None
+    message: str | None = None
+    total: int | None = None
+    resolved: int | None = None
 
 
-def _avatar_base64(avatar_data: Optional[bytes]) -> Optional[str]:
+def _avatar_base64(avatar_data: bytes | None) -> str | None:
     if not avatar_data:
         return None
     return base64.b64encode(avatar_data).decode("utf-8")
@@ -98,7 +100,7 @@ def _error_event(message: str) -> dict:
     return {"event_type": "error", "message": message}
 
 
-def _dedupe_normalized_uuids(uuids: List[str]) -> tuple[list[str], list[str]]:
+def _dedupe_normalized_uuids(uuids: list[str]) -> tuple[list[str], list[str]]:
     normalized_uuids: list[str] = []
     invalid_uuids: list[str] = []
     seen: set[str] = set()
@@ -121,7 +123,7 @@ async def _client_disconnected(request: Request | None) -> bool:
 
 
 async def iter_player_map_profile_events(
-    uuids: List[str],
+    uuids: list[str],
     request: Request | None = None,
 ) -> AsyncIterator[dict]:
     normalized_uuids, invalid_uuids = _dedupe_normalized_uuids(uuids)
@@ -189,7 +191,7 @@ async def iter_player_map_profile_events(
                     fetched.name,
                     fetched.skin_data,
                     fetched.avatar_data,
-                    datetime.now(timezone.utc),
+                    datetime.now(UTC),
                 )
 
             profile = _profile_response(player, uuid)
@@ -206,10 +208,10 @@ async def iter_player_map_profile_events(
     yield _complete_event(total, resolved)
 
 
-@router.get("/", response_model=List[PlayerSummary])
+@router.get("/", response_model=list[PlayerSummary])
 async def get_all_players(
     online_only: bool = Query(False, description="Only return online players"),
-    server_id: Optional[str] = Query(None, description="Filter by server ID"),
+    server_id: str | None = Query(None, description="Filter by server ID"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -327,7 +329,7 @@ async def get_player_map_profile(
         fetched.name,
         fetched.skin_data,
         fetched.avatar_data,
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
     )
     return _profile_response(player, normalized)
 

@@ -7,13 +7,18 @@ React 19 + TypeScript + Vite 8 on Node 24. Path alias: `@` → `src/`.
 ```bash
 pnpm install
 pnpm dev        # port 3000
-pnpm build      # tsc + vite build
+pnpm build      # typecheck + bundle
+pnpm typecheck  # tsc -b
+pnpm build:bundle # vite build
 pnpm lint
+pnpm test       # Vitest operation-flow tests
 ```
 
 Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
 Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
+
+The Static Checks push workflow runs lint, typecheck, operation-flow tests and bundling as separate steps. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
 
 React Router 7 is used in declarative mode; import router APIs from `react-router`.
 
@@ -28,6 +33,8 @@ Every server-state operation goes through one of three layers. **Don't mix conce
 Mutations live in `hooks/mutations/use*Mutations.ts` (writes + cache invalidation on success).
 
 When to bypass the query layer: one-off flow-local requests that should not be globally cached (e.g. modal-only preview/check calls), or stream/progress operations.
+
+`hooks/uploads/` owns each dialog's local queue and cancellation. The archive flow owns pause/resume and verification; the ordinary-file flow owns conflict checking and sequential batch uploads. Dialogs render flow state; raw API functions each issue one request.
 
 ## Query keys & invalidation (mandatory)
 
@@ -95,7 +102,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/player-management.md` — global page, detail drawer tabs, online-players card
 - `docs/file-management.md` — file browser, multi-file upload session flow, deep search, compression tasks
 - `docs/archive-upload.md` — resumable archive upload dialog, pause/resume, SHA256 verification, SSE reader split
-- `docs/cron-management.md` — visual expression builder, schema-driven job params, status flow
+- `docs/cron-management.md` — visual expression builder, schema-driven job params, job status and execution outcomes including skipped runs
 - `docs/dns-management.md` — diff display, conditional layout, manual update flow
 - `docs/templates.md` — three-tab editor, variable validation, mode-conversion wizard
 - `docs/console.md` — xterm.js + WebSocket lifecycle, reconnection, fit handling

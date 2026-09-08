@@ -1,10 +1,8 @@
 """Integration tests for template configuration endpoints."""
 
-import tempfile
-import asyncio
 import json
+import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -70,9 +68,9 @@ def temp_server_path():
 @pytest.fixture
 async def test_db():
     """Create a test database."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
-    database_url = f"sqlite+aiosqlite:///{temp_db.name}"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
+    database_url = f"sqlite+aiosqlite:///{database_path}"
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -84,7 +82,7 @@ async def test_db():
     yield TestSessionLocal
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -97,36 +95,23 @@ def test_client(temp_server_path, test_db):
 
     api_app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.config.settings.server_path", temp_server_path):
-        with patch("app.config.settings.master_token", "test-master-token"):
-            real_mc_manager = DockerMCManager(temp_server_path)
-            with patch(
-                "app.servers.lifecycle.orchestrators.docker_mc_manager",
-                real_mc_manager,
-            ):
-                with patch(
-                    "app.routers.servers.template_config.docker_mc_manager",
-                    real_mc_manager,
-                ):
-                    with patch(
-                        "app.servers.port_utils.docker_mc_manager", real_mc_manager
-                    ):
-                        with patch(
-                            "app.servers.port_utils.get_system_used_ports",
-                            return_value=set(),
-                        ):
-                            with patch(
-                                "app.servers.lifecycle.orchestrators.log_monitor.start_server",
-                                new_callable=AsyncMock,
-                            ):
-                                with patch(
-                                    "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
-                                    new_callable=AsyncMock,
-                                ):
-                                    client = TestClient(
-                                        api_app, raise_server_exceptions=False
-                                    )
-                                    yield client
+    with (
+        patch('app.config.settings.server_path', temp_server_path),
+        patch('app.config.settings.master_token', 'test-master-token'),
+    ):
+        real_mc_manager = DockerMCManager(temp_server_path)
+        with (
+            patch('app.servers.lifecycle.orchestrators.docker_mc_manager', real_mc_manager),
+            patch('app.routers.servers.template_config.docker_mc_manager', real_mc_manager),
+            patch('app.servers.port_utils.docker_mc_manager', real_mc_manager),
+            patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
+            patch('app.servers.lifecycle.orchestrators.log_monitor.start_server', new_callable=AsyncMock),
+            patch('app.servers.lifecycle.orchestrators.simple_dns_manager.update', new_callable=AsyncMock),
+        ):
+            client = TestClient(
+                api_app, raise_server_exceptions=False
+            )
+            yield client
 
     api_app.dependency_overrides.pop(get_db, None)
 
@@ -235,13 +220,47 @@ class TestTemplateConfigPreview:
         assert response.status_code == 200
         assert response.json()["is_template_based"] is False
 
+    @pytest.mark.parametrize("delete_source", [False, True])
+    def test_render_preview_uses_server_snapshot(self, test_client, delete_source):
+        template_id = create_template(test_client)
+        server_id = "snapshot-preview"
+        assert create_template_server(test_client, template_id, server_id).status_code == 200
+        source_path = f"/api/templates/{template_id}"
+        if delete_source:
+            assert test_client.delete(source_path, headers=auth_headers()).status_code == 204
+        else:
+            response = test_client.put(
+                source_path,
+                json={"yaml_template": YAML_TEMPLATE.replace('MEMORY: "2G"', 'MEMORY: "4G"')},
+                headers=auth_headers(),
+            )
+            assert response.status_code == 200
+        response = test_client.post(
+            f"/api/servers/{server_id}/template-config/preview",
+            json={"variable_values": {
+                "name": server_id, "game_port": 25565,
+                "rcon_port": 25575, "game_version": "1.21.1",
+            }},
+            headers=auth_headers(),
+        )
+        assert response.status_code == 200
+        assert 'MEMORY: "2G"' in response.json()["rendered_yaml"]
+        assert 'VERSION: "1.21.1"' in response.json()["rendered_yaml"]
+
 
 async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_db, temp_server_path):
     from app.background_tasks import BackgroundTaskManager
     from app.minecraft import MCServerStatus
-    from app.routers.servers.template_config import TemplateConfigUpdateRequest, update_template_config
+    from app.routers.servers.template_config import (
+        TemplateConfigUpdateRequest,
+        update_template_config,
+    )
     from app.servers.crud import create_server_record, get_active_server_by_id
-    from app.templates import StringVariableDefinition, TemplateSnapshot, VariableDefinition
+    from app.templates import (
+        StringVariableDefinition,
+        TemplateSnapshot,
+        VariableDefinition,
+    )
     from app.templates.crud import create_template
 
     manager = DockerMCManager(temp_server_path)
@@ -261,18 +280,10 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
                                    variable_values_json=json.dumps({"memory": "2G"}))
 
     tasks = BackgroundTaskManager()
-    callbacks = []
-
-    def start_callback(coro):
-        task = asyncio.create_task(coro)
-        callbacks.append(task)
-        return task
-
     with (
         patch("app.routers.servers.template_config.docker_mc_manager", manager),
         patch("app.routers.servers.template_config.task_manager", tasks),
-        patch("app.routers.servers.template_config.get_async_session", test_db),
-        patch("app.routers.servers.template_config.asyncio", SimpleNamespace(create_task=start_callback)),
+        patch("app.servers.rebuild.get_async_session", test_db),
         patch("app.servers.rebuild.docker_mc_manager", manager),
         patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.EXISTS)),
@@ -285,7 +296,6 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
         future = tasks.get_future(response.task_id)
         assert future is not None
         assert (await future).success
-        await asyncio.gather(*callbacks)
 
     rendered = await instance.get_compose_file()
     assert 'MEMORY: "3G"' in rendered
@@ -295,3 +305,76 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
         assert record is not None
         assert json.loads(record.variable_values_json or "{}") == {"memory": "3G"}
         assert record.template_snapshot_json == snapshot.model_dump_json()
+
+
+@pytest.mark.parametrize("failure", [None, "save", "start"])
+async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_path, failure):
+    from app.background_tasks import BackgroundTaskManager, TaskType
+    from app.minecraft import MCServerStatus
+    from app.routers.servers.template_config import get_template_config
+    from app.servers.configuration import (
+        capture_template_snapshot,
+        prepare_template_configuration,
+    )
+    from app.servers.crud import create_server_record, get_active_server_by_id
+    from app.servers.rebuild import rebuild_server_task
+    from app.templates import StringVariableDefinition
+    from app.templates.crud import create_template, save_template
+
+    manager = DockerMCManager(temp_server_path)
+    instance = manager.get_instance("metadata-rebuild")
+    original = get_traditional_yaml("metadata-rebuild")
+    await instance.create(original)
+    template_yaml = original.replace('MEMORY: "2G"', 'MEMORY: "{memory}"')
+    async with test_db() as db:
+        template = await create_template(db, "memory", None, template_yaml, [
+            StringVariableDefinition(name="memory", display_name="内存"),
+        ])
+        configuration = prepare_template_configuration(
+            capture_template_snapshot(template), {"memory": "3G"}
+        )
+        await create_server_record(db, "metadata-rebuild")
+        template.yaml_template += "x-source-edited: true\n"
+        await save_template(db, template)
+
+    async def start():
+        async with test_db() as db:
+            record = await get_active_server_by_id(db, "metadata-rebuild")
+            assert record is not None
+            assert json.loads(record.variable_values_json or "{}") == {"memory": "3G"}
+        if failure == "start":
+            raise RuntimeError("启动失败")
+
+    tasks = BackgroundTaskManager()
+    with (
+        patch("app.servers.rebuild.docker_mc_manager", manager),
+        patch("app.servers.rebuild.get_async_session", test_db),
+        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch.object(manager, "get_instance", return_value=instance),
+        patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.HEALTHY)),
+        patch.object(instance, "created", AsyncMock(return_value=False)),
+        patch.object(instance, "down", AsyncMock()),
+        patch.object(instance, "up", AsyncMock(side_effect=start)) as up,
+    ):
+        if failure == "save":
+            with patch("app.servers.rebuild.save_configuration_metadata", AsyncMock(side_effect=RuntimeError("保存失败"))):
+                submitted = tasks.submit(TaskType.SERVER_REBUILD, "重建", rebuild_server_task("metadata-rebuild", configuration))
+                result = await submitted.awaitable
+        else:
+            submitted = tasks.submit(TaskType.SERVER_REBUILD, "重建", rebuild_server_task("metadata-rebuild", configuration))
+            result = await submitted.awaitable
+
+    assert result.success is (failure is None)
+    assert 'MEMORY: "3G"' in await instance.get_compose_file()
+    assert "x-source-edited" not in await instance.get_compose_file()
+    assert up.await_count == (0 if failure == "save" else 1)
+    async with test_db() as db:
+        record = await get_active_server_by_id(db, "metadata-rebuild")
+        assert record is not None
+        if failure == "save":
+            assert record.template_id is None
+        else:
+            assert json.loads(record.variable_values_json or "{}") == {"memory": "3G"}
+            config = await get_template_config("metadata-rebuild", db)
+            assert config.has_template_update
+            assert config.yaml_template == template_yaml

@@ -18,6 +18,9 @@ class BaseConfigSchema(BaseModel):
     Provides version management, field metadata extraction, and deprecated field handling.
     """
 
+    def validate_update(self) -> None:
+        """Validate newly submitted settings without changing legacy loading rules."""
+
     @model_validator(mode="before")
     @classmethod
     def _validate_union_fields(cls, values):

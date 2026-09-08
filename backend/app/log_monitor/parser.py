@@ -1,7 +1,6 @@
 """Log parser for Minecraft server log lines."""
 
 import re
-from typing import Optional
 
 from ..dynamic_config import config
 from ..logger import logger
@@ -19,7 +18,7 @@ from .events import (
 class LogParser:
     """Parses Minecraft server log lines and creates events."""
 
-    def parse_line(self, server_id: str, line: str) -> Optional[LogEvent]:
+    def parse_line(self, server_id: str, line: str) -> LogEvent | None:
         """Parse a log line and return an event if matched.
 
         Args:

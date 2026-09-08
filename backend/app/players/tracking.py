@@ -5,7 +5,7 @@ Called directly by LogMonitor, HeartbeatManager, PlayerSyncer, and routers.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..db.database import get_async_session
 from ..events import (
@@ -24,8 +24,8 @@ from .crud import (
     end_all_open_sessions_on_server,
     get_all_player_names_with_ids,
     get_or_add_player_by_name,
-    get_player_by_name,
     get_or_create_session,
+    get_player_by_name,
     upsert_achievement,
 )
 from .crud import (
@@ -37,7 +37,7 @@ from .skin_fetcher import skin_fetcher
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _event_player(player_db_id: int, uuid: str, name: str) -> EventPlayer:

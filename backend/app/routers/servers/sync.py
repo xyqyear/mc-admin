@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +40,10 @@ class SyncRequest(BaseModel):
 
 @router.post("/sync", response_model=SyncResult)
 async def sync_servers(
-    body: SyncRequest = SyncRequest(),
+    body: SyncRequest = Body(
+        default_factory=SyncRequest,
+        json_schema_extra={"default": {"dry_run": False, "force": False}},
+    ),
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(RequireRole(UserRole.OWNER)),
 ) -> SyncResult:
@@ -83,6 +86,7 @@ async def sync_servers(
                     )
                 )
             except Exception as e:
+                logger.exception("同步服务器校验失败: server_id=%s", sid)
                 errors.append(
                     SyncEntryError(
                         server_id=sid, stage="validate", error=str(e)
@@ -93,6 +97,9 @@ async def sync_servers(
             try:
                 jobs, sessions = await preview_deactivation(db, sid)
             except Exception:
+                logger.warning(
+                    "同步服务器停用预览失败: server_id=%s", sid, exc_info=True
+                )
                 jobs, sessions = 0, 0
             preview.append(
                 SyncDryRunEntry(
@@ -119,6 +126,7 @@ async def sync_servers(
                     )
                 )
             except Exception as e:
+                logger.exception("同步服务器接管失败: server_id=%s", sid)
                 errors.append(
                     SyncEntryError(
                         server_id=sid, stage="adopt", error=str(e)
@@ -129,6 +137,7 @@ async def sync_servers(
             try:
                 removed.append(await deactivate_server_partial(db, sid))
             except Exception as e:
+                logger.exception("同步服务器停用失败: server_id=%s", sid)
                 errors.append(
                     SyncEntryError(
                         server_id=sid, stage="deactivate", error=str(e)
@@ -137,8 +146,8 @@ async def sync_servers(
 
         try:
             await simple_dns_manager.update(db)
-        except Exception as e:
-            logger.warning(f"sync: dns update failed: {e}")
+        except Exception:
+            logger.warning("同步服务器后的 DNS 更新失败", exc_info=True)
 
         return SyncResult(
             applied=True,

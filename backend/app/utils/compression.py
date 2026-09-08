@@ -2,8 +2,9 @@
 
 import re
 from collections.abc import AsyncGenerator
-from datetime import datetime
-from typing import Optional
+from contextlib import aclosing
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from aiofiles import os as aioos
 
@@ -42,9 +43,9 @@ def _sanitize_filename_part(part: str) -> str:
 
 
 def _generate_archive_filename(
-    server_name: str, relative_path: Optional[str] = None
+    server_name: str, relative_path: str | None = None
 ) -> str:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).astimezone().replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
 
     safe_server_name = _sanitize_filename_part(server_name)
 
@@ -57,6 +58,7 @@ def _generate_archive_filename(
             filename_parts.append(safe_path)
 
     filename_parts.append(timestamp)
+    filename_parts.append(uuid4().hex)
 
     filename = "_".join(filename_parts) + ".7z"
 
@@ -64,8 +66,8 @@ def _generate_archive_filename(
 
 
 async def create_server_archive_stream(
-    instance: MCInstance, relative_path: Optional[str] = None
-) -> AsyncGenerator[TaskProgress, None]:
+    instance: MCInstance, relative_path: str | None = None
+) -> AsyncGenerator[TaskProgress]:
     """Create a 7z archive of an instance's files, yielding ``TaskProgress`` updates."""
     archive_base_path = await async_fs.resolve(settings.archive_path)
     await aioos.makedirs(archive_base_path, exist_ok=True)
@@ -95,7 +97,7 @@ async def create_server_archive_stream(
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
     try:
-        async for segment in exec_command_stream(
+        async with aclosing(exec_command_stream(
             "7z",
             "a",
             "-t7z",
@@ -104,13 +106,14 @@ async def create_server_archive_stream(
             source_name,
             cwd=str(source_parent),
             delimiters=progress_delimiters,
-        ):
-            match = re.search(r"^\s*(\d+)%", segment)
-            if match:
-                progress = int(match.group(1))
-                yield TaskProgress(
-                    progress=progress, message=f"Compressing: {progress}%"
-                )
+        )) as stream:
+            async for segment in stream:
+                match = re.search(r"^\s*(\d+)%", segment)
+                if match:
+                    progress = int(match.group(1))
+                    yield TaskProgress(
+                        progress=progress, message=f"Compressing: {progress}%"
+                    )
 
         archive_size = (await aioos.stat(archive_path)).st_size
 
@@ -119,7 +122,7 @@ async def create_server_archive_stream(
             message="Compression complete",
             result={"filename": archive_filename, "size": archive_size},
         )
-    except Exception:
+    except BaseException:
         if await aioos.path.exists(archive_path):
             try:
                 await aioos.remove(archive_path)

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ..background_tasks.types import TaskProgress
 from ..config import settings
 from ..files.utils import get_uid_gid
+from ..logger import logger
 from . import async_fs
 from .exec import exec_command, exec_command_stream
 
@@ -70,7 +71,7 @@ def _is_bad_archive_error(error_msg: str) -> bool:
 async def extract_archive_stream(
     archive_path: str,
     output_dir: str,
-) -> AsyncGenerator[int, None]:
+) -> AsyncGenerator[int]:
     """Yield 7z extraction progress percentages (0-100)."""
     # 7z rewrites the progress line with \r and \x08 between updates.
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
@@ -91,7 +92,7 @@ async def extract_archive_stream(
 async def extract_minecraft_server(
     archive_path: str,
     target_path: str,
-) -> AsyncGenerator[TaskProgress, None]:
+) -> AsyncGenerator[TaskProgress]:
     """Extract a server archive into ``target_path``, yielding ``TaskProgress`` per step."""
     archive_path = str(await async_fs.resolve(Path(archive_path)))
     target_path = str(await async_fs.resolve(Path(target_path)))
@@ -119,6 +120,7 @@ async def extract_minecraft_server(
             "-r",
         )
     except Exception as e:
+        logger.exception("Unable to inspect Minecraft archive")
         error_msg = str(e)
         if (
             "7z: command not found" in error_msg
@@ -166,6 +168,7 @@ async def extract_minecraft_server(
             "-R",
         )
     except Exception as e:
+        logger.exception("Unable to set extracted file ownership")
         error_msg = str(e)
         if "Operation not permitted" in error_msg:
             raise RuntimeError("无权限更改文件所有权")
@@ -178,6 +181,7 @@ async def extract_minecraft_server(
             "find", temp_dir, "-name", "server.properties", "-print", "-quit"
         )
     except Exception as e:
+        logger.exception("Unable to locate extracted server properties")
         error_msg = str(e)
         if "Permission denied" in error_msg:
             raise RuntimeError("无权限搜索临时目录")
@@ -216,6 +220,7 @@ async def extract_minecraft_server(
             ";",
         )
     except Exception as e:
+        logger.exception("Unable to move extracted server data")
         error_msg = str(e)
         if "Permission denied" in error_msg:
             raise RuntimeError("无权限移动文件到目标目录")
@@ -230,6 +235,7 @@ async def extract_minecraft_server(
 
         await async_fs.rmtree(Path(temp_dir))
     except Exception as e:
+        logger.exception("Unable to remove archive staging files")
         error_msg = str(e)
         if "Permission denied" in error_msg:
             raise RuntimeError("无权限删除临时文件")

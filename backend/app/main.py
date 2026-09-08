@@ -10,8 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
 
-from .auth.session import CSRFMiddleware
 from .audit import OperationAuditMiddleware
+from .auth.session import CSRFMiddleware
 from .config import settings
 from .cron import cron_manager
 from .db.database import get_async_session
@@ -27,12 +27,14 @@ from .routers import (
     cron,
     dns,
     events,
-    snapshots,
     self_check,
+    snapshots,
     system,
     tasks,
-    templates as template_routes,
     user,
+)
+from .routers import (
+    templates as template_routes,
 )
 from .routers.config import router as config_router
 from .routers.players import (
@@ -41,8 +43,8 @@ from .routers.players import (
     players,
     sessions,
 )
-from .routers.servers import compose as server_compose
 from .routers.servers import chunk_prune as server_chunk_prune
+from .routers.servers import compose as server_compose
 from .routers.servers import console as server_console
 from .routers.servers import create as server_create
 from .routers.servers import files as server_files
@@ -181,7 +183,7 @@ async def api_exception_handler(request: Request, exc: Exception):
         )
         exc = HTTPException(
             status_code=500,
-            detail=f"request to {request.url} failed with error: {str(exc)}",
+            detail=f"request to {request.url} failed with error: {exc!s}",
         )
         return await http_exception_handler(request, exc)
 

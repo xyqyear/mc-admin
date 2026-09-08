@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
@@ -31,7 +31,7 @@ class BackgroundTaskManager:
         self,
         task_type: TaskType,
         name: str,
-        task_generator: AsyncGenerator[TaskProgress, None],
+        task_generator: AsyncGenerator[TaskProgress],
         server_id: str | None = None,
         cancellable: bool = True,
         task_id: str | None = None,
@@ -88,13 +88,14 @@ class BackgroundTaskManager:
 
         async def run_task():
             task.status = TaskStatus.RUNNING
-            task.started_at = datetime.now()
+            task.started_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
 
             try:
                 async for progress in task_generator:
                     if task.cancel_requested:
+                        await task_generator.aclose()
                         task.status = TaskStatus.CANCELLED
-                        task.ended_at = datetime.now()
+                        task.ended_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
                         task.message = "已取消"
                         future.set_result(TaskResult(success=False, error="已取消"))
                         logger.info(
@@ -108,7 +109,7 @@ class BackgroundTaskManager:
                         task.result = progress.result
 
                 task.status = TaskStatus.COMPLETED
-                task.ended_at = datetime.now()
+                task.ended_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
                 if task.progress is not None:
                     task.progress = 100
                 future.set_result(TaskResult(success=True, data=task.result))
@@ -116,10 +117,10 @@ class BackgroundTaskManager:
 
             except Exception as e:
                 task.status = TaskStatus.FAILED
-                task.ended_at = datetime.now()
+                task.ended_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
                 task.error = str(e)
                 future.set_result(TaskResult(success=False, error=str(e)))
-                logger.exception(f"Task {task.task_id} ({task.name}) failed: {e}")
+                logger.exception("Task %s (%s) failed", task.task_id, task.name)
 
         asyncio_task = asyncio.create_task(run_task())
         self._asyncio_tasks[task.task_id] = asyncio_task

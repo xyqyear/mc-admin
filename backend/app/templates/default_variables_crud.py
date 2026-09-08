@@ -1,11 +1,12 @@
 """Default variable configuration CRUD operations."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import DefaultVariableConfig
+from .manager import TemplateManager
 from .models import (
     EnumVariableDefinition,
     IntVariableDefinition,
@@ -70,7 +71,7 @@ async def _ensure_default_config(db: AsyncSession) -> DefaultVariableConfig:
         config = DefaultVariableConfig(
             id=1,
             variable_definitions_json=serialize_variable_definitions(DEFAULT_VARIABLES),
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         db.add(config)
         await db.commit()
@@ -89,6 +90,9 @@ async def update_default_variables(
     variables: list[VariableDefinition],
 ) -> list[VariableDefinition]:
     """Upsert the singleton config row and return the persisted definitions."""
+    errors = TemplateManager.validate_variable_definitions(variables)
+    if errors:
+        raise ValueError("; ".join(errors))
     result = await db.execute(
         select(DefaultVariableConfig).where(DefaultVariableConfig.id == 1)
     )
@@ -98,12 +102,12 @@ async def update_default_variables(
 
     if config:
         config.variable_definitions_json = variable_definitions_json
-        config.updated_at = datetime.now(timezone.utc)
+        config.updated_at = datetime.now(UTC)
     else:
         config = DefaultVariableConfig(
             id=1,
             variable_definitions_json=variable_definitions_json,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         db.add(config)
 

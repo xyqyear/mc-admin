@@ -1,6 +1,7 @@
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, Iterable, Optional
+from typing import Self
 
 from app.world import region_manifest
 
@@ -17,14 +18,14 @@ def test_region_manifest_worker_count_comes_from_config(tmp_path: Path, monkeypa
         def __init__(self, max_workers: int) -> None:
             seen_workers.append(max_workers)
 
-        def __enter__(self) -> "FakePool":
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(
             self,
-            exc_type: Optional[type[BaseException]],
-            exc: Optional[BaseException],
-            tb: Any,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
         ) -> bool:
             return False
 

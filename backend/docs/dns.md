@@ -1,19 +1,19 @@
 # DNS Management (`app.dns`)
 
-Keeps DNS records and the mc-router routing table in sync with the live set of managed servers. Every running server gets a wildcard DNS entry plus an SRV record (so `server.example.com` resolves to the router, which forwards to the right container) and a route in mc-router.
+Keeps DNS records and the mc-router routing table in sync with active database server records, including stopped servers. Each configured address supplies a wildcard A/AAAA/CNAME record, and each server/address combination supplies an SRV record and an mc-router route.
 
 ## Why two providers
 
 The project is used by Chinese homelabbers (DNSPod) and Huawei Cloud customers (Huawei DNS). Both APIs do the same job — list/add/update records — but with incompatible request shapes. The `DNSClient` abstract base unifies them:
 
 ```python
-class DNSClient(ABC):
+class DNSClient:
     async def list_records(self) -> RecordListT: ...
-    async def list_relevant_records(self) -> RecordListT: ...   # filters by managed sub-domain
-    async def update_records(self, add, update, remove) -> None: ...
+    async def list_relevant_records(self, managed_sub_domain: str) -> RecordListT: ...
+    async def update_records(self, target_records, managed_sub_domain=None) -> None: ...
 ```
 
-`DNSPodClient` and `HuaweiDNSClient` implement this; `SimpleDNSManager` picks one based on `dynamic_config.dns.provider`.
+`DNSPodClient` and `HuaweiDNSClient` implement this; `SimpleDNSManager` picks one based on `config.dns.dns.type`.
 
 ## How `update()` works
 
@@ -24,23 +24,29 @@ class DNSClient(ABC):
 3. Pull current records via `client.list_relevant_records()`.
 4. `diff_dns_records()` produces add / update / remove lists.
 5. `client.update_records(...)` applies them.
-6. Push the same intent to mc-router via `MCRouterClient.update_routes()` so traffic actually reaches the container.
+6. Push the same intent to mc-router via `MCRouterClient.override_routes()` so traffic actually reaches the container.
 
 `get_current_diff(db)` runs steps 1–4 without applying — used by the frontend to render "pending changes" before the user clicks Update.
+
+When no configured addresses or readable active servers remain, update skips reconciliation and diff calculation fails. Empty desired state does not delete existing cloud records. Removal of some addresses/servers is reconciled while at least one address and server remain.
 
 `manager.py` defers the import of `app.servers.crud.get_active_servers` to call-time because `app.servers.lifecycle` imports `app.dns`; a top-level import would close the cycle.
 
 ## mc-router
 
-`MCRouterClient` POSTs route mappings (`server_address → localhost:port`) to mc-router's HTTP control endpoint. The router then forwards Minecraft traffic by SRV/hostname. Without this, DNS would resolve to the right machine but no port forwarding would happen.
+`MCRouterClient` POSTs route mappings (`server_address → localhost:port`) to mc-router's HTTP control endpoint. It accepts both legacy string-valued route maps and current objects containing `backend` and `scalingTarget`, exposing the backend address through MC Admin's string-valued API. Deleting a route that already returns HTTP 404 succeeds idempotently; other HTTP failures and missing, empty or non-string backend values fail reconciliation. This validation does not check address syntax. Replacement removes existing routes before adding the desired routes, without transactional rollback or multi-writer isolation. The router then forwards Minecraft traffic by SRV/hostname.
 
 ## Triggering
 
-DNS sync is **manual by default** — the admin clicks Update in the UI. There's also a hook in server lifecycle ops (start/stop/create/remove) that triggers `SimpleDNSManager.update()` if `dynamic_config.dns.auto_update` is true.
+The DNS API supports explicit reconciliation. Application startup and server creation/removal/synchronization orchestration also attempt updates; lifecycle update failures are logged without reversing the completed server operation. There is no `auto_update` dynamic configuration field.
 
 ## Re-initialization on config change
 
-Provider credentials (DNSPod id+key, Huawei ak+sk+region) and managed sub-domain are stored in `dynamic_config.dns`. The manager compares a hash of the relevant config on each call; if it changed, it rebuilds the provider client before continuing.
+Provider credentials (DNSPod id+key, Huawei ak+sk+region), managed sub-domain, addresses, TTL and router URL are stored in `config.dns`. Before updates, diff calculation and current records/routes reads, a hash of enabled state, provider configuration and router URL determines whether to rebuild clients. Managed sub-domain, addresses and TTL are read when calculating the desired state.
+
+Initialization, updates, diff calculation, current records/routes reads and shutdown share the manager lock. Each operation refreshes its clients and reads using one captured configuration; routers do not access provider clients directly. The DNS page's three concurrent queries therefore share one initialization and cannot close a router client while another query is using it. Disabled API operations return 503 before entering the manager.
+
+Disabling DNS closes the old router client, clears both clients and stops synchronization before enumerating servers or writing records. Re-enabling initializes clients from the current configuration. DNS and router writes may run together, but each parallel batch waits for its issued requests to settle before reporting the first failure, including nested route replacement and Huawei record creation batches. The manager retains ownership through both branches; this does not provide cross-provider rollback.
 
 ## Files
 

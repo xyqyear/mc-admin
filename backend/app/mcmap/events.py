@@ -1,6 +1,6 @@
 """Typed JSON events emitted by the mcmap CLI."""
 
-from typing import Annotated, Any, Literal, Optional, TypeAlias
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -16,12 +16,12 @@ class MCMapEventModel(BaseModel):
 class MCMapProgressEvent(MCMapEventModel):
     type: Literal["progress"]
     phase: str
-    elapsed_ms: Optional[int] = None
-    count: Optional[int] = None
-    bytes: Optional[int] = None
-    total: Optional[int] = None
-    index: Optional[int] = None
-    path: Optional[str] = None
+    elapsed_ms: int | None = None
+    count: int | None = None
+    bytes: int | None = None
+    total: int | None = None
+    index: int | None = None
+    path: str | None = None
 
 
 class MCMapErrorEvent(MCMapEventModel):
@@ -38,8 +38,8 @@ class MCMapRenderRegionEvent(MCMapEventModel):
     x: int
     z: int
     status: Literal["rendered", "missing", "error"]
-    output: Optional[str] = None
-    error: Optional[str] = None
+    output: str | None = None
+    error: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -65,7 +65,7 @@ class MCMapGenPaletteResultEvent(MCMapEventModel):
     output: str
     entries: int
     counters: dict[str, Any]
-    failed: Optional[int] = None
+    failed: int | None = None
 
 
 class MCMapChunkReplaceEvent(MCMapEventModel):
@@ -91,7 +91,7 @@ class MCMapRemoveChunksResultEvent(MCMapEventModel):
     removed: int
 
 
-MCMapPruneMode: TypeAlias = Literal["chunks", "regions"]
+MCMapPruneMode = Literal["chunks", "regions"]
 
 
 class MCMapPruneRegionDirEvent(MCMapEventModel):
@@ -143,25 +143,25 @@ class MCMapPruneResultEvent(MCMapEventModel):
     chunks_scanned: int
     chunks_selected: int
     regions_selected: int
-    claims_loaded: Optional[int] = None
-    claimed_chunks_protected: Optional[int] = None
-    chunks_skipped_by_claims: Optional[int] = None
-    regions_skipped_by_claims: Optional[int] = None
+    claims_loaded: int | None = None
+    claimed_chunks_protected: int | None = None
+    chunks_skipped_by_claims: int | None = None
+    regions_skipped_by_claims: int | None = None
 
 
-MCMapDetectedFtbFormat: TypeAlias = Literal[
+MCMapDetectedFtbFormat = Literal[
     "snbt",
     "per_team_nbt",
     "universe_dat",
     "latmod_json",
 ]
 
-MCMapFtbTeamType: TypeAlias = Literal["player", "party", "server", "unknown"]
-MCMapPlayerIdKind: TypeAlias = Literal["uuid", "name"]
-MCMapPlayerStorageKind: TypeAlias = Literal[
+MCMapFtbTeamType = Literal["player", "party", "server", "unknown"]
+MCMapPlayerIdKind = Literal["uuid", "name"]
+MCMapPlayerStorageKind = Literal[
     "playerdata", "players_data", "legacy_players"
 ]
-MCMapPlayerSkipReason: TypeAlias = Literal[
+MCMapPlayerSkipReason = Literal[
     "parse_error",
     "missing_pos",
     "invalid_pos",
@@ -177,9 +177,9 @@ class MCMapDimensionEntry(MCMapEventModel):
 
 
 class MCMapFtbMember(MCMapEventModel):
-    uuid: Optional[str] = None
-    name: Optional[str] = None
-    rank: Optional[str] = None
+    uuid: str | None = None
+    name: str | None = None
+    rank: str | None = None
 
 
 class MCMapFtbClaim(MCMapEventModel):
@@ -191,9 +191,9 @@ class MCMapFtbClaim(MCMapEventModel):
 
 class MCMapFtbTeam(MCMapEventModel):
     id: str
-    name: Optional[str] = None
+    name: str | None = None
     type: MCMapFtbTeamType
-    owner: Optional[MCMapFtbMember] = None
+    owner: MCMapFtbMember | None = None
     members: list[MCMapFtbMember]
     claims: list[MCMapFtbClaim]
 
@@ -212,7 +212,7 @@ class MCMapFtbClaimsResultEvent(MCMapEventModel):
     teams: int
     claims: int
     dimensions: int
-    output: Optional[str] = None
+    output: str | None = None
     data: MCMapFtbClaimsPayload
 
 
@@ -227,7 +227,7 @@ class MCMapPlayerRecord(MCMapEventModel):
     id_kind: MCMapPlayerIdKind
     source: str
     storage: MCMapPlayerStorageKind
-    data_version: Optional[int] = None
+    data_version: int | None = None
     dim: str
     pos: MCMapPlayerPosition
 
@@ -236,7 +236,7 @@ class MCMapSkippedPlayerFile(MCMapEventModel):
     source: str
     storage: MCMapPlayerStorageKind
     reason: MCMapPlayerSkipReason
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class MCMapPlayersPayload(MCMapEventModel):
@@ -252,11 +252,11 @@ class MCMapPlayersResultEvent(MCMapEventModel):
     players: int
     skipped: int
     dimensions: int
-    output: Optional[str] = None
+    output: str | None = None
     data: MCMapPlayersPayload
 
 
-MCMapGenericEvent: TypeAlias = Annotated[
+MCMapGenericEvent = Annotated[
     MCMapProgressEvent
     | MCMapRenderRegionEvent
     | MCMapGenericResultEvent
@@ -265,38 +265,38 @@ MCMapGenericEvent: TypeAlias = Annotated[
     | MCMapChunkRemoveEvent,
     Field(discriminator="type"),
 ]
-MCMapRenderEvent: TypeAlias = Annotated[
+MCMapRenderEvent = Annotated[
     MCMapProgressEvent
     | MCMapRenderRegionEvent
     | MCMapRenderResultEvent
     | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapDownloadClientEvent: TypeAlias = Annotated[
+MCMapDownloadClientEvent = Annotated[
     MCMapProgressEvent | MCMapDownloadClientResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapGenPaletteEvent: TypeAlias = Annotated[
+MCMapGenPaletteEvent = Annotated[
     MCMapProgressEvent | MCMapGenPaletteResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapReplaceChunksEvent: TypeAlias = Annotated[
+MCMapReplaceChunksEvent = Annotated[
     MCMapChunkReplaceEvent | MCMapReplaceChunksResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapRemoveChunksEvent: TypeAlias = Annotated[
+MCMapRemoveChunksEvent = Annotated[
     MCMapChunkRemoveEvent | MCMapRemoveChunksResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapFtbClaimsEvent: TypeAlias = Annotated[
+MCMapFtbClaimsEvent = Annotated[
     MCMapFtbClaimsResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapPlayersEvent: TypeAlias = Annotated[
+MCMapPlayersEvent = Annotated[
     MCMapPlayersResultEvent | MCMapErrorEvent,
     Field(discriminator="type"),
 ]
-MCMapPruneEvent: TypeAlias = Annotated[
+MCMapPruneEvent = Annotated[
     MCMapPruneRegionDirEvent
     | MCMapPruneProgressEvent
     | MCMapChunksPrunedEvent

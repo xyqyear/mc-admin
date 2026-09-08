@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 """
 Simple test script to verify the backup time restriction logic.
 Run this to test different time scenarios.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from fastapi import HTTPException
@@ -84,7 +83,7 @@ async def test_time_scenarios_with_config(
         # Mock the current time, backup minutes, and dynamic config
         import unittest.mock
 
-        mock_time = datetime(2024, 1, 1, 12, minute, second)
+        mock_time = datetime(2024, 1, 1, 12, minute, second, tzinfo=UTC).replace(tzinfo=None)
         # Use the original quarter-hour marks for testing: 0, 15, 30, 45
         backup_minutes = {0, 15, 30, 45}
 

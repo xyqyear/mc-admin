@@ -110,6 +110,18 @@ export const useTemplateMutations = () => {
     });
   };
 
+  const usePreviewServerTemplateConfig = () => {
+    return useMutation({
+      mutationFn: ({ serverId, variableValues }: {
+        serverId: string;
+        variableValues: Record<string, unknown>;
+      }) => templateApi.previewServerTemplateConfig(serverId, variableValues),
+      onError: (error: any) => {
+        toast.error(`预览失败: ${error.response?.data?.detail || error.message}`);
+      },
+    });
+  };
+
   const useCheckConversion = () => {
     return useMutation<
       CheckConversionResponse,
@@ -135,7 +147,7 @@ export const useTemplateMutations = () => {
         variableValues: Record<string, unknown>;
       }) => templateApi.updateServerTemplateConfig(serverId, variableValues),
       onSuccess: () => {
-        toast.success("配置更新成功");
+        toast.success("已提交配置重建");
         queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: any) => {
@@ -232,6 +244,7 @@ export const useTemplateMutations = () => {
     useUpdateTemplate,
     useDeleteTemplate,
     usePreviewRenderedYaml,
+    usePreviewServerTemplateConfig,
     useCheckConversion,
     useUpdateServerTemplateConfig,
     useUpdateDefaultVariables,

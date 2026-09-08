@@ -5,10 +5,11 @@ This module provides data classes and utilities to read and parse network
 statistics from /proc/{PID}/net/dev for Docker containers.
 """
 
-from typing import List
 
 import aiofiles
 from pydantic import BaseModel
+
+from ...logger import logger
 
 
 class NetworkInterface(BaseModel):
@@ -59,12 +60,12 @@ class NetworkStats(BaseModel):
     """Network statistics for a process/container."""
 
     pid: int
-    interfaces: List[NetworkInterface] = []
+    interfaces: list[NetworkInterface] = []
 
     @classmethod
     def from_net_dev_content(cls, pid: int, content: str) -> "NetworkStats":
         """Parse /proc/{pid}/net/dev file content into NetworkStats object."""
-        interfaces: List[NetworkInterface] = []
+        interfaces: list[NetworkInterface] = []
         lines = content.strip().split("\n")
 
         # Skip the first two header lines
@@ -161,7 +162,7 @@ class NetworkStats(BaseModel):
         return sum(interface.total_drops for interface in self.interfaces)
 
     @property
-    def non_loopback_interfaces(self) -> List[NetworkInterface]:
+    def non_loopback_interfaces(self) -> list[NetworkInterface]:
         """Get all non-loopback interfaces."""
         return [interface for interface in self.interfaces if interface.name != "lo"]
 
@@ -182,6 +183,7 @@ async def read_network_stats(pid: int) -> NetworkStats:
     except FileNotFoundError:
         raise FileNotFoundError(f"Network stats not found for PID {pid}")
     except Exception as e:
+        logger.exception("Operation read_network_stats failed")
         raise RuntimeError(f"Failed to read network stats for PID {pid}: {e}")
 
 

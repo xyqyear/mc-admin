@@ -1,7 +1,6 @@
 """Achievement query functions for API endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -24,8 +23,8 @@ class AchievementInfo(BaseModel):
 async def get_player_achievements(
     session: AsyncSession,
     player_db_id: int,
-    server_id: Optional[str] = None,
-) -> List[AchievementInfo]:
+    server_id: str | None = None,
+) -> list[AchievementInfo]:
     """Get player achievements.
 
     Args:
@@ -47,8 +46,9 @@ async def get_player_achievements(
     # Apply server filter
     if server_id:
         server_db_id = await get_server_db_id(session, server_id)
-        if server_db_id:
-            query = query.where(PlayerAchievement.server_db_id == server_db_id)
+        if server_db_id is None:
+            return []
+        query = query.where(PlayerAchievement.server_db_id == server_db_id)
 
     result = await session.execute(query)
     rows = result.all()

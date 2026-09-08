@@ -3,12 +3,13 @@ Multi-file upload operations with conflict detection and session management.
 """
 
 from pathlib import Path
-from typing import Dict, List
 
 import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
+from ..logger import logger
+from .paths import resolve_file_path
 from .types import (
     MultiFileUploadRequest,
     MultiFileUploadResult,
@@ -32,11 +33,11 @@ async def check_upload_conflicts(
 ) -> UploadConflictResponse:
     """Check for conflicts before multi-file upload"""
     conflicts = []
-    target_base = base_path / upload_path.lstrip("/")
+    target_base = await resolve_file_path(base_path, upload_path)
 
     for file_item in upload_request.files:
         if file_item.type == "file":
-            target_path = target_base / file_item.path.lstrip("/")
+            target_path = await resolve_file_path(target_base, file_item.path)
             if await aioos.path.exists(target_path):
                 current_size = None
                 if await aioos.path.isfile(target_path):
@@ -94,7 +95,7 @@ async def set_upload_policy(
 
 
 async def upload_multiple_files(
-    base_path: Path, session_id: str, upload_path: str, files: List[UploadFile]
+    base_path: Path, session_id: str, upload_path: str, files: list[UploadFile]
 ) -> MultiFileUploadResult:
     """Upload multiple files using the prepared session"""
     session = get_upload_session(session_id)
@@ -106,14 +107,17 @@ async def upload_multiple_files(
     if not session.policy:
         raise HTTPException(status_code=400, detail="Upload policy not set")
 
+    target_base = await resolve_file_path(base_path, upload_path)
+    for file in files:
+        if file.filename:
+            await resolve_file_path(target_base, file.filename)
+
     # Create a copy of session data to prevent concurrent modification
     session_copy = session.model_copy()
 
     # Only remove session if it's not reusable
     if not session.reusable:
         remove_upload_session(session_id)
-
-    target_base = base_path / upload_path.lstrip("/")
 
     # Process upload policy - build overwrite decisions map
     overwrite_decisions = {}
@@ -128,7 +132,7 @@ async def upload_multiple_files(
         for decision in policy.decisions or []:
             overwrite_decisions[decision.path] = decision.overwrite
 
-    results: Dict[str, UploadFileResult] = {}
+    results: dict[str, UploadFileResult] = {}
 
     try:
         # Process each uploaded file directly
@@ -138,7 +142,7 @@ async def upload_multiple_files(
 
             # file.filename contains the complete relative path (e.g., "config/settings.yml")
             file_relative_path = file.filename.lstrip("/")
-            target_path = target_base / file_relative_path
+            target_path = await resolve_file_path(target_base, file_relative_path)
 
             # Use file relative path as the key instead of just filename
             result_key = file_relative_path
@@ -184,12 +188,13 @@ async def upload_multiple_files(
                 results[result_key] = UploadFileResult(status="success")
 
             except Exception as file_error:
+                logger.exception("Upload failed for %s", file_relative_path)
                 results[result_key] = UploadFileResult(
                     status="failed", reason=str(file_error)
                 )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e!s}") from e
 
     # Count successful uploads
     success_count = sum(1 for result in results.values() if result.status == "success")

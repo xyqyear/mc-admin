@@ -8,9 +8,12 @@ snapshot being restored, so snapshots taken under an older ignore config
 stay protected as well.
 """
 
+import errno
 from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import aclosing
 from pathlib import Path
-from typing import List, Optional
+
+import aiofiles.os as aioos
 
 from ..dynamic_config import config
 from ..utils import async_fs
@@ -46,6 +49,29 @@ class SnapshotService:
             self._mc_manager, config.snapshots.ignored_paths
         )
 
+    async def remove_absent_paths(self, snapshot_id: str, paths: Sequence[Path]) -> None:
+        """Restore recorded absence without deleting configured ignored descendants."""
+        ignored = await self._current_ignores()
+        snapshot = await self.get_snapshot(snapshot_id)
+        ignored.extend([await async_fs.resolve(Path(path)) for path in snapshot.excludes])
+
+        async def remove(path: Path) -> None:
+            if is_ignored(path, ignored) or (not await aioos.path.exists(path) and not await aioos.path.islink(path)):
+                return
+            if await aioos.path.islink(path) or not await aioos.path.isdir(path):
+                await aioos.remove(path)
+                return
+            for child in await async_fs.iterdir(path):
+                await remove(child)
+            try:
+                await aioos.rmdir(path)
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY:
+                    raise
+
+        for path in paths:
+            await remove(path)
+
     async def create_snapshot(
         self, paths: Sequence[Path]
     ) -> ResticSnapshotWithSummary:
@@ -77,7 +103,7 @@ class SnapshotService:
         targets: Sequence[Path],
         *,
         dry_run: bool = False,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         """In-place restore with ``--delete``, ignored paths protected.
 
         Yields normalized events: ``status`` percents rescaled across plan
@@ -85,20 +111,21 @@ class SnapshotService:
         at the end.
         """
         plan = await self.build_plan(snapshot_id, targets)
-        async for event in self._run_plan(
+        async with aclosing(self._run_plan(
             plan, target_for=lambda step: step.source_dir, delete=True, dry_run=dry_run
-        ):
-            yield event
+        )) as events:
+            async for event in events:
+                yield event
 
     async def preview(
         self, snapshot_id: str, targets: Sequence[Path]
-    ) -> List[ResticRestoreEvent]:
+    ) -> list[ResticRestoreEvent]:
         """Dry-run restore returning meaningful per-file actions.
 
         Zero-size ``restored`` items (directory entries restic reports but
         doesn't really restore) and ``unchanged`` items are dropped.
         """
-        actions: List[ResticRestoreEvent] = []
+        actions: list[ResticRestoreEvent] = []
         async for event in self.restore(snapshot_id, targets, dry_run=True):
             if event.kind != "file":
                 continue
@@ -114,20 +141,21 @@ class SnapshotService:
         snapshot_id: str,
         targets: Sequence[Path],
         stage_root: Path,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         """Restore targets under ``stage_root``, mirroring absolute paths.
 
         No ``--delete``: staging directories start empty. Use
         ``stage_destination`` to locate staged files afterwards.
         """
         plan = await self.build_plan(snapshot_id, targets)
-        async for event in self._run_plan(
+        async with aclosing(self._run_plan(
             plan,
             target_for=lambda step: RestorePlan.stage_target(stage_root, step),
             delete=False,
             dry_run=False,
-        ):
-            yield event
+        )) as events:
+            async for event in events:
+                yield event
 
     @staticmethod
     def stage_destination(stage_root: Path, live_path: Path) -> Path:
@@ -143,7 +171,7 @@ class SnapshotService:
         target_for: Callable[[RestoreStep], Path],
         delete: bool,
         dry_run: bool,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         total_steps = len(plan.steps)
         summary = ResticRestoreEvent(
             kind="summary",
@@ -156,23 +184,24 @@ class SnapshotService:
             bytes_skipped=0,
         )
         for index, step in enumerate(plan.steps):
-            async for event in self._restore_step(
+            async with aclosing(self._restore_step(
                 plan.snapshot_id,
                 step,
                 target_dir=target_for(step),
                 delete=delete,
                 dry_run=dry_run,
-            ):
-                if event.kind == "status":
-                    if event.percent_done is not None:
-                        event.percent_done = (
-                            index + event.percent_done
-                        ) / total_steps
-                    yield event
-                elif event.kind == "file":
-                    yield event
-                else:
-                    _accumulate_summary(summary, event)
+            )) as events:
+                async for event in events:
+                    if event.kind == "status":
+                        if event.percent_done is not None:
+                            event.percent_done = (
+                                index + event.percent_done
+                            ) / total_steps
+                        yield event
+                    elif event.kind == "file":
+                        yield event
+                    else:
+                        _accumulate_summary(summary, event)
         yield summary
 
     def _restore_step(
@@ -183,7 +212,7 @@ class SnapshotService:
         target_dir: Path,
         delete: bool,
         dry_run: bool,
-    ) -> AsyncGenerator[ResticRestoreEvent, None]:
+    ) -> AsyncGenerator[ResticRestoreEvent]:
         if isinstance(step, DirStep):
             return self._client.restore(
                 snapshot_id,
@@ -206,8 +235,8 @@ class SnapshotService:
         return await self._client.get_snapshot(snapshot_id)
 
     async def list_snapshots(
-        self, path_filter: Optional[Path] = None
-    ) -> List[ResticSnapshot]:
+        self, path_filter: Path | None = None
+    ) -> list[ResticSnapshot]:
         """All snapshots; with ``path_filter`` keep those whose recorded paths
         cover it and whose recorded excludes don't disqualify it."""
         snapshots = await self._client.list_snapshots()
@@ -215,7 +244,7 @@ class SnapshotService:
             return snapshots
 
         resolved_filter = await async_fs.resolve(path_filter)
-        filtered: List[ResticSnapshot] = []
+        filtered: list[ResticSnapshot] = []
         for snapshot in snapshots:
             paths, excludes = await self._resolved_coverage_paths(snapshot)
             if covers(resolved_filter, paths, excludes):
@@ -224,7 +253,7 @@ class SnapshotService:
 
     async def find_snapshots_covering(
         self, paths: Sequence[Path]
-    ) -> List[ResticSnapshot]:
+    ) -> list[ResticSnapshot]:
         """Snapshots that cover *every* input path; newest-first.
 
         Coverage is exclude-aware: a snapshot whose recorded excludes contain
@@ -239,7 +268,7 @@ class SnapshotService:
         all_snapshots = await self._client.list_snapshots()
         resolved_targets = [await async_fs.resolve(p) for p in paths]
 
-        matching: List[ResticSnapshot] = []
+        matching: list[ResticSnapshot] = []
         for snapshot in all_snapshots:
             snap_paths, snap_excludes = await self._resolved_coverage_paths(snapshot)
             if all(
@@ -263,14 +292,14 @@ class SnapshotService:
 
     async def forget(
         self,
-        keep_last: Optional[int] = None,
-        keep_hourly: Optional[int] = None,
-        keep_daily: Optional[int] = None,
-        keep_weekly: Optional[int] = None,
-        keep_monthly: Optional[int] = None,
-        keep_yearly: Optional[int] = None,
-        keep_tag: Optional[List[str]] = None,
-        keep_within: Optional[str] = None,
+        keep_last: int | None = None,
+        keep_hourly: int | None = None,
+        keep_daily: int | None = None,
+        keep_weekly: int | None = None,
+        keep_monthly: int | None = None,
+        keep_yearly: int | None = None,
+        keep_tag: list[str] | None = None,
+        keep_within: str | None = None,
         prune: bool = True,
     ) -> str:
         return await self._client.forget(

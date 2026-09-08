@@ -4,7 +4,7 @@ These are simple data containers returned by LogParser and matched by LogMonitor
 They carry no dispatch logic — callers use isinstance() matching.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class LogEvent(BaseModel):
     """Base class for all log events."""
 
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PlayerUuidDiscoveredEvent(LogEvent):

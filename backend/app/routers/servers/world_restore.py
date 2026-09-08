@@ -1,7 +1,8 @@
-import asyncio
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -31,9 +32,9 @@ from ...player_locations import (
     PlayerLocationsResponse,
     extract_player_locations_for_server,
 )
-from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, snapshot_service
 from ...self_check.constants import WORLD_RESTORED_TRIGGER, WORLD_ROLLED_BACK_TRIGGER
 from ...self_check.events import schedule_self_check_event
+from ...snapshots import ResticSnapshot, ResticSnapshotWithSummary, snapshot_service
 from ...utils.sse import sse_encode, sse_response
 from ...world import (
     SelectionResolutionError,
@@ -98,18 +99,18 @@ def _holder_dict(holder) -> dict:
 
 class DimensionInfoResponse(BaseModel):
     region_dir: str
-    entities_dir: Optional[str] = None
-    poi_dir: Optional[str] = None
+    entities_dir: str | None = None
+    poi_dir: str | None = None
 
 
 class WorldRootResponse(BaseModel):
     name: str
     path: str
-    dimensions: List[DimensionInfoResponse]
+    dimensions: list[DimensionInfoResponse]
 
 
 class WorldLayoutResponse(BaseModel):
-    world_roots: List[WorldRootResponse]
+    world_roots: list[WorldRootResponse]
 
 
 class DimensionLabelsResponse(BaseModel):
@@ -117,7 +118,7 @@ class DimensionLabelsResponse(BaseModel):
 
 
 class ListEligibleSnapshotsResponse(BaseModel):
-    snapshots: List[ResticSnapshot]
+    snapshots: list[ResticSnapshot]
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -128,7 +129,7 @@ class CreateSnapshotResponse(BaseModel):
 class ManualSnapshotRequest(BaseModel):
     # Region/chunk snapshots are only created automatically as safety snapshots.
     type: Literal["world", "dimension"]
-    region_dir_relpath: Optional[str] = None
+    region_dir_relpath: str | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -146,24 +147,24 @@ class RestorationResponse(BaseModel):
     server_id: str
     type: RestorationType
     source_snapshot_id: str
-    safety_snapshot_id: Optional[str]
+    safety_snapshot_id: str | None
     source_snapshot_exists: bool
     safety_snapshot_exists: bool
     selection: RestorationSelection
     is_rollback: bool
-    initiated_by_user_id: Optional[int]
+    initiated_by_user_id: int | None
     started_at: datetime
-    finished_at: Optional[datetime]
+    finished_at: datetime | None
     status: RestorationStatus
-    error_message: Optional[str]
+    error_message: str | None
 
 
 class ListRestorationsResponse(BaseModel):
-    restorations: List[RestorationResponse]
+    restorations: list[RestorationResponse]
     total: int
 
 
-async def _existing_snapshot_ids() -> Optional[set[str]]:
+async def _existing_snapshot_ids() -> set[str] | None:
     # None when restic is unconfigured — existence checks are then skipped.
     if snapshot_service is None:
         return None
@@ -172,9 +173,9 @@ async def _existing_snapshot_ids() -> Optional[set[str]]:
 
 
 def _restoration_to_response(
-    row: Restoration, existing_ids: Optional[set[str]]
+    row: Restoration, existing_ids: set[str] | None
 ) -> RestorationResponse:
-    def _exists(snap_id: Optional[str]) -> bool:
+    def _exists(snap_id: str | None) -> bool:
         if snap_id is None:
             return False
         if existing_ids is None:
@@ -383,7 +384,7 @@ async def begin_preview(
     await _ensure_server_exists(server_id)
     orch = _get_orchestrator()
 
-    async def event_gen() -> AsyncGenerator[bytes, None]:
+    async def event_gen() -> AsyncGenerator[bytes]:
         try:
             async for event in orch.begin_preview(
                 server_id=server_id,
@@ -463,7 +464,7 @@ async def get_preview_tile(
         raise HTTPException(status_code=404, detail="Preview session not found")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Preview tile not available")
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=503, detail="Render timed out, retry")
     return FileResponse(
         str(tile),
@@ -504,17 +505,18 @@ async def begin_restore(
             },
         )
 
-    async def event_gen() -> AsyncGenerator[bytes, None]:
+    async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            async for event in orch.begin_restore(
+            async with aclosing(orch.begin_restore(
                 server_id=server_id,
                 source_snapshot_id=body.source_snapshot_id,
                 selection=body.selection,
                 user_id=user.id,
-            ):
-                if event.event_type == "complete":
-                    schedule_self_check_event(WORLD_RESTORED_TRIGGER, user.id)
-                yield sse_encode(event.model_dump(exclude_none=True))
+            )) as events:
+                async for event in events:
+                    if event.event_type == "complete":
+                        schedule_self_check_event(WORLD_RESTORED_TRIGGER, user.id)
+                    yield sse_encode(event.model_dump(exclude_none=True))
         except ServerNotStoppedError as e:
             yield sse_encode({"event_type": "error", "message": str(e)})
         except SelectionResolutionError as e:
@@ -639,12 +641,13 @@ async def rollback_restoration(
             },
         )
 
-    async def event_gen() -> AsyncGenerator[bytes, None]:
+    async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            async for event in orch.rollback(restoration_id, user.id):
-                if event.event_type == "complete":
-                    schedule_self_check_event(WORLD_ROLLED_BACK_TRIGGER, user.id)
-                yield sse_encode(event.model_dump(exclude_none=True))
+            async with aclosing(orch.rollback(restoration_id, user.id)) as events:
+                async for event in events:
+                    if event.event_type == "complete":
+                        schedule_self_check_event(WORLD_ROLLED_BACK_TRIGGER, user.id)
+                    yield sse_encode(event.model_dump(exclude_none=True))
         except Exception as e:
             logger.exception(
                 "rollback stream failed for server=%s restoration=%s",
@@ -668,7 +671,7 @@ async def mark_running_restorations_interrupted() -> int:
             .values(
                 status=RestorationStatus.INTERRUPTED,
                 error_message="server restarted before completion",
-                finished_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(UTC),
             )
         )
         await session.commit()
@@ -682,4 +685,4 @@ async def mark_running_restorations_interrupted() -> int:
 
 
 # Re-exported for ``app/main.py`` lifespan.
-__all__ = ["router", "mark_running_restorations_interrupted"]
+__all__ = ["mark_running_restorations_interrupted", "router"]

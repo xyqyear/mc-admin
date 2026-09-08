@@ -1,8 +1,7 @@
 """System heartbeat and crash recovery."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from ..db.database import get_async_session
 from ..dynamic_config import config
@@ -13,7 +12,7 @@ from .crud.heartbeat import get_heartbeat, upsert_heartbeat
 
 class HeartbeatManager:
     def __init__(self):
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._stop_flag = False
 
     async def start(self) -> None:
@@ -48,7 +47,7 @@ class HeartbeatManager:
                 logger.info("No previous heartbeat found (first startup)")
                 return
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             time_since_heartbeat = now - heartbeat.timestamp
 
             crash_threshold = timedelta(
@@ -115,7 +114,7 @@ class HeartbeatManager:
     @log_exception("Error updating heartbeat: ")
     async def _update_heartbeat(self) -> None:
         async with get_async_session() as session:
-            await upsert_heartbeat(session, datetime.now(timezone.utc))
+            await upsert_heartbeat(session, datetime.now(UTC))
             logger.debug("Updated heartbeat")
 
 

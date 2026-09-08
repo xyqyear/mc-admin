@@ -1,8 +1,5 @@
 """Template migration API router for converting between template and direct modes."""
 
-import asyncio
-import json
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,14 +7,19 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...background_tasks import TaskType, task_manager
-from ...db.database import get_async_session, get_db
+from ...db.database import get_db
 from ...dependencies import get_current_user
 from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
+from ...servers.configuration import (
+    capture_template_snapshot,
+    clear_template_configuration,
+    prepare_template_configuration,
+    save_configuration_metadata,
+)
 from ...templates import (
-    TemplateSnapshot,
     VariableDefinition,
     are_yaml_semantically_equal,
     deserialize_variable_definitions_json,
@@ -102,13 +104,7 @@ async def convert_to_direct_mode(
     if not server.template_id:
         raise HTTPException(status_code=400, detail="该服务器已经是直接编辑模式")
 
-    # Clear template-related fields
-    server.template_id = None
-    server.template_snapshot_json = None
-    server.variable_values_json = None
-    server.updated_at = datetime.now(timezone.utc)
-
-    await db.commit()
+    await clear_template_configuration(db, server)
 
     logger.info(f"Server {server_id} converted to direct editing mode")
     return ConvertToDirectResponse(success=True)
@@ -202,25 +198,12 @@ async def check_conversion(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    # Parse variable definitions
-    variable_definitions = deserialize_variable_definitions_json(
-        template.variable_definitions_json
-    )
-
-    # Validate variable values
-    errors = TemplateManager.validate_variable_values(
-        variable_definitions, request.variable_values
-    )
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
-
-    # Render YAML
     try:
-        rendered_yaml = TemplateManager.render_yaml(
-            template.yaml_template, request.variable_values
+        configuration = prepare_template_configuration(
+            capture_template_snapshot(template), request.variable_values
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     instance = docker_mc_manager.get_instance(server_id)
     if not await instance.exists():
@@ -228,7 +211,7 @@ async def check_conversion(
 
     # Check if rendered YAML is semantically identical to current compose
     current_compose = await instance.get_compose_file()
-    is_same = are_yaml_semantically_equal(current_compose, rendered_yaml)
+    is_same = are_yaml_semantically_equal(current_compose, configuration.yaml_content)
 
     return CheckConversionResponse(requires_rebuild=not is_same)
 
@@ -257,25 +240,12 @@ async def convert_to_template_mode(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    # Parse variable definitions
-    variable_definitions = deserialize_variable_definitions_json(
-        template.variable_definitions_json
-    )
-
-    # Validate variable values
-    errors = TemplateManager.validate_variable_values(
-        variable_definitions, request.variable_values
-    )
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
-
-    # Render YAML
     try:
-        rendered_yaml = TemplateManager.render_yaml(
-            template.yaml_template, request.variable_values
+        configuration = prepare_template_configuration(
+            capture_template_snapshot(template), request.variable_values
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     instance = docker_mc_manager.get_instance(server_id)
     if not await instance.exists():
@@ -283,23 +253,10 @@ async def convert_to_template_mode(
 
     # Check if rendered YAML is semantically identical to current compose
     current_compose = await instance.get_compose_file()
-    is_same = are_yaml_semantically_equal(current_compose, rendered_yaml)
+    is_same = are_yaml_semantically_equal(current_compose, configuration.yaml_content)
 
     if is_same:
-        # No rebuild needed - update DB directly
-        snapshot = TemplateSnapshot(
-            template_id=template.id,
-            template_name=template.name,
-            yaml_template=template.yaml_template,
-            variable_definitions=variable_definitions,
-            snapshot_time=datetime.now(timezone.utc).isoformat(),
-        )
-
-        server.template_id = template.id
-        server.template_snapshot_json = snapshot.model_dump_json()
-        server.variable_values_json = json.dumps(request.variable_values)
-        server.updated_at = datetime.now(timezone.utc)
-        await db.commit()
+        await save_configuration_metadata(db, server_id, configuration)
 
         logger.info(
             f"Server {server_id} converted to template mode (no rebuild needed)"
@@ -310,42 +267,9 @@ async def convert_to_template_mode(
     task_result = task_manager.submit(
         task_type=TaskType.SERVER_REBUILD,
         name=f"重建 {server_id}",
-        task_generator=rebuild_server_task(server_id, rendered_yaml),
+        task_generator=rebuild_server_task(server_id, configuration),
         server_id=server_id,
         cancellable=False,
     )
-
-    # Update database after rebuild succeeds
-    async def update_template_fields_after_rebuild():
-        result = await task_result.awaitable
-        if not result.success:
-            return
-
-        async with get_async_session() as session:
-            server = await get_active_server_by_id(session, server_id)
-            if not server:
-                logger.error(
-                    f"Failed to update template fields for server {server_id}: not found"
-                )
-                return
-
-            # Create template snapshot
-            snapshot = TemplateSnapshot(
-                template_id=template.id,
-                template_name=template.name,
-                yaml_template=template.yaml_template,
-                variable_definitions=variable_definitions,
-                snapshot_time=datetime.now(timezone.utc).isoformat(),
-            )
-
-            server.template_id = template.id
-            server.template_snapshot_json = snapshot.model_dump_json()
-            server.variable_values_json = json.dumps(request.variable_values)
-            server.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-
-            logger.info(f"Server {server_id} converted to template mode")
-
-    asyncio.create_task(update_template_fields_after_rebuild())
 
     return ConvertToTemplateResponse(task_id=task_result.task_id, skipped_rebuild=False)

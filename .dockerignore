@@ -4,6 +4,9 @@
 .claude
 .agents
 openspec
+e2e
+e2e-artifacts
+.e2e-runs
 **/.DS_Store
 **/.cache
 **/.coverage

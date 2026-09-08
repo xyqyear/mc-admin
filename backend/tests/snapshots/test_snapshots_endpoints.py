@@ -1,3 +1,5 @@
+import asyncio
+
 """
 End-to-end tests for snapshot API endpoints using real restic commands.
 
@@ -11,7 +13,6 @@ IMPORTANT: These tests require restic to be installed on the system.
 import json
 import subprocess
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import api_app
+from app.minecraft import MCServerStatus
 from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 
@@ -59,7 +61,7 @@ def check_restic_available():
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -80,6 +82,12 @@ class MockMCInstance:
         self.server_id = server_id
         self.base_path = base_path
         self.project_path = base_path / server_id
+
+    def get_name(self) -> str:
+        return self.server_id
+
+    async def get_status(self) -> MCServerStatus:
+        return MCServerStatus.EXISTS
 
     def get_project_path(self) -> Path:
         """Return the project path."""
@@ -308,7 +316,7 @@ class TestSnapshotEndpoints:
 
         try:
             await exec_command(str(settings.restic_binary_path), "init", env=env)
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             pytest.fail(f"Failed to initialize restic repository: {e}")
 
         return temp_restic_repo
@@ -328,7 +336,7 @@ class TestSnapshotEndpoints:
                 "--insecure-no-password",
                 env=env,
             )
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             pytest.fail(f"Failed to initialize restic repository without password: {e}")
 
         return temp_restic_repo
@@ -365,7 +373,7 @@ class TestSnapshotEndpoints:
             assert str(instance.project_path) in snapshot["paths"]
 
             # Verify summary information
-            if "summary" in snapshot and snapshot["summary"]:
+            if snapshot.get("summary"):
                 summary = snapshot["summary"]
                 assert "total_files_processed" in summary
                 assert summary["total_files_processed"] > 0
@@ -600,7 +608,7 @@ class TestSnapshotEndpoints:
             full_snapshot_id = full_snapshot_response.json()["snapshot"]["id"]
 
             # Modify a file to ensure the next snapshot will be different
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
             (instance.get_data_path() / "server.properties").write_text(
                 "# Modified config\nserver-port=25566"
             )
@@ -637,7 +645,7 @@ class TestSnapshotEndpoints:
                 assert str(instance.project_path) in snapshot["paths"]
 
             # Test creating and listing a plugins-only snapshot separately
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
             (instance.get_data_path() / "plugins" / "test-plugin.jar").write_bytes(
                 b"fake jar content"
             )
@@ -1191,7 +1199,7 @@ modified=true
             snapshot1_id = snapshot1_response.json()["snapshot"]["id"]
 
             # Modify a file to ensure the next snapshot will be different
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
             (instance.get_data_path() / "server.properties").write_text(
                 "# Modified config\nserver-port=25566"
             )
@@ -1730,7 +1738,7 @@ class TestPathContainmentEndpoints:
         """server_id is joined into the project path, so it traverses too."""
         from app.minecraft.instance import MCInstance
 
-        server_id, instance = mock_instance
+        _server_id, instance = mock_instance
         outside = instance.base_path.parent / "other"
         outside.mkdir(exist_ok=True)
 

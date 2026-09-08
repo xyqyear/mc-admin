@@ -4,7 +4,6 @@ DNS Management API Router
 Provides a simple API endpoint for triggering DNS updates.
 """
 
-from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -14,7 +13,6 @@ from ..db.database import get_db
 from ..dependencies import RequireRole, get_current_user
 from ..dns.manager import simple_dns_manager
 from ..dynamic_config import config
-from ..logger import logger
 from ..models import UserPublic, UserRole
 
 router = APIRouter(prefix="/dns", tags=["dns"])
@@ -40,29 +38,29 @@ class DNSRecord(BaseModel):
 class DNSRecordsResponse(BaseModel):
     """Response for DNS records list"""
 
-    records: List[DNSRecord]
+    records: list[DNSRecord]
 
 
 class RouterRoutesResponse(BaseModel):
     """Response for MC Router routes"""
 
-    routes: Dict[str, str]
+    routes: dict[str, str]
 
 
 class DNSRecordDiff(BaseModel):
     """DNS record differences for status checks"""
 
-    records_to_add: List[DNSRecord]
-    records_to_remove: List[str]  # Record IDs
-    records_to_update: List[DNSRecord]
+    records_to_add: list[DNSRecord]
+    records_to_remove: list[str]  # Record IDs
+    records_to_update: list[DNSRecord]
 
 
 class RouterDiff(BaseModel):
     """Router route differences for status checks"""
 
-    routes_to_add: Dict[str, str]
-    routes_to_remove: Dict[str, str]
-    routes_to_update: Dict[str, Dict[str, str]]
+    routes_to_add: dict[str, str]
+    routes_to_remove: dict[str, str]
+    routes_to_update: dict[str, dict[str, str]]
 
 
 class DNSStatusResponse(BaseModel):
@@ -79,27 +77,12 @@ class DNSEnabledResponse(BaseModel):
     enabled: bool
 
 
-async def _ensure_dns_manager_initialized() -> None:
-    """
-    Ensure DNS manager is initialized, attempting initialization if needed.
-
-    Raises:
-        HTTPException: If initialization fails
-    """
+def _require_dns_enabled() -> None:
     if not config.dns.enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="DNS manager is disabled in configuration",
         )
-    if not simple_dns_manager.is_initialized:
-        logger.warning("DNS manager not initialized, attempting to initialize...")
-        try:
-            await simple_dns_manager.initialize()
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to initialize DNS manager: {str(e)}",
-            ) from e
 
 
 @router.post("/update", response_model=DNSUpdateResponse)
@@ -118,7 +101,7 @@ async def update_dns(
 
     Requires ADMIN role or higher.
     """
-    await _ensure_dns_manager_initialized()
+    _require_dns_enabled()
     await simple_dns_manager.update(db)
 
     return DNSUpdateResponse(
@@ -140,7 +123,7 @@ async def get_dns_status(
     Raises:
         HTTPException: If there's an error getting DNS status
     """
-    await _ensure_dns_manager_initialized()
+    _require_dns_enabled()
     dns_diff, router_diff = await simple_dns_manager.get_current_diff(db)
 
     # Convert DNS diff to response format
@@ -190,25 +173,18 @@ async def get_dns_enabled(
     return DNSEnabledResponse(enabled=config.dns.enabled)
 
 
-@router.get("/records", response_model=List[DNSRecord])
+@router.get("/records", response_model=list[DNSRecord])
 async def get_dns_records(
     _: UserPublic = Depends(get_current_user),
-) -> List[DNSRecord]:
+) -> list[DNSRecord]:
     """
     Get current DNS records from DNS provider.
 
     Returns the actual DNS records currently configured in the DNS provider.
     Each record includes subdomain, value, record type, TTL, and record ID.
     """
-    await _ensure_dns_manager_initialized()
-    assert simple_dns_manager._dns_client is not None
-
-    # Get current DNS records from the provider
-    # Only get records relevant to our Minecraft management
-    dns_config = config.dns
-    records = await simple_dns_manager._dns_client.list_relevant_records(
-        dns_config.managed_sub_domain
-    )
+    _require_dns_enabled()
+    records = await simple_dns_manager.get_dns_records()
 
     # Convert records to DNSRecord models for JSON response
     return [
@@ -223,18 +199,15 @@ async def get_dns_records(
     ]
 
 
-@router.get("/routes", response_model=Dict[str, str])
+@router.get("/routes", response_model=dict[str, str])
 async def get_router_routes(
     _: UserPublic = Depends(get_current_user),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Get current routes from MC Router.
 
     Returns the actual routes currently configured in the MC Router service.
     Each route maps a server address to a backend server address.
     """
-    await _ensure_dns_manager_initialized()
-    assert simple_dns_manager._mc_router_client is not None
-
-    # Get current routes from MC Router
-    return await simple_dns_manager._mc_router_client.get_routes()
+    _require_dns_enabled()
+    return await simple_dns_manager.get_router_routes()

@@ -5,6 +5,7 @@ Tests for the DNS API router
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from app.dns.types import ReturnRecordT
@@ -18,7 +19,7 @@ def client():
     # Mock settings to set up master token
     with patch("app.dependencies.settings") as mock_settings:
         mock_settings.master_token = "test_master_token"
-        yield TestClient(app)
+        yield TestClient(app, raise_server_exceptions=False)
 
 
 @pytest.fixture
@@ -80,15 +81,13 @@ async def test_update_dns_endpoint_not_initialized(client, mock_admin_user):
 
         assert result.success is True
 
-        # Should call initialize then update
-        dns_manager_mock.initialize.assert_called_once()
+        dns_manager_mock.initialize.assert_not_called()
         dns_manager_mock.update.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_update_dns_endpoint_initialization_fails(client, mock_admin_user):
-    """Test DNS update when initialization fails - raises HTTPException"""
-    from fastapi import HTTPException
+    """Initialization failures from the manager propagate through the route."""
 
     from app.routers.dns import update_dns
 
@@ -103,14 +102,11 @@ async def test_update_dns_endpoint_initialization_fails(client, mock_admin_user)
 
         # Mock DNS manager - initialization fails
         dns_manager_mock.is_initialized = False
-        dns_manager_mock.initialize = AsyncMock(side_effect=Exception("Init failed"))
+        dns_manager_mock.update = AsyncMock(side_effect=RuntimeError("Init failed"))
 
-        # Now expects HTTPException from _ensure_dns_manager_initialized
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(RuntimeError, match="Init failed"):
             await update_dns(mock_admin_user)
-
-        assert exc_info.value.status_code == 500
-        assert "Failed to initialize DNS manager" in str(exc_info.value.detail)
+        dns_manager_mock.update.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -177,8 +173,7 @@ async def test_get_dns_status_success(client, mock_admin_user):
 
 @pytest.mark.asyncio
 async def test_get_dns_status_not_initialized(client, mock_admin_user):
-    """Test getting DNS status when not initialized - raises HTTPException"""
-    from fastapi import HTTPException
+    """Status delegates initialization and preserves manager errors."""
 
     from app.routers.dns import get_dns_status
 
@@ -193,16 +188,13 @@ async def test_get_dns_status_not_initialized(client, mock_admin_user):
 
         # Mock DNS manager - not initialized
         dns_manager_mock.is_initialized = False
-        dns_manager_mock.initialize = AsyncMock(
+        dns_manager_mock.get_current_diff = AsyncMock(
             side_effect=RuntimeError("DNS manager not initialized")
         )
 
-        # Now expects HTTPException from _ensure_dns_manager_initialized
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(RuntimeError, match="DNS manager not initialized"):
             await get_dns_status(mock_admin_user)
-
-        assert exc_info.value.status_code == 500
-        assert "Failed to initialize DNS manager" in str(exc_info.value.detail)
+        dns_manager_mock.get_current_diff.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -283,12 +275,9 @@ def test_dns_router_authentication_required():
     # Find the update endpoint
     update_route = None
     for route in router.routes:
-        # Type guard: check if route has path attribute before accessing
-        if hasattr(route, "path"):
-            route_path = getattr(route, "path")
-            if "/update" in route_path:
-                update_route = route
-                break
+        if isinstance(route, APIRoute) and "/update" in route.path:
+            update_route = route
+            break
 
     assert update_route is not None
     # The route should have dependencies (authentication)
@@ -311,9 +300,7 @@ def test_get_dns_records_success(client):
         mock_dns_config.managed_sub_domain = "mc"
         mock_config.dns = mock_dns_config
 
-        # Mock DNS client with sample records
-        mock_dns_client = Mock()
-        mock_dns_client.list_relevant_records = AsyncMock(
+        mock_manager.get_dns_records = AsyncMock(
             return_value=[
                 ReturnRecordT(
                     sub_domain="*.mc",
@@ -331,7 +318,6 @@ def test_get_dns_records_success(client):
                 ),
             ]
         )
-        mock_manager._dns_client = mock_dns_client
 
         response = client.get(
             "/api/dns/records", headers={"Authorization": "Bearer test_master_token"}
@@ -369,10 +355,7 @@ def test_get_dns_records_not_initialized(client):
         mock_dns_config.managed_sub_domain = "mc"
         mock_config.dns = mock_dns_config
 
-        # Mock DNS client after initialization
-        mock_dns_client = Mock()
-        mock_dns_client.list_relevant_records = AsyncMock(return_value=[])
-        mock_manager._dns_client = mock_dns_client
+        mock_manager.get_dns_records = AsyncMock(return_value=[])
 
         response = client.get(
             "/api/dns/records", headers={"Authorization": "Bearer test_master_token"}
@@ -382,28 +365,9 @@ def test_get_dns_records_not_initialized(client):
         data = response.json()
         assert data == []
 
-        # Verify initialization was attempted
-        mock_manager.initialize.assert_called_once()
+        mock_manager.initialize.assert_not_called()
+        mock_manager.get_dns_records.assert_awaited_once()
 
-
-@pytest.mark.skip(
-    reason="assert is not None in async context causes ExceptionGroup, "
-    "which is not easily testable via HTTP client. "
-    "In production, if initialization succeeds, _dns_client will always be set."
-)
-def test_get_dns_records_client_not_available(client):
-    """Test DNS records endpoint when DNS client not available - assert is not None fails"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager:
-        # Mock manager as initialized but no DNS client
-        mock_manager.is_initialized = True
-        mock_manager._dns_client = None
-
-        response = client.get(
-            "/api/dns/records", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        # assert statement failure results in AssertionError, which FastAPI converts to 500
-        assert response.status_code == 500
 
 
 def test_get_router_routes_success(client):
@@ -420,15 +384,12 @@ def test_get_router_routes_success(client):
         # Mock manager as initialized
         mock_manager.is_initialized = True
 
-        # Mock router client with sample routes
-        mock_router_client = Mock()
-        mock_router_client.get_routes = AsyncMock(
+        mock_manager.get_router_routes = AsyncMock(
             return_value={
                 "server1.example.com": "192.168.1.100:25565",
                 "server2.example.com": "192.168.1.101:25566",
             }
         )
-        mock_manager._mc_router_client = mock_router_client
 
         response = client.get(
             "/api/dns/routes", headers={"Authorization": "Bearer test_master_token"}
@@ -458,10 +419,7 @@ def test_get_router_routes_not_initialized(client):
         mock_manager.is_initialized = False
         mock_manager.initialize = AsyncMock()
 
-        # Mock router client after initialization
-        mock_router_client = Mock()
-        mock_router_client.get_routes = AsyncMock(return_value={})
-        mock_manager._mc_router_client = mock_router_client
+        mock_manager.get_router_routes = AsyncMock(return_value={})
 
         response = client.get(
             "/api/dns/routes", headers={"Authorization": "Bearer test_master_token"}
@@ -471,28 +429,45 @@ def test_get_router_routes_not_initialized(client):
         data = response.json()
         assert data == {}
 
-        # Verify initialization was attempted
-        mock_manager.initialize.assert_called_once()
+        mock_manager.initialize.assert_not_called()
+        mock_manager.get_router_routes.assert_awaited_once()
 
 
-@pytest.mark.skip(
-    reason="assert is not None in async context causes ExceptionGroup, "
-    "which is not easily testable via HTTP client. "
-    "In production, if initialization succeeds, _mc_router_client will always be set."
+@pytest.mark.parametrize(
+    ("path", "method"),
+    [("records", "get_dns_records"), ("routes", "get_router_routes")],
 )
-def test_get_router_routes_client_not_available(client):
-    """Test router routes endpoint when router client not available - assert is not None fails"""
-    with patch("app.routers.dns.simple_dns_manager") as mock_manager:
-        # Mock manager as initialized but no router client
-        mock_manager.is_initialized = True
-        mock_manager._mc_router_client = None
-
+def test_dns_read_failure_returns_500(client, path, method):
+    with (
+        patch("app.routers.dns.simple_dns_manager") as manager,
+        patch("app.routers.dns.config") as settings,
+    ):
+        settings.dns.enabled = True
+        operation = AsyncMock(side_effect=RuntimeError("Provider unavailable"))
+        setattr(manager, method, operation)
         response = client.get(
-            "/api/dns/routes", headers={"Authorization": "Bearer test_master_token"}
+            f"/api/dns/{path}",
+            headers={"Authorization": "Bearer test_master_token"},
         )
-
-        # assert statement failure results in AssertionError, which FastAPI converts to 500
         assert response.status_code == 500
+        assert "Provider unavailable" in response.json()["detail"]
+        operation.assert_awaited_once()
+
+
+@pytest.mark.parametrize("path", ["status", "records", "routes"])
+def test_disabled_dns_reads_return_503_without_initialization(client, path):
+    with (
+        patch("app.routers.dns.simple_dns_manager") as manager,
+        patch("app.routers.dns.config") as settings,
+    ):
+        settings.dns.enabled = False
+        response = client.get(
+            f"/api/dns/{path}",
+            headers={"Authorization": "Bearer test_master_token"},
+        )
+        assert response.status_code == 503
+        assert "disabled" in response.json()["detail"]
+        assert manager.mock_calls == []
 
 
 def test_dns_endpoints_authentication_required(client):

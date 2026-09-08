@@ -20,9 +20,8 @@ import pytest_asyncio
 
 from app.minecraft import DockerMCManager
 from app.minecraft.instance import MCInstance
-from app.utils.exec import exec_command
-
 from app.utils import async_fs
+from app.utils.exec import exec_command
 
 from .fixtures.test_utils import (
     TEST_ROOT_PATH,
@@ -72,7 +71,8 @@ async def test_get_container_id_with_docker(mc_server_session: MCInstance):
     api_container_id = await mc_server_session.get_container_id()
 
     # Get container ID from Docker command (full version)
-    docker_result = subprocess.run(
+    docker_result = await asyncio.to_thread(
+        subprocess.run,
         [
             "docker",
             "ps",
@@ -83,7 +83,7 @@ async def test_get_container_id_with_docker(mc_server_session: MCInstance):
             "--no-trunc",
         ],
         capture_output=True,
-        text=True,
+        text=True, check=False,
     )
     docker_container_id = docker_result.stdout.strip()
 
@@ -91,7 +91,8 @@ async def test_get_container_id_with_docker(mc_server_session: MCInstance):
     assert api_container_id == docker_container_id
 
     # Also verify it starts with the short ID
-    docker_short_result = subprocess.run(
+    docker_short_result = await asyncio.to_thread(
+        subprocess.run,
         [
             "docker",
             "ps",
@@ -101,7 +102,7 @@ async def test_get_container_id_with_docker(mc_server_session: MCInstance):
             "{{.ID}}",
         ],
         capture_output=True,
-        text=True,
+        text=True, check=False,
     )
     docker_short_id = docker_short_result.stdout.strip()
     assert api_container_id.startswith(docker_short_id)
@@ -231,20 +232,20 @@ async def test_container_not_running_error_handling():
     server = docker_mc_manager.get_instance("non-existent-server")
 
     # These should raise appropriate exceptions when container doesn't exist
-    with pytest.raises(Exception):  # Could be various types depending on implementation
+    with pytest.raises(RuntimeError, match="is not created"):
         await server.get_container_id()
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="Failed to exec command"):
         await server.get_pid()
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="is not created"):
         await server.get_memory_usage()
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="Failed to exec command"):
         await server.get_cpu_percentage()
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="is not created"):
         await server.get_disk_io()
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="Failed to exec command"):
         await server.get_network_io()

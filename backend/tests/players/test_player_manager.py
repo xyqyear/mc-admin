@@ -1,7 +1,7 @@
 """Tests for player tracking functions."""
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -65,7 +65,7 @@ async def test_player(test_db_session):
         player_db_id=1,
         uuid=make_online_uuid("TestPlayer"),
         current_name="TestPlayer",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.commit()
@@ -115,7 +115,7 @@ class TestUpsertPlayer:
             player_db_id=1,
             uuid=uuid,
             current_name="OldName",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         test_db_session.add(player)
         await test_db_session.commit()
@@ -157,14 +157,14 @@ class TestProcessPlayerJoin:
             patch("app.players.tracking.get_async_session", mock_session),
             patch("app.players.tracking.update_player_skin", new_callable=AsyncMock),
         ):
-            join_time = datetime.now(timezone.utc)
+            join_time = datetime.now(UTC)
             await process_player_join("test_server", "TestPlayer", timestamp=join_time)
 
         result = await test_db_session.execute(
             select(PlayerSession).where(
                 PlayerSession.player_db_id == test_player.player_db_id,
                 PlayerSession.server_db_id == test_server.id,
-                PlayerSession.left_at == None,  # noqa: E711
+                PlayerSession.left_at == None,
             )
         )
         session = result.scalar_one_or_none()
@@ -188,7 +188,7 @@ class TestProcessPlayerJoin:
             ),
             patch("app.players.tracking.update_player_skin", new_callable=AsyncMock),
         ):
-            join_time = datetime.now(timezone.utc)
+            join_time = datetime.now(UTC)
             await process_player_join(
                 "test_server", "BrandNewPlayer", timestamp=join_time
             )
@@ -205,7 +205,7 @@ class TestProcessPlayerJoin:
             select(PlayerSession).where(
                 PlayerSession.player_db_id == player.player_db_id,
                 PlayerSession.server_db_id == test_server.id,
-                PlayerSession.left_at == None,  # noqa: E711
+                PlayerSession.left_at == None,
             )
         )
         session = result.scalar_one_or_none()
@@ -253,7 +253,7 @@ class TestProcessPlayerJoin:
             patch("app.players.tracking.get_async_session", mock_session),
             patch("app.players.tracking.update_player_skin", mock_skin_update),
         ):
-            join_time = datetime.now(timezone.utc)
+            join_time = datetime.now(UTC)
             await process_player_join("test_server", "TestPlayer", timestamp=join_time)
 
         mock_skin_update.assert_called_once_with(
@@ -277,7 +277,7 @@ class TestProcessPlayerJoin:
             ),
             patch("app.players.tracking.update_player_skin", mock_skin_update),
         ):
-            join_time = datetime.now(timezone.utc)
+            join_time = datetime.now(UTC)
             await process_player_join(
                 "test_server", "NewPlayer123", timestamp=join_time
             )
@@ -301,7 +301,7 @@ class TestProcessPlayerLeft:
         self, test_db_session, test_server, test_player
     ):
         """Test that leaving ends an existing open session."""
-        join_time = datetime.now(timezone.utc)
+        join_time = datetime.now(UTC)
         player_session = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
@@ -315,7 +315,7 @@ class TestProcessPlayerLeft:
         mock_session = _mock_get_async_session(test_db_session)
 
         with patch("app.players.tracking.get_async_session", mock_session):
-            leave_time = datetime.now(timezone.utc)
+            leave_time = datetime.now(UTC)
             await process_player_left(
                 "test_server",
                 "TestPlayer",
@@ -340,7 +340,7 @@ class TestProcessPlayerLeft:
                 return_value=uuid,
             ),
         ):
-            leave_time = datetime.now(timezone.utc)
+            leave_time = datetime.now(UTC)
             await process_player_left(
                 "test_server",
                 "LeavingPlayer",
@@ -369,12 +369,12 @@ class TestCloseServerSessions:
             player_db_id=2,
             uuid=make_online_uuid("Player2"),
             current_name="Player2",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         test_db_session.add(player2)
         await test_db_session.commit()
 
-        join_time = datetime.now(timezone.utc)
+        join_time = datetime.now(UTC)
         session1 = PlayerSession(
             player_db_id=test_player.player_db_id,
             server_db_id=test_server.id,
@@ -396,7 +396,7 @@ class TestCloseServerSessions:
         mock_session = _mock_get_async_session(test_db_session)
 
         with patch("app.players.tracking.get_async_session", mock_session):
-            stop_time = datetime.now(timezone.utc)
+            stop_time = datetime.now(UTC)
             await close_server_sessions("test_server", timestamp=stop_time)
 
         await test_db_session.refresh(session1)
@@ -428,7 +428,7 @@ class TestServerNotFound:
             await process_player_join(
                 "unknown_server",
                 "TestPlayer",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
         result = await test_db_session.execute(select(PlayerSession))

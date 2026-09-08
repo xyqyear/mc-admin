@@ -1,5 +1,12 @@
+import httpx2
+from huaweicloudsdkcore.exceptions.exceptions import SdkException
+from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
+    TencentCloudSDKException,
+)
+
 from ...dns import simple_dns_manager
 from ...dynamic_config import config
+from ...logger import logger
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, skipped, success
 
@@ -11,7 +18,15 @@ async def check_dns_drift(context: SelfCheckContext) -> list[SelfCheckFindingRes
 
     try:
         dns_diff, router_diff = await simple_dns_manager.get_current_diff(context.db)
-    except Exception as exc:
+    except (
+        SdkException,
+        TencentCloudSDKException,
+        httpx2.HTTPError,
+        ValueError,
+        RuntimeError,
+        OSError,
+    ) as exc:
+        logger.warning("Cannot calculate DNS drift (%s)", type(exc).__name__)
         return [
             finding(
                 check_id=definition.check_id,

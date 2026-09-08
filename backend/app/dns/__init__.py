@@ -20,18 +20,18 @@ from .types import (
 from .utils import RecordDiff, RecordKey, diff_dns_records
 
 __all__ = [
-    "DNSClient",
-    "AddRecordT",
-    "ReturnRecordT",
-    "RecordListT",
     "AddRecordListT",
-    "RecordIdListT",
+    "AddRecordT",
+    "DNSClient",
     "DNSPodClient",
     "HuaweiDNSClient",
     "MCRouterClient",
-    "SimpleDNSManager",
-    "simple_dns_manager",
-    "RecordKey",
     "RecordDiff",
+    "RecordIdListT",
+    "RecordKey",
+    "RecordListT",
+    "ReturnRecordT",
+    "SimpleDNSManager",
     "diff_dns_records",
+    "simple_dns_manager",
 ]

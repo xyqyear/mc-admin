@@ -10,6 +10,7 @@ import pytest
 
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
+from app.mcmap.types import MCMapError
 
 
 class HangingProc:
@@ -101,7 +102,7 @@ async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
         assert not proc.terminated.is_set()
         # Drive termination to make the test finish
         asyncio.create_task(driver())
-        with pytest.raises(Exception):
+        with pytest.raises(MCMapError, match="render did not complete"):
             # c2 sees MCMapError because proc terminated without emitting event
             await asyncio.wait_for(c2, timeout=2.0)
 

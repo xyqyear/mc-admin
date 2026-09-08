@@ -1,4 +1,4 @@
-from typing import Iterable, List, Set, Tuple
+from collections.abc import Iterable
 
 from ..grid_geometry import connected_components
 from .models import ClusterEntry
@@ -8,16 +8,16 @@ def build_clusters(
     *,
     team_id: str,
     region_dir_relpath: str | None,
-    claims: Iterable[Tuple[int, int]],
-    force_loaded: Iterable[Tuple[int, int]],
-) -> List[ClusterEntry]:
-    chunk_set: Set[Tuple[int, int]] = set(claims)
+    claims: Iterable[tuple[int, int]],
+    force_loaded: Iterable[tuple[int, int]],
+) -> list[ClusterEntry]:
+    chunk_set: set[tuple[int, int]] = set(claims)
     if not chunk_set:
         return []
-    force_set: Set[Tuple[int, int]] = set(force_loaded) & chunk_set
+    force_set: set[tuple[int, int]] = set(force_loaded) & chunk_set
     components = connected_components(chunk_set)
     rel = region_dir_relpath if region_dir_relpath is not None else "_"
-    entries: List[ClusterEntry] = []
+    entries: list[ClusterEntry] = []
     for idx, comp in enumerate(components):
         min_cx = min(cx for cx, _ in comp)
         max_cx = max(cx for cx, _ in comp)

@@ -14,10 +14,10 @@ state.
 import json
 import subprocess
 import tempfile
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncIterator, Iterator
 from unittest.mock import patch
 
 import pytest
@@ -51,7 +51,7 @@ def _restic_available() -> bool:
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -61,7 +61,7 @@ def _restic_available() -> bool:
 def _mcmap_available() -> bool:
     try:
         result = subprocess.run(
-            ["mcmap", "--version"], capture_output=True, text=True, timeout=5
+            ["mcmap", "--version"], capture_output=True, text=True, timeout=5, check=False
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -320,7 +320,7 @@ async def test_create_snapshot_returns_423_when_locked(
     selection = RestorationSelection(type=RestorationType.WORLD)
     holder = LockHolder(
         kind=ServerOperationKind.RESTORE,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=42,
         description="held by test",
     )
@@ -461,7 +461,7 @@ async def test_restore_423_when_locked(
 
     holder = LockHolder(
         kind=ServerOperationKind.BACKUP,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=None,
         description="held by test",
     )

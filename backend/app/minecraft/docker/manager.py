@@ -25,7 +25,7 @@ class DockerPsParsed(BaseModel):
 
     @classmethod
     def parse_labels(cls, labels_str: str) -> dict[str, str]:
-        return dict(label.split("=") for label in labels_str.split(",") if "=" in label)
+        return dict(label.split("=", 1) for label in labels_str.split(",") if "=" in label)
 
     @classmethod
     def from_docker_ps(cls, data: dict[str, Any]) -> "DockerPsParsed":
@@ -95,7 +95,7 @@ class ComposeManager:
         except RuntimeError as e:
             if "no configuration file" in str(e):
                 return False
-            raise e
+            raise
         return process != ""
 
     async def created(self) -> bool:
@@ -104,7 +104,7 @@ class ComposeManager:
         except RuntimeError as e:
             if "no configuration file" in str(e):
                 return False
-            raise e
+            raise
         return process != ""
 
     async def ps(self, service_name: str) -> DockerComposePsParsed:
@@ -123,7 +123,7 @@ class ComposeManager:
         except RuntimeError as e:
             if "no configuration file" in str(e):
                 return False
-            raise e
+            raise
         return compose_ps.health == "starting"
 
     async def healthy(self, service_name: str) -> bool:
@@ -134,7 +134,7 @@ class ComposeManager:
         except RuntimeError as e:
             if "no configuration file" in str(e):
                 return False
-            raise e
+            raise
         return compose_ps.health == "healthy"
 
 

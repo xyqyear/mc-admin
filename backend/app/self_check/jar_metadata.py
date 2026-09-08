@@ -10,7 +10,6 @@ from typing import Any
 
 import yaml
 
-
 _JSON_ID_PATTERN = re.compile(r'"id"\s*:\s*"([^"]+)"')
 
 
@@ -41,7 +40,10 @@ def extract_jar_metadata(path: Path) -> JarMetadata:
                 if metadata_path in names:
                     _extend_ids(
                         ids,
-                        _extract_json_mod_ids(jar.read(metadata_path)),
+                        _extract_json_mod_ids(
+                            jar.read(metadata_path),
+                            quilt=metadata_path == "quilt.mod.json",
+                        ),
                     )
                     sources.append(metadata_path)
 
@@ -83,16 +85,22 @@ def _extend_ids(target: list[str], values: list[str]) -> None:
             target.append(normalized)
 
 
-def _extract_json_mod_ids(raw: bytes) -> list[str]:
+def _extract_json_mod_ids(raw: bytes, *, quilt: bool = False) -> list[str]:
     text = raw.decode("utf-8", errors="replace")
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        if quilt:
+            return []
         match = _JSON_ID_PATTERN.search(text)
         return [match.group(1)] if match else []
 
     if not isinstance(data, dict):
         return []
+    if quilt:
+        data = data.get("quilt_loader")
+        if not isinstance(data, dict):
+            return []
     return [data["id"]] if isinstance(data.get("id"), str) else []
 
 

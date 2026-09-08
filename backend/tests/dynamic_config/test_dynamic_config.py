@@ -62,7 +62,6 @@ class TestBaseConfigSchema:
 
     def test_json_schema_default_handling(self):
         """Test new default handling logic with BaseModel instances."""
-        from typing import List
 
         class NestedTestConfig(BaseConfigSchema):
             nested_name: str = Field(default="nested", description="Nested name")
@@ -71,7 +70,7 @@ class TestBaseConfigSchema:
         class DefaultTestConfig(BaseConfigSchema):
             # Simple defaults
             simple_str: str = Field(default="test", description="Simple string")
-            simple_list: List[str] = Field(
+            simple_list: list[str] = Field(
                 default=["a", "b"], description="Simple list"
             )
 
@@ -124,7 +123,7 @@ class TestConfigMigrator:
 
         current_version = TestConfigSchema.get_schema_version()
 
-        migrated_data, messages = ConfigMigrator.migrate_config(
+        migrated_data, _messages = ConfigMigrator.migrate_config(
             current_data, TestConfigSchema, current_version
         )
 
@@ -192,7 +191,7 @@ class TestConfigMigrator:
 
         old_version = "old_version_hash"
 
-        migrated_data, messages = ConfigMigrator.migrate_config(
+        migrated_data, _messages = ConfigMigrator.migrate_config(
             current_data, ComplexConfigSchema, old_version
         )
 

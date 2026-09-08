@@ -1,9 +1,17 @@
 from pathlib import Path
 
 from ...config import settings
+from ...logger import logger
 from ...system.resources import get_disk_info
 from ..types import SelfCheckFindingResult
-from .base import CheckDefinition, SelfCheckContext, finding, skipped, success, usage_percent
+from .base import (
+    CheckDefinition,
+    SelfCheckContext,
+    finding,
+    skipped,
+    success,
+    usage_percent,
+)
 
 
 async def check_backup_repository_usage(
@@ -17,6 +25,7 @@ async def check_backup_repository_usage(
     try:
         disk = await get_disk_info(repository_path)
     except Exception as exc:
+        logger.warning("Cannot inspect disk usage", exc_info=True)
         return [
             finding(
                 check_id=definition.check_id,
@@ -60,6 +69,7 @@ async def check_server_directory_usage(
     try:
         disk = await get_disk_info(settings.server_path)
     except Exception as exc:
+        logger.warning("Cannot inspect disk usage", exc_info=True)
         return [
             finding(
                 check_id=definition.check_id,

@@ -2,6 +2,14 @@
 
 CRUD for files inside a server's data directory, deep search, ownership repair, and multi-file upload with conflict resolution.
 
+## Directory boundary and operation policies
+
+Paths are confined to the managed data directory after resolving symlinks. External-target symlinks are rejected, including rename and deletion requests; internal symlink renames operate on the link itself. This is a directory boundary check, not a race-proof filesystem sandbox against concurrent symlink replacement.
+
+Create and rename names are nonempty basenames other than `.` or `..`; `/` is a separator, while a backslash remains a literal Linux filename character. Root-directory deletion and renaming are rejected because server lifecycle operations own the data root. Multipart destination paths are all validated before any part is written or a single-use session is consumed; an invalid path rejects the request. Valid batches retain per-file overwrite and failure results and are not transactional for filesystem errors during writing.
+
+Directory listings omit individual entries that disappear, become unreadable, or are broken symlinks. Other entries remain available; metadata and type are derived from the same stat result.
+
 ## Why a session-based upload flow
 
 Drag-dropping a folder hits the API with potentially thousands of files, many of which may already exist. Forcing the user to confirm each conflict mid-upload is awful UX; pre-bundling the whole upload into one server-side decision is also awful (huge memory + an opaque "what just changed?" result). The session pattern is the middle path:
@@ -11,11 +19,12 @@ Drag-dropping a folder hits the API with potentially thousands of files, many of
 3. **Frontend submits policy** — `set_upload_policy(session_id, decisions)`.
 4. **Frontend posts file blobs** — backend writes per the stored decisions and returns final results.
 
-Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry, an unfinished session is GC'd.
+Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry, an unfinished session is GC'd. The frontend sends at most 1000 files per request, sequentially; uploads spanning multiple requests use `reusable=true`. Cancellation stops further requests and preserves files already written.
 
 ## Modules
 
 - `base.py` — file CRUD helpers: `get_file_items`, `get_file_content`, `update_file_content`, plus rename/delete via the `types` helpers.
+- `paths.py` — shared HTTP path boundary: resolves symlinks before checking containment, returns 400 on escape, and validates create/rename basenames. Server file operations and archive download/compression/population use the same boundary; multipart validates every destination before writing any part.
 - `multi_file.py` — session orchestrator: `check_upload_conflicts`, `set_upload_policy`, `upload_multiple_files`.
 - `search.py` — `search_files` shells out to `fd` for fast regex search; filters cover regex, case sensitivity, max depth, min/max size, newer-than / older-than dates. Result rows are parsed from `stat` output into `SearchFileItem`.
 - `types.py` — `FileItem`, `FileContent`, `MultiFileUploadRequest`, `FileStructureItem`, `OverwritePolicy`, `UploadSession`, plus the result models.

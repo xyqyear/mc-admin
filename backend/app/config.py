@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -43,6 +43,7 @@ class AuditSettings(BaseModel):
     log_request_body: bool = True
     max_body_size: int = 10240
     sensitive_fields: list[str] = ["password", "token", "secret", "key"]
+    sensitive_exact_fields: list[str] = ["ak", "sk", "code", "ticket"]
 
 
 class ResticSettings(BaseModel):
@@ -73,7 +74,7 @@ class Settings(BaseSettings):
     master_token: str
     jwt: JWTSettings
     audit: AuditSettings = Field(default_factory=AuditSettings)
-    restic: Optional[ResticSettings] = None
+    restic: ResticSettings | None = None
 
     server_path: Path
     logs_dir: Path = Field(default=Path("logs"))

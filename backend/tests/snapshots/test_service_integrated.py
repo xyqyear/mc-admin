@@ -23,7 +23,7 @@ def check_restic_available():
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -153,11 +153,10 @@ class TestCreateSnapshot:
         assert data / "my_world" / "level.dat" in nodes
 
     async def test_snapshot_of_ignored_path_rejected(self, service, server):
-        with ignored_paths([".mcmap"]):
-            with pytest.raises(TargetIgnoredError):
-                await service.create_snapshot(
-                    [server.get_data_path() / ".mcmap"]
-                )
+        with ignored_paths([".mcmap"]), pytest.raises(TargetIgnoredError):
+            await service.create_snapshot(
+                [server.get_data_path() / ".mcmap"]
+            )
 
     async def test_no_ignores_records_no_excludes(self, service, server):
         with ignored_paths([]):
@@ -233,9 +232,8 @@ class TestRestore:
         data = server.get_data_path()
         with ignored_paths([]):
             snapshot = await service.create_snapshot([server.get_project_path()])
-        with ignored_paths(["logs"]):
-            with pytest.raises(TargetIgnoredError):
-                await _drain(service.restore(snapshot.id, [data / "logs"]))
+        with ignored_paths(["logs"]), pytest.raises(TargetIgnoredError):
+            await _drain(service.restore(snapshot.id, [data / "logs"]))
 
     async def test_single_file_restore(self, service, server):
         data = server.get_data_path()

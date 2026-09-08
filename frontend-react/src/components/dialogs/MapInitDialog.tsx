@@ -86,7 +86,10 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
         }
       },
       onClose: () => {
-        if (!completed) return
+        if (!completed) {
+          setErrored((previous) => previous ?? '连接中断，请重试地图初始化')
+          return
+        }
         toast.success('地图初始化完成')
         onComplete()
       },

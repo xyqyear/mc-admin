@@ -2,13 +2,12 @@
 Cron job registry for registering and managing cron job functions.
 """
 
-from typing import Dict, Optional, Type
 
 from ..dynamic_config.schemas import BaseConfigSchema
+from ..self_check.job import SelfCheckJobParams, self_check_cronjob
 from .jobs.backup import BackupJobParams, backup_cronjob
 from .jobs.restart import ServerRestartParams, restart_server_cronjob
 from .types import AsyncCronJobFunction, CronJobRegistration
-from ..self_check.job import SelfCheckJobParams, self_check_cronjob
 
 
 class CronRegistry:
@@ -21,18 +20,18 @@ class CronRegistry:
 
     def __init__(self):
         # identifier -> CronJobRegistration
-        self._cronjobs: Dict[str, CronJobRegistration] = {}
+        self._cronjobs: dict[str, CronJobRegistration] = {}
 
     def register(
         self,
-        schema_cls: Type[BaseConfigSchema],
-        identifier: Optional[str] = None,
+        schema_cls: type[BaseConfigSchema],
+        identifier: str | None = None,
         description: str = "",
         is_system: bool = False,
-        default_cron: Optional[str] = None,
-        default_second: Optional[str] = None,
-        default_params: Optional[BaseConfigSchema] = None,
-        default_name: Optional[str] = None,
+        default_cron: str | None = None,
+        default_second: str | None = None,
+        default_params: BaseConfigSchema | None = None,
+        default_name: str | None = None,
     ):
         """
         Decorator to register a cron job function.
@@ -80,14 +79,14 @@ class CronRegistry:
     def register_func(
         self,
         func: AsyncCronJobFunction,
-        schema_cls: Type[BaseConfigSchema],
-        identifier: Optional[str] = None,
+        schema_cls: type[BaseConfigSchema],
+        identifier: str | None = None,
         description: str = "",
         is_system: bool = False,
-        default_cron: Optional[str] = None,
-        default_second: Optional[str] = None,
-        default_params: Optional[BaseConfigSchema] = None,
-        default_name: Optional[str] = None,
+        default_cron: str | None = None,
+        default_second: str | None = None,
+        default_params: BaseConfigSchema | None = None,
+        default_name: str | None = None,
     ):
         """
         Register a cron job function.
@@ -112,7 +111,7 @@ class CronRegistry:
 
         return func
 
-    def get_cronjob(self, identifier: str) -> Optional[CronJobRegistration]:
+    def get_cronjob(self, identifier: str) -> CronJobRegistration | None:
         """
         Get a registered cron job by identifier.
 
@@ -126,7 +125,7 @@ class CronRegistry:
 
     def get_all_cronjobs(
         self,
-    ) -> Dict[str, CronJobRegistration]:
+    ) -> dict[str, CronJobRegistration]:
         """
         Get all registered cron jobs.
 
@@ -147,7 +146,7 @@ class CronRegistry:
         """
         return identifier in self._cronjobs
 
-    def get_schema_class(self, identifier: str) -> Optional[Type[BaseConfigSchema]]:
+    def get_schema_class(self, identifier: str) -> type[BaseConfigSchema] | None:
         """
         Get the parameter schema class for a cron job.
 

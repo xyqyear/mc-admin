@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from joserfc import jwt
 from joserfc.jwk import OctKey
@@ -21,9 +21,9 @@ def get_password_hash(password: str):
 
 def get_token_expiry(expires_delta: timedelta | None = None) -> datetime:
     if expires_delta:
-        return datetime.now(timezone.utc) + expires_delta
+        return datetime.now(UTC) + expires_delta
     else:
-        return datetime.now(timezone.utc) + timedelta(
+        return datetime.now(UTC) + timedelta(
             minutes=settings.jwt.access_token_expire_minutes
         )
 

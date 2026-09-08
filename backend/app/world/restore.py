@@ -8,28 +8,28 @@ that the routers stream as SSE. Preview heartbeat/janitor/disk-guard lives in
 from __future__ import annotations
 
 import asyncio
+import errno
+import json
 import secrets
 import tempfile
-from contextlib import AsyncExitStack
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator, Callable, Iterable
+from contextlib import AbstractAsyncContextManager, AsyncExitStack, aclosing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
     Any,
-    AsyncContextManager,
-    AsyncGenerator,
-    Callable,
-    Iterable,
     Literal,
-    Optional,
 )
 
 import aiofiles
 import aiofiles.os as aioos
+from anyio import CancelScope
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dynamic_config import config as dynamic_config
+from ..files.utils import makedirs_with_ownership
 from ..logger import logger
 from ..mcmap import runner as mcmap_runner
 from ..mcmap.cache import ServerMapCache
@@ -43,7 +43,6 @@ from ..mcmap.events import (
 from ..mcmap.queue import ServerRenderQueue
 from ..mcmap.types import MCMapError
 from ..minecraft import DockerMCManager, MCServerStatus
-from ..utils import async_fs
 from ..models import (
     Restoration,
     RestorationSelection,
@@ -55,6 +54,7 @@ from ..snapshots import (
     ResticSnapshotWithSummary,
     SnapshotService,
 )
+from ..utils import async_fs
 from .layout import DimensionInfo, WorldRoot, discover_world_roots
 from .locks import (
     LockHolder,
@@ -63,7 +63,7 @@ from .locks import (
 )
 from .preview import PreviewMapCache, PreviewSessionManager, PreviewSessionNotFoundError
 
-SessionFactory = Callable[[], AsyncContextManager[AsyncSession]]
+SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 CHUNKS_PER_REGION_AXIS = 32
 SUBDIR_KINDS = ("region", "entities", "poi")
@@ -89,13 +89,13 @@ class RestoreEvent(BaseModel):
         "complete",
         "error",
     ]
-    message: Optional[str] = None
-    percent: Optional[float] = None
-    rx: Optional[int] = None
-    rz: Optional[int] = None
-    sub_dir: Optional[str] = None
-    restoration_id: Optional[str] = None
-    safety_snapshot_id: Optional[str] = None
+    message: str | None = None
+    percent: float | None = None
+    rx: int | None = None
+    rz: int | None = None
+    sub_dir: str | None = None
+    restoration_id: str | None = None
+    safety_snapshot_id: str | None = None
 
 
 class PreviewEvent(BaseModel):
@@ -109,9 +109,9 @@ class PreviewEvent(BaseModel):
         "ready",
         "error",
     ]
-    message: Optional[str] = None
-    session_id: Optional[str] = None
-    percent: Optional[float] = None
+    message: str | None = None
+    session_id: str | None = None
+    percent: float | None = None
 
 
 class RestoreError(Exception):
@@ -196,7 +196,7 @@ class WorldRestoreOrchestrator:
         self,
         server_id: str,
         selection: RestorationSelection,
-        user_id: Optional[int],
+        user_id: int | None,
     ) -> ResticSnapshotWithSummary:
         """Acquire BACKUP lock and snapshot the selection paths.
 
@@ -212,7 +212,7 @@ class WorldRestoreOrchestrator:
         selection_label = _selection_label(selection)
         holder = LockHolder(
             kind=ServerOperationKind.BACKUP,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             user_id=user_id,
             description=f"世界快照（{selection_label}）",
         )
@@ -238,15 +238,16 @@ class WorldRestoreOrchestrator:
         server_id: str,
         source_snapshot_id: str,
         selection: RestorationSelection,
-        user_id: Optional[int],
+        user_id: int | None,
         is_rollback: bool = False,
-    ) -> AsyncGenerator[RestoreEvent, None]:
+        absent_source_dirs: list[str] | None = None,
+    ) -> AsyncGenerator[RestoreEvent]:
         """Acquire RESTORE lock, take a safety snapshot, persist a row, and run the scope flow."""
         restoration_id = _new_restoration_id()
         selection_label = _selection_label(selection)
         holder = LockHolder(
             kind=ServerOperationKind.RESTORE,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             user_id=user_id,
             description=f"世界恢复（{selection_label}{'，回档' if is_rollback else ''}）",
             restoration_id=restoration_id,
@@ -254,7 +255,7 @@ class WorldRestoreOrchestrator:
 
         async with self._lock.acquire(server_id, holder):
             await self._ensure_server_stopped(server_id)
-            paths = await self._resolve_paths_for_selection(server_id, selection)
+            paths = await self._resolve_paths_core(server_id, selection, include_mcc=True, include_missing=True)
             if not paths:
                 raise SelectionResolutionError(
                     f"选择范围没有解析到任何文件路径: {selection.model_dump()}"
@@ -280,73 +281,66 @@ class WorldRestoreOrchestrator:
                 message=f"安全快照 {safety.short_id}",
             )
 
-            await self._insert_restoration_row(
-                restoration_id=restoration_id,
-                server_id=server_id,
-                selection=selection,
-                source_snapshot_id=source_snapshot_id,
-                safety_snapshot_id=safety_snapshot_id,
-                is_rollback=is_rollback,
-                user_id=user_id,
-            )
+            absent_dirs = await self._absent_sidecar_dirs(server_id, selection)
+            with CancelScope(shield=True):
+                await self._insert_restoration_row(
+                    restoration_id=restoration_id,
+                    server_id=server_id,
+                    selection=selection,
+                    source_snapshot_id=source_snapshot_id,
+                    safety_snapshot_id=safety_snapshot_id,
+                    is_rollback=is_rollback,
+                    user_id=user_id,
+                    absent_dirs=absent_dirs,
+                )
 
             touched_items: list[str] = []
+            status = RestorationStatus.INTERRUPTED
+            error_message: str | None = "恢复连接已中断"
             try:
                 if selection.type is RestorationType.CHUNKS:
-                    async for ev in self._flow_chunks(
-                        server_id=server_id,
-                        source_snapshot_id=source_snapshot_id,
-                        selection=selection,
-                        restoration_id=restoration_id,
-                    ):
-                        yield ev
+                    flow = self._flow_chunks(
+                        server_id=server_id, source_snapshot_id=source_snapshot_id,
+                        selection=selection, restoration_id=restoration_id,
+                    )
                 else:
-                    async for ev in self._flow_filesystem_restore(
-                        source_snapshot_id=source_snapshot_id,
-                        paths=paths,
-                        restoration_id=restoration_id,
-                        touched_items=touched_items,
-                    ):
-                        yield ev
+                    flow = self._flow_filesystem_restore(
+                        source_snapshot_id=source_snapshot_id, paths=paths,
+                        restoration_id=restoration_id, touched_items=touched_items,
+                    )
+                async with aclosing(flow):
+                    async for event in flow:
+                        yield event
+                if absent_source_dirs:
+                    await self._restore_absent_sidecars(server_id, source_snapshot_id, selection, absent_source_dirs)
+                status = RestorationStatus.SUCCEEDED
+                error_message = None
             except Exception as exc:
-                logger.exception(
-                    "world restore failed: server=%s restoration=%s",
-                    server_id,
-                    restoration_id,
-                )
-                await self._update_restoration_row(
-                    restoration_id, RestorationStatus.FAILED, str(exc)
-                )
-                yield RestoreEvent(
-                    event_type="error",
-                    restoration_id=restoration_id,
-                    message=str(exc),
-                )
+                status = RestorationStatus.FAILED
+                error_message = str(exc)
+                logger.exception("world restore failed: server=%s restoration=%s", server_id, restoration_id)
+            finally:
+                with CancelScope(shield=True):
+                    try:
+                        await self._invalidate_map_cache(
+                            server_id=server_id, selection=selection, touched_items=touched_items,
+                        )
+                    except Exception as exc:
+                        logger.exception("restore cache invalidation failed: restoration=%s", restoration_id)
+                        if status is RestorationStatus.SUCCEEDED:
+                            status = RestorationStatus.FAILED
+                            error_message = f"世界数据已恢复，但地图缓存更新失败: {exc}"
+                    await self._update_restoration_row(restoration_id, status, error_message)
+
+            if status is RestorationStatus.FAILED:
+                yield RestoreEvent(event_type="error", restoration_id=restoration_id, message=error_message)
                 return
-
-            invalidated = await self._invalidate_map_cache(
-                server_id=server_id,
-                selection=selection,
-                touched_items=touched_items,
-            )
-            yield RestoreEvent(
-                event_type="invalidate_cache",
-                restoration_id=restoration_id,
-                message=f"已使 {invalidated} 个地图瓦片缓存失效",
-            )
-
-            await self._update_restoration_row(
-                restoration_id, RestorationStatus.SUCCEEDED, None
-            )
-            yield RestoreEvent(
-                event_type="complete",
-                restoration_id=restoration_id,
-                message="恢复完成",
-            )
+            yield RestoreEvent(event_type="invalidate_cache", restoration_id=restoration_id, message="地图缓存已失效")
+            yield RestoreEvent(event_type="complete", restoration_id=restoration_id, message="恢复完成")
 
     async def rollback(
-        self, restoration_id: str, user_id: Optional[int]
-    ) -> AsyncGenerator[RestoreEvent, None]:
+        self, restoration_id: str, user_id: int | None
+    ) -> AsyncGenerator[RestoreEvent]:
         """Re-run ``begin_restore`` using the row's safety snapshot as the source."""
         async with self._session_factory() as session:
             row = (
@@ -362,21 +356,23 @@ class WorldRestoreOrchestrator:
             )
 
         selection = RestorationSelection.model_validate_json(row.selection_json)
-        async for ev in self.begin_restore(
+        async with aclosing(self.begin_restore(
             server_id=row.server_id,
             source_snapshot_id=row.safety_snapshot_id,
             selection=selection,
             user_id=user_id,
             is_rollback=True,
-        ):
-            yield ev
+            absent_source_dirs=json.loads(row.selection_json).get("absent_sidecar_dirs", []),
+        )) as events:
+            async for event in events:
+                yield event
 
     async def begin_preview(
         self,
         server_id: str,
         source_snapshot_id: str,
         selection: RestorationSelection,
-    ) -> AsyncGenerator[PreviewEvent, None]:
+    ) -> AsyncGenerator[PreviewEvent]:
         """Stage snapshot MCAs to a session dir, run chunk merge, attach a lazy-render queue.
 
         Tiles render on first request via a per-session ``ServerRenderQueue``
@@ -450,7 +446,7 @@ class WorldRestoreOrchestrator:
         selection: RestorationSelection,
         session_dir: Path,
         session_id: str,
-    ) -> AsyncGenerator[PreviewEvent, None]:
+    ) -> AsyncGenerator[PreviewEvent]:
         """Copy live MCAs into ``preview/`` then splice selected chunks from the staged snapshot."""
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
@@ -459,10 +455,10 @@ class WorldRestoreOrchestrator:
             raise SelectionResolutionError(
                 "区块恢复选择范围需要指定维度路径"
             )
-        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
+        dim = _restore_dimension(_find_dimension(data_path, roots, selection.region_dir_relpath))
 
         grouped = _group_chunks_by_region(selection.chunks)
-        live_subdirs: dict[str, Optional[Path]] = {
+        live_subdirs: dict[str, Path | None] = {
             "region": dim.region_dir,
             "entities": dim.entities_dir,
             "poi": dim.poi_dir,
@@ -472,7 +468,7 @@ class WorldRestoreOrchestrator:
         total = len(grouped) * sum(1 for v in live_subdirs.values() if v is not None)
         done = 0
         for (rx, rz), local_chunks in grouped.items():
-            for sub, live_dir in live_subdirs.items():
+            for live_dir in live_subdirs.values():
                 if live_dir is None:
                     continue
                 live_mca = live_dir / f"r.{rx}.{rz}.mca"
@@ -583,11 +579,11 @@ class WorldRestoreOrchestrator:
 
     async def get_preview_tile(
         self, session_id: str, rx: int, rz: int
-    ) -> Optional[Path]:
+    ) -> Path | None:
         return await self._preview_manager.get_tile_path(session_id, rx, rz)
 
     async def request_preview_tile(
-        self, session_id: str, rx: int, rz: int, *, timeout: Optional[float] = None
+        self, session_id: str, rx: int, rz: int, *, timeout: float | None = None
     ) -> Path:
         """Return a preview tile, rendering it lazily on first miss.
 
@@ -620,10 +616,10 @@ class WorldRestoreOrchestrator:
         )
         return await asyncio.wait_for(queue.request(rx, rz), timeout=effective_timeout)
 
-    def get_preview_session_dir(self, session_id: str) -> Optional[Path]:
+    def get_preview_session_dir(self, session_id: str) -> Path | None:
         return self._preview_manager.get_session_dir(session_id)
 
-    def start_janitor(self) -> "asyncio.Task":
+    def start_janitor(self) -> asyncio.Task:
         return self._preview_manager.start_janitor()
 
     async def stop_janitor(self) -> None:
@@ -636,7 +632,7 @@ class WorldRestoreOrchestrator:
         paths: list[Path],
         restoration_id: str,
         touched_items: list[str],
-    ) -> AsyncGenerator[RestoreEvent, None]:
+    ) -> AsyncGenerator[RestoreEvent]:
         """In-place restic restore for world / dimension / regions scopes.
 
         ``touched_items`` collects absolute paths restic wrote or deleted,
@@ -648,15 +644,19 @@ class WorldRestoreOrchestrator:
             message=f"正在从快照 {source_snapshot_id[:8]} 恢复 {len(paths)} 个路径",
             percent=0.0,
         )
-        async for ev in self._snapshots.restore(source_snapshot_id, paths):
-            if ev.kind == "status" and ev.percent_done is not None:
-                yield RestoreEvent(
-                    event_type="restore",
-                    restoration_id=restoration_id,
-                    percent=ev.percent_done * 100.0,
-                )
-            elif ev.kind == "file" and ev.action in ("updated", "restored", "deleted"):
-                if ev.item is not None:
+        async with aclosing(self._snapshots.restore(source_snapshot_id, paths)) as events:
+            async for ev in events:
+                if ev.kind == "status" and ev.percent_done is not None:
+                    yield RestoreEvent(
+                        event_type="restore",
+                        restoration_id=restoration_id,
+                        percent=ev.percent_done * 100.0,
+                    )
+                elif (
+                    ev.kind == "file"
+                    and ev.action in ("updated", "restored", "deleted")
+                    and ev.item is not None
+                ):
                     touched_items.append(ev.item)
 
     async def _flow_chunks(
@@ -666,7 +666,7 @@ class WorldRestoreOrchestrator:
         source_snapshot_id: str,
         selection: RestorationSelection,
         restoration_id: str,
-    ) -> AsyncGenerator[RestoreEvent, None]:
+    ) -> AsyncGenerator[RestoreEvent]:
         """Stage source MCAs to a temp dir, then merge selected chunks per region."""
         if not selection.chunks:
             return
@@ -677,10 +677,10 @@ class WorldRestoreOrchestrator:
             raise SelectionResolutionError(
                 "区块恢复选择范围需要指定维度路径"
             )
-        dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
+        dim = _restore_dimension(_find_dimension(data_path, roots, selection.region_dir_relpath))
 
         grouped = _group_chunks_by_region(selection.chunks)
-        live_subdirs: dict[str, Optional[Path]] = {
+        live_subdirs: dict[str, Path | None] = {
             "region": dim.region_dir,
             "entities": dim.entities_dir,
             "poi": dim.poi_dir,
@@ -708,15 +708,16 @@ class WorldRestoreOrchestrator:
                 message=f"正在从快照 {source_snapshot_id[:8]} 准备 {len(grouped)} 个区域",
                 percent=0.0,
             )
-            async for ev in self._snapshots.stage(
+            async with aclosing(self._snapshots.stage(
                 source_snapshot_id, include_paths, stage_root
-            ):
-                if ev.kind == "status" and ev.percent_done is not None:
-                    yield RestoreEvent(
-                        event_type="stage",
-                        restoration_id=restoration_id,
-                        percent=ev.percent_done * 100.0,
-                    )
+            )) as events:
+                async for ev in events:
+                    if ev.kind == "status" and ev.percent_done is not None:
+                        yield RestoreEvent(
+                            event_type="stage",
+                            restoration_id=restoration_id,
+                            percent=ev.percent_done * 100.0,
+                        )
 
             total_jobs = len(grouped) * sum(
                 1 for live in live_subdirs.values() if live is not None
@@ -764,7 +765,7 @@ class WorldRestoreOrchestrator:
         expected_count: int,
     ) -> None:
         async with ctx_manager as proc:
-            completed_count: Optional[int] = None
+            completed_count: int | None = None
             async for event in proc.events(event_adapter):
                 if isinstance(event, MCMapErrorEvent):
                     raise MCMapError(event.message or f"mcmap {op_name} 操作失败")
@@ -787,6 +788,7 @@ class WorldRestoreOrchestrator:
         chunks: list[tuple[int, int]],
         owned_by: Path,
     ) -> None:
+        await makedirs_with_ownership(target_mca.parent, owned_by)
         await self._run_chunk_op(
             op_name="replace-chunks",
             ctx_manager=mcmap_runner.replace_chunks(
@@ -863,6 +865,7 @@ class WorldRestoreOrchestrator:
         selection: RestorationSelection,
         *,
         include_mcc: bool,
+        include_missing: bool = False,
     ) -> list[Path]:
         instance = self._docker.get_instance(server_id)
         data_path = instance.get_data_path()
@@ -878,6 +881,8 @@ class WorldRestoreOrchestrator:
                 f"{_selection_label(selection)}选择范围需要指定维度路径"
             )
         dim = _find_dimension(data_path, roots, selection.region_dir_relpath)
+        if include_missing:
+            dim = _restore_dimension(dim)
 
         if selection.type is RestorationType.DIMENSION:
             paths = [dim.region_dir]
@@ -921,6 +926,45 @@ class WorldRestoreOrchestrator:
                 f"服务器 '{server_id}' 必须先停止才能恢复世界（当前状态: {status.value}）"
             )
 
+    async def _absent_sidecar_dirs(
+        self, server_id: str, selection: RestorationSelection
+    ) -> list[str]:
+        if selection.type is RestorationType.WORLD or not selection.region_dir_relpath:
+            return []
+        data_path = self._docker.get_instance(server_id).get_data_path()
+        dimension = data_path / selection.region_dir_relpath
+        return [
+            (dimension.parent / kind).relative_to(data_path).as_posix()
+            for kind in ("entities", "poi")
+            if not await aioos.path.exists(dimension.parent / kind)
+        ]
+
+    async def _restore_absent_sidecars(
+        self, server_id: str, snapshot_id: str, selection: RestorationSelection, absent_dirs: list[str]
+    ) -> None:
+        data_path = self._docker.get_instance(server_id).get_data_path()
+        paths = await self._resolve_paths_core(
+            server_id, selection, include_mcc=True, include_missing=True
+        )
+        for relative in absent_dirs:
+            directory = await async_fs.resolve_inside(data_path, data_path / relative)
+            selected = [path for path in paths if path.is_relative_to(directory)]
+            if selection.type is RestorationType.CHUNKS:
+                for path in selected:
+                    if path.suffix != ".mca" or not await aioos.path.isfile(path):
+                        continue
+                    async with aiofiles.open(path, "rb") as file:
+                        locations = await file.read(4096)
+                    if locations == bytes(4096):
+                        await aioos.remove(path)
+            else:
+                await self._snapshots.remove_absent_paths(snapshot_id, selected)
+            try:
+                await aioos.rmdir(directory)
+            except OSError as exc:
+                if exc.errno not in (errno.ENOENT, errno.ENOTEMPTY):
+                    raise
+
     async def _insert_restoration_row(
         self,
         *,
@@ -928,9 +972,10 @@ class WorldRestoreOrchestrator:
         server_id: str,
         selection: RestorationSelection,
         source_snapshot_id: str,
-        safety_snapshot_id: Optional[str],
+        safety_snapshot_id: str | None,
         is_rollback: bool,
-        user_id: Optional[int],
+        user_id: int | None,
+        absent_dirs: list[str],
     ) -> None:
         async with self._session_factory() as session:
             session.add(
@@ -940,7 +985,7 @@ class WorldRestoreOrchestrator:
                     type=selection.type,
                     source_snapshot_id=source_snapshot_id,
                     safety_snapshot_id=safety_snapshot_id,
-                    selection_json=selection.model_dump_json(),
+                    selection_json=json.dumps({**selection.model_dump(mode="json"), "absent_sidecar_dirs": absent_dirs}),
                     is_rollback=is_rollback,
                     initiated_by_user_id=user_id,
                 )
@@ -951,7 +996,7 @@ class WorldRestoreOrchestrator:
         self,
         restoration_id: str,
         status: RestorationStatus,
-        error_message: Optional[str],
+        error_message: str | None,
     ) -> None:
         async with self._session_factory() as session:
             row = (
@@ -963,10 +1008,18 @@ class WorldRestoreOrchestrator:
                 logger.warning("restoration row %s missing on update", restoration_id)
                 return
             row.status = status
-            row.finished_at = datetime.now(timezone.utc)
+            row.finished_at = datetime.now(UTC)
             if error_message is not None:
                 row.error_message = error_message
             await session.commit()
+
+
+def _restore_dimension(dim: DimensionInfo) -> DimensionInfo:
+    return DimensionInfo(
+        region_dir=dim.region_dir,
+        entities_dir=dim.region_dir.parent / "entities",
+        poi_dir=dim.region_dir.parent / "poi",
+    )
 
 
 def _find_dimension(

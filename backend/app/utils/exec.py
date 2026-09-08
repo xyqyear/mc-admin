@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
+from anyio import CancelScope
 
 _TERMINATE_GRACE_SECONDS = 2.0
 
@@ -18,7 +19,7 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
     try:
         await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
         return
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     try:
         process.kill()
@@ -30,7 +31,7 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
 async def exec_command(
     command: str,
     *args: str,
-    env: dict[str, str] = dict(),
+    env: dict[str, str] | None = None,
     cwd: str | None = None,
     timeout: float | None = None,
 ) -> str:
@@ -41,7 +42,7 @@ async def exec_command(
     process = await asyncio.create_subprocess_exec(
         command,
         *args,
-        env=env,
+        env={} if env is None else env,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -54,14 +55,16 @@ async def exec_command(
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
             )
-    except asyncio.TimeoutError:
-        await _kill_process(process)
+    except TimeoutError:
+        with CancelScope(shield=True):
+            await _kill_process(process)
         raise TimeoutError(
             f"Command timed out after {timeout}s: {command} {' '.join(args)}"
         )
     except BaseException:
         # Cancellation must not orphan the child process.
-        await _kill_process(process)
+        with CancelScope(shield=True):
+            await _kill_process(process)
         raise
 
     if stdout is None:  # type: ignore
@@ -81,7 +84,7 @@ async def exec_command_stream(
     *args: str,
     cwd: str | None = None,
     delimiters: set[int] | None = None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Stream stdout segments from ``command``.
 
     ``delimiters=None`` yields whole lines. Pass a set of byte values (e.g.
@@ -96,32 +99,36 @@ async def exec_command_stream(
         stderr=asyncio.subprocess.PIPE,
     )
 
-    if process.stdout is None:
-        raise RuntimeError("Failed to capture stdout")
+    try:
+        if process.stdout is None:
+            raise RuntimeError("Failed to capture stdout")
 
-    if delimiters is None:
-        async for line in process.stdout:
-            yield line.decode()
-    else:
-        buffer = b""
-        while True:
-            byte = await process.stdout.read(1)
-            if not byte:
-                break
+        if delimiters is None:
+            async for line in process.stdout:
+                yield line.decode()
+        else:
+            buffer = b""
+            while True:
+                byte = await process.stdout.read(1)
+                if not byte:
+                    break
 
-            if byte[0] in delimiters:
-                if buffer:
-                    yield buffer.decode(errors="replace")
-                    buffer = b""
-            else:
-                buffer += byte
+                if byte[0] in delimiters:
+                    if buffer:
+                        yield buffer.decode(errors="replace")
+                        buffer = b""
+                else:
+                    buffer += byte
 
-        if buffer:
-            yield buffer.decode(errors="replace")
+            if buffer:
+                yield buffer.decode(errors="replace")
 
-    await process.wait()
-    if process.returncode != 0:
-        stderr_content = b""
-        if process.stderr:
-            stderr_content = await process.stderr.read()
-        raise RuntimeError(f"Command failed: {stderr_content.decode()}")
+        await process.wait()
+        if process.returncode != 0:
+            stderr_content = b""
+            if process.stderr:
+                stderr_content = await process.stderr.read()
+            raise RuntimeError(f"Command failed: {stderr_content.decode()}")
+    finally:
+        with CancelScope(shield=True):
+            await _kill_process(process)

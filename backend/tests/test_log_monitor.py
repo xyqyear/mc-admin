@@ -1,10 +1,13 @@
 """Unit tests for LogMonitor class."""
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
+from watchfiles import Change, awatch
 
 from app.log_monitor.events import PlayerJoinedEvent, PlayerUuidDiscoveredEvent
 from app.log_monitor.monitor import LogMonitor
@@ -47,6 +50,7 @@ class TestLogMonitor:
             assert server_id in log_monitor_instance._watch_tasks
             assert log_monitor_instance._watch_tasks[server_id] == mock_task
             mock_create_task.assert_called_once()
+            mock_create_task.call_args.args[0].close()
 
     @pytest.mark.asyncio
     async def test_watch_server_already_watching(self, log_monitor_instance, caplog):
@@ -68,10 +72,7 @@ class TestLogMonitor:
         server_id = "test_server"
 
         async def dummy_coro():
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                raise
+            await asyncio.sleep(10)
 
         task = asyncio.create_task(dummy_coro())
         log_monitor_instance._watch_tasks[server_id] = task
@@ -97,10 +98,7 @@ class TestLogMonitor:
         """Test stopping all watches."""
 
         async def dummy_coro():
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                raise
+            await asyncio.sleep(10)
 
         task1 = asyncio.create_task(dummy_coro())
         task2 = asyncio.create_task(dummy_coro())
@@ -269,3 +267,86 @@ class TestLogMonitor:
                 await task
             except asyncio.CancelledError:
                 pass
+
+    @pytest.mark.asyncio
+    async def test_polling_watch_reconciles_unreported_same_mtime_tail(
+        self, log_monitor_instance, tmp_path, monkeypatch
+    ):
+        log_path = tmp_path / "latest.log"
+        content = "historical log content\n"
+
+        def replace_log(value):
+            staging = tmp_path / "latest.log.tmp"
+            staging.write_text(value)
+            os.utime(staging, (1700000000, 1700000000))
+            staging.replace(log_path)
+
+        await asyncio.to_thread(replace_log, content)
+        idle = asyncio.Queue()
+        notifications = []
+        events = asyncio.Queue()
+
+        async def polling_watch(*paths, **kwargs):
+            async for changes in awatch(
+                *paths, force_polling=True, poll_delay_ms=50, **kwargs
+            ):
+                notifications.extend(change for change in changes if change[1] == str(log_path))
+                if not changes:
+                    idle.put_nowait(None)
+                yield changes
+
+        async def capture(event):
+            events.put_nowait(event)
+
+        monkeypatch.setattr("app.log_monitor.monitor.awatch", polling_watch)
+        monkeypatch.setattr(log_monitor_instance, "_handle_event", capture)
+        await log_monitor_instance._watch_server("polling", log_path)
+        try:
+            await asyncio.wait_for(idle.get(), 5)
+            for name in ("FirstPlayer", "SecondPlayer"):
+                content += (
+                    f"[12:00:00] [Server thread/INFO]: UUID of player {name} "
+                    f"is {UUID(make_online_uuid(name))}\n"
+                )
+                await asyncio.to_thread(replace_log, content)
+                event = await asyncio.wait_for(events.get(), 3)
+                assert isinstance(event, PlayerUuidDiscoveredEvent)
+                assert event.player_name == name
+            await asyncio.wait_for(idle.get(), 3)
+            assert events.empty()
+            assert notifications == []
+        finally:
+            await log_monitor_instance.stop_watching("polling")
+
+    @pytest.mark.asyncio
+    async def test_idle_reconciliation_preserves_delete_recreate_and_truncate(
+        self, log_monitor_instance, tmp_path, monkeypatch
+    ):
+        log_path = tmp_path / "latest.log"
+        await asyncio.to_thread(log_path.write_text, "historical" * 100)
+        seen = []
+
+        def line(name):
+            return (
+                f"[12:00:00] [Server thread/INFO]: UUID of player {name} "
+                f"is {UUID(make_online_uuid(name))}\n"
+            )
+
+        async def event_batches(*args, **kwargs):
+            await asyncio.to_thread(log_path.write_text, line("Truncated"))
+            yield set()
+            yield set()
+            await asyncio.to_thread(log_path.unlink)
+            yield {(Change.deleted, str(log_path))}
+            yield set()
+            await asyncio.to_thread(log_path.write_text, line("Recreated"))
+            yield {(Change.added, str(log_path))}
+            yield set()
+
+        async def capture(event):
+            seen.append(event.player_name)
+
+        monkeypatch.setattr("app.log_monitor.monitor.awatch", event_batches)
+        monkeypatch.setattr(log_monitor_instance, "_handle_event", capture)
+        await log_monitor_instance._watch_loop("rotated", log_path)
+        assert seen == ["Truncated", "Recreated"]

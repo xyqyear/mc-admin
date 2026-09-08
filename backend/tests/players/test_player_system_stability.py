@@ -7,7 +7,7 @@ Tests complex scenarios, race conditions, and system stability.
 import asyncio
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import Base
 from app.models import (
+    Base,
     Player,
     PlayerSession,
     Server,
@@ -114,7 +114,7 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
 async def create_server(db, server_id: str) -> int:
     """Create server."""
     async with db() as session:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         server = Server(
             server_id=server_id,
             status=ServerStatus.ACTIVE,
@@ -151,7 +151,7 @@ async def count_open_sessions(db, player_db_id: int):
         result = await session.execute(
             select(PlayerSession).where(
                 PlayerSession.player_db_id == player_db_id,
-                PlayerSession.left_at == None,  # noqa: E711
+                PlayerSession.left_at == None,
             )
         )
         return len(list(result.scalars().all()))
@@ -174,7 +174,7 @@ async def test_concurrent_events_same_player(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Concurrent joins (simulating race condition — each gets its own DB session)
-    join_time = datetime.now(timezone.utc)
+    join_time = datetime.now(UTC)
 
     await asyncio.gather(
         process_player_join("server1", "Steve", timestamp=join_time),
@@ -363,7 +363,7 @@ async def test_long_session_duration_calculation(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins 1 day ago
-    join_time = datetime.now(timezone.utc) - timedelta(days=1)
+    join_time = datetime.now(UTC) - timedelta(days=1)
     await process_player_join("server1", "Steve", timestamp=join_time)
 
     # Player leaves after 24 hours
@@ -390,7 +390,7 @@ async def test_event_ordering_preservation(player_system):
     _server_db_id = await create_server(db, "server1")
 
     # Precise timing for events
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
 
     # Upsert UUID
     async with db() as session:
@@ -436,7 +436,7 @@ async def test_zero_duration_session(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins and immediately leaves (same timestamp)
-    same_time = datetime.now(timezone.utc)
+    same_time = datetime.now(UTC)
     await process_player_join("server1", "Steve", timestamp=same_time)
     await process_player_left("server1", "Steve", timestamp=same_time)
 

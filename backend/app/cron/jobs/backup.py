@@ -1,7 +1,7 @@
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, List, Optional, cast
+from typing import Annotated, cast
 
 import aiofiles.os as aioos
 import httpx2
@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ...config import settings
 from ...dynamic_config.schemas import BaseConfigSchema
+from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...snapshots import snapshot_service
 from ...utils import async_fs
@@ -18,6 +19,7 @@ from ...world import (
     ServerOperationKind,
     server_operation_lock,
 )
+from ...world.maintenance import affected_servers
 from ..types import ExecutionContext
 
 
@@ -28,14 +30,14 @@ class BackupJobParams(BaseConfigSchema):
 
     # Backup target configuration
     server_id: Annotated[
-        Optional[str],
+        str | None,
         Field(
             title="服务器 ID",
             description="可选要备份的服务器；留空表示备份所有服务器。",
         ),
     ] = None
     path: Annotated[
-        Optional[str],
+        str | None,
         Field(title="备份路径", description="服务器数据目录内的可选路径。"),
     ] = None
 
@@ -47,34 +49,34 @@ class BackupJobParams(BaseConfigSchema):
 
     # Forget retention policies (all optional, but at least one must be specified if enable_forget=True)
     keep_last: Annotated[
-        Optional[int], Field(title="保留最近快照数", description="保留最近的 n 个快照。")
+        int | None, Field(title="保留最近快照数", description="保留最近的 n 个快照。")
     ] = None
     keep_hourly: Annotated[
-        Optional[int],
+        int | None,
         Field(title="每小时保留", description="在最近 n 小时内每小时保留一次。"),
     ] = None
     keep_daily: Annotated[
-        Optional[int],
+        int | None,
         Field(title="每天保留", description="在最近 n 天内每天保留一次。"),
     ] = None
     keep_weekly: Annotated[
-        Optional[int],
+        int | None,
         Field(title="每周保留", description="在最近 n 周内每周保留一次。"),
     ] = None
     keep_monthly: Annotated[
-        Optional[int],
+        int | None,
         Field(title="每月保留", description="在最近 n 月内每月保留一次。"),
     ] = None
     keep_yearly: Annotated[
-        Optional[int],
+        int | None,
         Field(title="每年保留", description="在最近 n 年内每年保留一次。"),
     ] = None
     keep_tag: Annotated[
-        Optional[List[str]],
+        list[str] | None,
         Field(title="保留标签", description="保留带有这些标签的所有快照。"),
     ] = None
     keep_within: Annotated[
-        Optional[str],
+        str | None,
         Field(
             title="按时间范围保留",
             description='在指定时长内保留所有快照，例如 "4d" 或 "2y5m7d3h"。',
@@ -89,7 +91,7 @@ class BackupJobParams(BaseConfigSchema):
 
     # Uptime Kuma integration
     uptimekuma_url: Annotated[
-        Optional[str],
+        str | None,
         Field(title="Uptime Kuma 推送 URL", description="Uptime Kuma 推送监控 URL，可选。"),
     ] = None
 
@@ -160,10 +162,11 @@ async def _send_uptimekuma_notification(
         async with httpx2.AsyncClient(timeout=10) as client:
             response = await client.get(uptimekuma_url, params=params)
     except httpx2.HTTPError as e:
-        context.log(f"发送 Uptime Kuma 通知失败: {str(e)}")
+        context.log(f"发送 Uptime Kuma 通知失败: {e!s}")
         return
     except Exception as e:
-        context.log(f"Uptime Kuma 通知时发生未知错误: {str(e)}")
+        logger.exception("Operation _send_uptimekuma_notification failed")
+        context.log(f"Uptime Kuma 通知时发生未知错误: {e!s}")
         return
 
     if response.status_code == 200:
@@ -172,7 +175,7 @@ async def _send_uptimekuma_notification(
         context.log(f"Uptime Kuma 通知响应状态码非 200: {response.status_code}")
 
 
-async def _resolve_backup_path(server_id: Optional[str], path: Optional[str]) -> Path:
+async def _resolve_backup_path(server_id: str | None, path: str | None) -> Path:
     """
     Resolve the actual backup path based on server_id and path parameters
 
@@ -228,13 +231,20 @@ async def backup_cronjob(context: ExecutionContext):
 
     holder = LockHolder(
         kind=ServerOperationKind.BACKUP,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         user_id=None,
         description=f"定时备份（{lock_key}）",
     )
 
     try:
-        async with server_operation_lock.try_acquire(lock_key, holder) as acquired:
+        if params.server_id:
+            lock_keys = [params.server_id]
+        elif server_operation_lock.is_locked(GLOBAL_LOCK_KEY):
+            lock_keys = [GLOBAL_LOCK_KEY]
+        else:
+            backup_root = await async_fs.resolve(settings.server_path)
+            lock_keys = [GLOBAL_LOCK_KEY, *await affected_servers(docker_mc_manager, [backup_root])]
+        async with server_operation_lock.try_acquire_servers(lock_keys, holder) as acquired:
             if not acquired:
                 current = server_operation_lock.get_holder(lock_key)
                 if current is not None:
@@ -249,7 +259,7 @@ async def backup_cronjob(context: ExecutionContext):
                     )
                 else:
                     skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
-                context.log(skip_msg)
+                context.skip(skip_msg)
                 if params.uptimekuma_url and params.uptimekuma_url.strip():
                     running_time = time.time() - start_time
                     await _send_uptimekuma_notification(
@@ -306,7 +316,8 @@ async def backup_cronjob(context: ExecutionContext):
                     )
                     context.log("旧快照清理完成")
                 except Exception as e:
-                    context.log(f"警告: 清理旧快照时出错: {str(e)}")
+                    logger.exception("Operation backup_cronjob failed")
+                    context.log(f"警告: 清理旧快照时出错: {e!s}")
                     # Don't fail the entire job if forget fails
 
             # Final success message
@@ -326,7 +337,7 @@ async def backup_cronjob(context: ExecutionContext):
                 )
 
     except Exception as e:
-        error_msg = f"备份任务失败: {str(e)}"
+        error_msg = f"备份任务失败: {e!s}"
 
         # Send Uptime Kuma notification for failure if configured
         if params.uptimekuma_url and params.uptimekuma_url.strip():

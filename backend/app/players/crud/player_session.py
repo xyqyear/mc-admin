@@ -1,8 +1,6 @@
 """CRUD operations for PlayerSession model."""
-# flake8: noqa: E711
 
 from datetime import datetime
-from typing import List
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,9 +86,9 @@ async def end_all_open_sessions(
 
     count = 0
     for player_session in open_sessions:
-        # Calculate session duration
-        duration = int((left_at - player_session.joined_at).total_seconds())
-        player_session.left_at = left_at
+        ended_at = max(left_at, player_session.joined_at)
+        duration = int((ended_at - player_session.joined_at).total_seconds())
+        player_session.left_at = ended_at
         player_session.duration_seconds = duration
         count += 1
 
@@ -102,7 +100,7 @@ async def end_all_open_sessions(
 
 async def get_all_open_sessions_on_server(
     session: AsyncSession, server_db_id: int
-) -> List[PlayerSession]:
+) -> list[PlayerSession]:
     """Get all open sessions on a server.
 
     Args:
@@ -140,8 +138,9 @@ async def end_all_open_sessions_on_server(
 
     count = 0
     for player_session in open_sessions:
-        duration = int((left_at - player_session.joined_at).total_seconds())
-        player_session.left_at = left_at
+        ended_at = max(left_at, player_session.joined_at)
+        duration = int((ended_at - player_session.joined_at).total_seconds())
+        player_session.left_at = ended_at
         player_session.duration_seconds = duration
         count += 1
 
@@ -170,7 +169,7 @@ async def get_online_players_with_names_grouped_by_server(
         select(Server.server_id, Player.current_name)
         .join(PlayerSession, PlayerSession.server_db_id == Server.id)
         .join(Player, PlayerSession.player_db_id == Player.player_db_id)
-        .where(PlayerSession.left_at == None)  # noqa: E711
+        .where(PlayerSession.left_at == None)
     )
 
     players_by_server: dict[str, list[str]] = {}
@@ -203,7 +202,7 @@ async def get_online_player_names_on_server(
         .join(PlayerSession, PlayerSession.player_db_id == Player.player_db_id)
         .where(
             PlayerSession.server_db_id == server_db_id,
-            PlayerSession.left_at == None,  # noqa: E711
+            PlayerSession.left_at == None,
         )
     )
 

@@ -5,12 +5,14 @@ import json
 import os
 import posixpath
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncGenerator, Optional
 
 import aiofiles
 import aiofiles.os as aioos
+from anyio import CancelScope
 
 from ..background_tasks import task_manager
 from ..background_tasks.types import TaskProgress, TaskStatus, TaskType
@@ -86,7 +88,7 @@ class ChunkPruneService:
         *,
         server_id: str,
         request: ChunkPrunePreviewRequest,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
     ) -> str:
         await self._ensure_server_exists(server_id)
         data_path = self._docker.get_instance(server_id).get_data_path()
@@ -174,10 +176,10 @@ class ChunkPruneService:
 
     async def _run_apply_task(
         self, metadata: ChunkPruneTaskMetadata
-    ) -> AsyncGenerator[TaskProgress, None]:
+    ) -> AsyncGenerator[TaskProgress]:
         holder = LockHolder(
             kind=ServerOperationKind.PRUNE,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             user_id=metadata.user_id,
             description="区块清理",
         )
@@ -185,26 +187,29 @@ class ChunkPruneService:
             status = await self._docker.get_instance(metadata.server_id).get_status()
             if status not in STOPPED_STATUSES:
                 raise ChunkPruneConflictError("Stop the server before deleting chunks")
-            async for progress in self._run_prune_task(metadata, dry_run=False):
-                yield progress
-
-            pngs: set[Path] = set()
-            for (
-                region_dir_relpath,
-                regions,
-            ) in metadata.affected_regions_by_dimension.items():
-                pngs.update(
-                    png_invalidate.pngs_for_regions(
-                        metadata.data_path,
+            try:
+                async with aclosing(self._run_prune_task(metadata, dry_run=False)) as events:
+                    async for progress in events:
+                        yield progress
+            finally:
+                with CancelScope(shield=True):
+                    pngs: set[Path] = set()
+                    for (
                         region_dir_relpath,
                         regions,
-                    )
-                )
-            await png_invalidate.delete_pngs(pngs)
+                    ) in metadata.affected_regions_by_dimension.items():
+                        pngs.update(
+                            png_invalidate.pngs_for_regions(
+                                metadata.data_path,
+                                region_dir_relpath,
+                                regions,
+                            )
+                        )
+                    await png_invalidate.delete_pngs(pngs)
 
     async def _run_prune_task(
         self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool
-    ) -> AsyncGenerator[TaskProgress, None]:
+    ) -> AsyncGenerator[TaskProgress]:
         selected_cells_by_dimension: dict[str, set[tuple[int, int]]] = {}
         path_mapper = PruneEventPathMapper(metadata.data_path)
         progress_percent = 0.0
@@ -311,7 +316,7 @@ class ChunkPruneService:
 
     async def _run_preview_task(
         self, metadata: ChunkPruneTaskMetadata
-    ) -> AsyncGenerator[TaskProgress, None]:
+    ) -> AsyncGenerator[TaskProgress]:
         yield TaskProgress(progress=0, message="正在准备预览任务")
         async for progress in self._run_prune_task(metadata, dry_run=True):
             yield progress
@@ -323,7 +328,7 @@ class ChunkPruneService:
 
     async def _write_claims_file(
         self, server_id: str, data_path: Path
-    ) -> Optional[Path]:
+    ) -> Path | None:
         world_root = await self._primary_world_root(data_path)
         if world_root is None:
             return None
@@ -341,7 +346,7 @@ class ChunkPruneService:
         await aioos.makedirs(task_dir, exist_ok=True)
         target = (
             task_dir
-            / f"claims-{hashlib.sha256(str(datetime.now(timezone.utc)).encode()).hexdigest()[:12]}.json"
+            / f"claims-{hashlib.sha256(str(datetime.now(UTC)).encode()).hexdigest()[:12]}.json"
         )
         async with aiofiles.open(target, "w") as f:
             await f.write(
@@ -349,7 +354,7 @@ class ChunkPruneService:
             )
         return target
 
-    async def _primary_world_root(self, data_path: Path) -> Optional[Path]:
+    async def _primary_world_root(self, data_path: Path) -> Path | None:
         roots = await discover_world_root_paths(data_path)
         return roots[0].path if roots else None
 
@@ -365,7 +370,7 @@ class ChunkPruneService:
         ).add((rx, rz))
 
     def _new_task_id(self, operation: str, server_id: str) -> str:
-        raw = f"{operation}:{server_id}:{datetime.now(timezone.utc).isoformat()}"
+        raw = f"{operation}:{server_id}:{datetime.now(UTC).isoformat()}"
         suffix = hashlib.sha256(raw.encode()).hexdigest()[:24]
         return f"chunk-prune-{operation}-{suffix}"
 
@@ -412,7 +417,7 @@ class PruneEventPathMapper:
     def __init__(self, data_path: Path) -> None:
         self._data_root = normalize_event_path(os.path.abspath(os.fspath(data_path)))
 
-    def region_relpath(self, event_region: str) -> Optional[str]:
+    def region_relpath(self, event_region: str) -> str | None:
         event_path = normalize_event_path(event_region)
         if not event_path or event_path == ".":
             return None
@@ -440,7 +445,7 @@ def normalize_event_path(path: str) -> str:
     return posixpath.normpath(path.replace("\\", "/"))
 
 
-def region_relpath_for_event(data_path: Path, event_region: str) -> Optional[str]:
+def region_relpath_for_event(data_path: Path, event_region: str) -> str | None:
     return PruneEventPathMapper(data_path).region_relpath(event_region)
 
 

@@ -1,3 +1,5 @@
+import asyncio
+
 """Integrated tests for ResticClient against an unprotected (no-password) repo.
 
 Mirrors the password-protected coverage in test_restic_client_integrated.py
@@ -6,7 +8,6 @@ for the --insecure-no-password code path.
 
 import subprocess
 import tempfile
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,7 +32,7 @@ def check_restic_available():
             [str(settings.restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -149,7 +150,7 @@ class TestResticClientNoPasswordIntegrated:
         for i in range(3):
             (backup_dir / "test_file.txt").write_text(f"Version {i + 1}")
             created.append(await client.backup([backup_dir]))
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
 
         assert len(await client.list_snapshots()) == 3
 

@@ -1,7 +1,6 @@
 """Player session API endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,13 +20,13 @@ from ...players.crud.query.session_query import (
 router = APIRouter(prefix="/players", tags=["player-sessions"])
 
 
-@router.get("/{player_db_id}/sessions", response_model=List[SessionInfo])
+@router.get("/{player_db_id}/sessions", response_model=list[SessionInfo])
 async def get_player_session_list(
     player_db_id: int,
     limit: int = Query(100, ge=1, le=500, description="Maximum sessions to return"),
-    server_id: Optional[str] = Query(None, description="Filter by server ID"),
-    start_date: Optional[datetime] = Query(None, description="Filter by start date"),
-    end_date: Optional[datetime] = Query(None, description="Filter by end date"),
+    server_id: str | None = Query(None, description="Filter by server ID"),
+    start_date: datetime | None = Query(None, description="Filter by start date"),
+    end_date: datetime | None = Query(None, description="Filter by end date"),
     _: UserPublic = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -67,7 +66,7 @@ async def get_player_session_statistics(
 server_router = APIRouter(prefix="/servers", tags=["server-online-players"])
 
 
-@server_router.get("/{server_id}/online-players", response_model=List[OnlinePlayerInfo])
+@server_router.get("/{server_id}/online-players", response_model=list[OnlinePlayerInfo])
 async def get_server_online_player_list(
     server_id: str,
     _: UserPublic = Depends(get_current_user),

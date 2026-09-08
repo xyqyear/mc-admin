@@ -1,6 +1,5 @@
 """Server creation API router supporting both traditional YAML and template modes."""
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -16,7 +15,7 @@ from ...servers.lifecycle import (
     CreateServerSpec,
     create_server_full,
 )
-from .restart_schedule import RestartScheduleRequest
+from ...servers.restart_schedule import RestartScheduleRequest
 
 router = APIRouter(
     prefix="/servers",
@@ -35,10 +34,10 @@ class CreateServerRequest(BaseModel):
     follow-up POST /restart-schedule round-trip.
     """
 
-    yaml_content: Optional[str] = None
-    template_id: Optional[int] = None
-    variable_values: Optional[dict] = None
-    restart_schedule: Optional[RestartScheduleRequest] = None
+    yaml_content: str | None = None
+    template_id: int | None = None
+    variable_values: dict | None = None
+    restart_schedule: RestartScheduleRequest | None = None
 
 
 @router.post("/{server_id}", response_model=CreateServerResult)

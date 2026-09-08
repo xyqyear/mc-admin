@@ -6,9 +6,10 @@ import logging.handlers
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from gzip import GzipFile
 from pathlib import Path
-from typing import Any, Callable, ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar, cast
 
 from .config import settings
 
@@ -23,10 +24,9 @@ logs_dir.mkdir(exist_ok=True)
 
 
 def rotator(source, dest):
-    with open(source, "rb") as f_in:
-        with gzip.open(dest + ".gz", "wb") as f_out:
-            assert isinstance(f_out, GzipFile)
-            shutil.copyfileobj(f_in, f_out)
+    with open(source, "rb") as f_in, gzip.open(dest + ".gz", "wb") as f_out:
+        assert isinstance(f_out, GzipFile)
+        shutil.copyfileobj(f_in, f_out)
     os.remove(source)
 
 
@@ -68,8 +68,7 @@ def log_exception(
             except Exception as e:
                 logger.warning(
                     f"Failed to bind arguments for function {func_name}: {e}",
-                    stacklevel=3,
-                )
+                    stacklevel=4, exc_info=True)
                 parts = []
                 if args:
                     parts.append(f"args={args!r}")
@@ -88,11 +87,18 @@ def log_exception(
                 except (KeyError, ValueError) as e:
                     logger.warning(
                         f"Failed to format prefix '{prefix}' with arguments: {e}",
-                        stacklevel=3,
+                        stacklevel=4,
                     )
                     return f"{prefix}: "
             else:
                 return f"{prefix}: "
+
+        def format_failure_message(
+            error: Exception, args: tuple[Any, ...], kwargs: dict[str, Any]
+        ) -> str:
+            bound_args, args_str = format_args_kwargs(args, kwargs)
+            prefix_str = format_prefix(bound_args)
+            return f"{args_str}{prefix_str}{type(error).__name__}: {error}"
 
         if inspect.iscoroutinefunction(func):
 
@@ -100,12 +106,10 @@ def log_exception(
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 try:
                     return await func(*args, **kwargs)
-                except Exception as e:
-                    bound_args, args_str = format_args_kwargs(args, kwargs)
-                    prefix_str = format_prefix(bound_args)
-                    logger.error(
-                        f"{args_str}{prefix_str}{type(e).__name__}: {e}",
-                        exc_info=True,
+                except Exception as error:
+                    message = format_failure_message(error, args, kwargs)
+                    logger.exception(
+                        message,
                         stacklevel=2,
                     )
                     return default_return
@@ -118,12 +122,10 @@ def log_exception(
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
-                    bound_args, args_str = format_args_kwargs(args, kwargs)
-                    prefix_str = format_prefix(bound_args)
-                    logger.error(
-                        f"{args_str}{prefix_str}{type(e).__name__}: {e}",
-                        exc_info=True,
+                except Exception as error:
+                    message = format_failure_message(error, args, kwargs)
+                    logger.exception(
+                        message,
                         stacklevel=2,
                     )
                     return default_return

@@ -103,7 +103,7 @@ async def test_request_resolves_with_png_path(cache_and_queue):
 
 
 async def test_duplicate_requests_coalesce_to_single_render(cache_and_queue):
-    cache, queue = cache_and_queue
+    _cache, queue = cache_and_queue
     fake_render, calls = _patched_runner(
         [[{"type": "region", "x": 0, "z": 0, "status": "rendered"}]]
     )
@@ -124,7 +124,7 @@ async def test_duplicate_requests_coalesce_to_single_render(cache_and_queue):
 
 
 async def test_batched_requests_in_single_render(cache_and_queue):
-    cache, queue = cache_and_queue
+    _cache, queue = cache_and_queue
     fake_render, calls = _patched_runner(
         [
             [
@@ -153,7 +153,7 @@ async def test_batched_requests_in_single_render(cache_and_queue):
 
 
 async def test_missing_status_raises_filenotfound(cache_and_queue):
-    cache, queue = cache_and_queue
+    _cache, queue = cache_and_queue
     fake_render, _ = _patched_runner(
         [[{"type": "region", "x": 0, "z": 0, "status": "missing"}]]
     )
@@ -169,7 +169,7 @@ async def test_missing_status_raises_filenotfound(cache_and_queue):
 async def test_error_status_raises_render_error(cache_and_queue):
     from app.mcmap.types import MCMapError
 
-    cache, queue = cache_and_queue
+    _cache, queue = cache_and_queue
     fake_render, _ = _patched_runner(
         [[{"type": "region", "x": 0, "z": 0, "status": "error", "error": "kaboom"}]]
     )
@@ -187,7 +187,7 @@ async def test_missing_event_for_requested_region_raises(cache_and_queue):
     futures must be resolved with MCMapError, not hang forever."""
     from app.mcmap.types import MCMapError
 
-    cache, queue = cache_and_queue
+    _cache, queue = cache_and_queue
     fake_render, _ = _patched_runner(
         [[{"type": "region", "x": 0, "z": 0, "status": "rendered"}]]
     )

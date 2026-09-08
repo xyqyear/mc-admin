@@ -19,6 +19,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import aiofiles
 import pytest
 from aiofiles import os as aioos
 
@@ -63,7 +64,7 @@ def get_test_user():
 
         # If no suitable user found, use a high UID that likely doesn't exist
         return 12345, 12345, "testuser"
-    except Exception:
+    except OSError:
         return 12345, 12345, "testuser"
 
 
@@ -189,7 +190,7 @@ class TestBasicFunctionality:
             assert (target_path / "server.properties").exists()
 
             # Verify other files at same level as server.properties were also moved
-            for file_path in structure.keys():
+            for file_path in structure:
                 if not file_path.endswith("server.properties"):
                     relative_path = Path(file_path).relative_to(
                         Path(file_path).parent.parent if "/" in file_path else Path(".")
@@ -260,8 +261,8 @@ class TestFailureScenarios:
         """Test failure with corrupted archive."""
         archive_path = temp_dir / "corrupted.zip"
         # Create a file that looks like a zip but is corrupted
-        with open(archive_path, "w") as f:
-            f.write("This is not a valid zip file")
+        async with aiofiles.open(archive_path, "w") as f:
+            await f.write("This is not a valid zip file")
 
         target_path = temp_dir / "target"
 
@@ -608,10 +609,12 @@ class TestRealTimeDecompressionProgress:
         async for progress in extract_minecraft_server(
             str(large_archive), str(target_path)
         ):
-            if progress.progress is not None:
-                # Decompress step is mapped to 10-80%
-                if 10 <= progress.progress <= 80 and "解压" in (progress.message or ""):
-                    decompress_progress_values.append(progress.progress)
+            if (
+                progress.progress is not None
+                and 10 <= progress.progress <= 80
+                and "解压" in (progress.message or "")
+            ):
+                decompress_progress_values.append(progress.progress)
 
         # Should have multiple progress updates during decompression
         # (not just single updates at 10% and 80%)

@@ -24,18 +24,22 @@ The most complex frontend page. Left panel: name + description inputs. Right pan
 - Variable defined but not used → error (strict; blocks save)
 - Duplicate variable name → error
 
-The save button is disabled while any of these is non-empty.
+The save button is disabled while any of these is non-empty. The backend save boundary also validates regular-expression syntax, numeric bound ordering, and defaults against their own constraints; rejected saves leave the existing template/default definitions unchanged.
 
 ## Mode conversion
 
-`components/modals/ConvertModeModal.tsx` is a multi-step wizard. Three flows share it:
+`components/dialogs/ConvertModeDialog.tsx` is a multi-step wizard. Three flows share it:
 
 - **Template → Direct**: one-step confirmation. The server's `template_id` is cleared, the rendered YAML becomes the new direct compose. No rebuild needed.
 - **Direct → Template**: 3 steps —
   1. **Pick a template** (filtered to ones whose render output could plausibly match)
   2. **Extract / adjust variables** — calls `useExtractVariables` (POST `/templates/{id}/extract-variables` with the current compose). The hook returns inferred values + warnings (placeholders that didn't match cleanly). The user edits the form to fix anything weird.
-  3. **Preview diff and confirm** — Monaco diff between the current compose and the rendered-from-template YAML. If they match semantically (`useCheckConversion`), conversion is metadata-only. Otherwise a `SERVER_REBUILD` background task runs and `RebuildProgressModal` watches it.
+  3. **Preview diff and confirm** — Monaco diff between the current compose and the rendered-from-template YAML. If they match semantically (`useCheckConversion`), conversion is metadata-only. Otherwise a `SERVER_REBUILD` background task runs and `RebuildProgressDialog` watches it.
 - **Template update**: same shape as direct → template, but starts from the server's existing template binding. Used when the bound template was edited and the user wants to apply the changes.
+
+Existing-server variable diff previews use `POST /servers/{id}/template-config/preview`, which renders the stored server snapshot just like submitting a variable update. The live-template preview remains used by creation and explicit upgrade/conversion flows. An edited or deleted source template does not redirect ordinary server edits.
+
+Rebuild submission only announces that the task was submitted. `RebuildProgressDialog` handles each task's terminal outcome once and refreshes Compose, template mode/values, and server status after both completion and failure, because configuration can be applied before startup fails.
 
 ## Default variables
 
@@ -53,8 +57,8 @@ Saving updates the singleton; subsequent template creations use the new defaults
 
 - `pages/templates/TemplateList.tsx`, `TemplateEdit.tsx`, `DefaultVariables.tsx`
 - `components/templates/VariableDefinitionForm.tsx`, `VariableEditDialog.tsx`, `SortableVariableRow.tsx`, `variableUtils.ts`
-- `components/modals/ConvertModeModal.tsx`, `RebuildProgressModal.tsx`
-- `components/modals/ServerCompose/ComposeDiffModal.tsx`
+- `components/dialogs/ConvertModeDialog.tsx`, `RebuildProgressDialog.tsx`
+- `components/dialogs/ServerCompose/ComposeDiffDialog.tsx`
 - `components/server/ServerNew/TemplateCreationMode.tsx`, `TraditionalCreationMode.tsx`
 - `components/server/ServerCompose/TemplateMode.tsx`, `DirectMode.tsx`
 - `hooks/api/templateApi.ts`, `hooks/queries/base/useTemplateQueries.ts`, `hooks/mutations/useTemplateMutations.ts`

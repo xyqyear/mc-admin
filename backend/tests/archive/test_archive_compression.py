@@ -157,6 +157,32 @@ class TestCreateServerArchiveStream:
             assert "plugins" in result["filename"]
 
     @pytest.mark.asyncio
+    async def test_same_instant_compressions_keep_independent_results(self, mock_instance, archive_dir):
+        import shutil
+        from datetime import UTC, datetime
+
+        if not shutil.which("7z"):
+            pytest.skip("7z command not available")
+        results = []
+        original = b""
+        with (
+            patch("app.utils.compression.settings") as mock_settings,
+            patch("app.utils.compression.datetime") as clock,
+        ):
+            mock_settings.archive_path = archive_dir
+            clock.now.return_value = datetime(2026, 9, 7, tzinfo=UTC)
+            for content in ("first", "second contents"):
+                (mock_instance.get_data_path() / "test.txt").write_text(content)
+                async for progress in create_server_archive_stream(mock_instance, "/test.txt"):
+                    if progress.result:
+                        results.append(progress.result)
+                if len(results) == 1:
+                    original = (archive_dir / results[0]["filename"]).read_bytes()
+        assert results[0]["filename"] != results[1]["filename"]
+        assert (archive_dir / results[0]["filename"]).read_bytes() == original
+        assert (archive_dir / results[1]["filename"]).stat().st_size == results[1]["size"]
+
+    @pytest.mark.asyncio
     async def test_stream_nonexistent_path_raises(self, mock_instance, archive_dir):
         with patch("app.utils.compression.settings") as mock_settings:
             mock_settings.archive_path = archive_dir
@@ -415,6 +441,7 @@ class TestBackgroundTaskIntegration:
             if cancelled:
                 assert task.status == TaskStatus.CANCELLED
                 assert not task_result.success
+                assert list(archive_dir.iterdir()) == []
             else:
                 assert task.status == TaskStatus.COMPLETED
 

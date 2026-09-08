@@ -1,8 +1,9 @@
 """Global snapshot management endpoints using restic"""
 
-from datetime import datetime
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,10 +23,16 @@ from ..snapshots import (
     TargetIgnoredError,
     snapshot_service,
 )
+from ..snapshots.restore import (
+    SnapshotMaintenanceConflict,
+    SnapshotRestoreService,
+    SnapshotServerRunning,
+)
 from ..system.resources import get_disk_info
 from ..utils import async_fs
 from ..utils.sse import sse_encode, sse_response
-from ..world import png_invalidate
+from ..world.locks import LockHolder, ServerOperationKind, server_operation_lock
+from ..world.maintenance import affected_servers
 
 router = APIRouter(
     prefix="/snapshots",
@@ -44,7 +51,7 @@ async def _check_backup_time_restriction():
     if not config.snapshots.time_restriction.enabled:
         return
 
-    now = datetime.now()
+    now = datetime.now(UTC).astimezone()
     current_minute = now.minute
     current_second = now.second
 
@@ -101,8 +108,8 @@ def _get_snapshot_service():
 
 
 async def _resolve_backup_paths(
-    server_id: Optional[str], paths: Optional[List[str]]
-) -> List[Path]:
+    server_id: str | None, paths: list[str] | None
+) -> list[Path]:
     """
     Resolve the absolute backup paths from request parameters.
 
@@ -153,20 +160,20 @@ async def _resolve_backup_paths(
 
 # Request/Response models
 class CreateSnapshotRequest(BaseModel):
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class RestorePreviewRequest(BaseModel):
     snapshot_id: str
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class RestoreRequest(BaseModel):
     snapshot_id: str
-    server_id: Optional[str] = None
-    paths: Optional[List[str]] = None
+    server_id: str | None = None
+    paths: list[str] | None = None
 
 
 class CreateSnapshotResponse(BaseModel):
@@ -175,17 +182,17 @@ class CreateSnapshotResponse(BaseModel):
 
 
 class ListSnapshotsResponse(BaseModel):
-    snapshots: List[ResticSnapshot]
+    snapshots: list[ResticSnapshot]
 
 
 class RestorePreviewAction(BaseModel):
     action: ResticRestoreAction
-    item: Optional[str] = None
-    size: Optional[int] = None
+    item: str | None = None
+    size: int | None = None
 
 
 class RestorePreviewResponse(BaseModel):
-    actions: List[RestorePreviewAction]
+    actions: list[RestorePreviewAction]
     preview_summary: str
 
 
@@ -205,7 +212,15 @@ async def create_global_snapshot(
 
     service = _get_snapshot_service()
     try:
-        snapshot = await service.create_snapshot(backup_paths)
+        server_ids = await affected_servers(docker_mc_manager, backup_paths)
+        holder = LockHolder(
+            kind=ServerOperationKind.BACKUP, started_at=datetime.now(UTC),
+            user_id=_.id, description="手动快照",
+        )
+        async with server_operation_lock.try_acquire_servers(server_ids, holder) as acquired:
+            if not acquired:
+                raise HTTPException(status_code=423, detail="服务器正在维护")
+            snapshot = await service.create_snapshot(backup_paths)
     except TargetIgnoredError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -220,8 +235,8 @@ async def create_global_snapshot(
 
 @router.get("", response_model=ListSnapshotsResponse)
 async def list_global_snapshots(
-    server_id: Optional[str] = None,
-    path: Optional[str] = None,
+    server_id: str | None = None,
+    path: str | None = None,
     _: UserPublic = Depends(get_current_user),
 ):
     """List all snapshots, or snapshots that touch the specified server/path"""
@@ -266,148 +281,32 @@ async def preview_global_restore(
     return RestorePreviewResponse(actions=actions, preview_summary=summary)
 
 
-async def _invalidate_pngs_across_instances(items: list[str]) -> int:
-    """Walk every known docker MC instance and delete cached tiles for any
-    region MCAs the restore touched that fall under that instance's data dir.
-
-    Items outside any registered instance are ignored — the most common reason
-    is a restore covering paths that aren't Minecraft worlds at all.
-    """
-    if not items:
-        return 0
-    instances = await docker_mc_manager.get_all_instances()
-    total = 0
-    for instance in instances:
-        data_path = instance.get_data_path()
-        if not await aioos.path.exists(data_path):
-            continue
-        pngs = png_invalidate.pngs_for_restic_items(data_path, items)
-        if pngs:
-            total += await png_invalidate.delete_pngs(pngs)
-    return total
-
-
 @router.post("/restore")
 async def restore_global_snapshot(
-    request: RestoreRequest, _: UserPublic = Depends(get_current_user)
+    request: RestoreRequest, user: UserPublic = Depends(get_current_user)
 ):
-    """Restore a snapshot, streaming progress as Server-Sent Events.
-
-    The flow is: safety snapshot → in-place restic restore (with byte
-    progress) → tile-cache invalidation → complete. Any failure terminates
-    the stream with an ``error`` event.
-    """
     target_paths = await _resolve_backup_paths(request.server_id, request.paths)
-    service = _get_snapshot_service()
+    service = SnapshotRestoreService(
+        _get_snapshot_service(), docker_mc_manager, server_operation_lock
+    )
+    server_ids = await service.maintenance_servers(target_paths)
+    try:
+        await service.check_available(server_ids)
+    except SnapshotMaintenanceConflict as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except SnapshotServerRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    async def event_gen() -> AsyncGenerator[bytes, None]:
+    async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            yield sse_encode(
-                {
-                    "event_type": "start",
-                    "message": f"restoring snapshot {request.snapshot_id[:8]}",
-                }
-            )
-
-            yield sse_encode(
-                {
-                    "event_type": "safety_snapshot",
-                    "message": "creating safety snapshot",
-                }
-            )
-            try:
-                safety_snapshot = await service.create_snapshot(target_paths)
-            except Exception as e:
-                logger.error(
-                    "Safety snapshot failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
-                    request.snapshot_id,
-                    request.server_id,
-                    request.paths,
-                    e,
-                    exc_info=True,
-                )
-                yield sse_encode(
-                    {
-                        "event_type": "error",
-                        "message": f"failed to create safety snapshot: {e}",
-                    }
-                )
-                return
-            yield sse_encode(
-                {
-                    "event_type": "safety_snapshot",
-                    "safety_snapshot_id": safety_snapshot.id,
-                    "message": f"safety snapshot {safety_snapshot.short_id}",
-                }
-            )
-
-            yield sse_encode(
-                {
-                    "event_type": "restore",
-                    "message": f"restoring {len(target_paths)} path(s)",
-                    "percent": 0.0,
-                }
-            )
-            touched_items: list[str] = []
-            try:
-                async for ev in service.restore(
-                    request.snapshot_id, target_paths
-                ):
-                    if ev.kind == "status" and ev.percent_done is not None:
-                        yield sse_encode(
-                            {
-                                "event_type": "restore",
-                                "percent": ev.percent_done * 100.0,
-                            }
-                        )
-                    elif ev.kind == "file" and ev.action in (
-                        "updated",
-                        "restored",
-                        "deleted",
-                    ):
-                        if ev.item is not None:
-                            touched_items.append(ev.item)
-            except Exception as e:
-                logger.error(
-                    "Restore failed (snapshot_id=%s, server_id=%s, paths=%s): %s",
-                    request.snapshot_id,
-                    request.server_id,
-                    request.paths,
-                    e,
-                    exc_info=True,
-                )
-                yield sse_encode({"event_type": "error", "message": str(e)})
-                return
-
-            invalidated = await _invalidate_pngs_across_instances(touched_items)
-            yield sse_encode(
-                {
-                    "event_type": "invalidate_cache",
-                    "message": f"invalidated {invalidated} map tile(s)",
-                }
-            )
-
-            paths_repr = ", ".join(str(p) for p in target_paths)
-            logger.info(
-                "Restore completed: snapshot=%s safety_snapshot=%s server_id=%s paths=%s tiles=%d",
-                request.snapshot_id,
-                safety_snapshot.short_id,
-                request.server_id,
-                paths_repr,
-                invalidated,
-            )
-            yield sse_encode(
-                {
-                    "event_type": "complete",
-                    "message": f"restored snapshot {request.snapshot_id[:8]}",
-                    "safety_snapshot_id": safety_snapshot.id,
-                }
-            )
-        except Exception as e:
-            logger.exception(
-                "Restore stream failed (snapshot_id=%s)", request.snapshot_id
-            )
-            yield sse_encode({"event_type": "error", "message": str(e)})
+            async with aclosing(service.restore(
+                request.snapshot_id, target_paths, server_ids, user.id
+            )) as events:
+                async for event in events:
+                    yield sse_encode(event)
+        except Exception as exc:
+            logger.exception("Snapshot restore failed: snapshot=%s", request.snapshot_id)
+            yield sse_encode({"event_type": "error", "message": str(exc)})
 
     return sse_response(event_gen())
 

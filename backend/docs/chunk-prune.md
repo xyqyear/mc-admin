@@ -68,12 +68,10 @@ id. Apply is rejected unless:
 Apply runs `mcmap prune-inhabited` without `--dry-run` using the same threshold,
 mode, server data directory, and claims file captured by the preview. It takes
 the per-server operation lock with kind `prune`, so backup/restore/prune
-workflows do not overlap.
+workflows do not overlap. Server start/up/restart uses the same maintenance ownership and cannot start the JVM during an apply.
 
 When mcmap reports affected chunks/regions, the service records affected region
-coordinates grouped by `region_dir_relpath`. After a successful apply it deletes
-cached map PNGs for those regions so future map views render from the changed
-MCA files.
+coordinates grouped by `region_dir_relpath`. Finalization closes the prune worker and invalidates cached PNGs for reported affected regions on success, failure or cancellation, before releasing ownership. Shared server-operation buttons read the maintenance endpoint; this page also disables startup immediately while apply is active.
 
 ## Frontend Task Shape
 

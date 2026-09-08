@@ -10,13 +10,18 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
 uv run alembic upgrade head   # optional manual maintenance; startup also migrates
 uv run pytest tests/ -v -k "not _with_docker and not integrated"
 uv run pyright
+uv run ruff check .
 ```
 
 - **Use `uv`**, never `pip`/`venv` directly.
 - **Do not run `black`** — formatting is not enforced.
 - **Run `uv run pyright` after backend code changes.**
+- **Run `uv run ruff check .` after backend code changes.** Ruff is pinned in development dependencies; configuration identifies the shared logger and FastAPI declaration factories without disabling rule families.
+- Pydantic models use `model_config = ConfigDict(...)`; preserve field aliases and defaults when changing model configuration.
+- Annotate `@asynccontextmanager` generators with `collections.abc.AsyncGenerator[T]`; use `AsyncIterator[T]` for interfaces that only promise iteration.
 - **Alembic migrations run during startup** before DB-backed subsystems start; see `docs/database-migrations.md`.
 - Tests whose function names end in `_with_docker` or live in files containing `integrated` start real Docker containers; they're slow and excluded by the default `-k` filter above.
+- Observable backend feature changes require real API E2E coverage in `../e2e/suites/` and an update to `../e2e/docs/coverage.md`. The standalone runner deploys the current application image; see `../e2e/README.md` and `../e2e/docs/architecture.md` for execution and environment contracts.
 
 ## Module map
 
@@ -32,13 +37,13 @@ app/
 ├── db/                    # async engine, startup migrations, CRUD modules
 ├── events/                # public event wire models + in-memory external subscriber bus
 ├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
-├── servers/               # Server core: CRUD, port utils, bundled lifecycle (create/remove/adopt/deactivate)
+├── servers/               # CRUD, configuration snapshots/application, restart scheduling, bundled lifecycle
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
 ├── players/               # identity resolution, dynamic name filtering, cleanup, tracking, sessions, chat, achievements, skins
-├── log_monitor/           # watchfiles-based latest.log parser
-├── files/                 # CRUD, deep search, ownership repair, multi-file upload
-├── snapshots/             # restic client, ignored paths, restore planner, SnapshotService
-├── cron/                  # APScheduler jobs (backup, restart, system self-check)
+├── log_monitor/           # latest.log parsing, watchfiles notifications and idle tail reconciliation
+├── files/                 # confined CRUD/search/upload paths, ownership repair
+├── snapshots/             # restic client, backup service, restore planner and maintenance-aware restore service
+├── cron/                  # APScheduler jobs (backup, restart, system self-check), persisted execution outcomes including skipped runs
 ├── self_check/            # health-check orchestration, category checks, retained run history, event triggers
 ├── dns/                   # DNSPod + Huawei Cloud
 ├── templates/             # server template system (typed variables)
@@ -49,7 +54,7 @@ app/
 ├── chunk_prune/           # server-level mcmap prune-inhabited preview/apply tasks and FTB-claim protection
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
-├── world/                 # world root/dimension layout, mcmap folder resolution, restore locks/previews
+├── world/                 # world layout, server maintenance ownership, scoped restore/previews and rollback
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression, SSE helpers
 ```
@@ -66,21 +71,31 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). The global task center polls summary-only `/api/tasks` lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair, world restore, and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `task_manager.submit(...)` (in `app.background_tasks`). Every `/api/tasks` operation requires a current user; cookie-authenticated mutations also require CSRF protection. The global task center polls summary-only lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair and chunk prune. Implementation guide: `.claude/background-tasks-guide.md`.
+
+Cancellation closes the operation generator before publishing the terminal cancelled status. The subprocess stream reaps its direct child, and compression attempts to remove partial output; filesystem deletion failures may leave output behind. See `docs/background-tasks.md`.
+
+World restoration remains a request-owned SSE flow with durable restoration history. Stream closure closes nested generators and subprocesses, records interruption and releases maintenance ownership; recovery uses the retained safety snapshot. See `docs/world-restore.md`.
 
 ## Dynamic config
 
 Read runtime-tunable dynamic config at the point of behavior, not in long-lived constructors. Constructor-captured dynamic config needs an explicit refresh/rebuild path.
 
+`BaseConfigSchema.validate_update()` validates authored values before persistence and cache publication. Keep save-time validation separate from legacy configuration loading so invalid historical values remain repairable through the UI.
+
 ## Server lifecycle imports
 
 Import lifecycle orchestration symbols from `app.servers.lifecycle`. The `app.servers` package init stays limited to CRUD, port utilities, and rebuild exports so player tracking and log monitoring do not form import cycles.
 
+Configuration snapshots and application metadata belong to `app.servers.configuration`; restart scheduling belongs to `app.servers.restart_schedule`. Lifecycle services do not import routers. Shared maintenance state is exposed by `/api/servers/{server_id}/maintenance`; ordinary file restoration remains available while a server runs.
+
 Keep game-port initialization validation at reusable template save and new-server creation boundaries. Legacy reads, snapshot edits, rebuilds, and lifecycle operations use the permissive Compose parser; see `docs/minecraft.md` and `docs/self-check.md`.
+
+Docker and Compose label values may contain equals signs. The shared label parser preserves them so valid labels do not cause lifecycle health checks to report a running container as unready.
 
 ## Audit middleware
 
-`app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Sensitive field names (`password`, `token`, `secret`, `key`) are masked. Configured via `[audit]` in `config.toml`.
+`app.audit` logs POST/PUT/PATCH/DELETE operations with user context, IP, and request body. Configured `sensitive_fields` substrings (default `password`, `token`, `secret`, `key`) and `sensitive_exact_fields` names (default `ak`, `sk`, `code`, `ticket`) are masked recursively in JSON and form fields; unstructured bodies retain only content type and size. Configured via `[audit]` in `config.toml`. Login-code values are excluded from ordinary application logs.
 
 ## Validation error shape
 

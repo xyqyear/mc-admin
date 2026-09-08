@@ -1,7 +1,6 @@
 """CRUD operations for server records."""
 
 from datetime import datetime
-from typing import Dict, List, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import Server, ServerStatus
 
 
-async def get_active_servers(session: AsyncSession) -> List[Server]:
+async def get_active_servers(session: AsyncSession) -> list[Server]:
     """Get all active servers.
 
     Args:
@@ -24,7 +23,7 @@ async def get_active_servers(session: AsyncSession) -> List[Server]:
     return list(result.scalars().all())
 
 
-async def get_active_servers_map(session: AsyncSession) -> Dict[str, int]:
+async def get_active_servers_map(session: AsyncSession) -> dict[str, int]:
     """Get all active servers as a mapping from server_id to database ID.
 
     Args:
@@ -37,7 +36,7 @@ async def get_active_servers_map(session: AsyncSession) -> Dict[str, int]:
     return {server.server_id: server.id for server in servers}
 
 
-async def get_server_by_id(session: AsyncSession, server_id: str) -> Optional[Server]:
+async def get_server_by_id(session: AsyncSession, server_id: str) -> Server | None:
     """Get a server by its identifier.
 
     Args:
@@ -78,7 +77,7 @@ async def get_active_server_by_id(
     return result.scalar_one_or_none()
 
 
-async def get_server_db_id(session: AsyncSession, server_id: str) -> Optional[int]:
+async def get_server_db_id(session: AsyncSession, server_id: str) -> int | None:
     """Get database ID for a server.
 
     Args:
@@ -117,9 +116,9 @@ async def mark_server_removed(
 async def create_server_record(
     session: AsyncSession,
     server_id: str,
-    template_id: Optional[int] = None,
-    template_snapshot_json: Optional[str] = None,
-    variable_values_json: Optional[str] = None,
+    template_id: int | None = None,
+    template_snapshot_json: str | None = None,
+    variable_values_json: str | None = None,
 ) -> Server:
     """Create a new server record.
 

@@ -1,4 +1,3 @@
-from typing import List
 
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -13,8 +12,8 @@ from ...files import (
     FileSearchRequest,
     FileSearchResponse,
     MultiFileUploadRequest,
-    OwnershipRestoreTaskResponse,
     OverwritePolicy,
+    OwnershipRestoreTaskResponse,
     RenameFileRequest,
     UploadConflictResponse,
     check_upload_conflicts,
@@ -29,9 +28,9 @@ from ...files import (
     update_file_content,
     upload_multiple_files,
 )
+from ...files.paths import resolve_file_path
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
-from ...utils import async_fs
 
 router = APIRouter(
     prefix="/servers",
@@ -106,7 +105,7 @@ async def download_file(
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
     base_path = instance.get_data_path()
-    file_path = base_path / path.lstrip("/")
+    file_path = await resolve_file_path(base_path, path)
 
     if not await aioos.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -250,7 +249,7 @@ async def upload_multiple_files_endpoint(
     server_id: str,
     session_id: str,
     path: str,
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload multiple files using a prepared session"""
@@ -290,7 +289,7 @@ async def search_server_files(
         search_path = base_path / path.lstrip("/")
         search_path_str = "/" + path.lstrip("/")
 
-    search_path = await async_fs.resolve(search_path)
+    search_path = await resolve_file_path(base_path, path)
     # Perform search
     results = await search_files(search_path, search_request)
 

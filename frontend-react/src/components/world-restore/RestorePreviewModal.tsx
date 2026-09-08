@@ -196,6 +196,9 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       }))
     },
     onError: (msg) => setState((prev) => ({ ...prev, error: msg })),
+    onClose: () => setState((prev) => prev.ready || prev.error
+      ? prev
+      : { ...prev, error: '连接中断，请重新生成预览' }),
   })
 
   // Mount/unmount in the ref callback (not useEffect) keeps Leaflet's

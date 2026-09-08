@@ -29,27 +29,29 @@ Game-port self-check remediation links to `/server/<encoded-server-id>/files?pat
 
 ## Single-file editing
 
-`FileEditModal.tsx` opens a Monaco editor populated by `GET /files/content`. Auto-detects the language from the extension via `utils/fileLanguageDetector.ts`. **SNBT** (Minecraft NBT serialized as text) is registered as a custom Monaco language in `main.tsx`; editing one of these is the same as editing YAML/JSON, just with the right tokenizer.
+`FileEditDialog.tsx` opens a Monaco editor populated by `GET /files/content`. Auto-detects the language from the extension via `utils/fileLanguageDetector.ts`. **SNBT** (Minecraft NBT serialized as text) is registered as a custom Monaco language in `main.tsx`; editing one of these is the same as editing YAML/JSON, just with the right tokenizer.
 
-`FileDiffModal.tsx` shows a Monaco diff editor — used when an external change collides with a pending edit.
+`FileDiffDialog.tsx` shows a Monaco diff editor — used when an external change collides with a pending edit.
 
 ## Multi-file upload
 
-Folder drag-drop generates many files at once with potential conflicts. `MultiFileUploadModal.tsx` runs the session-based flow:
+Folder drag-drop generates many files at once with potential conflicts. `MultiFileUploadDialog.tsx` displays `hooks/uploads/useMultiFileUpload.ts`, which owns the session-based flow:
 
 1. **Manifest** — frontend collects `{path, size}` for every dropped item, builds `FileUploadTree.tsx`.
 2. **Conflict check** — POST manifest → backend returns `session_id` + conflict list.
 3. **Conflict resolution** — `ConflictTree.tsx` displays conflicts; user picks an `OverwritePolicy` (`always_overwrite`, `never_overwrite`, or per-file decisions).
-4. **Policy submit** — POST to `/upload/session/{id}/policy`.
+4. **Policy submit** — POST to `/servers/{serverId}/files/upload/policy?session_id={id}&reusable={boolean}`.
 5. **Blob upload** — files posted; backend writes per the stored decisions.
+
+The flow fixes the file list when conflict checking starts and treats checking as busy. Its single batch-size constant decides both `reusable` and sequential batches of at most 1000 files; the raw API layer sends one batch. Closing, changing the target, or unmounting aborts the current request and ignores late callbacks. Cancellation preserves already-written files and invalidates the file listing; it does not roll back the batch.
 
 The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up.
 
-`hooks/usePageDragUpload.ts` is the page-level drop-zone hook — validates dropped items (no system files, no overly large directories), then pipes into the modal flow.
+`hooks/usePageDragUpload.ts` is the page-level drop-zone hook — collects dropped files and nested directory entries, then passes them to the dialog flow.
 
 ## Deep search
 
-`FileDeepSearchModal.tsx` runs against `GET /files/search`:
+`FileDeepSearchDialog.tsx` runs against `POST /servers/{serverId}/files/search`:
 
 - Regex (toggle) or substring
 - Case sensitivity toggle
@@ -63,8 +65,8 @@ Results render as a tree (`FileSearchResultTree.tsx`) with `HighlightedFileName.
 
 Compressing a folder is a long operation; both happen as background tasks.
 
-- `CompressionConfirmModal.tsx` → `submit /api/archives/...` returns a `task_id`
-- `CompressionResultModal.tsx` watches the task via `useTask(task_id)`, shows progress, and surfaces the result archive when done
+- `CompressionConfirmDialog.tsx` → `POST /api/archive/compress` returns a `task_id`
+- `ServerFiles.tsx` watches the task via `useTask(task_id)` and supplies progress to `CompressionConfirmDialog.tsx`; `CompressionResultDialog.tsx` presents the finished archive
 
 The user can navigate away — the task center continues to track the task and toasts on completion.
 
@@ -72,7 +74,7 @@ The user can navigate away — the task center continues to track the task and t
 
 - `pages/server/servers/ServerFiles.tsx` — page shell
 - `components/server/FileBreadcrumb.tsx`, `FileTable.tsx`, `FileToolbar.tsx`, `FileSearchBox.tsx`, `FileSearchResultTree.tsx`, `HighlightedFileName.tsx`, `DragDropOverlay.tsx`
-- `components/modals/ServerFiles/MultiFileUploadModal.tsx`, `FileUploadTree.tsx`, `ConflictTree.tsx`, `CreateModal.tsx`, `RenameModal.tsx`, `FileEditModal.tsx`, `FileDiffModal.tsx`, `FileDeepSearchModal.tsx`, `CompressionConfirmModal.tsx`, `CompressionResultModal.tsx`
+- `components/dialogs/ServerFiles/MultiFileUploadDialog.tsx`, `FileUploadTree.tsx`, `ConflictTree.tsx`, `CreateDialog.tsx`, `RenameDialog.tsx`, `FileEditDialog.tsx`, `FileDiffDialog.tsx`, `FileDeepSearchDialog.tsx`, `CompressionConfirmDialog.tsx`, `CompressionResultDialog.tsx`
 - `hooks/api/fileApi.ts`, `hooks/queries/base/useFileQueries.ts`, `hooks/mutations/useFileMutations.ts`
 - `hooks/usePageDragUpload.ts`
 - `utils/fileLanguageDetector.ts`, `utils/fileSearchUtils.ts`

@@ -735,6 +735,7 @@ const ServerChunkPrune: React.FC = () => {
               serverName={serverInfoQ.data?.name ?? serverId}
               status={statusQ.data}
               showReturnButton={false}
+              maintenanceActive={applyActive}
             />
           </>
         }

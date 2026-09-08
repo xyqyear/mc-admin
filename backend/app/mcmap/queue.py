@@ -3,7 +3,6 @@
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from ..dynamic_config import config
 from ..logger import logger
@@ -19,7 +18,7 @@ from .types import MCMapError
 WORKER_IDLE_TIMEOUT_SECONDS = 60.0
 BATCH_COLLECT_TIMEOUT_SECONDS = 0.01
 
-Key = Tuple[int, int]
+Key = tuple[int, int]
 
 
 @dataclass
@@ -45,11 +44,11 @@ class ServerRenderQueue:
         self._server_name = server_name
         self._region_path = region_path
         self._cache = cache
-        self._pending: Dict[Key, _PendingRequest] = {}
+        self._pending: dict[Key, _PendingRequest] = {}
         self._queue: asyncio.Queue[_PendingRequest] = asyncio.Queue()
-        self._worker_task: Optional[asyncio.Task] = None
-        self._running_batch: Optional[Dict[Key, _PendingRequest]] = None
-        self._running_proc: Optional[runner.MCMapProcess] = None
+        self._worker_task: asyncio.Task | None = None
+        self._running_batch: dict[Key, _PendingRequest] | None = None
+        self._running_proc: runner.MCMapProcess | None = None
 
     def shutdown(self) -> None:
         """Cancel the worker, fail outstanding requests, terminate any running
@@ -110,19 +109,19 @@ class ServerRenderQueue:
                 first = await asyncio.wait_for(
                     self._queue.get(), timeout=WORKER_IDLE_TIMEOUT_SECONDS
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._worker_task = None
                 return
 
             cfg = config.mcmap
-            batch: List[_PendingRequest] = [first]
+            batch: list[_PendingRequest] = [first]
             try:
                 while len(batch) < cfg.batch_size:
                     nxt = await asyncio.wait_for(
                         self._queue.get(), timeout=BATCH_COLLECT_TIMEOUT_SECONDS
                     )
                     batch.append(nxt)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             live = [
@@ -134,7 +133,7 @@ class ServerRenderQueue:
             await self._render_batch(live, cfg.thread_count)
 
     async def _render_batch(
-        self, batch: List[_PendingRequest], threads: int
+        self, batch: list[_PendingRequest], threads: int
     ) -> None:
         mcas = [
             self._cache.mca_path(self._region_path, p.x, p.z) for p in batch

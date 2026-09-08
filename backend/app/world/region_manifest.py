@@ -3,19 +3,18 @@ import os
 import stat as _stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..dynamic_config import config
 from .region_files import parse_region_filename
 
 
-async def list_region_manifest(region_dir: Path) -> List[Tuple[int, int, int]]:
+async def list_region_manifest(region_dir: Path) -> list[tuple[int, int, int]]:
     return await asyncio.to_thread(list_region_manifest_sync, region_dir)
 
 
-def list_region_manifest_sync(region_dir: Path) -> List[Tuple[int, int, int]]:
+def list_region_manifest_sync(region_dir: Path) -> list[tuple[int, int, int]]:
     # (x, z, mtime); mtime feeds tile URL `?mt=` for cache busting.
-    candidates: List[Tuple[str, int, int]] = []
+    candidates: list[tuple[str, int, int]] = []
     try:
         entries = os.scandir(region_dir)
     except (PermissionError, OSError):
@@ -28,7 +27,7 @@ def list_region_manifest_sync(region_dir: Path) -> List[Tuple[int, int, int]]:
             x, z = parsed
             candidates.append((entry.path, x, z))
 
-    rows: List[Tuple[int, int, int]] = []
+    rows: list[tuple[int, int, int]] = []
     workers = min(config.world.region_stat_workers, len(candidates))
     if workers <= 1:
         for candidate in candidates:
@@ -45,8 +44,8 @@ def list_region_manifest_sync(region_dir: Path) -> List[Tuple[int, int, int]]:
 
 
 def _stat_region_candidate(
-    candidate: Tuple[str, int, int],
-) -> Optional[Tuple[int, int, int]]:
+    candidate: tuple[str, int, int],
+) -> tuple[int, int, int] | None:
     path, x, z = candidate
     try:
         st = os.stat(path, follow_symlinks=False)

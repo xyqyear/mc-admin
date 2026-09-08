@@ -1,8 +1,7 @@
 """Template configuration API router for editing template-created servers."""
 
-import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,13 +9,18 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...background_tasks import TaskType, task_manager
-from ...db.database import get_async_session, get_db
+from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
-from ...templates import TemplateSnapshot, VariableDefinition, get_template_by_id
+from ...servers.configuration import prepare_snapshot_configuration
+from ...templates import (
+    TemplatePreviewResponse,
+    TemplateSnapshot,
+    VariableDefinition,
+    get_template_by_id,
+)
 from ...templates.manager import TemplateManager
 
 router = APIRouter(
@@ -91,7 +95,7 @@ async def get_template_config(
     if live_template is None:
         template_deleted = True
     else:
-        snapshot_time = datetime.fromisoformat(snapshot.snapshot_time)
+        snapshot_time = snapshot.source_updated_at or datetime.fromisoformat(snapshot.snapshot_time)
         if live_template.updated_at > snapshot_time:
             has_template_update = True
 
@@ -128,26 +132,10 @@ async def update_template_config(
     if not server:
         raise HTTPException(status_code=404, detail="服务器不存在")
 
-    if not server.template_id or not server.template_snapshot_json:
-        raise HTTPException(status_code=400, detail="该服务器不是使用模板创建的")
-
-    # Parse template snapshot
-    snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
-
-    # Validate variable values
-    errors = TemplateManager.validate_variable_values(
-        snapshot.variable_definitions, request.variable_values
-    )
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
-
-    # Render YAML
     try:
-        rendered_yaml = TemplateManager.render_yaml(
-            snapshot.yaml_template, request.variable_values
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        configuration = prepare_snapshot_configuration(server, request.variable_values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     instance = docker_mc_manager.get_instance(server_id)
 
@@ -157,29 +145,10 @@ async def update_template_config(
     task_result = task_manager.submit(
         task_type=TaskType.SERVER_REBUILD,
         name=f"重建 {server_id}",
-        task_generator=rebuild_server_task(server_id, rendered_yaml),
+        task_generator=rebuild_server_task(server_id, configuration),
         server_id=server_id,
         cancellable=False,
     )
-
-    # update the variable values in the database after task succeeds
-    async def update_variable_values_after_rebuild():
-        result = await task_result.awaitable
-        print(result)
-        if not result.success:
-            return
-        async with get_async_session() as session:
-            server = await get_active_server_by_id(session, server_id)
-            if not server:
-                logger.error(
-                    f"Failed to update variable values for server {server_id}: server not found"
-                )
-                return
-            server.variable_values_json = json.dumps(request.variable_values)
-            server.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-
-    asyncio.create_task(update_variable_values_after_rebuild())
 
     return TemplateConfigUpdateResponse(task_id=task_result.task_id)
 
@@ -202,3 +171,22 @@ async def preview_template_config(
         is_template_based=bool(server.template_id),
         template_id=server.template_id,
     )
+
+
+@router.post(
+    "/{server_id}/template-config/preview", response_model=TemplatePreviewResponse
+)
+async def preview_rendered_template_config(
+    server_id: str,
+    request: TemplateConfigUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
+    server = await get_active_server_by_id(db, server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="服务器不存在")
+    try:
+        configuration = prepare_snapshot_configuration(server, request.variable_values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TemplatePreviewResponse(rendered_yaml=configuration.yaml_content)

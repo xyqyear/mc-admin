@@ -4,6 +4,8 @@ from typing import Any
 
 import yaml
 
+from .errors import ComposeValidationError
+
 GAME_CONTAINER_PORT = 25565
 TEMPLATE_VARIABLE = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}")
 
@@ -30,11 +32,11 @@ def _mc_service(compose_yaml: str) -> dict[str, Any]:
     try:
         document = yaml.safe_load(compose_yaml)
     except yaml.YAMLError:
-        raise ValueError("无法解析 Compose YAML，请检查配置格式。") from None
+        raise ComposeValidationError("无法解析 Compose YAML，请检查配置格式。") from None
     services = document.get("services") if isinstance(document, dict) else None
     service = services.get("mc") if isinstance(services, dict) else None
     if not isinstance(service, dict):
-        raise ValueError("Compose 必须包含 services.mc 服务配置。")
+        raise ComposeValidationError("Compose 必须包含 services.mc 服务配置。")
     return service
 
 
@@ -65,7 +67,7 @@ def _game_mapping(service: dict[str, Any]) -> GamePortMapping:
                     target=GAME_CONTAINER_PORT,
                     published=published if isinstance(published, (str, int)) else None,
                 )
-    raise ValueError(
+    raise ComposeValidationError(
         "ports 必须包含容器目标端口固定为 25565 的 TCP 游戏映射；"
         "请使用 <宿主机端口>:25565，不要将容器目标端口设为变量。"
     )
@@ -79,7 +81,7 @@ def get_properties_game_port(content: str) -> int:
     values = re.findall(r"(?m)^[ \t]*server-port[ \t]*=([^\r\n]*)", content)
     port = _port_number(values[-1]) if values else None
     if port is None:
-        raise ValueError("server.properties 缺少有效的 server-port，必须为 1–65535 的整数。")
+        raise ComposeValidationError("server.properties 缺少有效的 server-port，必须为 1–65535 的整数。")
     return port
 
 
@@ -102,7 +104,7 @@ def validate_game_port_initialization(
     if not isinstance(environment, dict):
         environment = {}
     if _port_number(environment.get("SERVER_PORT")) != mapping.target:
-        raise ValueError(
+        raise ComposeValidationError(
             "请在 services.mc.environment 中显式设置固定的 SERVER_PORT=25565，"
             "与 ports 的容器目标端口一致；不要使用变量或填写宿主机端口。"
         )
@@ -117,7 +119,7 @@ def validate_game_port_initialization(
             value = value.lower() == "true"
         if not isinstance(value, bool) or value != expected:
             required = str(expected).lower()
-            raise ValueError(
+            raise ComposeValidationError(
                 f"{name} 必须省略或设置为固定的 {required}，"
                 "以便启动时更新上传的 server.properties。"
             )

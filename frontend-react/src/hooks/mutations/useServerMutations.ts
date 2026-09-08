@@ -101,7 +101,7 @@ export const useServerMutations = () => {
         return serverApi.updateComposeFile(serverId, yamlContent);
       },
       onSuccess: () => {
-        toast.success(`服务器 ${serverId} compose 配置更新成功`);
+        toast.success(`服务器 ${serverId} 已提交配置重建`);
         queryClient.invalidateQueries({ queryKey: taskQueryKeys.all });
       },
       onError: (error: Error) => {

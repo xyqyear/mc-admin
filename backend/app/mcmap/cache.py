@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 import aiofiles.os as aioos
 
@@ -95,7 +95,7 @@ class ServerMapCache:
                 f"{target} is not inside data_path {self.data_path}"
             ) from exc
 
-        to_create: List[Path] = []
+        to_create: list[Path] = []
         p = target
         while not await aioos.path.exists(p) and p != self.data_path:
             to_create.append(p)

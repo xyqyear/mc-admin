@@ -29,6 +29,7 @@ dependencies = [
     "pwdlib[argon2]~=0.3.0",
     "alembic>=1.17.0,<2",
     "docker>=7.1.0",
+    "anyio>=4,<5",
 ]
 
 [dependency-groups]
@@ -41,6 +42,7 @@ dev = [
     "pytest-asyncio>=1.2.0,<2",
     "pytest-cov>=7.0.0,<8",
     "pyright>=1.1.409",
+    "ruff==0.16.6",
 ]
 
 [tool.uv]
@@ -65,4 +67,20 @@ exclude = [
     ".pytest_cache",
     "cov_html",
     "dev-servers*",
+]
+
+[tool.ruff]
+required-version = "==0.16.6"
+target-version = "py313"
+
+[tool.ruff.lint]
+logger-objects = ["app.logger.logger"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.File",
+    "fastapi.Body",
+    "app.dependencies.RequireRole",
 ]

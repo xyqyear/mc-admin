@@ -6,7 +6,7 @@ COPY frontend-react/package.json frontend-react/pnpm-lock.yaml frontend-react/pn
 RUN npm install -g pnpm@11.0.9 && pnpm install --frozen-lockfile
 
 COPY frontend-react/ ./
-RUN pnpm build
+RUN pnpm build:bundle
 RUN mkdir -p \
     dist/assets/app \
     dist/assets/fonts \
@@ -108,4 +108,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/system/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--forwarded-allow-ips=*", "--log-level", "debug"]
+CMD ["uvicorn", "app.main:app", "--forwarded-allow-ips=*", "--log-level", "info"]

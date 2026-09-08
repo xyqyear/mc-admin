@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from ..logger import logger
 from ..mcmap.events import (
@@ -60,12 +59,12 @@ async def _run_extract(world_dir: Path, data_path: Path) -> MCMapFtbClaimsPayloa
 
 
 def _resolve_dimensions(
-    raw_dims: List[MCMapDimensionEntry],
+    raw_dims: list[MCMapDimensionEntry],
     world_root: WorldRootPath,
     data_path: Path,
-) -> Tuple[List[ClaimDimensionEntry], Dict[str, Optional[str]]]:
-    entries: List[ClaimDimensionEntry] = []
-    relpath_by_ftb_id: Dict[str, Optional[str]] = {}
+) -> tuple[list[ClaimDimensionEntry], dict[str, str | None]]:
+    entries: list[ClaimDimensionEntry] = []
+    relpath_by_ftb_id: dict[str, str | None] = {}
     for raw in raw_dims:
         resolved = resolve_dimension_folder(
             data_path,
@@ -111,17 +110,17 @@ def _parse_member(raw: MCMapFtbMember) -> ClaimMember:
 
 def _build_team_entry(
     raw_team: MCMapFtbTeam,
-    relpath_by_ftb_id: Dict[str, Optional[str]],
+    relpath_by_ftb_id: dict[str, str | None],
 ) -> TeamEntry:
-    by_dim_claims: Dict[str, List[Tuple[int, int]]] = {}
-    by_dim_force: Dict[str, List[Tuple[int, int]]] = {}
+    by_dim_claims: dict[str, list[tuple[int, int]]] = {}
+    by_dim_force: dict[str, list[tuple[int, int]]] = {}
     for claim in raw_team.claims:
         chunk = (claim.cx, claim.cz)
         by_dim_claims.setdefault(claim.dim, []).append(chunk)
         if claim.force_loaded:
             by_dim_force.setdefault(claim.dim, []).append(chunk)
 
-    clusters: List[ClusterEntry] = []
+    clusters: list[ClusterEntry] = []
     for dim_id, chunks in by_dim_claims.items():
         rel = relpath_by_ftb_id.get(dim_id)
         clusters.extend(
@@ -168,7 +167,7 @@ def _shape_response(
 
 
 async def extract_claims_for_server(
-    data_path: Path, world_root: Optional[WorldRootPath] = None
+    data_path: Path, world_root: WorldRootPath | None = None
 ) -> ClaimsResponse:
     if world_root is None:
         roots = await discover_world_root_paths(data_path)

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
@@ -19,38 +19,38 @@ class IntVariableDefinition(BaseModel):
     type: Literal["int"] = "int"
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
-    default: Optional[int] = None
-    min_value: Optional[int] = None
-    max_value: Optional[int] = None
+    description: str | None = None
+    default: int | None = None
+    min_value: int | None = None
+    max_value: int | None = None
 
 
 class FloatVariableDefinition(BaseModel):
     type: Literal["float"] = "float"
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
-    default: Optional[float] = None
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
+    description: str | None = None
+    default: float | None = None
+    min_value: float | None = None
+    max_value: float | None = None
 
 
 class StringVariableDefinition(BaseModel):
     type: Literal["string"] = "string"
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
-    default: Optional[str] = None
-    max_length: Optional[int] = None
-    pattern: Optional[str] = None
+    description: str | None = None
+    default: str | None = None
+    max_length: int | None = None
+    pattern: str | None = None
 
 
 class EnumVariableDefinition(BaseModel):
     type: Literal["enum"] = "enum"
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
-    default: Optional[str] = None
+    description: str | None = None
+    default: str | None = None
     options: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -66,18 +66,12 @@ class BoolVariableDefinition(BaseModel):
     type: Literal["bool"] = "bool"
     name: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
-    default: Optional[bool] = None
+    description: str | None = None
+    default: bool | None = None
 
 
 VariableDefinition = Annotated[
-    Union[
-        IntVariableDefinition,
-        FloatVariableDefinition,
-        StringVariableDefinition,
-        EnumVariableDefinition,
-        BoolVariableDefinition,
-    ],
+    IntVariableDefinition | FloatVariableDefinition | StringVariableDefinition | EnumVariableDefinition | BoolVariableDefinition,
     Field(discriminator="type"),
 ]
 
@@ -90,6 +84,7 @@ class TemplateSnapshot(BaseModel):
     yaml_template: str
     variable_definitions: list[VariableDefinition]
     snapshot_time: str
+    source_updated_at: datetime | None = None
 
 
 _variable_list_adapter = TypeAdapter(list[VariableDefinition])
@@ -109,22 +104,22 @@ def serialize_variable_definitions(
 
 class TemplateCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
     yaml_template: str = Field(min_length=1)
     variable_definitions: list[VariableDefinition] = Field(default_factory=list)
 
 
 class TemplateUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    yaml_template: Optional[str] = Field(default=None, min_length=1)
-    variable_definitions: Optional[list[VariableDefinition]] = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+    yaml_template: str | None = Field(default=None, min_length=1)
+    variable_definitions: list[VariableDefinition] | None = None
 
 
 class TemplateResponse(BaseModel):
     id: int
     name: str
-    description: Optional[str]
+    description: str | None
     yaml_template: str
     variable_definitions: list[VariableDefinition]
     created_at: datetime
@@ -134,7 +129,7 @@ class TemplateResponse(BaseModel):
 class TemplateListItem(BaseModel):
     id: int
     name: str
-    description: Optional[str]
+    description: str | None
     variable_count: int
     created_at: datetime
 

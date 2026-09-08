@@ -30,10 +30,10 @@ def test_self_check_system_cron_defaults_to_hourly() -> None:
 
 @pytest.fixture
 async def cron_test_db(monkeypatch: pytest.MonkeyPatch):
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
+        database_path = temp_db.name
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{temp_db.name}", echo=False)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -51,7 +51,7 @@ async def cron_test_db(monkeypatch: pytest.MonkeyPatch):
     yield session_factory
 
     await engine.dispose()
-    Path(temp_db.name).unlink(missing_ok=True)
+    Path(database_path).unlink(missing_ok=True)
 
 
 async def test_system_cronjob_created_and_protected(

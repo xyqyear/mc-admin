@@ -4,6 +4,7 @@ from pathlib import Path
 
 import aiofiles
 
+from ...logger import logger
 from ...minecraft import MCServerStatus, docker_mc_manager
 from ...minecraft.game_port import get_game_port_mapping, get_properties_game_port
 from ..jar_metadata import extract_jar_metadata, normalize_jar_id
@@ -121,6 +122,7 @@ async def check_filesystem_db_sync(
         try:
             await validate_adoption(context.db, server_id)
         except Exception as exc:
+            logger.warning("Cannot preview adoption of %s", server_id, exc_info=True)
             adoption_errors.append({"server_id": server_id, "error": str(exc)})
 
     deactivation_preview: list[dict[str, object]] = []
@@ -135,6 +137,7 @@ async def check_filesystem_db_sync(
                 }
             )
         except Exception as exc:
+            logger.warning("Cannot preview deactivation of %s", server_id, exc_info=True)
             deactivation_preview.append({"server_id": server_id, "error": str(exc)})
 
     return [
@@ -208,10 +211,13 @@ async def check_game_port_consistency(
                         )
                         remediation = [
                             f"将 server.properties 中的 server-port 设置为 {mapping.target}，保存后重启服务器。",
-                            "如果 Compose 显式设置了不同的 SERVER_PORT，启动时可能再次覆盖文件；"
-                            "请修改 Compose 并重建容器，普通重启不会应用新的环境变量。",
+                            (
+                                "如果 Compose 显式设置了不同的 SERVER_PORT，启动时可能再次覆盖文件；"
+                                "请修改 Compose 并重建容器，普通重启不会应用新的环境变量。"
+                            ),
                         ]
         except Exception as exc:
+            logger.warning("Game port check failed for %s at %s", server.server_id, stage, exc_info=True)
             severity, finding_status = "warning", "failed"
             evidence["error_stage"] = stage
             evidence["error_type"] = type(exc).__name__

@@ -85,7 +85,6 @@ def test_force_loaded_outside_claims_is_ignored():
 
 def test_regions_are_deduplicated_and_cover_cluster_extent():
     # Two chunks in region (0,0) and two in region (1,0) (cx>=32).
-    chunks = [(0, 0), (1, 0), (32, 0), (33, 0)]
     # Make them adjacent so it's a single cluster.
     chunks_connected = [(30, 0), (31, 0), (32, 0), (33, 0)]
     clusters = build_clusters(

@@ -650,7 +650,7 @@ class TestEdgeCases:
 
         async def empty_task():
             return
-            yield  # noqa: B901 - This is intentionally unreachable for testing
+            yield
 
         result = task_manager.submit(
             task_type=TaskType.ARCHIVE_CREATE,

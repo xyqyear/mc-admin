@@ -7,6 +7,7 @@ from ...background_tasks import task_manager
 from ...background_tasks.types import TaskType
 from ...config import settings
 from ...dependencies import get_current_user
+from ...files.paths import resolve_file_path
 from ...minecraft import MCServerStatus, docker_mc_manager
 from ...models import UserPublic
 from ...self_check.constants import SERVER_POPULATED_TRIGGER
@@ -53,7 +54,9 @@ async def populate_server(
     server_data_dir = instance.get_data_path()
 
     # Get archive path
-    archive_path = settings.archive_path / populate_request.archive_filename.lstrip("/")
+    archive_path = await resolve_file_path(
+        settings.archive_path, populate_request.archive_filename
+    )
 
     # Submit as background task
     task_name = f"填充 {server_id}"

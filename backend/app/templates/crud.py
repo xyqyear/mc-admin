@@ -1,7 +1,6 @@
 """ServerTemplate CRUD operations."""
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +19,7 @@ async def get_all_templates(session: AsyncSession) -> list[ServerTemplate]:
 
 async def get_template_by_id(
     session: AsyncSession, template_id: int
-) -> Optional[ServerTemplate]:
+) -> ServerTemplate | None:
     result = await session.execute(
         select(ServerTemplate).where(ServerTemplate.id == template_id)
     )
@@ -29,7 +28,7 @@ async def get_template_by_id(
 
 async def get_template_by_name(
     session: AsyncSession, name: str
-) -> Optional[ServerTemplate]:
+) -> ServerTemplate | None:
     result = await session.execute(
         select(ServerTemplate).where(ServerTemplate.name == name)
     )
@@ -37,7 +36,7 @@ async def get_template_by_name(
 
 
 async def check_name_exists(
-    session: AsyncSession, name: str, exclude_id: Optional[int] = None
+    session: AsyncSession, name: str, exclude_id: int | None = None
 ) -> bool:
     """Whether ``name`` is taken; pass ``exclude_id`` to ignore a row when updating."""
     query = select(ServerTemplate).where(ServerTemplate.name == name)
@@ -50,7 +49,7 @@ async def check_name_exists(
 async def create_template(
     session: AsyncSession,
     name: str,
-    description: Optional[str],
+    description: str | None,
     yaml_template: str,
     variable_definitions: list[VariableDefinition],
 ) -> ServerTemplate:
@@ -59,8 +58,8 @@ async def create_template(
         description=description,
         yaml_template=yaml_template,
         variable_definitions_json=serialize_variable_definitions(variable_definitions),
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     session.add(template)
     await session.commit()
@@ -70,7 +69,7 @@ async def create_template(
 
 async def save_template(session: AsyncSession, template: ServerTemplate) -> None:
     """Bump ``updated_at`` and commit pending changes."""
-    template.updated_at = datetime.now(timezone.utc)
+    template.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(template)
 

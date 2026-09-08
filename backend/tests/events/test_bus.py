@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.events import ChatEvent, EventBus, EventPlayer, StreamResetFrame
 
@@ -7,7 +7,7 @@ def chat_event(cursor: str = "1") -> ChatEvent:
     return ChatEvent(
         cursor=cursor,
         server_id="vanilla",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         player=EventPlayer(name="Notch", uuid="069a79f4", player_db_id=7),
         message="hello",
     )

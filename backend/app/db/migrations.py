@@ -1,9 +1,10 @@
 import asyncio
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+
+from alembic import command
 
 from ..config import settings
 from ..models import Base
