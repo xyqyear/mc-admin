@@ -375,3 +375,23 @@ class TestTemplatePreview:
             headers=auth_headers(),
         )
         assert response.status_code == 400
+
+
+def test_invalid_definition_save_preserves_existing_template_and_defaults(test_client):
+    valid = {"type": "string", "name": "value", "display_name": "值", "pattern": "^[a-z]+$"}
+    definition = {
+        "name": "validated-definition", "yaml_template": GAME_PORT_CONFIG + "x-value: '{value}'\n",
+        "variable_definitions": [valid],
+    }
+    created = test_client.post("/api/templates/", json=definition, headers=auth_headers())
+    assert created.status_code == 201
+    path = f"/api/templates/{created.json()['id']}"
+    defaults_path = "/api/templates/default-variables"
+    before = test_client.put(defaults_path, json={"variable_definitions": [valid]}, headers=auth_headers())
+    assert before.status_code == 200
+    invalid = {**valid, "pattern": "["}
+    body = {"variable_definitions": [invalid]}
+    assert test_client.put(path, json=body, headers=auth_headers()).status_code == 400
+    assert test_client.put(defaults_path, json=body, headers=auth_headers()).status_code == 400
+    assert test_client.get(path, headers=auth_headers()).json() == created.json()
+    assert test_client.get(defaults_path, headers=auth_headers()).json() == before.json()

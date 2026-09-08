@@ -8,6 +8,7 @@ from ...dependencies import get_current_user
 from ...minecraft import docker_mc_manager
 from ...models import UserPublic
 from ...servers import get_active_server_by_id, rebuild_server_task
+from ...servers.configuration import ServerConfiguration
 
 router = APIRouter(
     prefix="/servers",
@@ -71,7 +72,9 @@ async def update_server_compose(
     result = task_manager.submit(
         task_type=TaskType.SERVER_REBUILD,
         name=f"重建 {server_id}",
-        task_generator=rebuild_server_task(server_id, compose_config.yaml_content),
+        task_generator=rebuild_server_task(
+            server_id, ServerConfiguration(compose_config.yaml_content)
+        ),
         server_id=server_id,
         cancellable=False,
     )

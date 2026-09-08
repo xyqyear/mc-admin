@@ -15,7 +15,7 @@ from ...servers.lifecycle import (
     CreateServerSpec,
     create_server_full,
 )
-from .restart_schedule import RestartScheduleRequest
+from ...servers.restart_schedule import RestartScheduleRequest
 
 router = APIRouter(
     prefix="/servers",

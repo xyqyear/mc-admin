@@ -6,9 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
 	"mc-admin/e2e/internal/fixtures"
 )
@@ -48,6 +46,10 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 		ID int `json:"id"`
 	}
 	definition := fixtures.TemplateDefinition(t.Env)
+	definition["yaml_template"] = strings.Replace(definition["yaml_template"].(string), "MAX_MEMORY: 1G", "MAX_MEMORY: {memory}", 1)
+	definition["variable_definitions"] = append(definition["variable_definitions"].([]map[string]any), map[string]any{
+		"type": "string", "name": "memory", "display_name": "Memory", "default": "1G",
+	})
 	if err = c.JSON(ctx, "POST", "/api/templates/", definition, &template, 201); err != nil {
 		return err
 	}
@@ -61,7 +63,7 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if extracted.Values["name"] != s.ID || extracted.Values["game_port"] != float64(s.GamePort) || len(extracted.Warnings) != 0 {
 		return fmt.Errorf("incorrect extracted variables: %+v", extracted)
 	}
-	values := map[string]any{"name": s.ID, "game_port": s.GamePort, "rcon_port": s.RCONPort}
+	values := map[string]any{"name": s.ID, "game_port": s.GamePort, "rcon_port": s.RCONPort, "memory": "1G"}
 	input := map[string]any{"template_id": template.ID, "variable_values": values}
 	var check struct {
 		Rebuild bool `json:"requires_rebuild"`
@@ -97,13 +99,23 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	var task struct {
 		ID string `json:"task_id"`
 	}
+	values["memory"] = "896M"
 	if err = c.JSON(ctx, "PUT", base+"/template-config", map[string]any{"variable_values": values}, &task, 200); err != nil {
 		return err
 	}
 	if _, err = c.Task(ctx, task.ID); err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "PUT", fmt.Sprintf("/api/templates/%d", template.ID), map[string]string{"description": "live template edit"}, nil, 200); err != nil {
+	var saved struct {
+		Values map[string]any `json:"variable_values"`
+	}
+	if err = c.JSON(ctx, "GET", base+"/template-config", nil, &saved, 200); err != nil {
+		return err
+	}
+	if saved.Values["memory"] != "896M" {
+		return fmt.Errorf("template update completed before its variable values were saved")
+	}
+	if err = c.JSON(ctx, "PUT", fmt.Sprintf("/api/templates/%d", template.ID), map[string]string{"yaml_template": definition["yaml_template"].(string) + "x-live-template: true\n"}, nil, 200); err != nil {
 		return err
 	}
 	var config struct {
@@ -114,8 +126,23 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "GET", base+"/template-config", nil, &config, 200); err != nil {
 		return err
 	}
-	if !config.Updated || config.Deleted || config.Values["name"] != s.ID {
+	if !config.Updated || config.Deleted || config.Values["name"] != s.ID || config.Values["memory"] != "896M" {
 		return fmt.Errorf("template live/snapshot state incorrect: %+v", config)
+	}
+	var preview struct {
+		YAML string `json:"rendered_yaml"`
+	}
+	if err = c.JSON(ctx, "POST", base+"/template-config/preview", map[string]any{"variable_values": values}, &preview, 200); err != nil {
+		return err
+	}
+	if strings.Contains(preview.YAML, "x-live-template") || !strings.Contains(preview.YAML, "896M") {
+		return fmt.Errorf("snapshot preview followed the edited live template")
+	}
+	if err = c.JSON(ctx, "GET", base+"/compose", nil, &compose, 200); err != nil {
+		return err
+	}
+	if compose.YAML != preview.YAML {
+		return fmt.Errorf("completed template task differs from snapshot preview")
 	}
 	if err = c.JSON(ctx, "POST", base+"/convert-to-direct", nil, nil, 200); err != nil {
 		return err
@@ -148,17 +175,11 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if _, err = c.Task(ctx, converted.ID); err != nil {
 		return err
 	}
-	if err = api.Wait(ctx, 100*time.Millisecond, "conversion metadata persisted", func(ctx context.Context) (bool, error) {
-		response, err := c.Do(ctx, "GET", base+"/template-config", nil, nil)
-		if err != nil {
-			return false, api.Permanent(err)
-		}
-		if response.Status == 400 {
-			return false, nil
-		}
-		return response.Status == 200, c.Expect(response, 200)
-	}); err != nil {
+	if err = c.JSON(ctx, "GET", base+"/template-config", nil, &config, 200); err != nil {
 		return err
+	}
+	if config.Updated || config.Values["memory"] != "896M" {
+		return fmt.Errorf("conversion task completed before matching metadata was saved")
 	}
 	if err = c.JSON(ctx, "DELETE", fmt.Sprintf("/api/templates/%d", template.ID), nil, nil, 204); err != nil {
 		return err
@@ -168,6 +189,25 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	}
 	if !config.Deleted {
 		return fmt.Errorf("snapshot did not report deleted live template")
+	}
+	values["memory"] = "768M"
+	if err = c.JSON(ctx, "POST", base+"/template-config/preview", map[string]any{"variable_values": values}, &preview, 200); err != nil {
+		return err
+	}
+	if err = c.JSON(ctx, "PUT", base+"/template-config", map[string]any{"variable_values": values}, &task, 200); err != nil {
+		return err
+	}
+	if _, err = c.Task(ctx, task.ID); err != nil {
+		return err
+	}
+	if err = c.JSON(ctx, "GET", base+"/compose", nil, &compose, 200); err != nil {
+		return err
+	}
+	if err = c.JSON(ctx, "GET", base+"/template-config", nil, &config, 200); err != nil {
+		return err
+	}
+	if compose.YAML != preview.YAML || !config.Deleted || config.Values["memory"] != "768M" {
+		return fmt.Errorf("deleted source template prevented a consistent snapshot edit")
 	}
 	for _, suffix := range []string{"extract-variables", "check-conversion", "convert-to-template"} {
 		if err = c.JSON(ctx, "POST", base+"/"+suffix, map[string]any{"template_id": 999999, "variable_values": values}, nil, 404); err != nil {

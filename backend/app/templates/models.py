@@ -84,6 +84,7 @@ class TemplateSnapshot(BaseModel):
     yaml_template: str
     variable_definitions: list[VariableDefinition]
     snapshot_time: str
+    source_updated_at: datetime | None = None
 
 
 _variable_list_adapter = TypeAdapter(list[VariableDefinition])

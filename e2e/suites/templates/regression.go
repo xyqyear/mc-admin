@@ -93,6 +93,34 @@ func variables(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "PUT", base, map[string]any{"name": ""}, nil, 422); err != nil {
 			return err
 		}
+		var savedTemplate, afterRejected map[string]any
+		if err := c.JSON(ctx, "GET", base, nil, &savedTemplate, 200); err != nil {
+			return err
+		}
+		for _, invalid := range []map[string]any{
+			{"type": "string", "name": "name", "display_name": "Name", "pattern": "["},
+			{"type": "string", "name": "name", "display_name": "Name", "max_length": 2, "default": "long"},
+			{"type": "int", "name": "game_port", "display_name": "Port", "min_value": 65535, "max_value": 1024},
+		} {
+			badDefs := append([]map[string]any(nil), defs...)
+			for i, existing := range badDefs {
+				if existing["name"] == invalid["name"] {
+					badDefs[i] = invalid
+				}
+			}
+			if err := c.JSON(ctx, "PUT", base, map[string]any{"variable_definitions": badDefs}, nil, 400); err != nil {
+				return err
+			}
+			if err := c.JSON(ctx, "PUT", "/api/templates/default-variables", map[string]any{"variable_definitions": badDefs}, nil, 400); err != nil {
+				return err
+			}
+		}
+		if err := c.JSON(ctx, "GET", base, nil, &afterRejected, 200); err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(savedTemplate, afterRejected) {
+			return fmt.Errorf("invalid definition update modified the saved template")
+		}
 		for _, route := range []string{"/api/templates/999999", "/api/templates/999999/schema"} {
 			if err := c.JSON(ctx, "GET", route, nil, nil, 404); err != nil {
 				return err

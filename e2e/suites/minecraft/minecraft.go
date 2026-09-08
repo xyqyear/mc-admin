@@ -80,6 +80,42 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
+	if err = t.Step("stopped container accepts configuration rebuild and stays stopped", func() error {
+		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
+			return err
+		}
+		if err := fixtures.WaitStatus(ctx, client, id, "created"); err != nil {
+			return err
+		}
+		var task struct {
+			ID string `json:"task_id"`
+		}
+		changed := strings.Replace(server.Compose, "MAX_MEMORY: 1G", "MAX_MEMORY: 768M", 1)
+		if err := client.JSON(ctx, "POST", "/api/servers/"+id+"/compose", map[string]string{"yaml_content": changed}, &task, 200); err != nil {
+			return err
+		}
+		if _, err := client.Task(ctx, task.ID); err != nil {
+			return err
+		}
+		if err := fixtures.Status(ctx, client, id, "exists"); err != nil {
+			return err
+		}
+		var compose struct {
+			YAML string `json:"yaml_content"`
+		}
+		if err := client.JSON(ctx, "GET", "/api/servers/"+id+"/compose", nil, &compose, 200); err != nil {
+			return err
+		}
+		if compose.YAML != changed {
+			return fmt.Errorf("stopped rebuild did not save the requested compose")
+		}
+		if err := fixtures.Operation(ctx, client, id, "up"); err != nil {
+			return err
+		}
+		return fixtures.WaitStatus(ctx, client, id, "healthy")
+	}); err != nil {
+		return err
+	}
 	return t.Step("stop, down and remove complete the server lifecycle", func() error {
 		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
 			return err

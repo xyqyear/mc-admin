@@ -28,13 +28,13 @@
 | 功能域 | 稳定用例 ID | 已实现的验证内容 |
 | --- | --- | --- |
 | 模板生命周期 | `templates.lifecycle` | 验证带类型变量的模板增删改查、Schema、渲染结果、非法变量拒绝和删除效果。 |
-| 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的 Schema 与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
+| 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的 Schema 与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；模板和默认变量保存时拒绝非法正则、倒置范围及不符合约束的默认值，并保持原数据；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
 | 直接创建与模板创建服务器 | `servers.template-snapshot` | 验证直接创建、重复冲突、删除后按模板重新创建；删除源模板后保留服务器的模板快照；最终删除服务器。 |
-| Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态；验证直接模式与模板模式互转、模板动态更新与删除状态元数据、Compose 持久化及模板缺失的错误边界。 |
+| Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态且元数据立即一致；源模板修改或删除后，服务器快照预览与保存仍使用保留定义；显式升级采用新源模板，直接模式与模板模式转换及 Compose 持久化正确。 |
 | 重启计划与创建参数校验 | `servers.restart-schedule-and-creation` | 拒绝非法创建参数组合；创建服务器时一并建立重启计划；验证计划读取、更新、暂停、恢复、取消、稳定 ID、下次执行时间和自动默认值；删除服务器时取消计划。 |
 | 定时任务实际重启 Minecraft | `minecraft.scheduled-restart` | 建立真实的分钟级计划并检查下次执行时间；等待执行历史完成，确认 Docker 启动时间发生变化、服务器恢复健康；通过 RCON 验证白名单与记分板数值保留，并核对世界标记文件。 |
 | 文件系统与数据库同步 | `servers.sync-reconciliation` | 验证仅 owner 可同步、状态一致时的试运行、真实项目目录偏差及强制执行保护；停用与接管预览不修改状态；实际应用两种转换后核对服务器清单和状态。 |
-| Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；执行重启、停止、销毁 Compose 资源和删除服务器。 |
+| Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；停止后修改配置并重建，确认新配置生效且保持停止，再次启动达到健康状态；执行重启、销毁 Compose 资源和删除服务器。 |
 | 运行概览与配置 | `minecraft.overview`、`minecraft.rcon-and-files` | 验证聚合概览、在线玩家与资源接口、生成的世界布局、真实 RCON 输出及生成的 `server.properties`。 |
 | Docker 控制台与运行时修改 | `minecraft.console-and-runtime-controls` | 验证 CPU、内存、IO、磁盘计数，控制台历史、尺寸调整、输入和未知消息协议；通过标准输入执行修改，再用 RCON 核对效果；验证格式化消息、运行中填充服务器数据的冲突、停止与启动，以及运行中修改 Compose 内存限制后的重建效果。 |
 | 已停止、缺失与非法请求 | `minecraft.stopped-and-invalid-requests` | 验证已停止服务器的指标、RCON、消息冲突和控制台错误帧；拒绝非法命令、消息长度与字段、非法操作；检查不存在的服务器响应。 |

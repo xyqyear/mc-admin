@@ -341,3 +341,26 @@ class TestGetDefaultValues:
         ]
         defaults = TemplateManager.get_default_values(variables)
         assert defaults == {}
+
+
+@pytest.mark.parametrize("variable", [
+    StringVariableDefinition(name="value", display_name="值", pattern="["),
+    StringVariableDefinition(name="value", display_name="值", max_length=-1),
+    StringVariableDefinition(name="value", display_name="值", max_length=2, default="long"),
+    StringVariableDefinition(name="value", display_name="值", pattern="^[a-z]+$", default="ABC"),
+    IntVariableDefinition(name="value", display_name="值", min_value=10, max_value=1),
+    IntVariableDefinition(name="value", display_name="值", min_value=1, default=0),
+    FloatVariableDefinition(name="value", display_name="值", max_value=1.5, default=2),
+])
+def test_variable_definitions_must_be_self_consistent_at_save(variable):
+    assert TemplateManager.validate_variable_definitions([variable])
+
+
+def test_legacy_definition_can_be_read_without_enforcing_save_policy():
+    from app.templates.models import deserialize_variable_definitions_json
+
+    variables = deserialize_variable_definitions_json(
+        '[{"type":"int","name":"memory","display_name":"内存","min_value":1,"default":0}]'
+    )
+    assert TemplateManager.validate_variable_values(variables, {"memory": 2}) == []
+    assert TemplateManager.validate_variable_definitions(variables)

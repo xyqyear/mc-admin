@@ -19,6 +19,7 @@ from app.cron.jobs.backup import BackupJobParams
 from app.cron.jobs.restart import ServerRestartParams
 from app.minecraft import DockerMCManager, MCServerStatus
 from app.models import Base
+from app.servers.configuration import ServerConfiguration
 from app.servers.crud import create_server_record, get_active_server_by_id
 from app.servers.lifecycle import (
     CreateServerSpec,
@@ -348,7 +349,7 @@ class TestValidateAdoption:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("status", [MCServerStatus.EXISTS, MCServerStatus.HEALTHY])
+@pytest.mark.parametrize("status", [MCServerStatus.EXISTS, MCServerStatus.CREATED, MCServerStatus.HEALTHY])
 async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, status):
     mgr = patch_singletons
     instance = mgr.get_instance("legacy")
@@ -365,12 +366,13 @@ async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, 
         patch.object(instance, "up", AsyncMock()) as up,
         patch.object(mgr, "get_instance", return_value=instance),
     ):
-        progress = [item async for item in rebuild_server_task("legacy", legacy)]
+        progress = [item async for item in rebuild_server_task("legacy", ServerConfiguration(legacy))]
     result = progress[-1].result
     assert result is not None
     assert result["game_port"] == 25780
     assert "SERVER_PORT" not in await instance.get_compose_file()
-    assert down.await_count == up.await_count == int(status == MCServerStatus.HEALTHY)
+    assert down.await_count == int(status != MCServerStatus.EXISTS)
+    assert up.await_count == int(status == MCServerStatus.HEALTHY)
 
 
 async def test_new_server_from_legacy_template_is_rejected(patch_singletons, db_factory):

@@ -154,9 +154,12 @@ async def update_default_variables_endpoint(
             status_code=400, detail=f"变量名重复: {', '.join(sorted(duplicates))}"
         )
 
-    variable_definitions = await update_default_variables(
-        db, request.variable_definitions
-    )
+    try:
+        variable_definitions = await update_default_variables(
+            db, request.variable_definitions
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DefaultVariablesResponse(variable_definitions=variable_definitions)
 
 

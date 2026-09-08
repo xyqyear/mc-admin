@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import DefaultVariableConfig
+from .manager import TemplateManager
 from .models import (
     EnumVariableDefinition,
     IntVariableDefinition,
@@ -89,6 +90,9 @@ async def update_default_variables(
     variables: list[VariableDefinition],
 ) -> list[VariableDefinition]:
     """Upsert the singleton config row and return the persisted definitions."""
+    errors = TemplateManager.validate_variable_definitions(variables)
+    if errors:
+        raise ValueError("; ".join(errors))
     result = await db.execute(
         select(DefaultVariableConfig).where(DefaultVariableConfig.id == 1)
     )

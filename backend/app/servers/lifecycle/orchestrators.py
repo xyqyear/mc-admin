@@ -10,15 +10,14 @@ from ...log_monitor import log_monitor
 from ...logger import logger
 from ...minecraft import docker_mc_manager
 from ...minecraft.game_port import validate_game_port_initialization
-from ...routers.servers.restart_schedule import schedule_auto_restart
 from ...templates import (
     TemplateSnapshot,
-    deserialize_variable_definitions_json,
     get_template_by_id,
 )
-from ...templates.manager import TemplateManager
+from ..configuration import capture_template_snapshot, prepare_template_configuration
 from ..crud import create_server_record, mark_server_removed
 from ..port_utils import check_port_conflicts, extract_ports_from_yaml
+from ..restart_schedule import schedule_auto_restart
 from .primitives import (
     cancel_and_wait_for_tasks,
     cancel_restart_cronjobs_for_server,
@@ -56,32 +55,14 @@ async def _resolve_yaml_and_metadata(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
-    user_variables = deserialize_variable_definitions_json(
-        template.variable_definitions_json
-    )
-
-    errors = TemplateManager.validate_variable_values(user_variables, spec.variable_values)
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
-
     try:
-        yaml_content = TemplateManager.render_yaml(
-            template.yaml_template, spec.variable_values
+        configuration = prepare_template_configuration(
+            capture_template_snapshot(template), spec.variable_values
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    snapshot = TemplateSnapshot(
-        template_id=template.id,
-        template_name=template.name,
-        yaml_template=template.yaml_template,
-        variable_definitions=deserialize_variable_definitions_json(
-            template.variable_definitions_json
-        ),
-        snapshot_time=datetime.now(UTC).isoformat(),
-    )
-
-    return yaml_content, snapshot, spec.variable_values
+    return configuration.yaml_content, configuration.template_snapshot, configuration.variable_values
 
 
 async def create_server_full(

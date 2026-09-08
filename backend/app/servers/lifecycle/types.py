@@ -1,7 +1,7 @@
 
 from pydantic import BaseModel
 
-from ...routers.servers.restart_schedule import RestartScheduleRequest
+from ..restart_schedule import RestartScheduleRequest
 
 
 class CreateServerSpec(BaseModel):

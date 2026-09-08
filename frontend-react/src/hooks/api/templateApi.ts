@@ -202,6 +202,17 @@ export const templateApi = {
     return res.data.rendered_yaml;
   },
 
+  previewServerTemplateConfig: async (
+    serverId: string,
+    variableValues: Record<string, unknown>
+  ): Promise<string> => {
+    const res = await api.post<{ rendered_yaml: string }>(
+      `/servers/${serverId}/template-config/preview`,
+      { variable_values: variableValues }
+    );
+    return res.data.rendered_yaml;
+  },
+
   getServerTemplatePreview: async (
     serverId: string
   ): Promise<TemplateConfigPreviewResponse> => {
