@@ -259,7 +259,7 @@ async def backup_cronjob(context: ExecutionContext):
                     )
                 else:
                     skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
-                context.log(skip_msg)
+                context.skip(skip_msg)
                 if params.uptimekuma_url and params.uptimekuma_url.strip():
                     running_time = time.time() - start_time
                     await _send_uptimekuma_notification(

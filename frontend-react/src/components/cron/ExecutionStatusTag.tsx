@@ -1,5 +1,5 @@
 import React from 'react'
-import { Loader2, CheckCircle2, XCircle, Square } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Square, SkipForward } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,12 @@ const ExecutionStatusTag: React.FC<ExecutionStatusTagProps> = ({
       return (
         <StatusBadge tone="success" badgeStyle="soft" icon={CheckCircle2} className={sizeClass}>
           成功
+        </StatusBadge>
+      )
+    case 'skipped':
+      return (
+        <StatusBadge tone="warning" badgeStyle="soft" icon={SkipForward} className={sizeClass}>
+          跳过
         </StatusBadge>
       )
     case 'failed':

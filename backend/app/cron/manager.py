@@ -392,7 +392,8 @@ class CronManager:
 
         try:
             await cronjob_function(context)
-            context.status = ExecutionStatus.COMPLETED
+            if context.status == ExecutionStatus.RUNNING:
+                context.status = ExecutionStatus.COMPLETED
         except asyncio.CancelledError:
             context.status = ExecutionStatus.CANCELLED
             context.log("定时任务执行已取消")

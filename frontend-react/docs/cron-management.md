@@ -43,6 +43,11 @@ This means *adding a new backend job type only requires backend changes* — the
 - Job metadata + cron expression
 - Execution history table (last N runs, paginated)
 - Per-execution log output (collapsible)
+
+Execution results distinguish “成功” (`completed`), “跳过” (`skipped`), “失败”
+(`failed`), and “取消” (`cancelled`). A skipped backup uses a warning badge, with
+its reason in the execution logs; it does not indicate a newly created snapshot.
+
 The execution table polls every few seconds while the modal is open so an in-flight run shows up live.
 
 ## Restart-schedule integration

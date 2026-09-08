@@ -88,10 +88,15 @@ Status transitions are recorded in `CronJobExecution` rows:
 
 - `running`
 - `completed`
+- `skipped`
 - `failed`
 - `cancelled`
 
-The frontend detail dialog reads recent execution rows for job history.
+Jobs that do not run call `context.skip(reason)` and return. The manager marks
+only still-running contexts as completed; exceptions and cancellation retain
+their own terminal statuses. Skipped attempts retain timestamps, a reason in the
+execution logs, and an execution count, without claiming that a backup exists.
+The frontend detail dialog displays them as “跳过” rather than “成功”.
 
 ## Built-In Jobs
 
@@ -102,7 +107,8 @@ uptimekuma_url?)`.
 
 1. Resolve backup paths.
 2. Check `server_operation_lock` and skip rather than block if a conflicting
-   backup or restore lock is active.
+   backup or restore lock is active. A global backup skips the entire run if any
+   affected server is busy. Skipped runs are not automatically retried.
 3. Run `snapshot_service.create_snapshot(...)` — configured ignored paths are excluded automatically.
 4. Apply configured forget/prune retention.
 5. Push optional Uptime Kuma status.
@@ -125,6 +131,9 @@ Backup jobs notify via plain HTTP GET to the configured push URL:
 - `status=up|down`
 - `msg=<short_text>`
 - `ping=<ms>` for successful runs
+
+An intentional lock-conflict skip sends `status=up` with a `skipped:` message;
+this monitor heartbeat is separate from the persisted `skipped` execution result.
 
 ## Files
 

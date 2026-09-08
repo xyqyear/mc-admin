@@ -102,7 +102,7 @@ Long-form, current-state design docs live under `frontend-react/docs/`:
 - `docs/player-management.md` — global page, detail drawer tabs, online-players card
 - `docs/file-management.md` — file browser, multi-file upload session flow, deep search, compression tasks
 - `docs/archive-upload.md` — resumable archive upload dialog, pause/resume, SHA256 verification, SSE reader split
-- `docs/cron-management.md` — visual expression builder, schema-driven job params, status flow
+- `docs/cron-management.md` — visual expression builder, schema-driven job params, job status and execution outcomes including skipped runs
 - `docs/dns-management.md` — diff display, conditional layout, manual update flow
 - `docs/templates.md` — three-tab editor, variable validation, mode-conversion wizard
 - `docs/console.md` — xterm.js + WebSocket lifecycle, reconnection, fit handling

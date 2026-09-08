@@ -53,6 +53,10 @@ class ExecutionContext(BaseModel):
     status: ExecutionStatus = ExecutionStatus.RUNNING
     messages: list[str] = Field(default_factory=list)
 
+    def skip(self, reason: str) -> None:
+        self.status = ExecutionStatus.SKIPPED
+        self.log(reason)
+
     def log(self, message: str) -> None:
         """
         Add a log message to the execution context.

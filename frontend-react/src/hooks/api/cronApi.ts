@@ -31,7 +31,7 @@ export interface CronJobExecution {
   started_at?: string
   ended_at?: string
   duration_ms?: number
-  status: string // lowercase 'running' | 'completed' | 'failed' | 'cancelled'
+  status: 'running' | 'completed' | 'skipped' | 'failed' | 'cancelled'
   messages: string[]
 }
 

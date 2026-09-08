@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"mc-admin/e2e/internal/api"
@@ -156,6 +157,11 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 			if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{}, nil, 423); err != nil {
 				return err
 			}
+			if err := t.Step("scheduled backups persist skipped results during restore", func() error {
+				return s.scheduledBackupsSkip(ctx)
+			}); err != nil {
+				return err
+			}
 			return resumeResticBackup(ctx, t)
 		}
 		if event["event_type"] == "restore" {
@@ -199,6 +205,58 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 		if err = s.checkChunk(ctx, x, expected); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *scenario) scheduledBackupsSkip(ctx context.Context) error {
+	var before, after struct {
+		Snapshots []map[string]any `json:"snapshots"`
+	}
+	if err := s.client.JSON(ctx, "GET", "/api/snapshots", nil, &before, 200); err != nil {
+		return err
+	}
+	for _, scope := range []string{"server", "global"} {
+		id := "e2e-skipped-backup-" + scope
+		path := "/api/cron/" + id
+		params := map[string]any{"enable_forget": false}
+		if scope == "server" {
+			params["server_id"] = s.id
+		}
+		body := map[string]any{"cronjob_id": id, "identifier": "backup", "params": params, "cron": "* * * * *", "second": "*/2", "name": "E2E skipped backup"}
+		if err := s.client.JSON(ctx, "POST", "/api/cron/", body, nil, 200); err != nil {
+			return err
+		}
+		s.t.Cleanup(func(ctx context.Context) error {
+			return s.client.JSON(ctx, "DELETE", path, nil, nil, 200)
+		})
+		if err := api.Wait(ctx, 100*time.Millisecond, scope+" scheduled backup is skipped", func(ctx context.Context) (bool, error) {
+			var rows []struct {
+				Status   string     `json:"status"`
+				Ended    *time.Time `json:"ended_at"`
+				Messages []string   `json:"messages"`
+			}
+			if err := s.client.JSON(ctx, "GET", path+"/executions", nil, &rows, 200); err != nil {
+				return false, api.Permanent(err)
+			}
+			for _, row := range rows {
+				if row.Status != "skipped" || row.Ended == nil || !strings.Contains(strings.Join(row.Messages, "\n"), "跳过备份") {
+					return false, api.Permanent(fmt.Errorf("%s backup has incorrect skipped result: %+v", scope, row))
+				}
+			}
+			return len(rows) > 0, nil
+		}); err != nil {
+			return err
+		}
+		if err := s.client.JSON(ctx, "POST", path+"/pause", nil, nil, 200); err != nil {
+			return err
+		}
+	}
+	if err := s.client.JSON(ctx, "GET", "/api/snapshots", nil, &after, 200); err != nil {
+		return err
+	}
+	if len(after.Snapshots) != len(before.Snapshots) {
+		return fmt.Errorf("skipped backups changed the snapshot count: %d -> %d", len(before.Snapshots), len(after.Snapshots))
 	}
 	return nil
 }

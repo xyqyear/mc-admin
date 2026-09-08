@@ -90,6 +90,7 @@ class CronJobStatus(str, Enum):
 class ExecutionStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
+    SKIPPED = "skipped"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
