@@ -1,0 +1,199 @@
+{
+  "version": "6.0.0-beta.1",
+  "issue": null,
+  "status": "ready_for_clean_source_qualification",
+  "attempts": [
+    {
+      "source_revision": "8e727801283dd65ea9ba9345821851a54d953087",
+      "workflow_run": 36142279130,
+      "workflow_url": "https://github.com/xyqyear/mc-admin/actions/runs/36142279130",
+      "candidate_artifact": "application-candidate-36142279130-1",
+      "candidate_artifact_id": 10867562216,
+      "oci_manifest_digest": "sha256:c2174de696ed13624f60c878c76cd0591b6276fc9fc1b6f9c693f58eeff7dd48",
+      "config_digest": "sha256:fed225ab583a6ea3c3490c150b3e65f7a5dd33f769858395b6b2e38d916b716d",
+      "candidate_and_static": "passed",
+      "api": {
+        "passed": 80,
+        "failed": 0,
+        "shard_passed": [
+          38,
+          23,
+          19
+        ],
+        "observed_operations": 159,
+        "case_and_shard_union": "passed"
+      },
+      "browser": {
+        "job_id": 108096249783,
+        "diagnostic_artifact_id": 10868575743,
+        "passed": 4,
+        "failed": 2,
+        "first_failure": "Restore history remained running after disconnection at the safety-snapshot event.",
+        "secondary_failures": "Cleanup and the following prune journey encountered database write failures.",
+        "backend_observation": "Heartbeat and management writes reported SQLite database is locked.",
+        "owned_cleanup_complete": true
+      },
+      "qualification": "rejected",
+      "published": false,
+      "backend": {
+        "passed": 2146,
+        "skipped": 0,
+        "groups_passed": 25,
+        "exact_node_union": "passed",
+        "audit_job_id": 108111872409
+      },
+      "qualification_job_id": 108111946361,
+      "qualification_reason": "Required release gates did not succeed: browser",
+      "promotion": {
+        "job_id": 108112057659,
+        "conclusion": "skipped"
+      },
+      "closeout_evidence": "/tmp/mc-admin-release-original-closeout.json"
+    }
+  ],
+  "regression": {
+    "backend": "Real file-backed SQLite; cancel after SELECT executes in its worker and retain the cancellation traceback while an independent connection attempts a write.",
+    "api": "world.safety-snapshot-disconnect: real SSE disconnection, exact history and operation identity, subsequent independent database writes and byte-verified safety rollback.",
+    "browser_diagnostics": "Retain the original assertion and all cleanup errors instead of allowing teardown to replace the first failure."
+  },
+  "local_core_fix_regression": {
+    "scope": "Initial SQLite cursor fix; subsequent acceptance handoff fixes require their own final-source validation.",
+    "docker_image_id": "sha256:ff68ad42bba979366711033466b1fde9653f22c301b4d61081bd523a09e81277",
+    "browser": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "run_id": "sqlite-cursor-fix-forward-1",
+      "owned_cleanup_complete": true
+    },
+    "api": {
+      "passed": 4,
+      "modes": [
+        "normal",
+        "no-reuse"
+      ],
+      "cases": [
+        "world.safety-snapshot-disconnect",
+        "world.disconnect-restore-and-maintenance"
+      ],
+      "run_ids": [
+        "sqlite-cursor-fix-normal-2",
+        "sqlite-cursor-fix-no-reuse-2"
+      ],
+      "owned_cleanup_complete": true
+    },
+    "api_test_diagnostic": "Initial new-case assertion expected a world resource. The existing public contract declares the exact region FILES scope. The corrected case requires that path, server generation and both recovery references; the failed first run is retained.",
+    "frontend": {
+      "behavior_passed": 143,
+      "architecture_passed": 4
+    },
+    "evidence": [
+      {
+        "path": "/tmp/mc-admin-journal-cancellation-exact-red.log",
+        "sha256": "sha256:a1e994d3732de9689cb06ba2afeb3ca2531a1ed51cf4f40783978ec4d2ca6566"
+      },
+      {
+        "path": "/tmp/mc-admin-journal-cancellation-new-final.log",
+        "sha256": "sha256:71cef4c27a92b75e520473c469063d0cc52bbd53ce5d59b0a37197d7236871a2"
+      },
+      {
+        "path": "/tmp/mc-admin-release-recovery-browser-forward-playwright/results.json",
+        "sha256": "sha256:3de5f1410bae9cba58095b41f28577bb957460443ccef35def0053247c48ff63"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-recovery-api-final-audit.json",
+        "sha256": "sha256:273b54ccc772703546a2f7ef52401e7e89e1aa93f479f48f67cfbf516029e834"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-recovery-api/sqlite-cursor-fix-normal-1/results.json",
+        "sha256": "sha256:1b2057ec31e4cd90f2a7f6bd5d078d87283caeff770f95390a624379bc67b2d6"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-recovery-api/sqlite-cursor-fix-normal-2/results.json",
+        "sha256": "sha256:3e2e8eb071528050b530cf523225c095054f0add1d4bc8bca311c68db2622bc3"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-recovery-api/sqlite-cursor-fix-no-reuse-2/results.json",
+        "sha256": "sha256:223bb30e34837ce2b89635f86c5698a0ed05b5937e914b03ffb368fee156ef80"
+      }
+    ]
+  },
+  "final_source_targeted_checks": {
+    "new_backend_regressions": 37,
+    "collected_backend_nodes": 2183,
+    "operations_and_tasks_passed": 154,
+    "admission_submission_and_world_passed": 23,
+    "ruff": "passed",
+    "pyright": "passed",
+    "evidence": [
+      {
+        "path": "/tmp/mc-admin-journal-admission-final-regression.log",
+        "sha256": "sha256:2ed3d98366ff00e599e8d87d6cf01b973de6c450e71f0e7f8dbbf8e3f56cfead"
+      },
+      {
+        "path": "/tmp/mc-admin-admission-world-final.log",
+        "sha256": "sha256:e87395ffebd5e7b5556e55e7624cb14317ed626ccd02c0932aa68f50a8c5a4bd"
+      },
+      {
+        "path": "/tmp/mc-admin-admission-final-ruff.log",
+        "sha256": "sha256:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/tmp/mc-admin-admission-final-pyright.log",
+        "sha256": "sha256:9830d035f688be53ff5204b0d0701ea37c178effba3b5dccc0974d8c40e6be1a"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-final-inventory.json",
+        "sha256": "sha256:f3667ff6ce18a5bd5bcadad4863d93e7e99362cda3d761ff30c0528144ced066"
+      },
+      {
+        "path": "/tmp/mc-admin-acceptance-cancellation-red.log",
+        "sha256": "sha256:1195e23d1200209ee6c9055492671bbe40b5dd703ddda6c20a90f30dadd627b1"
+      },
+      {
+        "path": "/tmp/mc-admin-release-submission-cleanup-red.log",
+        "sha256": "sha256:1abee4d658ae5554f84d2ed07224d940d216e6cc86457299327e5f489f139acc"
+      },
+      {
+        "path": "/tmp/mc-admin-release-original-closeout.json",
+        "sha256": "sha256:ec64943f002ff639c9460e8fa7d5601efd3f6c1362448a488b0c7fb21ee64046"
+      }
+    ]
+  },
+  "final_local_regression": {
+    "source": {
+      "revision": "bff0c47d3de62a8a05e968639cc9930fd605d3a8",
+      "dirty": true,
+      "fingerprint": "sha256:c323c2bf944973396fd8b667f8f899d211fa6e089346f06f90af7a1028680a82"
+    },
+    "docker_image_id": "sha256:7b0ff30c43c5bfe8ec1ed82fc8f45994d689718d9cc8d29f3a6ba9debf4a743e",
+    "browser_passed": 6,
+    "browser_skipped": 0,
+    "browser_flaky": 0,
+    "api_passed": 4,
+    "api_modes": [
+      "normal",
+      "no-reuse"
+    ],
+    "owned_cleanup_complete": true,
+    "evidence": [
+      {
+        "path": "/tmp/mc-admin-beta1-acceptance-browser/acceptance-fix-browser-1/manifest.json",
+        "sha256": "sha256:3cab96ac58e7c073ff95c1f832a829fd25f4c2710319d09c22c0997cc8b0d813"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-acceptance-browser/acceptance-fix-browser-1/fixture-result.json",
+        "sha256": "sha256:8af4dca2bd70fab499368ce47e6aa5b56f1d8925d8769ef4937112a34f1b526c"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-acceptance-browser-playwright/results.json",
+        "sha256": "sha256:0c0f726367f1fb880add2a5f3b2196e7da4cc2de099e122ea478170e4b936e68"
+      },
+      {
+        "path": "/tmp/mc-admin-beta1-acceptance-api-final-audit.json",
+        "sha256": "sha256:d3dd8abe14e51ff7dad30c4138ebf8afe80bc07c462787634e6696cf5b77549b"
+      }
+    ]
+  }
+}
