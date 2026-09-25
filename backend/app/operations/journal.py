@@ -2,18 +2,21 @@ import asyncio
 import builtins
 import json
 import re
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
+from functools import wraps
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Concatenate
 
+from anyio.lowlevel import checkpoint_if_cancelled
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..errors import PublicOperationError
+from .finalization import finalize
 from .journal_types import (
     TERMINAL_STATES,
     JournalLimits,
@@ -27,6 +30,38 @@ from .journal_types import (
 from .models import OperationJournalEntry
 
 _TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
+
+
+async def _complete_database_call[T](awaitable: Awaitable[T]) -> T:
+    try:
+        result = await finalize(awaitable)
+    except Exception as error:
+        try:
+            await checkpoint_if_cancelled()
+        except asyncio.CancelledError as cancelled:
+            raise cancelled from error
+        raise
+    await checkpoint_if_cancelled()
+    return result
+
+
+def _complete_read[**P, T](method: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T]]:
+    @wraps(method)
+    async def completed(*args: P.args, **kwargs: P.kwargs) -> T:
+        await checkpoint_if_cancelled()
+        return await _complete_database_call(method(*args, **kwargs))
+    return completed
+
+
+def _complete_write[**P, T](
+    method: Callable[Concatenate["OperationJournal", P], Awaitable[T]],
+) -> Callable[Concatenate["OperationJournal", P], Coroutine[Any, Any, T]]:
+    @wraps(method)
+    async def completed(self: "OperationJournal", /, *args: P.args, **kwargs: P.kwargs) -> T:
+        async with self._lock:
+            await checkpoint_if_cancelled()
+            return await _complete_database_call(method(self, *args, **kwargs))
+    return completed
 
 
 class JournalCapacityError(HTTPException):
@@ -96,7 +131,7 @@ def _record(row: OperationJournalEntry) -> OperationRecord:
 
 
 class OperationJournal:
-    """Short durable transactions, independent of external operation execution."""
+    """Finish short database calls and close their cursors before propagating cancellation."""
 
     def __init__(
         self, session_factory: async_sessionmaker[AsyncSession], *,
@@ -112,11 +147,14 @@ class OperationJournal:
         self._lock = asyncio.Lock()
 
     @asynccontextmanager
-    async def _write(self) -> AsyncGenerator[AsyncSession]:
-        async with self._lock, self.session_factory() as session, session.begin():
-            if session.get_bind().dialect.name == "sqlite":
-                await session.execute(text("BEGIN IMMEDIATE"))
-            yield session
+    async def _write(self, *, committed: Callable[[], None] | None = None) -> AsyncGenerator[AsyncSession]:
+        async with self.session_factory() as session:
+            async with session.begin():
+                if session.get_bind().dialect.name == "sqlite":
+                    await session.execute(text("BEGIN IMMEDIATE"))
+                yield session
+            if committed is not None:
+                committed()
 
     async def _row(self, session: AsyncSession, operation_id: str) -> OperationJournalEntry:
         row = await session.get(OperationJournalEntry, operation_id)
@@ -128,7 +166,16 @@ class OperationJournal:
         if OperationState(row.state) in TERMINAL_STATES:
             raise InvalidOperationTransition()
 
-    async def accept(self, spec: OperationSpec) -> OperationRecord:
+    async def accept(
+        self, spec: OperationSpec, *, on_accepted: Callable[[OperationRecord], None] | None = None,
+    ) -> OperationRecord:
+        async with self._lock:
+            await checkpoint_if_cancelled()
+            return await _complete_database_call(self._accept(spec, on_accepted=on_accepted))
+
+    async def _accept(
+        self, spec: OperationSpec, *, on_accepted: Callable[[OperationRecord], None] | None,
+    ) -> OperationRecord:
         _token(spec.operation_id)
         _token(spec.kind, maximum=40)
         _bounded_text(spec.name, 200)
@@ -139,7 +186,14 @@ class OperationJournal:
         if spec.configuration_version is not None:
             _token(spec.configuration_version)
         resource_json = _resources(spec.resources, self.limits.max_resources)
-        async with self._write() as session:
+        accepted: OperationRecord | None = None
+
+        def committed() -> None:
+            if on_accepted is not None:
+                assert accepted is not None
+                on_accepted(accepted)
+
+        async with self._write(committed=committed) as session:
             await self._prune(session, reserve=1)
             count = await session.scalar(select(func.count()).select_from(OperationJournalEntry))
             if count is not None and count >= self.limits.max_records:
@@ -157,8 +211,10 @@ class OperationJournal:
             )
             session.add(row)
             await session.flush()
-            return _record(row)
+            accepted = _record(row)
+            return accepted
 
+    @_complete_write
     async def start(self, operation_id: str) -> OperationRecord:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -169,6 +225,7 @@ class OperationJournal:
             row.updated_at = self.clock()
             return _record(row)
 
+    @_complete_write
     async def phase(
         self, operation_id: str, phase: str, *, changed: bool = False,
         state: OperationState | None = None,
@@ -190,6 +247,7 @@ class OperationJournal:
 
     stage = phase
 
+    @_complete_write
     async def retain_artifact(self, operation_id: str, resource: ResourceReference) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -204,6 +262,7 @@ class OperationJournal:
                 row.resources_json = _resources((*resources, resource), self.limits.max_resources)
                 row.updated_at = self.clock()
 
+    @_complete_write
     async def resolve_reference(self, operation_id: str, kind: str, value: str) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -222,6 +281,7 @@ class OperationJournal:
         row.recovery_refs_json = _encode(tuple(references.values()))
         row.has_recovery_refs = any(not value.resolved for value in references.values())
 
+    @_complete_write
     async def finish(
         self, operation_id: str, state: OperationState, *, writers_stopped: bool,
         failure_code: str | None = None, recovery_refs: Sequence[RecoveryReference] = (),
@@ -251,6 +311,7 @@ class OperationJournal:
             self._merge_references(row, recovery_refs)
             return _record(row)
 
+    @_complete_write
     async def register_process(self, operation_id: str, identity: ProcessIdentity) -> OperationRecord:
         if min(identity.pid, identity.pgid, identity.root_ino) < 1 or min(identity.start_ticks, identity.root_dev) < 0:
             raise ValueError("Invalid process identity")
@@ -270,6 +331,7 @@ class OperationJournal:
             row.updated_at = self.clock()
             return _record(row)
 
+    @_complete_write
     async def process_stopped(self, operation_id: str, pid: int, start_ticks: int) -> bool:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -281,6 +343,7 @@ class OperationJournal:
             row.updated_at = self.clock()
             return True
 
+    @_complete_write
     async def set_ownership_known(self, operation_id: str, known: bool) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -290,6 +353,7 @@ class OperationJournal:
                 row.writers_stopped = False
             row.updated_at = self.clock()
 
+    @_complete_write
     async def capture_running_intent(self, operation_id: str, running: bool) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -297,6 +361,7 @@ class OperationJournal:
             row.running_intent = running
             row.updated_at = self.clock()
 
+    @_complete_write
     async def mark_cache_degraded(self, operation_id: str) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)
@@ -304,6 +369,7 @@ class OperationJournal:
             row.cache_degraded = True
             row.updated_at = self.clock()
 
+    @_complete_write
     async def recover_interrupted(
         self, operation_id: str, *, writers_stopped: bool, blocked_reason: str | None,
         cache_degraded: bool = False,
@@ -325,6 +391,7 @@ class OperationJournal:
             row.updated_at = self.clock()
             return _record(row)
 
+    @_complete_write
     async def resolve(
         self, operation_id: str, *, actor_id: int, writers_stopped: bool,
         resolve_references: bool = False,
@@ -345,11 +412,13 @@ class OperationJournal:
             row.updated_at = self.clock()
             return _record(row)
 
+    @_complete_read
     async def get(self, operation_id: str) -> OperationRecord | None:
         async with self.session_factory() as session:
             row = await session.get(OperationJournalEntry, operation_id)
             return _record(row) if row is not None else None
 
+    @_complete_read
     async def list(
         self, *, limit: int = 100, offset: int = 0, origin: str | None = None,
         legacy_id: str | None = None,
@@ -365,6 +434,7 @@ class OperationJournal:
         async with self.session_factory() as session:
             return [_record(row) for row in (await session.scalars(query)).all()]
 
+    @_complete_read
     async def unsettled(self) -> builtins.list[OperationRecord]:
         query = select(OperationJournalEntry).where(
             OperationJournalEntry.state.not_in([state.value for state in TERMINAL_STATES])
@@ -398,6 +468,7 @@ class OperationJournal:
             removed += len((await session.scalars(delete(OperationJournalEntry).where(OperationJournalEntry.operation_id.in_(oldest)).returning(OperationJournalEntry.operation_id))).all())
         return removed
 
+    @_complete_write
     async def prune(self) -> int:
         async with self._write() as session:
             return await self._prune(session)

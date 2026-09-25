@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
+from anyio.lowlevel import checkpoint_if_cancelled
+
 from ..config import get_settings
 from ..db.database import get_async_session
 from ..errors import PublicOperationError, public_error_code
@@ -28,6 +30,29 @@ from .resources import journal_resources, require_contained_resources
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
+
+
+async def accept_operation(journal: OperationJournal, spec: OperationSpec) -> OperationRecord:
+    await checkpoint_if_cancelled()
+    accepted: OperationRecord | None = None
+
+    def remember(record: OperationRecord) -> None:
+        nonlocal accepted
+        accepted = record
+
+    try:
+        record = await journal.accept(spec, on_accepted=remember)
+        await checkpoint_if_cancelled()
+        return record
+    except BaseException as failure:
+        if accepted is not None:
+            cancelled = isinstance(failure, (asyncio.CancelledError, GeneratorExit))
+            state = (OperationState.INTERRUPTED if spec.origin == "request" else OperationState.CANCELLED) if cancelled else OperationState.FAILED
+            try:
+                await finalize(journal.finish(accepted.operation_id, state, writers_stopped=True))
+            except BaseException as cleanup_failure:
+                raise failure from cleanup_failure
+        raise
 
 
 async def settle_execution(execution: OperationExecution, state: OperationState) -> None:
@@ -151,7 +176,7 @@ async def operation_scope(
             for server_id in sorted(set(server_ids))
         ])
     resources = journal_resources(servers, claims, default_kind=resource_kind) if claims is not None else tuple(ResourceReference(resource_kind, ref.server_id, ref.generation) for ref in servers)
-    record = await journal.accept(OperationSpec(
+    record = await accept_operation(journal, OperationSpec(
         kind=kind, resources=resources or (ResourceReference("global"),), actor_id=actor_id,
         origin=origin, legacy_id=legacy_id, name=name or kind,
         configuration_version=configuration_version,

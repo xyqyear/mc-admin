@@ -63,6 +63,7 @@ class BackgroundTaskManager:
             bind_execution,
             revalidate_targets,
         )
+        from ..operations.execution import accept_operation
         from ..operations.journal_types import (
             OperationSpec,
             OperationState,
@@ -88,11 +89,18 @@ class BackgroundTaskManager:
         resources = tuple(ResourceReference(resource_kind, ref.server_id, ref.generation) for ref in servers) or (ResourceReference("archive"),)
         if claims is not None:
             resources = journal_resources(servers, claims, default_kind=resource_kind, empty_kind="archive")
-        record = await self.journal.accept(OperationSpec(
-            kind=task_type.value, resources=resources, actor_id=actor_id, origin="task",
-            name=name.encode()[:200].decode(errors="ignore"), operation_id=task_id, legacy_id=task_id,
-            configuration_version=configuration_version,
-        ))
+        try:
+            record = await accept_operation(self.journal, OperationSpec(
+                kind=task_type.value, resources=resources, actor_id=actor_id, origin="task",
+                name=name.encode()[:200].decode(errors="ignore"), operation_id=task_id, legacy_id=task_id,
+                configuration_version=configuration_version,
+            ))
+        except BaseException as failure:
+            try:
+                await finalize(task_generator.aclose())
+            except BaseException as cleanup_failure:
+                raise failure from cleanup_failure
+            raise
         execution = OperationExecution(self.journal, record.operation_id, servers)
 
         async def durable_generator() -> AsyncGenerator[TaskProgress]:
@@ -126,9 +134,16 @@ class BackgroundTaskManager:
 
         try:
             return self.submit(task_type, name, durable_generator(), server_id, cancellable, task_id)
-        except BaseException:
-            await finalize(task_generator.aclose())
-            await finalize(self.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True))
+        except BaseException as failure:
+            async def reject_submission() -> None:
+                try:
+                    await task_generator.aclose()
+                finally:
+                    await execution.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True)
+            try:
+                await finalize(reject_submission())
+            except BaseException as cleanup_failure:
+                raise failure from cleanup_failure
             raise
 
     def restore_history(self, records: Sequence["OperationRecord"]) -> None:

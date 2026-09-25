@@ -30,6 +30,13 @@ flag, writer ownership, and recovery references. Server generations are retained
 database IDs, not reusable directory names. Records deliberately have no foreign
 keys that would discard evidence when a server or user is removed.
 
+Request and background-task entrypoints retain a receipt of their own successful
+acceptance before cancellation can interrupt the handoff to execution. If the
+handoff fails, they settle that accepted record without starting external work;
+a rejected duplicate ID cannot settle another operation. Rejection by the task
+manager closes the unsubmitted generator and settles its record even if closure
+fails. The original rejection and cleanup failure remain distinguishable.
+
 File, population, archive, backup, world restore, prune and live map operations
 declare their actual resource scopes before execution. FILES claims include
 lexical paths and canonical symlink targets; ARCHIVE claims identify the exact
@@ -71,6 +78,15 @@ same database. Active records, unconfirmed writers, blocked recovery, degraded
 caches and unresolved recovery references are never evicted. When protected
 records fill capacity, new admission returns a safe 503 response. The journal
 does not silently discard safety evidence to make room.
+
+Each short journal call owns its database task through cursor consumption,
+commit or rollback, and session closure. Cancellation waits for that task to
+settle before releasing the write mutex and propagating to the caller. Read
+queries use the same lifetime boundary because an unfinished SQLite cursor can
+also block writes. Waiting for the mutex remains cancellable, and cancellation
+is checked before starting a database call and before returning to external
+work. This boundary contains metadata operations only; it does not shield
+filesystem changes, subprocesses or the rest of a cancelled request.
 
 Metadata has additional per-record bounds: 64 resource references, 32 recovery
 references, 32 owned processes, and 64 KiB per JSON collection. A global operation
@@ -224,6 +240,13 @@ restoration history has its generation-preservation guard in `2026092503`.
 
 `tests/operations/test_journal.py` covers transaction boundaries, immutable
 terminal outcomes, capacity races, retention and bounded metadata.
+`test_journal_cancellation.py` interrupts real file-backed SQLite calls after
+their worker has executed a statement, retains the cancellation traceback, and
+verifies writes through an independent connection. It also checks repeated
+cancellation during session closure and cancellation while waiting for the
+mutex. The API scenario `world.safety-snapshot-disconnect` closes the real SSE
+connection on its safety-snapshot event, verifies unrelated management writes,
+and restores the exact safety-snapshot bytes after a distinct later edit.
 `test_recovery.py` covers interruption without replay, ownership uncertainty,
 global and per-server blocks, generation reuse, actual cache confinement and
 configuration-source equality. `test_single_writer.py` exercises concurrent

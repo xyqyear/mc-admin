@@ -108,6 +108,8 @@ Restart scheduling belongs to `app.servers.restart_schedule`. Managed plans bind
 
 Delayed operations capture `app.servers.references.ServerRef` and revalidate generation and confined paths when acquiring resources. Directory presence alone does not register a server. `app.operations.coordinator` reserves declared resources atomically and validates explicit parent lease reuse; deletion admission freezes separately from execution leases. Operation history is readable by authenticated users; resolving interrupted work requires OWNER authority and fresh ownership/consistency checks.
 
+Journal queries and short write transactions finish cursor consumption, commit or rollback, and session closure before propagating cancellation. Waiting for the journal mutex remains cancellable; cancellation prevents the caller from continuing into external side effects. Request and task entrypoints use `operations.execution.accept_operation` to own a committed record before cancellation or session closure can fail; see `docs/operations.md`.
+
 File writes claim both lexical and canonical paths. Backup applications declare all affected paths and maintenance resources before acquiring a lease; nested safety snapshots reuse that lease without upgrading it. World changes include map-cache ownership, while ordinary online file edits and unrelated paths remain available. Settle writer ownership and recovery blocks before releasing leases. Archive publication uses an owned stage in the destination filesystem; cleanup never guesses ownership from a shared filename prefix.
 
 Live map queues own server cache paths. Preview queues receive an explicit
