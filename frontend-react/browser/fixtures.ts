@@ -1,5 +1,6 @@
 import { chown, copyFile, mkdir, readFile, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { withCleanup } from './cleanup'
 import path from 'node:path'
 import { test as base, expect, type Page } from '@playwright/test'
 import { NetworkObservation } from './observation'
@@ -125,11 +126,10 @@ export const test = base.extend<{ api: OwnedApi; observation: NetworkObservation
   api: async ({ owned }, use) => {
     const api = new OwnedApi(owned)
     const original = (await api.json<{ status: string }>(api.server('/status'))).status.toLowerCase()
-    try { await use(api) }
-    finally {
-      if (['healthy', 'running', 'starting'].includes(original)) await api.running()
-      else await api.stopped()
-    }
+    await withCleanup(() => use(api), {
+      label: 'original server state',
+      run: () => ['healthy', 'running', 'starting'].includes(original) ? api.running() : api.stopped(),
+    })
   },
   observation: [async ({ page, owned }, use, testInfo) => {
     const observation = new NetworkObservation(page, owned)

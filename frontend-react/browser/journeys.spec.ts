@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
 import { interruptRestoreAfterSafetySnapshot } from './streamFault'
+import { withCleanup } from './cleanup'
 
 test.describe('owned administration journeys', () => {
   const journeys: Array<{ name: string; run: (fixtures: { page: Page; context: BrowserContext; api: OwnedApi; owned: OwnedEnvironment }) => Promise<void> }> = []
@@ -180,7 +181,7 @@ test.describe('owned administration journeys', () => {
     const snapshot = await api.json<{ snapshot: { id: string; short_id: string } }>(api.server('/world-restore/snapshots'), 'POST', { type: 'world' })
     await api.writeFile(marker, 'before-interruption\n')
     const proxy = await interruptRestoreAfterSafetySnapshot(owned.base_url)
-    try {
+    await withCleanup(async () => {
       await page.goto(`${proxy.url}/server/${owned.server_id}/world-restore`)
       await page.getByRole('button', { name: '恢复整个世界…', exact: true }).click()
       const row = page.getByText(snapshot.snapshot.short_id, { exact: true }).locator('../..')
@@ -208,10 +209,10 @@ test.describe('owned administration journeys', () => {
       await expect(page.getByText('回滚完成', { exact: true })).toBeVisible({ timeout: 60_000 })
       expect((await api.file(marker)).content).toBe('before-interruption\n')
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('before-interruption\n')
-    } finally {
-      await proxy.close()
-      await api.json(api.server(`/files?path=${encodeURIComponent(marker)}`), 'DELETE')
-    }
+    },
+    { label: 'restore proxy', run: proxy.close },
+    { label: 'restore marker', run: () => api.json(api.server(`/files?path=${encodeURIComponent(marker)}`), 'DELETE') },
+    )
   })
 
   journey('an actual expired prune preview is rejected at confirmation and leaves region bytes intact', async ({ page, api, owned }) => {
