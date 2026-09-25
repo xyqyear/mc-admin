@@ -3,7 +3,6 @@ Advanced integration tests for player management system.
 
 Tests system crash recovery and RCON validation scenarios.
 """
-
 import asyncio
 import tempfile
 from contextlib import asynccontextmanager
@@ -16,20 +15,17 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
 from app.minecraft.instance import MCServerStatus
-from app.models import (
-    Base,
-    Player,
-    PlayerSession,
-    Server,
-    ServerStatus,
-    SystemHeartbeat,
-)
+from app.players import get_player_service
 from app.players.heartbeat import HeartbeatManager
+from app.players.models import Player, PlayerSession, SystemHeartbeat
 from app.players.player_syncer import PlayerSyncer
 from app.players.skin_fetcher import SkinFetcher
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
+from tests.support.runtime import patch_runtime_resource, set_runtime_resource
 
 # ============================================================================
 # Fixtures
@@ -191,7 +187,7 @@ def set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
     runtime_config = SimpleNamespace(
         players=PlayersConfig(ignored_name_prefixes=prefixes)
     )
-    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
 
 
 # ============================================================================
@@ -210,8 +206,8 @@ async def test_heartbeat_normal_startup(test_database, mock_config):
 
     patches = [
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.tracking.get_async_session", db),
-        patch("app.players.heartbeat.config", mock_config),
+        patch.object(get_player_service(), "session_factory", db),
+        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
     for p in patches:
@@ -271,17 +267,17 @@ async def test_heartbeat_crash_detection(
     assert len(online) == 2
 
     # Mock player_syncer.validate_all_servers to avoid needing docker_mc_manager
-    from app.players.player_syncer import player_syncer as ps_singleton
+    from app.players.player_syncer import get_player_syncer as get_ps_singleton
 
     mock_validate = AsyncMock()
 
     patches = [
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.tracking.get_async_session", db),
-        patch("app.players.heartbeat.config", mock_config),
+        patch.object(get_player_service(), "session_factory", db),
+        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
-        patch.object(ps_singleton, "validate_all_servers", mock_validate),
+        patch.object(get_ps_singleton(), "validate_all_servers", mock_validate),
     ]
 
     for p in patches:
@@ -329,8 +325,8 @@ async def test_heartbeat_continuous_updates(test_database, mock_config):
 
     patches = [
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.tracking.get_async_session", db),
-        patch("app.players.heartbeat.config", mock_config),
+        patch.object(get_player_service(), "session_factory", db),
+        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
     for p in patches:
@@ -408,10 +404,10 @@ async def test_player_syncer_corrects_false_positives(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.players.tracking.get_async_session", db),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -483,10 +479,10 @@ async def test_player_syncer_corrects_false_negatives(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.players.tracking.get_async_session", db),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -538,13 +534,13 @@ async def test_player_syncer_filters_ignored_rcon_players(
     mock_mc_manager = MagicMock()
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
-    set_ignored_player_prefixes(monkeypatch, ["bot_"])
+    mock_config.players.ignored_name_prefixes = ["bot_"]
 
     patches = [
-        patch("app.players.tracking.get_async_session", db),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -599,10 +595,10 @@ async def test_player_syncer_skips_unhealthy_servers(test_database, mock_config)
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.players.tracking.get_async_session", db),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
     for p in patches:
@@ -639,10 +635,10 @@ async def test_player_syncer_handles_rcon_failure(test_database, mock_config):
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.players.tracking.get_async_session", db),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
     for p in patches:
@@ -709,11 +705,11 @@ async def test_crash_recovery_triggers_rcon_validation(
 
     patches = [
         patch("app.players.heartbeat.get_async_session", db),
-        patch("app.players.heartbeat.config", mock_config),
-        patch("app.players.tracking.get_async_session", db),
+        patch_runtime_resource('dynamic_configuration', mock_config),
+        patch.object(get_player_service(), "session_factory", db),
         patch("app.players.player_syncer.get_async_session", db),
-        patch("app.players.player_syncer.docker_mc_manager", mock_mc_manager),
-        patch("app.players.player_syncer.config", mock_config),
+        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
+        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]

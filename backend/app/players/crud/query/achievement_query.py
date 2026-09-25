@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import PlayerAchievement, Server
+from app.players.models import PlayerAchievement
+from app.servers.models import Server
+
 from ....servers.crud import get_server_db_id
 
 

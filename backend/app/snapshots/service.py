@@ -9,13 +9,16 @@ stay protected as well.
 """
 
 import errno
+import stat
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import aclosing
 from pathlib import Path
 
 import aiofiles.os as aioos
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
+from ..errors import PublicOperationError
+from ..operations.finalization import finalize
 from ..utils import async_fs
 from .coverage import covers
 from .ignores import (
@@ -31,6 +34,7 @@ from .models import (
 )
 from .planner import (
     DirStep,
+    EmptyStep,
     RestorePlan,
     RestoreStep,
     TargetIgnoredError,
@@ -46,7 +50,7 @@ class SnapshotService:
 
     async def _current_ignores(self) -> list[Path]:
         return await resolve_all_ignores(
-            self._mc_manager, config.snapshots.ignored_paths
+            self._mc_manager, get_config().snapshots.ignored_paths
         )
 
     async def remove_absent_paths(self, snapshot_id: str, paths: Sequence[Path]) -> None:
@@ -213,6 +217,10 @@ class SnapshotService:
         delete: bool,
         dry_run: bool,
     ) -> AsyncGenerator[ResticRestoreEvent]:
+        if isinstance(step, EmptyStep):
+            if delete:
+                return self._restore_empty_step(step, dry_run=dry_run)
+            step = step.original
         if isinstance(step, DirStep):
             return self._client.restore(
                 snapshot_id,
@@ -230,6 +238,63 @@ class SnapshotService:
             delete=delete,
             dry_run=dry_run,
         )
+
+    async def _restore_empty_step(
+        self, step: EmptyStep, *, dry_run: bool,
+    ) -> AsyncGenerator[ResticRestoreEvent]:
+        roots = [instance.get_data_path().parent for instance in await self._mc_manager.get_all_instances()]
+        servers_root = getattr(self._mc_manager, "servers_path", None)
+        if isinstance(servers_root, Path):
+            roots.append(servers_root)
+        containing = [root for root in roots if step.source_dir.is_relative_to(root)]
+        if not containing:
+            raise PublicOperationError("空目录恢复目标不属于已登记的服务器目录")
+        owner = max(containing, key=lambda path: len(path.parts))
+        scope = await async_fs.resolve_inside(owner, step.source_dir)
+        removals: list[tuple[Path, bool]] = []
+
+        async def plan(path: Path, *, preserve: bool = False) -> bool:
+            try:
+                info = await aioos.stat(path, follow_symlinks=False)
+            except FileNotFoundError:
+                return False
+            resolved = await async_fs.resolve(path)
+            if is_ignored(path, step.ignored) or is_ignored(resolved, step.ignored):
+                return True
+            await async_fs.resolve_inside(scope, path)
+            directory = stat.S_ISDIR(info.st_mode)
+            retained = preserve
+            if directory:
+                for child in sorted(await async_fs.iterdir(path)):
+                    retained = await plan(child) or retained
+            if not retained:
+                removals.append((path, directory))
+            return retained
+
+        if isinstance(step.original, DirStep):
+            await plan(step.source_dir, preserve=True)
+        else:
+            for name in step.original.includes:
+                await plan(step.source_dir / name.removeprefix("/"))
+
+        async def remove() -> list[Path]:
+            removed: list[Path] = []
+            for path, directory in removals:
+                await async_fs.resolve_inside(scope, path)
+                try:
+                    if directory:
+                        await aioos.rmdir(path)
+                    else:
+                        await aioos.unlink(path)
+                except FileNotFoundError:
+                    continue
+                removed.append(path)
+            return removed
+
+        removed = [path for path, _ in removals] if dry_run else await finalize(remove())
+        for path in removed:
+            yield ResticRestoreEvent(kind="file", action="deleted", item=str(path), size=0)
+        yield ResticRestoreEvent(kind="summary", files_deleted=len(removed))
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
         return await self._client.get_snapshot(snapshot_id)

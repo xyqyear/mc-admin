@@ -21,6 +21,17 @@ After SHA256 verification succeeds, the backend copies the temp file into a hidd
 
 The staging step keeps the final archive path from exposing a partial file even when `/tmp` and the archive directory are on different filesystems.
 
+Publication owns target and staging paths through `ARCHIVE` claims. Archive
+create/delete/rename and population use the same namespace; a busy overlapping
+mutation returns 423. Upload verification waits for an overlapping publication
+to finish, then checks the destination again. Concurrent no-overwrite uploads
+to the same filename therefore return one success and one 409; the conflicting
+session retains its verified temporary bytes for retry or cancellation.
+Chunk-offset mismatch retains its structured 409.
+The finite chunk append and its session-state update finish under the session
+lock despite request cancellation. Verification finishes session cleanup after
+publication. Explicit cancellation before verification removes the pending upload.
+
 ## Offset Rules
 
 The server-side temp file size is authoritative. A `PATCH` whose `Upload-Offset` does not match the current size returns `409` with the current offset so the frontend can resume from the server's view.
@@ -38,3 +49,18 @@ The frontend computes the local file hash at the same time. It then calls `POST 
 ## Compression output identity
 
 Each compression task receives a filename containing the readable server/path, timestamp, and a random identifier. Independent tasks never intentionally share an output path; failure and cancellation remove only that task's partial archive. Closing the progress dialog leaves the background task running.
+
+`app.archive.application` plans source file scope and output before task
+acceptance. Compression reads under its server file lease and writes an owned
+`.mc-admin-archive-<token>.tmp` on the destination filesystem. After compression
+and adapter cleanup succeed, it atomically replaces the final path and publishes
+completion. Listings omit this reserved staging namespace. The compression utility
+is the CLI adapter; resource ownership and publication belong to the application.
+
+The journal retains the exact archive-relative stage path and token. Normal
+finalization removes only that stage. Startup retries unresolved stages, including
+failed terminal records, after verifying writers stopped. Cleanup rejects
+redirected parents and never scans by prefix. Unknown writers retain their
+artifact and block its archive paths, without freezing unrelated server files.
+Population stages have equivalent ownership under the captured server generation.
+Interrupted extraction and compression are never replayed automatically.

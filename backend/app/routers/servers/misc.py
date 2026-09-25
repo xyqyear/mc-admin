@@ -1,20 +1,21 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.schemas import UserPublic
+from app.servers.api_models import ServerInfo, ServerOverviewItem, ServerStatus
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...logger import logger
-from ...minecraft import MCServerStatus, docker_mc_manager
-from ...models import UserPublic
+from ...logger import get_logger
+from ...minecraft import MCServerStatus, get_docker_mc_manager
 from ...players.crud.query.session_query import (
-    OnlinePlayerLite,
     get_online_players_grouped_by_server,
 )
+from ...servers.api_models import ServerListItem
 from ...servers.crud import get_active_servers
-from .utils.server_list import ServerListItem, get_server_list_item
+from ...servers.queries import get_server_list_item
 
 router = APIRouter(
     prefix="/servers",
@@ -23,28 +24,6 @@ router = APIRouter(
 
 
 # Pydantic models for API responses
-class ServerInfo(BaseModel):
-    id: str
-    name: str
-    serverType: str
-    gameVersion: str
-    gamePort: int
-    maxMemoryBytes: int
-    rconPort: int
-    javaVersion: int
-
-
-class ServerStatus(BaseModel):
-    status: str
-
-
-class ServerOverviewItem(BaseModel):
-    id: str
-    name: str
-    gamePort: int
-    status: str
-    online_players: list[OnlinePlayerLite]
-
 
 PLAYER_VISIBLE_STATUSES = {
     MCServerStatus.RUNNING,
@@ -65,12 +44,13 @@ async def get_servers(
     compose has drifted away are filtered out with a per-row warning so the
     operator can correlate the gap with the sync endpoint without UI silence.
     """
+    logger = get_logger()
     active_rows = await get_active_servers(db)
 
     if not active_rows:
         return []
 
-    instances = [docker_mc_manager.get_instance(row.server_id) for row in active_rows]
+    instances = [get_docker_mc_manager().get_instance(row.server_id) for row in active_rows]
     server_data_tasks = [get_server_list_item(instance) for instance in instances]
 
     results = await asyncio.gather(*server_data_tasks, return_exceptions=True)
@@ -92,6 +72,7 @@ async def get_servers_overview(
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(get_current_user),
 ):
+    logger = get_logger()
     active_rows = await get_active_servers(db)
 
     if not active_rows:
@@ -100,7 +81,7 @@ async def get_servers_overview(
     online_players_by_server = await get_online_players_grouped_by_server(db)
 
     async def load_server(row):
-        instance = docker_mc_manager.get_instance(row.server_id)
+        instance = get_docker_mc_manager().get_instance(row.server_id)
         server_info, server_status = await asyncio.gather(
             get_server_list_item(instance),
             instance.get_status(),
@@ -142,7 +123,7 @@ async def get_servers_overview(
 @router.get("/{server_id}", response_model=ServerInfo)
 async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get detailed information about a specific server"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -166,7 +147,7 @@ async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
 @router.get("/{server_id}/status", response_model=ServerStatus)
 async def get_server_status(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get current status of a specific server"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     status = await instance.get_status()
 
     return ServerStatus(status=status.name)

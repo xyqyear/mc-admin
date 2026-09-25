@@ -1,5 +1,5 @@
 from .cache import ServerMapCache
-from .manager import mcmap_manager
+from .manager import get_mcmap_manager
 from .palette import (
     compute_palette_hash,
     discover_level_dat,
@@ -21,7 +21,7 @@ __all__ = [
     "compute_palette_hash",
     "discover_level_dat",
     "discover_mods_dir",
-    "mcmap_manager",
+    'get_mcmap_manager',
     "palette_is_current",
     "write_palette_hash",
 ]

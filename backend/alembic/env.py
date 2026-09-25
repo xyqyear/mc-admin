@@ -10,8 +10,9 @@ from alembic import context
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 # Import your model's MetaData object
-from app.config import settings
-from app.models import Base
+from app.config import Settings
+from app.db.metadata import Base
+from app.runtime_resources import bound_runtime
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -19,6 +20,8 @@ config = context.config
 
 # Set the database URL from the app settings
 # Convert async SQLite URL to sync URL for Alembic
+runtime = bound_runtime()
+settings = runtime.settings if runtime is not None else Settings()  # type: ignore
 database_url = settings.database_url
 if database_url.startswith('sqlite+aiosqlite:///'):
     database_url = database_url.replace('sqlite+aiosqlite:///', 'sqlite:///')

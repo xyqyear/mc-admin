@@ -6,6 +6,7 @@ import pytest
 
 from app.dns.types import AddRecordT, ReturnRecordT
 from app.dns.utils import RecordDiff, diff_dns_records
+from tests.dns.helpers import patch_accessor
 
 
 class TestDNSBasicFunctionality:
@@ -45,7 +46,7 @@ class TestDNSBasicFunctionality:
         mock_config = MagicMock()
         mock_config.dns.enabled = True
 
-        with patch("app.dns.manager.config", mock_config), patch.object(
+        with patch_accessor("app.dns.manager.get_config", mock_config), patch.object(
             manager, "_ensure_up_to_date_config", new_callable=AsyncMock
         ), pytest.raises(RuntimeError, match="DNS manager not initialized"):
             await manager.get_current_diff(AsyncMock())
@@ -59,7 +60,7 @@ class TestDNSBasicFunctionality:
 
     @pytest.mark.asyncio
     async def test_dns_status_models(self):
-        from app.routers.dns import DNSRecordDiff, DNSStatusResponse, RouterDiff
+        from app.dns.api_models import DNSRecordDiff, DNSStatusResponse, RouterDiff
 
         dns_diff = DNSRecordDiff(
             records_to_add=[], records_to_remove=[], records_to_update=[]
@@ -78,7 +79,7 @@ class TestDNSBasicFunctionality:
         assert status.router_diff is not None
 
     def test_dns_enabled_model(self):
-        from app.routers.dns import DNSEnabledResponse
+        from app.dns.api_models import DNSEnabledResponse
 
         response = DNSEnabledResponse(enabled=True)
         assert response.enabled is True

@@ -45,7 +45,7 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
-        with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
             async with runner.replace_chunks(
                 source_mca=src,
                 target_mca=tgt,
@@ -87,7 +87,7 @@ async def test_replace_chunks_single_chunk(fake_owned_dir):
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
-        with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
             async with runner.replace_chunks(
                 source_mca=src,
                 target_mca=tgt,
@@ -118,7 +118,7 @@ async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
-        with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
             async with runner.replace_chunks(
                 source_mca=src,
                 target_mca=tgt,

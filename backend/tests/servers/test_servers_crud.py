@@ -10,9 +10,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, Server, ServerStatus
+from app.db.metadata import Base
 from app.servers.crud import (
     create_server_record,
     get_active_servers,
@@ -21,6 +22,7 @@ from app.servers.crud import (
     get_server_db_id,
     mark_server_removed,
 )
+from app.servers.models import Server, ServerStatus
 
 # ============================================================================
 # Fixtures
@@ -344,15 +346,13 @@ async def test_get_server_by_id_prefers_active_over_removed(test_database):
 
 
 @pytest.mark.asyncio
-async def test_get_server_by_id_multiple_active_returns_newest(test_database):
-    """Test that when multiple ACTIVE servers exist, the newest one is returned."""
+async def test_database_rejects_multiple_active_instances_with_same_name(test_database):
     db = test_database
 
     now = datetime.now(UTC)
 
-    # Create older ACTIVE server
     async with db() as session:
-        await _create_server_directly(
+        original = await _create_server_directly(
             session,
             "test_server",
             status=ServerStatus.ACTIVE,
@@ -360,24 +360,22 @@ async def test_get_server_by_id_multiple_active_returns_newest(test_database):
             updated_at=now - timedelta(hours=1),
         )
 
-    # Create newer ACTIVE server
     async with db() as session:
-        server2 = await _create_server_directly(
-            session,
-            "test_server",
-            status=ServerStatus.ACTIVE,
-            created_at=now,
-            updated_at=now,
-        )
-        second_id = server2.id
+        with pytest.raises(IntegrityError):
+            await _create_server_directly(
+                session,
+                "test_server",
+                status=ServerStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
 
-    # Should return the newer ACTIVE server (server2)
     async with db() as session:
         result = await get_server_by_id(session, "test_server")
 
     assert result is not None
-    assert result.id == second_id
-    assert result.created_at == now
+    assert result.id == original.id
+    assert result.created_at == now - timedelta(hours=1)
 
 
 @pytest.mark.asyncio

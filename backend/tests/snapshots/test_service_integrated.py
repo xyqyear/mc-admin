@@ -3,24 +3,24 @@
 Real restic against throwaway repos; server instances are fakes wired to
 temp directories; dynamic config is patched per test.
 """
-
 import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from app.config import settings
+from app.config import get_settings
 from app.snapshots import ResticClient, SnapshotService, TargetIgnoredError
 from app.utils.exec import exec_command
+from tests.support.runtime import patch_runtime_resource
 
 
 def check_restic_available():
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -75,7 +75,7 @@ def _make_server(servers_root: Path, server_id: str, level_name: str) -> FakeIns
 def ignored_paths(patterns: list[str]):
     mock_config = MagicMock()
     mock_config.snapshots.ignored_paths = patterns
-    with patch("app.snapshots.service.config", mock_config):
+    with patch_runtime_resource('dynamic_configuration', mock_config):
         yield
 
 
@@ -405,3 +405,5 @@ class TestSafetySnapshotRoundTrip:
         assert (region / "r.0.0.mca").read_bytes() == b"mca-0-0"
         assert (region / "r.0.1.mca").read_bytes() == b"mca-0-1"
         assert not junk.exists()
+
+pytestmark = [pytestmark, pytest.mark.binary('restic')]

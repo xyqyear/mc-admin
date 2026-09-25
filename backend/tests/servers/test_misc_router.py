@@ -4,7 +4,6 @@ Covers the drifted-row path: an ACTIVE row whose compose can't be read must
 not surface in the response but MUST produce a warning log so operators can
 correlate with the sync endpoint.
 """
-
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,6 +12,7 @@ import pytest
 from app.minecraft import MCServerInfo
 from app.minecraft.compose import ServerType
 from app.routers.servers.misc import get_servers
+from tests.support.runtime import patch_runtime_resource
 
 
 def _row(server_id: str) -> MagicMock:
@@ -56,7 +56,7 @@ async def test_get_servers_filters_drifted_row_and_logs(caplog):
     rows = [_row("good"), _row("drifted")]
 
     with (
-        patch("app.routers.servers.misc.docker_mc_manager", fake_manager),
+        patch_runtime_resource('docker_mc_manager', fake_manager),
         patch(
             "app.routers.servers.misc.get_active_servers",
             AsyncMock(return_value=rows),
@@ -79,7 +79,7 @@ async def test_get_servers_empty_when_no_active_rows():
     fake_manager.get_instance = MagicMock(side_effect=AssertionError("should not be called"))
 
     with (
-        patch("app.routers.servers.misc.docker_mc_manager", fake_manager),
+        patch_runtime_resource('docker_mc_manager', fake_manager),
         patch(
             "app.routers.servers.misc.get_active_servers",
             AsyncMock(return_value=[]),

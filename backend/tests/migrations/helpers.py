@@ -2,16 +2,23 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import Connection, create_engine, inspect, text
 
 from alembic import command
 from app.db import migrations
-from app.models import Base
+from app.db.metadata import Base
+
+
+def current_head_revision() -> str:
+    revision = ScriptDirectory.from_config(migrations._alembic_config()).get_current_head()
+    assert revision is not None
+    return revision
 
 
 def set_database_url(monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:
     monkeypatch.setattr(
-        migrations.settings, "database_url", f"sqlite+aiosqlite:///{db_path}"
+        migrations.get_settings(), "database_url", f"sqlite+aiosqlite:///{db_path}"
     )
 
 

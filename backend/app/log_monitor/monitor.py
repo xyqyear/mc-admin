@@ -7,17 +7,10 @@ import aiofiles
 from aiofiles import os as aioos
 from watchfiles import Change, awatch
 
-from ..db.database import get_async_session
-from ..logger import logger
-from ..minecraft import docker_mc_manager
-from ..players.crud import upsert_player
-from ..players.tracking import (
-    close_server_sessions,
-    process_player_join,
-    process_player_left,
-    record_achievement,
-    record_chat_message,
-)
+from ..logger import get_logger
+from ..minecraft import get_docker_mc_manager
+from ..players import PlayerService, get_player_service
+from ..runtime_resources import current_runtime
 from .events import (
     LogEvent,
     PlayerAchievementEvent,
@@ -33,7 +26,8 @@ from .parser import LogParser
 class LogMonitor:
     """Monitors Minecraft server log files and dispatches tracking actions."""
 
-    def __init__(self):
+    def __init__(self, players: PlayerService | None = None):
+        self._players = players
         self.log_parser = LogParser()
 
         # Track file pointers for each server
@@ -45,18 +39,24 @@ class LogMonitor:
         # Flag to stop all watches
         self._stop_flag = False
 
+    @property
+    def players(self) -> PlayerService:
+        return self._players if self._players is not None else get_player_service()
+
     async def start_server(self, server_id: str) -> None:
         """Start watching a server's log file.
 
         Resolves the log path from the server's data directory.
         """
-        instance = docker_mc_manager.get_instance(server_id)
+        logger = get_logger()
+        instance = get_docker_mc_manager().get_instance(server_id)
         log_path = instance.get_data_path() / "logs" / "latest.log"
         await self._watch_server(server_id, log_path)
         logger.info(f"Started log monitoring for server {server_id}")
 
     async def _watch_server(self, server_id: str, log_path: Path) -> None:
         """Start watching a server's log file at the given path."""
+        logger = get_logger()
         if server_id in self._watch_tasks:
             logger.warning(f"Already watching logs for server {server_id}")
             return
@@ -67,6 +67,7 @@ class LogMonitor:
 
     async def stop_watching(self, server_id: str) -> None:
         """Stop watching a server's log file."""
+        logger = get_logger()
         if server_id not in self._watch_tasks:
             logger.warning(f"Not watching logs for server {server_id}")
             return
@@ -87,6 +88,7 @@ class LogMonitor:
 
     async def stop_all(self) -> None:
         """Stop watching all servers."""
+        logger = get_logger()
         self._stop_flag = True
 
         for server_id in list(self._watch_tasks.keys()):
@@ -96,6 +98,7 @@ class LogMonitor:
 
     async def _watch_loop(self, server_id: str, log_path: Path) -> None:
         """Watch loop for a single server log file."""
+        logger = get_logger()
         # Initialize file pointer
         if await aioos.path.exists(log_path):
             self._file_pointers[server_id] = await aioos.path.getsize(log_path)
@@ -151,6 +154,7 @@ class LogMonitor:
 
     async def _process_log_changes(self, server_id: str, log_path: Path) -> None:
         """Process changes to a log file."""
+        logger = get_logger()
         try:
             if not await aioos.path.exists(log_path):
                 return
@@ -193,44 +197,38 @@ class LogMonitor:
 
     async def _handle_event(self, event: LogEvent) -> None:
         """Route a parsed log event to the appropriate tracking function."""
+        logger = get_logger()
         try:
             match event:
                 case PlayerUuidDiscoveredEvent():
-                    async with get_async_session() as session:
-                        updated = await upsert_player(
-                            session, event.uuid, event.player_name
-                        )
-                    if updated:
-                        logger.info(
-                            f"Updated player UUID: {event.player_name} = {event.uuid}"
-                        )
+                    await self.players.discover_identity(event.uuid, event.player_name)
                 case PlayerJoinedEvent():
-                    await process_player_join(
+                    await self.players.process_player_join(
                         event.server_id, event.player_name, event.timestamp
                     )
                 case PlayerLeftEvent():
-                    await process_player_left(
+                    await self.players.process_player_left(
                         event.server_id,
                         event.player_name,
                         event.reason,
                         event.timestamp,
                     )
                 case PlayerChatMessageEvent():
-                    await record_chat_message(
+                    await self.players.record_chat_message(
                         event.server_id,
                         event.player_name,
                         event.message,
                         event.timestamp,
                     )
                 case PlayerAchievementEvent():
-                    await record_achievement(
+                    await self.players.record_achievement(
                         event.server_id,
                         event.player_name,
                         event.achievement_name,
                         event.timestamp,
                     )
                 case ServerStoppingEvent():
-                    await close_server_sessions(event.server_id, event.timestamp)
+                    await self.players.close_server_sessions(event.server_id, event.timestamp)
                 case _:
                     logger.warning(f"Unhandled event type: {type(event).__name__}")
         except Exception:
@@ -239,4 +237,5 @@ class LogMonitor:
             )
 
 
-log_monitor = LogMonitor()
+def get_log_monitor() -> LogMonitor:
+    return current_runtime().resource('log_monitor')

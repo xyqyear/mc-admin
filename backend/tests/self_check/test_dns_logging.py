@@ -8,8 +8,9 @@ from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
     TencentCloudSDKException,
 )
 
+from app.errors import INTERNAL_ERROR_MESSAGE
 from app.self_check.checks import dns
-from app.self_check.checks.base import SelfCheckContext
+from app.self_check.checks.base import SelfCheckContext, get_self_check_dependencies
 
 SECRET_DETAIL = "test-cloud-credential-error-detail"
 
@@ -28,10 +29,11 @@ SECRET_DETAIL = "test-cloud-credential-error-detail"
 async def test_dns_failure_preserves_finding_without_logging_secret_details(
     failure, monkeypatch, caplog
 ):
-    monkeypatch.setattr(dns, "config", SimpleNamespace(dns=SimpleNamespace(enabled=True)))
+    dependencies = get_self_check_dependencies()
+    monkeypatch.setattr(dependencies, "configuration", SimpleNamespace(dns=SimpleNamespace(enabled=True)))
     monkeypatch.setattr(
-        dns.simple_dns_manager,
-        "get_current_diff",
+        dependencies.connectivity,
+        "observe",
         AsyncMock(side_effect=failure),
     )
 
@@ -39,7 +41,8 @@ async def test_dns_failure_preserves_finding_without_logging_secret_details(
 
     assert len(findings) == 1
     assert findings[0].status == "warning"
-    assert findings[0].evidence == {"error": str(failure)}
+    assert findings[0].evidence == {"error": INTERNAL_ERROR_MESSAGE}
+    assert SECRET_DETAIL not in findings[0].model_dump_json()
     assert type(failure).__name__ in caplog.text
     assert SECRET_DETAIL not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)
@@ -47,10 +50,11 @@ async def test_dns_failure_preserves_finding_without_logging_secret_details(
 
 async def test_dns_programming_error_propagates_to_runner(monkeypatch, caplog):
     failure = LookupError(SECRET_DETAIL)
-    monkeypatch.setattr(dns, "config", SimpleNamespace(dns=SimpleNamespace(enabled=True)))
+    dependencies = get_self_check_dependencies()
+    monkeypatch.setattr(dependencies, "configuration", SimpleNamespace(dns=SimpleNamespace(enabled=True)))
     monkeypatch.setattr(
-        dns.simple_dns_manager,
-        "get_current_diff",
+        dependencies.connectivity,
+        "observe",
         AsyncMock(side_effect=failure),
     )
 

@@ -3,10 +3,12 @@
 Tracks player activity, sessions, chat, achievements, and skins.
 """
 
-from ..logger import log_exception, logger
+from ..logger import get_logger
+from .service import PlayerService, get_player_service
+
+__all__ = ["PlayerService", "get_player_service", "start_player_system", "stop_player_system"]
 
 
-@log_exception("Error starting player system: ")
 async def start_player_system() -> None:
     """Start all player tracking subsystems in the correct order.
 
@@ -14,14 +16,15 @@ async def start_player_system() -> None:
     `Server` table are watched. Orphan filesystem directories are not
     discovered here; the operator adopts them explicitly via the sync endpoint.
     """
+    logger = get_logger()
     from ..db.database import get_async_session
-    from ..log_monitor import log_monitor
+    from ..log_monitor import get_log_monitor
     from ..servers.crud import get_active_servers
-    from .heartbeat import heartbeat_manager
-    from .player_syncer import player_syncer
+    from .heartbeat import get_heartbeat_manager
+    from .player_syncer import get_player_syncer
 
     # Heartbeat starts first; it owns crash recovery for the rest of the system.
-    await heartbeat_manager.start()
+    await get_heartbeat_manager().start()
 
     server_ids: list[str] = []
     try:
@@ -35,27 +38,28 @@ async def start_player_system() -> None:
 
     for server_id in server_ids:
         try:
-            await log_monitor.start_server(server_id)
+            await get_log_monitor().start_server(server_id)
         except Exception:
             logger.exception(
                 f"Error starting log monitoring for {server_id}",
                 )
 
-    await player_syncer.start()
+    await get_player_syncer().start()
 
     logger.info("Player monitoring system started successfully")
 
 
 async def stop_player_system() -> None:
     """Stop all player tracking subsystems."""
-    from ..log_monitor import log_monitor
-    from .heartbeat import heartbeat_manager
-    from .player_syncer import player_syncer
+    logger = get_logger()
+    from ..log_monitor import get_log_monitor
+    from .heartbeat import get_heartbeat_manager
+    from .player_syncer import get_player_syncer
 
     logger.info("Stopping player monitoring system...")
 
-    await player_syncer.stop()
-    await log_monitor.stop_all()
-    await heartbeat_manager.stop()
+    await get_player_syncer().stop()
+    await get_log_monitor().stop_all()
+    await get_heartbeat_manager().stop()
 
     logger.info("Player monitoring system stopped")

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ..logger import logger
+from ..logger import get_logger
 from ..mcmap.events import (
     MCMAP_PLAYERS_EVENT_ADAPTER,
     MCMapDimensionEntry,
@@ -138,6 +138,7 @@ def _shape_response(
 async def extract_player_locations_for_server(
     data_path: Path, world_root: WorldRootPath | None = None
 ) -> PlayerLocationsResponse:
+    logger = get_logger()
     if world_root is None:
         roots = await discover_world_root_paths(data_path)
         world_root = roots[0] if roots else None

@@ -4,23 +4,20 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth.session import (
-    AUTH_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    CSRF_HEADER_NAME,
-    create_session_token,
-)
-from app.config import settings
+from app.auth.models import User, UserRole
+from app.auth.schemas import UserPublic
+from app.auth.service import get_identity_service
+from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, CSRF_HEADER_NAME
+from app.config import get_settings
 from app.db.database import get_db
 from app.main import api_app, app
-from app.models import User, UserPublic, UserRole
 
 MASTER_TOKEN = "test-master-token"
 
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(settings, "master_token", MASTER_TOKEN)
+    monkeypatch.setattr(get_settings(), "master_token", MASTER_TOKEN)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -33,13 +30,13 @@ def user(monkeypatch):
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     monkeypatch.setattr(
-        "app.auth.session._get_current_session_user", AsyncMock(return_value=user)
+        get_identity_service(), "get_current_session_user", AsyncMock(return_value=user)
     )
     return user
 
 
 def _set_session_cookies(client: TestClient, user: UserPublic) -> str:
-    token, csrf_token = create_session_token(user)
+    token, csrf_token = get_identity_service().create_session_token(user)
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
     client.cookies.set(CSRF_COOKIE_NAME, csrf_token, path="/")
     return csrf_token
@@ -178,14 +175,14 @@ def test_logout_clears_auth_cookies(client, user):
 async def test_deleted_account_session_is_rejected_after_id_reuse(client, tmp_path, monkeypatch):
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    from app.auth.session import user_to_public
-    from app.db.crud.user import create_user, delete_user
+    from app.auth.service import user_to_public
+    from app.auth.store import create_user, delete_user
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'auth.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(User.metadata.tables["user"].create)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr("app.auth.session.get_async_session", sessions)
+    monkeypatch.setattr(get_identity_service(), "session_factory", sessions)
     try:
         async with sessions() as session:
             db_user = await create_user(session, User(

@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
-from app.config import settings
+from app.config import get_settings
 from app.ftb_claims import extract_claims_for_server, runner
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 def _write_fake_mcmap(payload: dict) -> Path:
@@ -68,7 +70,7 @@ def world_data_path():
 
 async def test_unavailable_when_mcmap_reports_no_data(world_data_path):
     fake = _write_fake_mcmap_error("could not detect FTB claim format in world directory")
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
     assert result.available is False
@@ -139,7 +141,7 @@ async def test_extract_resolves_dim_and_groups_clusters(world_data_path):
         ],
     }
     fake = _write_fake_mcmap(payload)
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
 
@@ -187,8 +189,8 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
         "teams": [],
     }
     fake = _write_fake_mcmap(payload)
-    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
 
@@ -201,7 +203,7 @@ async def test_extract_error_other_than_no_data_propagates(world_data_path):
 
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
     with (
-        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(FtbExtractError),
     ):
         await extract_claims_for_server(world_data_path)
@@ -235,7 +237,7 @@ async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
     }
     fake = _write_fake_mcmap(payload)
     with (
-        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(FtbExtractError, match='invalid JSON event'),
     ):
         await extract_claims_for_server(world_data_path)
@@ -263,7 +265,7 @@ async def test_display_name_falls_back_to_id_prefix(world_data_path):
         ],
     }
     fake = _write_fake_mcmap(payload)
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
     assert result.teams[0].display_name == "12345678"

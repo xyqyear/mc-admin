@@ -103,7 +103,7 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "PUT", base+"/template-config", map[string]any{"variable_values": values}, &task, 200); err != nil {
 		return err
 	}
-	if _, err = c.Task(ctx, task.ID); err != nil {
+	if err = stoppedConfigurationTask(ctx, c, s.ID, task.ID); err != nil {
 		return err
 	}
 	var saved struct {
@@ -151,7 +151,7 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "POST", base+"/compose", map[string]string{"yaml_content": changed}, &task, 200); err != nil {
 		return err
 	}
-	if _, err = c.Task(ctx, task.ID); err != nil {
+	if err = stoppedConfigurationTask(ctx, c, s.ID, task.ID); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "GET", base+"/compose", nil, &compose, 200); err != nil {
@@ -172,7 +172,7 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if converted.Skipped || converted.ID == "" {
 		return fmt.Errorf("conversion did not submit rebuild")
 	}
-	if _, err = c.Task(ctx, converted.ID); err != nil {
+	if err = stoppedConfigurationTask(ctx, c, s.ID, converted.ID); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "GET", base+"/template-config", nil, &config, 200); err != nil {
@@ -197,7 +197,7 @@ func conversions(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "PUT", base+"/template-config", map[string]any{"variable_values": values}, &task, 200); err != nil {
 		return err
 	}
-	if _, err = c.Task(ctx, task.ID); err != nil {
+	if err = stoppedConfigurationTask(ctx, c, s.ID, task.ID); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "GET", base+"/compose", nil, &compose, 200); err != nil {

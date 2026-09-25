@@ -1,3 +1,4 @@
+import asyncio
 import os
 import stat
 import sys
@@ -45,7 +46,7 @@ async def test_render_parses_ndjson_events(fake_owned_dir):
         'echo \'{"type":"region","x":1,"z":0,"status":"missing"}\'\n'
         'echo \'{"type":"result","mode":"split","regions_saved":1,"output":"./tiles","elapsed_ms":12}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         events = []
         async with runner.render(
             palette=Path("/tmp/p.json"),
@@ -74,7 +75,7 @@ async def test_runner_rejects_malformed_lines(fake_owned_dir):
         "echo 'not json'\n"
         'echo \'{"type":"result"}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.render(
             palette=Path("/tmp/p.json"),
             output_dir=Path("/tmp/o"),
@@ -93,7 +94,7 @@ async def test_runner_terminate_is_idempotent(fake_owned_dir):
         # Sleep so we can terminate it mid-run
         "sleep 30\n"
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.render(
             palette=Path("/tmp/p.json"),
             output_dir=Path("/tmp/o"),
@@ -111,7 +112,7 @@ async def test_runner_terminates_on_context_exit_even_if_caller_breaks(
     fake_owned_dir,
 ):
     fake = _write_fake_mcmap("#!/bin/sh\nsleep 30\n")
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.render(
             palette=Path("/tmp/p.json"),
             output_dir=Path("/tmp/o"),
@@ -131,7 +132,7 @@ async def test_download_client_args_passed_through(fake_owned_dir):
         'echo \'{"type":"result","version":"1.21.4","target":"/tmp/client.jar","bytes":123,"sha1":"abc","move_method":"rename"}\'\n'
     )
     target = fake_owned_dir / "client.jar"
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.download_client(
             "1.21.4", target, owned_by=fake_owned_dir
         ) as proc:
@@ -156,7 +157,7 @@ async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
     )
     out = fake_owned_dir / "palette.json"
     level_dat = fake_owned_dir / "world" / "level.dat"
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.gen_palette(
             packs=[fake_owned_dir / "client.jar"],
             output=out,
@@ -180,7 +181,7 @@ async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.gen_palette(
             packs=[fake_owned_dir / "client.jar"],
             output=fake_owned_dir / "palette.json",
@@ -204,7 +205,7 @@ async def test_prune_inhabited_passes_mode_threshold_and_claims(fake_owned_dir):
     )
     claims = fake_owned_dir / "claims.json"
     claims.write_text("{}")
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.prune_inhabited(
             path=fake_owned_dir / "world" / "region",
             threshold_ticks=1200,
@@ -248,5 +249,48 @@ async def test_prune_adapter_parses_streaming_events():
     assert events[4].chunks_skipped_by_claims == 1
 
 
-# Silence "unused import" for sys; keep available for diagnosing test failures
-_ = sys
+async def test_runner_drains_stderr_while_streaming_stdout_and_bounds_retained_bytes(tmp_path, monkeypatch):
+    fake = tmp_path / "noisy-mcmap"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "sys.stderr.buffer.write(b'x' * (2 * 1024 * 1024))\n"
+        "sys.stderr.write('stderr-tail-marker')\n"
+        "sys.stderr.flush()\n"
+        'print(\'{"type":"region","x":0,"z":0,"status":"missing"}\', flush=True)\n'
+    )
+    fake.chmod(0o700)
+    monkeypatch.setattr(runner.get_settings(), "mcmap_binary_path", fake)
+    monkeypatch.setattr(runner, "MCMAP_STREAM_LIMIT_BYTES", 64 * 1024)
+    async with asyncio.timeout(5):
+        async with runner.render(palette=tmp_path / "palette.json", output_dir=tmp_path / "tiles", mcas=[], threads=1, owned_by=tmp_path) as process:
+            events = [event async for event in process.events(MCMAP_RENDER_EVENT_ADAPTER)]
+            retained = await process.stderr()
+    assert len(events) == 1 and events[0].type == "region"
+    assert process.returncode == 0
+    assert len(retained.encode()) == runner.MCMAP_STDERR_LIMIT_BYTES
+    assert retained.endswith("stderr-tail-marker")
+    assert process._stderr_task is not None and process._stderr_task.done()
+
+
+async def test_concurrent_termination_reaps_one_owned_process_and_stderr_reader(tmp_path, monkeypatch):
+    fake = tmp_path / "hanging-mcmap"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import sys, time\n"
+        "sys.stderr.write('still running')\n"
+        "sys.stderr.flush()\n"
+        'print(\'{"type":"region","x":0,"z":0,"status":"missing"}\', flush=True)\n'
+        "time.sleep(30)\n"
+    )
+    fake.chmod(0o700)
+    monkeypatch.setattr(runner.get_settings(), "mcmap_binary_path", fake)
+    async with asyncio.timeout(5):
+        async with runner.render(palette=tmp_path / "palette.json", output_dir=tmp_path / "tiles", mcas=[], threads=1, owned_by=tmp_path) as process:
+            events = process.events(MCMAP_RENDER_EVENT_ADAPTER)
+            assert (await anext(events)).type == "region"
+            await events.aclose()
+            await asyncio.gather(process.terminate(), process.terminate())
+            assert process.returncode is not None
+            assert process._stderr_task is not None and process._stderr_task.done()
+            assert not (Path("/proc") / str(process._proc.pid)).exists()

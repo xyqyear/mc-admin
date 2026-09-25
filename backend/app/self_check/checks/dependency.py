@@ -3,7 +3,6 @@ import os
 import shutil
 from pathlib import Path
 
-from ...config import settings
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, success
 
@@ -21,13 +20,13 @@ async def check_binary_dependencies(
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["dependency.binaries"]
     binaries: dict[str, str | Path] = {
-        "fd": settings.fd_binary_path,
-        "mcmap": settings.mcmap_binary_path,
+        "fd": context.dependencies.settings.fd_binary_path,
+        "mcmap": context.dependencies.settings.mcmap_binary_path,
         "docker": "docker",
         "7z": "7z",
     }
-    if settings.restic is not None:
-        binaries["restic"] = settings.restic_binary_path
+    if context.dependencies.settings.restic is not None:
+        binaries["restic"] = context.dependencies.settings.restic_binary_path
 
     missing = [
         {"name": name, "path": str(path)}

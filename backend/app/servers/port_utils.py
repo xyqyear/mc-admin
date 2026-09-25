@@ -4,8 +4,8 @@
 import psutil
 import yaml
 
-from ..logger import logger
-from ..minecraft import docker_mc_manager
+from ..errors import log_safe_error
+from ..minecraft import get_docker_mc_manager
 from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
 
@@ -50,7 +50,7 @@ async def get_server_used_ports(
         Set of ports used by known Minecraft servers.
     """
     ports: set[int] = set()
-    instances = await docker_mc_manager.get_all_instances()
+    instances = await get_docker_mc_manager().get_all_instances()
 
     for instance in instances:
         if exclude_server_id and instance.get_name() == exclude_server_id:
@@ -65,10 +65,8 @@ async def get_server_used_ports(
             game_port, rcon_port = extract_ports_from_yaml(compose_content)
             ports.add(game_port)
             ports.add(rcon_port)
-        except Exception:
-            logger.warning(
-                f"Failed to parse compose file for {instance.get_name()} "
-                "while checking port conflicts", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - one invalid server must not interrupt the port scan
+            log_safe_error(exc, "Failed to parse compose file while checking port conflicts")
             continue
 
     return ports

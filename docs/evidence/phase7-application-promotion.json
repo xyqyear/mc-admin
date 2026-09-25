@@ -1,0 +1,115 @@
+{
+  "owner": "7efadfd1fa2c454e8f55f15a6db085e2",
+  "registry_container": "mc-admin-release-check-7efadfd1fa2c",
+  "fixture": "qualified application candidate; loopback transfer only",
+  "qualification_receipt_sha256": "sha256:e2135f8097e4d84d0e334fc88d6ab10b953e329752fedd8b0179d7ea7771f3f5",
+  "candidate": {
+    "version": 1,
+    "source": {
+      "revision": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+      "dirty": true,
+      "fingerprint": "sha256:0627f55a983508394ab7da863e97cfcfac5eb9ff1707f1aed5742b38e4cce212"
+    },
+    "oci_manifest_digest": "sha256:b59d611c2c4e0a26499a53f52a72f8fda6b2a4af5a4016e7abb8dba522517505",
+    "config_digest": "sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d",
+    "archive_sha256": "sha256:c49790cc0c0c7877237c72b2d8d33ac2ac0336a906dd4f54b3942c91af1260af",
+    "runner_sha256": "sha256:341fd454d8055e70ce352ccf7fd5f29035b92024d6439ad43b4f653efa82402f"
+  },
+  "loaded_config_digest": "sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d",
+  "promotion": {
+    "oci_manifest_digest": "sha256:b59d611c2c4e0a26499a53f52a72f8fda6b2a4af5a4016e7abb8dba522517505",
+    "destinations": [
+      "127.0.0.1:41504/owned/application:qualified"
+    ],
+    "source": {
+      "revision": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+      "dirty": true,
+      "fingerprint": "sha256:0627f55a983508394ab7da863e97cfcfac5eb9ff1707f1aed5742b38e4cce212"
+    }
+  },
+  "rejected_without_registry_writes": [
+    {
+      "gate": "api",
+      "status": "failure"
+    },
+    {
+      "gate": "api",
+      "status": "cancelled"
+    },
+    {
+      "gate": "api",
+      "status": "skipped"
+    },
+    {
+      "gate": "api",
+      "status": null
+    },
+    {
+      "gate": "backend",
+      "status": "failure"
+    },
+    {
+      "gate": "backend",
+      "status": "cancelled"
+    },
+    {
+      "gate": "backend",
+      "status": "skipped"
+    },
+    {
+      "gate": "backend",
+      "status": null
+    },
+    {
+      "gate": "browser",
+      "status": "failure"
+    },
+    {
+      "gate": "browser",
+      "status": "cancelled"
+    },
+    {
+      "gate": "browser",
+      "status": "skipped"
+    },
+    {
+      "gate": "browser",
+      "status": null
+    },
+    {
+      "gate": "candidate",
+      "status": "failure"
+    },
+    {
+      "gate": "candidate",
+      "status": "cancelled"
+    },
+    {
+      "gate": "candidate",
+      "status": "skipped"
+    },
+    {
+      "gate": "candidate",
+      "status": null
+    },
+    {
+      "gate": "static",
+      "status": "failure"
+    },
+    {
+      "gate": "static",
+      "status": "cancelled"
+    },
+    {
+      "gate": "static",
+      "status": "skipped"
+    },
+    {
+      "gate": "static",
+      "status": null
+    }
+  ],
+  "registry_image": "sha256:26b2eb03618e749084668eaff68cff8f81dda12d06ac641be7a6398b82a6f25b",
+  "registry_removed": true,
+  "temporary_data_removed": true
+}

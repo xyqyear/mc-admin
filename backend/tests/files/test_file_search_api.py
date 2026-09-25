@@ -2,7 +2,6 @@
 Test file search API endpoint using FastAPI TestClient.
 Tests the REST API endpoint for file search functionality with authentication.
 """
-
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,6 +11,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 class TestFileSearchAPI:
@@ -46,8 +49,8 @@ class TestFileSearchAPI:
     ):
         """Test basic regex file search."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -103,8 +106,8 @@ class TestFileSearchAPI:
     ):
         """Test case sensitivity in file search."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -147,8 +150,8 @@ class TestFileSearchAPI:
     ):
         """Test file size filtering."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -195,8 +198,8 @@ class TestFileSearchAPI:
     ):
         """Test date filtering."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -247,8 +250,8 @@ class TestFileSearchAPI:
     ):
         """Test combining multiple filters."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -289,8 +292,8 @@ class TestFileSearchAPI:
     ):
         """Test searching in a custom path."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -323,8 +326,8 @@ class TestFileSearchAPI:
     ):
         """Test search that returns no results."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -352,8 +355,8 @@ class TestFileSearchAPI:
     def test_search_files_server_not_found(self, test_client, auth_headers):
         """Test searching for files on non-existent server."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance that doesn't exist
             mock_instance = MagicMock()
@@ -373,7 +376,7 @@ class TestFileSearchAPI:
 
     def test_search_files_unauthorized(self, test_client, server_id, temp_dir):
         """Test search without authentication."""
-        with patch("app.routers.servers.files.docker_mc_manager") as mock_manager:
+        with patch_runtime_resource('docker_mc_manager') as mock_manager:
             # Setup mock instance
             mock_instance = MagicMock()
             mock_instance.exists = AsyncMock(return_value=True)
@@ -396,8 +399,8 @@ class TestFileSearchAPI:
     ):
         """Test search with invalid regex pattern."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -418,14 +421,13 @@ class TestFileSearchAPI:
                 )
 
                 assert response.status_code == 500
-                # Global exception handler now formats error messages differently
-                assert "Invalid regular expression" in response.json()["detail"]
+                assert response.json()["detail"] == "服务器内部错误，请稍后重试"
 
     def test_search_files_invalid_request_body(
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid request body."""
-        with patch("app.config.settings.master_token", "test_master_token"):
+        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
             # Missing required 'regex' field
             invalid_request = {"ignore_case": True}
 
@@ -442,7 +444,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid size values."""
-        with patch("app.config.settings.master_token", "test_master_token"):
+        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
             # Negative size values
             invalid_request = {"regex": r".*", "min_size": -100}
 
@@ -459,7 +461,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid datetime format."""
-        with patch("app.config.settings.master_token", "test_master_token"):
+        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
             invalid_request = {"regex": r".*", "newer_than": "invalid-datetime"}
 
             response = test_client.post(
@@ -476,8 +478,8 @@ class TestFileSearchAPI:
     ):
         """Test complex regex patterns."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -511,8 +513,8 @@ class TestFileSearchAPI:
     ):
         """Test API search with subfolders enabled."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -556,8 +558,8 @@ class TestFileSearchAPI:
     ):
         """Test API search with subfolders disabled."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -601,8 +603,8 @@ class TestFileSearchAPI:
     ):
         """Test that search_subfolders defaults to True in API."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -642,8 +644,8 @@ class TestFileSearchAPI:
     ):
         """Test subfolder search control combined with custom search path."""
         with (
-            patch('app.config.settings.master_token', 'test_master_token'),
-            patch('app.routers.servers.files.docker_mc_manager') as mock_manager,
+            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
             mock_instance = MagicMock()
@@ -693,7 +695,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid search_subfolders value."""
-        with patch("app.config.settings.master_token", "test_master_token"):
+        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
             # Invalid boolean value
             invalid_request = {"regex": r".*", "search_subfolders": "not_a_boolean"}
 

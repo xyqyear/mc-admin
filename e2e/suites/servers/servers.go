@@ -13,7 +13,11 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
 		{ID: "servers.template-snapshot", Suite: "servers", Tags: []string{"smoke"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: templateSnapshot},
 		{ID: "servers.compose-conversions-and-rebuild", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: conversions},
+		{ID: "servers.configuration-versions", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: configurationVersions},
+		{ID: "servers.configuration-partial-failure-recovery", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Lifecycle, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: configurationPartialFailure},
 		{ID: "servers.restart-schedule-and-creation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: schedules},
+		{ID: "servers.restart-schedule-generation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scheduleGeneration},
+		{ID: "servers.restart-schedule-legacy-migration", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scheduleMigration},
 		{ID: "servers.sync-reconciliation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: reconciliation},
 	}
 }

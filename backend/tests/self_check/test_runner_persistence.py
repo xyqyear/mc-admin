@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, SelfCheckFinding, SelfCheckRun
+from app.db.metadata import Base
+from app.self_check.models import SelfCheckFinding, SelfCheckRun
 from app.self_check.types import SelfCheckFindingResult
 
 
@@ -28,9 +29,9 @@ async def self_check_db(monkeypatch: pytest.MonkeyPatch):
         expire_on_commit=False,
     )
 
-    import app.self_check.runner as runner_module
+    from app.self_check.service import get_self_check_service
 
-    monkeypatch.setattr(runner_module, "get_async_session", session_factory)
+    monkeypatch.setattr(get_self_check_service(), "session_factory", session_factory)
     yield session_factory
 
     await engine.dispose()
@@ -52,7 +53,8 @@ def _finding(check_id: str, severity: str, status: str) -> SelfCheckFindingResul
 
 
 def _install_checks(monkeypatch: pytest.MonkeyPatch, checks: dict):
-    import app.self_check.runner as runner_module
+    from app.self_check.checks.base import CheckDefinition
+    from app.self_check.service import get_self_check_service
 
     class TestSelfCheckConfig:
         retention_runs_keep_days = 14
@@ -60,27 +62,14 @@ def _install_checks(monkeypatch: pytest.MonkeyPatch, checks: dict):
         def enabled_check_ids(self) -> set[str]:
             return set(checks)
 
-    monkeypatch.setattr(runner_module, "CHECK_IDS", tuple(checks))
-    monkeypatch.setattr(
-        runner_module,
-        "CHECK_DEFINITIONS",
-        {
-            check_id: runner_module.CheckDefinition(
-                check_id,
-                "test",
-                f"{check_id} title",
-                f"{check_id} description",
-                function,
-            )
-            for check_id, function in checks.items()
-        },
-    )
-    monkeypatch.setattr(
-        runner_module,
-        "config",
-        SimpleNamespace(self_check=TestSelfCheckConfig()),
-    )
-    return runner_module
+    service = get_self_check_service()
+    monkeypatch.setattr(service, "check_ids", tuple(checks))
+    monkeypatch.setattr(service, "definitions", {
+        check_id: CheckDefinition(check_id, "test", f"{check_id} title", f"{check_id} description", function)
+        for check_id, function in checks.items()
+    })
+    monkeypatch.setattr(service.dependencies, "configuration", SimpleNamespace(self_check=TestSelfCheckConfig()))
+    return service
 
 
 async def test_successful_self_check_is_persisted(
@@ -126,7 +115,8 @@ async def test_game_port_correction_updates_current_state_and_retains_evidence(
         get_compose_file=AsyncMock(return_value='services:\n  mc:\n    ports: ["25517:25565"]'),
     )
     monkeypatch.setattr(SelfCheckContext, "active_servers", AsyncMock(return_value=[SimpleNamespace(server_id="survival")]))
-    monkeypatch.setattr("app.self_check.checks.server.docker_mc_manager", SimpleNamespace(get_instance=lambda _: instance))
+    from app.self_check.checks.base import get_self_check_dependencies
+    monkeypatch.setattr(get_self_check_dependencies(), "minecraft", SimpleNamespace(get_instance=lambda _: instance))
     runner = _install_checks(monkeypatch, {check_id: check_game_port_consistency})
     initial = await runner.run_self_check(trigger="manual")
     assert initial.status == "warning"

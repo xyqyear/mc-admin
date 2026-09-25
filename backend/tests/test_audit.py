@@ -1,160 +1,95 @@
-"""
-测试操作审计中间件的简单脚本
-"""
-
-import asyncio
 import json
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock
 
-from fastapi import FastAPI, Request
+import pytest
+from fastapi import FastAPI, Request, Response
 
 from app.audit import OperationAuditMiddleware
-
-sys.path.append(str(Path(__file__).parent))
-
-from app.config import settings
+from app.config import AuditSettings, get_settings
 
 
-async def test_audit_configuration():
-    """测试审计配置"""
-    print("Testing audit configuration...")
-    print(f"Audit enabled: {settings.audit.enabled}")
-    print(f"Log file: {settings.audit.log_file}")
-    print(f"Max body size: {settings.audit.max_body_size}")
-    print(f"Sensitive fields: {settings.audit.sensitive_fields}")
+@pytest.fixture
+def middleware(monkeypatch, tmp_path):
+    monkeypatch.setattr(get_settings(), "logs_dir", tmp_path)
+    monkeypatch.setattr(get_settings(), "audit", AuditSettings())
+    yield OperationAuditMiddleware(FastAPI())
 
 
-def test_log_file_creation():
-    """测试日志文件创建"""
-    print("\nTesting log file creation...")
-    app = FastAPI()
-    middleware = OperationAuditMiddleware(app)
-
-    if middleware.logger:
-        print("✅ Audit logger created successfully")
-
-        # 检查日志文件是否存在
-        log_file = Path(settings.logs_dir) / settings.audit.log_file
-        print(f"Log file path: {log_file}")
-
-        if log_file.exists():
-            print("✅ Log file exists")
-        else:
-            print("ℹ️ Log file will be created on first write")
-    else:
-        print("❌ Audit logger not created (audit might be disabled)")
+def test_audit_configuration_defaults():
+    configuration = AuditSettings()
+    assert configuration.enabled
+    assert configuration.log_request_body
+    assert configuration.max_body_size == 10240
+    assert {"password", "token", "secret", "key"} <= set(configuration.sensitive_fields)
+    assert {"ak", "sk", "code", "ticket"} <= set(configuration.sensitive_exact_fields)
 
 
-def test_sensitive_data_masking():
-    """测试敏感数据掩码"""
-    print("\nTesting sensitive data masking...")
+def test_log_file_creation(middleware, tmp_path):
+    assert middleware.logger is not None
+    middleware.logger.info("synthetic audit operation")
+    for handler in middleware.logger.handlers:
+        handler.flush()
+    assert "synthetic audit operation" in (tmp_path / get_settings().audit.log_file).read_text()
 
-    app = FastAPI()
-    middleware = OperationAuditMiddleware(app)
 
-    # 测试数据
-    test_data = {
-        "username": "testuser",
-        "password": "secret123",
-        "token": "jwt_token_here",
-        "config": {"secret": "nested_secret", "public": "public_value"},
-        "normal_field": "normal_value",
+def test_sensitive_data_masking(middleware):
+    original = {
+        "username": "testuser", "password": "synthetic-password", "token": "synthetic-token",
+        "config": {"secret": "synthetic-nested-secret", "public": "public-value"},
     }
-
-    masked_data = middleware._mask_sensitive_data(test_data)
-
-    print("Original data:")
-    print(json.dumps(test_data, indent=2))
-    print("\nMasked data:")
-    print(json.dumps(masked_data, indent=2))
-
-    # 验证掩码是否正确
-    assert masked_data["password"] == "***MASKED***"
-    assert masked_data["token"] == "***MASKED***"
-    assert masked_data["config"]["secret"] == "***MASKED***"
-    assert masked_data["username"] == "testuser"
-    assert masked_data["config"]["public"] == "public_value"
-
-    print("✅ Sensitive data masking works correctly")
+    assert middleware._mask_sensitive_data(original) == {
+        "username": "testuser", "password": "***MASKED***", "token": "***MASKED***",
+        "config": {"secret": "***MASKED***", "public": "public-value"},
+    }
+    assert original["password"] == "synthetic-password"
 
 
-def test_audit_patterns():
-    """测试审计模式匹配"""
-    print("\nTesting audit patterns...")
-
-    app = FastAPI()
-    middleware = OperationAuditMiddleware(app)
-
-    test_cases = [
-        # (method, path, should_audit) - 现在所有非GET请求都被审计
-        ("POST", "/api/servers/test/operations", True),
-        ("PUT", "/api/servers/test/compose", True),
-        ("DELETE", "/api/admin/users/123", True),
-        ("POST", "/api/auth/register", True),
-        ("POST", "/api/auth/token", True),  # 现在所有POST都被审计
-        ("PUT", "/api/servers/test/notoperation", True),  # 所有PUT都被审计
-        ("PATCH", "/api/any/path", True),  # 所有PATCH都被审计
-        ("DELETE", "/api/any/path", True),  # 所有DELETE都被审计
-        ("GET", "/api/servers/", False),  # GET方法不审计
-        ("GET", "/api/servers/test/status", False),  # GET方法不审计
-        ("GET", "/api/system/info", False),  # GET方法不审计
-    ]
-
-    for method, path, expected in test_cases:
-        # 创建模拟请求
-        request = MagicMock(spec=Request)
-        request.method = method
-        request.url.path = path
-
-        result = middleware._should_audit_request(request)
-        status = "✅" if result == expected else "❌"
-        print(f"{status} {method} {path} -> {result} (expected: {expected})")
+@pytest.mark.parametrize("method,expected", [
+    ("POST", True), ("PUT", True), ("PATCH", True), ("DELETE", True),
+    ("GET", False), ("HEAD", False), ("OPTIONS", False),
+])
+@pytest.mark.parametrize("path", ["/api/auth/token", "/api/servers/test/operations", "/api/admin/users/123"])
+def test_audit_patterns(middleware, method, expected, path):
+    request = MagicMock(spec=Request)
+    request.method = method
+    request.url.path = path
+    assert middleware._should_audit_request(request) is expected
 
 
-def test_user_auth_integration():
-    """测试用户认证集成"""
-    print("\nTesting user authentication integration...")
-
-    app = FastAPI()
-    middleware = OperationAuditMiddleware(app)
-
-    # 创建模拟请求 - 无Authorization头
-    request_no_auth = MagicMock(spec=Request)
-    request_no_auth.headers.get.return_value = None
-
-    # 测试无认证情况
-    result = asyncio.run(middleware._get_user_info(request_no_auth))
-    print(f"No auth header: {result}")
-    assert result is None
-
-    # 创建模拟请求 - 无效token格式
-    request_invalid = MagicMock(spec=Request)
-    request_invalid.headers.get.return_value = "InvalidToken"
-
-    result = asyncio.run(middleware._get_user_info(request_invalid))
-    print(f"Invalid token format: {result}")
-    assert result is None
-
-    # 创建模拟请求 - Bearer token格式但token无效
-    request_bearer = MagicMock(spec=Request)
-    request_bearer.headers.get.return_value = "Bearer invalid_token"
-
-    result = asyncio.run(middleware._get_user_info(request_bearer))
-    print(f"Invalid bearer token: {result}")
-    assert result is None
-
-    print("✅ User authentication integration works correctly")
+@pytest.mark.parametrize("authorization", [None, "InvalidToken", "Bearer invalid-token"])
+async def test_invalid_authentication_has_no_user(middleware, authorization):
+    request = MagicMock(spec=Request)
+    request.headers.get.return_value = authorization
+    assert await middleware._get_user_info(request) is None
 
 
-if __name__ == "__main__":
-    print("=== Operation Audit Middleware Test ===")
+@pytest.mark.parametrize("field,payload", [
+    ("yaml_content", "services:\n  mc:\n    environment:\n      RCON_PASSWORD: synthetic-config-password\n"),
+    ("yaml_template", "services:\n  mc:\n    environment:\n      RCON_PASSWORD: synthetic-config-password\n"),
+    ("content", "server-port=25565\nrcon.password=synthetic-config-password\n"),
+])
+async def test_audit_masks_opaque_configuration_but_retains_metadata(middleware, tmp_path, field, payload):
+    body = {"path": "/server.properties", "action": "save", field: payload, "nested": {field: payload}}
+    encoded = json.dumps(body).encode()
 
-    asyncio.run(test_audit_configuration())
-    test_log_file_creation()
-    test_sensitive_data_masking()
-    test_audit_patterns()
-    test_user_auth_integration()
+    async def receive():
+        return {"type": "http.request", "body": encoded, "more_body": False}
 
-    print("\n=== Test completed ===")
+    request = Request({
+        "type": "http", "method": "PUT", "path": "/api/servers/synthetic/files/content",
+        "headers": [(b"content-type", b"application/json")], "query_string": b"",
+        "scheme": "http", "server": ("test", 80), "client": ("127.0.0.1", 1234),
+        "path_params": {"server_id": "synthetic"},
+    }, receive)
+    masked = await middleware._read_request_body(request)
+    entry = middleware._create_log_entry(request, Response(status_code=204), None, masked, 0)
+    middleware.logger.info(entry)
+    for handler in middleware.logger.handlers:
+        handler.flush()
+    written = (tmp_path / get_settings().audit.log_file).read_text()
+    assert "synthetic-config-password" not in written
+    assert json.loads(entry)["request_body"] == {
+        "path": "/server.properties", "action": "save", field: "***MASKED***", "nested": {field: "***MASKED***"},
+    }
+    assert json.loads(entry)["path_params"] == {"server_id": "synthetic"}
+    assert await request.body() == encoded

@@ -1,13 +1,14 @@
+import { shouldRetryQuery } from '@/shared/http/api'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { BrowserRouter } from 'react-router'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { Toaster } from '@/components/ui/sonner'
-import { ThemeProvider } from '@/components/theme-provider'
+import { TooltipProvider } from '@/shared/ui/tooltip'
+import { Toaster } from '@/shared/ui/sonner'
+import { ThemeProvider } from '@/shared/theme-provider'
 import App from '@/App'
-import './index.css'
+import '@/index.css'
 
 import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -17,7 +18,7 @@ import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import YamlWorker from '@/yaml.worker.js?worker'
 import { loader } from '@monaco-editor/react'
-import { snbtLanguageDefinition, snbtLanguageConfiguration } from '@/config/snbtLanguage'
+import { snbtLanguageDefinition, snbtLanguageConfiguration } from '@/shared/editors/snbtLanguage'
 
 self.MonacoEnvironment = {
   getWorker(_, label) {
@@ -54,15 +55,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000,
-      retry: (failureCount, error: any) => {
-        if (error?.status >= 400 && error?.status < 500) {
-          if (error?.status === 408 || error?.status === 429) {
-            return failureCount < 3
-          }
-          return false
-        }
-        return failureCount < 3
-      },
+      retry: (failureCount, error) => shouldRetryQuery(failureCount, error),
       refetchOnWindowFocus: false,
     },
     mutations: {

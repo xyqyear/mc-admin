@@ -1,4 +1,3 @@
-from ...log_monitor import log_monitor
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, success
 
@@ -14,7 +13,7 @@ async def check_log_monitor_active(
     missing = [
         server.server_id
         for server in active_servers
-        if not log_monitor.is_watching(server.server_id)
+        if not context.dependencies.logs.is_watching(server.server_id)
     ]
     if missing:
         return [

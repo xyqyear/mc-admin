@@ -4,6 +4,7 @@ Cron job registry for registering and managing cron job functions.
 
 
 from ..dynamic_config.schemas import BaseConfigSchema
+from ..runtime_resources import current_runtime
 from ..self_check.job import SelfCheckJobParams, self_check_cronjob
 from .jobs.backup import BackupJobParams, backup_cronjob
 from .jobs.restart import ServerRestartParams, restart_server_cronjob
@@ -160,32 +161,37 @@ class CronRegistry:
         return cronjob_registration.schema_cls if cronjob_registration else None
 
 
-# Global cron registry instance
-cron_registry = CronRegistry()
+def create_cron_registry() -> CronRegistry:
+    registry = CronRegistry()
 
 
-cron_registry.register_func(
-    func=restart_server_cronjob,
-    schema_cls=ServerRestartParams,
-    identifier="restart_server",
-    description="重启服务器",
-)
+    registry.register_func(
+        func=restart_server_cronjob,
+        schema_cls=ServerRestartParams,
+        identifier="restart_server",
+        description="重启服务器",
+    )
 
-cron_registry.register_func(
-    func=backup_cronjob,
-    schema_cls=BackupJobParams,
-    identifier="backup",
-    description="创建备份快照并清理旧快照",
-)
+    registry.register_func(
+        func=backup_cronjob,
+        schema_cls=BackupJobParams,
+        identifier="backup",
+        description="创建备份快照并清理旧快照",
+    )
 
-cron_registry.register_func(
-    func=self_check_cronjob,
-    schema_cls=SelfCheckJobParams,
-    identifier="self_check",
-    description="自动运行系统自检",
-    is_system=True,
-    default_cron="0 * * * *",
-    default_second="0",
-    default_params=SelfCheckJobParams(),
-    default_name="自动系统自检",
-)
+    registry.register_func(
+        func=self_check_cronjob,
+        schema_cls=SelfCheckJobParams,
+        identifier="self_check",
+        description="自动运行系统自检",
+        is_system=True,
+        default_cron="0 * * * *",
+        default_second="0",
+        default_params=SelfCheckJobParams(),
+        default_name="自动系统自检",
+    )
+    return registry
+
+
+def get_cron_registry() -> CronRegistry:
+    return current_runtime().resource('cron_registry')

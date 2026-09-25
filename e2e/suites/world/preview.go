@@ -122,8 +122,20 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 140*time.Second)
 	defer cancel()
 	backend := fixtures.BackendOf(t.Env)
+	staging, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c", `import sys
+from pathlib import Path
+session = sys.argv[1]
+assert len(session) == 32 and all(c in '0123456789abcdef' for c in session)
+paths = list(Path('/tmp/mc-admin-world-artifacts').glob('*/restore/' + session))
+assert len(paths) == 1 and paths[0].is_dir(), 'expected one existing owned preview session directory'
+print(paths[0])`, expiringID)
+	if err != nil {
+		return err
+	}
+	staging = strings.TrimSpace(staging)
+	t.Recorder.Event("preview_expiry_fixture", map[string]any{"session_id": expiringID, "staging_directory": staging, "initially_present": true})
 	if err = api.Wait(waitCtx, 2*time.Second, "preview janitor deletes expired owned session", func(ctx context.Context) (bool, error) {
-		output, err := backend.Docker.Run(ctx, "exec", backend.Name, "sh", "-c", `if test -d "$1"; then echo present; else echo absent; fi`, "--", "/tmp/mc-admin-world-restore/"+expiringID)
+		output, err := backend.Docker.Run(ctx, "exec", backend.Name, "sh", "-c", `if test -d "$1"; then echo present; else echo absent; fi`, "--", staging)
 		if err != nil {
 			return false, api.Permanent(err)
 		}

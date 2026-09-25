@@ -6,14 +6,14 @@ from fastapi import FastAPI, Request
 from starlette.types import Scope
 
 from app.audit import OperationAuditMiddleware
-from app.config import AuditSettings, JWTSettings, Settings, settings
+from app.config import AuditSettings, JWTSettings, Settings, get_settings
 
 
 @pytest.fixture
 def middleware(monkeypatch):
-    monkeypatch.setattr(settings.audit, "log_request_body", True)
-    monkeypatch.setattr(settings.audit, "sensitive_fields", ["password", "token", "secret", "key"])
-    monkeypatch.setattr(settings.audit, "sensitive_exact_fields", ["ak", "sk", "code", "ticket"])
+    monkeypatch.setattr(get_settings().audit, "log_request_body", True)
+    monkeypatch.setattr(get_settings().audit, "sensitive_fields", ["password", "token", "secret", "key"])
+    monkeypatch.setattr(get_settings().audit, "sensitive_exact_fields", ["ak", "sk", "code", "ticket"])
     return OperationAuditMiddleware(FastAPI())
 
 
@@ -46,7 +46,7 @@ def test_sensitive_substrings_are_masked_through_nested_lists(middleware):
 
 @pytest.mark.parametrize("field", ["ak", "AK", "sk", "SK", "code", "Code", "ticket", "Ticket"])
 def test_project_credential_names_are_masked_without_overmasking(middleware, monkeypatch, field):
-    monkeypatch.setattr(settings.audit, "sensitive_fields", ["password"])
+    monkeypatch.setattr(get_settings().audit, "sensitive_fields", ["password"])
     value = {"nested": [{field: "private", "task_id": "task-123", "status_code": 200}]}
     assert middleware._mask_sensitive_data(value) == {
         "nested": [{field: "***MASKED***", "task_id": "task-123", "status_code": 200}]
@@ -55,12 +55,12 @@ def test_project_credential_names_are_masked_without_overmasking(middleware, mon
 
 
 def test_exact_fields_are_configurable_and_independent_of_substrings(middleware, monkeypatch):
-    monkeypatch.setattr(settings.audit, "sensitive_exact_fields", ["PiN"])
+    monkeypatch.setattr(get_settings().audit, "sensitive_exact_fields", ["PiN"])
     value = {"pin": "private", "shipping": "public", "code": "public-code", "api_key": "private-key"}
     assert middleware._mask_sensitive_data(value) == {
         "pin": "***MASKED***", "shipping": "public", "code": "public-code", "api_key": "***MASKED***",
     }
-    monkeypatch.setattr(settings.audit, "sensitive_exact_fields", [])
+    monkeypatch.setattr(get_settings().audit, "sensitive_exact_fields", [])
     assert middleware._mask_sensitive_data({"pin": "public", "ticket": "public", "password": "private"}) == {
         "pin": "public", "ticket": "public", "password": "***MASKED***",
     }
@@ -124,6 +124,6 @@ async def test_unstructured_bodies_record_only_metadata(middleware, content_type
 
 
 async def test_body_size_limit_precedes_decoding(middleware, monkeypatch):
-    monkeypatch.setattr(settings.audit, "max_body_size", 5)
+    monkeypatch.setattr(get_settings().audit, "max_body_size", 5)
     result = await middleware._read_request_body(request(b"password=private", "application/x-www-form-urlencoded"))
     assert result == {"error": "Request body too large for logging"}

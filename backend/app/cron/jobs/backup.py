@@ -1,5 +1,4 @@
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -7,19 +6,17 @@ import aiofiles.os as aioos
 import httpx2
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from ...config import settings
+from ...config import get_settings
 from ...dynamic_config.schemas import BaseConfigSchema
-from ...logger import logger
-from ...minecraft import docker_mc_manager
-from ...snapshots import snapshot_service
+from ...logger import get_logger
+from ...minecraft import get_docker_mc_manager
+from ...snapshots import get_snapshot_service
+from ...snapshots.application import SnapshotApplication, SnapshotMaintenanceConflict
 from ...utils import async_fs
 from ...world import (
     GLOBAL_LOCK_KEY,
-    LockHolder,
-    ServerOperationKind,
-    server_operation_lock,
+    get_server_operation_lock,
 )
-from ...world.maintenance import affected_servers
 from ..types import ExecutionContext
 
 
@@ -132,6 +129,7 @@ class BackupJobParams(BaseConfigSchema):
 
 def _get_snapshot_service():
     """Get configured snapshot service instance"""
+    snapshot_service = get_snapshot_service()
     if not snapshot_service:
         raise RuntimeError("Restic未配置。请在config.toml中添加restic设置")
     return snapshot_service
@@ -150,6 +148,7 @@ async def _send_uptimekuma_notification(
         msg: Message (OK for success, error message for failure)
         ping: Running time in seconds
     """
+    logger = get_logger()
     context.log(f"发送 Uptime Kuma 通知到: {uptimekuma_url}")
 
     params = {
@@ -189,6 +188,7 @@ async def _resolve_backup_path(server_id: str | None, path: str | None) -> Path:
     Returns:
         Absolute path to backup
     """
+    settings = get_settings()
 
     if not server_id and not path:
         # Backup entire servers directory
@@ -197,7 +197,7 @@ async def _resolve_backup_path(server_id: str | None, path: str | None) -> Path:
     if not server_id:
         raise ValueError("不能在未指定server_id的情况下指定路径")
 
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     try:
         project_path = await async_fs.resolve_inside(
             Path(settings.server_path), instance.get_project_path()
@@ -224,117 +224,100 @@ async def backup_cronjob(context: ExecutionContext):
     backup), this run is skipped with a structured log entry. Skips also send
     a "skipped" Uptime Kuma notification when configured.
     """
+    logger = get_logger()
     params = cast(BackupJobParams, context.params)
     start_time = time.time()
 
     lock_key = params.server_id if params.server_id else GLOBAL_LOCK_KEY
 
-    holder = LockHolder(
-        kind=ServerOperationKind.BACKUP,
-        started_at=datetime.now(UTC),
-        user_id=None,
-        description=f"定时备份（{lock_key}）",
-    )
+    async def skip_busy() -> None:
+        current = get_server_operation_lock().get_holder(lock_key)
+        description = f" ({current.description}, 起始 {current.started_at.isoformat()})" if current is not None else ""
+        skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用{description}"
+        context.skip(skip_msg)
+        if params.uptimekuma_url and params.uptimekuma_url.strip():
+            await _send_uptimekuma_notification(context, params.uptimekuma_url, True, f"skipped: {skip_msg}", time.time() - start_time)
+
+    if get_server_operation_lock().is_locked(lock_key):
+        await skip_busy()
+        return
 
     try:
+        # Get snapshot service
+        service = _get_snapshot_service()
+
+        # Resolve backup path
+        backup_path = await _resolve_backup_path(params.server_id, params.path)
+
+        # Log backup start
         if params.server_id:
-            lock_keys = [params.server_id]
-        elif server_operation_lock.is_locked(GLOBAL_LOCK_KEY):
-            lock_keys = [GLOBAL_LOCK_KEY]
-        else:
-            backup_root = await async_fs.resolve(settings.server_path)
-            lock_keys = [GLOBAL_LOCK_KEY, *await affected_servers(docker_mc_manager, [backup_root])]
-        async with server_operation_lock.try_acquire_servers(lock_keys, holder) as acquired:
-            if not acquired:
-                current = server_operation_lock.get_holder(lock_key)
-                if current is not None:
-                    current_kind = (
-                        "备份"
-                        if current.kind == ServerOperationKind.BACKUP
-                        else "恢复"
-                    )
-                    skip_msg = (
-                        f"跳过备份: 服务器 '{lock_key}' 被{current_kind}占用"
-                        f" ({current.description}, 起始 {current.started_at.isoformat()})"
-                    )
-                else:
-                    skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用"
-                context.skip(skip_msg)
-                if params.uptimekuma_url and params.uptimekuma_url.strip():
-                    running_time = time.time() - start_time
-                    await _send_uptimekuma_notification(
-                        context, params.uptimekuma_url, True, f"skipped: {skip_msg}", running_time
-                    )
-                return
-            # Get snapshot service
-            service = _get_snapshot_service()
-
-            # Resolve backup path
-            backup_path = await _resolve_backup_path(params.server_id, params.path)
-
-            # Log backup start
-            if params.server_id:
-                if params.path:
-                    context.log(
-                        f"开始备份服务器 '{params.server_id}' 的路径 '{params.path}'"
-                    )
-                else:
-                    context.log(f"开始备份服务器 '{params.server_id}'")
-            else:
-                context.log("开始备份所有服务器")
-
-            # Verify backup path exists
-            if not await aioos.path.exists(backup_path):
-                raise RuntimeError(f"备份路径不存在: {backup_path}")
-
-            # Create backup
-            context.log(f"正在创建快照: {backup_path}")
-            snapshot = await service.create_snapshot([backup_path])
-
-            context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
-            if snapshot.summary:
+            if params.path:
                 context.log(
-                    f"备份统计: {snapshot.summary.total_files_processed} 个文件, "
-                    f"{snapshot.summary.total_bytes_processed} 字节"
+                    f"开始备份服务器 '{params.server_id}' 的路径 '{params.path}'"
                 )
+            else:
+                context.log(f"开始备份服务器 '{params.server_id}'")
+        else:
+            context.log("开始备份所有服务器")
 
-            # Run forget if enabled
-            if params.enable_forget:
-                context.log("开始清理旧快照...")
+        # Verify backup path exists
+        if not await aioos.path.exists(backup_path):
+            raise RuntimeError(f"备份路径不存在: {backup_path}")
 
-                try:
-                    await service.forget(
-                        keep_last=params.keep_last,
-                        keep_hourly=params.keep_hourly,
-                        keep_daily=params.keep_daily,
-                        keep_weekly=params.keep_weekly,
-                        keep_monthly=params.keep_monthly,
-                        keep_yearly=params.keep_yearly,
-                        keep_tag=params.keep_tag,
-                        keep_within=params.keep_within,
-                        prune=params.prune,
-                    )
-                    context.log("旧快照清理完成")
-                except Exception as e:
-                    logger.exception("Operation backup_cronjob failed")
-                    context.log(f"警告: 清理旧快照时出错: {e!s}")
-                    # Don't fail the entire job if forget fails
+        # Create backup
+        context.log(f"正在创建快照: {backup_path}")
+        try:
+            if get_server_operation_lock().is_locked(lock_key):
+                raise SnapshotMaintenanceConflict("服务器正在维护")
+            snapshot = await SnapshotApplication(service, get_docker_mc_manager(), get_server_operation_lock()).backup([backup_path])
+        except SnapshotMaintenanceConflict:
+            await skip_busy()
+            return
 
-            # Final success message
-            backup_desc = (
-                f"服务器 '{params.server_id}'" if params.server_id else "所有服务器"
+        context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
+        if snapshot.summary:
+            context.log(
+                f"备份统计: {snapshot.summary.total_files_processed} 个文件, "
+                f"{snapshot.summary.total_bytes_processed} 字节"
             )
-            if params.server_id and params.path:
-                backup_desc += f" 路径 '{params.path}'"
 
-            context.log(f"备份任务完成: {backup_desc} -> 快照 {snapshot.short_id}")
+        # Run forget if enabled
+        if params.enable_forget:
+            context.log("开始清理旧快照...")
 
-            # Send Uptime Kuma notification for success if configured
-            if params.uptimekuma_url and params.uptimekuma_url.strip():
-                running_time = time.time() - start_time
-                await _send_uptimekuma_notification(
-                    context, params.uptimekuma_url, True, "OK", running_time
+            try:
+                await service.forget(
+                    keep_last=params.keep_last,
+                    keep_hourly=params.keep_hourly,
+                    keep_daily=params.keep_daily,
+                    keep_weekly=params.keep_weekly,
+                    keep_monthly=params.keep_monthly,
+                    keep_yearly=params.keep_yearly,
+                    keep_tag=params.keep_tag,
+                    keep_within=params.keep_within,
+                    prune=params.prune,
                 )
+                context.log("旧快照清理完成")
+            except Exception as e:
+                logger.exception("Operation backup_cronjob failed")
+                context.log(f"警告: 清理旧快照时出错: {e!s}")
+                # Don't fail the entire job if forget fails
+
+        # Final success message
+        backup_desc = (
+            f"服务器 '{params.server_id}'" if params.server_id else "所有服务器"
+        )
+        if params.server_id and params.path:
+            backup_desc += f" 路径 '{params.path}'"
+
+        context.log(f"备份任务完成: {backup_desc} -> 快照 {snapshot.short_id}")
+
+        # Send Uptime Kuma notification for success if configured
+        if params.uptimekuma_url and params.uptimekuma_url.strip():
+            running_time = time.time() - start_time
+            await _send_uptimekuma_notification(
+                context, params.uptimekuma_url, True, "OK", running_time
+            )
 
     except Exception as e:
         error_msg = f"备份任务失败: {e!s}"

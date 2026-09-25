@@ -4,19 +4,23 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.schemas import UserPublic
 
 from ...db.database import get_async_session, get_db
 from ...dependencies import get_current_user
-from ...logger import logger
-from ...models import UserPublic
+from ...logger import get_logger
 from ...player_locations import normalize_uuid
+from ...players import get_player_service
+from ...players.api_models import (
+    PlayerMapProfileResponse,
+    PlayerMapProfilesRequest,
+)
 from ...players.crud import (
     PlayerCleanupDeleteResponse,
     PlayerCleanupKind,
@@ -37,33 +41,11 @@ from ...players.crud.query.player_query import (
     get_player_detail_by_uuid,
 )
 from ...players.identity_resolver import is_online_uuid
-from ...players.skin_fetcher import skin_fetcher
-from ...players.tracking import update_player_skin
+from ...players.skin_fetcher import get_skin_fetcher
 from ...utils.sse import sse_response
 
 router = APIRouter(prefix="/players", tags=["players"])
 PROFILE_FETCH_CONCURRENCY = 8
-
-
-class PlayerMapProfileResponse(BaseModel):
-    player_db_id: int | None = None
-    uuid: str
-    current_name: str | None = None
-    avatar_base64: str | None = None
-    resolved: bool
-    last_skin_update: datetime | None = None
-
-
-class PlayerMapProfilesRequest(BaseModel):
-    uuids: list[str] = Field(default_factory=list, max_length=2000)
-
-
-class PlayerMapProfilesStreamEvent(BaseModel):
-    event_type: Literal["profile", "complete", "error"]
-    profile: PlayerMapProfileResponse | None = None
-    message: str | None = None
-    total: int | None = None
-    resolved: int | None = None
 
 
 def _avatar_base64(avatar_data: bytes | None) -> str | None:
@@ -169,7 +151,7 @@ async def iter_player_map_profile_events(
 
     async def fetch(uuid: str):
         async with semaphore:
-            return uuid, await skin_fetcher.fetch_player_profile(uuid)
+            return uuid, await get_skin_fetcher().fetch_player_profile(uuid)
 
     tasks = {asyncio.create_task(fetch(uuid)) for uuid in fetch_uuids}
     try:
@@ -280,6 +262,7 @@ async def stream_player_map_profiles(
     """
 
     async def event_gen() -> AsyncIterator[dict]:
+        logger = get_logger()
         try:
             async for event in iter_player_map_profile_events(
                 request_body.uuids,
@@ -319,7 +302,7 @@ async def get_player_map_profile(
     if cached is not None and cached.avatar_data:
         return _profile_response(cached, normalized)
 
-    fetched = await skin_fetcher.fetch_player_profile(normalized)
+    fetched = await get_skin_fetcher().fetch_player_profile(normalized)
     if fetched is None:
         return _profile_response(cached, normalized)
 
@@ -353,6 +336,6 @@ async def refresh_player_skin(
             detail="Player not found",
         )
 
-    await update_player_skin(player.player_db_id, player.uuid, player.current_name)
+    await get_player_service().update_player_skin(player.player_db_id, player.uuid, player.current_name)
 
     return {"message": "Skin refresh requested"}

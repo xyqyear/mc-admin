@@ -1,11 +1,11 @@
 # Self-Check Dashboard
 
-The protected root route (`/`) renders `src/pages/SelfCheck.tsx`. It is an
+The protected root route (`/`) renders `src/features/health/SelfCheckScreen.tsx`. It is an
 operational dashboard, not a landing page.
 
 ## Data Flow
 
-Raw API calls and response types live in `hooks/api/selfCheckApi.ts`.
+Raw API calls live in `features/health/api.ts`; response and stream-event contracts live in `features/health/contracts.ts`.
 
 Query hooks:
 

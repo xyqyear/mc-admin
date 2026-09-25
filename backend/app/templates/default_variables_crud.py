@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import DefaultVariableConfig
+from app.templates.tables import DefaultVariableConfig
+
 from .manager import TemplateManager
 from .models import (
     EnumVariableDefinition,

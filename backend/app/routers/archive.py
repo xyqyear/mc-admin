@@ -8,8 +8,16 @@ from pathlib import Path
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 
+from app.archive.api_models import CreateArchiveRequest, CreateArchiveResponse
+from app.auth.schemas import UserPublic
+
+from ..archive.application import (
+    ArchiveApplication,
+    compress,
+    is_archive_stage,
+    prepare_compression,
+)
 from ..archive.uploads import (
     ArchiveUploadChunkResponse,
     ArchiveUploadInitRequest,
@@ -24,22 +32,17 @@ from ..archive.uploads import (
     iter_archive_upload_sha256_events,
     verify_archive_upload,
 )
-from ..background_tasks import TaskType, task_manager
-from ..config import settings
+from ..background_tasks import TaskType, get_task_manager
+from ..config import get_settings
 from ..dependencies import get_current_user
 from ..files import (
     CreateFileRequest,
     FileListResponse,
     RenameFileRequest,
-    create_file_or_directory,
-    delete_file_or_directory,
     get_file_items,
-    rename_file_or_directory,
 )
 from ..files.paths import resolve_file_path
-from ..minecraft import docker_mc_manager
-from ..models import UserPublic
-from ..utils.compression import create_server_archive_stream
+from ..minecraft import get_docker_mc_manager
 from ..utils.sse import sse_response
 
 router = APIRouter(
@@ -48,17 +51,9 @@ router = APIRouter(
 )
 
 
-class CreateArchiveRequest(BaseModel):
-    server_id: str
-    path: str | None = None
-
-
-class CreateArchiveResponse(BaseModel):
-    task_id: str
-
-
 async def _get_archive_base_path() -> Path:
     """Get the base path for archive files."""
+    settings = get_settings()
     # Ensure archive directory exists
     await aioos.makedirs(settings.archive_path, exist_ok=True)
     return settings.archive_path
@@ -71,7 +66,7 @@ async def list_archive_files(
 ):
     """List files and directories in the archive"""
     base_path = await _get_archive_base_path()
-    items = await get_file_items(base_path, path)
+    items = [item for item in await get_file_items(base_path, path) if not is_archive_stage(item.name)]
 
     return FileListResponse(items=items, current_path=path)
 
@@ -153,7 +148,7 @@ async def verify_archive_upload_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Publish a pending archive upload after SHA256 verification."""
-    return await verify_archive_upload(upload_id, request)
+    return await verify_archive_upload(upload_id, request, actor_id=_.id)
 
 
 @router.post("/create")
@@ -163,7 +158,7 @@ async def create_archive_file_or_directory(
 ):
     """Create a new file or directory in the archive"""
     base_path = await _get_archive_base_path()
-    message = await create_file_or_directory(base_path, create_request)
+    message = await ArchiveApplication(base_path, _.id).create(create_request)
 
     return {"message": message}
 
@@ -174,7 +169,7 @@ async def delete_archive_file_or_directory(
 ):
     """Delete an archive file or directory"""
     base_path = await _get_archive_base_path()
-    message = await delete_file_or_directory(base_path, path)
+    message = await ArchiveApplication(base_path, _.id).delete(path)
 
     return {"message": message}
 
@@ -186,7 +181,7 @@ async def rename_archive_file_or_directory(
 ):
     """Rename an archive file or directory"""
     base_path = await _get_archive_base_path()
-    message = await rename_file_or_directory(base_path, rename_request)
+    message = await ArchiveApplication(base_path, _.id).rename(rename_request)
 
     return {"message": message}
 
@@ -197,7 +192,7 @@ async def create_server_archive_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Create a compressed archive from server files as a background task."""
-    instance = docker_mc_manager.get_instance(request.server_id)
+    instance = get_docker_mc_manager().get_instance(request.server_id)
 
     if not await instance.exists():
         raise HTTPException(
@@ -225,12 +220,15 @@ async def create_server_archive_endpoint(
     if request.path:
         task_name += f"/{request.path.strip('/')}"
 
-    result = task_manager.submit(
+    plan = await prepare_compression(instance, request.path)
+    result = await get_task_manager().submit_durable(
         task_type=TaskType.ARCHIVE_CREATE,
         name=task_name,
-        task_generator=create_server_archive_stream(instance, request.path),
+        task_generator=compress(plan),
+        claims=plan.claims,
         server_id=request.server_id,
         cancellable=True,
+        actor_id=_.id,
     )
 
     return CreateArchiveResponse(task_id=result.task_id)

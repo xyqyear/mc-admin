@@ -7,7 +7,7 @@ from typing import Literal
 
 import aiofiles.os as aioos
 
-from ..logger import logger
+from ..logger import get_logger
 from ..utils import async_fs
 
 FreshnessState = Literal["fresh", "stale", "missing_mca", "missing_png"]
@@ -71,6 +71,7 @@ class ServerMapCache:
 
     async def chown_to_data_owner(self, path: Path) -> None:
         """Chown ``path`` to match ``data_path``; no-op unless the backend runs as root."""
+        logger = get_logger()
         if os.geteuid() != 0:
             return
         try:

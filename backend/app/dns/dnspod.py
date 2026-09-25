@@ -11,6 +11,7 @@ from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.dnspod.v20210323 import dnspod_client, models
 
+from ..operations.finalization import finalize
 from .dns import DNSClient
 from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
 
@@ -123,6 +124,7 @@ class DNSPodClient(DNSClient):
         clientProfile = ClientProfile(httpProfile=httpProfile)
 
         self._client = dnspod_client.DnspodClient(cred, "", clientProfile)
+        self._closed = False
 
         # don't know how to type client.xxx
         self._request_mapping = {
@@ -152,6 +154,12 @@ class DNSPodClient(DNSClient):
 
     def get_domain(self) -> str:
         return self._domain
+
+    async def close(self) -> None:
+        if not self._closed:
+            # The synchronous Tencent SDK exposes no public client close method.
+            await finalize(asyncio.to_thread(self._client.request.conn._session.close))
+            self._closed = True
 
     def is_initialized(self) -> bool:
         return hasattr(self, "_domain_id")
@@ -190,7 +198,7 @@ class DNSPodClient(DNSClient):
         req = request_info.constructor()
         req.from_json_string(json.dumps(params))
 
-        response_object = await asyncio.to_thread(request_info.api_call, req)
+        response_object = await finalize(asyncio.to_thread(request_info.api_call, req))
 
         response_json = response_object.to_json_string()
         response = json.loads(response_json)

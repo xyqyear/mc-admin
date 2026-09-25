@@ -5,12 +5,15 @@ Server restart schedule management API endpoints.
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi import status as http_status
 
-from ...cron import cron_manager
+from app.auth.schemas import UserPublic
+from app.cron.models import CronJobStatus
+
+from ...cron import get_cron_manager
 from ...dependencies import get_current_user
-from ...models import CronJobStatus, UserPublic
 from ...servers.restart_schedule import (
     RestartScheduleRequest,
     RestartScheduleResponse,
+    get_managed_restart_schedule,
     schedule_auto_restart,
 )
 
@@ -54,14 +57,10 @@ async def get_restart_schedule(
     schedule_name = f"restart-{server_id}"
 
     # Find existing restart schedule
-    existing_jobs = await cron_manager.get_all_cronjobs(
-        identifier="restart_server", name=schedule_name
-    )
+    job_config = await get_managed_restart_schedule(server_id)
 
-    if not existing_jobs:
+    if job_config is None:
         return None
-
-    job_config = existing_jobs[0]
 
     # Parse scheduled time from cron
     cron_parts = job_config.cron.strip().split()
@@ -75,7 +74,7 @@ async def get_restart_schedule(
     next_run_time = None
     if job_config.status == CronJobStatus.ACTIVE:
         try:
-            next_run_datetime = await cron_manager.get_next_run_time(
+            next_run_datetime = await get_cron_manager().get_next_run_time(
                 job_config.cronjob_id
             )
             next_run_time = (
@@ -92,6 +91,8 @@ async def get_restart_schedule(
         name=schedule_name,
         cron=job_config.cron,
         status=job_config.status.value,
+        registration_status=job_config.registration_status,
+        registration_error=job_config.registration_error,
         next_run_time=next_run_time,
         scheduled_time=scheduled_time,
     )
@@ -105,23 +106,16 @@ async def delete_restart_schedule(
     """
     Delete the restart schedule for a server.
     """
-    schedule_name = f"restart-{server_id}"
+    job_config = await get_managed_restart_schedule(server_id)
 
-    # Find existing restart schedule
-    existing_jobs = await cron_manager.get_all_cronjobs(
-        identifier="restart_server", name=schedule_name
-    )
-
-    if not existing_jobs:
+    if job_config is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"No restart schedule found for server '{server_id}'",
         )
 
-    job_config = existing_jobs[0]
-
     # Cancel the cron job
-    await cron_manager.cancel_cronjob(job_config.cronjob_id)
+    await get_cron_manager().cancel_cronjob(job_config.cronjob_id)
 
     return {"message": f"Restart schedule for server '{server_id}' has been deleted"}
 
@@ -134,23 +128,16 @@ async def pause_restart_schedule(
     """
     Pause the restart schedule for a server.
     """
-    schedule_name = f"restart-{server_id}"
+    job_config = await get_managed_restart_schedule(server_id)
 
-    # Find existing restart schedule
-    existing_jobs = await cron_manager.get_all_cronjobs(
-        identifier="restart_server", name=schedule_name
-    )
-
-    if not existing_jobs:
+    if job_config is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"No restart schedule found for server '{server_id}'",
         )
 
-    job_config = existing_jobs[0]
-
     # Pause the cron job
-    await cron_manager.pause_cronjob(job_config.cronjob_id)
+    await get_cron_manager().pause_cronjob(job_config.cronjob_id)
 
     return {"message": f"Restart schedule for server '{server_id}' has been paused"}
 
@@ -163,22 +150,15 @@ async def resume_restart_schedule(
     """
     Resume the restart schedule for a server.
     """
-    schedule_name = f"restart-{server_id}"
+    job_config = await get_managed_restart_schedule(server_id)
 
-    # Find existing restart schedule
-    existing_jobs = await cron_manager.get_all_cronjobs(
-        identifier="restart_server", name=schedule_name
-    )
-
-    if not existing_jobs:
+    if job_config is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"No restart schedule found for server '{server_id}'",
         )
 
-    job_config = existing_jobs[0]
-
     # Resume the cron job
-    await cron_manager.resume_cronjob(job_config.cronjob_id)
+    await get_cron_manager().resume_cronjob(job_config.cronjob_id)
 
     return {"message": f"Restart schedule for server '{server_id}' has been resumed"}

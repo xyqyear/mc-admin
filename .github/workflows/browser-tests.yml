@@ -1,0 +1,87 @@
+name: Browser User Journeys
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      candidate_artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BROWSER_DIRECTORY: ${{ github.workspace }}/.browser-runs
+      BROWSER_RUN_ID: browser-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend-react/pnpm-lock.yaml
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.candidate_artifact }}
+          path: candidate-artifacts
+      - name: Load the qualified candidate inputs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+          uv run --no-project python scripts/release/candidate.py verify --directory candidate-artifacts --revision "${{ inputs.source_sha }}"
+          uv run --no-project python scripts/release/candidate.py load --directory candidate-artifacts --tag mc-admin:browser --output "$RUNNER_TEMP/browser-candidate.json"
+          chmod +x candidate-artifacts/mc-admin-e2e
+          echo "BROWSER_IMAGE=$(python -c 'import json; print(json.load(open("candidate-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
+      - name: Install pinned frontend and Chromium dependencies
+        working-directory: frontend-react
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Run browser journeys against the owned application
+        working-directory: frontend-react
+        run: |
+          ../candidate-artifacts/mc-admin-e2e browser --backend-image "$BROWSER_IMAGE" \
+            --output "$BROWSER_DIRECTORY" --run-id "$BROWSER_RUN_ID" -- pnpm test:browser
+      - name: Recover owned browser resources
+        if: always()
+        run: |
+          if [ -f "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/manifest.json" ]; then
+            ./candidate-artifacts/mc-admin-e2e cleanup --run-dir "$BROWSER_DIRECTORY/$BROWSER_RUN_ID"
+          fi
+      - name: Verify browser image, outcomes and cleanup against the candidate
+        run: |
+          uv run --no-project python scripts/release/candidate.py evidence \
+            --directory candidate-artifacts --revision "${{ inputs.source_sha }}" \
+            --runtime-kind browser --run-directory "$BROWSER_DIRECTORY/$BROWSER_RUN_ID" \
+            --browser-report frontend-react/test-results/browser/results.json --output browser-evidence.json
+      - name: Upload explicit browser reports and redacted application evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-results
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            frontend-react/test-results/browser/
+            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/manifest.json
+            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/fixture-result.json
+            browser-evidence.json
+            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/cases/
+            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/environments/

@@ -13,7 +13,6 @@ from .port_utils import (
     get_server_used_ports,
     get_system_used_ports,
 )
-from .rebuild import rebuild_server_task
 
 __all__ = [
     # Port utilities
@@ -29,6 +28,4 @@ __all__ = [
     "get_server_used_ports",
     "get_system_used_ports",
     "mark_server_removed",
-    # Rebuild task
-    "rebuild_server_task",
 ]

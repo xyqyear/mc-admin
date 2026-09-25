@@ -1,5 +1,4 @@
 """RestartScheduler tests: cron parsing, conflict detection, slot search."""
-
 import tempfile
 from datetime import time
 from pathlib import Path
@@ -9,13 +8,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.cron.restart_scheduler import RestartScheduler
-from app.models import Base
+from app.db.metadata import Base
+from tests.support.runtime import patch_runtime_resource
 
 from .test_cron_manager import TestCronManager
 from .test_cronjobs import SampleCronJobParams, test_cron_registry
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(autouse=True)
 async def setup_test_db():
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
         TEST_DB_PATH = tmp_file.name
@@ -34,8 +34,8 @@ async def setup_test_db():
         await conn.run_sync(Base.metadata.create_all)
 
     with (
-        patch("app.db.database.AsyncSessionLocal", TEST_SESSION_MAKER),
-        patch("app.db.database.engine", TEST_ENGINE),
+        patch_runtime_resource('session_factory', TEST_SESSION_MAKER),
+        patch_runtime_resource('database_engine', TEST_ENGINE),
         patch("app.cron.manager.get_async_session") as mock_get_session,
     ):
         def get_test_session():
@@ -58,8 +58,8 @@ async def fresh_cron_manager():
 
     from sqlalchemy import delete
 
+    from app.cron.models import CronJob
     from app.db.database import get_async_session
-    from app.models import CronJob
 
     async with get_async_session() as session:
         await session.execute(delete(CronJob))
@@ -188,7 +188,7 @@ class TestRestartScheduler:
         expected = {(6, 5), (8, 25)}
         assert restart_time_slots == expected
 
-    async def test_get_restart_time_slots_with_exclusion(
+    async def test_exclusion_preserves_independent_jobs_with_canonical_names(
         self, restart_scheduler, fresh_cron_manager
     ):
         params = SampleCronJobParams(message="Test restart")
@@ -213,7 +213,7 @@ class TestRestartScheduler:
         restart_time_slots = await restart_scheduler.get_restart_time_slots(
             exclude_server_id="server1"
         )
-        assert restart_time_slots == {(8, 25)}
+        assert restart_time_slots == {(6, 5), (8, 25)}
 
     async def test_find_next_available_restart_time_no_conflicts(
         self, restart_scheduler
@@ -426,7 +426,7 @@ class TestRestartScheduler:
             await restart_scheduler.check_time_conflict(
                 6, 25, exclude_server_id="server1"
             )
-            is False
+            is True
         )
 
     async def test_custom_restart_start_time(self, fresh_cron_manager):

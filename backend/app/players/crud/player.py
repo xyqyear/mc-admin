@@ -1,19 +1,23 @@
 """CRUD operations for Player model."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...logger import logger
-from ...models import Player
-from ..identity_resolver import normalize_online_uuid, resolve_player_by_name
+from app.players.models import Player
+
+from ...logger import get_logger
+from ..identity_resolver import normalize_online_uuid
 from ..name_filters import is_ignored_player_name
 
 
-async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> bool:
+async def upsert_player(
+    session: AsyncSession, uuid: str, player_name: str, *,
+    ignored_name: Callable[[str], bool] = is_ignored_player_name,
+) -> bool:
     """Upsert player record (insert or update name).
 
     Args:
@@ -21,7 +25,8 @@ async def upsert_player(session: AsyncSession, uuid: str, player_name: str) -> b
         uuid: Online-mode player UUID
         player_name: Player name
     """
-    if is_ignored_player_name(player_name):
+    logger = get_logger()
+    if ignored_name(player_name):
         logger.info(f"Skipping ignored player {player_name}")
         return False
 
@@ -114,51 +119,6 @@ async def get_all_player_names_with_ids(
     ]
 
 
-async def get_or_add_player_by_name(
-    session: AsyncSession,
-    server_id: str,
-    player_name: str,
-) -> Player | None:
-    """Get player by name, or add if not exists by resolving an online UUID.
-
-    Args:
-        session: Database session
-        server_id: Server ID used to read usercache.json
-        player_name: Player name
-
-    Returns:
-        Player or None if player doesn't exist and no online UUID is available
-    """
-    if is_ignored_player_name(player_name):
-        logger.info(f"Skipping ignored player {player_name}")
-        return None
-
-    player = await get_player_by_name(session, player_name)
-    if player:
-        if normalize_online_uuid(player.uuid) is None:
-            logger.warning(
-                f"Skipping player {player_name}: stored UUID is not online-mode"
-            )
-            return None
-        return player
-
-    logger.info(f"Player {player_name} not found in database, resolving identity")
-
-    identity = await resolve_player_by_name(server_id, player_name)
-    if identity is None:
-        logger.warning(f"Could not resolve online UUID for player {player_name}")
-        return None
-
-    if not await upsert_player(session, identity.uuid, identity.name):
-        return None
-
-    logger.info(f"Added player {identity.name} ({identity.uuid}) to database")
-
-    player = await get_player_by_uuid(session, identity.uuid)
-
-    return player
-
-
 async def get_player_by_db_id(
     session: AsyncSession, player_db_id: int
 ) -> Player | None:
@@ -213,6 +173,7 @@ async def upsert_player_profile(
     timestamp: datetime,
 ) -> Player | None:
     """Upsert player identity and optional cached skin data."""
+    logger = get_logger()
     normalized_uuid = normalize_online_uuid(uuid)
     if normalized_uuid is None:
         logger.warning(f"Skipping player profile {player_name}: non-v4 UUID {uuid}")

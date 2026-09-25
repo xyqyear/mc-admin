@@ -4,8 +4,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, SelfCheckFinding, SelfCheckRun
+from app.db.metadata import Base
 from app.self_check import crud
+from app.self_check.models import SelfCheckFinding, SelfCheckRun
 
 
 @pytest.fixture

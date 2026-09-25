@@ -3,15 +3,20 @@ Dynamic configuration API router.
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
-from app.models import UserPublic
+from app.auth.schemas import UserPublic
+from app.dynamic_config.api_models import (
+    ConfigData,
+    ConfigModuleInfo,
+    ConfigModuleList,
+    ConfigUpdateRequest,
+    ConfigUpdateResponse,
+)
 
 from ..dependencies import get_current_user
-from ..dynamic_config.manager import config_manager
+from ..dynamic_config.manager import get_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -22,43 +27,6 @@ router = APIRouter(
 )
 
 
-class ConfigModuleInfo(BaseModel):
-    """Information about a configuration module."""
-
-    module_name: str
-    schema_class: str
-    version: str
-    json_schema: dict[str, Any]
-
-
-class ConfigModuleList(BaseModel):
-    """List of all configuration modules."""
-
-    modules: dict[str, ConfigModuleInfo]
-
-
-class ConfigData(BaseModel):
-    """Configuration data response."""
-
-    module_name: str
-    config_data: dict[str, Any]
-    schema_version: str
-
-
-class ConfigUpdateRequest(BaseModel):
-    """Request to update configuration."""
-
-    config_data: dict[str, Any]
-
-
-class ConfigUpdateResponse(BaseModel):
-    """Response after updating configuration."""
-
-    success: bool
-    message: str
-    updated_config: dict[str, Any]
-
-
 @router.get("/modules", response_model=ConfigModuleList)
 async def list_all_modules(_: UserPublic = Depends(get_current_user)):
     """
@@ -67,7 +35,7 @@ async def list_all_modules(_: UserPublic = Depends(get_current_user)):
     Returns:
         Dictionary containing information about all registered configuration modules
     """
-    all_schema_info = config_manager.get_all_schema_info()
+    all_schema_info = get_config_manager().get_all_schema_info()
     modules = {name: ConfigModuleInfo(**info) for name, info in all_schema_info.items()}
     return ConfigModuleList(modules=modules)
 
@@ -86,8 +54,8 @@ async def get_module_config(
         Configuration data and metadata
     """
     try:
-        config_instance = config_manager.get_config(module_name)
-        schema_info = config_manager.get_schema_info(module_name)
+        config_instance = get_config_manager().get_config(module_name)
+        schema_info = get_config_manager().get_schema_info(module_name)
 
     except ValueError:
         raise HTTPException(
@@ -119,7 +87,7 @@ async def update_module_config(
         Updated configuration and success status
     """
     try:
-        updated_config = await config_manager.update_config(
+        updated_config = await get_config_manager().update_config(
             module_name, request.config_data
         )
     except ValueError as e:
@@ -146,7 +114,7 @@ async def get_module_schema(
         Schema metadata including field descriptions
     """
     try:
-        schema_info = config_manager.get_schema_info(module_name)
+        schema_info = get_config_manager().get_schema_info(module_name)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -170,7 +138,7 @@ async def reset_module_config(
         Reset configuration and success status
     """
     try:
-        reset_config = await config_manager.reset_config(module_name)
+        reset_config = await get_config_manager().reset_config(module_name)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -7,6 +7,7 @@ import pytest
 from app.snapshots.models import NodeKind
 from app.snapshots.planner import (
     DirStep,
+    EmptyStep,
     FileStep,
     RestorePlan,
     TargetIgnoredError,
@@ -87,14 +88,12 @@ async def test_file_targets_grouped_by_parent(client):
 
 
 async def test_missing_file_with_present_parent_is_included(client):
-    # On disk but absent from the snapshot: restic deletes it via the include.
     targets = [Path("/srv/x/data/world/region/r.9.9.mca")]
     plan = await build_restore_plan(client, SNAP, targets, [])
     assert plan.steps == (
-        FileStep(
-            source_dir=Path("/srv/x/data/world/region"),
-            includes=("/r.9.9.mca",),
-        ),
+        EmptyStep(FileStep(
+            source_dir=Path("/srv/x/data/world/region"), includes=("/r.9.9.mca",),
+        ), ignored=()),
     )
 
 

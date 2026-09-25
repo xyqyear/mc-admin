@@ -10,24 +10,25 @@ from fastapi import (
 )
 from starlette import status
 
+from app.auth.models import UserRole
+from app.auth.schemas import UserPublic
+from app.auth.service import TokenValidationError, get_identity_service
+
 from .auth.session import (
     AUTH_COOKIE_NAME,
-    TokenValidationError,
-    get_user_from_auth_values,
     get_user_from_request,
-    is_master_authorization,
     verify_websocket_origin,
 )
-from .config import settings
-from .models import UserPublic, UserRole
+from .config import get_settings
 
 
 async def get_current_user(
     session_token: Annotated[str | None, Cookie(alias=AUTH_COOKIE_NAME)] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> UserPublic:
+    settings = get_settings()
     try:
-        return await get_user_from_auth_values(session_token, authorization, settings.master_token)
+        return await get_identity_service().get_user_from_auth_values(session_token, authorization, settings.master_token)
     except TokenValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,7 +50,8 @@ class RequireRole:
 
 
 def verify_master_token(authorization: Annotated[str | None, Header()] = None):
-    if not is_master_authorization(authorization, settings.master_token):
+    settings = get_settings()
+    if not get_identity_service().is_master_authorization(authorization, settings.master_token):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint requires a master token",

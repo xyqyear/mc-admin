@@ -1,6 +1,6 @@
 # DNS Management
 
-Page at `/dns` for inspecting and applying DNS changes that keep records and the mc-router routing table in sync with the live server set. The page is read-only on its own — clicking "Update" applies pending changes via `SimpleDNSManager.update()` on the backend.
+Page at `/dns` for inspecting and applying DNS changes that keep records and the mc-router routing table in sync with the live server set. Reading the page does not mutate provider state. Clicking “更新记录” applies pending changes through the backend DNS application.
 
 ## Layout
 
@@ -9,10 +9,10 @@ Two-column page:
 - **Left (2/3 width)**: DNS records table — current state from the configured provider
 - **Right (1/3 width)**: mc-router routes table — current routes the router knows about
 
-A status badge in the top-right shows aggregate health:
+`DNSStatusResponse` retains initialized/dns_diff/router_diff and accepts additive state/known flags, unknown_servers, issues and empty_desired. Older responses remain readable, with null comparisons marked unconfirmed. A status badge in the top-right shows aggregate health:
 
 - 🟢 normal (records and routes match desired state)
-- 🟡 pending changes (diff is non-empty)
+- 🟡 pending changes (diff is non-empty), pending initialization, or incomplete comparison
 - 🔴 error (provider call failed, credentials missing, etc.)
 - ⚪ disabled (`dynamic_config.dns.enabled === false`)
 
@@ -20,15 +20,17 @@ A status badge in the top-right shows aggregate health:
 
 The page renders different shells depending on what the backend reports:
 
-- **Disabled** → alert with "Go to settings" button (links to `/dynamic-config`).
+- **Disabled** → alert with "Go to settings" button (links to `/config?module=dns`).
 - **Not initialized** → alert with explanation and the same settings link. Happens when the provider hasn't been configured yet.
 - **Pending changes** → diff display above the tables: add list (green), update list (yellow), remove list (red). Each entry shows record key + values.
-- **Healthy** → just the tables.
+- **Healthy** → just the tables, only after both provider comparisons are known.
+- **Degraded** → safe `issues` and `unknown_servers` stay visible; a null diff never implies synchronized state. The readable provider side still displays its actual changes.
+- **Empty desired configuration** → explicitly says existing records/routes are being retained.
 
 ## Buttons
 
-- **Refresh** — re-fetches `dns.records()` and `dns.routes()`
-- **Update** — POST `/api/dns/update` (mutation), invalidates `dns.all` on success
+- **Refresh** — re-fetches status, records, routes and enabled state; failures produce an error rather than a success toast
+- **Update** — POST `/api/dns/update`; refreshes status/records/routes after either success or failure, because a failed overall request may have already updated the healthy provider
 - **Settings** — link to dynamic config
 
 The page applies changes through its Update action. Server creation, removal and filesystem synchronization also ask the backend DNS manager to reconcile when `dynamic_config.dns.enabled` is true. There is no separate `auto_update` setting. Disabling DNS makes later lifecycle updates no-ops; the manager releases its old router client and does not write through stale provider clients.
@@ -59,5 +61,5 @@ Queries poll while enabled and also support explicit refresh. The tables paginat
 
 ## Files
 
-- `pages/DnsManagement.tsx`
-- `hooks/api/dnsApi.ts`, `hooks/queries/base/useDnsQueries.ts`, `hooks/mutations/useDnsMutations.ts`
+- `features/dns/DnsManagementScreen.tsx`
+- `features/dns/api.ts`, `features/dns/queries.ts`, `features/dns/commands.ts`

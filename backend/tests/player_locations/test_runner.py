@@ -30,7 +30,7 @@ async def test_extract_players_yields_result_event(fake_owned_dir):
         "#!/bin/sh\n"
         'echo \'{"type":"result","players":0,"skipped":0,"dimensions":0,"data":{"mcmap_extract_players_version":1,"world_dir":"/tmp/world","dimensions":[],"players":[],"skipped":[]}}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_players(
             world_dir=Path("/tmp/world"),
             owned_by=fake_owned_dir,
@@ -49,7 +49,7 @@ async def test_extract_players_passes_world_arg(fake_owned_dir):
         'echo \'{"type":"result","players":0,"skipped":0,"dimensions":0,"data":{"mcmap_extract_players_version":1,"world_dir":"/tmp/world","dimensions":[],"players":[],"skipped":[]}}\'\n'
     )
     world = fake_owned_dir / "world"
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_players(
             world_dir=world,
             owned_by=fake_owned_dir,

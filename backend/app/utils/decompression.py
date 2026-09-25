@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from pathlib import Path
 from typing import Literal
 
@@ -9,9 +10,10 @@ from aiofiles import os as aioos
 from pydantic import BaseModel
 
 from ..background_tasks.types import TaskProgress
-from ..config import settings
+from ..config import get_settings
+from ..errors import PublicOperationError, log_safe_error
 from ..files.utils import get_uid_gid
-from ..logger import logger
+from ..operations.finalization import finalize
 from . import async_fs
 from .exec import exec_command, exec_command_stream
 
@@ -76,24 +78,27 @@ async def extract_archive_stream(
     # 7z rewrites the progress line with \r and \x08 between updates.
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
-    async for segment in exec_command_stream(
+    async with aclosing(exec_command_stream(
         "7z",
         "x",
         archive_path,
         f"-o{output_dir}",
         "-bsp1",
         delimiters=progress_delimiters,
-    ):
-        match = re.search(r"^\s*(\d+)%", segment)
-        if match:
-            yield int(match.group(1))
+    )) as stream:
+        async for segment in stream:
+            match = re.search(r"^\s*(\d+)%", segment)
+            if match:
+                yield int(match.group(1))
 
 
 async def extract_minecraft_server(
     archive_path: str,
     target_path: str,
+    *, temporary_dir: Path | None = None,
 ) -> AsyncGenerator[TaskProgress]:
     """Extract a server archive into ``target_path``, yielding ``TaskProgress`` per step."""
+    settings = get_settings()
     archive_path = str(await async_fs.resolve(Path(archive_path)))
     target_path = str(await async_fs.resolve(Path(target_path)))
 
@@ -107,7 +112,7 @@ async def extract_minecraft_server(
 
     yield step_progress("archiveFileCheck")
     if not await aioos.path.exists(archive_path):
-        raise RuntimeError(f"压缩包不存在: {archive_path}")
+        raise PublicOperationError("压缩包不存在，请重新选择压缩包")
 
     yield step_progress("serverPropertiesCheck")
     try:
@@ -119,45 +124,46 @@ async def extract_minecraft_server(
             "-ba",
             "-r",
         )
-    except Exception as e:
-        logger.exception("Unable to inspect Minecraft archive")
+    except (OSError, RuntimeError) as e:
+        log_safe_error(e, "Unable to inspect Minecraft archive")
         error_msg = str(e)
         if (
             "7z: command not found" in error_msg
             or "No such file or directory" in error_msg
         ):
-            raise RuntimeError("7z未安装或不可用")
+            raise PublicOperationError("7z未安装或不可用")
         elif "Permission denied" in error_msg:
-            raise RuntimeError("无权限访问压缩包文件")
+            raise PublicOperationError("无权限访问压缩包文件")
         elif _is_bad_archive_error(error_msg):
-            raise RuntimeError("压缩包文件损坏或格式不支持")
+            raise PublicOperationError("压缩包文件损坏或格式不支持")
         else:
-            raise RuntimeError("检查压缩包内容时发生错误")
+            raise PublicOperationError("检查压缩包内容时发生错误")
 
     if "server.properties" not in output:
-        raise RuntimeError("压缩包中未找到server.properties文件")
+        raise PublicOperationError("压缩包中未找到server.properties文件")
 
     yield step_progress("decompress")
-    temp_dir = f"{archive_path}.dir"
+    temp_dir = str(temporary_dir) if temporary_dir is not None else f"{archive_path}.dir"
     try:
         server_uid, server_gid = await get_uid_gid(settings.server_path)
     except FileNotFoundError:
-        raise RuntimeError(f"路径不存在: {settings.server_path}")
+        raise PublicOperationError("服务器存储目录不存在")
 
     try:
-        async for percent in extract_archive_stream(archive_path, temp_dir):
-            overall = map_decompress_progress(percent)
-            yield TaskProgress(progress=overall, message=f"解压文件: {percent}%")
+        async with aclosing(extract_archive_stream(archive_path, temp_dir)) as events:
+            async for percent in events:
+                overall = map_decompress_progress(percent)
+                yield TaskProgress(progress=overall, message=f"解压文件: {percent}%")
     except RuntimeError as e:
         error_msg = str(e)
         if "Permission denied" in error_msg:
-            raise RuntimeError("无权限创建临时目录或解压文件")
+            raise PublicOperationError("无权限创建临时目录或解压文件")
         elif "No space left on device" in error_msg:
-            raise RuntimeError("磁盘空间不足")
+            raise PublicOperationError("磁盘空间不足")
         elif _is_bad_archive_error(error_msg):
-            raise RuntimeError("压缩包文件损坏或格式不支持")
+            raise PublicOperationError("压缩包文件损坏或格式不支持")
         else:
-            raise RuntimeError("解压过程中发生错误")
+            raise PublicOperationError("解压过程中发生错误")
 
     yield step_progress("chown")
     try:
@@ -167,29 +173,29 @@ async def extract_minecraft_server(
             temp_dir,
             "-R",
         )
-    except Exception as e:
-        logger.exception("Unable to set extracted file ownership")
+    except (OSError, RuntimeError) as e:
+        log_safe_error(e, "Unable to set extracted file ownership")
         error_msg = str(e)
         if "Operation not permitted" in error_msg:
-            raise RuntimeError("无权限更改文件所有权")
+            raise PublicOperationError("无权限更改文件所有权")
         else:
-            raise RuntimeError("更改文件所有权时发生错误")
+            raise PublicOperationError("更改文件所有权时发生错误")
 
     yield step_progress("findPath")
     try:
         find_output = await exec_command(
             "find", temp_dir, "-name", "server.properties", "-print", "-quit"
         )
-    except Exception as e:
-        logger.exception("Unable to locate extracted server properties")
+    except (OSError, RuntimeError) as e:
+        log_safe_error(e, "Unable to locate extracted server properties")
         error_msg = str(e)
         if "Permission denied" in error_msg:
-            raise RuntimeError("无权限搜索临时目录")
+            raise PublicOperationError("无权限搜索临时目录")
         else:
-            raise RuntimeError("搜索server.properties时发生错误")
+            raise PublicOperationError("搜索server.properties时发生错误")
 
     if not find_output.strip():
-        raise RuntimeError("解压后找不到server.properties文件")
+        raise PublicOperationError("解压后找不到server.properties文件")
 
     server_properties_path = Path(find_output.strip())
     server_dir = server_properties_path.parent
@@ -198,7 +204,7 @@ async def extract_minecraft_server(
         for item in await aioos.listdir(target_path):
             item_path = Path(target_path) / item
             if await aioos.path.isdir(str(item_path)):
-                await async_fs.rmtree(item_path)
+                await finalize(async_fs.rmtree(item_path))
             else:
                 await aioos.remove(str(item_path))
 
@@ -219,27 +225,27 @@ async def extract_minecraft_server(
             target_path,
             ";",
         )
-    except Exception as e:
-        logger.exception("Unable to move extracted server data")
+    except (OSError, RuntimeError) as e:
+        log_safe_error(e, "Unable to move extracted server data")
         error_msg = str(e)
         if "Permission denied" in error_msg:
-            raise RuntimeError("无权限移动文件到目标目录")
+            raise PublicOperationError("无权限移动文件到目标目录")
         elif "No space left on device" in error_msg:
-            raise RuntimeError("磁盘空间不足")
+            raise PublicOperationError("磁盘空间不足")
         else:
-            raise RuntimeError("移动服务器文件时发生错误")
+            raise PublicOperationError("移动服务器文件时发生错误")
 
     yield step_progress("remove")
     try:
         await aioos.remove(archive_path)
 
-        await async_fs.rmtree(Path(temp_dir))
-    except Exception as e:
-        logger.exception("Unable to remove archive staging files")
+        await finalize(async_fs.rmtree(Path(temp_dir)))
+    except (OSError, RuntimeError) as e:
+        log_safe_error(e, "Unable to remove archive staging files")
         error_msg = str(e)
         if "Permission denied" in error_msg:
-            raise RuntimeError("无权限删除临时文件")
+            raise PublicOperationError("无权限删除临时文件")
         else:
-            raise RuntimeError("清理临时文件时发生错误")
+            raise PublicOperationError("清理临时文件时发生错误")
 
     yield TaskProgress(progress=100, message="服务器填充完成", result={"success": True})

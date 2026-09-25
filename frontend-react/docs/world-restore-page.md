@@ -58,20 +58,20 @@ The map is gated on mcmap initialization (`client_jar_present`, `palette_present
 
 ## Selection state
 
-`stores/useWorldRestoreSelectionStore.ts`:
+`features/world/restore/selectionStore.ts`:
 
 - Per-server entries keyed by `serverId`.
 - **Not persisted** — selection is transient and intentionally clears on reload.
 - `setMode` clears the selection whenever mode changes.
 - `setDimension(serverId, dimension)` clears the selection when `dimension` changes — chunks aren't comparable across dimensions, and the dimension relpath uniquely identifies the (root, dim) pair on its own.
 
-`components/world-restore/selectionUtils.ts`:
+`features/world/restore/components/selectionUtils.ts`:
 
 - `buildSelection(...)` packages the panel's state into the backend's `RestorationSelection` shape (the discriminated union the API expects).
 - Region mode stores selected cells as chunk keys too; `buildSelection(..., scope: "regions")` converts the current set to fully-covered region coordinates with `chunksToFullyCoveredRegions`.
 - `computeSelectionStats(...)` returns chunk count, covered region count, fully-covered region count.
 
-`components/map/ServerMap.tsx` owns the Leaflet selection UX. Region mode expands selected regions to all 1024 chunk keys. Chunk mode stores exact chunk keys. The on-map toolbar selects pan/add/erase intent for touch and pointer users; desktop also supports Ctrl-drag to add, right-drag to remove, and Escape to clear. A coordinate jump control pans to block coordinates.
+`features/world/map/ServerMap.tsx` owns the Leaflet selection UX. Region mode expands selected regions to all 1024 chunk keys. Chunk mode stores exact chunk keys. The on-map toolbar selects pan/add/erase intent for touch and pointer users; desktop also supports Ctrl-drag to add, right-drag to remove, and Escape to clear. A coordinate jump control pans to block coordinates.
 
 ## Mode-switch confirmation
 
@@ -90,20 +90,20 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 ## Snapshot picker (restore flow)
 
-`components/world-restore/SnapshotPicker.tsx` is a right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row always offers Restore. It offers Preview only for REGIONS/CHUNKS selections because the preview map needs an affected-region set.
+`features/world/restore/components/SnapshotPicker.tsx` is a right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row always offers Restore. It offers Preview only for REGIONS/CHUNKS selections because the preview map needs an affected-region set.
 
-- **Restore** → destructive confirm via `useConfirm`, then drives the restore SSE through `useEventStream<RestoreEvent>` and renders progress in-place via `<RestoreProgressCard>`.
+- **Restore** → destructive confirm via `useConfirm`, then latches snapshot/selection in `useRestorationStream` and drives the finite SSE through `shared/operations/useRestoreRequest` and renders progress in-place via `<RestoreProgressCard>`.
 - **Preview** → opens `<RestorePreviewModal>` with the clicked snapshot id and the latched selection.
 
 ## Preview modal
 
-`components/world-restore/RestorePreviewModal.tsx` is a `<Dialog>` containing a mini Leaflet map (`CRS.Simple`) and a custom `<PreviewTileLayer>`:
+`features/world/restore/components/RestorePreviewModal.tsx` is a `<Dialog>` containing a mini Leaflet map (`CRS.Simple`) and a custom `<PreviewTileLayer>`:
 
 - Drives `POST /preview` via `useEventStream<PreviewEvent>`.
 - Captures `session_id` from the `ready` event.
 - Mounts the Leaflet map only after `ready` so tile requests do not race the backend render queue.
 - Heartbeats every 30 s (`POST /preview/{session_id}/heartbeat`).
-- Fires `DELETE /preview/{session_id}` on close.
+- Fires `DELETE /preview/{session_id}` on close, request replacement or unmount. Heartbeat 404/409/410 removes the ready map and requests regeneration.
 - A stream that ends before `ready` or an explicit error enters a closable connection-error state. Map initialization uses the same terminal expectation.
 - The preview tile layer is a clone of `ServerMapTileLayer` pointed at `/preview/{session_id}/tile/{rx}/{rz}.png`, gated by an `available` set so empty regions don't 404.
 - Paints affected region rectangles immediately; for chunk selections up to 5,000 chunks it also paints per-chunk rectangles.
@@ -111,11 +111,12 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 ## Restoration history drawer
 
-`components/world-restore/RestorationHistoryDrawer.tsx` lists rows from `useRestorations`, auto-refreshing every 5 s. Per-row rollback is gated on:
+`features/world/restore/components/RestorationHistoryDrawer.tsx` lists rows from `useRestorations`, auto-refreshing every 5 s. Per-row rollback is gated on:
 
 - `status ∈ {succeeded, failed, interrupted}`
 - `safety_snapshot_id` is set
 - `safety_snapshot_exists === true`
+- server stopped and no `binding_issue` (old or uncertain server-generation bindings remain visible with an explanation)
 
 The "needs rollback" alert highlights `interrupted` rows. Request disconnection finalizes an interrupted restore before releasing maintenance ownership; a backend crash is reconciled on startup. Failed rows with retained safety snapshots also offer rollback.
 
@@ -128,15 +129,17 @@ Rows with REGIONS/CHUNKS selections also offer Preview, using the row's safety s
 FTB claims and player locations share `ServerMap`'s generic overlay hook (`overlays?: ServerMapOverlay[]`) and the same cross-dimension pending-pan path.
 
 - Claims use `useFtbClaims(serverId, mapInitialized)`. When `available` is true, the side panel adds a Claims tab and `useClaimsOverlay` paints cluster polygons/labels for the current dimension. The list can hover-highlight, pan to clusters, select a cluster, or select all of a team's clusters in the current dimension. Details live in `docs/ftb-claims-overlay.md`.
-- Player locations use `useWorldRestorePlayerLocations(serverId, mapInitialized)`, `usePlayerMapProfiles`, and `useServerOnlinePlayers`. The Player locations tab can toggle overlay visibility, filter to online players, refresh extracted positions, and click rows to pan or switch dimension. Details live in `docs/player-locations-overlay.md`.
+- Player locations use `useWorldPlayerLocations(serverId, mapInitialized)`, `usePlayerMapProfiles`, and `useServerOnlinePlayers`. The Player locations tab can toggle overlay visibility, filter to online players, refresh extracted positions, and click rows to pan or switch dimension. Details live in `docs/player-locations-overlay.md`.
 
 ## Shared SSE reducer
 
-`components/world-restore/restoreProgress.ts` exports `applyRestoreEvent`, a reducer that turns `RestoreEvent` SSE payloads into UI state. It's used by both the snapshot picker (forward restore) and the history drawer (rollback) so the progress UI stays consistent.
+`shared/operations/restoreProgress.ts` exports `applyRestoreEvent`, a reducer that turns `RestoreEvent` SSE payloads into UI state. It's used by both the snapshot picker (forward restore) and the history drawer (rollback) so the progress UI stays consistent.
 
 ## SSE consumer
 
-All three world-restore flows — `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback` — go through `hooks/useEventStream.ts`. It handles fetch + `AbortController` + `\n\n` block parsing, same-origin cookies, CSRF header injection, and body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
+`useWorldMapController` owns the shared world/map/layer controls; `useWorldRestoreController` owns restore selection and mode confirmation. `useRestorePreview` owns session lifetime and heartbeat. Progress components never invalidate business caches; the app operation observer refreshes the registered resources after terminal outcomes.
+
+All three world-restore flows — `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback` — go through `shared/hooks/useEventStream.ts`. It handles fetch + `AbortController` + `\n\n` block parsing, same-origin cookies, CSRF header injection, and body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
 
 ## Routing
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import settings
+from app.config import get_settings
 from app.snapshots import NodeKind, ResticClient
 from app.utils.exec import exec_command
 
@@ -19,7 +19,7 @@ from app.utils.exec import exec_command
 def check_restic_available():
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -411,3 +411,5 @@ class TestSnapshotLifecycle:
         await client.backup([data_dir])
         assert (await client.list_locks()).strip() == ""
         await client.unlock()
+
+pytestmark = [pytestmark, pytest.mark.binary('restic')]

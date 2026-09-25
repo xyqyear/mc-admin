@@ -27,9 +27,9 @@ class SelfCheckJobParams(BaseConfigSchema):
 
 
 async def self_check_cronjob(context) -> None:
-    from .runner import run_self_check
+    from app.self_check.service import get_self_check_service
 
-    result = await run_self_check(trigger=SCHEDULED_TRIGGER)
+    result = await get_self_check_service().run_self_check(trigger=SCHEDULED_TRIGGER)
     status_label = RUN_STATUS_LABELS.get(result.status, result.status)
     context.log(
         "系统自检完成: "

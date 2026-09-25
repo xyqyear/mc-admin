@@ -19,6 +19,8 @@ type restoration struct {
 	Rollback     bool    `json:"is_rollback"`
 	Finished     *string `json:"finished_at"`
 	Error        string  `json:"error_message"`
+	Generation   *int64  `json:"server_generation"`
+	BindingIssue *string `json:"binding_issue"`
 }
 
 func scopedRestore(ctx context.Context, t *engine.Scope) error {

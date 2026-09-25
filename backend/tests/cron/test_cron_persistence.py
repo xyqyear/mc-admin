@@ -1,5 +1,4 @@
 """Cron job persistence and recovery across simulated restarts."""
-
 import asyncio
 import tempfile
 from pathlib import Path
@@ -9,14 +8,16 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
 from app.db.database import get_async_session
-from app.models import Base, CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
+from app.db.metadata import Base
+from tests.support.runtime import patch_runtime_resource
 
 from .test_cron_manager import TestCronManager, test_cron_registry
 from .test_cronjobs import SampleCronJobParams
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(autouse=True)
 async def setup_test_db():
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
         TEST_DB_PATH = tmp_file.name
@@ -35,8 +36,8 @@ async def setup_test_db():
         await conn.run_sync(Base.metadata.create_all)
 
     with (
-        patch("app.db.database.AsyncSessionLocal", TEST_SESSION_MAKER),
-        patch("app.db.database.engine", TEST_ENGINE),
+        patch_runtime_resource('session_factory', TEST_SESSION_MAKER),
+        patch_runtime_resource('database_engine', TEST_ENGINE),
         patch("app.cron.manager.get_async_session") as mock_get_session,
     ):
         def get_test_session():

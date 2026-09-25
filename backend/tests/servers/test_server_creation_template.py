@@ -1,5 +1,4 @@
 """Integration tests for template-mode server creation."""
-
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -9,9 +8,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
-from app.models import Base
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -71,16 +72,16 @@ def test_client(temp_server_path, test_db):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch('app.config.settings.server_path', temp_server_path),
-        patch('app.config.settings.master_token', 'test-master-token'),
+        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
+        patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
-            patch('app.servers.lifecycle.orchestrators.docker_mc_manager', real_mc_manager),
-            patch('app.servers.port_utils.docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-            patch('app.servers.lifecycle.orchestrators.log_monitor.start_server', new_callable=AsyncMock),
-            patch('app.servers.lifecycle.orchestrators.simple_dns_manager.update', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         ):
             client = TestClient(
                 api_app, raise_server_exceptions=False

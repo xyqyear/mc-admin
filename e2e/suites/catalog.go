@@ -9,6 +9,7 @@ import (
 	"mc-admin/e2e/suites/dns"
 	"mc-admin/e2e/suites/files"
 	"mc-admin/e2e/suites/minecraft"
+	"mc-admin/e2e/suites/operations"
 	"mc-admin/e2e/suites/players"
 	"mc-admin/e2e/suites/selfcheck"
 	"mc-admin/e2e/suites/servers"
@@ -22,7 +23,7 @@ import (
 
 func Catalog(recipes fixtures.Recipes) []engine.Case {
 	var cases []engine.Case
-	for _, suite := range []func(fixtures.Recipes) []engine.Case{auth.Cases, system.Cases, cron.Cases, selfcheck.Cases, templates.Cases, servers.Cases, files.Cases, archive.Cases, tasks.Cases, minecraft.Cases, players.Cases, snapshots.Cases, world.Cases, dns.Cases, startup.Cases} {
+	for _, suite := range []func(fixtures.Recipes) []engine.Case{auth.Cases, system.Cases, cron.Cases, selfcheck.Cases, templates.Cases, servers.Cases, files.Cases, archive.Cases, tasks.Cases, minecraft.Cases, players.Cases, snapshots.Cases, world.Cases, dns.Cases, startup.Cases, operations.Cases} {
 		cases = append(cases, suite(recipes)...)
 	}
 	for i := range cases {

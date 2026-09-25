@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, func, literal, select, true, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import SelfCheckFinding, SelfCheckRun
+from app.self_check.models import SelfCheckFinding, SelfCheckRun
+
 from .types import (
     SelfCheckCurrentState,
     SelfCheckFindingResult,

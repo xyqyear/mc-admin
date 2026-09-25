@@ -53,15 +53,11 @@ result before building any preview geometry.
 
 ## Overlay Geometry
 
-The completed preview task result carries a `dimensions` array. Each entry is
-keyed by `region_dir_relpath` and contains `selected_chunks` in chunk mode or
-`selected_regions` in region mode. The active map dimension selects one entry
+The geometry endpoint `GET /chunk-prune/previews/{task_id}/geometry` returns a `dimensions` array. Each entry is keyed by `region_dir_relpath` and contains connected shapes, bounds and cell counts. The active map dimension selects one entry
 from that array; changing the dimension changes only the displayed preview
 slice and does not start a new backend task.
 
-The overlay builder turns connected cells into boundary rings with
-`computeBoundaryRings`, then renders one polygon per connected component on a
-canvas renderer. This keeps large previews from drawing one rectangle per
+The overlay builder renders the returned rings as one polygon per connected component on a canvas renderer. This keeps large previews from drawing one rectangle per
 chunk.
 
 Chunk mode draws chunk-sized cells. Region mode draws region-sized cells. The
@@ -72,11 +68,18 @@ threshold and mode.
 
 The destructive apply button is enabled only when:
 
-- preview completed;
+- preview completed and `state.preview.availability === ready`;
 - the current threshold and mode still match the completed preview;
 - the server is stopped;
 - no apply task is already running.
 
 Apply starts a second server-level background task for the completed preview.
-On completion the page invalidates task and map query keys so stale map tiles
-are refetched.
+The application operation observer refreshes files, world/map metadata and task state after terminal outcomes, including partial failures, even when the page is closed.
+
+## Ownership and preview validity
+
+`features/world/useWorldMapController.ts` owns shared map/dimensions/layers and URL state. `features/world/prune/useChunkPruneController.ts` owns threshold/mode controls, preview/apply confirmation, cancellation and server task projections; the screen renders these controllers.
+
+`state.preview` contains `task_id`, `input_version`, `expires_at`, `availability`, and `apply_task_id`. `preview_task`/`apply_task` are feature-owned projections and remain readable after generic task dismissal. Ready previews can apply only with unchanged controls and a stopped server. Expired/stale/unavailable previews require regeneration; consumed previews cannot apply again, while their available geometry remains useful for inspection. Synchronous 409 details and accepted-task `error_code` values retain inputs and explain how to repreview. Starting or cancelling a task refreshes discovery; closing or navigating away does not send cancel.
+
+QueryClient/MSW tests cover each unavailable state, synchronous stale rejection, the final accepted-task recheck, task dismissal/navigation, and retained URL views and per-dimension selection. Real backend/API evidence covers the actual file and version comparisons.

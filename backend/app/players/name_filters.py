@@ -1,11 +1,11 @@
 """Player name filters driven by dynamic configuration."""
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
 
 
 def get_ignored_name_prefixes() -> tuple[str, ...]:
     try:
-        prefixes = config.players.ignored_name_prefixes
+        prefixes = get_config().players.ignored_name_prefixes
     except (RuntimeError, ValueError):
         return ()
 

@@ -3,11 +3,12 @@ from pathlib import Path
 
 from aiofiles import os as aioos
 
-from ..config import settings
-from ..logger import logger
+from ..logger import get_logger
+from ..runtime_resources import current_runtime
 from .compose import MCComposeFile
 from .docker.manager import DockerManager
 from .instance import MCInstance, MCServerInfo
+from .paths import ServerPathError
 
 
 class DockerMCManager:
@@ -15,15 +16,19 @@ class DockerMCManager:
         self.servers_path = Path(servers_path).resolve()
 
     async def get_all_server_compose_obj(self) -> list[MCComposeFile]:
+        logger = get_logger()
         compose_obj_list = list[MCComposeFile]()
         for sub_dir in await aioos.listdir(self.servers_path):
-            instance = self.get_instance(sub_dir)
             try:
+                instance = self.get_instance(sub_dir)
                 compose_obj_list.append(await instance.get_compose_obj())
             except FileNotFoundError:
                 continue
             # 验证失败则忽略
             except ValueError:
+                continue
+            except ServerPathError:
+                logger.warning("Skipped server directory with an invalid path boundary")
                 continue
             except Exception as e:
                 logger.warning(f"Failed to get compose object for {sub_dir}: {e}", exc_info=True)
@@ -91,4 +96,5 @@ class DockerMCManager:
 
 
 # Singleton instance
-docker_mc_manager = DockerMCManager(settings.server_path)
+def get_docker_mc_manager() -> DockerMCManager:
+    return current_runtime().resource('docker_mc_manager')

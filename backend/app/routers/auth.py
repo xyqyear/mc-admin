@@ -1,37 +1,27 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, WebSocket, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.api_models import (
+    CompleteCodeLoginRequest,
+    LoginResponse,
+    VerifyCodeRequest,
+    VerifyCodeResponse,
+)
+from app.auth.schemas import UserPublic
+from app.auth.service import get_identity_service
+from app.auth.store import get_user_by_username
+
 from ..auth.jwt_utils import verify_password
-from ..auth.login_code import loginCodeManager
-from ..auth.session import clear_auth_cookies, create_session_token, set_auth_cookies
-from ..db.crud.user import get_user_by_username
+from ..auth.login_code import get_login_code_manager
+from ..auth.session import clear_auth_cookies, set_auth_cookies
 from ..db.database import get_db
 from ..dependencies import verify_master_token
-from ..models import UserPublic
 
 router = APIRouter(
     prefix="/auth",
     tags=["auth"],
 )
-
-
-class LoginResponse(BaseModel):
-    user: UserPublic
-
-
-class VerifyCodeRequest(BaseModel):
-    username: str
-    code: str
-
-
-class VerifyCodeResponse(BaseModel):
-    result: str
-
-
-class CompleteCodeLoginRequest(BaseModel):
-    ticket: str
 
 
 @router.post("/token", response_model=LoginResponse)
@@ -58,7 +48,7 @@ async def login_for_access_token(
         role=user.role,
         created_at=user.created_at,
     )
-    token, csrf_token = create_session_token(public_user)
+    token, csrf_token = get_identity_service().create_session_token(public_user)
     set_auth_cookies(response, token, csrf_token)
     return LoginResponse(user=public_user)
 
@@ -73,7 +63,7 @@ async def verify_code(
     request: VerifyCodeRequest,
     db: AsyncSession = Depends(get_db),
 ) -> VerifyCodeResponse:
-    result = await loginCodeManager.verify_user_with_code(
+    result = await get_login_code_manager().verify_user_with_code(
         db,
         request.username,
         request.code,
@@ -88,15 +78,15 @@ async def complete_code_login(
     request: CompleteCodeLoginRequest,
     response: Response,
 ) -> LoginResponse:
-    user = loginCodeManager.complete_login(request.ticket)
+    user = get_login_code_manager().complete_login(request.ticket)
     if user is None:
         raise HTTPException(status_code=400, detail="Invalid or expired login ticket")
 
-    token, csrf_token = create_session_token(user)
+    token, csrf_token = get_identity_service().create_session_token(user)
     set_auth_cookies(response, token, csrf_token)
     return LoginResponse(user=user)
 
 
 @router.websocket("/code")
 async def code_auth(websocket: WebSocket):
-    await loginCodeManager.manage_websocket(websocket)
+    await get_login_code_manager().manage_websocket(websocket)

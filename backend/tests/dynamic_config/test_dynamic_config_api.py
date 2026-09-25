@@ -4,17 +4,18 @@ API endpoint tests for the dynamic configuration system.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.config import get_settings
+from app.db.metadata import Base
 from app.dynamic_config import BaseConfigSchema
 from app.dynamic_config.manager import ConfigManager
 from app.main import app
-from app.models import Base
+from app.runtime_resources import current_runtime
 
 
 # Test configuration schemas for API testing
@@ -49,7 +50,7 @@ class ApiComplexConfig(BaseConfigSchema):
 
 
 @pytest.fixture(scope="function")
-async def test_api_db():
+async def test_api_db(monkeypatch):
     """Create a test database for API tests."""
     # Create temporary database file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
@@ -71,48 +72,20 @@ async def test_api_db():
         expire_on_commit=False,
     )
 
-    # Patch get_async_session to use test database
-    with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
-
-        def get_test_session():
-            return TestSessionLocal()
-
-        mock_get_session.side_effect = get_test_session
-
-        # Create and setup test configuration manager
-        test_manager = ConfigManager()
-        test_manager.register_config("api_test", ApiTestConfig)
-        test_manager.register_config("api_complex", ApiComplexConfig)
-
-        # Replace global config manager
-        import app.dynamic_config as config_module
-        import app.routers.config as router_module
-
-        original_manager = config_module.config_manager
-        original_router_manager = router_module.config_manager
-        config_module.config_manager = test_manager
-        router_module.config_manager = test_manager
-
-        # Initialize configurations
-        await test_manager.initialize_all_configs()
-
-        yield test_manager
-
-        # Cleanup
-        config_module.config_manager = original_manager
-        router_module.config_manager = original_router_manager
+    test_manager = ConfigManager(session_factory=TestSessionLocal)
+    test_manager.register_config("api_test", ApiTestConfig)
+    test_manager.register_config("api_complex", ApiComplexConfig)
+    monkeypatch.setitem(current_runtime().resources, "config_manager", test_manager)
+    await test_manager.initialize_all_configs()
+    yield test_manager
     await engine.dispose()
     Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
-def api_client():
-    """Create a test client for API testing."""
-    # Mock settings to set up master token
-    with patch("app.dependencies.settings") as mock_settings:
-        mock_settings.master_token = "test_master_token"
-        client = TestClient(app)
-        yield client
+def api_client(monkeypatch):
+    monkeypatch.setattr(get_settings(), "master_token", "test_master_token")
+    yield TestClient(app)
 
 
 @pytest.fixture

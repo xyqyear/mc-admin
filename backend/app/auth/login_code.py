@@ -6,10 +6,12 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..db.crud.user import get_user_by_username
-from ..logger import logger
-from ..models import UserPublic
-from .session import user_to_public
+from app.auth.schemas import UserPublic
+from app.auth.service import user_to_public
+from app.auth.store import get_user_by_username
+
+from ..logger import get_logger
+from ..runtime_resources import current_runtime
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,7 @@ class LoginCodeManager:
     def __init__(self):
         self.websocket_code_map: dict[WebSocket, str] = {}
         self.completion_tickets: dict[str, LoginCompletion] = {}
+        self._rotation_tasks: set[asyncio.Task] = set()
 
     def generate_code(self):
         return "".join(random.choices("0123456789", k=8))
@@ -30,12 +33,14 @@ class LoginCodeManager:
         return secrets.token_urlsafe(32)
 
     async def manage_websocket(self, websocket: WebSocket):
+        logger = get_logger()
         await websocket.accept()
         assert websocket.client is not None
         logger.info(
             f"Websocket from {websocket.client.host}:{websocket.client.port} connected"
         )
         rotate_code_task = asyncio.create_task(self.rotate_code_loop(websocket))
+        self._rotation_tasks.add(rotate_code_task)
         try:
             while True:
                 received = await websocket.receive_text()
@@ -45,10 +50,27 @@ class LoginCodeManager:
             logger.info(
                 f"Websocket from {websocket.client.host}:{websocket.client.port} disconnected"
             )
+        finally:
             self.websocket_code_map.pop(websocket, None)
             rotate_code_task.cancel()
+            await asyncio.gather(rotate_code_task, return_exceptions=True)
+            self._rotation_tasks.discard(rotate_code_task)
+
+    async def close(self) -> None:
+        for task in self._rotation_tasks:
+            task.cancel()
+        await asyncio.gather(*self._rotation_tasks, return_exceptions=True)
+        self._rotation_tasks.clear()
+        for websocket in list(self.websocket_code_map):
+            try:
+                await websocket.close(code=1001)
+            except (WebSocketDisconnect, RuntimeError, OSError):
+                pass
+        self.websocket_code_map.clear()
+        self.completion_tickets.clear()
 
     async def rotate_code_loop(self, websocket: WebSocket):
+        logger = get_logger()
         while True:
             code = self.generate_code()
             self.websocket_code_map[websocket] = code
@@ -114,4 +136,5 @@ class LoginCodeManager:
         return completion.user
 
 
-loginCodeManager = LoginCodeManager()
+def get_login_code_manager() -> LoginCodeManager:
+    return current_runtime().resource('login_code_manager')

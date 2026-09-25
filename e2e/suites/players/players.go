@@ -26,6 +26,7 @@ func Cases(r fixtures.Recipes) []engine.Case {
 		{ID: "players.identity-config-and-cleanup", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: identity},
 		{ID: "players.legacy-cleanup-and-cached-profiles", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: legacy},
 		{ID: "players.heartbeat-crash-recovery", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: crashRecovery},
+		{ID: "players.duplicate-session-migration", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: duplicateSessionMigration},
 		{ID: "players.live-profile-and-skin", Suite: "players", Tags: []string{"external", "mojang"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: liveProfile},
 	}
 }
@@ -148,7 +149,7 @@ func tracking(ctx context.Context, t *engine.Scope) error {
 	}
 	defer connection.CloseNow()
 	if err = t.Step("real watcher commits join, chat and deduplicated achievements before publishing", func() error {
-		if err := s.append(ctx, "[12:00:01] [Server thread/INFO]: UUID of player E2EPlayer is 123e4567-e89b-42d3-a456-426614174000", "[12:00:02] [Server thread/INFO]: E2EPlayer[/127.0.0.1:1234] logged in with entity id 1", "[12:00:03] [Server thread/INFO]: <E2EPlayer> first persisted chat", "[12:00:04] [Server thread/INFO]: E2EPlayer has made the advancement [Stone Age]", "[12:00:05] [Server thread/INFO]: E2EPlayer has made the advancement [Stone Age]"); err != nil {
+		if err := s.append(ctx, "[12:00:01] [Server thread/INFO]: UUID of player E2EPlayer is 123e4567-e89b-42d3-a456-426614174000", "[12:00:02] [Server thread/INFO]: E2EPlayer[/127.0.0.1:1234] logged in with entity id 1", "[12:00:02] [Server thread/INFO]: E2EPlayer[/127.0.0.1:1234] logged in with entity id 1", "[12:00:03] [Server thread/INFO]: <E2EPlayer> first persisted chat", "[12:00:04] [Server thread/INFO]: E2EPlayer has made the advancement [Stone Age]", "[12:00:05] [Server thread/INFO]: E2EPlayer has made the advancement [Stone Age]"); err != nil {
 			return err
 		}
 		join, err := readEvent(ctx, t, connection, "player_join")
@@ -236,12 +237,32 @@ func tracking(ctx context.Context, t *engine.Scope) error {
 	if _, err = waitDetail(ctx, client, playerUUID, func(d detail) bool { return !d.Online && d.Sessions == 1 }); err != nil {
 		return err
 	}
+	type sessionHistory struct {
+		ID       int       `json:"session_id"`
+		Joined   time.Time `json:"joined_at"`
+		Left     time.Time `json:"left_at"`
+		Duration int       `json:"duration_seconds"`
+	}
+	var history []sessionHistory
+	if err = client.JSON(ctx, "GET", base+"/sessions", nil, &history, 200); err != nil {
+		return err
+	}
+	if len(history) != 1 || history[0].Duration != int(history[0].Left.Sub(history[0].Joined).Seconds()) {
+		return fmt.Errorf("repeated join duplicated sessions or playtime: %+v", history)
+	}
+	canonicalSession := history[0]
 	return t.Step("cursor replay returns only newer committed chat after backend restart", func() error {
-		if err := s.append(ctx, "[12:01:01] [Server thread/INFO]: <E2EPlayer> second persisted chat"); err != nil {
+		if err := s.append(ctx, "[12:01:01] [Server thread/INFO]: E2EPlayer lost connection: repeated observation", "[12:01:02] [Server thread/INFO]: <E2EPlayer> second persisted chat"); err != nil {
 			return err
 		}
 		if _, err := waitDetail(ctx, client, playerUUID, func(d detail) bool { return d.Messages == 2 }); err != nil {
 			return err
+		}
+		if err := client.JSON(ctx, "GET", base+"/sessions", nil, &history, 200); err != nil {
+			return err
+		}
+		if len(history) != 1 || history[0].ID != canonicalSession.ID || !history[0].Joined.Equal(canonicalSession.Joined) || !history[0].Left.Equal(canonicalSession.Left) || history[0].Duration != canonicalSession.Duration {
+			return fmt.Errorf("repeated departure changed recorded session: %+v", history)
 		}
 		if err := fixtures.BackendOf(t.Env).Restart(ctx); err != nil {
 			return err

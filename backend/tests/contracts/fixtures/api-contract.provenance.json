@@ -1,0 +1,5 @@
+{
+  "source_commit": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+  "source": "Archived unmodified HEAD app; compared with working implementation",
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI and SSE/task payload schemas"
+}

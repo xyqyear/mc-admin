@@ -38,7 +38,7 @@ async def test_remove_chunks_argv_shape_and_events(fake_owned_dir):
     tgt = fake_owned_dir / "tgt.mca"
     tgt.write_bytes(b"")
     try:
-        with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
             async with runner.remove_chunks(
                 target_mca=tgt,
                 chunks=[(4, 15), (13, 22)],
@@ -74,7 +74,7 @@ async def test_remove_chunks_error_event(fake_owned_dir):
     tgt = fake_owned_dir / "tgt.mca"
     tgt.write_bytes(b"")
     try:
-        with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
             async with runner.remove_chunks(
                 target_mca=tgt,
                 chunks=[(0, 0)],

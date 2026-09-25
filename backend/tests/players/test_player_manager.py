@@ -1,5 +1,4 @@
 """Tests for player tracking functions."""
-
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -9,16 +8,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
-from app.models import Base, Player, PlayerSession, Server, ServerStatus
+from app.players import get_player_service
 from app.players.crud import upsert_player
-from app.players.tracking import (
-    close_server_sessions,
-    process_player_join,
-    process_player_left,
-    update_player_skin,
-)
+from app.players.models import Player, PlayerSession
+from app.runtime_resources import current_runtime
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
+from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
@@ -86,7 +84,7 @@ def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
     runtime_config = SimpleNamespace(
         players=PlayersConfig(ignored_name_prefixes=prefixes)
     )
-    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
 
 
 class TestUpsertPlayer:
@@ -154,11 +152,11 @@ class TestProcessPlayerJoin:
         mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
-            patch("app.players.tracking.update_player_skin", new_callable=AsyncMock),
+            patch.object(get_player_service(), "session_factory", mock_session),
+            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock),
         ):
             join_time = datetime.now(UTC)
-            await process_player_join("test_server", "TestPlayer", timestamp=join_time)
+            await get_player_service().process_player_join("test_server", "TestPlayer", timestamp=join_time)
 
         result = await test_db_session.execute(
             select(PlayerSession).where(
@@ -181,15 +179,15 @@ class TestProcessPlayerJoin:
         uuid = make_online_uuid("BrandNewPlayer")
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
+            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=uuid,
             ),
-            patch("app.players.tracking.update_player_skin", new_callable=AsyncMock),
+            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock),
         ):
             join_time = datetime.now(UTC)
-            await process_player_join(
+            await get_player_service().process_player_join(
                 "test_server", "BrandNewPlayer", timestamp=join_time
             )
 
@@ -220,15 +218,15 @@ class TestProcessPlayerJoin:
         mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
+            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 new_callable=AsyncMock,
             ) as mock_fetch_uuid,
-            patch("app.players.tracking.update_player_skin", new_callable=AsyncMock)
+            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock)
             as mock_skin_update,
         ):
-            await process_player_join("test_server", "BOT_Carpet")
+            await get_player_service().process_player_join("test_server", "BOT_Carpet")
 
         mock_fetch_uuid.assert_not_called()
         mock_skin_update.assert_not_called()
@@ -250,11 +248,11 @@ class TestProcessPlayerJoin:
         mock_skin_update = AsyncMock()
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
-            patch("app.players.tracking.update_player_skin", mock_skin_update),
+            patch.object(get_player_service(), "session_factory", mock_session),
+            patch.object(get_player_service(), "update_player_skin", mock_skin_update),
         ):
             join_time = datetime.now(UTC)
-            await process_player_join("test_server", "TestPlayer", timestamp=join_time)
+            await get_player_service().process_player_join("test_server", "TestPlayer", timestamp=join_time)
 
         mock_skin_update.assert_called_once_with(
             test_player.player_db_id, test_player.uuid, test_player.current_name
@@ -270,15 +268,15 @@ class TestProcessPlayerJoin:
         uuid = make_online_uuid("NewPlayer123")
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
+            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=uuid,
             ),
-            patch("app.players.tracking.update_player_skin", mock_skin_update),
+            patch.object(get_player_service(), "update_player_skin", mock_skin_update),
         ):
             join_time = datetime.now(UTC)
-            await process_player_join(
+            await get_player_service().process_player_join(
                 "test_server", "NewPlayer123", timestamp=join_time
             )
 
@@ -314,9 +312,9 @@ class TestProcessPlayerLeft:
 
         mock_session = _mock_get_async_session(test_db_session)
 
-        with patch("app.players.tracking.get_async_session", mock_session):
+        with patch.object(get_player_service(), "session_factory", mock_session):
             leave_time = datetime.now(UTC)
-            await process_player_left(
+            await get_player_service().process_player_left(
                 "test_server",
                 "TestPlayer",
                 reason="Disconnected",
@@ -334,14 +332,14 @@ class TestProcessPlayerLeft:
         uuid = make_online_uuid("LeavingPlayer")
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
+            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=uuid,
             ),
         ):
             leave_time = datetime.now(UTC)
-            await process_player_left(
+            await get_player_service().process_player_left(
                 "test_server",
                 "LeavingPlayer",
                 reason="Disconnected",
@@ -395,9 +393,9 @@ class TestCloseServerSessions:
 
         mock_session = _mock_get_async_session(test_db_session)
 
-        with patch("app.players.tracking.get_async_session", mock_session):
+        with patch.object(get_player_service(), "session_factory", mock_session):
             stop_time = datetime.now(UTC)
-            await close_server_sessions("test_server", timestamp=stop_time)
+            await get_player_service().close_server_sessions("test_server", timestamp=stop_time)
 
         await test_db_session.refresh(session1)
         await test_db_session.refresh(session2)
@@ -419,13 +417,13 @@ class TestServerNotFound:
         mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
+            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
-                "app.players.tracking.get_server_db_id",
+                "app.players.service.get_server_db_id",
                 return_value=None,
             ),
         ):
-            await process_player_join(
+            await get_player_service().process_player_join(
                 "unknown_server",
                 "TestPlayer",
                 timestamp=datetime.now(UTC),
@@ -448,13 +446,10 @@ class TestUpdatePlayerSkin:
         fake_avatar = b"avatar_png_data"
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
-            patch(
-                "app.players.tracking.skin_fetcher.fetch_player_skin",
-                return_value=(fake_skin, fake_avatar),
-            ),
+            patch.object(get_player_service(), "session_factory", mock_session),
+            patch.object(current_runtime().resource('skin_fetcher'), 'fetch_player_skin', return_value=(fake_skin, fake_avatar)),
         ):
-            await update_player_skin(
+            await get_player_service().update_player_skin(
                 test_player.player_db_id, test_player.uuid, test_player.current_name
             )
 
@@ -471,13 +466,10 @@ class TestUpdatePlayerSkin:
         mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch("app.players.tracking.get_async_session", mock_session),
-            patch(
-                "app.players.tracking.skin_fetcher.fetch_player_skin",
-                return_value=None,
-            ),
+            patch.object(get_player_service(), "session_factory", mock_session),
+            patch.object(current_runtime().resource('skin_fetcher'), 'fetch_player_skin', return_value=None),
         ):
-            await update_player_skin(
+            await get_player_service().update_player_skin(
                 test_player.player_db_id, test_player.uuid, test_player.current_name
             )
 

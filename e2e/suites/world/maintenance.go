@@ -40,8 +40,11 @@ func missingSidecars(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 	}
-	for _, kind := range []string{"dimension", "regions", "chunks"} {
-		selection := map[string]any{"type": kind, "region_dir_relpath": fixtureRegion}
+	for _, kind := range []string{"world", "dimension", "regions", "chunks"} {
+		selection := map[string]any{"type": kind}
+		if kind != "world" {
+			selection["region_dir_relpath"] = fixtureRegion
+		}
 		if kind == "regions" {
 			selection["regions"] = [][2]int{{0, 0}}
 		}
@@ -121,6 +124,9 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	before := [2]string{"before disconnect", "before disconnect neighbor"}
+	if err = s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "down"}, nil, 200); err != nil {
+		return err
+	}
 	if err = s.seedRegion(before); err != nil {
 		return err
 	}
@@ -130,6 +136,10 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 	}
 	after := [2]string{"recover disconnect", "recover disconnect neighbor"}
 	if err = s.seedRegion(after); err != nil {
+		return err
+	}
+	uploadSession, err := s.prepareScopedUpload(ctx)
+	if err != nil {
 		return err
 	}
 	if err = startResticPauses(ctx, t); err != nil {
@@ -154,6 +164,30 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 			if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "start"}, nil, 423); err != nil {
 				return err
 			}
+			var compose struct {
+				YAML string `json:"yaml_content"`
+			}
+			if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &compose, 200); err != nil {
+				return err
+			}
+			if err := s.client.JSON(ctx, "POST", s.base+"/compose", map[string]any{"yaml_content": compose.YAML}, nil, 423); err != nil {
+				return err
+			}
+			if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, nil, 423); err != nil {
+				return err
+			}
+			var unchanged struct {
+				YAML string `json:"yaml_content"`
+			}
+			if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &unchanged, 200); err != nil {
+				return err
+			}
+			if unchanged.YAML != compose.YAML {
+				return fmt.Errorf("rejected rebuild or deletion changed the compose")
+			}
+			if err := s.scheduledRestartSkips(ctx); err != nil {
+				return err
+			}
 			if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{}, nil, 423); err != nil {
 				return err
 			}
@@ -166,6 +200,11 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 		}
 		if event["event_type"] == "restore" {
 			if err := waitResticPause(ctx, t, "ls"); err != nil {
+				return err
+			}
+			if err := t.Step("overlapping files conflict while unrelated files remain usable", func() error {
+				return s.checkScopedFiles(ctx, uploadSession, fileSnapshot.Snapshot.ID)
+			}); err != nil {
 				return err
 			}
 			id, _ = event["restoration_id"].(string)
@@ -209,6 +248,38 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 	return nil
 }
 
+func (s *scenario) scheduledRestartSkips(ctx context.Context) error {
+	id := "maintenance-restart-" + s.id
+	path := "/api/cron/" + id
+	body := map[string]any{"cronjob_id": id, "identifier": "restart_server", "params": map[string]any{"server_id": s.id}, "cron": "* * * * *", "second": "*/2", "name": "E2E maintenance restart"}
+	if err := s.client.JSON(ctx, "POST", "/api/cron/", body, nil, 200); err != nil {
+		return err
+	}
+	s.t.Cleanup(func(ctx context.Context) error { return s.client.JSON(ctx, "DELETE", path, nil, nil, 200) })
+	if err := api.Wait(ctx, 100*time.Millisecond, "scheduled restart skips maintenance", func(ctx context.Context) (bool, error) {
+		var rows []struct {
+			Status   string     `json:"status"`
+			Ended    *time.Time `json:"ended_at"`
+			Messages []string   `json:"messages"`
+		}
+		if err := s.client.JSON(ctx, "GET", path+"/executions", nil, &rows, 200); err != nil {
+			return false, api.Permanent(err)
+		}
+		for _, row := range rows {
+			if row.Status == "running" {
+				return false, nil
+			}
+			if row.Status != "skipped" || row.Ended == nil || !strings.Contains(strings.Join(row.Messages, "\n"), "维护") {
+				return false, api.Permanent(fmt.Errorf("restart did not skip maintenance: %+v", row))
+			}
+		}
+		return len(rows) > 0, nil
+	}); err != nil {
+		return err
+	}
+	return s.client.JSON(ctx, "POST", path+"/pause", nil, nil, 200)
+}
+
 func (s *scenario) scheduledBackupsSkip(ctx context.Context) error {
 	var before, after struct {
 		Snapshots []map[string]any `json:"snapshots"`
@@ -240,6 +311,9 @@ func (s *scenario) scheduledBackupsSkip(ctx context.Context) error {
 				return false, api.Permanent(err)
 			}
 			for _, row := range rows {
+				if row.Status == "running" {
+					return false, nil
+				}
 				if row.Status != "skipped" || row.Ended == nil || !strings.Contains(strings.Join(row.Messages, "\n"), "跳过备份") {
 					return false, api.Permanent(fmt.Errorf("%s backup has incorrect skipped result: %+v", scope, row))
 				}

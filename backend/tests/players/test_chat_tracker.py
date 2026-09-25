@@ -1,5 +1,4 @@
 """Tests for record_chat_message and record_achievement tracking functions."""
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -8,17 +7,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
-from app.models import (
-    Base,
-    Player,
-    PlayerAchievement,
-    PlayerChatMessage,
-    Server,
-    ServerStatus,
-)
-from app.players.tracking import record_achievement, record_chat_message
+from app.players import get_player_service
+from app.players.models import Player, PlayerAchievement, PlayerChatMessage
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_offline_uuid, make_online_uuid
+from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
@@ -88,7 +83,7 @@ def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
     runtime_config = SimpleNamespace(
         players=PlayersConfig(ignored_name_prefixes=prefixes)
     )
-    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
 
 
 class TestRecordChatMessage:
@@ -97,10 +92,10 @@ class TestRecordChatMessage:
     @pytest.mark.asyncio
     async def test_existing_player(self, test_db_session, test_server, test_player):
         """Test recording chat message from existing player."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_chat_message(
+            await get_player_service().record_chat_message(
                 server_id="test_server",
                 player_name="TestPlayer",
                 message="Hello world!",
@@ -122,14 +117,14 @@ class TestRecordChatMessage:
     @pytest.mark.asyncio
     async def test_new_player(self, test_db_session, test_server, mock_mojang_api):
         """Test recording chat message from new player (auto-creates player)."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=make_online_uuid("NewPlayer"),
             ):
-                await record_chat_message(
+                await get_player_service().record_chat_message(
                     server_id="test_server",
                     player_name="NewPlayer",
                     message="First message!",
@@ -161,13 +156,13 @@ class TestRecordChatMessage:
         """Test ignored player chat is not persisted or auto-created."""
         _set_ignored_player_prefixes(monkeypatch, ["bot_"])
 
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
             ) as mock_fetch_uuid:
-                await record_chat_message(
+                await get_player_service().record_chat_message(
                     server_id="test_server",
                     player_name="boT_Carpet",
                     message="Synthetic hello",
@@ -187,14 +182,14 @@ class TestRecordChatMessage:
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             with patch(
-                "app.players.tracking.get_server_db_id",
+                "app.players.service.get_server_db_id",
                 return_value=None,
             ):
-                await record_chat_message(
+                await get_player_service().record_chat_message(
                     server_id="unknown_server",
                     player_name="TestPlayer",
                     message="Hello!",
@@ -213,10 +208,10 @@ class TestRecordAchievement:
     @pytest.mark.asyncio
     async def test_existing_player(self, test_db_session, test_server, test_player):
         """Test recording achievement from existing player."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
@@ -238,10 +233,10 @@ class TestRecordAchievement:
     @pytest.mark.asyncio
     async def test_unknown_player_skipped(self, test_db_session, test_server):
         """Test that achievement from unknown player is skipped (no player created)."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="UnknownPlayer",
                 achievement_name="Kill Ender Dragon",
@@ -269,10 +264,10 @@ class TestRecordAchievement:
         test_db_session.add(player)
         await test_db_session.commit()
 
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="OfflinePlayer",
                 achievement_name="Not Recorded",
@@ -286,19 +281,19 @@ class TestRecordAchievement:
     @pytest.mark.asyncio
     async def test_duplicate_not_saved(self, test_db_session, test_server, test_player):
         """Test that duplicate achievements are not saved."""
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             ts = datetime.now(UTC)
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
                 timestamp=ts,
             )
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="TestPlayer",
                 achievement_name="Mine Diamond",
@@ -326,10 +321,10 @@ class TestRecordAchievement:
         test_db_session.add(player)
         await test_db_session.commit()
 
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="___Astesia the Ugly",
                 achievement_name="Dragon Growth Hormone",
@@ -367,10 +362,10 @@ class TestRecordAchievement:
         test_db_session.add(long_player)
         await test_db_session.commit()
 
-        with patch("app.players.tracking.get_async_session") as mock_session:
+        with patch.object(get_player_service(), "session_factory") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await record_achievement(
+            await get_player_service().record_achievement(
                 server_id="test_server",
                 player_name="SteveTheGreat the Mighty",
                 achievement_name="Epic Achievement",

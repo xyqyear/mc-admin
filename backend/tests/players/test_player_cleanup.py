@@ -5,21 +5,21 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
-from app.models import (
-    Base,
-    Player,
-    PlayerAchievement,
-    PlayerChatMessage,
-    PlayerSession,
-    Server,
-    ServerStatus,
-)
 from app.players.crud.player_cleanup import (
     delete_player_cleanup_candidates,
     get_player_cleanup_preview,
 )
+from app.players.models import (
+    Player,
+    PlayerAchievement,
+    PlayerChatMessage,
+    PlayerSession,
+)
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_offline_uuid, make_online_uuid
+from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
     runtime_config = SimpleNamespace(
         players=PlayersConfig(ignored_name_prefixes=prefixes)
     )
-    monkeypatch.setattr("app.players.name_filters.config", runtime_config)
+    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
 
 
 async def _add_player(

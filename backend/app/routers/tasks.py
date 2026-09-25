@@ -1,94 +1,18 @@
-from datetime import datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 
-from ..background_tasks import task_manager
-from ..background_tasks.models import BackgroundTask
-from ..background_tasks.types import TaskStatus, TaskType
+from app.background_tasks.api_models import (
+    BackgroundTaskListResponse,
+    BackgroundTaskResponse,
+    BackgroundTaskSummaryResponse,
+)
+
+from ..background_tasks import get_task_manager
 from ..dependencies import get_current_user
 
 router = APIRouter(
     prefix="/tasks", tags=["tasks"], dependencies=[Depends(get_current_user)]
 )
-
-
-class BackgroundTaskResponse(BaseModel):
-    """API response model for a background task."""
-
-    task_id: str
-    task_type: TaskType
-    name: str
-    status: TaskStatus
-    progress: float | None
-    message: str
-    server_id: str | None
-    cancellable: bool
-    created_at: datetime
-    started_at: datetime | None
-    ended_at: datetime | None
-    result: dict[str, Any] | None
-    error: str | None
-
-    @classmethod
-    def from_task(cls, task: BackgroundTask) -> "BackgroundTaskResponse":
-        return cls(
-            task_id=task.task_id,
-            task_type=task.task_type,
-            name=task.name,
-            status=task.status,
-            progress=task.progress,
-            message=task.message,
-            server_id=task.server_id,
-            cancellable=task.cancellable,
-            created_at=task.created_at,
-            started_at=task.started_at,
-            ended_at=task.ended_at,
-            result=task.result,
-            error=task.error,
-        )
-
-
-class BackgroundTaskSummaryResponse(BaseModel):
-    """Lightweight API response model for task lists."""
-
-    task_id: str
-    task_type: TaskType
-    name: str
-    status: TaskStatus
-    progress: float | None
-    message: str
-    server_id: str | None
-    cancellable: bool
-    created_at: datetime
-    started_at: datetime | None
-    ended_at: datetime | None
-    error: str | None
-
-    @classmethod
-    def from_task(cls, task: BackgroundTask) -> "BackgroundTaskSummaryResponse":
-        return cls(
-            task_id=task.task_id,
-            task_type=task.task_type,
-            name=task.name,
-            status=task.status,
-            progress=task.progress,
-            message=task.message,
-            server_id=task.server_id,
-            cancellable=task.cancellable,
-            created_at=task.created_at,
-            started_at=task.started_at,
-            ended_at=task.ended_at,
-            error=task.error,
-        )
-
-
-class BackgroundTaskListResponse(BaseModel):
-    """API response model for a list of background tasks."""
-
-    tasks: list[BackgroundTaskSummaryResponse]
-    total: int
 
 
 @router.get("", response_model=BackgroundTaskListResponse)
@@ -99,7 +23,7 @@ async def get_tasks(
 ):
     """Get task list with optional filtering."""
     tasks = (
-        task_manager.get_active_tasks() if active_only else task_manager.get_all_tasks()
+        get_task_manager().get_active_tasks() if active_only else get_task_manager().get_all_tasks()
     )
 
     if server_id is not None:
@@ -116,7 +40,7 @@ async def get_tasks(
 @router.get("/{task_id}", response_model=BackgroundTaskResponse)
 async def get_task(task_id: str):
     """Get a single task by ID."""
-    task = task_manager.get_task(task_id)
+    task = get_task_manager().get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
     return BackgroundTaskResponse.from_task(task)
@@ -125,7 +49,7 @@ async def get_task(task_id: str):
 @router.post("/{task_id}/cancel")
 async def cancel_task(task_id: str):
     """Cancel a running task."""
-    success = await task_manager.cancel(task_id)
+    success = await get_task_manager().cancel(task_id)
     if not success:
         raise HTTPException(400, "Cannot cancel task")
     return {"success": True}
@@ -134,7 +58,7 @@ async def cancel_task(task_id: str):
 @router.delete("/{task_id}")
 async def delete_task(task_id: str):
     """Delete a completed task."""
-    success = task_manager.remove_task(task_id)
+    success = get_task_manager().remove_task(task_id)
     if not success:
         raise HTTPException(400, "Cannot delete task (still running or not found)")
     return {"success": True}
@@ -143,5 +67,5 @@ async def delete_task(task_id: str):
 @router.delete("")
 async def clear_completed(completed_only: bool = True):
     """Clear completed/failed/cancelled tasks."""
-    count = task_manager.clear_completed()
+    count = get_task_manager().clear_completed()
     return {"cleared": count}

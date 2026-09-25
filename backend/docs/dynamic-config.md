@@ -27,16 +27,17 @@ Compatible field changes use Pydantic validation and defaults. Renames or incomp
 
 ## Using config in code
 
-`config` is a typed proxy singleton. Property access lazily resolves the cached instance:
+`get_config()` returns the active runtime’s typed `ConfigProxy` view. The view captures its owning `ConfigManager` when constructed; each property reads that manager’s current cached instance. Holding a view across another runtime’s binding never redirects its reads:
 
 ```python
-from app.dynamic_config import config
+from app.dynamic_config import get_config
 
+config = get_config()
 if config.snapshots.time_restriction.enabled:
     cutoff = config.snapshots.time_restriction.before_seconds
 ```
 
-Updates flow through `config_manager.update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
+Updates flow through `get_config_manager().update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
 
 After structural validation, `BaseConfigSchema.validate_update()` checks domain rules for newly submitted settings before persistence. Log-parser settings compile each pattern and require the capture groups used by the parser: UUID and achievement need two, join and leave need one, chat needs three, and stop needs none. Invalid submissions preserve the existing cache and stored configuration. The write-only check leaves legacy loading unchanged, so an administrator can still open settings to repair previously stored invalid rules.
 
@@ -58,15 +59,18 @@ In `dynamic_config/configs/`:
 
 ## JSON schema → frontend forms
 
-`config_manager.get_schema_info(module_name)` returns the Pydantic JSON Schema for the module. The frontend's rjsf form renders the editor from that schema; domain validation remains at the server's save boundary.
+`get_config_manager().get_schema_info(module_name)` returns the Pydantic JSON Schema for the module. The frontend's rjsf form renders the editor from that schema; domain validation remains at the server's save boundary.
 
 ## Lifespan wiring
 
-`config_manager.initialize_all_configs()` runs in `app.main` lifespan, before any subsystem that depends on config (cron, DNS, players). This guarantees `config.<module>` reads have a real instance, not the schema default.
+`Runtime.start()` initializes its configuration manager before cron, DNS and players. `runtime_factories.py` constructs the manager with the owner’s database session factory and registers the schemas. Updates always use this captured factory, even when another runtime is bound. Behavior reads use the current cached model; clients that derive reusable state, such as DNS connections, explicitly refresh that state. No module-level configuration object or fallback runtime is created.
 
 ## Files
 
-- `manager.py` — `ConfigManager`, `register_config()`, `initialize_all_configs()`
+- `manager.py` — `ConfigManager`, its explicit session factory and runtime accessor
+- `models.py` — the persisted `DynamicConfig` table
+- `api_models.py` — configuration HTTP request and response DTOs
+- `__init__.py` — the typed view and `get_config()`
 - `migration.py` — `ConfigMigrator`
 - `schemas.py` — `BaseConfigSchema` (version handling)
 - `crud.py` — `DynamicConfig` table CRUD

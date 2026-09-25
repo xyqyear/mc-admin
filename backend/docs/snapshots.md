@@ -15,11 +15,13 @@ app/snapshots/
 ├── ignores.py   # ignore-path resolution (<LEVEL_NAME> expansion) and pattern translation
 ├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
-├── service.py   # SnapshotService — Restic planning/execution; singleton lives in __init__.py
+├── application.py # backup use case, confined request paths and declared file scope
+├── policy.py    # manual backup time-window policy
+├── service.py   # SnapshotService — owned Restic planning/execution
 └── restore.py   # SnapshotRestoreService — path restore maintenance, safety snapshot and finalization
 ```
 
-`snapshot_service` is the singleton (`None` when restic isn't configured, so dev environments without a repo work fine). Routers, cron jobs, self-checks, and the world-restore orchestrator all go through it; nothing outside the package touches `ResticClient` directly.
+`get_snapshot_service()` returns the active runtime’s actual `SnapshotService`, or `None` when Restic is not configured. The composition root creates its Restic adapter and injects its Minecraft manager. Routers, cron jobs, self-checks and world restoration use this owned service; application callers do not construct competing repository clients.
 
 ## Ignored paths
 
@@ -34,14 +36,25 @@ Semantics:
 
 ## Restore planning
 
-Restic forbids combining `--include` with `--exclude`, so a single include-based restore can't protect ignored paths from `--delete`. Instead, `build_restore_plan` probes the snapshot tree (`restic ls`, one call per unique parent directory) and splits the request into steps, each one restic invocation:
+Restic forbids combining `--include` with `--exclude`, so a single include-based
+restore cannot protect ignored paths from `--delete`. `build_restore_plan` probes
+each unique parent directory once and checks directory targets for empty trees.
+It splits the request into Restic steps and explicit empty-selection cleanup:
 
 - **`DirStep`** — a target directory present in the snapshot. Restored subtree-addressed (`restic restore <snap>:<dir> --target <dir> --delete`), with subtree-relative `--exclude` patterns for ignored paths under it. Restic matches restore patterns relative to the subtree root — absolute patterns silently match nothing.
 - **`FileStep`** — file targets grouped by parent directory, restored via the parent subtree with `--include /<name>` patterns. `--delete` then only considers included names: an on-disk file missing from the snapshot is deleted, non-included siblings are untouched. Speculative includes of paths in neither place (the world-restore MCC enumeration) are no-ops.
+- **`EmptyStep`** — the snapshot explicitly contains an empty target directory, or its parent exists but none of the selected file names exists in that snapshot. Restic can skip deletion when its effective selection is empty. The application therefore deletes only selected live content, preserving the directory root and the union of current and recorded ignored descendants. Unselected siblings and absence markers remain untouched.
 
 Targets whose parent directory is absent from the snapshot are skipped — restic can neither restore them nor traverse-delete there. (Known restic limitation, unchanged from the previous architecture: deletion-by-include cannot reach through directories the snapshot lacks; the chunks restore scope compensates with `mcmap remove-chunks`.)
 
 `SnapshotService` executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute path mirrored under a stage root — `SnapshotService.stage_destination` maps live paths to staged ones). `preview` is the same plan with `--dry-run`. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
+
+Empty-selection cleanup first checks its complete removal list against the owned
+server and selected scope, rejects escaping symlinks and never traverses symlink
+directories. It repeats confinement checks during finite cleanup and waits for
+that cleanup on cancellation. Preview emits matching `deleted` events without
+writing; staged restores retain the original Restic step with deletion disabled,
+including when a caller supplies a populated staging destination.
 
 ## Event normalization
 
@@ -53,7 +66,7 @@ All commands run through `ResticClient.binary_path`, which defaults to `settings
 
 ## Time-restriction guard
 
-`dynamic_config.snapshots.time_restriction` lets an admin block manual snapshot creation during peak hours — useful when the repo lives on slow shared storage. The router checks this before delegating to the service.
+`dynamic_config.snapshots.time_restriction` lets an admin block manual snapshot creation during peak hours — useful when the repo lives on slow shared storage. The HTTP adapter invokes the shared time-window policy before delegating to the application. Scheduled and nested safety backups retain their own admission semantics.
 
 ## Path containment
 
@@ -61,8 +74,38 @@ Request-supplied `server_id` and `paths` are joined into filesystem paths, so th
 
 ## Lock interaction
 
-Snapshot creation resolves the actual affected servers and acquires their existing operation locks with kind BACKUP; a busy target rejects manual creation or skips scheduled backup. Whole-root backups share ownership with the individual servers they cover.
+`SnapshotApplication.backup` resolves affected servers and file paths, then
+atomically acquires maintenance and `FILES` claims with kind BACKUP. Busy targets
+reject manual creation or skip scheduled backup. Whole-root backups declare the
+global file root as well as captured generations. Servers can remain running;
+these leases coordinate application operations and do not freeze Minecraft writes.
 
-The generic restore router only resolves requests, maps preflight errors and encodes events. `SnapshotRestoreService` owns safety snapshot → restore → cache finalization. Whole-server/data targets and paths intersecting known world roots require stopped servers and hold their maintenance locks; ordinary configuration/plugin/file restores remain available online. Dry-run preview and reads do not acquire these locks. The running/busy checks are repeated after acquiring ownership, so a preflight check cannot race with startup. Invalid unrelated server.properties values do not prevent recovery: world-name lookup reads only level-name.
+Nested safety backups pass their outer operation's live lease. Every requested
+scope must already be covered; a child cannot acquire additional paths or upgrade
+a normal file restore into maintenance. Safety planning can explicitly allow
+speculative missing sidecars while requiring at least one existing target.
+Manual requests retain missing-target validation. Ignored-path, coverage and
+restore planning remain shared through `SnapshotService`.
 
-Disconnecting a restore stream retains cancellation semantics, with explicit generator closing and shielded subprocess/cache cleanup before releasing maintenance ownership. See `world-restore.md` for selective world restoration history and missing-sidecar rollback metadata.
+The generic restore router resolves requests, maps preflight errors and encodes
+events. `SnapshotRestoreService` owns safety snapshot → restore → cache cleanup.
+Every restore owns its target file scope. Whole-server/data targets and paths
+intersecting known world roots additionally require stopped servers and maintenance
+ownership, the server's `MAP_CACHE` scope and the concrete
+`FILES(data/.mcmap/tiles)` cache path; ordinary configuration/plugin/file restores
+remain available online.
+A normal file restore can run beside world maintenance when their file scopes do
+not overlap. Dry-run preview and reads do not acquire these leases. Running/busy
+and path checks repeat after acquisition. Invalid unrelated server.properties
+values do not prevent recovery: world-name lookup reads only level-name.
+
+Disconnecting a restore stream closes nested generators and waits for subprocess
+and cache cleanup before releasing ownership. A failed or interrupted world
+restore clears that server's derived tiles even when Restic stopped before its
+first per-file event; ordinary file restores invalidate only reported affected
+tiles. Unknown writers retain cache artifacts and mark the cache degraded instead
+of deleting files they may still be writing. Cache cleanup failures are recorded
+for recovery. See `world-restore.md` for selective world restoration history and
+missing-sidecar rollback metadata.
+
+Both world and ordinary file restores hold deletion admission through response closure. Server-scoped requests reserve their server before path resolution; global restores block server deletion while active. This prevents a restore accepted before deletion from recreating a removed directory when its SSE generator starts. The gate does not require stopping the server for ordinary file restoration.

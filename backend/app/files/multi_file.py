@@ -8,7 +8,8 @@ import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
-from ..logger import logger
+from ..logger import get_logger
+from ..operations.finalization import finalize
 from .paths import resolve_file_path
 from .types import (
     MultiFileUploadRequest,
@@ -17,6 +18,7 @@ from .types import (
     OverwritePolicy,
     UploadConflictResponse,
     UploadFileResult,
+    UploadSession,
 )
 from .utils import (
     create_upload_session,
@@ -98,14 +100,8 @@ async def upload_multiple_files(
     base_path: Path, session_id: str, upload_path: str, files: list[UploadFile]
 ) -> MultiFileUploadResult:
     """Upload multiple files using the prepared session"""
-    session = get_upload_session(session_id)
-    if not session:
-        raise HTTPException(
-            status_code=404, detail="Upload session not found or expired"
-        )
-
-    if not session.policy:
-        raise HTTPException(status_code=400, detail="Upload policy not set")
+    logger = get_logger()
+    session = require_upload_session(session_id)
 
     target_base = await resolve_file_path(base_path, upload_path)
     for file in files:
@@ -177,13 +173,7 @@ async def upload_multiple_files(
 
             try:
                 # Upload file
-                async with aiofiles.open(target_path, "wb") as f:
-                    await file.seek(0)  # Reset file position
-                    while chunk := await file.read(10 * 1024 * 1024):
-                        await f.write(chunk)
-
-                # Set ownership for uploaded file
-                await set_file_ownership(target_path, base_path)
+                await finalize(_write_file(file, target_path, base_path))
 
                 results[result_key] = UploadFileResult(status="success")
 
@@ -204,3 +194,20 @@ async def upload_multiple_files(
         message=f"Upload completed. Success: {success_count}/{total_count}",
         results=results,
     )
+
+
+async def _write_file(file: UploadFile, target_path: Path, base_path: Path) -> None:
+    async with aiofiles.open(target_path, "wb") as stream:
+        await file.seek(0)
+        while chunk := await file.read(10 * 1024 * 1024):
+            await stream.write(chunk)
+    await set_file_ownership(target_path, base_path)
+
+
+def require_upload_session(session_id: str) -> UploadSession:
+    session = get_upload_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Upload session not found or expired")
+    if session.policy is None:
+        raise HTTPException(status_code=400, detail="Upload policy not set")
+    return session

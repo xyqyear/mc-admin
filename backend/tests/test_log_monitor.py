@@ -1,5 +1,4 @@
 """Unit tests for LogMonitor class."""
-
 import asyncio
 import os
 from pathlib import Path
@@ -12,6 +11,7 @@ from watchfiles import Change, awatch
 from app.log_monitor.events import PlayerJoinedEvent, PlayerUuidDiscoveredEvent
 from app.log_monitor.monitor import LogMonitor
 from tests.players.helpers import make_online_uuid
+from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def mock_config():
     mock_config_obj = MagicMock()
     mock_config_obj.log_parser = mock_log_parser_config
 
-    with patch("app.log_monitor.parser.config", mock_config_obj):
+    with patch_runtime_resource('dynamic_configuration', mock_config_obj):
         yield mock_config_obj
 
 
@@ -123,8 +123,8 @@ class TestLogMonitor:
             patch("aiofiles.os.path.exists", new_callable=AsyncMock) as mock_exists,
             patch("aiofiles.os.path.getsize", new_callable=AsyncMock) as mock_getsize,
             patch("aiofiles.open") as mock_aioopen,
-            patch(
-                "app.log_monitor.monitor.process_player_join", new_callable=AsyncMock
+            patch.object(
+                log_monitor_instance.players, "process_player_join", new_callable=AsyncMock
             ) as mock_join,
         ):
             mock_exists.return_value = True
@@ -207,8 +207,8 @@ class TestLogMonitor:
         """Test handling PlayerJoinedEvent calls process_player_join."""
         event = PlayerJoinedEvent(server_id="test_server", player_name="TestPlayer")
 
-        with patch(
-            "app.log_monitor.monitor.process_player_join", new_callable=AsyncMock
+        with patch.object(
+            log_monitor_instance.players, "process_player_join", new_callable=AsyncMock
         ) as mock_join:
             await log_monitor_instance._handle_event(event)
             mock_join.assert_called_once_with(
@@ -225,19 +225,9 @@ class TestLogMonitor:
             uuid=uuid,
         )
 
-        with patch("app.log_monitor.monitor.get_async_session") as mock_get_session:
-            mock_session = AsyncMock()
-            mock_ctx = AsyncMock()
-            mock_ctx.__aenter__.return_value = mock_session
-            mock_get_session.return_value = mock_ctx
-
-            with patch(
-                "app.log_monitor.monitor.upsert_player", new_callable=AsyncMock
-            ) as mock_upsert:
-                await log_monitor_instance._handle_event(event)
-                mock_upsert.assert_called_once_with(
-                    mock_session, uuid, "TestPlayer"
-                )
+        with patch.object(log_monitor_instance.players, "discover_identity", new_callable=AsyncMock) as discover:
+            await log_monitor_instance._handle_event(event)
+            discover.assert_awaited_once_with(uuid, "TestPlayer")
 
     @pytest.mark.asyncio
     async def test_watch_loop_file_not_exists_initially(self, log_monitor_instance):

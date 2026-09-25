@@ -11,6 +11,8 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from .runtime_resources import current_runtime
+
 _CONFIG_PATH = os.getenv("MC_ADMIN_CONFIG", "config.toml")
 _ENV_PATH = os.getenv("MC_ADMIN_ENV", ".env")
 _BINARY_FALLBACK_DIRS = (Path("/usr/local/bin"), Path("/usr/bin"))
@@ -98,4 +100,5 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()  # type: ignore
+def get_settings() -> Settings:
+    return current_runtime().resource('settings')

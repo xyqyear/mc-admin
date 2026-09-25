@@ -10,6 +10,16 @@ The application ships as a single Docker image (`Dockerfile` at the repo root); 
 
 The production image starts Uvicorn at INFO level; protocol DEBUG frame logging can expose WebSocket login credentials, including abbreviated ticket values.
 
+The backend uses an application factory and a per-application runtime for database, configuration, tasks, events, schedulers and clients. Startup reconciles interrupted work before opening write admission; shutdown drains producers and writers before releasing resources. Tests bind independent runtimes and temporary data. The supported deployment has one backend writer for each database and managed server directory; see `backend/docs/runtime.md`.
+
+`backend/app/configuration` owns immutable preparation, version-aware Compose/template application, matching source metadata and recovery evidence; server lifecycle and HTTP routes use this boundary. The frontend's application-level operation observer refreshes configuration and server queries for terminal outcomes independently of the initiating editor page, with session-scoped deduplication and reconnect recovery.
+
+File, archive and snapshot application services declare their filesystem resources before execution. World restoration separates selection planning, scope execution, retained history and finalization; history binds to server generations. Prune previews carry a version of their inputs and own their retained geometry and claims artifacts. The frontend `features/files` and `features/world` own their contracts, queries, commands and controllers; the application operation observer refreshes affected file/world queries across page changes. See `backend/docs/world-restore.md`, `backend/docs/chunk-prune.md` and `frontend-react/docs/data-architecture.md`.
+
+Player log, RCON and heartbeat producers share one runtime-owned identity/session service. Cron uses public server commands and reports configured state separately from scheduler registration. Connectivity plans DNS and router changes independently and exposes unknown provider state without inferring deletions. Identity, settings and health checks capture their owning dependencies; the composition root uses explicit factories and typed accessors with no implicit default runtime.
+
+Persistence and API DTOs belong to their feature modules; `backend/app/db/metadata.py` explicitly registers tables for Alembic. Complete identity DTOs are generated from an isolated OpenAPI document, while event and task-result validators remain explicit. Frontend features own contracts, queries, commands and UI; `app/` composes routes and operation synchronization, and `shared/` holds transport and generic UI. Architecture checks enforce imports. User-facing version entries live in `frontend-react/src/app/version/config.ts`.
+
 ## Prerequisites
 
 Beyond what `pyproject.toml` / `package.json` declare:
@@ -36,11 +46,12 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 
 ## CI
 
-- `.github/workflows/backend-tests.yml` runs backend pytest on every push with a matrix split across root-level `backend/tests/test_*.py` files and each pytest-collecting first-level test directory. CI does not filter out Docker or integration tests, and it installs pinned `fd`, Restic, and `mcmap` versions from `Dockerfile`.
-- When adding a new first-level backend test directory under `backend/tests/`, add a matching matrix entry to `.github/workflows/backend-tests.yml` in the same change.
-- `.github/workflows/static-checks.yml` independently runs frontend lint/TypeScript checks/operation-flow tests/asset build, backend Pyright/Ruff, and Go formatting/vet on every push.
-- `.github/workflows/e2e-tests.yml` runs race-enabled framework unit tests, builds the application image and standalone runner once, runs three independent API regression shards, always attempts cleanup/diagnostic upload, and audits the case/shard union against the deployed OpenAPI schema. Static checks belong to the separate push workflow; Docker builds frontend assets with `pnpm build:bundle`. New suite directories do not need matrix entries. Manual dispatch supports smoke, external provider qualification and disabling environment reuse; DNS credentials come from the private `E2E_EXTERNAL_CONFIG` secret.
-- `.github/workflows/docker-image.yml` publishes the bundled Docker image to GHCR for semantic version tags and exports a registry BuildKit cache.
+- `.github/workflows/backend-tests.yml` collects the actual pytest inventory, derives first-level test groups and capability requirements, runs isolated shards, and audits their exact node-ID union and capability selection policy. Docker cases require explicit opt-in; external services stay outside ordinary CI. CLI versions come from `Dockerfile`. New test directories are discovered automatically.
+- `.github/workflows/static-checks.yml` runs frontend lint/TypeScript checks/operation-flow tests/asset build, backend Pyright/Ruff, and Go formatting/vet. It supports both push checks and reuse by release qualification.
+- `.github/workflows/candidate.yml` builds one single-platform OCI archive and the race-tested Go runner from a checked source revision. Candidate metadata records the source fingerprint, archive hash, OCI manifest digest, Docker config digest and runner hash. API and browser jobs consume this artifact.
+- `.github/workflows/e2e-tests.yml` runs three independent API regression shards, attempts owned cleanup and diagnostic upload on failure, and audits the case/shard union against the deployed OpenAPI schema. New suite directories do not need matrix entries. Manual dispatch supports smoke, external provider qualification and disabling environment reuse; DNS credentials come from the private `E2E_EXTERNAL_CONFIG` secret.
+- `.github/workflows/browser-tests.yml` runs the pnpm-managed Playwright journeys against an owned application and Minecraft fixture created by the candidate Go runner. Each browser case uses a separate browser context and its declared data cleanup; application state remains real.
+- `.github/workflows/docker-image.yml` qualifies a semantic-version release using the candidate, static, backend, API and browser gates. Promotion copies the tested OCI archive to GHCR with digest preservation and verifies the remote manifest. Prereleases publish their full version and source SHA tags without updating stable aliases. Missing, failed, cancelled or skipped required gates block promotion. See `docs/release.md` for evidence and deployment boundaries.
 
 ## Cross-component conventions
 

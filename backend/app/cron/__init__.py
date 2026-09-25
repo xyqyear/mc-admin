@@ -6,10 +6,10 @@ built on top of APScheduler, allowing for asynchronous cron job execution with
 full lifecycle management, persistence, and monitoring.
 """
 
-from .instance import cron_manager
+from .instance import get_cron_manager
 from .manager import CronManager
-from .registry import CronRegistry, cron_registry
-from .restart_scheduler import RestartScheduler, restart_scheduler
+from .registry import CronRegistry, get_cron_registry
+from .restart_scheduler import RestartScheduler, get_restart_scheduler
 from .types import (
     AsyncCronJobFunction,
     CronJobConfig,
@@ -27,7 +27,7 @@ __all__ = [
     "CronRegistry",
     "ExecutionContext",
     "RestartScheduler",
-    "cron_manager",
-    "cron_registry",
-    "restart_scheduler",
+    'get_cron_manager',
+    'get_cron_registry',
+    'get_restart_scheduler',
 ]

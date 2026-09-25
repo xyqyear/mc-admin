@@ -6,6 +6,7 @@ from app.dynamic_config.configs.log_parser import LogParserConfig
 from app.dynamic_config.manager import ConfigManager
 from app.log_monitor.events import PlayerChatMessageEvent
 from app.log_monitor.parser import LogParser
+from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.mark.parametrize(
@@ -34,7 +35,7 @@ async def test_invalid_rule_update_preserves_current_config(data):
 def test_valid_rule_extracts_chat_and_preserves_legacy_loading():
     rule = LogParserConfig.model_validate({"chat_pattern": r"^(E2E: )?<(\S+)> (.*)$"})
     rule.validate_update()
-    with patch("app.log_monitor.parser.config") as config:
+    with patch_runtime_resource('dynamic_configuration') as config:
         config.log_parser = rule
         event = LogParser().parse_line("server", "E2E: <Alex> hello")
     assert isinstance(event, PlayerChatMessageEvent)

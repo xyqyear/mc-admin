@@ -2,16 +2,18 @@
 
 The bridge between MC Admin and the Docker daemon. Each managed server is one Docker Compose project under `<server_path>/<server_id>/`, running an `itzg/minecraft-server` container. This module owns the compose file format, the lifecycle commands, and the cgroup-v2 / Docker-network metrics.
 
-## Singleton
+## Owned adapter
 
-`docker_mc_manager` (created from `settings.server_path`) is the entry point. It returns `MCInstance` objects keyed by server name and aggregates info across all of them.
+`get_docker_mc_manager()` returns the owning runtime’s adapter, constructed with its server root. It returns `MCInstance` objects keyed by server name and aggregates info across all of them.
 
 ```python
-from app.minecraft import docker_mc_manager
+from app.minecraft import get_docker_mc_manager
 
-instance = docker_mc_manager.get_instance("survival")
-await instance.start()
+instance = get_docker_mc_manager().get_instance("survival")
+status = await instance.get_status()
 ```
+
+Use `app.servers.commands.ServerCommands` for user-initiated lifecycle mutations so admission, generation checks and operation history remain enforced.
 
 ## `MCInstance`
 

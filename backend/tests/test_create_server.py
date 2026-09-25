@@ -2,7 +2,6 @@
 Comprehensive integration tests for the create server endpoint.
 Covers port conflict detection, YAML validation, and server creation scenarios.
 """
-
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -12,8 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
-from app.models import Base
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -196,18 +197,18 @@ def test_client_with_temp_path(temp_server_path, test_db):
 
     # Patch settings and create real mc_manager with temp path
     with (
-        patch('app.config.settings.server_path', temp_server_path),
-        patch('app.config.settings.master_token', 'test-master-token'),
+        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
+        patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
     ):
         # Create real mc_manager with temporary server path
         real_mc_manager = DockerMCManager(temp_server_path)
         # Patch docker_mc_manager wherever it is imported
         with (
-            patch('app.servers.lifecycle.orchestrators.docker_mc_manager', real_mc_manager),
-            patch('app.servers.port_utils.docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-            patch('app.servers.lifecycle.orchestrators.log_monitor.start_server', new_callable=AsyncMock),
-            patch('app.servers.lifecycle.orchestrators.simple_dns_manager.update', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         ):
             # Mock log_monitor.start_server to avoid log monitor issues
             # Mock DNS update so tests don't hit the manager
@@ -443,10 +444,9 @@ class TestYAMLValidation:
             headers={"Authorization": "Bearer test-master-token"},
         )
 
-        # YAML syntax errors are now caught by global exception handler and return 500
         assert response.status_code == 500
         detail = response.json()["detail"]
-        assert "mapping values are not allowed here" in detail
+        assert detail == "服务器内部错误，请稍后重试"
 
     def test_create_server_invalid_image(self, test_client_with_temp_path):
         """Test creating server with wrong Docker image."""

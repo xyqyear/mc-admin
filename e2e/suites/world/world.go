@@ -12,6 +12,11 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "world.prune-preview-validity", Suite: "world", Tags: []string{"regression", "mcmap"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: prunePreviewValidity},
+		{ID: "world.prune-dismiss-active", Suite: "world", Tags: []string{"regression", "mcmap"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: pruneDismissActive},
+		{ID: "world.restoration-generation", Suite: "world", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: restorationGeneration},
+		{ID: "world.empty-scope-rollback", Suite: "world", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: emptyScopeRollback},
+		{ID: "world.delete-waits-for-writer", Suite: "world", Tags: []string{"regression", "minecraft", "mcmap"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: deletionWaitsForWriter},
 		{ID: "world.legacy-layout-and-extractors", Suite: "world", Tags: []string{"regression", "mcmap"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: legacyExtraction},
 		{ID: "world.map-render-and-cache", Suite: "world", Tags: []string{"regression", "minecraft", "mcmap"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: mapRendering},
 		{ID: "world.claims-and-player-locations", Suite: "world", Tags: []string{"regression", "minecraft", "mcmap"}, Recipe: recipes.World, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: extraction},

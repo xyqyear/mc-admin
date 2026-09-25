@@ -30,7 +30,7 @@ async def test_extract_yields_result_event(fake_owned_dir):
         "#!/bin/sh\n"
         'echo \'{"type":"result","detected_format":"snbt","teams":0,"claims":0,"dimensions":0,"data":{"mcmap_extract_ftb_claims_version":1,"detected_format":"snbt","world_dir":"/tmp/world","dimensions":[],"teams":[]}}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_ftb_claims(
             world_dir=Path("/tmp/world"),
             owned_by=fake_owned_dir,
@@ -71,7 +71,7 @@ async def test_extract_reads_large_result_event(fake_owned_dir):
         "}\n"
         'print(json.dumps(payload, separators=(",", ":")))\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_ftb_claims(
             world_dir=Path("/tmp/world"),
             owned_by=fake_owned_dir,
@@ -89,7 +89,7 @@ async def test_extract_yields_error_event(fake_owned_dir):
         "#!/bin/sh\n"
         'echo \'{"type":"error","message":"could not detect FTB claim format in world directory"}\'\n'
     )
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_ftb_claims(
             world_dir=Path("/tmp/world"),
             owned_by=fake_owned_dir,
@@ -107,7 +107,7 @@ async def test_extract_passes_world_arg(fake_owned_dir):
         'echo \'{"type":"result","detected_format":"snbt","teams":0,"claims":0,"dimensions":0,"data":{"mcmap_extract_ftb_claims_version":1,"detected_format":"snbt","world_dir":"/tmp/world","dimensions":[],"teams":[]}}\'\n'
     )
     world = fake_owned_dir / "world"
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.extract_ftb_claims(
             world_dir=world,
             owned_by=fake_owned_dir,

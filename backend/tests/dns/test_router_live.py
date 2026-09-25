@@ -3,6 +3,9 @@ import json
 import uuid
 
 import httpx2
+import pytest
+
+pytestmark = pytest.mark.docker
 
 from app.dns.router import MCRouterClient
 
@@ -55,14 +58,34 @@ async def test_router_api_contract_with_docker(monkeypatch):
                 except httpx2.HTTPError:
                     await asyncio.sleep(0.2)
 
-        original = {"one.e2e.invalid": "localhost:25565", "two.e2e.invalid": "localhost:25566"}
+        original = {"one.e2e.invalid": "localhost:25565", "two.e2e.invalid": "localhost:25566", "stable.e2e.invalid": "localhost:25569"}
         await client.override_routes(original)
         assert await client.get_routes() == original
         assert await client.get_routes_diff(original) == {
             "routes_to_add": {}, "routes_to_remove": {}, "routes_to_update": {},
         }
 
-        desired = {"one.e2e.invalid": "localhost:25567", "three.e2e.invalid": "localhost:25568"}
+        request = client._send_request
+        mutations = []
+
+        async def observe_route_availability(method, path, headers=None, json=None):
+            if method != "GET":
+                mutations.append((method, path, json))
+                current = await request("GET", "routes")
+                assert current is not None
+                assert current["stable.e2e.invalid"]["backend"] == "localhost:25569"
+            result = await request(method, path, headers=headers, json=json)
+            if method != "GET":
+                current = await request("GET", "routes")
+                assert current is not None
+                assert current["stable.e2e.invalid"]["backend"] == "localhost:25569"
+            return result
+
+        monkeypatch.setattr(client, "_send_request", observe_route_availability)
+        await client.override_routes(original)
+        assert mutations == []
+
+        desired = {"one.e2e.invalid": "localhost:25567", "three.e2e.invalid": "localhost:25568", "stable.e2e.invalid": "localhost:25569"}
         assert await client.get_routes_diff(desired) == {
             "routes_to_add": {"three.e2e.invalid": "localhost:25568"},
             "routes_to_remove": {"two.e2e.invalid": "localhost:25566"},
@@ -70,15 +93,19 @@ async def test_router_api_contract_with_docker(monkeypatch):
         }
         await client.override_routes(desired)
         assert await client.get_routes() == desired
+        assert len(mutations) == 3
+        assert [(method, path) for method, path, _ in mutations if method == "DELETE"] == [("DELETE", "routes/two.e2e.invalid")]
+        assert {body["serverAddress"] for method, _, body in mutations if method == "POST"} == {"one.e2e.invalid", "three.e2e.invalid"}
+        monkeypatch.setattr(client, "_send_request", request)
         await client._remove_route("three.e2e.invalid")
-        assert await client.get_routes() == {"one.e2e.invalid": "localhost:25567"}
+        assert await client.get_routes() == {"one.e2e.invalid": "localhost:25567", "stable.e2e.invalid": "localhost:25569"}
         missing = await client._client.request(
             "DELETE", client._base_url + "routes/three.e2e.invalid"
         )
         assert missing.status_code == 404
         await client._remove_route("three.e2e.invalid")
         await client._remove_route("never-created.e2e.invalid")
-        assert await client.get_routes() == {"one.e2e.invalid": "localhost:25567"}
+        assert await client.get_routes() == {"one.e2e.invalid": "localhost:25567", "stable.e2e.invalid": "localhost:25569"}
         await client.override_routes({})
         assert await client.get_routes() == {}
         await client.override_routes({})

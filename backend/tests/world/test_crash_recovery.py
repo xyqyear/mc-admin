@@ -12,13 +12,9 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models import (
-    Base,
-    Restoration,
-    RestorationStatus,
-    RestorationType,
-)
-from app.routers.servers.world_restore import mark_running_restorations_interrupted
+from app.db.metadata import Base
+from app.world.models import Restoration, RestorationStatus, RestorationType
+from app.world.recovery import mark_running_restorations_interrupted
 
 
 @pytest_asyncio.fixture
@@ -69,7 +65,7 @@ async def test_running_rows_become_interrupted(session_factory):
         await session.commit()
 
     with patch(
-        "app.routers.servers.world_restore.get_async_session", session_factory
+        "app.world.recovery.get_async_session", session_factory
     ):
         flipped = await mark_running_restorations_interrupted()
 
@@ -100,7 +96,7 @@ async def test_running_rows_become_interrupted(session_factory):
 @pytest.mark.asyncio
 async def test_no_running_rows_returns_zero(session_factory):
     with patch(
-        "app.routers.servers.world_restore.get_async_session", session_factory
+        "app.world.recovery.get_async_session", session_factory
     ):
         flipped = await mark_running_restorations_interrupted()
     assert flipped == 0

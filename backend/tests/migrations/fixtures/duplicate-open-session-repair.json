@@ -1,0 +1,56 @@
+{
+  "policy": "earliest-open-session-v1",
+  "groups": [
+    {
+      "player_db_id": 7,
+      "server_db_id": 8,
+      "canonical": {
+        "session_id": 10,
+        "player_db_id": 7,
+        "server_db_id": 8,
+        "joined_at": "2026-09-24 12:00:00",
+        "left_at": null,
+        "duration_seconds": null
+      },
+      "changes": [
+        {
+          "before": {
+            "session_id": 13,
+            "player_db_id": 7,
+            "server_db_id": 8,
+            "joined_at": "2026-09-24 12:00:00",
+            "left_at": null,
+            "duration_seconds": null
+          },
+          "after": {
+            "session_id": 13,
+            "player_db_id": 7,
+            "server_db_id": 8,
+            "joined_at": "2026-09-24 12:00:00",
+            "left_at": "2026-09-24 12:00:00",
+            "duration_seconds": 0
+          }
+        },
+        {
+          "before": {
+            "session_id": 12,
+            "player_db_id": 7,
+            "server_db_id": 8,
+            "joined_at": "2026-09-24 12:00:20",
+            "left_at": null,
+            "duration_seconds": null
+          },
+          "after": {
+            "session_id": 12,
+            "player_db_id": 7,
+            "server_db_id": 8,
+            "joined_at": "2026-09-24 12:00:20",
+            "left_at": "2026-09-24 12:00:20",
+            "duration_seconds": 0
+          }
+        }
+      ]
+    }
+  ],
+  "fingerprint": "82318fa8fbfab59fe34d6e019dbe20432ba59a5e2c02492f75528a14507c24b6"
+}

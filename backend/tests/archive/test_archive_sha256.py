@@ -1,10 +1,11 @@
+from tests.support.runtime import patch_settings
+
 """Tests for the archive SHA256 SSE endpoint."""
 
 import hashlib
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,8 +40,8 @@ def temp_archive_dir():
 @pytest.fixture
 def mock_archive_settings(temp_archive_dir):
     with (
-        patch("app.routers.archive.settings") as mock_settings,
-        patch("app.dependencies.settings") as mock_dep_settings,
+        patch_settings() as mock_settings,
+        patch_settings() as mock_dep_settings,
     ):
         mock_settings.archive_path = temp_archive_dir
         mock_settings.master_token = "test_master_token"
@@ -196,12 +197,15 @@ if __name__ == "__main__":
 
 
 @pytest.mark.asyncio
-async def test_parallel_no_overwrite_publish_keeps_one_complete_result(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cancel_publisher", [False, True])
+async def test_parallel_no_overwrite_publish_keeps_one_complete_result(tmp_path, monkeypatch, cancel_publisher):
     import asyncio
 
     from fastapi import HTTPException
 
     from app.archive import uploads
+    from app.archive.application import archive_claims
+    from app.operations.coordinator import ConflictPolicy, get_operation_coordinator
 
     target = tmp_path / "archives"
     target.mkdir()
@@ -218,27 +222,50 @@ async def test_parallel_no_overwrite_publish_keeps_one_complete_result(tmp_path,
         sessions.append(session)
 
     original_copy = uploads.async_fs.copy2
-    arrived = 0
-    both_ready = asyncio.Event()
+    entered, release = asyncio.Event(), asyncio.Event()
 
     async def synchronize_copy(source, destination):
-        nonlocal arrived
         await original_copy(source, destination)
-        arrived += 1
-        if arrived == 2:
-            both_ready.set()
-        await both_ready.wait()
+        entered.set()
+        await release.wait()
 
     monkeypatch.setattr(uploads.async_fs, "copy2", synchronize_copy)
-    results = await asyncio.gather(*(
-        uploads.verify_archive_upload(session.upload_id, uploads.ArchiveUploadVerifyRequest(
-            sha256=hashlib.sha256(content).hexdigest(),
-        )) for session, content in zip(sessions, contents, strict=True)
-    ), return_exceptions=True)
-    winners = [i for i, result in enumerate(results) if isinstance(result, uploads.ArchiveUploadVerifyResponse)]
-    assert len(winners) == 1
-    loser = results[1 - winners[0]]
-    assert isinstance(loser, HTTPException) and loser.status_code == 409
-    assert (target / "shared.zip").read_bytes() == contents[winners[0]]
-    assert list(target.glob("*.uploading")) == []
-    await uploads.cancel_archive_upload(sessions[1 - winners[0]].upload_id)
+    first = asyncio.create_task(uploads.verify_archive_upload(sessions[0].upload_id, uploads.ArchiveUploadVerifyRequest(sha256=hashlib.sha256(contents[0]).hexdigest())))
+    second = None
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        assert not (target / "shared.zip").exists()
+        second = asyncio.create_task(uploads.verify_archive_upload(sessions[1].upload_id, uploads.ArchiveUploadVerifyRequest(sha256=hashlib.sha256(contents[1]).hexdigest())))
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(second), 0.05)
+        if cancel_publisher:
+            first.cancel()
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(asyncio.shield(first), 0.05)
+            first.cancel()
+            assert not first.done()
+    finally:
+        release.set()
+        results = await asyncio.wait_for(asyncio.gather(first, *([second] if second is not None else []), return_exceptions=True), 5)
+    if cancel_publisher:
+        assert isinstance(results[0], asyncio.CancelledError)
+    else:
+        assert isinstance(results[0], uploads.ArchiveUploadVerifyResponse)
+        assert results[0].path == "/shared.zip"
+    assert isinstance(results[1], HTTPException)
+    assert results[1].status_code == 409
+    with pytest.raises(HTTPException) as occupied:
+        await uploads.verify_archive_upload(sessions[1].upload_id, uploads.ArchiveUploadVerifyRequest(sha256=hashlib.sha256(contents[1]).hexdigest()))
+    assert occupied.value.status_code == 409
+    assert (target / "shared.zip").read_bytes() == contents[0]
+    assert list(target.glob(".mc-admin-archive-*.tmp")) == []
+    assert (await uploads.archive_upload_headers(sessions[1].upload_id))["Upload-State"] == "hashed"
+    retained = await uploads._get_session(sessions[1].upload_id)
+    assert retained.temp_path.read_bytes() == contents[1]
+    with pytest.raises(HTTPException) as consumed:
+        await uploads.archive_upload_headers(sessions[0].upload_id)
+    assert consumed.value.status_code == 404
+    async with get_operation_coordinator().acquire(await archive_claims(target, [target / "shared.zip"]), policy=ConflictPolicy.REJECT):
+        assert (target / "shared.zip").read_bytes() == contents[0]
+    await uploads.cancel_archive_upload(sessions[1].upload_id)
+    assert not retained.temp_path.exists()

@@ -12,6 +12,7 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "system.configuration-credential-logs", Suite: "system", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: configurationCredentialLogs},
 		{ID: "system.discovery", Suite: "system", Tags: []string{"smoke"}, Recipe: recipes.Base, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: discovery},
 		{ID: "system.configuration-catalog", Suite: "system", Tags: []string{"smoke"}, Recipe: recipes.Base, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: configurationCatalog},
 		{ID: "system.configuration-persistence", Suite: "system", Tags: []string{"smoke"}, Recipe: recipes.Base, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: persistence},

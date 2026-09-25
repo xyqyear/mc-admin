@@ -1,4 +1,4 @@
-from .manager import BackgroundTaskManager, SubmitResult, task_manager
+from .manager import BackgroundTaskManager, SubmitResult, get_task_manager
 from .models import BackgroundTask
 from .types import TaskProgress, TaskResult, TaskStatus, TaskType
 
@@ -10,5 +10,5 @@ __all__ = [
     "TaskResult",
     "TaskStatus",
     "TaskType",
-    "task_manager",
+    'get_task_manager',
 ]

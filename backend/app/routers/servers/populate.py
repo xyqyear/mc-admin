@@ -1,31 +1,25 @@
-import asyncio
+from fastapi import APIRouter, Depends
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from app.auth.schemas import UserPublic
+from app.files.api_models import PopulateServerRequest, PopulateServerResponse
 
-from ...background_tasks import task_manager
+from ...background_tasks import get_task_manager
 from ...background_tasks.types import TaskType
-from ...config import settings
+from ...config import get_settings
 from ...dependencies import get_current_user
 from ...files.paths import resolve_file_path
-from ...minecraft import MCServerStatus, docker_mc_manager
-from ...models import UserPublic
+from ...files.population import check_population_status, populate, prepare_population
+from ...minecraft import get_docker_mc_manager
+from ...runtime_resources import spawn_background
 from ...self_check.constants import SERVER_POPULATED_TRIGGER
 from ...self_check.events import schedule_self_check_event
-from ...utils.decompression import extract_minecraft_server
+from .admission import admit_server_write
 
 router = APIRouter(
     prefix="/servers",
     tags=["server-populate"],
+    dependencies=[Depends(admit_server_write)],
 )
-
-
-class PopulateServerRequest(BaseModel):
-    archive_filename: str
-
-
-class PopulateServerResponse(BaseModel):
-    task_id: str
 
 
 @router.post("/{server_id}/populate", response_model=PopulateServerResponse)
@@ -35,23 +29,10 @@ async def populate_server(
     user: UserPublic = Depends(get_current_user),
 ):
     """Populate server data directory from an archive file (background task)"""
-    instance = docker_mc_manager.get_instance(server_id)
+    settings = get_settings()
+    instance = get_docker_mc_manager().get_instance(server_id)
 
-    # Get server status and validate it's in correct state
-    status = await instance.get_status()
-    if status == MCServerStatus.REMOVED:
-        raise HTTPException(
-            status_code=404,
-            detail=f"服务器 '{server_id}' 不存在",
-        )
-    if status not in [MCServerStatus.EXISTS, MCServerStatus.CREATED]:
-        raise HTTPException(
-            status_code=409,
-            detail=f"服务器 '{server_id}' 必须处于 'exists' 或 'created' 状态才能覆盖文件 (当前状态: {status})",
-        )
-
-    # Get server data directory path
-    server_data_dir = instance.get_data_path()
+    await check_population_status(instance)
 
     # Get archive path
     archive_path = await resolve_file_path(
@@ -60,13 +41,14 @@ async def populate_server(
 
     # Submit as background task
     task_name = f"填充 {server_id}"
-    result = task_manager.submit(
+    plan = await prepare_population(instance, archive_path, archive_root=settings.archive_path)
+    result = await get_task_manager().submit_durable(
         task_type=TaskType.ARCHIVE_EXTRACT,
         name=task_name,
-        task_generator=extract_minecraft_server(
-            str(archive_path), str(server_data_dir)
-        ),
+        task_generator=populate(plan, actor_id=user.id),
+        claims=plan.claims,
         server_id=server_id,
+        actor_id=user.id,
         cancellable=False,  # Extraction shouldn't be cancelled mid-way
     )
 
@@ -75,6 +57,6 @@ async def populate_server(
         if task_result.success:
             schedule_self_check_event(SERVER_POPULATED_TRIGGER, user.id)
 
-    asyncio.create_task(_schedule_after_completion())
+    spawn_background(_schedule_after_completion(), name="populate-self-check")
 
     return PopulateServerResponse(task_id=result.task_id)

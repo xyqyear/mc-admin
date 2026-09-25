@@ -1,11 +1,17 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+
+from app.auth.schemas import UserPublic
+from app.servers.api_models import (
+    ServerCpuPercent,
+    ServerDiskUsage,
+    ServerIOStats,
+    ServerMemory,
+)
 
 from ...dependencies import get_current_user
-from ...minecraft import MCServerStatus, docker_mc_manager
-from ...models import UserPublic
+from ...minecraft import MCServerStatus, get_docker_mc_manager
 
 router = APIRouter(
     prefix="/servers",
@@ -13,36 +19,12 @@ router = APIRouter(
 )
 
 
-class ServerCpuPercent(BaseModel):
-    cpuPercentage: float
-
-
-class ServerMemory(BaseModel):
-    memoryUsageBytes: int
-
-
-class ServerIOStats(BaseModel):
-    # Disk I/O statistics
-    diskReadBytes: int
-    diskWriteBytes: int
-    # Network I/O statistics
-    networkReceiveBytes: int
-    networkSendBytes: int
-
-
-class ServerDiskUsage(BaseModel):
-    # Disk usage and space information
-    diskUsageBytes: int
-    diskTotalBytes: int
-    diskAvailableBytes: int
-
-
 @router.get("/{server_id}/cpu_percent", response_model=ServerCpuPercent)
 async def get_server_cpu_percent(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ):
     """Get CPU percentage for a specific server (available when running/starting/healthy)"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server is in a state where CPU monitoring is available
     status = await instance.get_status()
@@ -67,7 +49,7 @@ async def get_server_cpu_percent(
 @router.get("/{server_id}/memory", response_model=ServerMemory)
 async def get_server_memory(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get memory usage for a specific server (available when running/starting/healthy)"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server is in a state where memory monitoring is available
     status = await instance.get_status()
@@ -95,7 +77,7 @@ async def get_server_memory(server_id: str, _: UserPublic = Depends(get_current_
 @router.get("/{server_id}/iostats", response_model=ServerIOStats)
 async def get_server_iostats(server_id: str, _: UserPublic = Depends(get_current_user)):
     """Get comprehensive I/O statistics for a specific server (disk I/O, network I/O, disk usage)"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server is in a state where I/O monitoring is available
     status = await instance.get_status()
@@ -128,7 +110,7 @@ async def get_server_disk_usage(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ):
     """Get disk usage information for a specific server (always available regardless of server status)"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():

@@ -33,6 +33,20 @@ The resulting executable can run from any directory without the repository, Go, 
 
 The runner provisions users, configuration and test data itself. Do not point it at an existing backend or production data; there is no attach mode.
 
+## Owned browser and deployment fixtures
+
+```bash
+./bin/mc-admin-e2e browser --backend-image mc-admin:e2e \
+  --output .runs --run-id browser-local-example -- \
+  pnpm --dir ../frontend-react test:browser
+```
+
+`browser` provisions the same providers as API cases, invokes one command, then drains its owned process group and cleans the environment on success, failure or cancellation. It keeps the capacity reservation until cleanup ends. The default recipe is `world`; `--recipe base|server|backup|world` selects a smaller fixture for scripts. Each invocation creates a fresh application. Multiple browser cases inside that invocation share application state and must restore their own changes; the wrapper does not reset data between cases.
+
+The command receives `MC_ADMIN_BROWSER_FIXTURE`, pointing to a mode-0600 JSON file with `base_url`, `api_url`, `server_id`, `server_path`, `username`, `password`, `master_token`, `backend_container`, `run_id`, `environment_id`, `image_id` and `manifest_path`. `server_path` is the host project directory; Minecraft data lives in its `data` child. Credentials and this file stay under private `runtime/` and must not be uploaded. A sanitized `fixture-result.json` records the image, recipe, result and times. An interrupted wrapper can be recovered with the ordinary `cleanup --run-dir` command.
+
+See [disposable deployment and rollback rehearsal](docs/deployment-rehearsal.md) for the released-version data exercise. Browser and deployment scripts use real public APIs and owned filesystem inputs; they do not import application internals or install fault hooks.
+
 ## Selection, parallelism and reproduction
 
 ```bash
@@ -112,6 +126,6 @@ make build
 
 [Static Checks](../.github/workflows/static-checks.yml) runs independently on every push: frontend lint and TypeScript checks, backend Ruff and Pyright, and Go formatting/vet. The Docker build bundles frontend assets without invoking the separate TypeScript check.
 
-[The E2E workflow](../.github/workflows/e2e-tests.yml) runs framework unit tests and builds the application and executable once, then distributes them to three independent regression shards. Each shard runs cleanup and uploads diagnostics even when testing fails; a final job audits the complete case/shard union and publishes operation observations. Manual dispatch can disable reuse or select smoke, Mojang, DNSPod or Huawei qualification. DNS selections read the repository's `E2E_EXTERNAL_CONFIG` secret into a private temporary file. New scenarios participate through the catalog without directory-specific CI matrix edits.
+[The candidate workflow](../.github/workflows/candidate.yml) runs framework race tests and builds one application OCI archive and executable. [The E2E workflow](../.github/workflows/e2e-tests.yml) verifies that artifact and distributes the same image and executable to three independent regression shards. Each shard runs cleanup and uploads diagnostics even when testing fails; a final job audits the complete case/shard union and publishes operation observations. Browser qualification consumes the same artifact. Release promotion preserves its OCI manifest digest; see [release qualification](../docs/release.md). Manual dispatch can disable reuse or select smoke, Mojang, DNSPod or Huawei qualification. DNS selections read the repository's `E2E_EXTERNAL_CONFIG` secret into a private temporary file. New scenarios participate through the catalog without directory-specific CI matrix edits.
 
 New backend features and bug fixes that change observable behavior require an API E2E scenario or an extension to an existing scenario in the same change. Update the coverage inventory, choose explicit isolation, and verify both the normal run and `--no-reuse` for affected cases. Existing pytest tests continue to cover focused internals and broad boundary conditions.

@@ -17,9 +17,8 @@ from app.minecraft.docker.manager import DockerManager
 
 from .fixtures.mc_client import MinecraftClient
 from .fixtures.test_utils import (
-    TEST_ROOT_PATH,
-    create_mc_server_compose_yaml,
-    teardown,  # noqa: F401
+    OwnedDockerResources,
+    owned_docker_resources,  # noqa: F401
 )
 
 # Pattern for parsing player messages from Minecraft logs
@@ -77,41 +76,41 @@ async def get_player_messages_from_docker_logs(
     return messages
 
 
+@pytest.mark.docker
 @pytest.mark.asyncio
-async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
-    # setting up
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
+async def test_integration_with_docker(owned_docker_resources: OwnedDockerResources):  # noqa: F811
+    resources = owned_docker_resources
+    first_name, second_name = resources.name("first"), resources.name("second")
+    docker_mc_manager = DockerMCManager(resources.root)
 
-    server1 = docker_mc_manager.get_instance("testserver1")
-    server2 = docker_mc_manager.get_instance("testserver2")
+    server1 = docker_mc_manager.get_instance(first_name)
+    server2 = docker_mc_manager.get_instance(second_name)
     client1 = MinecraftClient("client1")
     client2 = MinecraftClient("client2")
-    teardown.append("mc-testserver1")
-    teardown.append("mc-testserver2")
 
     assert not await server1.exists()
     assert not await server2.exists()
 
     assert set(await docker_mc_manager.get_all_server_names()) == set()
 
-    server1_compose_yaml = create_mc_server_compose_yaml(
-        "testserver1", 34544, 34544 + 1
+    server1_compose_yaml = resources.compose(
+        first_name, 34544, 34544 + 1
     )
-    server2_compose_yaml = create_mc_server_compose_yaml(
-        "testserver2", 34554, 34554 + 1
+    server2_compose_yaml = resources.compose(
+        second_name, 34554, 34554 + 1
     )
     server1_create_coroutine = server1.create(server1_compose_yaml)
     server2_create_coroutine = server2.create(server2_compose_yaml)
-    await aioos.makedirs(TEST_ROOT_PATH / "irrelevant_dir", exist_ok=True)
+    await aioos.makedirs(resources.root / "irrelevant_dir", exist_ok=True)
     await asyncio.gather(server1_create_coroutine, server2_create_coroutine)
-    assert set(await docker_mc_manager.get_all_server_names()) == {"testserver1", "testserver2"}
+    assert set(await docker_mc_manager.get_all_server_names()) == {first_name, second_name}
     assert set(await docker_mc_manager.get_all_server_compose_paths()) == {
-            TEST_ROOT_PATH / "testserver1/docker-compose.yml",
-            TEST_ROOT_PATH / "testserver2/docker-compose.yml",
+            resources.root / first_name / "docker-compose.yml",
+            resources.root / second_name / "docker-compose.yml",
         }
     assert set(await docker_mc_manager.get_all_server_info()) == {
             MCServerInfo(
-                name="testserver1",
+                name=first_name,
                 path=server1.get_project_path(),
                 java_version=25,
                 max_memory_bytes=524288000,  # 500M in bytes
@@ -121,7 +120,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
                 rcon_port=34544 + 1,
             ),
             MCServerInfo(
-                name="testserver2",
+                name=second_name,
                 path=server2.get_project_path(),
                 java_version=25,
                 max_memory_bytes=524288000,  # 500M in bytes
@@ -143,7 +142,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
     wait_server2_coroutine = server2.wait_until_healthy()
     await asyncio.gather(wait_server1_coroutine, wait_server2_coroutine)
 
-    assert set(await docker_mc_manager.get_running_server_names()) == {"testserver1", "testserver2"}
+    assert set(await docker_mc_manager.get_running_server_names()) == {first_name, second_name}
 
     print("servers healthy")
 
@@ -233,7 +232,7 @@ async def test_integration_with_docker(teardown: list[str]):  # noqa: F811
     # Verify the environment variable via DockerManager
     docker_env_output = await DockerManager.run_sub_command(
         "inspect",
-        "mc-testserver1",
+        f"mc-{first_name}",
         "--format",
         "{{range .Config.Env}}{{println .}}{{end}}",
     )

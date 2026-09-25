@@ -9,8 +9,8 @@ import aiofiles
 from aiofiles import os as aioos
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ..logger import logger
-from ..minecraft import docker_mc_manager
+from ..logger import get_logger
+from ..minecraft import get_docker_mc_manager
 from . import mojang_api
 
 
@@ -71,10 +71,11 @@ def normalize_online_uuid(value: str) -> str | None:
 
 
 def _usercache_path(server_id: str) -> Path:
-    return docker_mc_manager.get_instance(server_id).get_data_path() / "usercache.json"
+    return get_docker_mc_manager().get_instance(server_id).get_data_path() / "usercache.json"
 
 
 async def _load_usercache(path: Path) -> UserCacheData:
+    logger = get_logger()
     by_name: dict[str, PlayerIdentity] = {}
     by_uuid: dict[str, PlayerIdentity] = {}
     invalid_names: set[str] = set()
@@ -156,6 +157,7 @@ async def resolve_player_by_name(
     player_name: str,
 ) -> PlayerIdentity | None:
     """Resolve a player name to an online UUID, preferring usercache.json."""
+    logger = get_logger()
     cached = await lookup_usercache_by_name(server_id, player_name)
     if cached.identity is not None:
         return cached.identity
@@ -180,6 +182,7 @@ async def resolve_player_by_uuid(
     uuid: str,
 ) -> PlayerIdentity | None:
     """Resolve an online UUID to a player name, preferring usercache.json."""
+    logger = get_logger()
     normalized = normalize_online_uuid(uuid)
     if normalized is None:
         return None

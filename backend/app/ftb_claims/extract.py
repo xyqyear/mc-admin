@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ..logger import logger
+from ..logger import get_logger
 from ..mcmap.events import (
     MCMAP_FTB_CLAIMS_EVENT_ADAPTER,
     MCMapDimensionEntry,
@@ -37,7 +37,7 @@ class FtbExtractError(Exception):
     pass
 
 
-async def _run_extract(world_dir: Path, data_path: Path) -> MCMapFtbClaimsPayload:
+async def extract_claims_payload(world_dir: Path, data_path: Path) -> MCMapFtbClaimsPayload:
     try:
         async with extract_ftb_claims(world_dir, owned_by=data_path) as proc:
             async for event in proc.events(MCMAP_FTB_CLAIMS_EVENT_ADAPTER):
@@ -169,13 +169,14 @@ def _shape_response(
 async def extract_claims_for_server(
     data_path: Path, world_root: WorldRootPath | None = None
 ) -> ClaimsResponse:
+    logger = get_logger()
     if world_root is None:
         roots = await discover_world_root_paths(data_path)
         world_root = roots[0] if roots else None
     if world_root is None:
         return ClaimsResponse(available=False)
     try:
-        data = await _run_extract(world_root.path, data_path)
+        data = await extract_claims_payload(world_root.path, data_path)
     except NoFtbDataError:
         return ClaimsResponse(available=False)
     except FtbExtractError:

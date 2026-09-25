@@ -4,16 +4,20 @@ from collections import Counter
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.schemas import UserPublic
+from app.templates.api_models import (
+    DefaultVariablesResponse,
+    DefaultVariablesUpdateRequest,
+)
 
 from ..db.database import get_db
 from ..dependencies import get_current_user
-from ..logger import logger
-from ..minecraft import docker_mc_manager
+from ..logger import get_logger
+from ..minecraft import get_docker_mc_manager
 from ..minecraft.compose import MCComposeFile
 from ..minecraft.docker.compose_file import ComposeFile
-from ..models import UserPublic
 from ..templates import (
     AvailablePortsResponse,
     TemplateCreateRequest,
@@ -23,7 +27,6 @@ from ..templates import (
     TemplateResponse,
     TemplateSchemaResponse,
     TemplateUpdateRequest,
-    VariableDefinition,
     check_name_exists,
     deserialize_variable_definitions_json,
     get_all_templates,
@@ -70,10 +73,11 @@ async def get_available_ports(
     _: UserPublic = Depends(get_current_user),
 ):
     """Get suggested available ports for new server."""
+    logger = get_logger()
     used_game_ports: set[int] = set()
     used_rcon_ports: set[int] = set()
 
-    instances = await docker_mc_manager.get_all_instances()
+    instances = await get_docker_mc_manager().get_all_instances()
 
     for instance in instances:
         try:
@@ -109,18 +113,6 @@ async def get_available_ports(
         suggested_rcon_port=rcon_port,
         used_ports=sorted(used_game_ports | used_rcon_ports),
     )
-
-
-class DefaultVariablesResponse(BaseModel):
-    """Response model for default variables."""
-
-    variable_definitions: list[VariableDefinition]
-
-
-class DefaultVariablesUpdateRequest(BaseModel):
-    """Request model for updating default variables."""
-
-    variable_definitions: list[VariableDefinition]
 
 
 @router.get("/default-variables", response_model=DefaultVariablesResponse)

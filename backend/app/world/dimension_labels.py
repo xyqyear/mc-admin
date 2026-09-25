@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
 
 DIMENSIONS_PREFIX = "dimensions/"
 
@@ -10,7 +10,7 @@ def dimension_path_for_dir(world_root: Path, dimension_dir: Path) -> str:
 
 
 def label_for_dimension_path(dimension_path: str) -> str:
-    return config.world.dimension_labels.get(
+    return get_config().world.dimension_labels.get(
         dimension_path, dimension_path.removeprefix(DIMENSIONS_PREFIX)
     )
 

@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from ..background_tasks.types import TaskProgress
+from ..errors import PublicOperationError
 from ..utils.exec import exec_command
 from .utils import get_uid_gid
 
@@ -14,7 +15,7 @@ async def restore_tree_ownership_task(
     try:
         uid, gid = await get_uid_gid(base_path)
     except FileNotFoundError:
-        raise RuntimeError("服务器数据目录不存在")
+        raise PublicOperationError("服务器数据目录不存在")
 
     owner = f"{uid}:{gid}"
     yield TaskProgress(progress=None, message=f"正在修复文件所有权为 {owner}...")
@@ -22,11 +23,11 @@ async def restore_tree_ownership_task(
     try:
         await exec_command("chown", "-R", owner, str(base_path))
     except FileNotFoundError:
-        raise RuntimeError("chown命令不可用")
+        raise PublicOperationError("chown命令不可用")
     except PermissionError:
-        raise RuntimeError("无权限修复文件所有权")
+        raise PublicOperationError("无权限修复文件所有权")
     except RuntimeError as e:
-        raise RuntimeError(f"修复文件所有权失败: {e}")
+        raise PublicOperationError("修复文件所有权失败，请检查文件权限") from e
 
     yield TaskProgress(
         progress=100,

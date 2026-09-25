@@ -1,34 +1,20 @@
 import asyncio
 import json
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
+
+from app.auth.schemas import UserPublic
+from app.servers.api_models import (
+    RconCommandRequest,
+    RconCommandResponse,
+    ServerMessageRequest,
+)
 
 from ...dependencies import get_current_user
-from ...minecraft import MCInstance, docker_mc_manager
-from ...models import UserPublic
+from ...minecraft import MCInstance, get_docker_mc_manager
 
 RCON_COMMAND_TIMEOUT = 10.0
 
-MinecraftColor = Literal[
-    "black",
-    "dark_blue",
-    "dark_green",
-    "dark_aqua",
-    "dark_red",
-    "dark_purple",
-    "gold",
-    "gray",
-    "dark_gray",
-    "blue",
-    "green",
-    "aqua",
-    "red",
-    "light_purple",
-    "yellow",
-    "white",
-]
 
 router = APIRouter(
     prefix="/servers",
@@ -36,22 +22,8 @@ router = APIRouter(
 )
 
 
-class RconCommandRequest(BaseModel):
-    command: str = Field(min_length=1, max_length=1000)
-
-
-class RconCommandResponse(BaseModel):
-    output: str
-
-
-class ServerMessageRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
-    target_player: str | None = Field(default=None, pattern=r"^\w{1,16}$")
-    color: MinecraftColor = "yellow"
-
-
 async def _get_rcon_ready_instance(server_id: str) -> MCInstance:
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     if not await instance.exists():
         raise HTTPException(

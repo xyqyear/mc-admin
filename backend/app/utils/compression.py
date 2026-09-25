@@ -4,6 +4,7 @@ import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 from aiofiles import os as aioos
@@ -11,7 +12,8 @@ from aiofiles import os as aioos
 from app.minecraft.instance import MCInstance
 
 from ..background_tasks.types import TaskProgress
-from ..config import settings
+from ..config import get_settings
+from ..errors import PublicOperationError
 from . import async_fs
 from .exec import exec_command_stream
 
@@ -42,7 +44,7 @@ def _sanitize_filename_part(part: str) -> str:
     return sanitized
 
 
-def _generate_archive_filename(
+def generate_archive_filename(
     server_name: str, relative_path: str | None = None
 ) -> str:
     timestamp = datetime.now(UTC).astimezone().replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
@@ -66,14 +68,15 @@ def _generate_archive_filename(
 
 
 async def create_server_archive_stream(
-    instance: MCInstance, relative_path: str | None = None
+    instance: MCInstance, relative_path: str | None = None, *, output_path: Path | None = None,
 ) -> AsyncGenerator[TaskProgress]:
     """Create a 7z archive of an instance's files, yielding ``TaskProgress`` updates."""
+    settings = get_settings()
     archive_base_path = await async_fs.resolve(settings.archive_path)
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
-    archive_filename = _generate_archive_filename(instance.get_name(), relative_path)
-    archive_path = archive_base_path / archive_filename
+    archive_filename = output_path.name if output_path is not None else generate_archive_filename(instance.get_name(), relative_path)
+    archive_path = output_path if output_path is not None else archive_base_path / archive_filename
 
     if relative_path is None:
         source_path = instance.get_project_path()
@@ -86,7 +89,7 @@ async def create_server_archive_stream(
             source_path = data_dir / clean_relative_path
 
     if not await aioos.path.exists(source_path):
-        raise RuntimeError(f"Source path does not exist: {source_path}")
+        raise PublicOperationError("压缩源路径不存在，请刷新文件列表后重试")
 
     source_parent = source_path.parent
     source_name = source_path.name
@@ -123,7 +126,7 @@ async def create_server_archive_stream(
             result={"filename": archive_filename, "size": archive_size},
         )
     except BaseException:
-        if await aioos.path.exists(archive_path):
+        if output_path is None and await aioos.path.exists(archive_path):
             try:
                 await aioos.remove(archive_path)
             except OSError:

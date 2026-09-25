@@ -1,6 +1,8 @@
 """Singleton registry of per-(server, region_path) render queues."""
 
+import asyncio
 
+from ..runtime_resources import current_runtime
 from .cache import ServerMapCache
 from .queue import ServerRenderQueue
 
@@ -19,5 +21,14 @@ class MCMapManager:
             )
         return self._queues[key]
 
+    async def close(self) -> None:
+        queues = list(self._queues.values())
+        self._queues.clear()
+        results = await asyncio.gather(*(queue.close() for queue in queues), return_exceptions=True)
+        errors = [result for result in results if isinstance(result, Exception)]
+        if errors:
+            raise ExceptionGroup("地图队列关闭失败", errors)
 
-mcmap_manager = MCMapManager()
+
+def get_mcmap_manager() -> MCMapManager:
+    return current_runtime().resource('mcmap_manager')

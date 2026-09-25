@@ -1,6 +1,5 @@
-from ...logger import logger
-from ...snapshots import snapshot_service
-from ...world import GLOBAL_LOCK_KEY, server_operation_lock
+from ...errors import log_safe_error, public_error_message
+from ...world import GLOBAL_LOCK_KEY
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, skipped, success
 
@@ -9,7 +8,7 @@ async def check_python_restic_active(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["locks.python_restic_active"]
-    holders = server_operation_lock.get_holders()
+    holders = context.dependencies.locks.get_holders()
     if not holders:
         return success(definition, "当前没有 Python 代码持有的 Restic 操作锁。")
 
@@ -39,13 +38,13 @@ async def check_repo_restic_active(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["locks.repo_restic_active"]
-    if snapshot_service is None:
+    if not context.dependencies.snapshots:
         return skipped(definition, "未配置 Restic。")
 
     try:
-        output = await snapshot_service.list_locks()
-    except Exception as exc:
-        logger.warning("Cannot query Restic repository locks", exc_info=True)
+        output = await context.dependencies.snapshots.list_locks()
+    except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+        log_safe_error(exc, "Cannot query Restic repository locks")
         return [
             finding(
                 check_id=definition.check_id,
@@ -54,7 +53,7 @@ async def check_repo_restic_active(
                 status="info",
                 title=definition.title,
                 message="无法查询 Restic 仓库锁。",
-                evidence={"error": str(exc)},
+                evidence={"error": public_error_message(exc)},
             )
         ]
 

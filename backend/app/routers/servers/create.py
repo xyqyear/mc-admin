@@ -2,12 +2,13 @@
 
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.schemas import UserPublic
+from app.servers.api_models import CreateServerRequest
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...models import UserPublic
 from ...self_check.constants import SERVER_CREATED_TRIGGER
 from ...self_check.events import schedule_self_check_event
 from ...servers.lifecycle import (
@@ -15,29 +16,13 @@ from ...servers.lifecycle import (
     CreateServerSpec,
     create_server_full,
 )
-from ...servers.restart_schedule import RestartScheduleRequest
+from .admission import admit_server_write
 
 router = APIRouter(
     prefix="/servers",
     tags=["server-creation"],
+    dependencies=[Depends(admit_server_write)],
 )
-
-
-class CreateServerRequest(BaseModel):
-    """Request model for server creation.
-
-    Supports two modes:
-    - Traditional mode: Provide yaml_content directly
-    - Template mode: Provide template_id and variable_values
-
-    Optionally bundles a restart schedule, eliminating the need for a
-    follow-up POST /restart-schedule round-trip.
-    """
-
-    yaml_content: str | None = None
-    template_id: int | None = None
-    variable_values: dict | None = None
-    restart_schedule: RestartScheduleRequest | None = None
 
 
 @router.post("/{server_id}", response_model=CreateServerResult)

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from ..background_tasks.models import BackgroundTask
+from ..servers.references import ServerRef
+from .inputs import PruneInputVersion
 
 PruneMode = Literal["chunks", "regions"]
 PruneOperation = Literal["preview", "apply"]
@@ -59,9 +64,26 @@ class ChunkPruneTaskMetadata:
     threshold_ticks: int
     mode: PruneMode
     user_id: int | None = None
+    reference: ServerRef | None = None
+    inputs: PruneInputVersion | None = None
+    completed_at: datetime | None = None
+    created_at: datetime | None = None
+    apply_task_id: str | None = None
+    preview_task_id: str | None = None
+    references: int = 0
+    unavailable_reason: str | None = None
+    task: BackgroundTask | None = None
     claims_file: Path | None = None
     result: dict[str, Any] | None = None
     geometry: ChunkPrunePreviewGeometryResponse | None = None
     affected_regions_by_dimension: dict[str, set[tuple[int, int]]] = field(
         default_factory=dict
     )
+
+
+class ChunkPrunePreviewState(BaseModel):
+    task_id: str
+    input_version: str | None = None
+    expires_at: datetime | None = None
+    availability: Literal["building", "ready", "expired", "stale", "consumed", "unavailable"]
+    apply_task_id: str | None = None

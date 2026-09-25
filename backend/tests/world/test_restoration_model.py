@@ -9,13 +9,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models import (
-    Base,
-    Restoration,
-    RestorationSelection,
-    RestorationStatus,
-    RestorationType,
-)
+from app.db.metadata import Base
+from app.world.models import Restoration, RestorationStatus, RestorationType
+from app.world.schemas import RestorationSelection
 
 
 @pytest.fixture

@@ -1,59 +1,53 @@
 # DNS Management (`app.dns`)
 
-Keeps DNS records and the mc-router routing table in sync with active database server records, including stopped servers. Each configured address supplies a wildcard A/AAAA/CNAME record, and each server/address combination supplies an SRV record and an mc-router route.
+DNS records and the mc-router routing table follow ACTIVE database server records, including stopped servers. Each configured address supplies a wildcard A/AAAA/CNAME record, and each server/address combination supplies an SRV record and an mc-router route. Database `server_id` identifies the server; the compose project name does not replace it.
 
-## Why two providers
+## Planning, observation and application
 
-The project is used by Chinese homelabbers (DNSPod) and Huawei Cloud customers (Huawei DNS). Both APIs do the same job — list/add/update records — but with incompatible request shapes. The `DNSClient` abstract base unifies them:
+`planning.py` contains pure record/route generation, route differences and `DesiredConnectivity` / `ConnectivityObservation`. `SimpleDNSManager` reads the ACTIVE inventory and each server's compose game port, observes the two external systems independently, and applies known differences. `get_dns_manager()` obtains the actual manager owned by the current Runtime. Runtime construction injects its configuration reader and Docker manager; there is no shared DNS manager instance.
 
-```python
-class DNSClient:
-    async def list_records(self) -> RecordListT: ...
-    async def list_relevant_records(self, managed_sub_domain: str) -> RecordListT: ...
-    async def update_records(self, target_records, managed_sub_domain=None) -> None: ...
-```
+`observe(db)` is read-only with respect to remote records and routes. It returns separate nullable DNS/router differences, `unknown_servers`, safe `issues`, `empty_desired` and a `state`:
 
-`DNSPodClient` and `HuaweiDNSClient` implement this; `SimpleDNSManager` picks one based on `config.dns.dns.type`.
+| State | Meaning |
+| --- | --- |
+| `ready` | Both observations succeeded and no differences remain. |
+| `pending` | Known differences can be applied. |
+| `degraded` | An observation, server configuration read or previous application failed. |
+| `empty` | There are no configured addresses or no readable ACTIVE servers; existing connectivity is retained. |
 
-## How `update()` works
+A failed remote read is unknown, never an empty record set. The affected branch performs no writes; a separately observed healthy branch can still converge. If any ACTIVE server's compose is unreadable, both plans suppress deletions, preserving its existing connectivity without guessing which old routes belong to it. Known additions and updates continue. An unavailable database inventory prevents both branches from writing.
 
-`SimpleDNSManager.update(db)` is the reconciliation entry point:
+Empty desired state retains the existing deletion policy: no configured addresses or no readable ACTIVE servers means no remote deletion. Removing some addresses or servers is reconciled when at least one address and readable server remain and the inventory is completely known. The older `get_current_diff(db)` interface still reports an error for an empty target; the status API uses the richer observation instead.
 
-1. Enumerate `ACTIVE` rows from the DB via `get_active_servers(db)`, then read each row's compose in parallel to extract the game port. Per-row compose-read failures are isolated in try/except and logged-then-skipped, so one drifted row can't poison the whole tick. Records are keyed by `row.server_id` (the canonical DB identifier), not the compose project name.
-2. Build the desired record set for the managed sub-domain (one wildcard A/AAAA/CNAME and one SRV per server).
-3. Pull current records via `client.list_relevant_records()`.
-4. `diff_dns_records()` produces add / update / remove lists.
-5. `client.update_records(...)` applies them.
-6. Push the same intent to mc-router via `MCRouterClient.override_routes()` so traffic actually reaches the container.
+`update(db)` observes afresh before applying. It does not apply a previously displayed UI diff. Targets are independent: one failed add/update/delete does not prevent unrelated targets from being attempted. DNS writes have a maximum concurrency of four; provider methods retain their existing payload contracts. After all issued writes settle, a partial failure returns a safe error and remains visible through status. Retrying reads the actual state again and applies only remaining differences. No-change updates make no remote writes. There is no cross-provider rollback or transaction with external administrative tools.
 
-`get_current_diff(db)` runs steps 1–4 without applying — used by the frontend to render "pending changes" before the user clicks Update.
+## Providers and mc-router
 
-When no configured addresses or readable active servers remain, update skips reconciliation and diff calculation fails. Empty desired state does not delete existing cloud records. Removal of some addresses/servers is reconciled while at least one address and server remain.
+`DNSClient` defines listing/filtering and incremental application over DNSPod and Huawei adapters. Filtering retains only wildcard A/AAAA/CNAME and Minecraft SRV records under the configured managed subdomain. Unrelated DNS records are outside the plan. DNSPod replaces a changed record with delete then add, retaining its propagation delay; Huawei supports updating a record in place. A failed DNSPod replacement is visible as a pending addition on the next successful observation.
 
-`manager.py` defers the import of `app.servers.crud.get_active_servers` to call-time because `app.servers.lifecycle` imports `app.dns`; a top-level import would close the cycle.
+`MCRouterClient` accepts both legacy string-valued route maps and objects containing `backend`, exposing backend strings through MC Admin's API. Missing, empty or non-string backend values fail observation; they do not authorize deleting routes. DELETE 404 succeeds idempotently; other remote failures remain failures.
 
-## mc-router
+Route application POSTs only additions and changed backends, then DELETEs only obsolete routes. POST upserts an existing route, so changing one backend does not remove all routes or disturb unchanged routes. The dedicated router's existing complete-table ownership policy remains; an empty manager target is protected as described above. The low-level `override_routes({})` adapter operation still means clearing the table.
 
-`MCRouterClient` POSTs route mappings (`server_address → localhost:port`) to mc-router's HTTP control endpoint. It accepts both legacy string-valued route maps and current objects containing `backend` and `scalingTarget`, exposing the backend address through MC Admin's string-valued API. Deleting a route that already returns HTTP 404 succeeds idempotently; other HTTP failures and missing, empty or non-string backend values fail reconciliation. This validation does not check address syntax. Replacement removes existing routes before adding the desired routes, without transactional rollback or multi-writer isolation. The router then forwards Minecraft traffic by SRV/hostname.
+The upsert contract is qualified against the real owned image `itzg/mc-router@sha256:e06735ea74877a7de649bcaec4cb917bf952564d32cbe258670fb7753192a1e9` (1.46.5). Its [API handler](https://github.com/itzg/mc-router/blob/d99439c1ae3195aecb714a11b9f227a96a961f64/server/api_server.go) calls the [mapping replacement implementation](https://github.com/itzg/mc-router/blob/d99439c1ae3195aecb714a11b9f227a96a961f64/server/routes.go). The Docker contract test checks real upserts, idempotent deletion, zero mutations for an unchanged plan, and availability of an unchanged route around every changed route request. Provider failure tests use controlled adapters and never contact a real cloud account.
 
-## Triggering
+## API and lifecycle
 
-The DNS API supports explicit reconciliation. Application startup and server creation/removal/synchronization orchestration also attempt updates; lifecycle update failures are logged without reversing the completed server operation. There is no `auto_update` dynamic configuration field.
+The existing `/dns/enabled`, `/dns/status`, `/dns/records`, `/dns/routes` and `/dns/update` routes retain their authorization and success payloads. Status adds `state`, `dns_known`, `router_known`, `unknown_servers`, `issues` and `empty_desired`; an unknown side has a null diff. The frontend can display a partial failure and retry without treating unknown data as successful synchronization. Disabled DNS still returns 503 for status/records/routes/update, while enabled-state reads remain available.
 
-## Re-initialization on config change
+Explicit API updates, application startup and server create/remove/sync orchestration trigger reconciliation. DNS failures are reported without reversing the completed local server operation. There is no `auto_update` dynamic configuration field or background retry loop.
 
-Provider credentials (DNSPod id+key, Huawei ak+sk+region), managed sub-domain, addresses, TTL and router URL are stored in `config.dns`. Before updates, diff calculation and current records/routes reads, a hash of enabled state, provider configuration and router URL determines whether to rebuild clients. Managed sub-domain, addresses and TTL are read when calculating the desired state.
+Provider credentials, addresses, managed subdomain, TTL and router URL live in dynamic configuration. Before each action, enabled/provider/router settings determine whether clients need replacement; planning reads the current addresses/subdomain/TTL. Initialization, observation, update, direct reads and shutdown share one manager lock and captured configuration. Concurrent page queries cannot close a client while another query uses it. Issued write batches drain even when their caller is cancelled, before shutdown or the next action obtains the lock.
 
-Initialization, updates, diff calculation, current records/routes reads and shutdown share the manager lock. Each operation refreshes its clients and reads using one captured configuration; routers do not access provider clients directly. The DNS page's three concurrent queries therefore share one initialization and cannot close a router client while another query is using it. Disabled API operations return 503 before entering the manager.
-
-Disabling DNS closes the old router client, clears both clients and stops synchronization before enumerating servers or writing records. Re-enabling initializes clients from the current configuration. DNS and router writes may run together, but each parallel batch waits for its issued requests to settle before reporting the first failure, including nested route replacement and Huawei record creation batches. The manager retains ownership through both branches; this does not provide cross-provider rollback.
+Each constructed client is immediately registered for cleanup. Provider initialization failure can leave the independent router available in degraded mode; a later action retries provider initialization. If cleanup itself fails, the unclosed client remains owned and shutdown retries it, while other clients are still closed. Disabling clears active clients and stops synchronization before enumerating servers or writing records. Re-enabling builds clients from the current configuration.
 
 ## Files
 
-- `dns.py` — abstract `DNSClient`
-- `dnspod.py` — DNSPod implementation
-- `huawei.py` — Huawei Cloud implementation
-- `manager.py` — `SimpleDNSManager` + `simple_dns_manager` singleton
-- `router.py` — `MCRouterClient`
-- `types.py` — record/diff types
-- `utils.py` — `diff_dns_records`, `RecordKey`, `RecordDiff`
+- `planning.py` — pure desired state, route differences and observation result.
+- `manager.py` — application orchestration, per-Runtime accessor and client lifecycle.
+- `dns.py`, `dnspod.py`, `huawei.py` — common provider operations and external adapters.
+- `router.py` — MC Router HTTP adapter and incremental changes.
+- `api_models.py` — public DNS response DTOs.
+- `types.py`, `utils.py` — record types, keys and DNS differences.
+
+Focused checks: `uv run pytest --no-cov -q tests/dns` and the owned external contract `uv run pytest --no-cov -q tests/dns/test_router_live.py --run-docker`.

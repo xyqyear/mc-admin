@@ -4,7 +4,7 @@ import stat as _stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
 from .region_files import parse_region_filename
 
 
@@ -28,7 +28,7 @@ def list_region_manifest_sync(region_dir: Path) -> list[tuple[int, int, int]]:
             candidates.append((entry.path, x, z))
 
     rows: list[tuple[int, int, int]] = []
-    workers = min(config.world.region_stat_workers, len(candidates))
+    workers = min(get_config().world.region_stat_workers, len(candidates))
     if workers <= 1:
         for candidate in candidates:
             coord = _stat_region_candidate(candidate)

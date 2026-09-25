@@ -11,6 +11,7 @@ import (
 
 func Cases(r fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "dns.owned-edge-reconciliation", Suite: "dns", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: ownedReconciliation},
 		{ID: "dns.disabled-and-validation", Suite: "dns", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: time.Minute, Run: disabled},
 		{ID: "dns.dnspod-reconciliation", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("dnspod")},
 		{ID: "dns.huawei-reconciliation", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("huawei")},

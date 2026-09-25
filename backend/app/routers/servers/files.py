@@ -1,9 +1,10 @@
-
 from aiofiles import os as aioos
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from ...background_tasks import TaskType, task_manager
+from app.auth.schemas import UserPublic
+
+from ...background_tasks import TaskType, get_task_manager
 from ...dependencies import get_current_user
 from ...files import (
     CreateFileRequest,
@@ -17,24 +18,21 @@ from ...files import (
     RenameFileRequest,
     UploadConflictResponse,
     check_upload_conflicts,
-    create_file_or_directory,
-    delete_file_or_directory,
     get_file_content,
     get_file_items,
-    rename_file_or_directory,
     restore_tree_ownership_task,
     search_files,
     set_upload_policy,
-    update_file_content,
-    upload_multiple_files,
 )
+from ...files.application import FileApplication
 from ...files.paths import resolve_file_path
-from ...minecraft import docker_mc_manager
-from ...models import UserPublic
+from ...minecraft import get_docker_mc_manager
+from .admission import admit_server_write
 
 router = APIRouter(
     prefix="/servers",
     tags=["files"],
+    dependencies=[Depends(admit_server_write)],
 )
 
 
@@ -44,7 +42,7 @@ async def list_files(
     server_id: str, path: str = "/", _: UserPublic = Depends(get_current_user)
 ):
     """List files and directories in the specified server path"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -61,7 +59,7 @@ async def get_file_content_endpoint(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Get content of a specific file"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -81,14 +79,13 @@ async def update_file_content_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Update content of a specific file"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    base_path = instance.get_data_path()
-    await update_file_content(base_path, path, file_content.content)
+    await FileApplication(instance, server_id, _.id).update(path, file_content.content)
 
     return {"message": "File updated successfully"}
 
@@ -98,7 +95,7 @@ async def download_file(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Download a specific file"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -127,14 +124,13 @@ async def create_file_or_directory_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Create a new file or directory"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    base_path = instance.get_data_path()
-    message = await create_file_or_directory(base_path, create_request)
+    message = await FileApplication(instance, server_id, _.id).create(create_request)
 
     return {"message": message}
 
@@ -144,14 +140,13 @@ async def delete_file_or_directory_endpoint(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Delete a file or directory"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    base_path = instance.get_data_path()
-    message = await delete_file_or_directory(base_path, path)
+    message = await FileApplication(instance, server_id, _.id).delete(path)
 
     return {"message": message}
 
@@ -163,14 +158,13 @@ async def rename_file_or_directory_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Rename a file or directory"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    base_path = instance.get_data_path()
-    message = await rename_file_or_directory(base_path, rename_request)
+    message = await FileApplication(instance, server_id, _.id).rename(rename_request)
 
     return {"message": message}
 
@@ -183,7 +177,7 @@ async def restore_file_ownership_endpoint(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ):
     """Restore all server files to the server root owner as a background task."""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
@@ -192,12 +186,16 @@ async def restore_file_ownership_endpoint(
     if not await aioos.path.exists(base_path):
         raise HTTPException(status_code=404, detail="服务器数据目录不存在")
 
-    result = task_manager.submit(
+    application = FileApplication(instance, server_id, _.id)
+    claims = await application.claims([base_path])
+    result = await get_task_manager().submit_durable(
         task_type=TaskType.FILE_OWNERSHIP_REPAIR,
         name=instance.get_name(),
-        task_generator=restore_tree_ownership_task(base_path),
+        task_generator=application.task([base_path], restore_tree_ownership_task(base_path), claims=claims),
+        claims=claims,
         server_id=server_id,
         cancellable=False,
+        actor_id=_.id,
     )
 
     return OwnershipRestoreTaskResponse(task_id=result.task_id)
@@ -212,7 +210,7 @@ async def check_multi_file_upload(
     _: UserPublic = Depends(get_current_user),
 ):
     """Check for conflicts before multi-file upload"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -233,7 +231,7 @@ async def set_multi_file_upload_policy(
     _: UserPublic = Depends(get_current_user),
 ):
     """Set the overwrite policy for a multi-file upload session"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
@@ -253,14 +251,13 @@ async def upload_multiple_files_endpoint(
     _: UserPublic = Depends(get_current_user),
 ):
     """Upload multiple files using a prepared session"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    base_path = instance.get_data_path()
-    results = await upload_multiple_files(base_path, session_id, path, files)
+    results = await FileApplication(instance, server_id, _.id).upload(session_id, path, files)
 
     return results
 
@@ -274,7 +271,7 @@ async def search_server_files(
     _: UserPublic = Depends(get_current_user),
 ):
     """Search for files in the specified server path using regex patterns"""
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     # Check if server exists
     if not await instance.exists():

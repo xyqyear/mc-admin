@@ -1,17 +1,27 @@
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import FastAPI
+from httpx2 import ASGITransport, AsyncClient
 
+from app.auth.schemas import UserPublic
+from app.dependencies import get_current_user
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.events import (
     MCMapDownloadClientResultEvent,
+    MCMapErrorEvent,
     MCMapGenPaletteResultEvent,
 )
 from app.mcmap.palette import write_palette_hash
 from app.routers.servers import map as map_router
+from tests.support.runtime import set_runtime_resource
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 class _FakeCompose:
@@ -25,6 +35,9 @@ class _FakeInstance:
 
     def get_data_path(self) -> Path:
         return self._data_path
+
+    async def exists(self) -> bool:
+        return True
 
     async def get_compose_obj(self) -> _FakeCompose:
         return _FakeCompose()
@@ -74,7 +87,7 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
 
     calls: list[str] = []
     fake_instance = _FakeInstance(data_path)
-    monkeypatch.setattr(map_router, "docker_mc_manager", _FakeDockerMC(fake_instance))
+    set_runtime_resource(monkeypatch, 'docker_mc_manager', _FakeDockerMC(fake_instance))
 
     @asynccontextmanager
     async def fake_download_client(
@@ -146,3 +159,58 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
         "cached": False,
     } in events
     assert events[-1] == {"stage": "complete"}
+
+
+@pytest.mark.parametrize("failure", [
+    "compose_exception", "cleanup_exception",
+    "client_exception", "client_event", "client_stderr",
+    "palette_exception", "palette_event", "palette_stderr",
+])
+async def test_initialization_http_sse_and_logs_do_not_expose_adapter_secrets(tmp_path, monkeypatch, caplog, failure):
+    secret = "synthetic-map-secret-27d9d1"
+    raw = f"password={secret}; INSERT INTO credentials VALUES ('{secret}')"
+    cache = ServerMapCache(tmp_path / "data")
+    await cache.ensure_dir(cache.cache_dir)
+    instance = _FakeInstance(cache.data_path)
+    set_runtime_resource(monkeypatch, 'docker_mc_manager', _FakeDockerMC(instance))
+    monkeypatch.setattr(map_router, "discover_mods_dir", AsyncMock(return_value=None))
+    monkeypatch.setattr(map_router, "discover_level_dat", AsyncMock(return_value=None))
+    monkeypatch.setattr(map_router, "palette_is_current", AsyncMock(return_value=False))
+    if failure.startswith("palette"):
+        cache.client_jar.write_bytes(b"client")
+    elif failure == "compose_exception":
+        monkeypatch.setattr(instance, "get_compose_obj", AsyncMock(side_effect=RuntimeError(raw)))
+    elif failure == "cleanup_exception":
+        monkeypatch.setattr(map_router, "_clear_prerequisite_cache", AsyncMock(side_effect=OSError(raw)))
+
+    @asynccontextmanager
+    async def failing_adapter(*args, **kwargs):
+        if failure.endswith("exception"):
+            raise RuntimeError(raw)
+        events: list[object] = [MCMapErrorEvent(type="error", message=raw)] if failure.endswith("event") else []
+        process = _FakeProc(events)
+        process.returncode = 0 if events else 1
+        monkeypatch.setattr(process, "stderr", AsyncMock(return_value=raw))
+        yield process
+
+    monkeypatch.setattr(map_router.mcmap_runner, "download_client", failing_adapter)
+    monkeypatch.setattr(map_router.mcmap_runner, "gen_palette", failing_adapter)
+    application = FastAPI()
+    application.include_router(map_router.router)
+    application.dependency_overrides[get_current_user] = lambda: UserPublic(id=1, username="map-user", created_at=datetime.now(UTC))
+    async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+        response = await client.post("/servers/server-1/map/initialize", params={"force": failure == "cleanup_exception"})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        events = _parse_sse([response.content])
+        assert events[-1]["phase"] == "error"
+        assert events[-1]["stage"] == ("palette" if failure.startswith("palette") else "client")
+        assert not any(event["stage"] == "complete" for event in events)
+        assert secret not in response.text
+        if failure == "compose_exception":
+            status = await client.get("/servers/server-1/map/status")
+            assert status.status_code == 200 and status.json()["version"] is None
+            assert secret not in status.text
+    assert caplog.records
+    assert secret not in caplog.text
+    assert "INSERT INTO credentials" not in caplog.text

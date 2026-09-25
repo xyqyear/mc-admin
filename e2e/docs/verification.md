@@ -1,6 +1,483 @@
 # API E2E 验证记录
 
-验证日期：2026-09-09（Asia/Shanghai）。当前目录包含 **64 个场景：61 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。不同镜像的验证分别记录。DNSPod／华为 DNS 云端变更仍缺少专用测试域名凭据。
+The current scenario inventory is maintained in [coverage.md](coverage.md).
+Each record below identifies its own date, image and selection; historical
+results do not qualify a later image.
+
+## Full application qualification, 2026-09-25
+
+Group 7 uses the candidate 4 OCI archive and executable identified in the
+deployment record below. The executable was built from its frozen source
+snapshot with Go 1.27.1. All deployed API and browser checks use the OCI-loaded
+config digest `sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d`;
+the pre-conversion Docker build ID is not the qualified image identity.
+This is an explicitly dirty local source snapshot, not a claim that a clean
+revision has been published.
+
+The initial three API shards, seed `741`, completed 79/80 cases. Shards 2 and 3
+passed 23/23 and 19/19. Shard 1 passed 37/38: the official Minecraft client
+download stopped at 490,948 of 31,152,600 bytes during the map-initialization
+prerequisite for `world.scoped-restore-and-rollback`. That case had not reached
+its scoped-restoration assertions. Its failed report remains unchanged at
+`/tmp/mc-admin-phase7-e2e/phase7-candidate4-default-shard1/`.
+
+A separate invocation of the same pinned `mcmap` then downloaded the complete
+official client successfully in 4.7 seconds. Its SHA1
+`ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd` matches the retained official metadata;
+the diagnostic is `/tmp/mc-admin-phase7-client-diagnostic.json`. The existing
+API recipe has no offline-client option. The entire first shard was therefore
+rerun with the same executable, image, selection and seed in a new owned run;
+the failed run is not rewritten, merged as successful or retried inside a case.
+
+The final accepted API matrix is:
+
+| Run | Cases | Owned environments | Reused cases |
+| --- | ---: | ---: | ---: |
+| `phase7-candidate4-default-shard1-rerun` | 38/38 passed | 34 | 4 |
+| `phase7-candidate4-default-shard2` | 23/23 passed | 23 | 0 |
+| `phase7-candidate4-default-shard3` | 19/19 passed | 19 | 0 |
+
+All three use seed `741`, one worker and one Minecraft slot per process. The
+complete-selection and operation-observation audit passed: **80/80 cases and
+159/159 operations with successful observations**. There are no duplicate or
+missing selected cases, failed cases, skipped cases or run-level errors in this
+accepted union. The report is
+`/tmp/mc-admin-phase7-candidate4-api-coverage/coverage.md`; its JSON companion
+retains the detailed per-operation observations. Visiting an operation does not
+alone prove every feature behavior; the scenario assertions remain the evidence
+for each workflow. `candidate.py evidence` separately verified each accepted
+run's exact image and complete manifest cleanup:
+`/tmp/mc-admin-phase7-candidate4-api-{shard1-rerun,shard2,shard3}-evidence.json`.
+
+The additional `phase7-candidate4-no-reuse` run, seed `749`, passed all seven
+selected cases: the six cases that permit reuse (`minecraft.overview`,
+`minecraft.rcon-and-files`, `system.discovery`, `system.configuration-catalog`,
+`system.events-handshake`, `templates.lifecycle`) plus the console/runtime
+controls case. Every case had a separate environment and `reused=false`; all
+seven environments were cleaned, as were the accepted union's 76 environments.
+Its complete-selection audit reports 38/159
+operations with successful observations, without claiming a second full API
+regression. See `/tmp/mc-admin-phase7-candidate4-no-reuse-coverage/` and
+`/tmp/mc-admin-phase7-candidate4-api-no-reuse-evidence.json`.
+
+The real browser journeys passed 6/6 in the normal order and 6/6 in reverse
+order, each in a separate owned World environment. Cases inside each invocation
+share that invocation's state and perform their own preparation and cleanup;
+they are not individually fresh environments. Both reports have zero skipped,
+unexpected or flaky journeys. The runs are under
+`/tmp/mc-admin-phase7-browser/e2e-browser-candidate4{,-reverse}/`; Playwright
+reports are `/tmp/mc-admin-phase7-browser-candidate4{,-reverse}-playwright/`.
+`candidate.py evidence` verified image identity and cleanup for both, recording
+`/tmp/mc-admin-phase7-candidate4-browser{,-reverse}-evidence.json`.
+
+```bash
+candidate_runner=/tmp/mc-admin-phase7-candidate4/mc-admin-e2e
+candidate_runs=/tmp/mc-admin-phase7-e2e
+"$candidate_runner" coverage --require-complete --require-observed \
+  --output /tmp/mc-admin-phase7-candidate4-api-coverage \
+  "$candidate_runs/phase7-candidate4-default-shard1-rerun" \
+  "$candidate_runs/phase7-candidate4-default-shard2" \
+  "$candidate_runs/phase7-candidate4-default-shard3"
+```
+
+Browser map fixtures seed only the real official client JAR after checking its
+size and SHA1. Palette generation, rendering, PNG serving and application APIs
+remain real. API cases retain their normal download behavior. No cloud account
+credentials were supplied; the three explicit Mojang/DNSPod/Huawei external
+qualification cases are excluded from the ordinary 80-case catalog. The DNS
+regression still exercises the actual SDK against an owned HTTPS service edge
+and the real pinned MC Router.
+
+Candidates 1–3 remain diagnostic records. They exposed and helped verify fixes
+for the console's initial query/terminal ordering, configuration comparison
+labels and sensitive debug output, and accepting a fresh remote configuration
+when a revisited editor has no local changes. Their earlier successes are not
+substituted for candidate 4 qualification.
+
+## Persistent deployment and bounded rollback, 2026-09-25
+
+The disposable deployment rehearsal used actual v5.3.0 source
+`da30f4b033a386dc97ea72254e3ec0a4b0bdab1f`, built without substituting current
+models or migration files. Its image is
+`sha256:7cbaa17a7b798333080982de11318fc2ae5f75b191c731780b5e483bc1684f18`.
+The rehearsal then loaded candidate 4 from the retained OCI archive:
+
+- OCI manifest: `sha256:b59d611c2c4e0a26499a53f52a72f8fda6b2a4af5a4016e7abb8dba522517505`.
+- Docker config/image ID: `sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d`.
+- OCI archive: `/tmp/mc-admin-phase7-candidate4/application.oci.tar`.
+- Candidate metadata and source fingerprint: `/tmp/mc-admin-phase7-candidate4/candidate.json`.
+- Go 1.27.1 runner SHA256: `341fd454d8055e70ce352ccf7fd5f29035b92024d6439ad43b4f653efa82402f`.
+- Rehearsal script SHA256: `531cd62c727b12b1076fb293a1864d5dac77935c60a9e1ef46ec5f71f11a4503`.
+
+`phase7-release-upgrade-candidate4` passed through 225 public API requests,
+real Minecraft/RCON log inputs, actual SQLite migrations and Restic snapshots.
+The run generated two historical users, player session/chat/achievement IDs,
+a nondefault parser configuration, template, paused managed schedule, files,
+archive and world snapshot under v5.3.0. Upgrade moved schema `2026060500`
+to `2026092503` while preserving this state. Post-upgrade users, cron definitions,
+files, operation history and a second snapshot were then created and verified.
+
+| Boundary | Observed result |
+| --- | --- |
+| v5.3.0 code on a full upgraded data copy | Startup refused the unknown revision. Every SQLite table's row digest and persistent-file digest remained unchanged. |
+| v5.3.0 with its complete stopped pre-upgrade checkpoint | Application started and historical public data was available. Later data was absent from this checkpoint, while the full upgraded copy remained separate. This is disaster recovery to a checkpoint, without merging later writes. |
+| Retained group 6 image with unchanged current schema | New users, cron state, files, journal and snapshots remained available. This verifies that exact same-schema image, not arbitrary older versions. The report records distinct actual application-source hashes. |
+| Candidate world restore and safety-snapshot rollback | World marker bytes returned to the released snapshot and then to their post-upgrade value; new nonworld data and historical player IDs remained available. Replacing application code alone did not restore world content. |
+
+The report is `/tmp/mc-admin-phase7-rehearsal-candidate4.json`; the execution
+log is `/tmp/mc-admin-phase7-rehearsal-candidate4.log`. The wrapper's
+`fixture-result.json` and `manifest.json` are under
+`/tmp/mc-admin-phase7-rehearsal/phase7-release-upgrade-candidate4/` and record
+successful cleanup. Runtime credentials and checkpoint contents are not reports.
+Python ran with `ResourceWarning` promoted to errors. Two temporary-filesystem
+tests separately verify checkpoint retention when writer shutdown fails and
+nonrecursive complete copying with cleanup after shutdown; Ruff and Pyright
+passed for the rehearsal scripts.
+
+The same candidate image reported `fd 10.4.2`, `restic 0.18.1` and `mcmap 0.8.4`
+from its owned deployed container; see
+`/tmp/mc-admin-phase7-candidate4-binaries.json`. Go formatting, vet and race tests
+passed in `/tmp/mc-admin-phase7-go-check.log`. Broader API/browser qualification
+must identify this same image separately; these deployment and binary checks
+alone do not establish that all application journeys passed.
+
+Earlier rehearsal attempts are retained as fixture-development diagnostics:
+the released API uses a different health-status vocabulary, normalized UUID
+lookups, an explicit upload-hash step and complete template validation.
+The final run uses those real contracts. No production database, cloud account,
+host trust store or unrelated Docker resource was modified.
+
+## Player, scheduling and connectivity boundaries: focused verification, 2026-09-25
+
+The final group 6 candidate includes the uncommitted
+`refactor-application-boundaries` implementation on
+`9cf6f77b258a7ccf4507c51cb686a45f8f74d823`. The application and runner were
+frozen before both final runs; no code or image was committed or published.
+
+- Local tag: `mc-admin:phase6-candidate2`.
+- Exact image ID: `sha256:fa603a99731f749963c491f0a61ad8a7a51d822713e61466c271612d1416aedd`.
+- Go 1.27.1 runner SHA256: `a79104529df2b191f5aefe6145f3f29cd8d60ece0dc8188f9a96372e29affde9`.
+- Docker Engine: `27.3.1`.
+- Build log: `/tmp/mc-admin-phase6-candidate2-build.log`.
+
+| Run | Selection | Result |
+| --- | --- | --- |
+| `phase6-candidate2-default` | Auth 3, cron 3, DNS 2, interrupted history 1, players 5, self-check 5; seed `611` | 19/19 passed |
+| `phase6-candidate2-no-reuse` | Same selection with `--no-reuse`; seed `617` | 19/19 passed |
+
+Both final runs used the exact image ID and runner above, two workers, separate
+ownership manifests and shared port leases. All selected cases declare `Fresh`
+isolation and use backend, server or backup recipes. Both modes therefore
+created independent environments; this does not add a claim about reuse.
+There were no failed/skipped cases or run-level errors. Separate
+`coverage --require-complete` audits passed, each with successful observations
+for 61 of 159 deployed API/WebSocket operations, one additional rejection-only
+operation and 97 unobserved operations. This qualifies the selected journeys,
+not the full application API or browser behavior.
+
+The DNS case uses the application's unmodified Tencent SDK over HTTPS to an
+owned protocol service and a real mc-router image pinned to
+`sha256:e06735ea74877a7de649bcaec4cb917bf952564d32cbe258670fb7753192a1e9`.
+Its short-lived CA and provider-hostname mapping are installed only in the owned
+backend container. The HTTPS, control and recording-edge ports bind loopback
+inside that container's private network namespace. No host CA/hosts/port or cloud
+account is changed. Assertions cover zero writes without changes, a changed
+backend's single POST upsert, independent unknown DNS/router observations,
+isolated record failures, fresh retry of only missing changes, retained empty
+state and manual disable. A degraded provider leaves local server sync successful;
+full health evaluation retains safe DNS evidence while other checks continue.
+Failed HTTP responses, health results, application logs and container
+logs do not expose the synthetic provider error.
+
+Cron cases verify visible invalid historical definitions, desired versus actual
+registration state, repair without losing IDs, pause/resume, real Restic cron
+execution, and interrupted execution messages/duration/count retained exactly
+once across two restarts. Historical SQLite inputs are prepared only with the
+owned deployment stopped. Player cases retain real log monitoring, committed
+public events/history cursors, identity gates, cached profiles, crash cutoff and
+explicit duplicate-session migration/repair. Their deterministic log and stopped
+database inputs do not replace qualification of a real Minecraft client or live
+Mojang service.
+
+The configured Minecraft dependency is the existing local cache image
+`itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed`, exact image
+ID `sha256:472dbd2055ca17fe59ded9629997a0d7566ea0d93a6fe0e9d4f7448a756b03aa`,
+version `1.21.11`. These selected recipes need server definitions and files;
+this record does not claim a new qualification of the game installer. Real cloud
+DNS authentication, propagation, quotas and asynchronous vendor jobs require the
+separate explicitly selected external scenarios. Those were not run.
+
+```bash
+phase6_runner=/tmp/mc-admin-go-1.27.1.wLNzIR/mc-admin-e2e-phase6-final
+phase6_image=sha256:fa603a99731f749963c491f0a61ad8a7a51d822713e61466c271612d1416aedd
+phase6_minecraft=itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed
+phase6_cases='^(dns\.(owned-edge-reconciliation|disabled-and-validation)|cron\.|operations\.interrupted-task-and-cron-history|selfcheck\.|players\.|auth\.)'
+
+"$phase6_runner" run --backend-image "$phase6_image" \
+  --minecraft-image "$phase6_minecraft" --tag regression --case "$phase6_cases" \
+  --workers 2 --seed 611 --timeout 20m --output /tmp/mc-admin-phase6-e2e \
+  --run-id phase6-candidate2-default
+"$phase6_runner" run --backend-image "$phase6_image" \
+  --minecraft-image "$phase6_minecraft" --tag regression --case "$phase6_cases" \
+  --workers 2 --seed 617 --no-reuse --timeout 20m \
+  --output /tmp/mc-admin-phase6-e2e --run-id phase6-candidate2-no-reuse
+
+"$phase6_runner" coverage --require-complete \
+  --output /tmp/mc-admin-phase6-e2e/coverage-candidate2-default \
+  /tmp/mc-admin-phase6-e2e/phase6-candidate2-default
+"$phase6_runner" coverage --require-complete \
+  --output /tmp/mc-admin-phase6-e2e/coverage-candidate2-no-reuse \
+  /tmp/mc-admin-phase6-e2e/phase6-candidate2-no-reuse
+```
+
+Each run contains results, JUnit, case traces, deployed OpenAPI and an ownership
+manifest. All 38 final environments are marked cleaned; independent run-label
+queries found no remaining containers, networks or volumes. The cleanup audit is
+`/tmp/mc-admin-phase6-e2e-cleanup-final.json`. Go formatting, vet and race checks
+passed; logs are `/tmp/mc-admin-phase6-e2e-vet-final.log` and
+`/tmp/mc-admin-phase6-e2e-race-final.log`.
+
+Candidate 1 (`sha256:36464bde83cedff31e95b3e84d7286ecfe90e6fb7d2013a88a933ce8849fdf9b`)
+passed the three-case fixture qualification and both 19-case API selections.
+Its runner SHA256 was
+`2abb3f9b0ecda093720ce7b9ff54d16e3a7114f7f7e0d951221eb20907d0be2c`.
+It preceded the final frontend map-reference correction and Alembic import
+sorting, and did not include the final additional DNS response/log assertions.
+Those 41 earlier executions are supplemental evidence only. All 41 earlier
+owned environments were also cleaned; the audit covers all 79 environments.
+
+## Files and world boundaries: focused verification, 2026-09-25
+
+The final group 5 application was built from the working tree based on
+`9cf6f77b258a7ccf4507c51cb686a45f8f74d823`, including the uncommitted
+`refactor-application-boundaries` implementation and the three compatibility
+fixes identified by the diagnostic candidate below.
+
+- Local tag: `mc-admin:boundaries-phase5-candidate2`.
+- Exact local image ID: `sha256:463396063ef814b26e6283b09ad9a09fb269d6ad5fce5d8a7075b121d11d25a8`.
+- Static Go 1.27.1 runner SHA256: `ee2f08223b0b207bc256313bc969da10cec6705c0899e2d8d6fab9e6c548403d`.
+- Actual executables queried inside this candidate's owned deployment: fd
+  `10.4.2`, Restic `0.18.1` compiled with Go `1.25.1` for `linux/amd64`, mcmap
+  `0.8.4`. Version outputs are `/tmp/mc-admin-phase5-candidate2-{fd,restic,mcmap}-version.txt`.
+- Docker Engine `27.3.1`; no image or code was published or committed.
+
+| Run | Selection | Result |
+| --- | --- | --- |
+| `phase5-candidate2-diagnostic` | The previous preview, maintenance/cron and concurrent archive publication failures; seed `20260930` | 3/3 passed |
+| `phase5-candidate2-default` | All file/archive/snapshot cases and the 11 affected world cases; seed `20260928` | 24/24 passed |
+| `phase5-candidate2-no-reuse` | The same selection with `--no-reuse`; seed `20260929` | 24/24 passed |
+
+Both final runs deployed the exact immutable image ID above and the same
+runner. Each used two workers and one Minecraft slot; the runs had separate
+ownership manifests and shared host port leases. All 24 selected cases declare
+`Fresh` isolation (11 server, 6 backup and 7 world recipes), so both modes
+allocated independent environments. These results do not make a new claim
+about environment reuse. Neither final run had failures, skips or run-level
+errors. Separate `coverage --require-complete` audits passed: each observed
+successful responses for 68 of 159 deployed API/WebSocket operations, two
+additional rejected operations and 89 unobserved operations. This is a focused
+24-case selection, not a full 81-case or full-route qualification.
+
+The assertions cover existing file/upload/ignore/Restic behavior, online
+ordinary-file restore, precise maintenance conflicts without blocking unrelated
+files, all world restoration scopes, absent sidecar directories, empty scopes
+and repeated safety rollback, old-generation history protection, stopped-writer
+deletion, interrupted restore, real preview PNGs and expiry, stale/expired/
+consumed pruning inputs, and claims-file retention while the original real
+mcmap apply continues after preview dismissal. The losing concurrent archive
+publication retains its established 409 response; scheduled backups retain
+skipped history during maintenance. The deployed binaries actually execute;
+no backend fault hooks or substitute implementations were used.
+
+The seven world recipes use the explicit local dependency image
+`itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed`, image ID
+`sha256:472dbd2055ca17fe59ded9629997a0d7566ea0d93a6fe0e9d4f7448a756b03aa`.
+Its verified official Minecraft 1.21.11 JAR and upstream-supported local-JAR
+startup are documented in the historical record below. The actual game, RCON
+and world files run normally; the online installer is not qualified. Actual
+mcmap client-resource initialization and preview rendering succeeded in these
+runs. Browser interactions, unrelated API journeys, cloud providers and
+arbitrary external filesystem writers are outside this selection. Worker
+admission races, actor separation, artifact reaping and external cache symlinks
+also have dedicated backend tests; these API results do not replace those
+controlled boundary checks.
+
+Build from the repository root, then run from `e2e/`:
+
+```bash
+docker build -t mc-admin:boundaries-phase5-candidate2 . \
+  > /tmp/mc-admin-phase5-candidate2-build.log 2>&1
+
+phase5_runner=/tmp/mc-admin-go-1.27.1.wLNzIR/mc-admin-e2e-phase5
+phase5_image=sha256:463396063ef814b26e6283b09ad9a09fb269d6ad5fce5d8a7075b121d11d25a8
+phase5_minecraft=itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed
+phase5_cases='^(files|archive|snapshots)\.|^world\.(chunk-prune|delete-waits-for-writer|disconnect-restore-and-maintenance|empty-scope-rollback|interrupted-restore-recovery|missing-sidecars-and-rollback|preview-lifecycle|prune-preview-validity|prune-dismiss-active|restoration-generation|scoped-restore-and-rollback)$'
+
+"$phase5_runner" run --backend-image "$phase5_image" \
+  --minecraft-image "$phase5_minecraft" --tag regression --case "$phase5_cases" \
+  --workers 2 --mc-slots 1 --seed 20260928 --timeout 45m \
+  --output /tmp/mc-admin-phase5-e2e --run-id phase5-candidate2-default \
+  > /tmp/mc-admin-phase5-e2e-candidate2-default.log 2>&1
+
+"$phase5_runner" run --backend-image "$phase5_image" \
+  --minecraft-image "$phase5_minecraft" --tag regression --case "$phase5_cases" \
+  --no-reuse --workers 2 --mc-slots 1 --seed 20260929 --timeout 45m \
+  --output /tmp/mc-admin-phase5-e2e --run-id phase5-candidate2-no-reuse \
+  > /tmp/mc-admin-phase5-e2e-candidate2-no-reuse.log 2>&1
+
+"$phase5_runner" coverage --require-complete \
+  --output /tmp/mc-admin-phase5-e2e/coverage-candidate2-default \
+  /tmp/mc-admin-phase5-e2e/phase5-candidate2-default
+"$phase5_runner" coverage --require-complete \
+  --output /tmp/mc-admin-phase5-e2e/coverage-candidate2-no-reuse \
+  /tmp/mc-admin-phase5-e2e/phase5-candidate2-no-reuse
+```
+
+Each run directory contains `results.json`, JUnit, case traces, deployed
+OpenAPI, environment diagnostics and `manifest.json`. The three-case preflight
+console log is `/tmp/mc-admin-phase5-e2e-candidate2-diagnostic.log`.
+The two final coverage directories are separate; diagnostic failures and
+results from other images were not merged into them. Go formatting, vet,
+`go test -race -vet=off -count=1 ./...`, static compilation and diff whitespace
+checks passed; the final race log is `/tmp/mc-admin-phase5-go-race-final.log`.
+
+The independent `/tmp/mc-admin-phase5-e2e/cleanup-verification.json` audit
+confirms all 103 environments across both candidates and their preflights are
+cleaned (51 from the final candidate). Runtime directories are empty; no
+containers carry those run labels and no networks belong to their recorded
+Compose projects. The audit only queries recorded ownership and performs no
+prefix deletion or global Docker cleanup. Reusable images and port lock files
+remain by design.
+
+## Files and world boundaries: first diagnostic candidate, 2026-09-25
+
+These records are diagnostic failures, not qualification of the final group 5
+application. Candidate 1 was built from the working tree based on
+`9cf6f77b258a7ccf4507c51cb686a45f8f74d823` as
+`mc-admin:boundaries-phase5-candidate1`, exact image ID
+`sha256:09f3a6451c293fe1f56d93b3173503b3d1e0474d82f9a7478df7db54454c4e52`.
+The build log is `/tmp/mc-admin-phase5-candidate1-build.log`.
+
+| Run | Selection | Result |
+| --- | --- | --- |
+| `phase5-candidate1-diagnostic` | Four new world/prune cases | 2 passed, 2 failed because the new test expected 409 instead of the existing 400 for active-task deletion and attempted a world-layout snapshot before any MCA existed |
+| `phase5-candidate1-default` | The 24 affected file/archive/snapshot/world cases; seed `20260928` | 21 passed, 3 failed |
+| `phase5-candidate1-no-reuse` | The same 24 cases with `--no-reuse`; seed `20260929` | 21 passed, 3 failed |
+
+The initial test corrections preserve active-task deletion's 400 response and
+use the ordinary snapshot API to capture an empty world directory. The latter
+keeps the existing world-layout discovery rule. The final two diagnostic runs
+used runner SHA256
+`ee2f08223b0b207bc256313bc969da10cec6705c0899e2d8d6fab9e6c548403d`.
+Both reproduced the same application regressions: staged preview PNG paths were
+rejected by the live-cache writer boundary; a global scheduled backup during
+restore became failed instead of skipped; and concurrent no-overwrite archive
+publication returned 423 instead of the established 409 for the losing upload.
+The original archive assertion remains unchanged. Neither map failure was a
+client-resource download error: initialization and preview preparation had
+already succeeded.
+
+All four new cases passed in both complete diagnostic runs, including real
+Restic restoration from an empty scope and two successive rollback operations,
+exact server-generation protection, stale/expired/consumed prune previews,
+and retention of the original paused mcmap writer's claims artifact after
+preview dismissal. The map and cron failures prevented later assertions in
+their cases, so these diagnostic runs do not qualify those full journeys.
+
+Reports, traces and ownership manifests are in
+`/tmp/mc-admin-phase5-e2e/phase5-candidate1-*`; console logs are
+`/tmp/mc-admin-phase5-e2e-diagnostic.log` and
+`/tmp/mc-admin-phase5-e2e-final-{default,no-reuse}.log`. All 52 environments
+were marked cleaned; an independent ownership audit found empty runtime
+directories, no containers carrying those run labels and no networks belonging
+to their recorded Compose projects. The audit is
+`/tmp/mc-admin-phase5-e2e/cleanup-verification.json` and will also include later
+candidate runs. Reusable images and shared port lock files remain by design.
+
+## Configuration boundaries: focused verification, 2026-09-25
+
+The final application was built from the working tree based on
+`9cf6f77b258a7ccf4507c51cb686a45f8f74d823`, including the uncommitted group 4
+implementation of `refactor-application-boundaries`.
+
+- Local tag: `mc-admin:boundaries-phase4-candidate2`.
+- Exact local image ID: `sha256:e65bd2711336cdc079e7da2efb2d4917c07b89067955bf00ef0f453efabf5103`.
+- Static runner SHA256: `3686a8090b2b5e9312fc033658bb076809eb9d93ebaf55716f89969d31cdc850`.
+- Go `1.27.1`; Docker Engine `27.3.1`; no image publication was performed.
+- The configured Minecraft image was the project default,
+  `itzg/minecraft-server:java25@sha256:59feb0a1ef286f20a20560c56adf5b927155bfa842951f5db8b8bbc5a1a3ebde`.
+  The partial-failure case overrides its entrypoint with a harmless sleep
+  executable, then an invalid executable. It exercises real Docker creation,
+  startup failure, down and recovery without starting or downloading Minecraft.
+
+| Run | Selection | Result |
+| --- | --- | --- |
+| `phase4-candidate2-default` | All 8 `servers.*` cases, `minecraft.exact-restart-schedules`, and the 3 `operations.*` cases; seed `20260926` | 12/12 passed |
+| `phase4-candidate2-no-reuse` | The same 8 server cases plus exact restart schedules, with `--no-reuse`; seed `20260927` | 9/9 passed |
+
+Both runs deployed the exact image ID above, rather than resolving the mutable
+tag for each environment. All selected cases explicitly declare `Fresh`, so
+both modes created independent environments; this does not add a new claim
+about environment reuse. The final runs used 21 environments with no run-level
+errors. Both `coverage --require-complete` audits passed. The default run
+observed successful responses for 42 of 159 deployed API/WebSocket operations;
+the no-reuse run observed 33. These are focused behavior checks, not full route
+or full regression coverage.
+
+The assertions cover version conflicts and current-version feedback without
+overwrites, external edits observed before submission, old requests without
+version metadata, template snapshots surviving source changes/deletion, mode
+conversions and stopped intent, real partially applied configuration failure,
+explicit recovery, stable schedule generations, independent jobs with identical
+display names, retained ambiguous legacy schedules, and existing interrupted
+operation/cache recovery. Faults between internal configuration stages and
+post-acceptance version rechecks are covered by backend tests; the API cases do
+not introduce backend fault-injection hooks or claim atomic exclusion of
+arbitrary external filesystem writers. Browser interactions, Minecraft
+readiness, map downloads and external provider qualification were not selected.
+
+Commands, executed from the repository root for the build and from `e2e/` for
+the runner:
+
+```bash
+docker build -t mc-admin:boundaries-phase4-candidate2 . \
+  > /tmp/mc-admin-phase4-candidate2-build.log 2>&1
+
+/tmp/mc-admin-go-1.27.1.wLNzIR/mc-admin-e2e-phase4 run \
+  --backend-image sha256:e65bd2711336cdc079e7da2efb2d4917c07b89067955bf00ef0f453efabf5103 \
+  --tag regression --case '^(servers\.|minecraft\.exact-restart-schedules$|operations\.)' \
+  --workers 2 --mc-slots 1 --seed 20260926 --timeout 20m \
+  --output /tmp/mc-admin-phase4-e2e --run-id phase4-candidate2-default \
+  > /tmp/mc-admin-phase4-e2e-final-default.log 2>&1
+
+/tmp/mc-admin-go-1.27.1.wLNzIR/mc-admin-e2e-phase4 run \
+  --backend-image sha256:e65bd2711336cdc079e7da2efb2d4917c07b89067955bf00ef0f453efabf5103 \
+  --tag regression --case '^(servers\.|minecraft\.exact-restart-schedules$)' \
+  --no-reuse --workers 2 --mc-slots 1 --seed 20260927 --timeout 20m \
+  --output /tmp/mc-admin-phase4-e2e --run-id phase4-candidate2-no-reuse \
+  > /tmp/mc-admin-phase4-e2e-final-no-reuse.log 2>&1
+```
+
+Results, traces, ownership manifests and JUnit reports are under each run's
+directory in `/tmp/mc-admin-phase4-e2e/`. Separate complete coverage reports are
+in `coverage-candidate2-default/` and `coverage-candidate2-no-reuse/`; the two
+different selections were not merged. Go formatting, `go vet ./...`,
+`go test -race -vet=off -count=1 ./...`, static runner compilation and diff
+whitespace checks passed.
+
+Candidate 1 (`sha256:d333a5f43159a8ebe834d1560b55b9542b62c2cb520d82033f2b1b36c8ec2c97`)
+also passed 9 related cases and 3 operations cases before the final frontend
+error-display correction. Its `phase4-candidate1-default` and
+`phase4-candidate1-operations` reports remain diagnostic records and are not
+combined with the final image's results.
+
+`cleanup-verification.json` records all 33 final and diagnostic environments as
+cleaned, with empty runtime directories. Independent Docker queries found no
+containers bearing those run labels and no networks belonging to their tracked
+Compose projects. Images and shared port lock files remain reusable by design.
+
+The following sections are historical records from 2026-09-09 and earlier;
+their scenario counts and application images apply only to those runs.
 
 ## 备份跳过结果验证
 

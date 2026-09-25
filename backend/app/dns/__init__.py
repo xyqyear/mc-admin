@@ -8,7 +8,7 @@ Supports DNSPod and Huawei Cloud DNS providers with on-demand updates.
 from .dns import DNSClient
 from .dnspod import DNSPodClient
 from .huawei import HuaweiDNSClient
-from .manager import SimpleDNSManager, simple_dns_manager
+from .manager import SimpleDNSManager, get_dns_manager
 from .router import MCRouterClient
 from .types import (
     AddRecordListT,
@@ -33,5 +33,5 @@ __all__ = [
     "ReturnRecordT",
     "SimpleDNSManager",
     "diff_dns_records",
-    "simple_dns_manager",
+    "get_dns_manager",
 ]

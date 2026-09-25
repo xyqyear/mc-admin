@@ -3,8 +3,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...config import settings
-from ...minecraft import docker_mc_manager
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, success
 
@@ -18,7 +16,7 @@ class PermissionScanResult:
     errors: list[str]
 
 
-async def scan_permission_owner_with_fd(root: Path, limit: int) -> PermissionScanResult:
+async def scan_permission_owner_with_fd(root: Path, limit: int, *, fd_binary_path: Path) -> PermissionScanResult:
     try:
         root_stat = await asyncio.to_thread(root.stat, follow_symlinks=False)
     except OSError as exc:
@@ -31,7 +29,7 @@ async def scan_permission_owner_with_fd(root: Path, limit: int) -> PermissionSca
         )
 
     cmd = [
-        str(settings.fd_binary_path),
+        str(fd_binary_path),
         "--unrestricted",
         "--absolute-path",
         "--print0",
@@ -54,7 +52,7 @@ async def scan_permission_owner_with_fd(root: Path, limit: int) -> PermissionSca
             mismatched=0,
             samples=[],
             truncated=False,
-            errors=[f"fd command not found at {settings.fd_binary_path}"],
+            errors=[f"fd command not found at {fd_binary_path}"],
         )
 
     stdout, stderr = await proc.communicate()
@@ -103,7 +101,7 @@ async def check_permission_consistency(
 
     findings: list[SelfCheckFindingResult] = []
     for server in active_servers:
-        root = docker_mc_manager.get_instance(server.server_id).get_project_path()
+        root = context.dependencies.minecraft.get_instance(server.server_id).get_project_path()
         if not root.exists():
             findings.append(
                 finding(
@@ -122,6 +120,7 @@ async def check_permission_consistency(
         scan = await scan_permission_owner_with_fd(
             root,
             context.config.permission_scan_max_entries,
+            fd_binary_path=context.dependencies.settings.fd_binary_path,
         )
         if scan.mismatched:
             findings.append(

@@ -123,11 +123,11 @@ async def test_override_routes_tolerates_route_removed_after_listing(router_clie
             request=httpx2.Request("GET", "http://localhost:26666/routes"),
         ),
         httpx2.Response(
-            404, text="404 page not found\n",
-            request=httpx2.Request("DELETE", "http://localhost:26666/routes/stale.example.com"),
+            201, request=httpx2.Request("POST", "http://localhost:26666/routes"),
         ),
         httpx2.Response(
-            201, request=httpx2.Request("POST", "http://localhost:26666/routes"),
+            404, text="404 page not found\n",
+            request=httpx2.Request("DELETE", "http://localhost:26666/routes/stale.example.com"),
         ),
     ]
 
@@ -240,29 +240,23 @@ async def test_add_routes(router_client):
 
 @pytest.mark.asyncio
 async def test_override_routes(router_client):
-    new_routes = {
-        "vanilla.mc.example.com": "localhost:25565",
-        "modded.mc.example.com": "localhost:25566",
-    }
-
-    router_client._remove_all_routes = AsyncMock()
-    router_client._add_routes = AsyncMock()
-
+    new_routes = {"unchanged.mc.example.com": "localhost:25565", "changed.mc.example.com": "localhost:25566"}
+    router_client.get_routes = AsyncMock(return_value={"unchanged.mc.example.com": "localhost:25565", "changed.mc.example.com": "localhost:25567", "obsolete.mc.example.com": "localhost:25568"})
+    router_client._add_route = AsyncMock()
+    router_client._remove_route = AsyncMock()
     await router_client.override_routes(new_routes)
-
-    router_client._remove_all_routes.assert_called_once()
-    router_client._add_routes.assert_called_once_with(new_routes)
+    router_client._add_route.assert_awaited_once_with("changed.mc.example.com", "localhost:25566")
+    router_client._remove_route.assert_awaited_once_with("obsolete.mc.example.com")
 
 
 @pytest.mark.asyncio
 async def test_override_routes_empty(router_client):
-    router_client._remove_all_routes = AsyncMock()
-    router_client._add_routes = AsyncMock()
-
+    router_client.get_routes = AsyncMock(return_value={"obsolete.mc.example.com": "localhost:25565"})
+    router_client._add_route = AsyncMock()
+    router_client._remove_route = AsyncMock()
     await router_client.override_routes({})
-
-    router_client._remove_all_routes.assert_called_once()
-    router_client._add_routes.assert_not_called()
+    router_client._remove_route.assert_awaited_once_with("obsolete.mc.example.com")
+    router_client._add_route.assert_not_awaited()
 
 
 @pytest.mark.asyncio

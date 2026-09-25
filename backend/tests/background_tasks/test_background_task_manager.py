@@ -25,6 +25,7 @@ from app.background_tasks import (
     TaskStatus,
     TaskType,
 )
+from app.errors import PublicOperationError
 
 
 @pytest.fixture
@@ -319,7 +320,7 @@ class TestTaskErrorHandling:
 
         async def failing_task():
             yield TaskProgress(progress=50, message="Processing...")
-            raise ValueError("Something went wrong!")
+            raise PublicOperationError("Something went wrong!")
 
         result = task_manager.submit(
             task_type=TaskType.ARCHIVE_CREATE,

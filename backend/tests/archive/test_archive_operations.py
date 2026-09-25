@@ -1,3 +1,5 @@
+from tests.support.runtime import patch_settings
+
 """
 Comprehensive unit tests for archive operations API endpoints.
 Tests archive file management functionality using temporary directories.
@@ -8,7 +10,6 @@ import json
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,8 +28,8 @@ def mock_archive_operations_setup(archive_path: Path):
         None: The context is set up with mocked dependencies
     """
     with (
-        patch("app.routers.archive.settings") as mock_settings,
-        patch("app.dependencies.settings") as mock_dep_settings,
+        patch_settings() as mock_settings,
+        patch_settings() as mock_dep_settings,
     ):
         mock_settings.archive_path = archive_path
         mock_settings.master_token = "test_master_token"

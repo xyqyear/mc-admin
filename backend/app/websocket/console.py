@@ -10,8 +10,9 @@ from typing import Any
 import docker
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..logger import log_exception, logger
+from ..logger import get_logger, log_exception
 from ..minecraft import MCInstance
+from ..operations.finalization import finalize
 
 # Default number of history log lines to fetch
 HISTORY_LOG_LINES = 10000
@@ -35,6 +36,7 @@ class ConsoleWebSocketHandler:
 
     async def handle_connection(self, server_id: str, cols: int, rows: int):
         """Handle the WebSocket connection lifecycle."""
+        logger = get_logger()
         try:
             await self.websocket.accept()
 
@@ -48,7 +50,7 @@ class ConsoleWebSocketHandler:
                 await self.websocket.close()
                 return
 
-            await self._initialize_connection(cols, rows)
+            await finalize(self._initialize_connection(cols, rows))
             await self._handle_messages()
         except WebSocketDisconnect:
             print(f"WebSocket disconnected for server {server_id}")
@@ -56,7 +58,7 @@ class ConsoleWebSocketHandler:
             logger.exception("Console connection failed")
             await self._handle_connection_error(e)
         finally:
-            await self._cleanup()
+            await finalize(self._cleanup())
 
     async def _initialize_connection(self, cols: int, rows: int):
         """Initialize connection with Docker attach socket."""
@@ -90,6 +92,7 @@ class ConsoleWebSocketHandler:
 
     async def _send_history_logs(self, container_id: str):
         """Fetch and send history logs from container."""
+        logger = get_logger()
         assert self._docker_client is not None  # Set in _initialize_connection
         docker_client = self._docker_client
         try:
@@ -114,6 +117,7 @@ class ConsoleWebSocketHandler:
 
     async def _socket_read_loop(self):
         """Read from attach socket and send data immediately for raw I/O."""
+        logger = get_logger()
         loop = asyncio.get_running_loop()
 
         while not self._closed:
@@ -164,6 +168,7 @@ class ConsoleWebSocketHandler:
 
     async def _handle_input(self, data: dict):
         """Send raw input to container via attach socket."""
+        logger = get_logger()
         raw_data = data.get("data", "")
         if not raw_data:
             return
@@ -195,6 +200,7 @@ class ConsoleWebSocketHandler:
 
     async def _resize_tty(self, cols: int, rows: int):
         """Send resize request to container TTY."""
+        logger = get_logger()
         if self._docker_client is None or self._container_id is None:
             return
 
@@ -211,6 +217,7 @@ class ConsoleWebSocketHandler:
 
     async def _handle_connection_error(self, error: Exception):
         """Handle connection errors."""
+        logger = get_logger()
         try:
             await self._send_error(f"Connection error: {error!s}")
         except Exception:
@@ -223,6 +230,7 @@ class ConsoleWebSocketHandler:
 
     @log_exception("Failed to send data over WebSocket")
     async def _send_dict(self, data: dict):
+        logger = get_logger()
         try:
             await asyncio.wait_for(
                 self.websocket.send_text(json.dumps(data)),
@@ -238,11 +246,14 @@ class ConsoleWebSocketHandler:
 
     async def _cleanup(self):
         """Clean up resources."""
+        logger = get_logger()
         self._closed = True
 
         if self._read_task:
-            self._read_task.cancel()
+            task = self._read_task
             self._read_task = None
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
         socket = self._socket
         self._socket = None

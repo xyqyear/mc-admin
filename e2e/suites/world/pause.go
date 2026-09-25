@@ -11,13 +11,50 @@ import (
 	"mc-admin/e2e/internal/fixtures"
 )
 
-// SIGSTOP leaves the real CLI and its repository behavior intact while assertions run.
-const resticPauseObserver = `import os, signal, time
+const ownedProcessSignals = `import json, os, signal, time
 from pathlib import Path
+owned_root = os.stat('/')
+def write_identity(marker, identity):
+    pending = marker.with_suffix('.tmp')
+    pending.write_text(json.dumps(identity))
+    pending.replace(marker)
+def owned_process(pid, executable=None, required=()):
+    try:
+        process = Path('/proc', str(pid))
+        process_root = (process / 'root').stat()
+        if (process_root.st_dev, process_root.st_ino) != (owned_root.st_dev, owned_root.st_ino):
+            return None
+        args = (process / 'cmdline').read_bytes().split(b'\0')
+        name = Path(os.fsdecode(args[0])).name
+        if not name or (executable is not None and name != executable) or any(arg not in args[1:] for arg in required):
+            return None
+        started = (process / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+        return {'pid': int(pid), 'started': started, 'executable': name}
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+def signal_owned(identity, signum):
+    if identity is None:
+        return False
+    descriptor = None
+    try:
+        descriptor = os.pidfd_open(identity['pid'])
+        if owned_process(identity['pid']) != identity:
+            return False
+        signal.pidfd_send_signal(descriptor, signum)
+        return True
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return False
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+`
+
+// SIGSTOP leaves the real CLI and its repository behavior intact while assertions run.
+const resticPauseObserver = ownedProcessSignals + `
 root = Path('/tmp/e2e-restic-pauser')
 root.mkdir(exist_ok=True)
-(root / 'observer').write_text(str(os.getpid()))
-paused = set()
+write_identity(root / 'observer', owned_process(os.getpid()))
+paused = {}
 def stop(*args):
     raise SystemExit()
 signal.signal(signal.SIGTERM, stop)
@@ -30,13 +67,15 @@ try:
                 if not process.name.isdigit():
                     continue
                 try:
-                    args = (process / 'cmdline').read_bytes().split(b'\0')
-                    if not args or Path(os.fsdecode(args[0])).name != 'restic' or command.encode() not in args[1:]:
+                    identity = owned_process(process.name, 'restic', (command.encode(),))
+                    if identity is None:
                         continue
-                    pid = int(process.name)
-                    os.kill(pid, signal.SIGSTOP)
-                    paused.add(pid)
-                    (root / command).write_text(str(pid))
+                    pid = identity['pid']
+                    paused[pid] = identity
+                    if not signal_owned(identity, signal.SIGSTOP):
+                        paused.pop(pid)
+                        continue
+                    write_identity(root / command, identity)
                     found = True
                     break
                 except (FileNotFoundError, ProcessLookupError, PermissionError):
@@ -46,40 +85,25 @@ try:
         if command == 'backup':
             while not (root / 'resume-backup').exists():
                 time.sleep(.01)
-            os.kill(pid, signal.SIGCONT)
-            paused.remove(pid)
+            signal_owned(identity, signal.SIGCONT)
+            paused.pop(pid)
         else:
-            while Path('/proc', str(pid)).exists():
+            while owned_process(pid) == identity:
                 time.sleep(.01)
 finally:
-    for pid in paused:
-        try:
-            os.kill(pid, signal.SIGCONT)
-        except ProcessLookupError:
-            pass
+    for identity in paused.values():
+        signal_owned(identity, signal.SIGCONT)
 `
 
-const resticPauseCleanup = `import os, signal
-from pathlib import Path
+const resticPauseCleanup = ownedProcessSignals + `
 root = Path('/tmp/e2e-restic-pauser')
 for name in ('backup', 'ls'):
     marker = root / name
     if marker.exists():
-        pid = int(marker.read_text())
-        try:
-            args = Path('/proc', str(pid), 'cmdline').read_bytes().split(b'\0')
-            if Path(os.fsdecode(args[0])).name == 'restic':
-                os.kill(pid, signal.SIGCONT)
-        except (FileNotFoundError, ProcessLookupError):
-            pass
+        signal_owned(json.loads(marker.read_text()), signal.SIGCONT)
 marker = root / 'observer'
 if marker.exists():
-    pid = int(marker.read_text())
-    try:
-        if b'e2e-restic-pauser' in Path('/proc', str(pid), 'cmdline').read_bytes():
-            os.kill(pid, signal.SIGTERM)
-    except (FileNotFoundError, ProcessLookupError):
-        pass
+    signal_owned(json.loads(marker.read_text()), signal.SIGTERM)
 `
 
 func startResticPauses(ctx context.Context, t *engine.Scope) error {
@@ -97,7 +121,7 @@ func startResticPauses(ctx context.Context, t *engine.Scope) error {
 func waitResticPause(ctx context.Context, t *engine.Scope, command string) error {
 	backend := fixtures.BackendOf(t.Env)
 	return api.Wait(ctx, 50*time.Millisecond, "owned Restic pause "+command, func(ctx context.Context) (bool, error) {
-		output, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c", `import sys
+		output, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c", `import json, sys
 from pathlib import Path
 marker = Path('/tmp/e2e-restic-pauser', sys.argv[1])
 if not marker.exists():
@@ -105,7 +129,7 @@ if not marker.exists():
 elif sys.argv[1] == 'ready':
     print('ready')
 else:
-    pid = marker.read_text()
+    pid = str(json.loads(marker.read_text())['pid'])
     try:
         state = Path('/proc', pid, 'status').read_text().split('State:')[1].splitlines()[0]
         print('paused ' + pid if state.strip().startswith('T') else 'waiting')

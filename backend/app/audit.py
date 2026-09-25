@@ -1,11 +1,8 @@
 """Audit middleware that logs all state-changing HTTP requests."""
 
 import json
-import logging
-import logging.handlers
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, ClassVar
 from urllib.parse import parse_qs
 
@@ -14,43 +11,38 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from .auth.session import TokenValidationError, get_user_from_request
-from .config import settings
+from app.auth.service import TokenValidationError
+
+from .auth.session import get_user_from_request
+from .config import get_settings
+from .runtime_logging import OwnedLogger, file_logger
+from .runtime_resources import current_runtime
+
+
+def create_audit_logger() -> OwnedLogger | None:
+    settings = get_settings()
+    if not settings.audit.enabled:
+        return None
+    return file_logger("operation_audit", settings.logs_dir / settings.audit.log_file, audit=True)
+
+
+def get_audit_logger() -> OwnedLogger | None:
+    return current_runtime().resource('audit_logger')
 
 
 class OperationAuditMiddleware(BaseHTTPMiddleware):
     AUDIT_METHODS: ClassVar[set[str]] = {"POST", "PUT", "PATCH", "DELETE"}
+    OPAQUE_BODY_FIELDS: ClassVar[set[str]] = {"yaml_content", "yaml_template", "content"}
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
-        self._setup_logger()
 
-    def _setup_logger(self):
-        if not settings.audit.enabled:
-            self.logger = None
-            return
-
-        logs_dir = Path(settings.logs_dir)
-        logs_dir.mkdir(exist_ok=True)
-
-        self.logger = logging.getLogger("operation_audit")
-        self.logger.setLevel(logging.INFO)
-
-        if not self.logger.handlers:
-            log_file = logs_dir / settings.audit.log_file
-            file_handler = logging.handlers.TimedRotatingFileHandler(
-                log_file, when="midnight", encoding="utf-8"
-            )
-            file_handler.setLevel(logging.INFO)
-
-            formatter = logging.Formatter("%(message)s")
-            file_handler.setFormatter(formatter)
-
-            self.logger.addHandler(file_handler)
-
-            self.logger.propagate = False
+    @property
+    def logger(self) -> OwnedLogger | None:
+        return get_audit_logger()
 
     def _should_audit_request(self, request: Request) -> bool:
+        settings = get_settings()
         if not settings.audit.enabled or not self.logger:
             return False
 
@@ -59,6 +51,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         return method in self.AUDIT_METHODS
 
     def _mask_sensitive_data(self, data: Any) -> Any:
+        settings = get_settings()
         if isinstance(data, list):
             return [self._mask_sensitive_data(value) for value in data]
         if isinstance(data, dict):
@@ -67,7 +60,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
             return {
                 key: (
                     "***MASKED***"
-                    if key.lower() in exact
+                    if key.lower() in exact | self.OPAQUE_BODY_FIELDS
                     or any(field in key.lower() for field in sensitive)
                     else self._mask_sensitive_data(value)
                 )
@@ -88,6 +81,7 @@ class OperationAuditMiddleware(BaseHTTPMiddleware):
         }
 
     async def _read_request_body(self, request: Request) -> Any:
+        settings = get_settings()
         if not settings.audit.log_request_body:
             return None
 

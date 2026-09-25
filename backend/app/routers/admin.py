@@ -2,11 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.models import User, UserRole
+from app.auth.schemas import UserCreate, UserPublic
+from app.auth.store import create_user, delete_user, get_all_users
+
 from ..auth.jwt_utils import get_password_hash
-from ..db.crud.user import create_user, delete_user, get_all_users
 from ..db.database import get_db
 from ..dependencies import RequireRole
-from ..models import User, UserCreate, UserPublic, UserRole
 
 router = APIRouter(
     prefix="/admin",

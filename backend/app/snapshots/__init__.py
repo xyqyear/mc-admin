@@ -4,8 +4,7 @@
 not configured). See ``backend/docs/snapshots.md`` for the architecture.
 """
 
-from ..config import settings
-from ..minecraft import docker_mc_manager
+from ..runtime_resources import current_runtime
 from .models import (
     NodeKind,
     ResticRestoreAction,
@@ -18,16 +17,9 @@ from .planner import TargetIgnoredError
 from .restic import ResticClient
 from .service import SnapshotService
 
-snapshot_service: SnapshotService | None = None
-if settings.restic:
-    snapshot_service = SnapshotService(
-        ResticClient(
-            repository_path=settings.restic.repository_path,
-            password=settings.restic.password,
-            binary_path=settings.restic_binary_path,
-        ),
-        docker_mc_manager,
-    )
+
+def get_snapshot_service() -> SnapshotService | None:
+    return current_runtime().resource('snapshot_service')
 
 __all__ = [
     "NodeKind",
@@ -39,5 +31,5 @@ __all__ = [
     "ResticSnapshotWithSummary",
     "SnapshotService",
     "TargetIgnoredError",
-    "snapshot_service",
+    'get_snapshot_service',
 ]

@@ -1,15 +1,16 @@
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.schemas import UserPublic
 
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...minecraft import docker_mc_manager
-from ...models import UserPublic
+from ...minecraft import get_docker_mc_manager
+from ...operation_admission import get_server_write_admission
+from ...servers.api_models import ServerOperation
+from ...servers.commands import ServerCommands
 from ...servers.lifecycle import RemoveServerResult, remove_server_full
-from ...world.locks import LockHolder, ServerOperationKind, server_operation_lock
+from ...world.locks import get_server_operation_lock
 
 router = APIRouter(
     prefix="/servers",
@@ -17,15 +18,16 @@ router = APIRouter(
 )
 
 
-class ServerOperation(BaseModel):
-    action: str  # start, stop, restart, up, down, remove
-
-
 @router.get("/{server_id}/maintenance")
 async def server_maintenance(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ):
-    holder = server_operation_lock.get_holder(server_id)
+    reason = get_server_write_admission().recovery_reason(server_id)
+    if reason is not None:
+        return {"active": True, "kind": "recovery", "description": reason}
+    if get_server_write_admission().is_frozen(server_id):
+        return {"active": True, "kind": "remove", "description": "删除服务器"}
+    holder = get_server_operation_lock().get_holder(server_id)
     return {
         "active": holder is not None,
         "kind": holder.kind.value if holder else None,
@@ -46,35 +48,21 @@ async def server_operation(
     cronjobs and closed sessions. For other actions, returns a simple
     message object.
     """
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
+
+    from .admission import _require_registered
+
+    await _require_registered(server_id)
 
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
     action = operation.action.lower()
 
-    if action in ("start", "up", "restart"):
-        holder = LockHolder(
-            kind=ServerOperationKind.START,
-            started_at=datetime.now(UTC),
-            user_id=user.id,
-            description="启动服务器",
-        )
-        async with server_operation_lock.try_acquire(server_id, holder) as acquired:
-            if not acquired:
-                raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
-            if action == "start":
-                await instance.start()
-            elif action == "up":
-                await instance.up()
-            else:
-                await instance.restart()
-    elif action == "stop":
-        await instance.stop()
-    elif action == "down":
-        await instance.down()
+    if action in ("start", "up", "restart", "stop", "down"):
+        await ServerCommands().execute(server_id, action, actor_id=user.id)
     elif action == "remove":
-        result: RemoveServerResult = await remove_server_full(db, server_id)
+        result: RemoveServerResult = await remove_server_full(db, server_id, user_id=user.id)
         return result
     else:
         raise HTTPException(status_code=400, detail=f"Invalid operation: {action}")

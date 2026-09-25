@@ -1,8 +1,9 @@
+from tests.support.runtime import patch_settings
+
 """
 Comprehensive unit tests for file operations API endpoints.
 Tests file management functionality using temporary directories.
 """
-
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,6 +14,8 @@ from fastapi.testclient import TestClient
 
 from app.background_tasks import TaskType
 from app.main import api_app
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 
 class MockMCInstance:
@@ -78,8 +81,8 @@ def mock_file_operations_setup(instance):
         None: The context is set up with mocked dependencies
     """
     with (
-        patch("app.routers.servers.files.docker_mc_manager") as mock_manager,
-        patch("app.dependencies.settings") as mock_settings,
+        patch_runtime_resource('docker_mc_manager') as mock_manager,
+        patch_settings() as mock_settings,
     ):
         mock_manager.get_instance.return_value = instance
         mock_settings.master_token = "test_master_token"
@@ -270,8 +273,7 @@ class TestFileOperations:
             )
 
             assert response.status_code == 500
-            # Global exception handler now formats error messages differently
-            assert "Write error" in response.json()["detail"]
+            assert response.json()["detail"] == "服务器内部错误，请稍后重试"
 
     def test_download_file(self, client, mock_instance):
         """Test downloading a file."""
@@ -459,9 +461,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-            with patch(
-                "app.routers.servers.files.task_manager.submit",
-            ) as submit_mock:
+            with patch.object(current_runtime().resource('task_manager'), 'submit') as submit_mock:
                 submit_mock.return_value.task_id = "ownership-task-id"
                 response = client.post(
                     f"/servers/{server_id}/files/ownership/restore",

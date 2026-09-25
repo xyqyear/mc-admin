@@ -1,5 +1,4 @@
 """Integration tests for template configuration endpoints."""
-
 import json
 import tempfile
 from pathlib import Path
@@ -10,9 +9,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
-from app.models import Base
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -96,17 +97,17 @@ def test_client(temp_server_path, test_db):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch('app.config.settings.server_path', temp_server_path),
-        patch('app.config.settings.master_token', 'test-master-token'),
+        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
+        patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
-            patch('app.servers.lifecycle.orchestrators.docker_mc_manager', real_mc_manager),
-            patch('app.routers.servers.template_config.docker_mc_manager', real_mc_manager),
-            patch('app.servers.port_utils.docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-            patch('app.servers.lifecycle.orchestrators.log_monitor.start_server', new_callable=AsyncMock),
-            patch('app.servers.lifecycle.orchestrators.simple_dns_manager.update', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+            patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         ):
             client = TestClient(
                 api_app, raise_server_exceptions=False
@@ -249,12 +250,11 @@ class TestTemplateConfigPreview:
 
 
 async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_db, temp_server_path):
+    from app.auth.service import get_system_user
     from app.background_tasks import BackgroundTaskManager
+    from app.configuration.api_models import TemplateConfigUpdateRequest
     from app.minecraft import MCServerStatus
-    from app.routers.servers.template_config import (
-        TemplateConfigUpdateRequest,
-        update_template_config,
-    )
+    from app.routers.servers.template_config import update_template_config
     from app.servers.crud import create_server_record, get_active_server_by_id
     from app.templates import (
         StringVariableDefinition,
@@ -281,17 +281,19 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
 
     tasks = BackgroundTaskManager()
     with (
-        patch("app.routers.servers.template_config.docker_mc_manager", manager),
-        patch("app.routers.servers.template_config.task_manager", tasks),
-        patch("app.servers.rebuild.get_async_session", test_db),
-        patch("app.servers.rebuild.docker_mc_manager", manager),
-        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch_runtime_resource('docker_mc_manager', manager),
+        patch_runtime_resource('task_manager', tasks),
+        patch("app.configuration.application.get_async_session", test_db),
+        patch_runtime_resource('docker_mc_manager', manager),
+        patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.EXISTS)),
+        patch.object(instance, "created", AsyncMock(return_value=False)),
         patch.object(manager, "get_instance", return_value=instance),
     ):
         async with test_db() as session:
             response = await update_template_config(
                 "legacy-template", TemplateConfigUpdateRequest(variable_values={"memory": "3G"}), session,
+                get_system_user(),
             )
         future = tasks.get_future(response.task_id)
         assert future is not None
@@ -310,14 +312,14 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
 @pytest.mark.parametrize("failure", [None, "save", "start"])
 async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_path, failure):
     from app.background_tasks import BackgroundTaskManager, TaskType
-    from app.minecraft import MCServerStatus
-    from app.routers.servers.template_config import get_template_config
-    from app.servers.configuration import (
+    from app.configuration.application import rebuild_server_task
+    from app.configuration.preparation import (
         capture_template_snapshot,
         prepare_template_configuration,
     )
+    from app.minecraft import MCServerStatus
+    from app.routers.servers.template_config import get_template_config
     from app.servers.crud import create_server_record, get_active_server_by_id
-    from app.servers.rebuild import rebuild_server_task
     from app.templates import StringVariableDefinition
     from app.templates.crud import create_template, save_template
 
@@ -347,9 +349,9 @@ async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_pa
 
     tasks = BackgroundTaskManager()
     with (
-        patch("app.servers.rebuild.docker_mc_manager", manager),
-        patch("app.servers.rebuild.get_async_session", test_db),
-        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch_runtime_resource('docker_mc_manager', manager),
+        patch("app.configuration.application.get_async_session", test_db),
+        patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(manager, "get_instance", return_value=instance),
         patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.HEALTHY)),
         patch.object(instance, "created", AsyncMock(return_value=False)),
@@ -357,7 +359,7 @@ async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_pa
         patch.object(instance, "up", AsyncMock(side_effect=start)) as up,
     ):
         if failure == "save":
-            with patch("app.servers.rebuild.save_configuration_metadata", AsyncMock(side_effect=RuntimeError("保存失败"))):
+            with patch("app.configuration.application.save_configuration_metadata", AsyncMock(side_effect=RuntimeError("保存失败"))):
                 submitted = tasks.submit(TaskType.SERVER_REBUILD, "重建", rebuild_server_task("metadata-rebuild", configuration))
                 result = await submitted.awaitable
         else:
@@ -375,6 +377,7 @@ async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_pa
             assert record.template_id is None
         else:
             assert json.loads(record.variable_values_json or "{}") == {"memory": "3G"}
-            config = await get_template_config("metadata-rebuild", db)
+            with patch_runtime_resource('docker_mc_manager', manager):
+                config = await get_template_config("metadata-rebuild", db)
             assert config.has_template_update
             assert config.yaml_template == template_yaml

@@ -1,9 +1,13 @@
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Self
 
+import pytest
+
+from app.dynamic_config import get_config
 from app.world import region_manifest
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 def test_region_manifest_worker_count_comes_from_config(tmp_path: Path, monkeypatch):
@@ -36,11 +40,7 @@ def test_region_manifest_worker_count_comes_from_config(tmp_path: Path, monkeypa
         ) -> Iterable[tuple[int, int, int] | None]:
             return map(fn, candidates)
 
-    monkeypatch.setattr(
-        region_manifest,
-        "config",
-        SimpleNamespace(world=SimpleNamespace(region_stat_workers=2)),
-    )
+    monkeypatch.setattr(get_config().world, "region_stat_workers", 2)
     monkeypatch.setattr(region_manifest, "ThreadPoolExecutor", FakePool)
 
     rows = region_manifest.list_region_manifest_sync(region_dir)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import settings
+from app.config import get_settings
 from app.snapshots import ResticClient
 from app.utils.exec import exec_command
 
@@ -29,7 +29,7 @@ async def _drain(gen):
 def check_restic_available():
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -165,3 +165,5 @@ class TestResticClientNoPasswordIntegrated:
         nodes = await client.ls(snapshot.id, backup_dir)
         assert backup_dir / "nested_dir" in nodes
         assert backup_dir / "test_file1.txt" in nodes
+
+pytestmark = [pytestmark, pytest.mark.binary('restic')]

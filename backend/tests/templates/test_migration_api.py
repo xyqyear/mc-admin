@@ -1,5 +1,5 @@
 """Integration tests for template migration API endpoints."""
-
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -10,13 +10,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
-from app.models import Base, Server, ServerStatus, ServerTemplate
+from app.runtime_resources import current_runtime
+from app.servers.models import Server, ServerStatus
 from app.templates import (
     IntVariableDefinition,
     StringVariableDefinition,
 )
 from app.templates.models import serialize_variable_definitions
+from app.templates.tables import ServerTemplate
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """\
 version: '3.8'
@@ -87,16 +91,20 @@ async def test_db():
 
 
 @pytest.fixture
-def mock_docker_instance():
+def mock_docker_instance(isolated_runtime):
     """Create a mock Docker MC instance."""
     instance = AsyncMock()
     instance.exists = AsyncMock(return_value=True)
-    instance.get_compose_file = AsyncMock(return_value=RENDERED_YAML)
+    compose = isolated_runtime.settings.server_path / "test-server" / "docker-compose.yml"
+    compose.parent.mkdir()
+    compose.write_text(RENDERED_YAML)
+    instance.set_compose = compose.write_text
+    instance.get_compose_file = AsyncMock(side_effect=compose.read_text)
     return instance
 
 
 @pytest.fixture
-def test_client(test_db, mock_docker_instance):
+def test_client(test_db, mock_docker_instance, isolated_runtime):
     """Create TestClient with test database and mocked Docker."""
 
     async def override_get_db():
@@ -106,12 +114,12 @@ def test_client(test_db, mock_docker_instance):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch("app.config.settings.master_token", "test-master-token"),
-        patch(
-            "app.routers.servers.template_migration.docker_mc_manager"
-        ) as mock_manager,
+        patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"),
+        patch("app.configuration.application.get_async_session", test_db),
+        patch_runtime_resource('docker_mc_manager') as mock_manager,
     ):
         mock_manager.get_instance.return_value = mock_docker_instance
+        mock_manager.servers_path = isolated_runtime.settings.server_path
         client = TestClient(api_app, raise_server_exceptions=False)
         yield client
 
@@ -263,7 +271,7 @@ class TestExtractVariables:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         response = test_client.post(
             "/api/servers/test-server/extract-variables",
@@ -289,9 +297,7 @@ class TestExtractVariables:
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
         # Return compose that doesn't match template well
-        mock_docker_instance.get_compose_file.return_value = (
-            "version: '3.8'\nservices:\n  mc:\n    image: test"
-        )
+        mock_docker_instance.set_compose("version: '3.8'\nservices:\n  mc:\n    image: test")
 
         response = test_client.post(
             "/api/servers/test-server/extract-variables",
@@ -361,7 +367,7 @@ class TestExtractVariables:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         response = test_client.post(
             "/api/servers/test-server/extract-variables",
@@ -395,7 +401,7 @@ class TestCheckConversion:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         response = test_client.post(
             "/api/servers/test-server/check-conversion",
@@ -417,9 +423,7 @@ class TestCheckConversion:
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
         # Current compose is different from what template would render
-        mock_docker_instance.get_compose_file.return_value = (
-            "version: '3.8'\nservices:\n  mc:\n    image: different"
-        )
+        mock_docker_instance.set_compose("version: '3.8'\nservices:\n  mc:\n    image: different")
 
         response = test_client.post(
             "/api/servers/test-server/check-conversion",
@@ -452,9 +456,7 @@ class TestCheckConversion:
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
         # Reordered keys but same content
-        mock_docker_instance.get_compose_file.return_value = (
-            "port: 25565\nname: survival"
-        )
+        mock_docker_instance.set_compose("port: 25565\nname: survival")
 
         response = test_client.post(
             "/api/servers/test-server/check-conversion",
@@ -487,7 +489,7 @@ class TestCheckConversion:
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
         # Reversed list order
-        mock_docker_instance.get_compose_file.return_value = "ports:\n  - 8081\n  - 8080"
+        mock_docker_instance.set_compose("ports:\n  - 8081\n  - 8080")
 
         response = test_client.post(
             "/api/servers/test-server/check-conversion",
@@ -558,7 +560,7 @@ class TestConvertToTemplateMode:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         response = test_client.post(
             "/api/servers/test-server/convert-to-template",
@@ -581,15 +583,13 @@ class TestConvertToTemplateMode:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = "different: yaml"
+        mock_docker_instance.set_compose("different: yaml")
 
         mock_task_result = MagicMock()
         mock_task_result.task_id = "task-123"
 
-        with patch(
-            "app.routers.servers.template_migration.task_manager"
-        ) as mock_tm:
-            mock_tm.submit.return_value = mock_task_result
+        with patch_runtime_resource('task_manager') as mock_tm:
+            mock_tm.submit_durable = AsyncMock(return_value=mock_task_result)
             response = test_client.post(
                 "/api/servers/test-server/convert-to-template",
                 json={
@@ -598,6 +598,14 @@ class TestConvertToTemplateMode:
                 },
                 headers=auth_headers(),
             )
+
+        mock_tm.submit_durable.assert_awaited_once()
+        submitted = mock_tm.submit_durable.await_args_list[0].kwargs
+        asyncio.get_event_loop().run_until_complete(submitted["task_generator"].aclose())
+        assert submitted["task_type"].value == "server_rebuild"
+        assert submitted["server_id"] == "test-server"
+        assert submitted["actor_id"] == 0
+        assert submitted["configuration_version"] == hashlib.sha256(YAML_TEMPLATE.format(**VARIABLE_VALUES).encode()).hexdigest()
 
         assert response.status_code == 200
         data = response.json()
@@ -666,7 +674,7 @@ class TestConvertToTemplateMode:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         test_client.post(
             "/api/servers/test-server/convert-to-template",
@@ -745,7 +753,7 @@ class TestMigrationWorkflows:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         # Step 1: Convert to template mode
         resp1 = test_client.post(
@@ -784,7 +792,7 @@ class TestMigrationWorkflows:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         # Step 1: Extract variables
         resp1 = test_client.post(
@@ -829,7 +837,7 @@ class TestMigrationWorkflows:
             create_test_template(self.db)
         )
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.get_compose_file.return_value = RENDERED_YAML
+        mock_docker_instance.set_compose(RENDERED_YAML)
 
         # Use different values than what's in the compose file
         modified_values = {
@@ -842,10 +850,8 @@ class TestMigrationWorkflows:
         mock_task_result = MagicMock()
         mock_task_result.task_id = "task-456"
 
-        with patch(
-            "app.routers.servers.template_migration.task_manager"
-        ) as mock_tm:
-            mock_tm.submit.return_value = mock_task_result
+        with patch_runtime_resource('task_manager') as mock_tm:
+            mock_tm.submit_durable = AsyncMock(return_value=mock_task_result)
 
             # Check shows rebuild needed
             resp1 = test_client.post(
@@ -858,6 +864,7 @@ class TestMigrationWorkflows:
             )
             assert resp1.status_code == 200
             assert resp1.json()["requires_rebuild"] is True
+            mock_tm.submit_durable.assert_not_awaited()
 
             # Convert triggers rebuild
             resp2 = test_client.post(
@@ -868,6 +875,12 @@ class TestMigrationWorkflows:
                 },
                 headers=auth_headers(),
             )
+            mock_tm.submit_durable.assert_awaited_once()
+            submitted = mock_tm.submit_durable.await_args_list[0].kwargs
+            asyncio.get_event_loop().run_until_complete(submitted["task_generator"].aclose())
+            assert submitted["task_type"].value == "server_rebuild"
+            assert submitted["server_id"] == "test-server"
+            assert submitted["configuration_version"] == hashlib.sha256(YAML_TEMPLATE.format(**modified_values).encode()).hexdigest()
             assert resp2.status_code == 200
             assert resp2.json()["task_id"] == "task-456"
             assert resp2.json()["skipped_rebuild"] is False

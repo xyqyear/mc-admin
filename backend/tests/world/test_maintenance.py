@@ -4,11 +4,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.db.metadata import Base
 from app.minecraft import MCServerStatus
 from app.routers.servers import operations
+from app.servers.models import Server
 from app.snapshots.restore import SnapshotRestoreService, SnapshotServerRunning
 from app.world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from app.world.maintenance import affected_servers
+from tests.support.runtime import set_runtime_resource
 
 
 class Instance:
@@ -80,11 +83,18 @@ async def test_snapshot_targets_distinguish_online_files_and_worlds(manager, tmp
 
 @pytest.mark.parametrize("action", ["start", "up", "restart"])
 async def test_server_cannot_start_during_world_maintenance(
-    manager, monkeypatch, action
+    manager, monkeypatch, action, isolated_runtime
 ):
+    monkeypatch.setattr(isolated_runtime.settings, "server_path", manager.get_instance("one").project.parent)
+    async with isolated_runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with isolated_runtime.database.session_factory() as session:
+        session.add(Server(server_id="one"))
+        await session.commit()
+    (manager.get_instance("one").project / "docker-compose.yml").write_text("services: {}\n")
     lock = ServerOperationLock()
-    monkeypatch.setattr(operations, "docker_mc_manager", manager)
-    monkeypatch.setattr(operations, "server_operation_lock", lock)
+    set_runtime_resource(monkeypatch, 'docker_mc_manager', manager)
+    set_runtime_resource(monkeypatch, 'server_operation_lock', lock)
     holder = LockHolder(ServerOperationKind.PRUNE, datetime.now(UTC), None, "pruning")
     async with lock.acquire("one", holder):
         status = await operations.server_maintenance("one", Mock())

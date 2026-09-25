@@ -1,16 +1,5 @@
-"""
-Dynamic configuration system with type-safe access interface.
+"""Typed configuration views bound to their owning manager."""
 
-Usage:
-    from app.dynamic_config import config
-
-    # Access configuration with full type safety
-    server_name = config.minecraft.server_name  # str
-    max_memory = config.minecraft.resources.max_memory_mb  # int
-    players = config.minecraft.players  # List[PlayerConfig]
-"""
-
-# Import all configuration schema classes
 from typing import cast
 
 from .configs.dns import DNSManagerConfig
@@ -20,31 +9,15 @@ from .configs.players import PlayersConfig
 from .configs.self_check import SelfCheckConfig
 from .configs.snapshots import SnapshotsConfig
 from .configs.world import WorldConfig
-from .manager import config_manager
+from .manager import ConfigManager, get_config_manager
 from .schemas import BaseConfigSchema
 
 
 class ConfigProxy:
-    """
-    Proxy object providing type-safe access to dynamic configurations.
+    """Resolve current cached values without changing the owning manager."""
 
-    This class uses __getattr__ to dynamically provide access to configuration
-    modules registered with the ConfigManager. Each attribute access returns
-    the actual configuration instance with full type safety.
-
-    Example:
-        config.minecraft returns MinecraftConfig instance
-        config.backup returns BackupConfig instance
-    """
-
-    def __init__(self, manager=config_manager):
-        """
-        Initialize the configuration proxy.
-
-        Args:
-            manager: ConfigManager instance to use (allows dependency injection for testing)
-        """
-        self._manager = manager
+    def __init__(self, manager: ConfigManager | None = None):
+        self._manager = manager if manager is not None else get_config_manager()
 
     @property
     def dns(self):
@@ -95,20 +68,11 @@ class ConfigProxy:
             )
 
 
-# Register all configuration modules
-config_manager.register_config("dns", DNSManagerConfig)
-config_manager.register_config("snapshots", SnapshotsConfig)
-config_manager.register_config("log_parser", LogParserConfig)
-config_manager.register_config("players", PlayersConfig)
-config_manager.register_config("mcmap", MCMapConfig)
-config_manager.register_config("world", WorldConfig)
-config_manager.register_config("self_check", SelfCheckConfig)
+def get_config() -> ConfigProxy:
+    from ..runtime_resources import current_runtime
 
-# Global configuration proxy instance
-# This is the main interface that application code should import and use
-config = ConfigProxy()
+    return current_runtime().resource("dynamic_configuration")
 
-# Re-export commonly used classes and functions
 __all__ = [
     "BaseConfigSchema",
     "ConfigProxy",
@@ -119,6 +83,6 @@ __all__ = [
     "SelfCheckConfig",
     "SnapshotsConfig",
     "WorldConfig",
-    "config",
-    "config_manager",
+    'get_config',
+    'get_config_manager',
 ]

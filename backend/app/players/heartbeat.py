@@ -4,18 +4,25 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from ..db.database import get_async_session
-from ..dynamic_config import config
-from ..logger import log_exception, logger
-from .crud import get_online_players_with_names_grouped_by_server
+from ..dynamic_config import get_config
+from ..logger import get_logger, log_exception
+from ..runtime_resources import current_runtime
 from .crud.heartbeat import get_heartbeat, upsert_heartbeat
+from .service import PlayerService, get_player_service
 
 
 class HeartbeatManager:
-    def __init__(self):
+    def __init__(self, players: PlayerService | None = None):
+        self._players = players
         self._task: asyncio.Task | None = None
         self._stop_flag = False
 
+    @property
+    def players(self) -> PlayerService:
+        return self._players if self._players is not None else get_player_service()
+
     async def start(self) -> None:
+        logger = get_logger()
         logger.info("Starting heartbeat manager...")
 
         await self._check_crash()
@@ -26,6 +33,7 @@ class HeartbeatManager:
         logger.info("Heartbeat manager started")
 
     async def stop(self) -> None:
+        logger = get_logger()
         logger.info("Stopping heartbeat manager...")
         self._stop_flag = True
 
@@ -38,84 +46,37 @@ class HeartbeatManager:
 
         logger.info("Heartbeat manager stopped")
 
-    @log_exception("Error checking for crash: ")
     async def _check_crash(self) -> None:
+        logger = get_logger()
         async with get_async_session() as session:
             heartbeat = await get_heartbeat(session)
+            timestamp = heartbeat.timestamp if heartbeat is not None else None
+        if timestamp is None:
+            logger.info("No previous heartbeat found (first startup)")
+            return
+        elapsed = datetime.now(UTC) - timestamp
+        threshold = timedelta(minutes=get_config().players.heartbeat.crash_threshold_minutes)
+        if elapsed < threshold:
+            logger.info(f"Normal restart detected (last heartbeat {elapsed.total_seconds():.0f}s ago)")
+            return
+        logger.warning(f"System crash detected! Last heartbeat was {elapsed.total_seconds():.0f} seconds ago")
+        await self.players.recover_crash(timestamp)
+        from .player_syncer import get_player_syncer
 
-            if heartbeat is None:
-                logger.info("No previous heartbeat found (first startup)")
-                return
-
-            now = datetime.now(UTC)
-            time_since_heartbeat = now - heartbeat.timestamp
-
-            crash_threshold = timedelta(
-                minutes=config.players.heartbeat.crash_threshold_minutes
-            )
-            if time_since_heartbeat >= crash_threshold:
-                logger.warning(
-                    f"System crash detected! Last heartbeat was {time_since_heartbeat.total_seconds():.0f} seconds ago"
-                )
-                await self._recover_from_crash(
-                    session,
-                    heartbeat.timestamp,
-                    time_since_heartbeat.total_seconds(),
-                )
-            else:
-                logger.info(
-                    f"Normal restart detected (last heartbeat {time_since_heartbeat.total_seconds():.0f}s ago)"
-                )
-
-    @log_exception("Error during crash recovery: ")
-    async def _recover_from_crash(
-        self, session, crash_timestamp: datetime, time_since_crash: float
-    ) -> None:
-        """End each open session via ``process_player_left`` then resync via RCON."""
-        from .player_syncer import player_syncer
-        from .tracking import process_player_left
-
-        logger.info("Starting crash recovery...")
-
-        players_by_server = await get_online_players_with_names_grouped_by_server(
-            session
-        )
-
-        total_players = sum(len(players) for players in players_by_server.values())
-
-        logger.info(
-            f"Found {total_players} online players across {len(players_by_server)} servers to process during crash recovery"
-        )
-
-        for server_id, player_names in players_by_server.items():
-            logger.info(
-                f"Processing {len(player_names)} players on server {server_id}: {player_names}"
-            )
-            for player_name in player_names:
-                await process_player_left(
-                    server_id, player_name, "System crash", crash_timestamp
-                )
-
-        logger.info(
-            f"Crash recovery completed - processed {total_players} player departures"
-        )
-
-        logger.info(
-            f"System crash event - triggering player sync "
-            f"(crash at {crash_timestamp}, {time_since_crash:.0f}s ago)"
-        )
-        await player_syncer.validate_all_servers()
+        await get_player_syncer().validate_all_servers()
 
     async def _heartbeat_loop(self) -> None:
         while not self._stop_flag:
             await self._update_heartbeat()
-            await asyncio.sleep(config.players.heartbeat.heartbeat_interval_seconds)
+            await asyncio.sleep(get_config().players.heartbeat.heartbeat_interval_seconds)
 
     @log_exception("Error updating heartbeat: ")
     async def _update_heartbeat(self) -> None:
+        logger = get_logger()
         async with get_async_session() as session:
             await upsert_heartbeat(session, datetime.now(UTC))
             logger.debug("Updated heartbeat")
 
 
-heartbeat_manager = HeartbeatManager()
+def get_heartbeat_manager() -> HeartbeatManager:
+    return current_runtime().resource('heartbeat_manager')

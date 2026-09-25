@@ -3,35 +3,38 @@ import type { ErrorInfo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ErrorBoundary } from 'react-error-boundary'
 import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router'
-import { ErrorFallback } from '@/components/layout/ErrorFallback'
-import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
-import { MainLayout } from '@/components/layout/MainLayout'
-import VersionUpdateDialog from '@/components/VersionUpdateDialog'
-import { useCurrentUser } from '@/hooks/queries/base/useUserQueries'
-import { useVersionCheck } from '@/hooks/useVersionCheck'
-import { AUTH_EXPIRED_EVENT } from '@/utils/api'
+import { ErrorFallback } from '@/shared/layout/ErrorFallback'
+import { LoadingSpinner } from '@/shared/layout/LoadingSpinner'
+import { MainLayout } from '@/app/layout/MainLayout'
+import VersionUpdateDialog from '@/app/version/VersionUpdateDialog'
+import { useCurrentUser } from '@/features/users/queries'
+import { useVersionCheck } from '@/app/version/useVersionCheck'
+import { AUTH_EXPIRED_EVENT, getErrorStatus } from '@/shared/http/api'
 import { toast } from 'sonner'
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
+import { Button } from '@/shared/ui/button'
+import { OperationObserver } from '@/app/operations/OperationObserver'
 
-const Login = React.lazy(() => import('@/pages/Login'))
-const SelfCheck = React.lazy(() => import('@/pages/SelfCheck'))
-const Overview = React.lazy(() => import('@/pages/Overview'))
-const Snapshots = React.lazy(() => import('@/pages/Snapshots'))
-const ArchiveManagement = React.lazy(() => import('@/pages/ArchiveManagement'))
-const DynamicConfig = React.lazy(() => import('@/pages/DynamicConfig'))
-const CronManagement = React.lazy(() => import('@/pages/CronManagement'))
-const DnsManagement = React.lazy(() => import('@/pages/DnsManagement'))
-const PlayerManagement = React.lazy(() => import('@/pages/PlayerManagement'))
-const ServerNew = React.lazy(() => import('@/pages/server/ServerNew'))
-const ServerDetail = React.lazy(() => import('@/pages/server/servers/ServerDetail'))
+const Login = React.lazy(() => import('@/features/users/LoginScreen'))
+const SelfCheck = React.lazy(() => import('@/features/health/SelfCheckScreen'))
+const Overview = React.lazy(() => import('@/app/overview/Overview'))
+const Snapshots = React.lazy(() => import('@/features/backups/SnapshotsScreen'))
+const ArchiveManagement = React.lazy(() => import('@/features/archives/ArchiveManagementScreen'))
+const DynamicConfig = React.lazy(() => import('@/features/settings/DynamicConfigScreen'))
+const CronManagement = React.lazy(() => import('@/features/schedules/CronManagementScreen'))
+const DnsManagement = React.lazy(() => import('@/features/dns/DnsManagementScreen'))
+const PlayerManagement = React.lazy(() => import('@/features/players/PlayerManagementScreen'))
+const ServerNew = React.lazy(() => import('@/features/servers/ServerNewScreen'))
+const ServerDetail = React.lazy(() => import('@/features/servers/ServerDetailScreen'))
 const ServerFiles = React.lazy(() => import('@/pages/server/servers/ServerFiles'))
 const ServerCompose = React.lazy(() => import('@/pages/server/servers/ServerCompose'))
-const ServerConsole = React.lazy(() => import('@/pages/server/servers/ServerConsole'))
+const ServerConsole = React.lazy(() => import('@/features/servers/ServerConsoleScreen'))
 const ServerWorldRestore = React.lazy(() => import('@/pages/server/servers/ServerWorldRestore'))
 const ServerChunkPrune = React.lazy(() => import('@/pages/server/servers/ServerChunkPrune'))
-const UserManagement = React.lazy(() => import('@/pages/admin/UserManagement'))
-const TemplateList = React.lazy(() => import('@/pages/templates/TemplateList'))
-const TemplateEdit = React.lazy(() => import('@/pages/templates/TemplateEdit'))
-const DefaultVariables = React.lazy(() => import('@/pages/templates/DefaultVariables'))
+const UserManagement = React.lazy(() => import('@/features/users/UserManagementScreen'))
+const TemplateList = React.lazy(() => import('@/features/templates/TemplateListScreen'))
+const TemplateEdit = React.lazy(() => import('@/features/templates/TemplateEditScreen'))
+const DefaultVariables = React.lazy(() => import('@/features/templates/DefaultVariablesScreen'))
 
 
 
@@ -42,12 +45,18 @@ function ProtectedRoutes() {
     return <LoadingSpinner fullscreen />
   }
 
-  if (!currentUserQuery.data) {
+  const status = getErrorStatus(currentUserQuery.error)
+  if (currentUserQuery.isError && status !== 401 && status !== 403 && !currentUserQuery.data) {
+    return <SessionLookupError message={currentUserQuery.error.message} retry={() => { void currentUserQuery.refetch() }} />
+  }
+
+  if (!currentUserQuery.data || status === 401 || status === 403) {
     return <Navigate to="/login" replace />
   }
 
   return (
     <MainLayout>
+      <OperationObserver key={currentUserQuery.data.id} sessionId={String(currentUserQuery.data.id)} />
       <Suspense fallback={<LoadingSpinner />}>
         <Outlet />
       </Suspense>
@@ -62,11 +71,23 @@ function AuthRoutes() {
     return <LoadingSpinner fullscreen />
   }
 
-  if (currentUserQuery.data) {
+  const status = getErrorStatus(currentUserQuery.error)
+  if (currentUserQuery.isError && status !== 401 && status !== 403 && !currentUserQuery.data) {
+    return <SessionLookupError message={currentUserQuery.error.message} retry={() => { void currentUserQuery.refetch() }} />
+  }
+
+  if (currentUserQuery.data && status !== 401 && status !== 403) {
     return <Navigate to="/" replace />
   }
 
   return <Outlet />
+}
+
+function SessionLookupError({ message, retry }: { message: string; retry: () => void }) {
+  return <Alert variant="destructive">
+    <AlertTitle>暂时无法验证登录状态</AlertTitle>
+    <AlertDescription>{message}<Button onClick={retry}>重试</Button></AlertDescription>
+  </Alert>
 }
 
 function App() {

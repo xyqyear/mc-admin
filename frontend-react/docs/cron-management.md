@@ -4,13 +4,15 @@ Page at `/cron` for managing scheduled jobs backed by the backend's APScheduler 
 
 ## Status model
 
-A user-managed job moves through `active → paused → active` (pause / resume) or `active → cancelled` (cancel, terminal). The default filter on the list page hides cancelled rows so the table stays focused on operational jobs. Pause/resume/cancel are mutation-driven with `useConfirm` confirmations.
+Saved configuration status is separate from runtime registration. `status=active` means “已启用”; `registration_status` is `registered`, `pending`, `failed`, `blocked` or `inactive`, with an optional readable `registration_error`. List, detail and server restart cards show both states. Failed or blocked saved jobs remain visible; an enabled, unregistered user task exposes “重新启用” through the existing resume endpoint. Failed registration does not display a future execution countdown. Older responses lacking these additive fields remain supported.
+
+A user-managed job moves through `active → paused → active` (pause / resume) or `active → cancelled` (cancel; it can be resumed). The default filter on the list page hides cancelled rows so the table stays focused on operational jobs. Pause/resume/cancel are mutation-driven with `useConfirm` confirmations.
 
 System jobs display a `System` badge. The UI hides pause/resume/cancel controls for them. The edit dialog keeps the job type locked and allows name, cron expression, seconds field, and params to be edited.
 
 ## Visual cron expression builder
 
-`components/forms/CronExpressionBuilder.tsx` is the standout. Two modes:
+`features/schedules/ui/CronExpressionBuilder.tsx` is the standout. Two modes:
 
 - **Visual** — five `<Select>` dropdowns (minute, hour, day, month, day-of-week) plus an optional second field. Presets dropdown for common shapes (`every hour`, `every day at midnight`, `every Monday`, …).
 - **Raw** — plain text input for users who already know the expression syntax.
@@ -56,8 +58,8 @@ Per-server restart schedules are configured separately (`ServerRestartScheduleCa
 
 ## Files
 
-- `pages/CronManagement.tsx`
-- `components/cron/CronJobFilters.tsx`, `CronJobStatusTag.tsx`, `CronExpressionDisplay.tsx`, `ExecutionStatusTag.tsx`, `NextRunTimeCell.tsx`
-- `components/dialogs/cron/CreateCronJobDialog.tsx`, `CronJobDetailDialog.tsx`
-- `components/forms/CronExpressionBuilder.tsx`, `CronFieldInput.tsx`, `SchemaForm.tsx`
-- `hooks/api/cronApi.ts`, `hooks/queries/base/useCronQueries.ts`, `hooks/mutations/useCronMutations.ts`
+- `features/schedules/CronManagementScreen.tsx`
+- `features/schedules/ui/CronJobFilters.tsx`, `CronJobStatusTag.tsx`, `CronExpressionDisplay.tsx`, `ExecutionStatusTag.tsx`, `NextRunTimeCell.tsx`
+- `features/schedules/ui/dialogs/CreateCronJobDialog.tsx`, `CronJobDetailDialog.tsx`
+- `features/schedules/ui/CronExpressionBuilder.tsx`, `CronFieldInput.tsx`, `shared/forms/SchemaForm.tsx`
+- `features/schedules/api.ts`, `features/schedules/queries.ts`, `features/schedules/commands.ts`

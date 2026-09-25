@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from app.config import settings
+from app.config import get_settings
 from app.self_check.checks.files import scan_permission_owner_with_fd
+
+pytestmark = pytest.mark.binary("fd")
 
 
 def path_with_uid(path: Path, uid: int) -> Path:
@@ -25,7 +27,7 @@ async def test_owner_scan_ignores_mode_changes(tmp_path: Path) -> None:
     file_path.write_text("motd=test\n")
     file_path.chmod(0o600)
 
-    scan = await scan_permission_owner_with_fd(root, 100)
+    scan = await scan_permission_owner_with_fd(root, 100, fd_binary_path=get_settings().fd_binary_path)
 
     assert scan.mismatched == 0
     assert scan.samples == []
@@ -40,7 +42,7 @@ async def test_owner_scan_reports_uid_mismatches(tmp_path: Path) -> None:
     mismatched.write_bytes(b"")
     root_with_different_uid = path_with_uid(root, root.stat().st_uid + 1)
 
-    scan = await scan_permission_owner_with_fd(root_with_different_uid, 100)
+    scan = await scan_permission_owner_with_fd(root_with_different_uid, 100, fd_binary_path=get_settings().fd_binary_path)
 
     assert scan.root_uid == root.stat().st_uid + 1
     assert scan.mismatched == 1
@@ -57,7 +59,7 @@ async def test_owner_scan_truncates_uid_mismatches(tmp_path: Path) -> None:
         path.write_text(str(index))
     root_with_different_uid = path_with_uid(root, root.stat().st_uid + 1)
 
-    scan = await scan_permission_owner_with_fd(root_with_different_uid, 2)
+    scan = await scan_permission_owner_with_fd(root_with_different_uid, 2, fd_binary_path=get_settings().fd_binary_path)
 
     assert scan.mismatched == 2
     assert len(scan.samples) == 2
@@ -70,9 +72,9 @@ async def test_owner_scan_reports_missing_fd(
 ) -> None:
     root = tmp_path / "server"
     root.mkdir()
-    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
 
-    scan = await scan_permission_owner_with_fd(root, 100)
+    scan = await scan_permission_owner_with_fd(root, 100, fd_binary_path=get_settings().fd_binary_path)
 
     assert scan.mismatched == 0
     assert scan.truncated is False

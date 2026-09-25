@@ -1,0 +1,131 @@
+{
+  "direct_ls_probes": [
+    {
+      "node_lines": 3,
+      "probe": "parent",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data",
+      "seconds": 0.8498471050115768
+    },
+    {
+      "node_lines": 3,
+      "probe": "directory",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+      "seconds": 0.693486916978145
+    },
+    {
+      "node_lines": 3,
+      "probe": "parent",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data",
+      "seconds": 0.6831720070040319
+    },
+    {
+      "node_lines": 3,
+      "probe": "directory",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+      "seconds": 0.6872795700037386
+    },
+    {
+      "node_lines": 3,
+      "probe": "parent",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data",
+      "seconds": 0.6635217050206847
+    },
+    {
+      "node_lines": 3,
+      "probe": "directory",
+      "scope": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+      "seconds": 0.6594628199818544
+    }
+  ],
+  "image_id": "sha256:0397368ca98edc1c4f0e0e98fadb5b75a0a7269afd9b1f85e196d5e75321b9c5",
+  "limits": "One actual public restore in an owned Backup fixture, with 3 ms /proc polling of only that backend process tree. Process intervals are approximate first/last observations. Direct read-only Restic probes run inside the same container/repository, separate from the application process gate. No application code modified; no controlled-host latency claim.",
+  "median_ls_seconds": {
+    "directory": 0.6872795700037386,
+    "parent": 0.6831720070040319
+  },
+  "restic_processes": [
+    {
+      "arguments": [
+        "backup",
+        "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+        "--json",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 0.0831906030070968,
+      "last_seen_seconds": 0.8059996210213285,
+      "observed_seconds": 0.7228090180142317,
+      "pid": 1968932
+    },
+    {
+      "arguments": [
+        "snapshots",
+        "5e3fe879bfdc232b78782b9762b048557a91ea9cccd77ac9c27510e76c3bdda1",
+        "--json",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 0.8491087949951179,
+      "last_seen_seconds": 1.557492641004501,
+      "observed_seconds": 0.708383846009383,
+      "pid": 1969290
+    },
+    {
+      "arguments": [
+        "snapshots",
+        "5a3080debd5e21e721b2c922eaa01a69002e963fef9f47ef17a804b9af7298a5",
+        "--json",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 1.6416963440133259,
+      "last_seen_seconds": 2.3799945329956245,
+      "observed_seconds": 0.7382981889822986,
+      "pid": 1969658
+    },
+    {
+      "arguments": [
+        "ls",
+        "5a3080debd5e21e721b2c922eaa01a69002e963fef9f47ef17a804b9af7298a5",
+        "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data",
+        "--json",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 2.440238609997323,
+      "last_seen_seconds": 3.1525211940170266,
+      "observed_seconds": 0.7122825840197038,
+      "pid": 1969971
+    },
+    {
+      "arguments": [
+        "ls",
+        "5a3080debd5e21e721b2c922eaa01a69002e963fef9f47ef17a804b9af7298a5",
+        "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+        "--json",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 3.205097925994778,
+      "last_seen_seconds": 3.9932123170001432,
+      "observed_seconds": 0.7881143910053652,
+      "pid": 1970289
+    },
+    {
+      "arguments": [
+        "restore",
+        "5a3080debd5e21e721b2c922eaa01a69002e963fef9f47ef17a804b9af7298a5:/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+        "--target",
+        "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution",
+        "--json",
+        "-vv",
+        "--delete",
+        "--insecure-no-password"
+      ],
+      "first_seen_seconds": 4.045635882997885,
+      "last_seen_seconds": 4.823364826996112,
+      "observed_seconds": 0.7777289439982269,
+      "pid": 1970661
+    }
+  ],
+  "restore_http_seconds": 4.89999,
+  "restored_bytes": 4194304,
+  "restored_sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577",
+  "run_id": "phase7-restic-ls-attribution",
+  "source_snapshot_path": "/tmp/mc-admin-phase7-attribution/phase7-restic-ls-attribution/runtime/1e4f8141bbd3/servers/e2e-1e4f8141bbd3/data/attribution"
+}

@@ -4,21 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 
+from app.auth.schemas import UserPublic
+from app.self_check.api_models import SelfCheckStatusResponse
+from app.self_check.service import get_self_check_service
+
 from ..db.database import get_async_session
 from ..dependencies import get_current_user
-from ..dynamic_config import config
-from ..models import UserPublic
+from ..dynamic_config import get_config
 from ..self_check import crud
 from ..self_check.constants import MANUAL_TRIGGER
-from ..self_check.runner import (
-    get_catalog,
-    iter_self_check_events,
-    run_self_check,
-    validate_check_id,
-)
 from ..self_check.types import (
     SelfCheckCatalogItem,
-    SelfCheckCurrentState,
     SelfCheckRunDetail,
     SelfCheckRunResult,
     SelfCheckRunsResponse,
@@ -28,24 +24,18 @@ from ..utils.sse import sse_response
 router = APIRouter(prefix="/self-check", tags=["self-check"])
 
 
-class SelfCheckStatusResponse(SelfCheckRunsResponse):
-    catalog: list[SelfCheckCatalogItem]
-    current_state: SelfCheckCurrentState | None = None
-    retention_runs_keep_days: int
-
-
 @router.get("/catalog", response_model=list[SelfCheckCatalogItem])
 async def list_self_check_catalog(
     _: UserPublic = Depends(get_current_user),
 ) -> list[SelfCheckCatalogItem]:
-    return get_catalog()
+    return get_self_check_service().get_catalog()
 
 
 @router.post("/run", response_model=SelfCheckRunResult)
 async def run_manual_self_check(
     user: UserPublic = Depends(get_current_user),
 ) -> SelfCheckRunResult:
-    return await run_self_check(trigger=MANUAL_TRIGGER, requested_by_user_id=user.id)
+    return await get_self_check_service().run_self_check(trigger=MANUAL_TRIGGER, requested_by_user_id=user.id)
 
 
 @router.post("/run/stream", response_class=StreamingResponse)
@@ -53,7 +43,7 @@ async def stream_manual_self_check(
     user: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
     return sse_response(
-        iter_self_check_events(
+        get_self_check_service().iter_self_check_events(
             trigger=MANUAL_TRIGGER,
             requested_by_user_id=user.id,
         )
@@ -66,13 +56,13 @@ async def run_manual_self_check_item(
     user: UserPublic = Depends(get_current_user),
 ) -> SelfCheckRunResult:
     try:
-        validate_check_id(check_id)
+        get_self_check_service().validate_check_id(check_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    return await run_self_check(
+    return await get_self_check_service().run_self_check(
         trigger=MANUAL_TRIGGER,
         requested_by_user_id=user.id,
         check_ids=(check_id,),
@@ -101,14 +91,14 @@ async def get_self_check_status(
         runs = await crud.list_runs(session, limit=10, offset=0)
         current_state = await crud.get_current_state(
             session,
-            enabled_check_ids=config.self_check.enabled_check_ids(),
+            enabled_check_ids=get_config().self_check.enabled_check_ids(),
         )
     return SelfCheckStatusResponse(
         runs=runs,
         total=total,
-        catalog=get_catalog(),
+        catalog=get_self_check_service().get_catalog(),
         current_state=current_state,
-        retention_runs_keep_days=config.self_check.retention_runs_keep_days,
+        retention_runs_keep_days=get_config().self_check.retention_runs_keep_days,
     )
 
 

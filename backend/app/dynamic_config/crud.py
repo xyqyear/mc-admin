@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import DynamicConfig
+from app.dynamic_config.models import DynamicConfig
 
 
 async def get_all_configs(session: AsyncSession) -> dict[str, DynamicConfig]:

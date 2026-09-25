@@ -1,0 +1,169 @@
+{
+  "scope": "Local qualification of the frozen dirty candidate; not a remote CI run or GHCR publication.",
+  "candidate": {
+    "version": 1,
+    "source": {
+      "revision": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+      "dirty": true,
+      "fingerprint": "sha256:0627f55a983508394ab7da863e97cfcfac5eb9ff1707f1aed5742b38e4cce212"
+    },
+    "oci_manifest_digest": "sha256:b59d611c2c4e0a26499a53f52a72f8fda6b2a4af5a4016e7abb8dba522517505",
+    "config_digest": "sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d",
+    "archive_sha256": "sha256:c49790cc0c0c7877237c72b2d8d33ac2ac0336a906dd4f54b3942c91af1260af",
+    "runner_sha256": "sha256:341fd454d8055e70ce352ccf7fd5f29035b92024d6439ad43b4f653efa82402f"
+  },
+  "checks": {
+    "backend": {
+      "non_docker_passed": 2135,
+      "docker_passed": 10,
+      "exact_inventory_union": 2145,
+      "resource_warnings_are_errors": true,
+      "remaining_warnings": "One helper-class collection warning and four intentional deprecated-field accesses.",
+      "strict_full_diagnostic": {
+        "passed": 2144,
+        "failed": 1,
+        "failure": "Test-owned log handler was not closed; test-only fix verified by final non-Docker run."
+      },
+      "non_docker_seconds": 1290.88
+    },
+    "frontend": {
+      "vitest_passed": 114,
+      "architecture_passed": 4,
+      "lint_typecheck_build_contracts": "passed"
+    },
+    "api": {
+      "passed": 80,
+      "no_reuse_passed": 7,
+      "route_observations": 159,
+      "initial_result": "79/80; official client download failed before restore assertions; full affected shard rerun passed."
+    },
+    "browser": {
+      "forward_passed": 6,
+      "reverse_passed": 6,
+      "skipped": 0,
+      "flaky": 0
+    },
+    "release_source_guards": {
+      "ci_tests_passed": 33,
+      "real_cli_scenarios": 11
+    },
+    "deployment": {
+      "public_requests": 225,
+      "passed": true
+    },
+    "static": "Ruff/Pyright/Go fmt-vet-race/actionlint passed",
+    "local_application_promotion": {
+      "preserved_manifest_digest": "sha256:b59d611c2c4e0a26499a53f52a72f8fda6b2a4af5a4016e7abb8dba522517505",
+      "rejected_gate_variants_without_writes": 20,
+      "registry_removed": true,
+      "temporary_data_removed": true,
+      "remote_publication": false
+    }
+  },
+  "notes": [
+    "Application and Go runner inputs match candidate4. Documentation, test-only log handler cleanup and the separately checked publication source guard were finalized after the source snapshot.",
+    "No issue number, git commit, version tag or remote publication was created."
+  ],
+  "evidence": [
+    {
+      "path": "/tmp/mc-admin-phase7-final2-pytest.log",
+      "sha256": "sha256:cc97361d9d17f14cac415788f4d12510b5a417c93a647ffb1b673082668ff7df"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-final3-pytest.log",
+      "sha256": "sha256:ce053b969259f57e4fb32cff9881189dc7978c4b6de75649bf0409966c44a09a"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-final3-inventory.json",
+      "sha256": "sha256:f1e70d12a4224eda8994abf8ef119ca9da0027d98de28f59adc0975a373023dd"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-docker-evidence.json",
+      "sha256": "sha256:1ef35a025cd2f0987b01f4ac46c9d25dfb3c3e71beddb5e89d9f8db7b96adfd4"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-frontend-tests-final4.log",
+      "sha256": "sha256:f87d1eb67514d1f9ffca6886ddc647f3c0a9c54e4c3a040543e2f7d1698601a5"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-lint-final5.log",
+      "sha256": "sha256:5c8f5bec818d299f90aca8613160b788fd8163b5b0055864dc6a2855d67579d0"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-build-final4.log",
+      "sha256": "sha256:74b781ce9fa628f6cea4df72d99a1c8ae2e21f2f782175c0e98d7b7eec7d1de5"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-contracts-final.log",
+      "sha256": "sha256:536bff881b190463089bde3ccbd0349401bf7d49f668f15e4e2056c7487f6d0d"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-pyright-final3.log",
+      "sha256": "sha256:9830d035f688be53ff5204b0d0701ea37c178effba3b5dccc0974d8c40e6be1a"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-ruff-final3.log",
+      "sha256": "sha256:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-go-check.log",
+      "sha256": "sha256:f9775a358c8692511411cef6359d43cd383845d68b7fd4a63dbf301e6fe67382"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-release-source-gates-tests.log",
+      "sha256": "sha256:d71157c59073dd50025fce5138ce0dd1fda6fc1e0a0cc830a0a40f3837c61423"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-release-source-gates-actionlint.log",
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-candidate4-api-coverage/coverage.json",
+      "sha256": "sha256:5216b36e10210c89c9a2b06d33ef0f3b14a327816363d6947f6c64c7fbc189f4"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-candidate4-no-reuse-coverage/coverage.json",
+      "sha256": "sha256:ff05442b08a7fd343fb51323ceb5496fc9b5fc4be06971698d01e058db7e9552"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-browser-evidence.json",
+      "sha256": "sha256:b8c111474d60f82b210cbfcc6ff526e5e713d4799cfe62cedb083edb5d053fdb"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-browser-reverse-evidence.json",
+      "sha256": "sha256:f0959a1e2ce60d611e12fa20c7580b7be3e37e140d08ddc47564b7f3d361cf61"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-production-freeze-final.json",
+      "sha256": "sha256:64c86ecf0d623f0142c55622ca820bd9dd6dc1c83bd028e3e89101e6d1c6dac4"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-cleanup-final.json",
+      "sha256": "sha256:7d8e89c5a1ae0f0e0d281a613bdda111f508fcc484d140d132e8b0d4d5630cff"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-rehearsal-candidate4.json",
+      "sha256": "sha256:13827cf6b433a2e15bdca6ff5a6892bdc53caf3b31a5e4ca93e17c5164f416ba"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-candidate4-binaries.json",
+      "sha256": "sha256:076f317440f7cc547f2e0640b83da1b853a7fb41af50af1bf66658ef30e6200c"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-qualified-local.json",
+      "sha256": "sha256:e2135f8097e4d84d0e334fc88d6ab10b953e329752fedd8b0179d7ea7771f3f5"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-application-promotion.json",
+      "sha256": "sha256:12f21ea77683a2fb25212e5de1581b7ea4b1fea94f3f11291f576d5cba4f5559"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-application-promotion-independent-audit.json",
+      "sha256": "sha256:8e55757cea6de9e05ff71bfd88b7e4c58393c69311aa91fe350f686170694363"
+    },
+    {
+      "path": "/tmp/mc-admin-phase7-openspec-final.json",
+      "sha256": "sha256:eec58f7cd839fcedda5982a5e2be6eae065084d95b4f76db1e974f2179fafd38"
+    }
+  ]
+}

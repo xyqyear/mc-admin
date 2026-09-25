@@ -1,4 +1,4 @@
-from .bus import EventBus, Subscription, event_bus
+from .bus import EventBus, Subscription, get_event_bus
 from .models import (
     ChatEvent,
     EventPlayer,
@@ -21,5 +21,5 @@ __all__ = [
     "ServerStoppingEvent",
     "StreamResetFrame",
     "Subscription",
-    "event_bus",
+    'get_event_bus',
 ]

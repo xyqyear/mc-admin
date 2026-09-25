@@ -7,17 +7,16 @@ from app.minecraft import DiskSpaceInfo, DockerMCManager, MCServerInfo, MCServer
 from app.minecraft.compose import ServerType
 
 from .fixtures.test_utils import (
-    TEST_ROOT_PATH,
+    OwnedDockerResources,
     create_mc_server_compose_yaml,
-    teardown,  # noqa: F401 -- for pytest fixture
+    owned_docker_resources,  # noqa: F401
 )
 
 
 @pytest.mark.asyncio
-async def test_minecraft_instance(teardown: list[str]):  # noqa: F811
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
+async def test_minecraft_instance(tmp_path):
+    docker_mc_manager = DockerMCManager(tmp_path)
     server1 = docker_mc_manager.get_instance("testserver1")
-    teardown.append("mc-testserver1")
 
     await server1.create(create_mc_server_compose_yaml("testserver1", 34544, 34544 + 1))
     server_info = await server1.get_server_info()
@@ -42,12 +41,14 @@ async def test_minecraft_instance(teardown: list[str]):  # noqa: F811
     assert mc_compose.mc_service.environment["GID"] == str(os.getgid())
 
 
+@pytest.mark.docker
 @pytest.mark.asyncio
-async def test_server_status_lifecycle_with_docker(teardown: list[str]):  # noqa: F811
+async def test_server_status_lifecycle_with_docker(owned_docker_resources: OwnedDockerResources):  # noqa: F811
     """Test the complete lifecycle of server status changes"""
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
-    server = docker_mc_manager.get_instance("status-test-server")
-    teardown.append("mc-status-test-server")
+    resources = owned_docker_resources
+    server_name = resources.name("status")
+    docker_mc_manager = DockerMCManager(resources.root)
+    server = docker_mc_manager.get_instance(server_name)
 
     # Test REMOVED status - server doesn't exist
     print("Testing REMOVED status")
@@ -60,7 +61,7 @@ async def test_server_status_lifecycle_with_docker(teardown: list[str]):  # noqa
     # Create server -> EXISTS status
     print("Testing EXISTS status")
     await server.create(
-        create_mc_server_compose_yaml("status-test-server", 34600, 34601)
+        resources.compose(server_name, 34600, 34601)
     )
     assert await server.get_status() == MCServerStatus.EXISTS
     assert await server.exists()
@@ -128,11 +129,10 @@ async def test_server_status_lifecycle_with_docker(teardown: list[str]):  # noqa
 
 
 @pytest.mark.asyncio
-async def test_get_disk_space_info_with_docker(teardown: list[str]):  # noqa: F811
+async def test_get_disk_space_info(tmp_path):
     """Test get_disk_space_info method"""
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
+    docker_mc_manager = DockerMCManager(tmp_path)
     server = docker_mc_manager.get_instance("disk-space-test")
-    teardown.append("mc-disk-space-test")
 
     # Test error when data directory doesn't exist
     with pytest.raises(RuntimeError, match="Data directory does not exist"):

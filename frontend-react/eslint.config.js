@@ -6,7 +6,7 @@ import globals from "globals"
 import tseslint from "typescript-eslint"
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  globalIgnores(["dist", "test-results", "playwright-report"]),
 
   {
     files: ["**/*.{ts,tsx}"],
@@ -30,10 +30,19 @@ export default defineConfig([
 
   {
     files: [
-      "src/components/ui/**/*.{ts,tsx}",
-      "src/components/theme-provider.tsx",
+      "src/shared/ui/**/*.{ts,tsx}",
+      "src/shared/theme-provider.tsx",
     ],
     rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+
+  {
+    files: ["browser/**/*.ts", "playwright.config.ts"],
+    languageOptions: { globals: globals.node },
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
       "react-refresh/only-export-components": "off",
     },
   },

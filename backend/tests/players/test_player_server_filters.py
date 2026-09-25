@@ -3,17 +3,17 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models import (
-    Base,
+from app.db.metadata import Base
+from app.players.crud.query.achievement_query import get_player_achievements
+from app.players.crud.query.chat_query import get_player_chat_messages
+from app.players.crud.query.session_query import get_player_sessions
+from app.players.models import (
     Player,
     PlayerAchievement,
     PlayerChatMessage,
     PlayerSession,
-    Server,
 )
-from app.players.crud.query.achievement_query import get_player_achievements
-from app.players.crud.query.chat_query import get_player_chat_messages
-from app.players.crud.query.session_query import get_player_sessions
+from app.servers.models import Server
 from tests.players.helpers import make_online_uuid
 
 

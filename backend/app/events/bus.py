@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
+from ..runtime_resources import current_runtime
 from .models import PublicEventFrame, StreamResetFrame
 
 DEFAULT_QUEUE_SIZE = 1000
@@ -53,9 +54,15 @@ class EventBus:
     def reset(self) -> None:
         self._subscriptions.clear()
 
+    def close(self) -> None:
+        for subscription in self._subscriptions:
+            subscription.mark_lagged()
+        self.reset()
+
     @property
     def subscriber_count(self) -> int:
         return len(self._subscriptions)
 
 
-event_bus = EventBus()
+def get_event_bus() -> EventBus:
+    return current_runtime().resource('event_bus')

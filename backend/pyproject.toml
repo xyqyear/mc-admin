@@ -58,6 +58,12 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+strict_markers = true
+markers = [
+    "docker: requires an explicitly enabled Docker daemon and owned resources",
+    "external: requires an explicitly enabled external service",
+    "binary(name): requires a real local binary (fd, restic, mcmap, or 7z)",
+]
 addopts = "-vv --cov=app --cov-report=xml:cov.xml --cov-report=html:cov_html --cov-report=term-missing"
 
 [tool.pyright]

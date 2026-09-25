@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 
+from app.auth.schemas import UserPublic
+
 from ..db.database import get_async_session
 from ..dependencies import get_websocket_user
 from ..events import (
@@ -11,9 +13,8 @@ from ..events import (
     HeartbeatFrame,
     PublicEventFrame,
     StreamResetFrame,
-    event_bus,
+    get_event_bus,
 )
-from ..models import UserPublic
 from ..players.crud.query.chat_query import ChatEventInfo, get_chat_messages_after
 
 HEARTBEAT_INTERVAL = 25.0
@@ -72,7 +73,7 @@ async def events_websocket(
     _: UserPublic = Depends(get_websocket_user),
 ):
     await websocket.accept()
-    subscription = event_bus.subscribe()
+    subscription = get_event_bus().subscribe()
     max_replayed_id = 0
 
     try:
@@ -110,4 +111,4 @@ async def events_websocket(
     except WebSocketDisconnect:
         pass
     finally:
-        event_bus.unsubscribe(subscription)
+        get_event_bus().unsubscribe(subscription)

@@ -11,6 +11,8 @@ from app.minecraft import MCServerInfo, MCServerStatus
 from app.minecraft.compose import ServerType
 from app.players.crud.query.session_query import OnlinePlayerLite
 from app.routers.servers.misc import get_servers_overview
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 
 def auth_headers() -> dict[str, str]:
@@ -19,7 +21,7 @@ def auth_headers() -> dict[str, str]:
 
 @pytest.fixture
 def client():
-    with patch("app.auth.session.settings.master_token", "test-master-token"):
+    with patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"):
         yield TestClient(api_app, raise_server_exceptions=False)
 
 
@@ -39,7 +41,7 @@ def mock_instance(
 def test_rcon_returns_command_output(client):
     instance = mock_instance(output="Added Notch to the whitelist")
 
-    with patch("app.routers.servers.rcon.docker_mc_manager") as manager:
+    with patch_runtime_resource('docker_mc_manager') as manager:
         manager.get_instance.return_value = instance
 
         response = client.post(
@@ -56,7 +58,7 @@ def test_rcon_returns_command_output(client):
 def test_rcon_404_when_server_missing(client):
     instance = mock_instance(exists=False)
 
-    with patch("app.routers.servers.rcon.docker_mc_manager") as manager:
+    with patch_runtime_resource('docker_mc_manager') as manager:
         manager.get_instance.return_value = instance
 
         response = client.post(
@@ -72,7 +74,7 @@ def test_rcon_404_when_server_missing(client):
 def test_rcon_409_when_server_not_healthy(client):
     instance = mock_instance(healthy=False)
 
-    with patch("app.routers.servers.rcon.docker_mc_manager") as manager:
+    with patch_runtime_resource('docker_mc_manager') as manager:
         manager.get_instance.return_value = instance
 
         response = client.post(
@@ -95,7 +97,7 @@ def test_rcon_504_when_command_times_out(client):
     instance.send_command_rcon = AsyncMock(side_effect=slow_command)
 
     with (
-        patch("app.routers.servers.rcon.docker_mc_manager") as manager,
+        patch_runtime_resource('docker_mc_manager') as manager,
         patch("app.routers.servers.rcon.RCON_COMMAND_TIMEOUT", 0.001),
     ):
         manager.get_instance.return_value = instance
@@ -113,7 +115,7 @@ def test_message_sends_tellraw_json_per_non_empty_line(client):
     instance = mock_instance(output="")
     message = 'quote " slash \\\n你好\n\nsecond'
 
-    with patch("app.routers.servers.rcon.docker_mc_manager") as manager:
+    with patch_runtime_resource('docker_mc_manager') as manager:
         manager.get_instance.return_value = instance
 
         response = client.post(
@@ -215,7 +217,7 @@ async def test_overview_skips_drift_and_hides_players_for_stopped_servers(caplog
     }
 
     with (
-        patch("app.routers.servers.misc.docker_mc_manager", manager),
+        patch_runtime_resource('docker_mc_manager', manager),
         patch("app.routers.servers.misc.get_active_servers", AsyncMock(return_value=rows)),
         patch(
             "app.routers.servers.misc.get_online_players_grouped_by_server",

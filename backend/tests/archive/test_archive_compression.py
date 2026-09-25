@@ -1,21 +1,25 @@
-"""Archive compression tests, including the background-task pipeline."""
+from tests.support.runtime import patch_settings
 
+"""Archive compression tests, including the background-task pipeline."""
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.background_tasks import TaskType, task_manager
+from app.background_tasks import TaskType, get_task_manager
 from app.background_tasks.types import TaskStatus
 from app.main import api_app
 from app.utils.compression import (
-    _generate_archive_filename,
     _sanitize_filename_part,
     create_server_archive_stream,
+    generate_archive_filename,
 )
+from tests.support.runtime import patch_runtime_resource
+
+pytestmark = [pytest.mark.binary('7z')]
 
 
 class TestFilenameGeneration:
@@ -38,23 +42,23 @@ class TestFilenameGeneration:
         assert _sanitize_filename_part("...") == "unknown"
 
     def test_generate_filename_server_only(self):
-        filename = _generate_archive_filename("test_server")
+        filename = generate_archive_filename("test_server")
         assert filename.startswith("test_server_")
         assert filename.endswith(".7z")
 
     def test_generate_filename_with_path(self):
-        filename = _generate_archive_filename("test_server", "/plugins/config")
+        filename = generate_archive_filename("test_server", "/plugins/config")
         assert "test_server" in filename
         assert "plugins_config" in filename
         assert filename.endswith(".7z")
 
     def test_generate_filename_with_root_path(self):
-        filename = _generate_archive_filename("test_server", "/")
+        filename = generate_archive_filename("test_server", "/")
         assert "test_server" in filename
         assert filename.endswith(".7z")
 
     def test_generate_filename_sanitizes_server_name(self):
-        filename = _generate_archive_filename("test server:2024")
+        filename = generate_archive_filename("test server:2024")
         assert "test_server_2024" in filename
         assert " " not in filename
         assert ":" not in filename
@@ -100,7 +104,7 @@ class TestCreateServerArchiveStream:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             progress_updates = []
@@ -123,7 +127,7 @@ class TestCreateServerArchiveStream:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             result = None
@@ -143,7 +147,7 @@ class TestCreateServerArchiveStream:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             result = None
@@ -166,7 +170,7 @@ class TestCreateServerArchiveStream:
         results = []
         original = b""
         with (
-            patch("app.utils.compression.settings") as mock_settings,
+            patch_settings() as mock_settings,
             patch("app.utils.compression.datetime") as clock,
         ):
             mock_settings.archive_path = archive_dir
@@ -184,7 +188,7 @@ class TestCreateServerArchiveStream:
 
     @pytest.mark.asyncio
     async def test_stream_nonexistent_path_raises(self, mock_instance, archive_dir):
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             with pytest.raises(RuntimeError) as exc_info:
@@ -193,12 +197,12 @@ class TestCreateServerArchiveStream:
                 ):
                     pass
 
-            assert "Source path does not exist" in str(exc_info.value)
+            assert "压缩源路径不存在" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_stream_cleans_up_on_error(self, mock_instance, archive_dir):
         with (
-            patch("app.utils.compression.settings") as mock_settings,
+            patch_settings() as mock_settings,
             patch("app.utils.compression.exec_command_stream") as mock_exec,
         ):
             mock_settings.archive_path = archive_dir
@@ -242,10 +246,10 @@ class TestArchiveCompressionEndpoint:
         mock_submit_result.task_id = "test-task-id-123"
 
         with (
-            patch("app.routers.archive.settings") as mock_settings,
-            patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.archive.docker_mc_manager") as mock_manager,
-            patch("app.routers.archive.task_manager") as mock_task_manager,
+            patch_settings() as mock_settings,
+            patch_settings() as mock_dep_settings,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
+            patch_runtime_resource('task_manager') as mock_task_manager,
         ):
             mock_settings.archive_path = archive_dir
             mock_settings.master_token = "test_master_token"
@@ -261,7 +265,11 @@ class TestArchiveCompressionEndpoint:
 
             mock_instance.exists = mock_exists
 
-            mock_task_manager.submit.return_value = mock_submit_result
+            async def submit_durable(**kwargs):
+                await kwargs["task_generator"].aclose()
+                return mock_submit_result
+
+            mock_task_manager.submit_durable = AsyncMock(side_effect=submit_durable)
 
             yield {
                 "archive_dir": archive_dir,
@@ -281,7 +289,7 @@ class TestArchiveCompressionEndpoint:
         assert "task_id" in data
         assert data["task_id"] == "test-task-id-123"
 
-        mock_server_manager["task_manager"].submit.assert_called_once()
+        mock_server_manager["task_manager"].submit_durable.assert_awaited_once()
 
     def test_endpoint_submits_correct_task_type(self, client, mock_server_manager):
         response = client.post(
@@ -292,16 +300,19 @@ class TestArchiveCompressionEndpoint:
 
         assert response.status_code == 200
 
-        call_kwargs = mock_server_manager["task_manager"].submit.call_args.kwargs
+        submit = mock_server_manager["task_manager"].submit_durable
+        submit.assert_awaited_once()
+        call_kwargs = submit.await_args.kwargs
         assert call_kwargs["task_type"] == TaskType.ARCHIVE_CREATE
         assert call_kwargs["server_id"] == "test_server"
         assert call_kwargs["cancellable"] is True
+        assert call_kwargs["actor_id"] == 0
 
     def test_endpoint_nonexistent_server(self, client, temp_dir):
         with (
-            patch("app.routers.archive.settings") as mock_settings,
-            patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.archive.docker_mc_manager") as mock_manager,
+            patch_settings() as mock_settings,
+            patch_settings() as mock_dep_settings,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             mock_settings.master_token = "test_master_token"
             mock_dep_settings.master_token = "test_master_token"
@@ -384,10 +395,10 @@ class TestBackgroundTaskIntegration:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
-            result = task_manager.submit(
+            result = get_task_manager().submit(
                 task_type=TaskType.ARCHIVE_CREATE,
                 name="test_server",
                 task_generator=create_server_archive_stream(mock_instance),
@@ -401,12 +412,12 @@ class TestBackgroundTaskIntegration:
             assert task_result.data is not None
             assert "filename" in task_result.data
 
-            task = task_manager.get_task(result.task_id)
+            task = get_task_manager().get_task(result.task_id)
             assert task is not None
             assert task.status == TaskStatus.COMPLETED
             assert task.progress == 100
 
-            task_manager.remove_task(result.task_id)
+            get_task_manager().remove_task(result.task_id)
 
     @pytest.mark.asyncio
     async def test_task_cancellation(self, mock_instance, archive_dir):
@@ -415,7 +426,7 @@ class TestBackgroundTaskIntegration:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             # Pad with large files so compression has measurable runtime to cancel into.
@@ -423,7 +434,7 @@ class TestBackgroundTaskIntegration:
             for i in range(50):
                 (data_dir / f"large_file_{i}.bin").write_bytes(b"\x00" * 1024 * 1024)
 
-            result = task_manager.submit(
+            result = get_task_manager().submit(
                 task_type=TaskType.ARCHIVE_CREATE,
                 name="test_server",
                 task_generator=create_server_archive_stream(mock_instance),
@@ -432,11 +443,11 @@ class TestBackgroundTaskIntegration:
             )
 
             await asyncio.sleep(0.5)
-            cancelled = await task_manager.cancel(result.task_id)
+            cancelled = await get_task_manager().cancel(result.task_id)
 
             task_result = await result.awaitable
 
-            task = task_manager.get_task(result.task_id)
+            task = get_task_manager().get_task(result.task_id)
             assert task is not None
             if cancelled:
                 assert task.status == TaskStatus.CANCELLED
@@ -445,7 +456,7 @@ class TestBackgroundTaskIntegration:
             else:
                 assert task.status == TaskStatus.COMPLETED
 
-            task_manager.remove_task(result.task_id)
+            get_task_manager().remove_task(result.task_id)
 
 
 class TestRealTimeProgressTracking:
@@ -493,7 +504,7 @@ class TestRealTimeProgressTracking:
         if not shutil.which("7z"):
             pytest.skip("7z command not available")
 
-        with patch("app.utils.compression.settings") as mock_settings:
+        with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
             progress_timestamps: list[tuple[float, float]] = []

@@ -16,15 +16,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.config import settings
+from app.config import get_settings
+from app.db.metadata import Base
+from app.dynamic_config import get_config
 from app.minecraft import MCServerStatus
-from app.models import (
-    Base,
-    Restoration,
-    RestorationSelection,
-    RestorationStatus,
-    RestorationType,
-)
+from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 from app.world import (
@@ -34,12 +30,14 @@ from app.world import (
     ServerOperationLock,
     WorldRestoreOrchestrator,
 )
+from app.world.models import Restoration, RestorationStatus, RestorationType
+from app.world.schemas import RestorationSelection
 
 
 def _restic_available() -> bool:
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -75,6 +73,12 @@ class _FakeInstance:
     def get_data_path(self) -> Path:
         return self._data_path
 
+    def get_project_path(self) -> Path:
+        return self._data_path.parent
+
+    def get_name(self) -> str:
+        return self._data_path.parent.name
+
     def set_status(self, status: MCServerStatus) -> None:
         self._status = status
 
@@ -104,7 +108,9 @@ def _empty_mca() -> bytes:
 @pytest.fixture
 def data_path():
     with tempfile.TemporaryDirectory(prefix="mc-restore-data-") as tmp:
-        data = Path(tmp)
+        data = Path(tmp) / "srv1" / "data"
+        data.mkdir(parents=True)
+        (data.parent / "compose.yaml").write_text("services: {mc: {container_name: mc-srv1, image: minecraft}}\n")
         # Vanilla single-world layout, two dimensions.
         world = data / "world"
         ow_region = world / "region"
@@ -139,6 +145,9 @@ async def session_factory():
             await conn.run_sync(Base.metadata.create_all)
         maker = async_sessionmaker(engine, expire_on_commit=False)
         try:
+            async with maker() as session:
+                session.add(Server(server_id="srv1"))
+                await session.commit()
             yield maker
         finally:
             await engine.dispose()
@@ -172,6 +181,7 @@ def orchestrator(restic_client, fake_docker, lock, session_factory):
         docker_mc_manager=fake_docker,
         server_operation_lock=lock,
         session_factory=session_factory,
+        servers_root=fake_docker._instance.get_project_path().parent,
     )
 
 
@@ -193,6 +203,73 @@ async def _read_restoration(session_factory, rid: str) -> Restoration | None:
 
 
 # --- Tests: world scope ----------------------------------------------------
+
+
+@pytest.mark.parametrize("scope", [RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS])
+async def test_rollback_after_restore_removes_last_region_remains_reversible(
+    orchestrator, data_path, session_factory, scope,
+):
+    import json
+    world = data_path / "world"
+    shutil.rmtree(world)
+    region = world / "region"
+    region.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"empty-world")
+    empty = await orchestrator._snapshots.create_snapshot([world])
+    live = region / "r.0.0.mca"
+    live.write_bytes(_empty_mca() + b"original-region")
+    selection = RestorationSelection(
+        type=scope,
+        region_dir_relpath="world/region" if scope is not RestorationType.WORLD else None,
+        regions=[(0, 0)] if scope is RestorationType.REGIONS else [],
+    )
+    events = await _drain(orchestrator.begin_restore("srv1", empty.id, selection, None))
+    assert events[-1].event_type == "complete"
+    assert not live.exists()
+    if scope is RestorationType.WORLD:
+        row = await _read_restoration(session_factory, events[0].restoration_id)
+        assert row is not None
+        assert json.loads(row.selection_json)["world_roots"] == ["world"]
+    rollback = await _drain(orchestrator.rollback(events[0].restoration_id, None))
+    assert rollback[-1].event_type == "complete"
+    assert live.read_bytes() == _empty_mca() + b"original-region"
+    undo = await _drain(orchestrator.rollback(rollback[0].restoration_id, None))
+    assert undo[-1].event_type == "complete"
+    assert not live.exists()
+    assert not list(data_path.rglob(".mc-admin-absence-*"))
+
+
+@pytest.mark.parametrize("scope", [RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS])
+async def test_rollback_recreates_missing_world_and_can_restore_its_absence(
+    orchestrator, data_path, scope,
+):
+    payload = b""
+    if scope is RestorationType.CHUNKS:
+        payload = zlib.compress(b'\x0a\x00\x00\x08\x00\x06marker\x00\x04seed\x00')
+        header = bytearray(8192)
+        header[:4] = b'\x00\x00\x02\x01'
+        chunk = (len(payload) + 1).to_bytes(4, 'big') + b'\x02' + payload
+        (data_path / "world/region/r.0.0.mca").write_bytes(bytes(header) + chunk.ljust(4096, b'\x00'))
+    selection = RestorationSelection(
+        type=scope,
+        region_dir_relpath="world/region" if scope is not RestorationType.WORLD else None,
+        regions=[(0, 0)] if scope is RestorationType.REGIONS else [],
+        chunks=[(0, 0)] if scope is RestorationType.CHUNKS else [],
+    )
+    source = await orchestrator.create_snapshot("srv1", selection, None)
+    events = await _drain(orchestrator.begin_restore("srv1", source.id, selection, None))
+    shutil.rmtree(data_path / "world")
+    restored = await _drain(orchestrator.rollback(events[0].restoration_id, None))
+    assert restored[-1].event_type == "complete"
+    restored_mca = (data_path / "world/region/r.0.0.mca").read_bytes()
+    if scope is RestorationType.CHUNKS:
+        assert payload in restored_mca
+    else:
+        assert restored_mca == _empty_mca()
+    undone = await _drain(orchestrator.rollback(restored[0].restoration_id, None))
+    assert undone[-1].event_type == "complete"
+    assert not (data_path / "world").exists()
+    assert not list(data_path.rglob(".mc-admin-absence-*"))
 
 
 @pytest.mark.asyncio
@@ -496,6 +573,29 @@ async def test_safety_snapshot_recorded_on_row(orchestrator, data_path, session_
     assert any(s.id == row.safety_snapshot_id for s in snapshots)
 
 
+async def test_safety_snapshot_event_already_has_recoverable_history(orchestrator, data_path, session_factory):
+    selection = RestorationSelection(type=RestorationType.WORLD)
+    source = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+    region = data_path / "world" / "region" / "r.0.0.mca"
+    original = region.read_bytes()
+    stream = orchestrator.begin_restore("srv1", source.id, selection, user_id=None)
+    event = None
+    async for event in stream:
+        if event.safety_snapshot_id:
+            async with session_factory() as session:
+                row = await session.get(Restoration, event.restoration_id)
+                assert row is not None and row.server_generation is not None
+                assert row.safety_snapshot_id == event.safety_snapshot_id
+                assert row.status == RestorationStatus.RUNNING
+            break
+    assert event is not None
+    await stream.aclose()
+    async with session_factory() as session:
+        row = await session.get(Restoration, event.restoration_id)
+        assert row is not None and row.status == RestorationStatus.INTERRUPTED
+    assert region.read_bytes() == original
+
+
 # --- Tests: rollback -------------------------------------------------------
 
 
@@ -585,13 +685,13 @@ async def test_restore_failure_marks_row_failed(
 
     assert events[-1].event_type == "error"
     assert events[-1].message is not None
-    assert "simulated restic failure" in events[-1].message
+    assert events[-1].message == "服务器内部错误，请稍后重试"
     rid = events[0].restoration_id
     row = await _read_restoration(session_factory, rid)
     assert row is not None
     assert row.status is RestorationStatus.FAILED
     assert row.error_message is not None
-    assert "simulated restic failure" in row.error_message
+    assert row.error_message == events[-1].message
 
 
 # --- Tests: multi-root WORLD scope -----------------------------------------
@@ -601,7 +701,9 @@ async def test_restore_failure_marks_row_failed(
 def multi_root_data_path():
     """Two world roots — Bukkit/Paper-style multi-world layout."""
     with tempfile.TemporaryDirectory(prefix="mc-restore-multi-data-") as tmp:
-        data = Path(tmp)
+        data = Path(tmp) / "srv1" / "data"
+        data.mkdir(parents=True)
+        (data.parent / "compose.yaml").write_text("services: {mc: {container_name: mc-srv1, image: minecraft}}\n")
         # Primary: world (server.properties default)
         world = data / "world"
         (world / "region").mkdir(parents=True)
@@ -629,6 +731,7 @@ def orchestrator_multi(restic_client, fake_docker_multi, lock, session_factory):
         docker_mc_manager=fake_docker_multi,
         server_operation_lock=lock,
         session_factory=session_factory,
+        servers_root=fake_docker_multi._instance.get_project_path().parent,
     )
 
 
@@ -770,14 +873,7 @@ async def test_world_restore_preserves_ignored_paths(
     The <LEVEL_NAME> token expands to "world" — data_path has no
     server.properties, so the default level name applies.
     """
-    from types import SimpleNamespace
-
-    monkeypatch.setattr(
-        "app.snapshots.service.config",
-        SimpleNamespace(
-            snapshots=SimpleNamespace(ignored_paths=["<LEVEL_NAME>/ignored_cache"])
-        ),
-    )
+    monkeypatch.setattr(get_config().snapshots, "ignored_paths", ["<LEVEL_NAME>/ignored_cache"])
 
     ignored_dir = data_path / "world" / "ignored_cache"
     ignored_dir.mkdir()
@@ -881,6 +977,9 @@ async def test_cache_failure_finishes_restoration_history(
     assert row.status is RestorationStatus.FAILED
     assert row is not None
     assert row.error_message is not None
-    assert "cache unavailable" in row.error_message
+    assert "世界数据已恢复，但地图缓存更新失败" in row.error_message
+    assert "cache unavailable" not in row.error_message
     assert row.finished_at is not None
     assert not lock.is_locked("srv1")
+
+pytestmark = [pytestmark, pytest.mark.binary('fd'), pytest.mark.binary('restic'), pytest.mark.binary('mcmap')]

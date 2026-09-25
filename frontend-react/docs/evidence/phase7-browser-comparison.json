@@ -1,0 +1,1461 @@
+{
+  "schema": 1,
+  "before": {
+    "source": "/tmp/mc-admin-phase7-browser-baseline-playwright/results.json",
+    "image_id": "sha256:df8b8bdc3972cbb447d4f976f5eceebf6312b7f53d0495deb95a553ce8aa42dc",
+    "run_id": "e2e-browser-baseline",
+    "context": {
+      "client_source": {
+        "version": "1.21.11",
+        "url": "https://piston-data.mojang.com/v1/objects/ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd/client.jar",
+        "sha1": "ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd",
+        "bytes": 31152600
+      },
+      "region_count": 4,
+      "regions": [
+        {
+          "x": -1,
+          "z": -1,
+          "sha256": "b7688de1d7b8672a10a5dda98549eae894897a1d22fa4548eac2eec3ff15d939"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "sha256": "8935e7793c97c7e09c5bf92f2e2e71dce9de0fdf0581e95a4749ff9d893519da"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "sha256": "c8551eb83a4ef42d983d02b3255977517258c300c74cf98f1f8a407d282cc8fc"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "sha256": "a8c67f9964a7ebf13fa86b205446afcf2e5f27b0f6af03cf6176b079edf814e6"
+        }
+      ],
+      "view": {
+        "dimension": "world/region",
+        "cx": 0,
+        "cz": 0,
+        "z": 0
+      },
+      "workload": "Stopped, freshly generated flat world. Record geometry and hashes because the fixture does not fix Minecraft world seed."
+    },
+    "incomplete_requests": 0
+  },
+  "after": {
+    "source": "/tmp/mc-admin-phase7-browser-candidate4-playwright/results.json",
+    "image_id": "sha256:479e7c02843a16be95e3157811fff2251f1047866ce24d0176099b1dc03d4d8d",
+    "run_id": "e2e-browser-candidate4",
+    "context": {
+      "client_source": {
+        "version": "1.21.11",
+        "url": "https://piston-data.mojang.com/v1/objects/ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd/client.jar",
+        "sha1": "ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd",
+        "bytes": 31152600
+      },
+      "region_count": 4,
+      "regions": [
+        {
+          "x": -1,
+          "z": -1,
+          "sha256": "161f2dc177a1885ac3fd8e7cf37acbb6db08c74f5631bfc384c51bb5896fc592"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "sha256": "5c7239180be691bc0938390a50bf9bfd1f2bf1b230bea5e422fd5aab1ba4f40a"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "sha256": "4d4e3658aa8cb8c688fd11b0251ac43115fe6a531b83f2d2664a36fbfeb66f9f"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "sha256": "ac1e05c8d6fc8f17be1161ecb9a4d391eeb5c8149022d7f6e18d083e0e48f87c"
+        }
+      ],
+      "view": {
+        "dimension": "world/region",
+        "cx": 0,
+        "cz": 0,
+        "z": 0
+      },
+      "workload": "Stopped, freshly generated flat world. Record geometry and hashes because the fixture does not fix Minecraft world seed."
+    },
+    "incomplete_requests": 2
+  },
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "limitations": "Separate owned flat worlds may have different seeds, geometry and bytes. Recorded requests include navigation cancellation. One sample per build is observational, without a statistical performance or regression threshold; compare completed requests and idle windows separately.",
+  "phases": {
+    "overview-15s": {
+      "before": {
+        "duration_ms": 16077,
+        "requests": 17,
+        "failed": 0,
+        "bytes": 9408,
+        "endpoints": {
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8364,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 36,
+            "p95_ms": 36
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 34,
+            "p95_ms": 34
+          },
+          "GET /api/servers/:server/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/:server/status": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 60,
+            "statuses": {
+              "200": 3
+            },
+            "median_ms": 207,
+            "p95_ms": 214
+          },
+          "GET /api/snapshots/repository-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 106,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 17,
+            "p95_ms": 17
+          },
+          "GET /api/system/cpu_percent": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 87,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 1007,
+            "p95_ms": 1013
+          },
+          "GET /api/system/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 100,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 17,
+            "p95_ms": 17
+          },
+          "GET /api/system/info": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 286,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/tasks": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 44,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 29,
+            "p95_ms": 29
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 7,
+            "p95_ms": 7
+          }
+        }
+      },
+      "after": {
+        "duration_ms": 16069,
+        "requests": 20,
+        "failed": 0,
+        "bytes": 13036,
+        "endpoints": {
+          "GET /api/operations": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 3724,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 42,
+            "p95_ms": 42
+          },
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8244,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 42,
+            "p95_ms": 42
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 39,
+            "p95_ms": 39
+          },
+          "GET /api/servers/:server/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 87,
+            "p95_ms": 87
+          },
+          "GET /api/servers/:server/status": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 80,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 189,
+            "p95_ms": 222
+          },
+          "GET /api/snapshots/repository-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 106,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 23,
+            "p95_ms": 23
+          },
+          "GET /api/system/cpu_percent": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 86,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 1009,
+            "p95_ms": 1015
+          },
+          "GET /api/system/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 100,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 23,
+            "p95_ms": 23
+          },
+          "GET /api/system/info": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 291,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/tasks": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 44,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 33,
+            "p95_ms": 33
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 6,
+            "p95_ms": 6
+          }
+        }
+      },
+      "delta": {
+        "requests": 3,
+        "failed": 0,
+        "bytes": 3628,
+        "duration_ms": -8
+      }
+    },
+    "detail-after-overview": {
+      "before": {
+        "duration_ms": 5041,
+        "requests": 22,
+        "failed": 0,
+        "bytes": 1484,
+        "endpoints": {
+          "GET /api/dns/enabled": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 17,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 20,
+            "p95_ms": 20
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 51,
+            "p95_ms": 51
+          },
+          "GET /api/servers/:server/cpu_percent": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 300,
+            "statuses": {
+              "409": 3
+            },
+            "median_ms": 140,
+            "p95_ms": 212
+          },
+          "GET /api/servers/:server/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 52,
+            "p95_ms": 52
+          },
+          "GET /api/servers/:server/iostats": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 285,
+            "statuses": {
+              "409": 3
+            },
+            "median_ms": 147,
+            "p95_ms": 212
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 5,
+            "failed": 0,
+            "bytes": 235,
+            "statuses": {
+              "200": 5
+            },
+            "median_ms": 8,
+            "p95_ms": 21
+          },
+          "GET /api/servers/:server/memory": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 309,
+            "statuses": {
+              "409": 3
+            },
+            "median_ms": 133,
+            "p95_ms": 212
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 21,
+            "p95_ms": 21
+          },
+          "GET /api/servers/:server/restart-schedule": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 4,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 62,
+            "p95_ms": 62
+          },
+          "GET /api/servers/:server/status": {
+            "count": 2,
+            "failed": 0,
+            "bytes": 40,
+            "statuses": {
+              "200": 2
+            },
+            "median_ms": 320,
+            "p95_ms": 320
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 7,
+            "p95_ms": 7
+          }
+        }
+      },
+      "after": {
+        "duration_ms": 5051,
+        "requests": 13,
+        "failed": 0,
+        "bytes": 2432,
+        "endpoints": {
+          "GET /api/dns/enabled": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 17,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 15,
+            "p95_ms": 15
+          },
+          "GET /api/operations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 1862,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 6,
+            "p95_ms": 6
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 41,
+            "p95_ms": 41
+          },
+          "GET /api/servers/:server/disk-usage": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 84,
+            "p95_ms": 84
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 5,
+            "failed": 0,
+            "bytes": 235,
+            "statuses": {
+              "200": 5
+            },
+            "median_ms": 5,
+            "p95_ms": 16
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          },
+          "GET /api/servers/:server/restart-schedule": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 4,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 21,
+            "p95_ms": 21
+          },
+          "GET /api/servers/:server/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 20,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 283,
+            "p95_ms": 283
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          }
+        }
+      },
+      "delta": {
+        "requests": -9,
+        "failed": 0,
+        "bytes": 948,
+        "duration_ms": 10
+      }
+    },
+    "map-first-view": {
+      "before": {
+        "duration_ms": 4139,
+        "requests": 21,
+        "failed": 0,
+        "bytes": 18663,
+        "endpoints": {
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8364,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 27,
+            "p95_ms": 27
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 25,
+            "p95_ms": 25
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 38,
+            "p95_ms": 38
+          },
+          "GET /api/servers/:server/claims": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 69,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 188,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 9,
+            "p95_ms": 16
+          },
+          "GET /api/servers/:server/map/regions": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 73,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/servers/:server/map/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 42,
+            "p95_ms": 42
+          },
+          "GET /api/servers/:server/map/tiles/-1/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 81,
+            "p95_ms": 81
+          },
+          "GET /api/servers/:server/map/tiles/-1/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 84,
+            "p95_ms": 84
+          },
+          "GET /api/servers/:server/map/tiles/0/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 84,
+            "p95_ms": 84
+          },
+          "GET /api/servers/:server/map/tiles/0/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2212,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 84,
+            "p95_ms": 84
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 42,
+            "p95_ms": 42
+          },
+          "GET /api/servers/:server/player-locations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 43,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/servers/:server/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 20,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 145,
+            "p95_ms": 145
+          },
+          "GET /api/servers/:server/world-restore/dimension-labels": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 199,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 21,
+            "p95_ms": 21
+          },
+          "GET /api/servers/:server/world-restore/layout": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 552,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 38,
+            "p95_ms": 38
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 2,
+            "p95_ms": 2
+          }
+        }
+      },
+      "after": {
+        "duration_ms": 4148,
+        "requests": 24,
+        "failed": 1,
+        "bytes": 22275,
+        "endpoints": {
+          "GET /api/operations": {
+            "count": 3,
+            "failed": 1,
+            "bytes": 3724,
+            "statuses": {
+              "200": 2,
+              "no-response": 1
+            },
+            "median_ms": 19,
+            "p95_ms": 39
+          },
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8244,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 44,
+            "p95_ms": 44
+          },
+          "GET /api/servers/:server/claims": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 69,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 22,
+            "p95_ms": 22
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 188,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 7,
+            "p95_ms": 11
+          },
+          "GET /api/servers/:server/map/regions": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 73,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 27,
+            "p95_ms": 27
+          },
+          "GET /api/servers/:server/map/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 44,
+            "p95_ms": 44
+          },
+          "GET /api/servers/:server/map/tiles/-1/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 175,
+            "p95_ms": 175
+          },
+          "GET /api/servers/:server/map/tiles/-1/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 175,
+            "p95_ms": 175
+          },
+          "GET /api/servers/:server/map/tiles/0/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2127,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 174,
+            "p95_ms": 174
+          },
+          "GET /api/servers/:server/map/tiles/0/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2212,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 174,
+            "p95_ms": 174
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 32,
+            "p95_ms": 32
+          },
+          "GET /api/servers/:server/player-locations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 43,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 26,
+            "p95_ms": 26
+          },
+          "GET /api/servers/:server/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 20,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 151,
+            "p95_ms": 151
+          },
+          "GET /api/servers/:server/world-restore/dimension-labels": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 199,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 27,
+            "p95_ms": 27
+          },
+          "GET /api/servers/:server/world-restore/layout": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 560,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 36,
+            "p95_ms": 36
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 26,
+            "p95_ms": 26
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 2,
+            "p95_ms": 2
+          }
+        }
+      },
+      "delta": {
+        "requests": 3,
+        "failed": 1,
+        "bytes": 3612,
+        "duration_ms": 9
+      }
+    },
+    "map-same-view-reload": {
+      "before": {
+        "duration_ms": 4124,
+        "requests": 21,
+        "failed": 0,
+        "bytes": 9070,
+        "endpoints": {
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8364,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 29,
+            "p95_ms": 29
+          },
+          "GET /api/servers/:server/claims": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 69,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 188,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 7,
+            "p95_ms": 15
+          },
+          "GET /api/servers/:server/map/regions": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 73,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/servers/:server/map/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/:server/map/tiles/-1/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 4,
+            "p95_ms": 4
+          },
+          "GET /api/servers/:server/map/tiles/-1/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 3,
+            "p95_ms": 3
+          },
+          "GET /api/servers/:server/map/tiles/0/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 3,
+            "p95_ms": 3
+          },
+          "GET /api/servers/:server/map/tiles/0/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 3,
+            "p95_ms": 3
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/:server/player-locations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 43,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 19,
+            "p95_ms": 19
+          },
+          "GET /api/servers/:server/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 20,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 125,
+            "p95_ms": 125
+          },
+          "GET /api/servers/:server/world-restore/dimension-labels": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 199,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 17,
+            "p95_ms": 17
+          },
+          "GET /api/servers/:server/world-restore/layout": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 552,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 16,
+            "p95_ms": 16
+          }
+        }
+      },
+      "after": {
+        "duration_ms": 4109,
+        "requests": 24,
+        "failed": 1,
+        "bytes": 14094,
+        "endpoints": {
+          "GET /api/operations": {
+            "count": 3,
+            "failed": 1,
+            "bytes": 5136,
+            "statuses": {
+              "200": 2,
+              "no-response": 1
+            },
+            "median_ms": 14,
+            "p95_ms": 18
+          },
+          "GET /api/self-check/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 8244,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 23,
+            "p95_ms": 23
+          },
+          "GET /api/servers/": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 179,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 22,
+            "p95_ms": 22
+          },
+          "GET /api/servers/:server": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 177,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 50,
+            "p95_ms": 50
+          },
+          "GET /api/servers/:server/claims": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 69,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 15,
+            "p95_ms": 15
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 4,
+            "failed": 0,
+            "bytes": 188,
+            "statuses": {
+              "200": 4
+            },
+            "median_ms": 5,
+            "p95_ms": 15
+          },
+          "GET /api/servers/:server/map/regions": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 73,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 25,
+            "p95_ms": 25
+          },
+          "GET /api/servers/:server/map/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 93,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 50,
+            "p95_ms": 50
+          },
+          "GET /api/servers/:server/map/tiles/-1/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          },
+          "GET /api/servers/:server/map/tiles/-1/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 3,
+            "p95_ms": 3
+          },
+          "GET /api/servers/:server/map/tiles/0/-1.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 4,
+            "p95_ms": 4
+          },
+          "GET /api/servers/:server/map/tiles/0/0.png": {
+            "count": 1,
+            "failed": 0,
+            "bytes": -250,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 3,
+            "p95_ms": 3
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 40,
+            "p95_ms": 40
+          },
+          "GET /api/servers/:server/player-locations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 43,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 24,
+            "p95_ms": 24
+          },
+          "GET /api/servers/:server/status": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 20,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 152,
+            "p95_ms": 152
+          },
+          "GET /api/servers/:server/world-restore/dimension-labels": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 199,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 19,
+            "p95_ms": 19
+          },
+          "GET /api/servers/:server/world-restore/layout": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 560,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 45,
+            "p95_ms": 45
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          },
+          "GET /api/user/me": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 89,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          }
+        }
+      },
+      "delta": {
+        "requests": 3,
+        "failed": 1,
+        "bytes": 5024,
+        "duration_ms": -15
+      }
+    },
+    "map-idle-15s": {
+      "before": {
+        "duration_ms": 15004,
+        "requests": 20,
+        "failed": 0,
+        "bytes": 789,
+        "endpoints": {
+          "GET /api/servers/:server/maintenance": {
+            "count": 15,
+            "failed": 0,
+            "bytes": 705,
+            "statuses": {
+              "200": 15
+            },
+            "median_ms": 5,
+            "p95_ms": 15
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 10,
+            "p95_ms": 10
+          },
+          "GET /api/servers/:server/status": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 60,
+            "statuses": {
+              "200": 3
+            },
+            "median_ms": 119,
+            "p95_ms": 149
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 5,
+            "p95_ms": 5
+          }
+        }
+      },
+      "after": {
+        "duration_ms": 15005,
+        "requests": 21,
+        "failed": 0,
+        "bytes": 3357,
+        "endpoints": {
+          "GET /api/operations": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2568,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 7,
+            "p95_ms": 7
+          },
+          "GET /api/servers/:server/maintenance": {
+            "count": 15,
+            "failed": 0,
+            "bytes": 705,
+            "statuses": {
+              "200": 15
+            },
+            "median_ms": 5,
+            "p95_ms": 7
+          },
+          "GET /api/servers/:server/online-players": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 2,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 10,
+            "p95_ms": 10
+          },
+          "GET /api/servers/:server/status": {
+            "count": 3,
+            "failed": 0,
+            "bytes": 60,
+            "statuses": {
+              "200": 3
+            },
+            "median_ms": 184,
+            "p95_ms": 204
+          },
+          "GET /api/tasks": {
+            "count": 1,
+            "failed": 0,
+            "bytes": 22,
+            "statuses": {
+              "200": 1
+            },
+            "median_ms": 6,
+            "p95_ms": 6
+          }
+        }
+      },
+      "delta": {
+        "requests": 1,
+        "failed": 0,
+        "bytes": 2568,
+        "duration_ms": 1
+      }
+    }
+  }
+}

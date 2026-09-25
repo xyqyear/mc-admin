@@ -6,8 +6,9 @@ from dataclasses import dataclass
 
 import httpx2
 
-from ..dynamic_config import config
-from ..logger import log_exception, logger
+from ..dynamic_config import get_config
+from ..logger import get_logger, log_exception
+from ..runtime_resources import current_runtime
 from ..utils import async_fs
 
 
@@ -29,9 +30,10 @@ class SkinFetcher:
         self, uuid: str
     ) -> PlayerProfileFetchResult | None:
         """Return Mojang profile data for ``uuid``, or ``None`` on failure."""
+        logger = get_logger()
         uuid_clean = uuid.replace("-", "")
 
-        request_timeout = config.players.skin_fetcher.request_timeout_seconds
+        request_timeout = get_config().players.skin_fetcher.request_timeout_seconds
         async with httpx2.AsyncClient(timeout=request_timeout) as client:
             url = self.session_server_url.format(uuid=uuid_clean)
             try:
@@ -122,4 +124,5 @@ class SkinFetcher:
         return (result.skin_data, result.avatar_data)
 
 
-skin_fetcher = SkinFetcher()
+def get_skin_fetcher() -> SkinFetcher:
+    return current_runtime().resource('skin_fetcher')

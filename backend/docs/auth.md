@@ -4,7 +4,11 @@ Browser authentication uses a JWT stored in an HttpOnly cookie, paired with a re
 
 ## Session JWT
 
-`auth/jwt_utils.py` handles signing and password hashing:
+`auth/service.py` owns `IdentityService`, constructed with its installation
+settings, database session factory and clock. Its signing key belongs to that
+service instance. Calling it while another runtime is bound does not switch
+the database, master token or signing key. `auth/jwt_utils.py` owns password
+hashing.
 
 - **Signing**: HS256 via `joserfc` with `OctKey(settings.jwt.secret_key)`.
 - **Hashing**: Argon2 via `pwdlib`.
@@ -18,6 +22,10 @@ Browser authentication uses a JWT stored in an HttpOnly cookie, paired with a re
 - Claims include `sub`, `user_id`, `username`, `role`, `created_at`, `csrf`, and `exp`.
 
 `get_current_user` (in `app.dependencies`) reads the session cookie, validates the JWT, and loads the current account from the database before returning `UserPublic`. The account ID, username, and creation time must still match the signed identity, so deleting and recreating an account cannot revive its old cookie. HTTP, WebSocket handshakes, and audit identity resolution use this same lookup. It also accepts `Authorization: Bearer <master_token>` for operational calls. `RequireRole(UserRole.OWNER)` is the role guard.
+
+The signed role does not override the current database role. Malformed signed
+claims and unexpected decoder failures return safe messages without embedding
+claim values or adapter exception text.
 
 ## Password Login
 
@@ -58,6 +66,9 @@ Codes rotate every 60 s if not consumed (`rotate_code_loop`). Completion tickets
 
 ## Files
 
-- `jwt_utils.py` — JWT minting + password hashing
-- `session.py` — cookie/session helpers, CSRF middleware, auth extraction
+- `service.py` — runtime-owned signing, session validation and current-account lookup
+- `jwt_utils.py` — password hashing and verification
+- `session.py` — cookies, CSRF middleware, HTTP extraction and WebSocket-origin policy
 - `login_code.py` — `LoginCodeManager` (WebSocket code flow)
+- `models.py`, `schemas.py`, `api_models.py` — user persistence and public contracts
+- `store.py` — user database operations

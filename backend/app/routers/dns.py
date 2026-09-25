@@ -4,86 +4,34 @@ DNS Management API Router
 Provides a simple API endpoint for triggering DNS updates.
 """
 
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.models import UserRole
+from app.auth.schemas import UserPublic
+from app.dns.api_models import (
+    DNSEnabledResponse,
+    DNSRecord,
+    DNSRecordDiff,
+    DNSStatusResponse,
+    DNSUpdateResponse,
+    RouterDiff,
+)
 
 from ..db.database import get_db
 from ..dependencies import RequireRole, get_current_user
-from ..dns.manager import simple_dns_manager
-from ..dynamic_config import config
-from ..models import UserPublic, UserRole
+from ..dns.manager import get_dns_manager
+from ..dynamic_config import get_config
 
 router = APIRouter(prefix="/dns", tags=["dns"])
 
 
-class DNSUpdateResponse(BaseModel):
-    """Response for DNS update operations"""
-
-    success: bool
-    message: str
-
-
-class DNSRecord(BaseModel):
-    """DNS record information"""
-
-    sub_domain: str
-    value: str
-    record_id: str | int
-    record_type: str
-    ttl: int
-
-
-class DNSRecordsResponse(BaseModel):
-    """Response for DNS records list"""
-
-    records: list[DNSRecord]
-
-
-class RouterRoutesResponse(BaseModel):
-    """Response for MC Router routes"""
-
-    routes: dict[str, str]
-
-
-class DNSRecordDiff(BaseModel):
-    """DNS record differences for status checks"""
-
-    records_to_add: list[DNSRecord]
-    records_to_remove: list[str]  # Record IDs
-    records_to_update: list[DNSRecord]
-
-
-class RouterDiff(BaseModel):
-    """Router route differences for status checks"""
-
-    routes_to_add: dict[str, str]
-    routes_to_remove: dict[str, str]
-    routes_to_update: dict[str, dict[str, str]]
-
-
-class DNSStatusResponse(BaseModel):
-    """Response for DNS status including diff information"""
-
-    initialized: bool
-    dns_diff: DNSRecordDiff | None
-    router_diff: RouterDiff | None
-
-
-class DNSEnabledResponse(BaseModel):
-    """Response for DNS enabled status"""
-
-    enabled: bool
-
-
 def _require_dns_enabled() -> None:
-    if not config.dns.enabled:
+    if not get_config().dns.enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="DNS manager is disabled in configuration",
         )
-
 
 @router.post("/update", response_model=DNSUpdateResponse)
 async def update_dns(
@@ -97,17 +45,16 @@ async def update_dns(
     1. Enumerates active servers from the database
     2. Reads each server's compose to extract its port
     3. Combines with address configuration to generate records
-    4. Updates DNS provider and MC Router with complete lists
+    4. Applies independently observed DNS and MC Router differences
 
     Requires ADMIN role or higher.
     """
     _require_dns_enabled()
-    await simple_dns_manager.update(db)
+    await get_dns_manager().update(db)
 
     return DNSUpdateResponse(
         success=True, message="DNS and MC Router updated successfully"
     )
-
 
 @router.get("/status", response_model=DNSStatusResponse)
 async def get_dns_status(
@@ -124,7 +71,8 @@ async def get_dns_status(
         HTTPException: If there's an error getting DNS status
     """
     _require_dns_enabled()
-    dns_diff, router_diff = await simple_dns_manager.get_current_diff(db)
+    observed = await get_dns_manager().observe(db)
+    dns_diff = observed.dns_diff
 
     # Convert DNS diff to response format
     dns_diff = DNSRecordDiff(
@@ -149,16 +97,21 @@ async def get_dns_status(
             )
             for record in dns_diff.records_to_update
         ],
-    )
+    ) if dns_diff is not None else None
 
-    router_diff = RouterDiff(**router_diff)
+    router_diff = RouterDiff(**observed.router_diff.as_dict()) if observed.router_diff is not None else None
 
     return DNSStatusResponse(
-        initialized=simple_dns_manager.is_initialized,
+        initialized=get_dns_manager().is_initialized,
         dns_diff=dns_diff,
         router_diff=router_diff,
+        state=observed.state,
+        dns_known=observed.dns_known,
+        router_known=observed.router_known,
+        unknown_servers=list(observed.unknown_servers),
+        issues=list(observed.issues),
+        empty_desired=observed.empty_desired,
     )
-
 
 @router.get("/enabled", response_model=DNSEnabledResponse)
 async def get_dns_enabled(
@@ -170,8 +123,7 @@ async def get_dns_enabled(
     Returns whether the DNS manager is enabled in the dynamic configuration.
     This is separate from the initialization status.
     """
-    return DNSEnabledResponse(enabled=config.dns.enabled)
-
+    return DNSEnabledResponse(enabled=get_config().dns.enabled)
 
 @router.get("/records", response_model=list[DNSRecord])
 async def get_dns_records(
@@ -184,7 +136,7 @@ async def get_dns_records(
     Each record includes subdomain, value, record type, TTL, and record ID.
     """
     _require_dns_enabled()
-    records = await simple_dns_manager.get_dns_records()
+    records = await get_dns_manager().get_dns_records()
 
     # Convert records to DNSRecord models for JSON response
     return [
@@ -198,7 +150,6 @@ async def get_dns_records(
         for record in records
     ]
 
-
 @router.get("/routes", response_model=dict[str, str])
 async def get_router_routes(
     _: UserPublic = Depends(get_current_user),
@@ -210,4 +161,4 @@ async def get_router_routes(
     Each route maps a server address to a backend server address.
     """
     _require_dns_enabled()
-    return await simple_dns_manager.get_router_routes()
+    return await get_dns_manager().get_router_routes()

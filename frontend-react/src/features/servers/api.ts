@@ -1,0 +1,218 @@
+import { getErrorStatus } from '@/shared/http/api';
+import type { CreateServerResult, RemoveServerResult, SyncRequest, SyncResult } from "@/features/servers/lifecycleContracts";
+import type { ServerInfo, ServerStatus } from "@/features/servers/contracts";
+import { api } from "@/shared/http/api";
+import type { ServerListItem, ServerStatusResponse, ServerMaintenanceResponse, ServerCpuPercentResponse, ServerMemoryResponse, ServerIOStatsResponse, ServerDiskUsageResponse, ServerOperationRequest, CreateServerRequest, PopulateServerRequest, PopulateServerResponse, RestartScheduleResponse } from '@/features/servers/contracts';
+
+
+export const serverApi = {
+  getServers: async (): Promise<ServerListItem[]> => {
+    const res = await api.get<ServerListItem[]>("/servers/");
+    return res.data;
+  },
+
+  getServerInfo: async (id: string): Promise<ServerInfo> => {
+    const res = await api.get<{
+      id: string;
+      name: string;
+      serverType: string;
+      gameVersion: string;
+      gamePort: number;
+      maxMemoryBytes: number;
+      rconPort: number;
+      javaVersion: number;
+    }>(`/servers/${id}`);
+
+    return {
+      id: res.data.id,
+      name: res.data.name,
+      path: `/servers/${id}`,
+      javaVersion: res.data.javaVersion,
+      maxMemoryBytes: res.data.maxMemoryBytes,
+      serverType: res.data.serverType.toUpperCase() as any,
+      gameVersion: res.data.gameVersion,
+      gamePort: res.data.gamePort,
+      rconPort: res.data.rconPort,
+    };
+  },
+
+  getServerStatus: async (id: string): Promise<ServerStatus> => {
+    const res = await api.get<ServerStatusResponse>(`/servers/${id}/status`);
+    return res.data.status;
+  },
+
+  getServerMaintenance: async (id: string): Promise<ServerMaintenanceResponse> => {
+    const res = await api.get<ServerMaintenanceResponse>(`/servers/${id}/maintenance`);
+    return res.data;
+  },
+
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
+  getServerCpuPercent: async (
+    id: string,
+  ): Promise<{ cpuPercentage: number }> => {
+    const res = await api.get<ServerCpuPercentResponse>(
+      `/servers/${id}/cpu_percent`,
+    );
+    return {
+      cpuPercentage: res.data.cpuPercentage,
+    };
+  },
+
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
+  getServerMemory: async (
+    id: string,
+  ): Promise<{ memoryUsageBytes: number }> => {
+    const res = await api.get<ServerMemoryResponse>(`/servers/${id}/memory`);
+    return {
+      memoryUsageBytes: res.data.memoryUsageBytes,
+    };
+  },
+
+  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
+  getServerIOStats: async (id: string): Promise<ServerIOStatsResponse> => {
+    const res = await api.get<ServerIOStatsResponse>(`/servers/${id}/iostats`);
+    return res.data;
+  },
+
+  getServerDiskUsage: async (id: string): Promise<ServerDiskUsageResponse> => {
+    const res = await api.get<ServerDiskUsageResponse>(
+      `/servers/${id}/disk-usage`,
+    );
+    return res.data;
+  },
+
+  serverOperation: async (id: string, action: string): Promise<void> => {
+    await api.post(`/servers/${id}/operations`, {
+      action,
+    } as ServerOperationRequest);
+  },
+
+  removeServerFull: async (id: string): Promise<RemoveServerResult> => {
+    const res = await api.post<RemoveServerResult>(
+      `/servers/${id}/operations`,
+      { action: "remove" } as ServerOperationRequest,
+    );
+    return res.data;
+  },
+
+  startServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "start");
+  },
+
+  stopServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "stop");
+  },
+
+  restartServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "restart");
+  },
+
+  upServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "up");
+  },
+
+  downServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "down");
+  },
+
+  removeServer: async (id: string): Promise<void> => {
+    await serverApi.serverOperation(id, "remove");
+  },
+
+  createServer: async (
+    serverId: string,
+    request: CreateServerRequest,
+  ): Promise<CreateServerResult> => {
+    const res = await api.post<CreateServerResult>(
+      `/servers/${serverId}`,
+      request,
+    );
+    return res.data;
+  },
+
+  // 服务器文件系统 ↔ 数据库 同步 (OWNER-only)
+  syncServers: async (request: SyncRequest = {}): Promise<SyncResult> => {
+    const res = await api.post<SyncResult>(`/servers/sync`, request);
+    return res.data;
+  },
+
+  populateServer: async (
+    serverId: string,
+    archiveFilename: string,
+  ): Promise<PopulateServerResponse> => {
+    const res = await api.post<PopulateServerResponse>(
+      `/servers/${serverId}/populate`,
+      {
+        archive_filename: archiveFilename,
+      } as PopulateServerRequest,
+    );
+    return res.data;
+  },
+
+  createOrUpdateRestartSchedule: async (
+    serverId: string,
+    customCron?: string,
+  ): Promise<RestartScheduleResponse> => {
+    const res = await api.post<RestartScheduleResponse>(
+      `/servers/${serverId}/restart-schedule`,
+      {
+        custom_cron: customCron,
+      },
+    );
+    return res.data;
+  },
+
+  getRestartSchedule: async (
+    serverId: string,
+  ): Promise<RestartScheduleResponse | null> => {
+    try {
+      const res = await api.get<RestartScheduleResponse>(
+        `/servers/${serverId}/restart-schedule`,
+      );
+      return res.data;
+    } catch (error) {
+      if (getErrorStatus(error) === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  deleteRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.delete(`/servers/${serverId}/restart-schedule`);
+  },
+
+  pauseRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.post(`/servers/${serverId}/restart-schedule/pause`);
+  },
+
+  resumeRestartSchedule: async (serverId: string): Promise<void> => {
+    await api.post(`/servers/${serverId}/restart-schedule/resume`);
+  },
+
+  // The list endpoint omits status, so fan out per server. A single failure
+  // must not poison the rest, so map errors to null and filter later.
+  getAllServerStatuses: async (
+    serverIds: string[],
+  ): Promise<Record<string, ServerStatus>> => {
+    const statusPromises = serverIds.map(async (id) => {
+      try {
+        const status = await serverApi.getServerStatus(id);
+        return { id, status };
+      } catch {
+        return { id, status: null };
+      }
+    });
+
+    const statuses = await Promise.all(statusPromises);
+
+    const statusMap: Record<string, ServerStatus> = {};
+    statuses.forEach(({ id, status }) => {
+      if (status !== null) {
+        statusMap[id] = status;
+      }
+    });
+
+    return statusMap;
+  },
+};

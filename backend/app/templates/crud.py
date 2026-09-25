@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import ServerTemplate
+from app.templates.tables import ServerTemplate
+
 from .models import VariableDefinition, serialize_variable_definitions
 
 

@@ -2,6 +2,10 @@
 
 `dns.disabled-and-validation` is part of ordinary regression. It covers all five DNS routes with a disabled provider, authentication, and invalid configuration without cloud access.
 
+`dns.owned-edge-reconciliation` is also ordinary regression and needs no cloud credentials. The deployed application uses its original DNSPod SDK over HTTPS against a protocol server owned by this case, with a real digest-pinned MC Router behind a recording HTTP edge. It verifies known versus unknown observations, isolation of target failures, fresh retry, zero writes without changes, individual route upserts, preservation for empty targets/disabled configuration, and safe degraded health findings without stopping unrelated checks or local server synchronization.
+
+This fixture generates its own short-lived certificate, appends it only to the owned backend container's CA bundle, and maps the provider hostname only in that container's `/etc/hosts`. Its HTTPS/control/router-edge ports bind loopback in the backend's private network namespace. No host trust, host name mapping, host port, cloud account or application implementation is modified. The helper container is registered in the environment ownership journal before creation and removed with the deployment. A failed bind fails the fixture; it never stops an unknown process. The helper implements the documented DNSPod response envelope and record calls but does not qualify cloud authentication, propagation, quotas or asynchronous provider jobs; those require the external scenarios below.
+
 The DNSPod and Huawei scenarios have `external,dns` tags. They require an explicitly supplied test-domain configuration; missing configuration fails the scenario and never becomes a skip. Only the selected provider's object is required:
 
 ```json

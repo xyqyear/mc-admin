@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from pathlib import Path
 
 from alembic.config import Config
@@ -6,11 +7,16 @@ from sqlalchemy import create_engine, inspect
 
 from alembic import command
 
-from ..config import settings
-from ..models import Base
+from ..config import get_settings
+from ..operations.finalization import finalize
+from .metadata import Base
+
+# Alembic's EnvironmentContext proxy is process-global even for different databases.
+_migration_lock = threading.Lock()
 
 
 def _sync_database_url() -> str:
+    settings = get_settings()
     if settings.database_url.startswith("sqlite+aiosqlite:///"):
         return settings.database_url.replace("sqlite+aiosqlite:///", "sqlite:///")
     return settings.database_url
@@ -22,7 +28,12 @@ def _alembic_config() -> Config:
 
 
 def _ensure_database_schema_sync() -> None:
-    engine = create_engine(_sync_database_url())
+    with _migration_lock:
+        _migrate_owned_database()
+
+
+def _migrate_owned_database() -> None:
+    engine = create_engine(_sync_database_url(), hide_parameters=True)
 
     try:
         with engine.begin() as connection:
@@ -47,4 +58,4 @@ def _ensure_database_schema_sync() -> None:
 
 
 async def ensure_database_schema() -> None:
-    await asyncio.to_thread(_ensure_database_schema_sync)
+    await finalize(asyncio.to_thread(_ensure_database_schema_sync))

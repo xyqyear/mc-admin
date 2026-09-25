@@ -1,15 +1,18 @@
 import asyncio
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.models import UserRole
+from app.auth.schemas import UserPublic
+from app.servers.api_models import SyncRequest
 
 from ...db.database import get_db
 from ...dependencies import RequireRole
-from ...dns import simple_dns_manager
-from ...logger import logger
-from ...minecraft import docker_mc_manager
-from ...models import UserPublic, UserRole
+from ...dns import get_dns_manager
+from ...logger import get_logger
+from ...minecraft import get_docker_mc_manager
+from ...runtime_resources import current_runtime
 from ...servers.crud import get_active_servers
 from ...servers.lifecycle import (
     CreateServerResult,
@@ -29,13 +32,8 @@ router = APIRouter(
 )
 
 
-_sync_lock = asyncio.Lock()
-
-
-class SyncRequest(BaseModel):
-    dry_run: bool = False
-    # Bypass the empty-filesystem safety guard (used when a mount has failed).
-    force: bool = False
+def get_sync_lock() -> asyncio.Lock:
+    return current_runtime().resource('server_sync_lock')
 
 
 @router.post("/sync", response_model=SyncResult)
@@ -47,13 +45,14 @@ async def sync_servers(
     db: AsyncSession = Depends(get_db),
     _: UserPublic = Depends(RequireRole(UserRole.OWNER)),
 ) -> SyncResult:
-    if _sync_lock.locked():
+    logger = get_logger()
+    if get_sync_lock().locked():
         raise HTTPException(
             status_code=409, detail="另一个同步任务正在进行中"
         )
 
-    async with _sync_lock:
-        fs_set = set(await docker_mc_manager.get_all_server_names())
+    async with get_sync_lock():
+        fs_set = set(await get_docker_mc_manager().get_all_server_names())
         active = await get_active_servers(db)
         active_set = {s.server_id for s in active}
 
@@ -145,7 +144,7 @@ async def sync_servers(
                 )
 
         try:
-            await simple_dns_manager.update(db)
+            await get_dns_manager().update(db)
         except Exception:
             logger.warning("同步服务器后的 DNS 更新失败", exc_info=True)
 

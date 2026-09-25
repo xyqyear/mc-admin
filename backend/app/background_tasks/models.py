@@ -25,5 +25,6 @@ class BackgroundTask(BaseModel):
     ended_at: datetime | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    error_code: str | None = None
 
     cancel_requested: bool = Field(default=False, exclude=True)

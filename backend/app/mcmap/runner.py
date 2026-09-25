@@ -6,11 +6,14 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 import aiofiles.os as aioos
-from anyio import CancelScope
 from pydantic import TypeAdapter, ValidationError
 
-from ..config import settings
-from ..logger import logger
+from ..config import get_settings
+from ..errors import log_safe_error
+from ..logger import get_logger
+from ..operations.context import bind_execution, current_execution
+from ..operations.finalization import finalize
+from ..operations.processes import spawn_process, stop_process
 from .events import (
     MCMAP_GENERIC_EVENT_ADAPTER,
     MCMapGenericEvent,
@@ -19,6 +22,7 @@ from .events import (
 
 TERMINATE_GRACE_SECONDS = 2.0
 MCMAP_STREAM_LIMIT_BYTES = 16 * 1024 * 1024
+MCMAP_STDERR_LIMIT_BYTES = 256 * 1024
 EventT = TypeVar("EventT")
 
 
@@ -26,16 +30,30 @@ class MCMapProcess:
     def __init__(self, proc: asyncio.subprocess.Process):
         self._proc = proc
         self._terminated = False
+        self._execution = current_execution()
+        self._termination_task: asyncio.Task[None] | None = None
+        self._stderr_tail = bytearray()
+        self._stderr_task = (
+            asyncio.create_task(self._drain_stderr(), name="mcmap-stderr")
+            if proc.stderr is not None else None
+        )
+
+    async def _drain_stderr(self) -> None:
+        assert self._proc.stderr is not None
+        while chunk := await self._proc.stderr.read(65536):
+            self._stderr_tail.extend(chunk)
+            if len(self._stderr_tail) > MCMAP_STDERR_LIMIT_BYTES:
+                del self._stderr_tail[:-MCMAP_STDERR_LIMIT_BYTES]
 
     def __aiter__(self) -> AsyncIterator[MCMapGenericEvent]:
         return self.events(MCMAP_GENERIC_EVENT_ADAPTER)
 
-    def events(self, adapter: TypeAdapter[EventT]) -> AsyncIterator[EventT]:
+    def events(self, adapter: TypeAdapter[EventT]) -> AsyncGenerator[EventT]:
         return self._read_events(adapter)
 
     async def _read_events(
         self, adapter: TypeAdapter[EventT]
-    ) -> AsyncIterator[EventT]:
+    ) -> AsyncGenerator[EventT]:
         assert self._proc.stdout is not None
         async for raw in self._proc.stdout:
             line = raw.strip()
@@ -44,31 +62,31 @@ class MCMapProcess:
             try:
                 yield adapter.validate_json(line)
             except ValidationError as e:
-                logger.warning("mcmap: invalid JSON event: %r (%s)", line, e)
+                log_safe_error(e, "mcmap: invalid JSON event")
                 raise MCMapProtocolError("mcmap emitted an invalid JSON event") from e
+        await self._proc.wait()
+        if self._stderr_task is not None:
+            await asyncio.shield(self._stderr_task)
 
     async def terminate(self) -> None:
-        if self._terminated or self._proc.returncode is not None:
+        if self._terminated:
             return
+        if self._termination_task is None:
+            with bind_execution(self._execution):
+                self._termination_task = asyncio.create_task(self._terminate(), name="mcmap-terminate")
+        await finalize(self._termination_task)
+
+    async def _terminate(self) -> None:
+        if self._stderr_task is not None:
+            self._stderr_task.cancel()
+            await asyncio.gather(self._stderr_task, return_exceptions=True)
+        await stop_process(self._proc, grace=TERMINATE_GRACE_SECONDS)
         self._terminated = True
-        try:
-            self._proc.terminate()
-        except ProcessLookupError:
-            return
-        try:
-            await asyncio.wait_for(self._proc.wait(), timeout=TERMINATE_GRACE_SECONDS)
-        except TimeoutError:
-            try:
-                self._proc.kill()
-            except ProcessLookupError:
-                pass
-            await self._proc.wait()
 
     async def stderr(self) -> str:
-        if self._proc.stderr is None:
-            return ""
-        data = await self._proc.stderr.read()
-        return data.decode(errors="replace")
+        if self._stderr_task is not None and not self._stderr_task.cancelled():
+            await asyncio.shield(self._stderr_task)
+        return self._stderr_tail.decode(errors="replace")
 
     @property
     def returncode(self) -> int | None:
@@ -76,6 +94,7 @@ class MCMapProcess:
 
 
 async def _chown_args_for(owned_by: Path) -> list[str]:
+    logger = get_logger()
     if os.geteuid() != 0:
         return []
     try:
@@ -89,8 +108,9 @@ async def _chown_args_for(owned_by: Path) -> list[str]:
 
 
 async def _spawn(args: list[str], owned_by: Path) -> asyncio.subprocess.Process:
+    settings = get_settings()
     full_args: list[str] = ["--json", *args, *await _chown_args_for(owned_by)]
-    return await asyncio.create_subprocess_exec(
+    return await spawn_process(
         str(settings.mcmap_binary_path),
         *full_args,
         stdout=asyncio.subprocess.PIPE,
@@ -106,8 +126,7 @@ async def _run(args: list[str], owned_by: Path) -> AsyncGenerator[MCMapProcess]:
     try:
         yield wrapper
     finally:
-        with CancelScope(shield=True):
-            await wrapper.terminate()
+        await finalize(wrapper.terminate())
 
 
 @asynccontextmanager

@@ -6,12 +6,13 @@ from pathlib import Path
 
 import aiofiles.os as aioos
 
-from ..config import settings
-from ..logger import logger
+from ..config import get_settings
+from ..logger import get_logger
 from ..mcmap.runner import MCMAP_STREAM_LIMIT_BYTES, MCMapProcess
 
 
 async def _chown_args_for(owned_by: Path) -> list[str]:
+    logger = get_logger()
     if os.geteuid() != 0:
         return []
     try:
@@ -31,6 +32,7 @@ async def extract_ftb_claims(
     *,
     owned_by: Path,
 ) -> AsyncGenerator[MCMapProcess]:
+    settings = get_settings()
     args: list[str] = [
         "--json",
         "extract-ftb-claims",

@@ -15,20 +15,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import (
-    Base,
-    Player,
-    PlayerSession,
-    Server,
-    ServerStatus,
-)
+from app.db.metadata import Base
+from app.players import get_player_service
 from app.players.crud import upsert_player
+from app.players.models import Player, PlayerSession
 from app.players.skin_fetcher import SkinFetcher
-from app.players.tracking import (
-    close_server_sessions,
-    process_player_join,
-    process_player_left,
-)
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
 
 # ============================================================================
@@ -89,7 +81,7 @@ def mock_mojang_api():
 async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
     """Initialize player system."""
     patches = [
-        patch("app.players.tracking.get_async_session", test_database),
+        patch.object(get_player_service(), "session_factory", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -177,8 +169,8 @@ async def test_concurrent_events_same_player(player_system):
     join_time = datetime.now(UTC)
 
     await asyncio.gather(
-        process_player_join("server1", "Steve", timestamp=join_time),
-        process_player_join(
+        get_player_service().process_player_join("server1", "Steve", timestamp=join_time),
+        get_player_service().process_player_join(
             "server1", "Steve", timestamp=join_time + timedelta(seconds=1)
         ),
     )
@@ -188,7 +180,7 @@ async def test_concurrent_events_same_player(player_system):
     assert player is not None
 
     # Sequential leave after all joins complete — must close ALL open sessions
-    await process_player_left(
+    await get_player_service().process_player_left(
         "server1", "Steve", timestamp=join_time + timedelta(seconds=2)
     )
 
@@ -208,10 +200,10 @@ async def test_rapid_server_stop_events(player_system):
     for i in range(5):
         async with db() as session:
             await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
-        await process_player_join("server1", f"Player{i}")
+        await get_player_service().process_player_join("server1", f"Player{i}")
 
     # Multiple rapid close_server_sessions calls
-    await asyncio.gather(*[close_server_sessions("server1") for _ in range(10)])
+    await asyncio.gather(*[get_player_service().close_server_sessions("server1") for _ in range(10)])
 
     # All players should be offline (all sessions should be ended)
     async with db() as session:
@@ -242,7 +234,7 @@ async def test_concurrent_multi_server_events(player_system):
 
     # Player joins all 3 servers concurrently
     await asyncio.gather(
-        *[process_player_join(server_id, "Steve") for server_id, _ in servers]
+        *[get_player_service().process_player_join(server_id, "Steve") for server_id, _ in servers]
     )
 
     # Verify online on all servers (has open sessions on all servers)
@@ -280,7 +272,7 @@ async def test_massive_player_count(player_system):
 
     # All join
     join_tasks = [
-        process_player_join("server1", f"Player{i}") for i in range(player_count)
+        get_player_service().process_player_join("server1", f"Player{i}") for i in range(player_count)
     ]
     await asyncio.gather(*join_tasks)
 
@@ -297,7 +289,7 @@ async def test_massive_player_count(player_system):
 
     # Half leave
     leave_tasks = [
-        process_player_left("server1", f"Player{i}") for i in range(player_count // 2)
+        get_player_service().process_player_left("server1", f"Player{i}") for i in range(player_count // 2)
     ]
     await asyncio.gather(*leave_tasks)
 
@@ -324,7 +316,7 @@ async def test_session_without_leave(player_system):
     for i in range(10):
         async with db() as session:
             await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
-        await process_player_join("server1", f"Player{i}")
+        await get_player_service().process_player_join("server1", f"Player{i}")
 
     # Check all have open sessions
     async with db() as session:
@@ -338,7 +330,7 @@ async def test_session_without_leave(player_system):
         assert len(open_sessions) == 10
 
     # Server stops - should close all
-    await close_server_sessions("server1")
+    await get_player_service().close_server_sessions("server1")
 
     # Check all sessions closed
     async with db() as session:
@@ -364,11 +356,11 @@ async def test_long_session_duration_calculation(player_system):
 
     # Player joins 1 day ago
     join_time = datetime.now(UTC) - timedelta(days=1)
-    await process_player_join("server1", "Steve", timestamp=join_time)
+    await get_player_service().process_player_join("server1", "Steve", timestamp=join_time)
 
     # Player leaves after 24 hours
     leave_time = join_time + timedelta(days=1)
-    await process_player_left("server1", "Steve", timestamp=leave_time)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=leave_time)
 
     # Check duration
     player = await get_player(db, "Steve")
@@ -397,16 +389,16 @@ async def test_event_ordering_preservation(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Session 1: 0-10 minutes
-    await process_player_join("server1", "Steve", timestamp=base_time)
-    await process_player_left(
+    await get_player_service().process_player_join("server1", "Steve", timestamp=base_time)
+    await get_player_service().process_player_left(
         "server1", "Steve", timestamp=base_time + timedelta(minutes=10)
     )
 
     # Session 2: 20-30 minutes
-    await process_player_join(
+    await get_player_service().process_player_join(
         "server1", "Steve", timestamp=base_time + timedelta(minutes=20)
     )
-    await process_player_left(
+    await get_player_service().process_player_left(
         "server1", "Steve", timestamp=base_time + timedelta(minutes=30)
     )
 
@@ -437,8 +429,8 @@ async def test_zero_duration_session(player_system):
 
     # Player joins and immediately leaves (same timestamp)
     same_time = datetime.now(UTC)
-    await process_player_join("server1", "Steve", timestamp=same_time)
-    await process_player_left("server1", "Steve", timestamp=same_time)
+    await get_player_service().process_player_join("server1", "Steve", timestamp=same_time)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=same_time)
 
     # Should create session with 0 duration
     player = await get_player(db, "Steve")
@@ -460,7 +452,7 @@ async def test_server_stop_with_no_players(player_system):
     server_db_id = await create_server(db, "server1")
 
     # Server stops with no players
-    await close_server_sessions("server1")
+    await get_player_service().close_server_sessions("server1")
 
     # Should not crash (no sessions should exist)
     async with db() as session:
@@ -483,7 +475,7 @@ async def test_missing_server_in_tracker(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player join on nonexistent server (should handle gracefully)
-    await process_player_join("nonexistent", "Steve")
+    await get_player_service().process_player_join("nonexistent", "Steve")
 
     # Should not crash, but also shouldn't create session records
     # (tracking functions log warning and return early)

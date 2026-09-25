@@ -9,7 +9,7 @@ from .service import (
     ChunkPruneError,
     ChunkPruneTaskNotFound,
     ChunkPruneValidationError,
-    chunk_prune_service,
+    get_chunk_prune_service,
 )
 
 __all__ = [
@@ -21,5 +21,5 @@ __all__ = [
     "ChunkPruneStartResponse",
     "ChunkPruneTaskNotFound",
     "ChunkPruneValidationError",
-    "chunk_prune_service",
+    'get_chunk_prune_service',
 ]

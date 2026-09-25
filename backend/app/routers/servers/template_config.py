@@ -2,65 +2,39 @@
 
 import json
 from datetime import datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...background_tasks import TaskType, task_manager
+from app.auth.schemas import UserPublic
+from app.configuration.api_models import (
+    TemplateConfigPreviewResponse,
+    TemplateConfigResponse,
+    TemplateConfigUpdateRequest,
+    TemplateConfigUpdateResponse,
+)
+
+from ...background_tasks import TaskType, get_task_manager
+from ...configuration.application import check_rebuild_available, rebuild_server_task
+from ...configuration.preparation import prepare_snapshot_configuration
+from ...configuration.state import read_configuration_state
 from ...db.database import get_db
 from ...dependencies import get_current_user
-from ...minecraft import docker_mc_manager
-from ...models import UserPublic
-from ...servers import get_active_server_by_id, rebuild_server_task
-from ...servers.configuration import prepare_snapshot_configuration
+from ...minecraft import get_docker_mc_manager
+from ...servers import get_active_server_by_id
 from ...templates import (
     TemplatePreviewResponse,
     TemplateSnapshot,
-    VariableDefinition,
     get_template_by_id,
 )
 from ...templates.manager import TemplateManager
+from .admission import admit_server_write
 
 router = APIRouter(
     prefix="/servers",
     tags=["server-template-config"],
+    dependencies=[Depends(admit_server_write)],
 )
-
-
-class TemplateConfigResponse(BaseModel):
-    """Response model for template configuration."""
-
-    server_id: str
-    template_id: int
-    template_name: str
-    yaml_template: str
-    variable_definitions: list[VariableDefinition]
-    variable_values: dict[str, Any]
-    json_schema: dict
-    snapshot_time: str
-    has_template_update: bool = False
-    template_deleted: bool = False
-
-
-class TemplateConfigUpdateRequest(BaseModel):
-    """Request model for updating template configuration."""
-
-    variable_values: dict[str, Any]
-
-
-class TemplateConfigUpdateResponse(BaseModel):
-    """Response model for template configuration update."""
-
-    task_id: str
-
-
-class TemplateConfigPreviewResponse(BaseModel):
-    """Response model for template configuration preview."""
-
-    is_template_based: bool
-    template_id: int | None
 
 
 @router.get("/{server_id}/template-config", response_model=TemplateConfigResponse)
@@ -100,6 +74,7 @@ async def get_template_config(
             has_template_update = True
 
     return TemplateConfigResponse(
+        version=(await read_configuration_state(db, server_id, get_docker_mc_manager().servers_path)).version,
         server_id=server_id,
         template_id=snapshot.template_id,
         template_name=snapshot.template_name,
@@ -132,22 +107,27 @@ async def update_template_config(
     if not server:
         raise HTTPException(status_code=404, detail="服务器不存在")
 
+    current = await read_configuration_state(db, server_id, get_docker_mc_manager().servers_path)
+    current.check_version(request.expected_version)
     try:
-        configuration = prepare_snapshot_configuration(server, request.variable_values)
+        configuration = prepare_snapshot_configuration(server, request.variable_values, expected_version=request.expected_version)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
 
     if not await instance.exists():
         raise HTTPException(status_code=404, detail="服务器目录不存在")
 
-    task_result = task_manager.submit(
+    check_rebuild_available(server_id)
+    task_result = await get_task_manager().submit_durable(
         task_type=TaskType.SERVER_REBUILD,
         name=f"重建 {server_id}",
         task_generator=rebuild_server_task(server_id, configuration),
         server_id=server_id,
         cancellable=False,
+        actor_id=_.id,
+        configuration_version=configuration.fingerprint,
     )
 
     return TemplateConfigUpdateResponse(task_id=task_result.task_id)

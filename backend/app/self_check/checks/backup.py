@@ -1,8 +1,5 @@
 from datetime import timedelta
 
-from ...config import settings
-from ...minecraft import docker_mc_manager
-from ...snapshots import snapshot_service
 from ..types import SelfCheckFindingResult
 from .base import CheckDefinition, SelfCheckContext, finding, skipped, success
 
@@ -11,7 +8,7 @@ async def check_restic_configured(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.restic_configured"]
-    if settings.restic is None or snapshot_service is None:
+    if context.dependencies.settings.restic is None or not context.dependencies.snapshots:
         return [
             finding(
                 check_id=definition.check_id,
@@ -30,7 +27,7 @@ async def check_restic_reachable(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.restic_reachable"]
-    if snapshot_service is None:
+    if not context.dependencies.snapshots:
         return skipped(definition, "未配置 Restic。")
 
     snapshots, error = await context.snapshots()
@@ -54,7 +51,7 @@ async def check_server_snapshot_coverage(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.server_snapshot_coverage"]
-    if snapshot_service is None:
+    if not context.dependencies.snapshots:
         return skipped(definition, "未配置 Restic。")
 
     _, error = await context.snapshots()
@@ -68,7 +65,7 @@ async def check_server_snapshot_coverage(
     findings: list[SelfCheckFindingResult] = []
     max_age = timedelta(minutes=context.config.snapshot_freshness_minutes)
     for server in active_servers:
-        project_path = docker_mc_manager.get_instance(server.server_id).get_project_path()
+        project_path = context.dependencies.minecraft.get_instance(server.server_id).get_project_path()
         matching = await context.snapshots_covering(project_path)
         if matching:
             continue
@@ -115,7 +112,7 @@ async def check_server_snapshot_freshness(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["backup.server_snapshot_freshness"]
-    if snapshot_service is None:
+    if not context.dependencies.snapshots:
         return skipped(definition, "未配置 Restic。")
 
     _, error = await context.snapshots()
@@ -129,7 +126,7 @@ async def check_server_snapshot_freshness(
     findings: list[SelfCheckFindingResult] = []
     max_age = timedelta(minutes=context.config.snapshot_freshness_minutes)
     for server in active_servers:
-        project_path = docker_mc_manager.get_instance(server.server_id).get_project_path()
+        project_path = context.dependencies.minecraft.get_instance(server.server_id).get_project_path()
         matching = await context.snapshots_covering(project_path)
         if not matching:
             if context.now - server.created_at <= max_age:

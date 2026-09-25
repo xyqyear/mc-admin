@@ -2,15 +2,16 @@
 Tests for the WebSocket console endpoint with docker-py integration.
 Tests real-time console functionality with mocked dependencies.
 """
-
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.auth.session import AUTH_COOKIE_NAME, create_session_token, get_system_user
+from app.auth.service import get_identity_service, get_system_user
+from app.auth.session import AUTH_COOKIE_NAME
 from app.main import api_app
+from tests.support.runtime import patch_runtime_resource
 
 
 class MockMCInstance:
@@ -113,10 +114,10 @@ def client(monkeypatch):
     """Create test client."""
     client = TestClient(api_app)
     monkeypatch.setattr(
-        "app.auth.session._get_current_session_user",
+        get_identity_service(), "get_current_session_user",
         AsyncMock(return_value=get_system_user()),
     )
-    token, _ = create_session_token(get_system_user())
+    token, _ = get_identity_service().create_session_token(get_system_user())
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/")
     return client
 
@@ -133,7 +134,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -163,7 +164,7 @@ class TestWebSocketConsole:
         client.cookies.set(AUTH_COOKIE_NAME, "invalid_session", path="/")
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             mock_manager.get_instance.return_value = instance
 
@@ -179,7 +180,7 @@ class TestWebSocketConsole:
         instance._exists = False
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             mock_manager.get_instance.return_value = instance
 
@@ -198,7 +199,7 @@ class TestWebSocketConsole:
         instance._running = False
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             mock_manager.get_instance.return_value = instance
 
@@ -216,7 +217,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -249,7 +250,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -280,7 +281,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -329,7 +330,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -356,7 +357,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -384,7 +385,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -414,7 +415,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
@@ -444,7 +445,7 @@ class TestWebSocketConsole:
         server_id, instance = mock_instance
 
         with (
-            patch("app.routers.servers.console.docker_mc_manager") as mock_manager,
+            patch_runtime_resource('docker_mc_manager') as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
             patch(
                 "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",

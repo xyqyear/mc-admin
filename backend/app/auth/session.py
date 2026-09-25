@@ -1,22 +1,14 @@
-import secrets
-from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-from joserfc import jwt
-from joserfc.errors import BadSignatureError, DecodeError
-from pydantic import BaseModel, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp
 
-from ..config import settings
-from ..db.crud.user import get_user_by_id
-from ..db.database import get_async_session
-from ..logger import logger
-from ..models import User, UserPublic, UserRole
-from .jwt_utils import create_access_token, get_token_expiry, key
+from app.auth.schemas import UserPublic
+
+from .service import TokenValidationError, get_identity_service
 
 AUTH_COOKIE_NAME = "mc_admin_session"
 CSRF_COOKIE_NAME = "mc_admin_csrf"
@@ -40,60 +32,22 @@ DEV_WEBSOCKET_ORIGINS = {
 }
 
 
-class JwtClaims(BaseModel):
-    sub: str
-    user_id: int
-    username: str
-    role: str
-    created_at: str
-    csrf: str
-    exp: datetime
 
 
-class TokenValidationError(Exception):
-    pass
 
 
-def get_system_user() -> UserPublic:
-    return UserPublic(
-        id=0,
-        username="SYSTEM",
-        role=UserRole.OWNER,
-        created_at=datetime.now(UTC),
-    )
 
 
-def user_to_public(user: User) -> UserPublic:
-    if user.id is None:
-        raise ValueError("User ID is missing")
-    return UserPublic(
-        id=user.id,
-        username=user.username,
-        role=user.role,
-        created_at=user.created_at,
-    )
 
 
-def create_session_token(user: UserPublic) -> tuple[str, str]:
-    csrf_token = secrets.token_urlsafe(32)
-    jwt_claims = JwtClaims(
-        sub=user.username,
-        user_id=user.id,
-        username=user.username,
-        role=user.role.value,
-        created_at=user.created_at.isoformat(),
-        csrf=csrf_token,
-        exp=get_token_expiry(),
-    )
-    return create_access_token(jwt_claims), csrf_token
 
 
 def _cookie_max_age_seconds() -> int:
-    return settings.jwt.access_token_expire_minutes * 60
+    return get_identity_service().settings.jwt.access_token_expire_minutes * 60
 
 
 def _cookie_samesite() -> Literal["lax", "strict", "none"]:
-    return settings.jwt.cookie_samesite
+    return get_identity_service().settings.jwt.cookie_samesite
 
 
 def set_auth_cookies(response: Response, token: str, csrf_token: str) -> None:
@@ -103,7 +57,7 @@ def set_auth_cookies(response: Response, token: str, csrf_token: str) -> None:
         token,
         max_age=max_age,
         httponly=True,
-        secure=settings.jwt.cookie_secure,
+        secure=get_identity_service().settings.jwt.cookie_secure,
         samesite=_cookie_samesite(),
         path=AUTH_COOKIE_PATH,
     )
@@ -112,7 +66,7 @@ def set_auth_cookies(response: Response, token: str, csrf_token: str) -> None:
         csrf_token,
         max_age=max_age,
         httponly=False,
-        secure=settings.jwt.cookie_secure,
+        secure=get_identity_service().settings.jwt.cookie_secure,
         samesite=_cookie_samesite(),
         path=CSRF_COOKIE_PATH,
     )
@@ -123,89 +77,22 @@ def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(CSRF_COOKIE_NAME, path=CSRF_COOKIE_PATH)
 
 
-def decode_session_claims(token: str) -> JwtClaims:
-    try:
-        payload = jwt.decode(token, key, [settings.jwt.algorithm])
-    except (BadSignatureError, DecodeError):
-        raise TokenValidationError("Could not decode jwt token")
-    except Exception as e:
-        raise TokenValidationError(f"Unexpected error decoding token: {e}") from e
-
-    if payload.claims is None:
-        raise TokenValidationError("JWT token invalid: missing claims field")
-
-    try:
-        jwt_claims = JwtClaims.model_validate(payload.claims)
-    except ValidationError as e:
-        raise TokenValidationError(f"JWT token invalid: {e}")
-
-    if jwt_claims.exp < datetime.now(UTC):
-        raise TokenValidationError("Token expired")
-
-    return jwt_claims
 
 
-def user_from_claims(jwt_claims: JwtClaims) -> UserPublic:
-    return UserPublic(
-        id=jwt_claims.user_id,
-        username=jwt_claims.username,
-        role=UserRole(jwt_claims.role),
-        created_at=datetime.fromisoformat(jwt_claims.created_at),
-    )
 
 
-def validate_session_token(token: str) -> tuple[UserPublic, JwtClaims]:
-    claims = decode_session_claims(token)
-    return user_from_claims(claims), claims
 
 
-def _extract_bearer_token(authorization: str | None) -> str | None:
-    if not authorization:
-        return None
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        return None
-    return token
 
 
-def is_master_authorization(
-    authorization: str | None, master_token: str | None = None
-) -> bool:
-    return _extract_bearer_token(authorization) == (
-        master_token or settings.master_token
-    )
 
 
-async def get_user_from_auth_values(
-    session_token: str | None,
-    authorization: str | None,
-    master_token: str | None = None,
-) -> UserPublic:
-    if is_master_authorization(authorization, master_token):
-        logger.info("Master token used; acting as SYSTEM user")
-        return get_system_user()
-
-    if session_token:
-        claims = decode_session_claims(session_token)
-        return await _get_current_session_user(claims)
-
-    raise TokenValidationError("Not authenticated")
 
 
-async def _get_current_session_user(claims: JwtClaims) -> UserPublic:
-    async with get_async_session() as session:
-        user = await get_user_by_id(session, claims.user_id)
-        if (
-            user is None
-            or user.username != claims.username
-            or user.created_at != datetime.fromisoformat(claims.created_at)
-        ):
-            raise TokenValidationError("登录会话对应的用户已不存在")
-        return user_to_public(user)
 
 
 async def get_user_from_request(request: HTTPConnection) -> UserPublic:
-    return await get_user_from_auth_values(
+    return await get_identity_service().get_user_from_auth_values(
         request.cookies.get(AUTH_COOKIE_NAME),
         request.headers.get("authorization"),
     )
@@ -246,7 +133,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if (
             request.method.upper() in SAFE_METHODS
             or bool(candidate_paths & CSRF_EXEMPT_PATHS)
-            or is_master_authorization(request.headers.get("authorization"))
+            or get_identity_service().is_master_authorization(request.headers.get("authorization"))
         ):
             return await call_next(request)
 
@@ -257,7 +144,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         csrf_header = request.headers.get(CSRF_HEADER_NAME)
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         try:
-            _, claims = validate_session_token(session_token)
+            _, claims = get_identity_service().validate_session_token(session_token)
         except TokenValidationError as e:
             return JSONResponse(status_code=401, content={"detail": str(e)})
 

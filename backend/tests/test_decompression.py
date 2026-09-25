@@ -1,3 +1,5 @@
+from tests.support.runtime import patch_settings
+
 """
 Tests for the decompression utility with real command execution.
 
@@ -23,12 +25,14 @@ import aiofiles
 import pytest
 from aiofiles import os as aioos
 
-from app.background_tasks import TaskStatus, task_manager
+from app.background_tasks import TaskStatus, get_task_manager
 from app.background_tasks.types import TaskProgress, TaskType
 from app.utils.decompression import (
     extract_archive_stream,
     extract_minecraft_server,
 )
+
+pytestmark = [pytest.mark.binary('7z')]
 
 
 def check_7z_available():
@@ -85,7 +89,7 @@ async def server_temp_dir():
 @pytest.fixture
 async def mock_settings(server_temp_dir):
     """Mock settings with separate temporary server path."""
-    with patch("app.utils.decompression.settings") as mock_settings:
+    with patch_settings() as mock_settings:
         mock_settings.server_path = server_temp_dir / "servers"
         # Create server directory
         await aioos.makedirs(mock_settings.server_path, exist_ok=True)
@@ -645,7 +649,7 @@ class TestBackgroundTaskIntegration:
         target_path = temp_dir / "extracted"
         await aioos.makedirs(target_path, exist_ok=True)
 
-        result = task_manager.submit(
+        result = get_task_manager().submit(
             task_type=TaskType.ARCHIVE_EXTRACT,
             name="test_extract",
             task_generator=extract_minecraft_server(
@@ -663,7 +667,7 @@ class TestBackgroundTaskIntegration:
         assert task_result.data.get("success") is True
 
         # Verify task status
-        task = task_manager.get_task(result.task_id)
+        task = get_task_manager().get_task(result.task_id)
         assert task is not None
         assert task.status == TaskStatus.COMPLETED
         assert task.progress == 100
@@ -672,14 +676,14 @@ class TestBackgroundTaskIntegration:
         assert (target_path / "server.properties").exists()
 
         # Clean up
-        task_manager.remove_task(result.task_id)
+        get_task_manager().remove_task(result.task_id)
 
     async def test_task_manager_handles_extraction_error(self, temp_dir, mock_settings):
         """Test that task manager handles extraction errors."""
         archive_path = temp_dir / "nonexistent.zip"
         target_path = temp_dir / "target"
 
-        result = task_manager.submit(
+        result = get_task_manager().submit(
             task_type=TaskType.ARCHIVE_EXTRACT,
             name="test_extract_fail",
             task_generator=extract_minecraft_server(
@@ -696,12 +700,12 @@ class TestBackgroundTaskIntegration:
         assert task_result.error is not None
 
         # Verify task status
-        task = task_manager.get_task(result.task_id)
+        task = get_task_manager().get_task(result.task_id)
         assert task is not None
         assert task.status == TaskStatus.FAILED
 
         # Clean up
-        task_manager.remove_task(result.task_id)
+        get_task_manager().remove_task(result.task_id)
 
     async def test_task_tracks_progress_during_extraction(
         self, temp_dir, mock_settings
@@ -717,7 +721,7 @@ class TestBackgroundTaskIntegration:
         target_path = temp_dir / "extracted"
         await aioos.makedirs(target_path, exist_ok=True)
 
-        result = task_manager.submit(
+        result = get_task_manager().submit(
             task_type=TaskType.ARCHIVE_EXTRACT,
             name="test_extract_progress",
             task_generator=extract_minecraft_server(
@@ -730,10 +734,10 @@ class TestBackgroundTaskIntegration:
         await result.awaitable
 
         # Verify final task state
-        task = task_manager.get_task(result.task_id)
+        task = get_task_manager().get_task(result.task_id)
         assert task is not None
         assert task.progress == 100
         assert "填充完成" in task.message
 
         # Clean up
-        task_manager.remove_task(result.task_id)
+        get_task_manager().remove_task(result.task_id)

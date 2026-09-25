@@ -1,5 +1,4 @@
 """Integration tests for default variables API endpoints."""
-
 import tempfile
 from pathlib import Path
 
@@ -8,8 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
-from app.models import Base
+from app.runtime_resources import current_runtime
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def test_client(test_db):
 
     api_app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.config.settings.master_token", "test-master-token"):
+    with patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"):
         client = TestClient(api_app, raise_server_exceptions=False)
         yield client
 

@@ -2,8 +2,8 @@
 
 import re
 
-from ..dynamic_config import config
-from ..logger import logger
+from ..dynamic_config import get_config
+from ..logger import get_logger
 from .events import (
     LogEvent,
     PlayerAchievementEvent,
@@ -28,8 +28,9 @@ class LogParser:
         Returns:
             Parsed event or None if no match
         """
+        logger = get_logger()
         # Get current configuration dynamically
-        parser_config = config.log_parser
+        parser_config = get_config().log_parser
 
         # Try UUID patterns first
         for uuid_pattern in parser_config.uuid_patterns:

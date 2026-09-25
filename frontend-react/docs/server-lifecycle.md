@@ -14,7 +14,7 @@ The sync trigger in `Overview.tsx` is rendered only when `useCurrentUser().role 
 
 ## Types
 
-All shapes live in `src/types/lifecycle.ts` and mirror the backend Pydantic models in `app.servers.lifecycle.types`:
+All shapes live in `src/features/servers/lifecycleContracts.ts` and mirror the backend Pydantic models in `app.servers.lifecycle.types`:
 
 - `CreateServerRequest` / `CreateServerResult`
 - `RemoveServerResult`
@@ -25,7 +25,7 @@ When the backend changes any of these, update this file in the same commit.
 
 ## Components
 
-- `src/components/dialogs/SyncWithFilesystemDialog.tsx` — preview / apply UI, force-mode escalation, OWNER role-gated trigger.
+- `src/features/servers/ui/SyncWithFilesystemDialog.tsx` — preview / apply UI, force-mode escalation, OWNER role-gated trigger.
 
 ## Cache invalidation
 

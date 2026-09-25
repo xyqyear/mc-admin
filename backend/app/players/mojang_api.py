@@ -3,12 +3,13 @@
 
 import httpx2
 
-from ..logger import log_exception, logger
+from ..logger import get_logger, log_exception
 
 
 @log_exception("Error fetching player UUID from Mojang API for {player_name}: ")
 async def fetch_player_uuid_from_mojang(player_name: str) -> str | None:
     """Return the dashless UUID for ``player_name``, or ``None`` if not found."""
+    logger = get_logger()
     url = f"https://api.mojang.com/users/profiles/minecraft/{player_name}"
     async with httpx2.AsyncClient(timeout=10.0) as client:
         response = await client.get(url)
@@ -33,6 +34,7 @@ async def fetch_player_uuid_from_mojang(player_name: str) -> str | None:
 @log_exception("Error fetching player name from Mojang API for {uuid}: ")
 async def fetch_player_name_from_mojang(uuid: str) -> str | None:
     """Return the current player name for ``uuid``, or ``None`` if not found."""
+    logger = get_logger()
     uuid_clean = uuid.replace("-", "")
     url = f"https://sessionserver.mojang.com/session/minecraft/profile/{uuid_clean}"
     async with httpx2.AsyncClient(timeout=10.0) as client:

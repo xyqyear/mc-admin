@@ -12,12 +12,15 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "minecraft.explicit-server-identity", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: serverIdentityAdoption},
+		{ID: "minecraft.server-path-boundaries", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: time.Minute, Run: serverIdentityPaths},
 		{ID: "minecraft.lifecycle", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Lifecycle, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: lifecycle},
 		{ID: "minecraft.overview", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: overview},
 		{ID: "minecraft.rcon-and-files", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: observe},
 		{ID: "minecraft.console-and-runtime-controls", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: consoleAndControls},
 		{ID: "minecraft.stopped-and-invalid-requests", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: time.Minute, Run: negativeRequests},
 		{ID: "minecraft.scheduled-restart", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: scheduledRestart},
+		{ID: "minecraft.exact-restart-schedules", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: exactRestartSchedules},
 	}
 }
 
@@ -28,6 +31,13 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 	}
 	server := fixtures.ServerOf(t.Env)
 	id := server.ID
+	var me struct {
+		ID int `json:"id"`
+	}
+	if err = client.JSON(ctx, "GET", "/api/user/me", nil, &me, 200); err != nil {
+		return err
+	}
+	history := lifecycleHistory{client: client, serverID: id, actorID: me.ID}
 	if err = t.Step("Compose accepts a label whose value contains equals signs", func() error {
 		compose := strings.Replace(server.Compose, "    labels:\n", "    labels:\n      io.mc-admin.e2e.lifecycle: 'phase=ready=healthy'\n", 1)
 		var task struct {
@@ -45,7 +55,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		if err := client.JSON(ctx, "POST", "/api/servers/"+id+"/rcon", map[string]string{"command": "list"}, nil, 409); err != nil {
 			return err
 		}
-		if err := fixtures.Operation(ctx, client, id, "up"); err != nil {
+		if err := history.run(ctx, "up"); err != nil {
 			return err
 		}
 		return fixtures.WaitStatus(ctx, client, id, "healthy")
@@ -72,8 +82,20 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if err = t.Step("restart returns to a healthy game server", func() error {
-		if err := fixtures.Operation(ctx, client, id, "restart"); err != nil {
+	if err = t.Step("manual stop, start and restart retain caller and server identity in successful history", func() error {
+		if err := history.run(ctx, "stop"); err != nil {
+			return err
+		}
+		if err := fixtures.WaitStatus(ctx, client, id, "created"); err != nil {
+			return err
+		}
+		if err := history.run(ctx, "start"); err != nil {
+			return err
+		}
+		if err := fixtures.WaitStatus(ctx, client, id, "healthy"); err != nil {
+			return err
+		}
+		if err := history.run(ctx, "restart"); err != nil {
 			return err
 		}
 		return fixtures.WaitStatus(ctx, client, id, "healthy")
@@ -81,7 +103,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	if err = t.Step("stopped container accepts configuration rebuild and stays stopped", func() error {
-		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
+		if err := history.run(ctx, "stop"); err != nil {
 			return err
 		}
 		if err := fixtures.WaitStatus(ctx, client, id, "created"); err != nil {
@@ -109,7 +131,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		if compose.YAML != changed {
 			return fmt.Errorf("stopped rebuild did not save the requested compose")
 		}
-		if err := fixtures.Operation(ctx, client, id, "up"); err != nil {
+		if err := history.run(ctx, "up"); err != nil {
 			return err
 		}
 		return fixtures.WaitStatus(ctx, client, id, "healthy")
@@ -117,13 +139,13 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	return t.Step("stop, down and remove complete the server lifecycle", func() error {
-		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
+		if err := history.run(ctx, "stop"); err != nil {
 			return err
 		}
 		if err := fixtures.WaitStatus(ctx, client, id, "created"); err != nil {
 			return err
 		}
-		if err := fixtures.Operation(ctx, client, id, "down"); err != nil {
+		if err := history.run(ctx, "down"); err != nil {
 			return err
 		}
 		if err := fixtures.Status(ctx, client, id, "exists"); err != nil {

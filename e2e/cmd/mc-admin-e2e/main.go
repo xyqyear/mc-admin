@@ -29,6 +29,9 @@ func mainCode(args []string) int {
 	if len(args) == 0 {
 		args = []string{"run"}
 	}
+	if args[0] == "browser" {
+		return browser(args[1:])
+	}
 	if args[0] == "cleanup" {
 		return cleanup(args[1:])
 	}
@@ -36,7 +39,7 @@ func mainCode(args []string) int {
 		return auditCoverage(args[1:])
 	}
 	if args[0] != "run" && args[0] != "list" && args[0] != "plan" {
-		fmt.Fprintln(os.Stderr, "usage: mc-admin-e2e run|list|plan|cleanup|coverage [options]")
+		fmt.Fprintln(os.Stderr, "usage: mc-admin-e2e run|list|plan|browser|cleanup|coverage [options]")
 		return 2
 	}
 	command := args[0]

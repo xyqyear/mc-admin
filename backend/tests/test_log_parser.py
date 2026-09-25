@@ -1,6 +1,5 @@
 """Test cases for LogParser using real Minecraft server logs."""
-
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,6 +13,7 @@ from app.log_monitor.events import (
     ServerStoppingEvent,
 )
 from app.log_monitor.parser import LogParser
+from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def mock_config():
     mock_config_obj = MagicMock()
     mock_config_obj.log_parser = mock_log_parser_config
 
-    with patch("app.log_monitor.parser.config", mock_config_obj):
+    with patch_runtime_resource('dynamic_configuration', mock_config_obj):
         yield mock_config_obj
 
 

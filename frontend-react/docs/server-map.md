@@ -1,6 +1,6 @@
 # Server Map
 
-The server map is an embedded Leaflet component, not a standalone page. It's used by the world-restore page (chunk/region selection) and by the world-restore preview modal (read-only). The backend renders tile PNGs on demand; the frontend's job is to display them, run the selection gestures, and let Leaflet/browser tile lifecycle handle image loading and cache eviction.
+The server map is an embedded Leaflet component, not a standalone page. It's used by world restore (chunk/region selection) and chunk prune (read-only with connected preview polygons); restore preview uses the same coordinate/tile primitives. The backend renders tile PNGs on demand; the frontend's job is to display them, run the selection gestures, and let Leaflet/browser tile lifecycle handle image loading and cache eviction.
 
 ## Why Leaflet with `CRS.Simple`
 
@@ -26,7 +26,7 @@ GET /map/tiles/X/Z.png  →                          │
 
 ## Coordinate model
 
-`components/map/coords.ts` is the single source of truth for conversions. Pure functions:
+`features/world/map/coords.ts` is the single source of truth for conversions. Pure functions:
 
 - `blockToChunk`, `chunkToRegion`, `chunkToBlock`, etc.
 - `regionToChunkKeys(rx, rz)` — set of "cx,cz" strings inside one region
@@ -37,7 +37,7 @@ Mode-switch math (chunk → region) runs through these so both modes always agre
 
 ## `ServerMap` component
 
-`components/map/ServerMap.tsx` wraps Leaflet with selection gestures and URL-driven view state:
+`features/world/map/ServerMap.tsx` wraps Leaflet with selection gestures and URL-driven view state:
 
 - Props: `regionPath`, `regions` (manifest set), `initialView` / `onViewChange` (URL sync), `selectionMode` (`'none' | 'chunk' | 'region'`), controlled `selection` + `onSelectionChange`, `overlays`.
 - Gestures:
@@ -51,7 +51,7 @@ Mode-switch math (chunk → region) runs through these so both modes always agre
 
 ## `ServerMapTileLayer`
 
-`components/map/ServerMapTileLayer.ts` extends the shared `ServerTileLayer`, a native Leaflet `L.TileLayer` wrapper. The reasons:
+`features/world/map/ServerMapTileLayer.ts` extends the shared `ServerTileLayer`, a native Leaflet `L.TileLayer` wrapper. The reasons:
 
 - **Cookie-backed image requests.** Tile URLs are normal same-origin `/api/...png` image URLs, so the browser sends the HttpOnly session cookie and can use its native image cache.
 - **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and returns a blank data URL for anything outside the set, skipping a round trip.
@@ -63,4 +63,8 @@ Leaflet creates normal `<img>` elements. When panning or zooming removes a tile,
 
 ## Init dialog
 
-`components/dialogs/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses the shared `readEventStream` helper so abort, parsing, cookie auth, and CSRF handling match the rest of the app. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.
+`features/world/map/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses the shared `readEventStream` helper so abort, parsing, cookie auth, and CSRF handling match the rest of the app. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.
+
+## Shared feature controller
+
+`features/world/api.ts`, `contracts.ts` and `queries.ts` own layout, dimension labels, map status/manifests, claims and player positions. `useWorldMapController.ts` owns the `dim/mode/z/cx/cz` URL view, world/dimension selection, map initialization, visibility/online filters and cross-dimension pan. Restore/prune controllers build on it without reverse imports from common layers into restore. `layers/claims` and `layers/players` contain the actual implementations rather than feature-specific reexports.

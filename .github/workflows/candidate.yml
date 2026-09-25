@@ -1,0 +1,76 @@
+name: Immutable Application Candidate
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+    outputs:
+      artifact:
+        value: ${{ jobs.build.outputs.artifact }}
+      revision:
+        value: ${{ jobs.build.outputs.revision }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      artifact: application-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+      revision: ${{ steps.source.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: e2e/go.mod
+          cache-dependency-path: e2e/go.sum
+      - uses: docker/setup-buildx-action@v4
+      - name: Record clean source identity
+        id: source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/candidate"
+          uv run --no-project python scripts/release/candidate.py source --output "$RUNNER_TEMP/source-before.json"
+          echo "revision=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Verify and build the API executable
+        working-directory: e2e
+        run: |
+          make test
+          make build
+          cp bin/mc-admin-e2e "$RUNNER_TEMP/candidate/"
+      - name: Build the only application artifact
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          outputs: type=oci,dest=${{ runner.temp }}/candidate/application.oci.tar
+          labels: org.opencontainers.image.revision=${{ inputs.source_sha }}
+          cache-from: type=gha,scope=application-candidate
+          cache-to: type=gha,scope=application-candidate,mode=max
+      - name: Verify unchanged source and record manifest and config digests
+        run: |
+          uv run --no-project python scripts/release/candidate.py source --output "$RUNNER_TEMP/source-after.json"
+          cmp "$RUNNER_TEMP/source-before.json" "$RUNNER_TEMP/source-after.json"
+          uv run --no-project python scripts/release/candidate.py capture --directory "$RUNNER_TEMP/candidate" --source "$RUNNER_TEMP/source-before.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: application-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

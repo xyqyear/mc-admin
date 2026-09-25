@@ -15,9 +15,7 @@ from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from pathlib import Path
 
-from anyio import CancelScope
-
-from ..config import settings
+from ..config import get_settings
 from ..utils.exec import exec_command
 from .models import (
     NodeKind,
@@ -101,6 +99,7 @@ class ResticClient:
         binary_path: str | Path | None = None,
     ):
         """``password=None`` or empty string means the repository is unprotected."""
+        settings = get_settings()
         self.repository_path = repository_path
         self.binary_path = Path(binary_path or settings.restic_binary_path)
         password_value = (
@@ -280,7 +279,10 @@ class ResticClient:
             args.extend(["--include", pattern])
         full_args = self._build_args(*args)
 
-        proc = await asyncio.create_subprocess_exec(
+        from ..operations.finalization import finalize
+        from ..operations.processes import spawn_process, stop_process
+
+        proc = await spawn_process(
             *full_args,
             env=self.env,
             stdout=asyncio.subprocess.PIPE,
@@ -319,20 +321,13 @@ class ResticClient:
                     f"restic restore failed (exit {proc.returncode}): {stderr}"
                 )
         finally:
-            with CancelScope(shield=True):
-                if proc.returncode is None:
-                    try:
-                        proc.terminate()
-                    except ProcessLookupError:
-                        pass
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=5)
-                    except TimeoutError:
-                        proc.kill()
-                        await proc.wait()
+            async def cleanup() -> None:
                 if not drain_task.done():
                     drain_task.cancel()
                 await asyncio.gather(drain_task, return_exceptions=True)
+                await stop_process(proc, grace=5)
+
+            await finalize(cleanup())
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         """Remove the snapshot ``snapshot_id``; prune the repo afterwards by default."""

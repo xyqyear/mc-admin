@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.background_tasks import TaskProgress, TaskStatus, TaskType, task_manager
+from app.background_tasks import TaskProgress, TaskStatus, TaskType, get_task_manager
 from app.chunk_prune.models import (
     ChunkPrunePreviewGeometryResponse,
     ChunkPruneTaskMetadata,
@@ -23,6 +23,7 @@ from app.mcmap.events import (
 from app.minecraft import MCServerStatus
 from app.routers.servers import chunk_prune as chunk_prune_router
 from app.world.locks import ServerOperationLock
+from tests.support.runtime import set_runtime_resource
 
 
 def _normalize_ring(ring):
@@ -137,14 +138,10 @@ async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch
     async def fake_prune_inhabited(**kwargs):
         yield _FakeProc()
 
-    async def no_claims_file(server_id, data_path):
-        return None
-
     monkeypatch.setattr(
-        "app.chunk_prune.service.mcmap_runner.prune_inhabited",
+        "app.chunk_prune.execution.mcmap_runner.prune_inhabited",
         fake_prune_inhabited,
     )
-    monkeypatch.setattr(service, "_write_claims_file", no_claims_file)
 
     progress = [
         item async for item in service._run_prune_task(metadata, dry_run=True)
@@ -209,8 +206,8 @@ async def test_task_manager_accepts_stable_task_id():
         yield TaskProgress(progress=100, message="done")
 
     task_id = "stable-task-id-for-chunk-prune-test"
-    task_manager.remove_task(task_id)
-    submit = task_manager.submit(
+    get_task_manager().remove_task(task_id)
+    submit = get_task_manager().submit(
         TaskType.CHUNK_PRUNE_PREVIEW,
         "test",
         task_gen(),
@@ -218,10 +215,10 @@ async def test_task_manager_accepts_stable_task_id():
     )
     assert submit.task.task_id == task_id
     await submit.awaitable
-    found_task = task_manager.get_task(task_id)
+    found_task = get_task_manager().get_task(task_id)
     assert found_task is not None
     assert found_task.status == TaskStatus.COMPLETED
-    assert task_manager.remove_task(task_id)
+    assert get_task_manager().remove_task(task_id)
 
 
 async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
@@ -237,7 +234,7 @@ async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
         "chunk-prune-state-apply-new",
     ]
     for task_id in task_ids:
-        task_manager.remove_task(task_id)
+        get_task_manager().remove_task(task_id)
 
     class _StateInstance:
         async def exists(self):
@@ -247,32 +244,32 @@ async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
         def get_instance(self, server_id):
             return _StateInstance()
 
-    monkeypatch.setattr(chunk_prune_router, "docker_mc_manager", _StateDocker())
+    set_runtime_resource(monkeypatch, 'docker_mc_manager', _StateDocker())
 
     submissions = []
     try:
-        old_preview = task_manager.submit(
+        old_preview = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_PREVIEW,
             "old preview",
             task_gen(),
             server_id="srv1",
             task_id=task_ids[0],
         ).task
-        old_apply = task_manager.submit(
+        old_apply = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_APPLY,
             "old apply",
             task_gen(),
             server_id="srv1",
             task_id=task_ids[1],
         ).task
-        new_preview = task_manager.submit(
+        new_preview = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_PREVIEW,
             "new preview",
             task_gen(),
             server_id="srv1",
             task_id=task_ids[2],
         ).task
-        new_apply = task_manager.submit(
+        new_apply = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_APPLY,
             "new apply",
             task_gen(),
@@ -282,7 +279,7 @@ async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
         submissions = [
             future
             for task_id in task_ids
-            if (future := task_manager.get_future(task_id)) is not None
+            if (future := get_task_manager().get_future(task_id)) is not None
         ]
 
         old_apply.created_at = old_preview.created_at + timedelta(seconds=1)
@@ -299,7 +296,7 @@ async def test_chunk_prune_state_returns_latest_preview_and_matching_apply(
         for future in submissions:
             await future
         for task_id in task_ids:
-            task_manager.remove_task(task_id)
+            get_task_manager().remove_task(task_id)
 
 
 async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
@@ -311,7 +308,7 @@ async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
         "chunk-prune-state-new-preview",
     ]
     for task_id in task_ids:
-        task_manager.remove_task(task_id)
+        get_task_manager().remove_task(task_id)
 
     class _StateInstance:
         async def exists(self):
@@ -321,18 +318,18 @@ async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
         def get_instance(self, server_id):
             return _StateInstance()
 
-    monkeypatch.setattr(chunk_prune_router, "docker_mc_manager", _StateDocker())
+    set_runtime_resource(monkeypatch, 'docker_mc_manager', _StateDocker())
 
     submissions = []
     try:
-        stale_apply = task_manager.submit(
+        stale_apply = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_APPLY,
             "stale apply",
             task_gen(),
             server_id="srv1",
             task_id=task_ids[0],
         ).task
-        new_preview = task_manager.submit(
+        new_preview = get_task_manager().submit(
             TaskType.CHUNK_PRUNE_PREVIEW,
             "new preview",
             task_gen(),
@@ -342,7 +339,7 @@ async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
         submissions = [
             future
             for task_id in task_ids
-            if (future := task_manager.get_future(task_id)) is not None
+            if (future := get_task_manager().get_future(task_id)) is not None
         ]
 
         new_preview.created_at = stale_apply.created_at + timedelta(seconds=1)
@@ -356,7 +353,7 @@ async def test_chunk_prune_state_hides_apply_before_latest_preview(monkeypatch):
         for future in submissions:
             await future
         for task_id in task_ids:
-            task_manager.remove_task(task_id)
+            get_task_manager().remove_task(task_id)
 
 
 async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
@@ -367,12 +364,12 @@ async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
         operation_lock=ServerOperationLock(),
     )
     task_id = "chunk-prune-geometry-completed"
-    task_manager.remove_task(task_id)
+    get_task_manager().remove_task(task_id)
 
     async def task_gen():
         yield TaskProgress(progress=100, message="done", result={"dry_run": True})
 
-    submit = task_manager.submit(
+    submit = get_task_manager().submit(
         TaskType.CHUNK_PRUNE_PREVIEW,
         "preview",
         task_gen(),
@@ -397,7 +394,7 @@ async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
             dimensions=[],
         ),
     )
-    monkeypatch.setattr(chunk_prune_router, "chunk_prune_service", service)
+    set_runtime_resource(monkeypatch, 'chunk_prune_service', service)
 
     try:
         await submit.awaitable
@@ -410,7 +407,7 @@ async def test_chunk_prune_geometry_endpoint_returns_completed_preview_geometry(
         assert response.mode == "regions"
         assert response.dimensions == []
     finally:
-        task_manager.remove_task(task_id)
+        get_task_manager().remove_task(task_id)
 
 
 async def test_apply_closes_worker_and_invalidates_before_releasing_lock(tmp_path, monkeypatch):
@@ -438,7 +435,18 @@ async def test_apply_closes_worker_and_invalidates_before_releasing_lock(tmp_pat
             closed = True
 
     invalidation = AsyncMock()
-    monkeypatch.setattr(service, "_run_prune_task", worker)
+    from app.servers.references import ServerRef
+
+    reference = ServerRef("srv1", 1, tmp_path.parent.parent, tmp_path.parent, tmp_path)
+    metadata.reference = reference
+    metadata.preview_task_id = "chunk-prune-preview-cleanup"
+    service._metadata[metadata.preview_task_id] = ChunkPruneTaskMetadata(
+        task_id=metadata.preview_task_id, server_id="srv1", operation="preview",
+        data_path=tmp_path, threshold_seconds=60, threshold_ticks=1200, mode="chunks",
+        reference=reference,
+    )
+    monkeypatch.setattr(service, "_validate_inputs", AsyncMock())
+    monkeypatch.setattr("app.chunk_prune.service.run_prune", worker)
     monkeypatch.setattr("app.chunk_prune.service.png_invalidate.delete_pngs", invalidation)
     events = service._run_apply_task(metadata)
     await anext(events)

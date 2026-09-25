@@ -3,11 +3,11 @@
 Monitors Minecraft server log files and triggers player tracking actions.
 """
 
-from .monitor import LogMonitor, log_monitor
+from .monitor import LogMonitor, get_log_monitor
 from .parser import LogParser
 
 __all__ = [
     "LogMonitor",
     "LogParser",
-    "log_monitor",
+    'get_log_monitor',
 ]

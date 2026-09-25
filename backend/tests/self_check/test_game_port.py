@@ -32,10 +32,9 @@ def test_server_properties_accepts_field_names_and_aliases(values):
 def servers(tmp_path, monkeypatch):
     instances = {}
     records = []
-    context = SimpleNamespace(active_servers=AsyncMock(return_value=records))
-    monkeypatch.setattr(
-        "app.self_check.checks.server.docker_mc_manager",
-        SimpleNamespace(get_instance=instances.__getitem__),
+    context = SimpleNamespace(
+        active_servers=AsyncMock(return_value=records),
+        dependencies=SimpleNamespace(minecraft=SimpleNamespace(get_instance=instances.__getitem__)),
     )
 
     def add(name="survival", content="server-port=25565\n", status=MCServerStatus.EXISTS, compose=COMPOSE):

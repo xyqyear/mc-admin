@@ -1,26 +1,16 @@
 import functools
 import gzip
 import inspect
-import logging
-import logging.handlers
 import os
 import shutil
-import sys
 from collections.abc import Callable
 from gzip import GzipFile
-from pathlib import Path
+from logging.handlers import TimedRotatingFileHandler
 from typing import Any, ParamSpec, TypeVar, cast
 
-from .config import settings
-
-logger = logging.getLogger("app")
-logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter(
-    "%(asctime)s %(levelname)s [%(module)s:%(funcName)s:%(lineno)d] %(message)s"
-)
-
-logs_dir = Path(settings.logs_dir)
-logs_dir.mkdir(exist_ok=True)
+from .config import get_settings
+from .runtime_logging import OwnedLogger, file_logger
+from .runtime_resources import current_runtime
 
 
 def rotator(source, dest):
@@ -30,16 +20,17 @@ def rotator(source, dest):
     os.remove(source)
 
 
-log_file_handler = logging.handlers.TimedRotatingFileHandler(
-    logs_dir / "app.log", when="midnight"
-)
-log_file_handler.setFormatter(formatter)
-log_file_handler.rotator = rotator
-logger.addHandler(log_file_handler)
+def create_logger() -> OwnedLogger:
+    settings = get_settings()
+    result = file_logger("app", settings.logs_dir / "app.log")
+    for handler in result.handlers:
+        if isinstance(handler, TimedRotatingFileHandler):
+            handler.rotator = rotator
+    return result
 
-log_stream_handler = logging.StreamHandler(sys.stdout)
-log_stream_handler.setFormatter(formatter)
-logger.addHandler(log_stream_handler)
+
+def get_logger() -> OwnedLogger:
+    return current_runtime().resource('app_logger')
 
 
 P = ParamSpec("P")
@@ -60,6 +51,7 @@ def log_exception(
             args: tuple[Any, ...],
             kwargs: dict[str, Any],
         ) -> tuple[dict[str, Any], str]:
+            logger = get_logger()
             try:
                 bound = sig.bind(*args, **kwargs)
                 bound.apply_defaults()
@@ -77,6 +69,7 @@ def log_exception(
                 return {}, f"[{', '.join(parts)}] " if parts else ""
 
         def format_prefix(bound_args: dict) -> str:
+            logger = get_logger()
             if not prefix:
                 return ""
 
@@ -104,6 +97,7 @@ def log_exception(
 
             @functools.wraps(func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+                logger = get_logger()
                 try:
                     return await func(*args, **kwargs)
                 except Exception as error:
@@ -120,6 +114,7 @@ def log_exception(
 
             @functools.wraps(func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+                logger = get_logger()
                 try:
                     return func(*args, **kwargs)
                 except Exception as error:

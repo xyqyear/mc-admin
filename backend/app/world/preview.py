@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -18,8 +19,14 @@ from typing import TYPE_CHECKING
 
 import aiofiles.os as aioos
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
 from ..utils import async_fs
+from .artifacts import (
+    protected_artifacts,
+    reap_restore_stages,
+    retain_artifact,
+    valid_artifact_id,
+)
 
 if TYPE_CHECKING:
     from ..mcmap.queue import ServerRenderQueue
@@ -51,6 +58,9 @@ class _Session:
     affected_regions: int = 0
     render_queue: ServerRenderQueue | None = None
     affected_keys: set[tuple[int, int]] | None = None
+    references: int = 0
+    closing: bool = False
+    server_generation: int | None = None
 
 
 @dataclass
@@ -93,66 +103,104 @@ class PreviewSessionManager:
         self._sessions: dict[str, _Session] = {}
         self._server_to_session: dict[str, str] = {}
         self._janitor_task: asyncio.Task | None = None
+        self._creation_lock = asyncio.Lock()
         self._now: Callable[[], datetime] = _utcnow
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_session(
-        self, server_id: str, *, affected_regions: int = 0
+        self, server_id: str, *, affected_regions: int = 0, server_generation: int | None = None
     ) -> Path:
         """Tear down any prior session for ``server_id`` and create a fresh dir.
 
         Raises ``PreviewDiskGuardError`` if free space is below the heuristic.
         """
-        region_bytes = config.snapshots.world_restore.preview_avg_region_bytes
+        region_bytes = get_config().snapshots.world_restore.preview_avg_region_bytes
         required = max(affected_regions, 1) * region_bytes * 2
         free = await self.disk_free_bytes()
         if free < required:
             raise PreviewDiskGuardError(free=free, required=required)
 
-        prior = self._server_to_session.get(server_id)
-        if prior is not None:
-            await self.end(prior)
+        from ..operations.finalization import finalize
+        from .artifacts import release_artifact
 
-        session_id = secrets.token_hex(16)
-        session_dir = self.base_dir / session_id
-        await aioos.makedirs(session_dir, exist_ok=False)
-        self._sessions[session_id] = _Session(
-            session_id=session_id,
-            server_id=server_id,
-            base_dir=session_dir,
-            last_seen=self._now(),
-            affected_regions=affected_regions,
-        )
-        self._server_to_session[server_id] = session_id
-        return session_dir
+        async with self._creation_lock:
+            prior = self._server_to_session.get(server_id)
+            if prior is not None:
+                await finalize(self.end(prior))
+
+            session_id = secrets.token_hex(16)
+            session_dir = self.base_dir / session_id
+            self._sessions[session_id] = _Session(
+                session_id=session_id,
+                server_id=server_id,
+                base_dir=session_dir,
+                last_seen=self._now(),
+                affected_regions=affected_regions,
+                server_generation=server_generation,
+            )
+            self._server_to_session[server_id] = session_id
+            try:
+                await retain_artifact("world_preview", session_id)
+                await finalize(aioos.makedirs(session_dir, exist_ok=False))
+            except BaseException:
+                async def cleanup() -> None:
+                    await release_artifact("world_preview", session_id)
+                    await self.end(session_id)
+                await finalize(cleanup())
+                raise
+            return session_dir
 
     def heartbeat(self, session_id: str) -> None:
         sess = self._sessions.get(session_id)
-        if sess is None:
+        if sess is None or sess.closing or sess.last_seen < self._now() - self._ttl():
             raise PreviewSessionNotFoundError(session_id)
         sess.last_seen = self._now()
 
     async def end(self, session_id: str) -> None:
         """Idempotent teardown."""
-        sess = self._sessions.pop(session_id, None)
+        sess = self._sessions.get(session_id)
         if sess is None:
             return
-        if sess.render_queue is not None:
-            sess.render_queue.shutdown()
-        # Don't clobber a server→session pointer a concurrent create_session may have replaced.
-        existing = self._server_to_session.get(sess.server_id)
-        if existing == session_id:
+        sess.closing = True
+        if self._server_to_session.get(sess.server_id) == session_id:
             self._server_to_session.pop(sess.server_id, None)
+        if sess.references:
+            return
+        from ..operations.finalization import finalize
+
+        await finalize(self._destroy(sess))
+
+    async def _destroy(self, sess: _Session) -> None:
+        if sess.render_queue is not None:
+            await sess.render_queue.close()
+        if sess.session_id in await protected_artifacts("world_preview"):
+            return
         await async_fs.rmtree(sess.base_dir, ignore_errors=True)
+        self._sessions.pop(sess.session_id, None)
+
+    @asynccontextmanager
+    async def use(self, session_id: str) -> AsyncGenerator[_Session]:
+        self.heartbeat(session_id)
+        session = self._sessions[session_id]
+        session.references += 1
+        try:
+            yield session
+        finally:
+            session.references -= 1
+            if session.closing and not session.references:
+                from ..operations.finalization import finalize
+
+                await finalize(self._destroy(session))
 
     def get_active_for_server(self, server_id: str) -> str | None:
         return self._server_to_session.get(server_id)
 
     def get_session(self, session_id: str) -> _Session | None:
-        return self._sessions.get(session_id)
+        session = self._sessions.get(session_id)
+        return session if session is not None and not session.closing else None
 
     def get_session_dir(self, session_id: str) -> Path | None:
-        sess = self._sessions.get(session_id)
+        sess = self.get_session(session_id)
         return sess.base_dir if sess else None
 
     async def get_tile_path(self, session_id: str, rx: int, rz: int) -> Path | None:
@@ -185,7 +233,7 @@ class PreviewSessionManager:
 
     def _ttl(self) -> timedelta:
         return timedelta(
-            seconds=config.snapshots.world_restore.preview_session_ttl_seconds
+            seconds=get_config().snapshots.world_restore.preview_session_ttl_seconds
         )
 
     async def reap_stale(self) -> list[str]:
@@ -200,15 +248,16 @@ class PreviewSessionManager:
         """Delete child dirs of ``base_dir`` not tracked in ``_sessions``; return their paths."""
         if not await aioos.path.exists(self.base_dir):
             return []
-        known = {s.session_id for s in self._sessions.values()}
         deleted: list[Path] = []
         for child in await async_fs.iterdir(self.base_dir):
-            if not await aioos.path.isdir(child):
+            if not valid_artifact_id(child.name) or not await aioos.path.isdir(child) or await aioos.path.islink(child):
                 continue
-            if child.name in known:
-                continue
-            await async_fs.rmtree(child, ignore_errors=True)
-            deleted.append(child)
+            async with self._creation_lock:
+                protected = await protected_artifacts("world_preview")
+                if child.name in self._sessions or child.name in protected:
+                    continue
+                await async_fs.rmtree(child, ignore_errors=True)
+                deleted.append(child)
         return deleted
 
     async def janitor_loop(self) -> None:
@@ -216,11 +265,12 @@ class PreviewSessionManager:
         while True:
             try:
                 interval = (
-                    config.snapshots.world_restore.preview_janitor_interval_seconds
+                    get_config().snapshots.world_restore.preview_janitor_interval_seconds
                 )
                 await asyncio.sleep(interval)
                 await self.reap_stale()
                 await self.reap_orphan_dirs()
+                await reap_restore_stages()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -244,3 +294,19 @@ class PreviewSessionManager:
             pass
         except Exception:
             logger.exception("Preview janitor failed during shutdown")
+
+    async def close(self, *, preserve_artifacts: bool = False) -> None:
+        await self.stop_janitor()
+        errors = []
+        for session_id in list(self._sessions):
+            try:
+                if preserve_artifacts:
+                    queue = self._sessions[session_id].render_queue
+                    if queue is not None:
+                        await queue.close()
+                else:
+                    await self.end(session_id)
+            except Exception as error:  # noqa: BLE001
+                errors.append(error)
+        if errors:
+            raise ExceptionGroup("部分预览会话未能完整关闭", errors)

@@ -5,20 +5,16 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth.session import (
-    AUTH_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    CSRF_HEADER_NAME,
-    create_session_token,
-    user_from_claims,
-)
+from app.auth.models import UserRole
+from app.auth.schemas import UserPublic
+from app.auth.service import get_identity_service, user_from_claims
+from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.models import BackgroundTask
 from app.background_tasks.types import TaskStatus, TaskType
-from app.config import settings
+from app.config import get_settings
 from app.main import app
-from app.models import UserPublic, UserRole
-from app.routers import tasks as task_router
+from tests.support.runtime import set_runtime_resource
 
 REQUESTS = [
     ("GET", "/api/tasks"),
@@ -48,9 +44,9 @@ def task_api(
             status=status,
             result={"test": "retained"},
         )
-    monkeypatch.setattr(task_router, "task_manager", manager)
+    set_runtime_resource(monkeypatch, 'task_manager', manager)
     monkeypatch.setattr(
-        "app.auth.session._get_current_session_user",
+        get_identity_service(), "get_current_session_user",
         AsyncMock(side_effect=user_from_claims),
     )
     client = TestClient(app, raise_server_exceptions=False)
@@ -69,7 +65,7 @@ def task_state(manager: BackgroundTaskManager):
 
 def authenticate(client: TestClient, role: str) -> None:
     if role == "master":
-        client.headers["Authorization"] = f"Bearer {settings.master_token}"
+        client.headers["Authorization"] = f"Bearer {get_settings().master_token}"
         return
     user = UserPublic(
         id=42,
@@ -77,7 +73,7 @@ def authenticate(client: TestClient, role: str) -> None:
         role=UserRole(role),
         created_at=datetime.now(UTC),
     )
-    token, csrf = create_session_token(user)
+    token, csrf = get_identity_service().create_session_token(user)
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
     client.cookies.set(CSRF_COOKIE_NAME, csrf, path="/")
     client.headers[CSRF_HEADER_NAME] = csrf

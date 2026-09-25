@@ -1,14 +1,24 @@
 name: API E2E Tests
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      candidate_artifact:
+        required: true
+        type: string
   push:
+    branches: ["**"]
     paths:
       - backend/**
       - frontend-react/**
       - e2e/**
       - Dockerfile
       - .dockerignore
-      - .github/workflows/e2e-tests.yml
+      - .github/**
+      - scripts/release/**
   pull_request:
     paths:
       - backend/**
@@ -16,7 +26,8 @@ on:
       - e2e/**
       - Dockerfile
       - .dockerignore
-      - .github/workflows/e2e-tests.yml
+      - .github/**
+      - scripts/release/**
   workflow_dispatch:
     inputs:
       selection:
@@ -34,48 +45,15 @@ permissions:
 
 jobs:
   build:
-    name: Build deployment and test executable
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: e2e/go.mod
-          cache-dependency-path: e2e/go.sum
-
-      - name: Run framework tests
-        working-directory: e2e
-        run: make test
-
-      - name: Build executable
-        working-directory: e2e
-        run: make build
-
-      - name: Build application image from this revision
-        run: docker build -t mc-admin:e2e .
-
-      - name: Package runtime inputs
-        run: |
-          mkdir -p e2e-artifacts
-          cp e2e/bin/mc-admin-e2e e2e-artifacts/mc-admin-e2e
-          docker save --output e2e-artifacts/application.tar mc-admin:e2e
-
-      - name: Share immutable inputs with shards
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-runtime-inputs
-          path: e2e-artifacts/
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
+    if: ${{ inputs.candidate_artifact == '' }}
+    uses: ./.github/workflows/candidate.yml
+    with:
+      source_sha: ${{ inputs.source_sha || github.sha }}
 
   regression:
     name: API regression (shard ${{ matrix.shard }}/3)
     needs: build
+    if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.candidate_artifact != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -90,16 +68,27 @@ jobs:
       E2E_NO_REUSE: ${{ inputs.no_reuse || false }}
       E2E_SELECTION: ${{ inputs.selection || 'regression' }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: Install OCI transfer tool
+        run: sudo apt-get update && sudo apt-get install -y skopeo
       - name: Download runtime inputs
         uses: actions/download-artifact@v8
         with:
-          name: e2e-runtime-inputs
+          name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
           path: e2e-artifacts
 
       - name: Prepare runtime inputs
         run: |
           chmod +x e2e-artifacts/mc-admin-e2e
-          docker load --input e2e-artifacts/application.tar
+          uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "${{ inputs.source_sha || github.sha }}"
+          uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"
+          echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
 
       - name: Run real API scenarios
         env:
@@ -118,7 +107,7 @@ jobs:
             reuse_args+=(--no-reuse)
           fi
           ./e2e-artifacts/mc-admin-e2e run \
-            --backend-image mc-admin:e2e \
+            --backend-image "$E2E_IMAGE" \
             --output "$E2E_DIRECTORY" \
             --run-id "$E2E_RUN_ID" \
             --shard "$E2E_SHARD" \
@@ -134,24 +123,32 @@ jobs:
             ./e2e-artifacts/mc-admin-e2e cleanup --run-dir "$E2E_DIRECTORY/$E2E_RUN_ID"
           fi
 
+      - name: Verify API image, outcomes and cleanup against the candidate
+        run: |
+          uv run --no-project python scripts/release/candidate.py evidence \
+            --directory e2e-artifacts --revision "${{ inputs.source_sha || github.sha }}" \
+            --runtime-kind api --run-directory "$E2E_DIRECTORY/$E2E_RUN_ID" \
+            --output "$E2E_DIRECTORY/$E2E_RUN_ID/candidate-evidence.json"
       - name: Upload reports and redacted diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-results-${{ matrix.shard }}
+          overwrite: true
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
           path: |
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
+            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/candidate-evidence.json
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
             ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
 
   coverage:
     name: Audit complete case and shard coverage
-    if: always() && needs.build.result == 'success'
+    if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.candidate_artifact != '')) }}
     needs: [build, regression]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -159,7 +156,7 @@ jobs:
       - name: Download executable
         uses: actions/download-artifact@v8
         with:
-          name: e2e-runtime-inputs
+          name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
           path: e2e-artifacts
 
       - name: Download separate shard reports
@@ -192,6 +189,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-coverage
+          overwrite: true
           path: coverage/
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Require all API shards to have succeeded
+        env:
+          EXECUTION_RESULT: ${{ needs.regression.result }}
+        run: test "$EXECUTION_RESULT" = success

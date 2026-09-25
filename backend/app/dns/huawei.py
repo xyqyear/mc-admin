@@ -8,6 +8,7 @@ from typing import (
 
 from huaweicloudsdkcore.auth.credentials import BasicCredentials
 from huaweicloudsdkcore.exceptions import exceptions
+from huaweicloudsdkcore.http.http_client import HttpClient
 from huaweicloudsdkdns.v2 import (
     BatchDeleteRecordSetWithLineRequest,
     BatchDeleteRecordSetWithLineRequestBody,
@@ -22,7 +23,8 @@ from huaweicloudsdkdns.v2 import (
 )
 from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
 
-from ..logger import logger
+from ..logger import get_logger
+from ..operations.finalization import finalize
 from .dns import DNSClient
 from .types import AddRecordListT, RecordIdListT, RecordListT, ReturnRecordT
 from .utils import wait_for_updates
@@ -50,6 +52,8 @@ class ListRecordSetsByZoneResponseT:
 
 
 class HuaweiApiClient(Protocol):
+    def get_http_client(self) -> HttpClient: ...
+
     def list_public_zones(
         self, request: ListPublicZonesRequest
     ) -> ListPublicZonesResponseT: ...
@@ -86,12 +90,22 @@ class HuaweiDNSClient(DNSClient):
             .build()
         )
         self._huawei_client = cast(HuaweiApiClient, huawei_client)
+        self._http_client = self._huawei_client.get_http_client()
+        self._closed = False
         self._domain = domain
         self._lock = asyncio.Lock()
 
     @property
     def lock(self) -> asyncio.Lock:
         return self._lock
+
+    async def close(self) -> None:
+        if not self._closed:
+            def shutdown() -> None:
+                self._http_client.executor.shutdown(wait=True, cancel_futures=True)
+                self._http_client.close()
+                self._closed = True
+            await finalize(asyncio.to_thread(shutdown))
 
     def get_domain(self) -> str:
         return self._domain
@@ -111,9 +125,9 @@ class HuaweiDNSClient(DNSClient):
         """
         for i in range(retry_times):
             try:
-                return await asyncio.to_thread(request_callable, *args)
+                return await finalize(asyncio.to_thread(request_callable, *args))
             except exceptions.ClientRequestException:
-                logger.debug(f"Failed to call {request_callable.__name__} api")
+                get_logger().debug(f"Failed to call {request_callable.__name__} api")
                 if i == retry_times - 1:
                     raise
                 await asyncio.sleep(1)

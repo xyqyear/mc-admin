@@ -2,7 +2,8 @@
 
 from typing import Protocol
 
-from ..logger import logger
+from ..errors import log_safe_error
+from ..runtime_resources import current_runtime
 from .types import SelfCheckRunResult
 
 
@@ -21,8 +22,9 @@ class SelfCheckNotificationBus:
         for sink in list(self._sinks):
             try:
                 await sink.publish(result)
-            except Exception as exc:
-                logger.warning("self-check notification sink failed: %s", exc, exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - independent sinks must not prevent delivery to each other
+                log_safe_error(exc, "Self-check notification sink failed")
 
 
-self_check_notification_bus = SelfCheckNotificationBus()
+def get_self_check_notification_bus() -> SelfCheckNotificationBus:
+    return current_runtime().resource('self_check_notifications')

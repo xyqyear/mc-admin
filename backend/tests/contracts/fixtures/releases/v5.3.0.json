@@ -1,0 +1,8 @@
+{
+  "release": "v5.3.0",
+  "commit": "da30f4b033a386dc97ea72254e3ec0a4b0bdab1f",
+  "revision": "2026060500",
+  "sql_sha256": "03b520ccb466d0d060f79d6be062ec7ae4dfcc1d0db8e46957454f3006892e1b",
+  "source": "Pinned release app.db.migrations.ensure_database_schema and models; only synthetic records",
+  "generation": "uv run python tests/support/release_fixture.py"
+}

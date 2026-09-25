@@ -7,7 +7,7 @@ from .instance import (
     MCServerInfo,
     MCServerStatus,
 )
-from .manager import DockerMCManager, docker_mc_manager
+from .manager import DockerMCManager, get_docker_mc_manager
 
 __all__ = [
     "ComposeFile",
@@ -19,5 +19,5 @@ __all__ = [
     "MCInstance",
     "MCServerInfo",
     "MCServerStatus",
-    "docker_mc_manager",
+    'get_docker_mc_manager',
 ]

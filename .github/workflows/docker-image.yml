@@ -1,43 +1,159 @@
-name: Docker Image CI
+name: Qualify and Publish Application
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Promote the verified artifact (requires a semantic version tag ref)
+        type: boolean
+        default: false
 
 permissions:
-  packages: write
+  contents: read
+
+concurrency:
+  group: application-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
+  candidate:
+    uses: ./.github/workflows/candidate.yml
+    with:
+      source_sha: ${{ github.sha }}
+
+  static:
+    uses: ./.github/workflows/static-checks.yml
+    with:
+      source_sha: ${{ github.sha }}
+
+  backend:
+    uses: ./.github/workflows/backend-tests.yml
+    with:
+      source_sha: ${{ github.sha }}
+
+  api:
+    needs: candidate
+    uses: ./.github/workflows/e2e-tests.yml
+    with:
+      source_sha: ${{ github.sha }}
+      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+
+  browser:
+    needs: candidate
+    uses: ./.github/workflows/browser-tests.yml
+    with:
+      source_sha: ${{ github.sha }}
+      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+
+  qualification:
+    if: always()
+    needs: [candidate, static, backend, api, browser]
+    outputs:
+      artifact: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Login to GHCR
-        uses: docker/login-action@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.candidate.outputs.artifact }}
+          path: candidate-artifacts
+      - name: Reject missing, failed, cancelled or skipped required gates
+        env:
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          printf '%s' "$REQUIRED_RESULTS" > "$RUNNER_TEMP/required-results.json"
+          uv run --no-project python scripts/release/candidate.py qualify \
+            --directory candidate-artifacts --revision "$SOURCE_SHA" \
+            --needs "$RUNNER_TEMP/required-results.json" --output qualification.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification.json
+          if-no-files-found: error
+          retention-days: 30
+
+  promote:
+    needs: [candidate, qualification]
+    if: ${{ success() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.candidate.outputs.artifact }}
+          path: candidate-artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.qualification.outputs.artifact }}
+          path: qualification
+      - name: Validate the release tag
+        id: release-tag
+        run: |
+          uv run --no-project python scripts/release/tags.py validate \
+            --tag "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
+      - name: Validate immutable inputs
+        run: |
+          uv run --no-project python scripts/release/candidate.py verify --directory candidate-artifacts --revision "${{ github.sha }}"
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Docker meta
+      - uses: docker/metadata-action@v6
         id: meta
-        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_SHORT_SHA_LENGTH: 7
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=${{ steps.release-tag.outputs.stable }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.release-tag.outputs.stable }}
+            type=semver,pattern={{major}},enable=${{ steps.release-tag.outputs.stable }}
             type=sha
-      - name: Build and push
-        uses: docker/build-push-action@v7
+      - name: Promote the tested manifest without rebuilding
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          uv run --no-project python scripts/release/tags.py check \
+            --tag "$GITHUB_REF_NAME" --image "ghcr.io/$GITHUB_REPOSITORY" \
+            --revision "$GITHUB_SHA" --tags "$IMAGE_TAGS"
+          export REGISTRY_AUTH_FILE="$HOME/.docker/config.json"
+          destinations=()
+          while IFS= read -r image; do
+            if [ -n "$image" ]; then destinations+=(--destination "$image"); fi
+          done <<< "$IMAGE_TAGS"
+          uv run --no-project python scripts/release/candidate.py promote \
+            --directory candidate-artifacts --revision "${{ github.sha }}" \
+            --receipt qualification/qualification.json \
+            "${destinations[@]}" --output promotion.json
+          cat promotion.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
         with:
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+          name: application-promotion-${{ github.run_id }}-${{ github.run_attempt }}
+          path: promotion.json
+          if-no-files-found: error
+          retention-days: 90

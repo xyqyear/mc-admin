@@ -10,9 +10,10 @@ We use ``httpx2.AsyncClient`` with ``ASGITransport`` (rather than the synchronou
 — that's what lets the per-server ``asyncio.Lock`` tests observe each other's
 state.
 """
-
+import asyncio
 import json
 import subprocess
+import sys
 import tempfile
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
@@ -25,16 +26,12 @@ import pytest_asyncio
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.config import settings
+from app.config import get_settings
+from app.db.metadata import Base
+from app.dynamic_config import get_config
 from app.main import api_app
 from app.minecraft import MCServerStatus
-from app.models import (
-    Base,
-    Restoration,
-    RestorationSelection,
-    RestorationStatus,
-    RestorationType,
-)
+from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 from app.world import (
@@ -43,12 +40,15 @@ from app.world import (
     WorldRestoreOrchestrator,
 )
 from app.world.locks import LockHolder
+from app.world.models import Restoration, RestorationStatus, RestorationType
+from app.world.schemas import RestorationSelection
+from tests.support.runtime import patch_runtime_resource
 
 
 def _restic_available() -> bool:
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -89,6 +89,9 @@ class _FakeInstance:
     def get_project_path(self) -> Path:
         return self._project_path
 
+    def get_name(self) -> str:
+        return self._project_path.name
+
     async def exists(self) -> bool:
         return self._exists
 
@@ -120,7 +123,9 @@ def _empty_mca() -> bytes:
 @pytest.fixture
 def data_path() -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="mc-restore-endpoint-data-") as tmp:
-        data = Path(tmp)
+        data = Path(tmp) / "srv1" / "data"
+        data.mkdir(parents=True)
+        (data.parent / "compose.yaml").write_text("services: {mc: {container_name: mc-srv1, image: minecraft}}\n")
         world = data / "world"
         ow_region = world / "region"
         ow_region.mkdir(parents=True)
@@ -164,6 +169,9 @@ async def session_factory():
             await conn.run_sync(Base.metadata.create_all)
         maker = async_sessionmaker(engine, expire_on_commit=False)
         try:
+            async with maker() as session:
+                session.add(Server(server_id="srv1"))
+                await session.commit()
             yield maker
         finally:
             await engine.dispose()
@@ -191,39 +199,23 @@ def orchestrator(restic_client, fake_docker, lock, session_factory):
         docker_mc_manager=fake_docker,
         server_operation_lock=lock,
         session_factory=session_factory,
+        servers_root=fake_docker._instance.get_project_path().parent,
     )
 
 
 @contextmanager
 def _patch_router(orchestrator, fake_docker, lock, session_factory):
-    """Patch every module-level dependency the router reaches into."""
-    import app.world as world_module
     from app.routers.servers import world_restore as world_restore_module
 
-    saved = world_module.world_restore_orchestrator
-    saved_lock = world_module.server_operation_lock
-    world_module.world_restore_orchestrator = orchestrator
-    world_module.server_operation_lock = lock
-    try:
-        with (
-            patch.object(
-                world_restore_module, "docker_mc_manager", fake_docker
-            ),
-            patch.object(
-                world_restore_module, "get_async_session", session_factory
-            ),
-            patch.object(
-                world_restore_module,
-                "snapshot_service",
-                orchestrator._snapshots,
-            ),
-            patch("app.dependencies.settings") as mock_dep_settings,
-        ):
-            mock_dep_settings.master_token = "test_master_token"
-            yield
-    finally:
-        world_module.world_restore_orchestrator = saved
-        world_module.server_operation_lock = saved_lock
+    with (
+        patch_runtime_resource("world_restore_orchestrator", orchestrator),
+        patch_runtime_resource("server_operation_lock", lock),
+        patch_runtime_resource("docker_mc_manager", fake_docker),
+        patch.object(world_restore_module, "get_async_session", session_factory),
+        patch_runtime_resource("snapshot_service", orchestrator._snapshots),
+        patch.object(get_settings(), "master_token", "test_master_token"),
+    ):
+        yield
 
 
 @pytest_asyncio.fixture
@@ -377,7 +369,8 @@ async def test_preview_sse_stream_emits_ready(
 async def test_preview_heartbeat_and_delete(
     http: AsyncClient, orchestrator
 ):
-    session_dir = await orchestrator._preview_manager.create_session("srv1")
+    reference = await orchestrator._reference("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
     sid = session_dir.name
 
     r = await http.post(
@@ -407,7 +400,8 @@ async def test_preview_heartbeat_and_delete(
 async def test_preview_tile_404_when_missing(
     http: AsyncClient, orchestrator
 ):
-    session_dir = await orchestrator._preview_manager.create_session("srv1")
+    reference = await orchestrator._reference("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
     sid = session_dir.name
     r = await http.get(
         f"/api/servers/srv1/world-restore/preview/{sid}/tile/0/0.png",
@@ -420,7 +414,8 @@ async def test_preview_tile_404_when_missing(
 async def test_preview_tile_serves_png_when_present(
     http: AsyncClient, orchestrator
 ):
-    session_dir = await orchestrator._preview_manager.create_session("srv1")
+    reference = await orchestrator._reference("srv1")
+    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
     sid = session_dir.name
     tiles = session_dir / "tiles"
     tiles.mkdir()
@@ -431,6 +426,72 @@ async def test_preview_tile_serves_png_when_present(
     )
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
+
+
+async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
+    http: AsyncClient, orchestrator, data_path, tmp_path, monkeypatch, isolated_runtime,
+):
+    from app.mcmap import runner
+    from app.mcmap.cache import ServerMapCache
+    from app.operations.journal import OperationJournal
+    from app.operations.journal_types import OperationState
+
+    cache = ServerMapCache(data_path)
+    cache.cache_dir.mkdir()
+    cache.palette_json.write_text("{}")
+    live_tiles = cache.tiles_dir("world/region")
+    live_tiles.mkdir(parents=True)
+    (live_tiles / "r.0.0.png").write_bytes(b"live tile remains intact")
+    executable = tmp_path / "owned-preview-renderer"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "out = Path(sys.argv[sys.argv.index('-o') + 1])\n"
+        "assert 'source' in str(sys.argv), sys.argv\n"
+        "(out / 'r.0.0.png').write_bytes(b'\\x89PNG\\r\\n\\x1a\\npreview-rendered')\n"
+        "print(json.dumps(dict(type='region', x=0, z=0, status='rendered')), flush=True)\n"
+    )
+    executable.chmod(0o700)
+    monkeypatch.setattr(runner.get_settings(), "mcmap_binary_path", executable)
+    monkeypatch.setattr(runner.get_settings(), "server_path", data_path.parent.parent)
+    async with isolated_runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with isolated_runtime.database.session_factory() as session:
+        session.add(Server(id=1, server_id="srv1"))
+        await session.commit()
+    journal = OperationJournal(isolated_runtime.database.session_factory)
+    monkeypatch.setattr(get_config().mcmap, "batch_size", 1)
+    monkeypatch.setattr(get_config().mcmap, "thread_count", 1)
+    monkeypatch.setattr(get_config().mcmap, "request_timeout_seconds", 10)
+    selection = RestorationSelection(type=RestorationType.REGIONS, region_dir_relpath="world/region", regions=[(0, 0)])
+    source = await asyncio.wait_for(orchestrator.create_snapshot("srv1", selection, None), 30)
+    isolated_runtime.journal = journal
+    response = await asyncio.wait_for(http.post("/api/servers/srv1/world-restore/preview", headers=_auth(), json={
+        "source_snapshot_id": source.id, "selection": selection.model_dump(),
+    }), 30)
+    assert response.status_code == 200, response.text
+    events = _parse_sse_lines(response.text)
+    assert events[-1]["event_type"] == "ready", events
+    session_id = events[-1]["session_id"]
+    directory = orchestrator.get_preview_session_dir(session_id)
+    assert directory is not None
+    assert not (directory / "tiles/r.0.0.png").exists()
+    try:
+        response = await http.get(f"/api/servers/srv1/world-restore/preview/{session_id}/tile/0/0.png", headers=_auth())
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"] == "image/png"
+        assert response.content == b"\x89PNG\r\n\x1a\npreview-rendered"
+        assert (live_tiles / "r.0.0.png").read_bytes() == b"live tile remains intact"
+        records = [record for record in await journal.list() if record.kind == "world_preview_render"]
+        assert len(records) == 1
+        assert records[0].state is OperationState.SUCCEEDED
+        assert all(resource.server_id == "srv1" and resource.generation == 1 for resource in records[0].resources)
+        assert all(reference.resolved for reference in records[0].recovery_refs)
+    finally:
+        response = await http.delete(f"/api/servers/srv1/world-restore/preview/{session_id}", headers=_auth())
+        assert response.status_code == 204
+    assert not directory.exists()
 
 
 # --- Restoration -----------------------------------------------------------
@@ -598,3 +659,5 @@ async def test_list_restorations_validates_pagination(http: AsyncClient):
         params={"limit": 0},
     )
     assert r.status_code == 422
+
+pytestmark = [pytestmark, pytest.mark.binary('fd'), pytest.mark.binary('restic'), pytest.mark.binary('mcmap')]

@@ -1,14 +1,10 @@
-from datetime import UTC, datetime, timedelta
 
-from joserfc import jwt
-from joserfc.jwk import OctKey
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 
-from ..config import settings
-
 password_hash = PasswordHash((Argon2Hasher(),))
-key = OctKey.import_key(settings.jwt.secret_key)
+
+
 
 
 def verify_password(plain_password: str, hashed_password: str):
@@ -17,24 +13,3 @@ def verify_password(plain_password: str, hashed_password: str):
 
 def get_password_hash(password: str):
     return password_hash.hash(password)
-
-
-def get_token_expiry(expires_delta: timedelta | None = None) -> datetime:
-    if expires_delta:
-        return datetime.now(UTC) + expires_delta
-    else:
-        return datetime.now(UTC) + timedelta(
-            minutes=settings.jwt.access_token_expire_minutes
-        )
-
-
-def create_access_token(jwt_claims):
-    claims = jwt_claims.model_dump()
-    if isinstance(claims.get("exp"), datetime):
-        claims["exp"] = claims["exp"].timestamp()
-    encoded_jwt = jwt.encode(
-        header={"alg": settings.jwt.algorithm},
-        claims=claims,
-        key=key,
-    )
-    return encoded_jwt

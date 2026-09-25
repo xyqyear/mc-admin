@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.cron import crud
 from app.cron.jobs import backup
 from app.cron.manager import CronManager
-from app.models import Base, ExecutionStatus
+from app.cron.models import ExecutionStatus
+from app.db.metadata import Base
 from app.world import (
     GLOBAL_LOCK_KEY,
     LockHolder,
     ServerOperationKind,
-    server_operation_lock,
+    get_server_operation_lock,
 )
 
 
@@ -54,7 +55,7 @@ async def test_locked_backup_persists_skipped_history(
     snapshots = Mock()
     monkeypatch.setattr(backup, "_get_snapshot_service", snapshots)
     holder = LockHolder(ServerOperationKind.RESTORE, datetime.now(UTC), None, "恢复中")
-    async with server_operation_lock.acquire(server_id or GLOBAL_LOCK_KEY, holder):
+    async with get_server_operation_lock().acquire(server_id or GLOBAL_LOCK_KEY, holder):
         await execution_manager._execute_cronjob_wrapper(
             "outcome-test",
             "backup",

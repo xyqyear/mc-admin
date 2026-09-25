@@ -8,7 +8,7 @@ offline-mode identities out of the player database.
 The resolver reads `usercache.json` from the server data directory:
 
 ```text
-docker_mc_manager.get_instance(server_id).get_data_path() / "usercache.json"
+get_docker_mc_manager().get_instance(server_id).get_data_path() / "usercache.json"
 ```
 
 Entries are keyed by lowercase player name and normalized dashless UUID. Only
@@ -24,8 +24,9 @@ is absent, the resolver falls back to Mojang:
 
 ## Database Gates
 
-Name-only tracking calls go through
-`get_or_add_player_by_name(session, server_id, player_name)`. Existing database
+`PlayerService` owns UUID discovery and name-only observations from logs, RCON
+and crash recovery. Its name-only writes go through
+`PlayerService.ensure_player(session, server_id, player_name)`. Existing database
 rows are reused only when their stored UUID is v4. Missing names resolve through
 `usercache.json` first, then Mojang, and are inserted only after a v4 UUID is
 available. Names matching `players.ignored_name_prefixes` are skipped before
@@ -43,3 +44,21 @@ UUID-known writes also require v4 UUIDs:
 
 The map profile endpoint keeps its own lightweight gate: syntactically valid
 non-v4 UUIDs return an unresolved response without cache or Mojang lookups.
+
+## Service and adapter ownership
+
+`PlayerService` is constructed once per runtime with explicit persistence, event,
+skin-client and background-task dependencies. `get_player_service()` returns that
+instance; a producer can receive it directly for an isolated test or application.
+The service injects the usercache/Mojang name resolver as its external identity
+adapter and captures its own runtime configuration for ignored-name checks.
+Calling an explicit service from another bound runtime still uses the service
+owner's usercache, configuration, database, clients and event publisher. CRUD
+functions perform no network identity lookup. The storage layer retains the v4
+and ignored-prefix gates for both tracking and profile cache writes. Consolidation does not change source priority or turn an invalid
+usercache identity into a Mojang fallback.
+
+Skin fetching follows committed join publication and uses the owning runtime's
+client and task lifecycle. Fetch failure does not undo a joined session or its
+public event. Profile responses and historical chat cursors keep their existing
+wire contracts.

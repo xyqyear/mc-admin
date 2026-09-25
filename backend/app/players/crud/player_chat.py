@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models import PlayerChatMessage
+from app.players.models import PlayerChatMessage
 
 
 async def create_chat_message(

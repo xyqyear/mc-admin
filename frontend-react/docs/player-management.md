@@ -4,16 +4,16 @@ Surface for everything the backend's player-tracking system records: who's been 
 
 ## Pages and components
 
-- `pages/PlayerManagement.tsx` — global page at `/players`. Sortable, filterable table of every recorded player.
-- `components/players/PlayerFilters.tsx` — search box (name / UUID substring), online-only toggle, server dropdown. Filters cascade into `usePlayerQueries({ online_only, server_id })`.
-- `components/players/PlayerCleanupDialog.tsx` — shared preview-and-confirm dialog for deleting stored players excluded by current identity rules: non-online UUIDs and names matching `players.ignored_name_prefixes`.
-- `components/players/PlayerDetailDialog.tsx` — detail dialog with four tabs:
+- `features/players/PlayerManagementScreen.tsx` — global page at `/players`. Sortable, filterable table of every recorded player.
+- `features/players/ui/PlayerFilters.tsx` — search box (name / UUID substring), online-only toggle, server dropdown. Filters cascade into `usePlayerQueries({ online_only, server_id })`.
+- `features/players/ui/PlayerCleanupDialog.tsx` — shared preview-and-confirm dialog for deleting stored players excluded by current identity rules: non-online UUIDs and names matching `players.ignored_name_prefixes`.
+- `features/players/ui/PlayerDetailDialog.tsx` — detail dialog with four tabs:
   - **基本信息** — UUID (formatted `8-4-4-4-12`), current name, first seen, last seen, total playtime
   - **会话记录** — `PlayerSession` rows with join/leave timestamps and computed durations
   - **聊天记录** — `PlayerChatMessage` history with timestamps
   - **成就记录** — `PlayerAchievement` list scoped per server
-- `components/players/MCAvatar.tsx` — renders the 8×8 avatar PNG the backend mirrored from Mojang. Falls back to a deterministic placeholder when missing.
-- `components/server/OnlinePlayersCard.tsx` — server-overview card listing currently-online players. Polls `players.serverOnline(serverId)` every 10 s, gated on `status === HEALTHY`.
+- `features/players/ui/MCAvatar.tsx` — renders the 8×8 avatar PNG the backend mirrored from Mojang. Falls back to a deterministic placeholder when missing.
+- `features/players/ui/OnlinePlayersCard.tsx` — server-overview card listing currently-online players. Polls `players.serverOnline(serverId)` every 10 s, gated on `status === HEALTHY`.
 
 ## Data sources
 
@@ -34,7 +34,7 @@ The drawer drives 4–5 of these in parallel when opened; React Query dedupes id
 
 ## UUID formatting
 
-Mojang returns hex without dashes (`8667ba71b85a4004af54457a9734eed7`); our backend stores the same shape. The frontend's `formatUUID` helper (`utils/formatUtils.ts`) renders it as `8667ba71-b85a-4004-af54-457a9734eed7` for display and back to compact for API calls.
+Mojang returns hex without dashes (`8667ba71b85a4004af54457a9734eed7`); our backend stores the same shape. The frontend's `formatUUID` helper (`shared/utils/formatUtils.ts`) renders it as `8667ba71-b85a-4004-af54-457a9734eed7` for display and back to compact for API calls.
 
 ## Where the data comes from
 

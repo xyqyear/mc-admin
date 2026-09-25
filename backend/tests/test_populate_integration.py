@@ -1,3 +1,5 @@
+from tests.support.runtime import patch_settings
+
 """
 Integration tests for the populate server endpoint.
 Tests the full flow: create server -> upload archive -> populate server -> verify files.
@@ -10,7 +12,6 @@ Tests handle the background task architecture:
 Note: For actual decompression testing, see test_decompression.py.
 The tests here focus on endpoint behavior and mocked task flows.
 """
-
 import asyncio
 import random
 import subprocess
@@ -27,9 +28,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.background_tasks import TaskType
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
-from app.models import Base
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
+
+pytestmark = [pytest.mark.binary('7z')]
+
+
+@pytest.fixture(autouse=True)
+def uncreated_containers():
+    with patch(
+        "app.minecraft.docker.manager.ComposeManager.created",
+        AsyncMock(return_value=False),
+    ):
+        yield
 
 
 def check_7z_available():
@@ -140,32 +154,22 @@ def mock_settings_and_auth(temp_dirs, test_db):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch("app.routers.servers.populate.settings") as mock_populate_settings,
-        patch("app.routers.archive.settings") as mock_archive_settings,
-        patch("app.dependencies.settings") as mock_dep_settings,
-        patch("app.utils.decompression.settings") as mock_decomp_settings,
-        patch("app.routers.servers.misc.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.files.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.operations.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.compose.docker_mc_manager", real_mc_manager),
-        patch("app.routers.servers.resources.docker_mc_manager", real_mc_manager),
-        patch(
-            "app.servers.lifecycle.orchestrators.docker_mc_manager", real_mc_manager
-        ),
-        patch(
-            "app.servers.lifecycle.primitives.docker_mc_manager", real_mc_manager
-        ),
-        patch("app.servers.port_utils.docker_mc_manager", real_mc_manager),
+        patch_settings() as mock_populate_settings,
+        patch_settings() as mock_archive_settings,
+        patch_settings() as mock_dep_settings,
+        patch_settings() as mock_decomp_settings,
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
-        patch(
-            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
-            new_callable=AsyncMock,
-        ),
+        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
     ):
         # Configure all settings mocks
         for mock_settings_obj in [
@@ -503,7 +507,7 @@ services:
         create_test_minecraft_archive(archive_file_path)
 
         # Mock the server status to be RUNNING (not allowed)
-        with patch("app.routers.servers.populate.docker_mc_manager") as mock_manager:
+        with patch_runtime_resource('docker_mc_manager') as mock_manager:
             from unittest.mock import AsyncMock
 
             from app.minecraft import MCServerStatus
@@ -706,12 +710,12 @@ class TestPopulateEndpointIsolated:
 
     @pytest.fixture
     def mock_task_manager_submit(self):
-        """Mock task_manager.submit to return immediately."""
+        """Replace durable submission without starting an archive adapter."""
         mock_submit_result = MagicMock()
         mock_submit_result.task_id = "mock-task-id-12345"
 
-        with patch("app.routers.servers.populate.task_manager") as mock_tm:
-            mock_tm.submit.return_value = mock_submit_result
+        with patch_runtime_resource('task_manager') as mock_tm:
+            mock_tm.submit_durable = AsyncMock(return_value=mock_submit_result)
             yield mock_tm
 
     def test_endpoint_returns_task_id(
@@ -722,9 +726,9 @@ class TestPopulateEndpointIsolated:
         real_mc_manager = DockerMCManager(server_path)
 
         with (
-            patch("app.routers.servers.populate.settings") as mock_settings,
-            patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
+            patch_settings() as mock_settings,
+            patch_settings() as mock_dep_settings,
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
         ):
             mock_settings.server_path = server_path
             mock_settings.archive_path = archive_path
@@ -763,9 +767,9 @@ class TestPopulateEndpointIsolated:
         real_mc_manager = DockerMCManager(server_path)
 
         with (
-            patch("app.routers.servers.populate.settings") as mock_settings,
-            patch("app.dependencies.settings") as mock_dep_settings,
-            patch("app.routers.servers.populate.docker_mc_manager", real_mc_manager),
+            patch_settings() as mock_settings,
+            patch_settings() as mock_dep_settings,
+            patch_runtime_resource('docker_mc_manager', real_mc_manager),
         ):
             mock_settings.server_path = server_path
             mock_settings.archive_path = archive_path
@@ -792,7 +796,7 @@ class TestPopulateEndpointIsolated:
             )
 
             # Verify task type
-            call_kwargs = mock_task_manager_submit.submit.call_args.kwargs
+            call_kwargs = mock_task_manager_submit.submit_durable.call_args.kwargs
             assert call_kwargs["task_type"] == TaskType.ARCHIVE_EXTRACT
             assert call_kwargs["server_id"] == "test_server"
             assert call_kwargs["cancellable"] is False

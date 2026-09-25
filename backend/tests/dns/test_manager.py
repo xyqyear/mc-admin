@@ -8,11 +8,14 @@ import pytest
 
 from app.dns.dns import DNSClient
 from app.dns.manager import AddressInfo, SimpleDNSManager
+from app.dns.planning import DNSRecord, RouteEntry
 from app.dns.router import MCRouterClient
 from app.dns.types import ReturnRecordT
 from app.dynamic_config.configs.dns import DNSManagerConfig
+from app.errors import PublicOperationError
 from app.minecraft import MCServerInfo
 from app.minecraft.compose import ServerType
+from tests.dns.helpers import patch_accessor
 
 
 @contextmanager
@@ -61,6 +64,7 @@ class MockDNSClient(DNSClient):
         return self.records
 
     async def list_relevant_records(self, managed_sub_domain):
+        self.last_managed_sub_domain = managed_sub_domain
         return self.records
 
     async def update_records(self, target_records, managed_sub_domain=None):
@@ -71,10 +75,16 @@ class MockDNSClient(DNSClient):
         return True
 
     async def remove_records(self, record_ids):
-        pass
+        self.records = [record for record in self.records if record.record_id not in record_ids]
 
     async def add_records(self, records):
-        pass
+        self.last_update_call = [*getattr(self, "last_update_call", []), *records]
+        self.records.extend(ReturnRecordT(record.sub_domain, record.value, len(self.records) + index + 1, record.record_type, record.ttl) for index, record in enumerate(records))
+
+    async def _update_records_batch(self, records):
+        for record in records:
+            self.records = [record if current.record_id == record.record_id else current for current in self.records]
+
 
 
 class MockMCRouterClient(MCRouterClient):
@@ -86,8 +96,12 @@ class MockMCRouterClient(MCRouterClient):
     async def get_routes(self):
         return self.routes
 
-    async def override_routes(self, routes):
-        self.routes = routes
+    async def _add_route(self, route, backend):
+        self.routes[route] = backend
+
+    async def _remove_route(self, route):
+        self.routes.pop(route, None)
+
 
     async def close(self):
         pass
@@ -128,8 +142,8 @@ async def test_initialize_with_dnspod(dns_manager):
     mock_config.dns = mock_dns
 
     with (
-        patch("app.dns.manager.config") as config_mock,
-        patch("app.dns.manager.docker_mc_manager") as mc_manager_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
+        patch_accessor("app.dns.manager.get_docker_mc_manager") as mc_manager_mock,
         patch("app.dns.manager.DNSPodClient") as dnspod_mock,
     ):
         config_mock.dns = mock_config
@@ -169,8 +183,8 @@ async def test_initialize_with_huawei(dns_manager):
     mock_config.dns = mock_dns
 
     with (
-        patch("app.dns.manager.config") as config_mock,
-        patch("app.dns.manager.docker_mc_manager") as mc_manager_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
+        patch_accessor("app.dns.manager.get_docker_mc_manager") as mc_manager_mock,
         patch("app.dns.manager.HuaweiDNSClient") as huawei_mock,
     ):
         config_mock.dns = mock_config
@@ -195,7 +209,7 @@ async def test_initialize_disabled():
 
     mock_config = DNSManagerConfig.model_validate({"enabled": False})
 
-    with patch("app.dns.manager.config") as config_mock:
+    with patch_accessor("app.dns.manager.get_config") as config_mock:
         config_mock.dns = mock_config
 
         await dns_manager.initialize()
@@ -321,7 +335,7 @@ async def test_update_integration():
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with (
-        patch("app.dns.manager.config") as config_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
         _patch_active_servers(
             mock_docker_manager,
             [("vanilla", vanilla_info), ("modded", modded_info)],
@@ -358,7 +372,7 @@ async def test_update_no_servers():
     mock_config.addresses = []
 
     with (
-        patch("app.dns.manager.config") as config_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
         _patch_active_servers(mock_docker_manager, []),
     ):
         config_mock.dns = mock_config
@@ -372,9 +386,12 @@ async def test_update_not_initialized():
 
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
-    with patch("app.dns.manager.config") as config_mock:
+    with (
+        patch_accessor("app.dns.manager.get_config") as config_mock,
+        patch("app.servers.crud.get_active_servers", AsyncMock(side_effect=OSError("unavailable"))),
+    ):
         config_mock.dns = DNSManagerConfig.model_validate({"enabled": True})
-        with pytest.raises(RuntimeError, match="DNS manager not initialized"):
+        with pytest.raises(PublicOperationError, match="部分网络配置未完成"):
             await dns_manager.update(AsyncMock())
 
 
@@ -385,7 +402,7 @@ async def test_hot_disable_clears_clients_without_writing_and_can_reenable():
     router.close = AsyncMock()
     manager._get_target_records_and_routes = AsyncMock()
     with (
-        patch("app.dns.manager.config") as settings,
+        patch_accessor("app.dns.manager.get_config") as settings,
         patch("app.dns.manager.DNSPodClient", side_effect=lambda *args: MockDNSClient()) as provider,
         patch("app.dns.manager.MCRouterClient", return_value=router),
     ):
@@ -411,19 +428,19 @@ async def test_failed_update_settles_other_branch_before_next_update():
     manager._dns_client = MockDNSClient()
     manager._mc_router_client = MockMCRouterClient("http://localhost:26666")
     manager._ensure_up_to_date_config = AsyncMock()
-    manager._get_target_records_and_routes = AsyncMock(return_value=([], [], {}, {}))
-    manager._update_dns_records = AsyncMock(side_effect=[RuntimeError("provider failed"), None])
+    manager._get_target_records_and_routes = AsyncMock(return_value=([DNSRecord("*.mc", "A", "127.0.0.1", 15)], [RouteEntry("server.mc.example.com", "localhost:25565")], {}, {}))
+    manager._dns_client.apply_diff = AsyncMock(side_effect=[RuntimeError("provider failed"), None])
     entered = asyncio.Event()
     finish = asyncio.Event()
     calls = []
 
-    async def update_router(target_routes):
-        calls.append(target_routes)
+    async def update_router(diff):
+        calls.append(diff)
         entered.set()
         await finish.wait()
 
-    manager._update_mc_router = update_router
-    with patch("app.dns.manager.config") as settings:
+    manager._mc_router_client.apply_diff = update_router
+    with patch_accessor("app.dns.manager.get_config") as settings:
         settings.dns = DNSManagerConfig.model_validate({"enabled": True})
         first = asyncio.create_task(manager.update(AsyncMock()))
         second = None
@@ -434,7 +451,7 @@ async def test_failed_update_settles_other_branch_before_next_update():
             await asyncio.sleep(0)
             assert len(calls) == 1
             finish.set()
-            with pytest.raises(RuntimeError, match="provider failed"):
+            with pytest.raises(PublicOperationError, match="部分网络配置未完成"):
                 await first
             await second
             assert len(calls) == 2
@@ -465,9 +482,9 @@ async def test_dns_page_parallel_reads_initialize_clients_once():
     router.close = AsyncMock()
     settings = Mock(dns=DNSManagerConfig.model_validate({"enabled": True, "dns": {"type": "dnspod"}}))
     with (
-        patch("app.dns.manager.config", settings),
-        patch("app.routers.dns.config", settings),
-        patch("app.routers.dns.simple_dns_manager", manager),
+        patch_accessor("app.dns.manager.get_config", settings),
+        patch_accessor("app.routers.dns.get_config", settings),
+        patch_accessor("app.routers.dns.get_dns_manager", manager),
         patch("app.dns.manager.DNSPodClient", return_value=provider) as make_provider,
         patch("app.dns.manager.MCRouterClient", return_value=router) as make_router,
     ):
@@ -509,7 +526,7 @@ async def test_current_reads_refresh_clients_inside_read_boundary(read_method):
     next_router = MockMCRouterClient("http://next:26666")
     next_router.routes = {"server.next.example.com": "localhost:25566"}
     with (
-        patch("app.dns.manager.config") as settings,
+        patch_accessor("app.dns.manager.get_config") as settings,
         patch("app.dns.manager.DNSPodClient", side_effect=[first_provider, next_provider]),
         patch("app.dns.manager.MCRouterClient", side_effect=[first_router, next_router]),
     ):
@@ -545,7 +562,7 @@ async def test_explicit_initialize_waits_for_active_router_read():
 
     first_router.get_routes = AsyncMock(side_effect=read_routes)
     with (
-        patch("app.dns.manager.config") as settings,
+        patch_accessor("app.dns.manager.get_config") as settings,
         patch("app.dns.manager.DNSPodClient", side_effect=lambda *args: MockDNSClient()) as provider,
         patch("app.dns.manager.MCRouterClient", side_effect=[first_router, next_router]),
     ):
@@ -667,10 +684,11 @@ async def test_ensure_up_to_date_config_no_change():
     initial_hash = dns_manager._calculate_config_hash(mock_dns_config)
     dns_manager._last_config_hash = initial_hash
 
-    with patch("app.dns.manager.config") as config_mock:
+    with patch_accessor("app.dns.manager.get_config") as config_mock:
         config_mock.dns = mock_dns_config
 
         dns_manager._initialize = AsyncMock()
+        dns_manager._dns_client = MockDNSClient()
 
         await dns_manager._ensure_up_to_date_config()
 
@@ -693,7 +711,7 @@ async def test_ensure_up_to_date_config_with_change():
 
     dns_manager._last_config_hash = "different_hash"
 
-    with patch("app.dns.manager.config") as config_mock:
+    with patch_accessor("app.dns.manager.get_config") as config_mock:
         config_mock.dns = mock_dns_config
 
         dns_manager._initialize = AsyncMock()
@@ -722,7 +740,7 @@ async def test_ensure_up_to_date_config_first_time():
 
     assert dns_manager._last_config_hash is None
 
-    with patch("app.dns.manager.config") as config_mock:
+    with patch_accessor("app.dns.manager.get_config") as config_mock:
         config_mock.dns = mock_dns_config
 
         dns_manager._initialize = AsyncMock()
@@ -748,7 +766,7 @@ async def test_ensure_up_to_date_config_initialization_failure():
 
     dns_manager._last_config_hash = "different_hash"
 
-    with patch("app.dns.manager.config") as config_mock:
+    with patch_accessor("app.dns.manager.get_config") as config_mock:
         config_mock.dns = mock_dns_config
 
         dns_manager._initialize = AsyncMock(side_effect=Exception("Init failed"))
@@ -775,7 +793,7 @@ async def test_update_with_automatic_reinitialization():
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with (
-        patch("app.dns.manager.config") as config_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
         _patch_active_servers(mock_docker_manager, []),
     ):
         config_mock.dns = mock_config
@@ -828,7 +846,7 @@ async def test_dns_keyed_by_server_id_not_compose_name():
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with (
-        patch("app.dns.manager.config") as config_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
         _patch_active_servers(
             mock_docker_manager, [("survival", drifted_info)]
         ),
@@ -899,7 +917,7 @@ async def test_update_skips_row_with_unreadable_compose(caplog):
     dns_manager._ensure_up_to_date_config = AsyncMock()
 
     with (
-        patch("app.dns.manager.config") as config_mock,
+        patch_accessor("app.dns.manager.get_config") as config_mock,
         patch(
             "app.servers.crud.get_active_servers",
             AsyncMock(return_value=[good_row, bad_row]),
@@ -907,7 +925,8 @@ async def test_update_skips_row_with_unreadable_compose(caplog):
         caplog.at_level(logging.WARNING),
     ):
         config_mock.dns = mock_config
-        await dns_manager.update(AsyncMock())
+        with pytest.raises(PublicOperationError, match="部分网络配置未完成"):
+            await dns_manager.update(AsyncMock())
 
     # The good row produced a route; the drifted one did not.
     assert "good.mc.example.com" in mock_router_client.routes
@@ -915,6 +934,6 @@ async def test_update_skips_row_with_unreadable_compose(caplog):
 
     # And a warning identifying the skipped server_id was logged.
     assert any(
-        "drifted" in record.message and "cannot read compose" in record.message
+        "drifted" in record.message and "DNS cannot read server" in record.message
         for record in caplog.records
     )

@@ -1,14 +1,16 @@
-"""Tests for backup cron job parameters and registration."""
+from tests.support.runtime import patch_settings
 
+"""Tests for backup cron job parameters and registration."""
 import pytest
 
 from app.cron.jobs.backup import BackupJobParams, backup_cronjob
-from app.cron.registry import cron_registry
+from app.cron.registry import get_cron_registry
+from tests.support.runtime import patch_runtime_resource
 
 
 class TestBackupJobBasic:
     def test_backup_job_registration(self):
-        backup_job = cron_registry.get_cronjob("backup")
+        backup_job = get_cron_registry().get_cronjob("backup")
         assert backup_job is not None
         assert backup_job.description == "创建备份快照并清理旧快照"
         assert backup_job.schema_cls == BackupJobParams
@@ -105,15 +107,12 @@ class TestBackupPathContainment:
         (root / "alpha" / "data" / "world").mkdir(parents=True)
         (tmp_path / "outside").mkdir()
 
-        from unittest.mock import patch
 
         from app.minecraft import DockerMCManager
 
         with (
-            patch("app.cron.jobs.backup.settings") as mock_settings,
-            patch(
-                "app.cron.jobs.backup.docker_mc_manager", DockerMCManager(root)
-            ),
+            patch_settings() as mock_settings,
+            patch_runtime_resource('docker_mc_manager', DockerMCManager(root)),
         ):
             mock_settings.server_path = root
             yield root
@@ -130,9 +129,12 @@ class TestBackupPathContainment:
 
     async def test_server_id_traversal_rejected(self, servers_root):
         from app.cron.jobs.backup import _resolve_backup_path
+        from app.minecraft.paths import ServerPathError
 
-        with pytest.raises(ValueError, match="越界"):
+        with pytest.raises(ServerPathError) as rejected:
             await _resolve_backup_path("../outside", None)
+        assert rejected.value.status_code == 400
+        assert rejected.value.detail == "服务器名称必须是有效的单级目录名称"
 
     async def test_path_traversal_rejected(self, servers_root):
         from app.cron.jobs.backup import _resolve_backup_path

@@ -10,6 +10,11 @@ class MCMapConfig(BaseConfigSchema):
 
     model_config = ConfigDict(title="地图渲染配置")
 
+    prune_preview_ttl_seconds: Annotated[
+        int,
+        Field(title="裁剪预览有效期", description="裁剪预览完成后可用于提交应用的最长秒数，过期需重新预览。", ge=1, le=86400),
+    ] = 1800
+
     batch_size: Annotated[
         int,
         Field(

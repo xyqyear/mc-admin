@@ -3,8 +3,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from ..config import settings
-from ..dynamic_config import config
+from ..config import get_settings
+from ..dynamic_config import get_config
 from ..minecraft.properties import DEFAULT_LEVEL_NAME, read_level_name_sync
 from .region_files import parse_region_filename
 
@@ -183,7 +183,8 @@ def _dimensions_from_region_dirs_sync(
 
 
 async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
-    region_dir_max_depth = config.world.dimension_max_depth_from_world_root + 1
+    settings = get_settings()
+    region_dir_max_depth = get_config().world.dimension_max_depth_from_world_root + 1
     cmd = [
         str(settings.fd_binary_path),
         "--unrestricted",

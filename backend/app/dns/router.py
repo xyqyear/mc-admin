@@ -4,6 +4,7 @@ Simplified MC Router Client
 Direct client implementation for mc-router without wrapper abstractions.
 """
 
+import asyncio
 import json as jsonlib
 from collections.abc import Awaitable
 from typing import (
@@ -14,7 +15,8 @@ from typing import (
 
 import httpx2
 
-from ..logger import logger
+from ..operations.finalization import finalize
+from .planning import RouteDiff, diff_routes
 from .utils import wait_for_updates
 
 
@@ -112,63 +114,30 @@ class MCRouterClient:
 
         await wait_for_updates(*tasks)
 
+    async def apply_diff(self, diff: RouteDiff) -> None:
+        updates = {**diff.routes_to_add, **{key: value["target"] for key, value in diff.routes_to_update.items()}}
+        failures: list[Exception] = []
+        for adding in (True, False):
+            batch = (
+                [self._add_route(key, value) for key, value in updates.items()]
+                if adding else [self._remove_route(key) for key in diff.routes_to_remove]
+            )
+            results = await asyncio.gather(*batch, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    failures.append(result)
+                elif isinstance(result, BaseException):
+                    raise result
+        if failures:
+            raise ExceptionGroup("MC Router 部分路由更新失败，请重试", failures)
+
     async def override_routes(self, routes: RoutesT):
-        """
-        Replace all routes with the provided route dictionary.
-
-        This method:
-        1. Removes all existing routes
-        2. Adds all provided routes
-
-        Args:
-            routes: Dictionary mapping server addresses to backends
-        """
-        logger.info(f"Overriding MC Router with {len(routes)} routes")
-        await self._remove_all_routes()
-        if routes:
-            await self._add_routes(routes)
+        """Reconcile route differences without disturbing unchanged routes."""
+        current = await self.get_routes()
+        await finalize(self.apply_diff(diff_routes(current, routes)))
 
     async def get_routes_diff(self, target_routes: RoutesT) -> dict:
-        """
-        Calculate the difference between current routes and target routes.
-
-        Returns a dictionary with:
-        - routes_to_add: Routes that need to be added
-        - routes_to_remove: Routes that need to be removed
-        - routes_to_update: Routes that need to be updated with current/target values
-
-        Args:
-            target_routes: Dictionary mapping server addresses to backends
-
-        Returns:
-            Dictionary with diff categorization
-        """
-        current_routes = await self.get_routes()
-
-        routes_to_add = {}
-        routes_to_remove = {}
-        routes_to_update = {}
-
-        # Check for routes to add or update
-        for addr, backend in target_routes.items():
-            if addr not in current_routes:
-                routes_to_add[addr] = backend
-            elif current_routes[addr] != backend:
-                routes_to_update[addr] = {
-                    "current": current_routes[addr],
-                    "target": backend,
-                }
-
-        # Check for routes to remove
-        for addr in current_routes:
-            if addr not in target_routes:
-                routes_to_remove[addr] = current_routes[addr]
-
-        return {
-            "routes_to_add": routes_to_add,
-            "routes_to_remove": routes_to_remove,
-            "routes_to_update": routes_to_update,
-        }
+        return diff_routes(await self.get_routes(), target_routes).as_dict()
 
     async def close(self):
         """Clean up the client"""

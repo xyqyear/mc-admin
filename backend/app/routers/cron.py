@@ -2,16 +2,24 @@
 Cron job management API endpoints.
 """
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
-from pydantic import BaseModel
 
-from ..cron import cron_manager, cron_registry
+from app.auth.schemas import UserPublic
+from app.cron.models import CronJobStatus
+
+from ..cron import get_cron_manager, get_cron_registry
+from ..cron.api_models import (
+    CreateCronJobRequest,
+    CronJobExecutionResponse,
+    CronJobNextRunTimeResponse,
+    CronJobResponse,
+    RegisteredCronJobResponse,
+    UpdateCronJobRequest,
+)
+from ..cron.bindings import binding_issue_message
 from ..dependencies import get_current_user
-from ..logger import logger
-from ..models import CronJobStatus, UserPublic
+from ..logger import get_logger
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 
@@ -32,74 +40,6 @@ def _cron_value_error_status(error: ValueError) -> int:
     return http_status.HTTP_400_BAD_REQUEST
 
 
-class CreateCronJobRequest(BaseModel):
-    """Request model for creating a cron job."""
-
-    identifier: str
-    params: dict  # Will be validated against the schema class
-    cron: str
-    cronjob_id: str | None = None
-    name: str | None = None
-    second: str | None = None
-
-
-class UpdateCronJobRequest(BaseModel):
-    """Request model for updating a cron job."""
-
-    identifier: str
-    params: dict  # Will be validated against the schema class
-    cron: str
-    name: str | None = None
-    second: str | None = None
-
-
-class CronJobResponse(BaseModel):
-    """Response model for cron job information."""
-
-    cronjob_id: str
-    identifier: str
-    name: str
-    cron: str
-    second: str | None = None
-    params: dict
-    execution_count: int
-    is_system: bool
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class CronJobExecutionResponse(BaseModel):
-    """Response model for cron job execution information."""
-
-    execution_id: str
-    started_at: datetime | None
-    ended_at: datetime | None
-    duration_ms: int | None
-    status: str
-    messages: list[str]
-
-
-class CronJobNextRunTimeResponse(BaseModel):
-    """Response model for cron job next run time."""
-
-    cronjob_id: str
-    next_run_time: datetime
-
-
-class RegisteredCronJobResponse(BaseModel):
-    """Response model for registered cron job information."""
-
-    identifier: str
-    description: str
-    parameter_schema: dict
-    is_system: bool
-    default_cron: str | None = None
-    default_second: str | None = None
-    default_params: dict | None = None
-    default_name: str | None = None
-
-
 @router.get("/registered", response_model=list[RegisteredCronJobResponse])
 async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
     """
@@ -107,7 +47,7 @@ async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
 
     Returns information about all available cron job types that can be scheduled.
     """
-    registered_cronjobs = cron_registry.get_all_cronjobs()
+    registered_cronjobs = get_cron_registry().get_all_cronjobs()
 
     result = []
     for identifier, registration in registered_cronjobs.items():
@@ -153,7 +93,7 @@ async def list_cronjobs(
         status: List of job statuses to include (default: [active, paused])
     """
     # Pass filters directly to manager
-    cronjob_configs = await cron_manager.get_all_cronjobs(
+    cronjob_configs = await get_cron_manager().get_all_cronjobs(
         identifier=identifier, status=status
     )
 
@@ -167,9 +107,14 @@ async def list_cronjobs(
                 cron=config.cron,
                 second=config.second,
                 params=config.params.model_dump(),
+                managed_server_generation=config.managed_server_generation,
+                managed_purpose=config.managed_purpose,
+                managed_binding_issue=binding_issue_message(config.managed_binding_issue) if config.managed_binding_issue else None,
                 execution_count=config.execution_count,
                 is_system=config.is_system,
                 status=config.status.value,
+                registration_status=config.registration_status,
+                registration_error=config.registration_error,
                 created_at=config.created_at,
                 updated_at=config.updated_at,
             )
@@ -187,8 +132,9 @@ async def create_cronjob(
 
     Creates a new scheduled cron job with the specified parameters.
     """
+    logger = get_logger()
     # Validate that the identifier is registered
-    schema_cls = cron_registry.get_schema_class(request.identifier)
+    schema_cls = get_cron_registry().get_schema_class(request.identifier)
     if not schema_cls:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -207,7 +153,7 @@ async def create_cronjob(
 
     # Create the cron job
     try:
-        cronjob_id = await cron_manager.create_cronjob(
+        cronjob_id = await get_cron_manager().create_cronjob(
             identifier=request.identifier,
             params=params,
             cron=request.cron,
@@ -236,7 +182,7 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
 
     Returns detailed information about a specific cron job.
     """
-    cronjob_config = await cron_manager.get_cronjob_config(cronjob_id)
+    cronjob_config = await get_cron_manager().get_cronjob_config(cronjob_id)
     if not cronjob_config:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="定时任务不存在"
@@ -249,9 +195,14 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
         cron=cronjob_config.cron,
         second=cronjob_config.second,
         params=cronjob_config.params.model_dump(),
+        managed_server_generation=cronjob_config.managed_server_generation,
+        managed_purpose=cronjob_config.managed_purpose,
+        managed_binding_issue=binding_issue_message(cronjob_config.managed_binding_issue) if cronjob_config.managed_binding_issue else None,
         execution_count=cronjob_config.execution_count,
         is_system=cronjob_config.is_system,
         status=cronjob_config.status.value,
+        registration_status=cronjob_config.registration_status,
+        registration_error=cronjob_config.registration_error,
         created_at=cronjob_config.created_at,
         updated_at=cronjob_config.updated_at,
     )
@@ -268,8 +219,9 @@ async def update_cronjob(
 
     Updates the configuration of an existing cron job.
     """
+    logger = get_logger()
     # Validate that the identifier is registered
-    schema_cls = cron_registry.get_schema_class(request.identifier)
+    schema_cls = get_cron_registry().get_schema_class(request.identifier)
     if not schema_cls:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -288,7 +240,7 @@ async def update_cronjob(
 
     # Update the cron job
     try:
-        await cron_manager.update_cronjob(
+        await get_cron_manager().update_cronjob(
             cronjob_id=cronjob_id,
             identifier=request.identifier,
             params=params,
@@ -318,7 +270,7 @@ async def pause_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_use
     Pauses execution of a cron job until it is resumed.
     """
     try:
-        await cron_manager.pause_cronjob(cronjob_id)
+        await get_cron_manager().pause_cronjob(cronjob_id)
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
@@ -335,7 +287,7 @@ async def resume_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     Resumes execution of a previously paused cron job.
     """
     try:
-        await cron_manager.resume_cronjob(cronjob_id)
+        await get_cron_manager().resume_cronjob(cronjob_id)
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
@@ -353,7 +305,7 @@ async def cancel_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     history are preserved but the cron job will no longer execute.
     """
     try:
-        await cron_manager.cancel_cronjob(cronjob_id)
+        await get_cron_manager().cancel_cronjob(cronjob_id)
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
@@ -372,7 +324,7 @@ async def get_cronjob_executions(
     Returns the execution history for a specific cron job.
     """
     try:
-        executions = await cron_manager.get_execution_history(cronjob_id, limit)
+        executions = await get_cron_manager().get_execution_history(cronjob_id, limit)
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
@@ -403,7 +355,7 @@ async def get_cronjob_next_run_time(
     have scheduled run times.
     """
     try:
-        next_run_time = await cron_manager.get_next_run_time(cronjob_id)
+        next_run_time = await get_cron_manager().get_next_run_time(cronjob_id)
     except ValueError as e:
         raise HTTPException(status_code=_cron_value_error_status(e), detail=str(e))
 

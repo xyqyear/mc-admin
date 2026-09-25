@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "lib": ["ES2023", "DOM"], "module": "ESNext",
+    "moduleResolution": "bundler", "types": ["node"], "strict": true,
+    "skipLibCheck": true, "noEmit": true, "verbatimModuleSyntax": true,
+    "noUnusedLocals": true, "noUnusedParameters": true
+  },
+  "include": ["playwright.config.ts", "browser/**/*.ts"]
+}

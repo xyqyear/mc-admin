@@ -1,11 +1,10 @@
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-import app.world.layout as layout_module
-from app.config import settings
+from app.config import get_settings
+from app.dynamic_config import get_config
 from app.dynamic_config.configs.world import WorldConfig
 from app.world.layout import (
     WorldLayoutDiscoveryError,
@@ -15,6 +14,8 @@ from app.world.layout import (
     discover_world_roots,
     resolve_dimension_folder,
 )
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 def _touch(path: Path) -> None:
@@ -221,7 +222,7 @@ async def test_missing_data_path_returns_empty():
 
 @pytest.mark.asyncio
 async def test_world_root_path_discovery_does_not_require_fd(monkeypatch):
-    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "survival")
@@ -353,11 +354,7 @@ async def test_walk_depth_bound_rejects_extreme_nesting():
 
 @pytest.mark.asyncio
 async def test_dimension_scan_depth_comes_from_config(monkeypatch):
-    monkeypatch.setattr(
-        layout_module,
-        "config",
-        SimpleNamespace(world=SimpleNamespace(dimension_max_depth_from_world_root=0)),
-    )
+    monkeypatch.setattr(get_config().world, "dimension_max_depth_from_world_root", 0)
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "world")
@@ -403,7 +400,7 @@ async def test_region_mca_directory_is_not_a_dimension():
 
 @pytest.mark.asyncio
 async def test_discover_world_roots_requires_fd(monkeypatch):
-    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
+    monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
     with tempfile.TemporaryDirectory(prefix="layout_test_") as tmp:
         data_path = Path(tmp)
         _write_properties(data_path, "world")

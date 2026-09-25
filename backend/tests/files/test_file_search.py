@@ -11,6 +11,8 @@ from fastapi import HTTPException
 
 from app.files import FileSearchRequest, search_files
 
+pytestmark = [pytest.mark.binary('fd')]
+
 
 class TestFileSearch:
     """Test file search operations"""

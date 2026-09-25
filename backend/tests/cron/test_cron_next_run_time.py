@@ -1,16 +1,18 @@
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_settings
+
 """Cross-checks the get_next_run_time endpoint with an in-test cron parser."""
 
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.main import app
-from app.models import Base
 
 from .test_cron_manager import test_cron_registry
 
@@ -122,8 +124,8 @@ async def test_db():
     import app.cron.manager as manager_module
     import app.db.database as db_module
 
-    original_db_session = db_module.AsyncSessionLocal
-    db_module.AsyncSessionLocal = TestSessionLocal
+    original_db_session = db_module.get_session_factory()
+    current_runtime().resources["session_factory"] = TestSessionLocal
 
     def get_test_session():
         return TestSessionLocal()
@@ -137,11 +139,11 @@ async def test_db():
 
     import app.routers.cron as cron_router_module
 
-    original_cron_manager = cron_router_module.cron_manager
-    original_cron_registry = cron_router_module.cron_registry
+    original_cron_manager = cron_router_module.get_cron_manager()
+    original_cron_registry = cron_router_module.get_cron_registry()
 
-    cron_router_module.cron_manager = fresh_test_cron_manager
-    cron_router_module.cron_registry = test_cron_registry
+    current_runtime().resources["cron_manager"] = fresh_test_cron_manager
+    current_runtime().resources["cron_registry"] = test_cron_registry
 
     await fresh_test_cron_manager.initialize()
 
@@ -149,10 +151,10 @@ async def test_db():
 
     await fresh_test_cron_manager.shutdown()
 
-    db_module.AsyncSessionLocal = original_db_session
+    current_runtime().resources["session_factory"] = original_db_session
     manager_module.get_async_session = original_get_session
-    cron_router_module.cron_manager = original_cron_manager
-    cron_router_module.cron_registry = original_cron_registry
+    current_runtime().resources["cron_manager"] = original_cron_manager
+    current_runtime().resources["cron_registry"] = original_cron_registry
 
     await engine.dispose()
     Path(database_path).unlink(missing_ok=True)
@@ -160,7 +162,7 @@ async def test_db():
 
 @pytest.fixture
 def client():
-    with patch("app.dependencies.settings") as mock_settings:
+    with patch_settings() as mock_settings:
         mock_settings.master_token = "test_master_token"
         client = TestClient(app)
         yield client

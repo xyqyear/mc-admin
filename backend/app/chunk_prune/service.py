@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import posixpath
-import tempfile
+import secrets
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from datetime import UTC, datetime
@@ -12,444 +9,304 @@ from pathlib import Path
 
 import aiofiles
 import aiofiles.os as aioos
-from anyio import CancelScope
 
-from ..background_tasks import task_manager
+from ..background_tasks import get_task_manager
 from ..background_tasks.types import TaskProgress, TaskStatus, TaskType
-from ..ftb_claims.extract import NoFtbDataError, _run_extract
-from ..grid_geometry import build_grid_shapes
-from ..logger import logger
-from ..mcmap import runner as mcmap_runner
-from ..mcmap.events import (
-    MCMAP_PRUNE_EVENT_ADAPTER,
-    MCMapChunksPrunedEvent,
-    MCMapErrorEvent,
-    MCMapPruneProgressEvent,
-    MCMapPruneRegionDirEvent,
-    MCMapPruneResultEvent,
-    MCMapRegionPrunedEvent,
-)
-from ..minecraft import DockerMCManager, MCServerStatus, docker_mc_manager
+from ..config import get_settings
+from ..db.database import get_async_session
+from ..errors import PublicOperationError, log_safe_error
+from ..ftb_claims.extract import NoFtbDataError, extract_claims_payload
+from ..minecraft import DockerMCManager, MCServerStatus
+from ..operations.context import mark_cache_degraded, record_phase
+from ..operations.coordinator import ResourceClaim, ResourceKind
+from ..operations.execution import settle_before_release
+from ..operations.finalization import finalize
+from ..runtime_resources import current_runtime
+from ..servers.references import ServerRef, resolve_server_ref
+from ..utils import async_fs
 from ..world import png_invalidate
+from ..world.artifacts import artifact_root, release_artifact, retain_artifact
 from ..world.layout import discover_world_root_paths
 from ..world.locks import (
     LockHolder,
     ServerOperationKind,
     ServerOperationLock,
-    server_operation_lock,
 )
-from ..world.region_files import parse_region_filename
+from .execution import ChunkPruneError, run_prune
+from .geometry import region_relpath_for_event
+from .inputs import (
+    PruneInputVersion,
+    PrunePreviewConflict,
+    payload_digest,
+    require_supported_adapter,
+    world_manifest,
+)
+from .lifecycle import PrunePreviewRegistry
 from .models import (
     ChunkPrunePreviewGeometryResponse,
     ChunkPrunePreviewRequest,
     ChunkPruneTaskMetadata,
-    GridGeometryDimension,
-    GridShape,
 )
 
+__all__ = [
+    "ChunkPruneConflictError",
+    "ChunkPruneError",
+    "ChunkPruneService",
+    "ChunkPruneTaskNotFound",
+    "ChunkPruneValidationError",
+    'get_chunk_prune_service',
+    "region_relpath_for_event",
+    "seconds_to_ticks",
+]
+
 TICKS_PER_SECOND = 20
-PRUNE_TEMP_BASE_DIR = Path(tempfile.gettempdir()) / "mc-admin-chunk-prune"
-STOPPED_STATUSES = {
-    MCServerStatus.EXISTS,
-    MCServerStatus.CREATED,
-    MCServerStatus.REMOVED,
-}
+STOPPED_STATUSES = {MCServerStatus.EXISTS, MCServerStatus.CREATED, MCServerStatus.REMOVED}
 
 
-class ChunkPruneError(Exception):
+class ChunkPruneTaskNotFound(ChunkPruneError, PublicOperationError):
     pass
 
 
-class ChunkPruneTaskNotFound(ChunkPruneError):
+class ChunkPruneValidationError(ChunkPruneError, PublicOperationError):
     pass
 
 
-class ChunkPruneValidationError(ChunkPruneError):
-    pass
-
-
-class ChunkPruneConflictError(ChunkPruneError):
+class ChunkPruneConflictError(ChunkPruneError, PublicOperationError):
     pass
 
 
 class ChunkPruneService:
-    def __init__(
-        self,
-        *,
-        docker: DockerMCManager,
-        operation_lock: ServerOperationLock,
-    ) -> None:
+    def __init__(self, *, docker: DockerMCManager, operation_lock: ServerOperationLock,
+                 temp_base_dir: Path | None = None) -> None:
         self._docker = docker
         self._operation_lock = operation_lock
-        self._metadata: dict[str, ChunkPruneTaskMetadata] = {}
+        self.registry = PrunePreviewRegistry(temp_base_dir if temp_base_dir is not None else artifact_root("prune"))
+        self._metadata = self.registry.metadata
+        self._temp_base_dir = self.registry.base_dir
 
-    async def start_preview(
-        self,
-        *,
-        server_id: str,
-        request: ChunkPrunePreviewRequest,
-        user_id: int | None = None,
-    ) -> str:
-        await self._ensure_server_exists(server_id)
-        data_path = self._docker.get_instance(server_id).get_data_path()
-        threshold_ticks = seconds_to_ticks(request.threshold_seconds)
-        task_id = self._new_task_id("preview", server_id)
+    async def start(self) -> None:
+        await self.registry.start()
+
+    async def close(self, *, preserve_artifacts: bool = False) -> None:
+        await self.registry.close(preserve_artifacts=preserve_artifacts)
+
+    async def _reference(self, server_id: str) -> ServerRef:
+        settings = get_settings()
+        async with get_async_session() as session:
+            return await resolve_server_ref(session, server_id, servers_root=settings.server_path)
+
+    @staticmethod
+    def _claims(reference: ServerRef) -> list[ResourceClaim]:
+        return [ResourceClaim(ResourceKind.FILES, reference.server_id, reference.data_path.relative_to(reference.project_path).as_posix()),
+                ResourceClaim(ResourceKind.MAP_CACHE, reference.server_id)]
+
+    async def start_preview(self, *, server_id: str, request: ChunkPrunePreviewRequest,
+                            user_id: int | None = None) -> str:
+        reference = await self._reference(server_id)
+        await self.registry.reserve_capacity()
+        task_id = self._new_task_id("preview")
         metadata = ChunkPruneTaskMetadata(
-            task_id=task_id,
-            server_id=server_id,
-            operation="preview",
-            data_path=data_path,
-            threshold_seconds=request.threshold_seconds,
-            threshold_ticks=threshold_ticks,
-            mode=request.mode,
-            user_id=user_id,
+            task_id=task_id, server_id=server_id, operation="preview", reference=reference,
+            data_path=reference.data_path, threshold_seconds=request.threshold_seconds,
+            threshold_ticks=seconds_to_ticks(request.threshold_seconds), mode=request.mode,
+            user_id=user_id, created_at=self.registry.now(),
         )
         self._metadata[task_id] = metadata
-
-        task_manager.submit(
-            TaskType.CHUNK_PRUNE_PREVIEW,
-            f"区块清理预览 {server_id}",
-            self._run_preview_task(metadata),
-            server_id=server_id,
-            cancellable=True,
-            task_id=task_id,
-        )
+        try:
+            submitted = await get_task_manager().submit_durable(
+                TaskType.CHUNK_PRUNE_PREVIEW, f"区块清理预览 {server_id}", self._run_preview_task(metadata),
+                server_id=server_id, cancellable=True, task_id=task_id, actor_id=user_id,
+                claims=[ResourceClaim(ResourceKind.MAP_CACHE, server_id)],
+            )
+            metadata.task = submitted.task
+        except BaseException:
+            self._metadata.pop(task_id, None)
+            raise
         return task_id
 
-    async def start_apply(self, *, server_id: str, preview_task_id: str) -> str:
-        await self._ensure_server_exists(server_id)
-        preview = self._metadata.get(preview_task_id)
-        if preview is None or preview.operation != "preview":
-            raise ChunkPruneTaskNotFound("Preview task not found")
-        if preview.server_id != server_id:
-            raise ChunkPruneTaskNotFound("Preview task not found")
-        task = task_manager.get_task(preview_task_id)
-        if task is None or task.status != TaskStatus.COMPLETED:
-            raise ChunkPruneValidationError("Preview task has not completed")
-        if preview.result is None:
-            raise ChunkPruneValidationError("Preview task has no result")
+    def _preview(self, server_id: str, task_id: str) -> ChunkPruneTaskMetadata:
+        preview = self._metadata.get(task_id)
+        if preview is None or preview.operation != "preview" or preview.server_id != server_id:
+            raise ChunkPruneTaskNotFound("裁剪预览不存在，请重新预览")
+        return preview
 
+    async def start_apply(self, *, server_id: str, preview_task_id: str,
+                          user_id: int | None = None) -> str:
+        preview = self._preview(server_id, preview_task_id)
+        self.registry.require_ready(preview)
+        task = self.registry.task(preview)
+        if task is None or task.status != TaskStatus.COMPLETED or preview.result is None or preview.inputs is None:
+            raise ChunkPruneValidationError("裁剪预览尚未完成或不可用")
         status = await self._docker.get_instance(server_id).get_status()
         if status not in STOPPED_STATUSES:
-            raise ChunkPruneConflictError("Stop the server before deleting chunks")
+            raise ChunkPruneConflictError("请先停止服务器再应用裁剪")
         if self._operation_lock.is_locked(server_id):
-            raise ChunkPruneConflictError("Another world operation is running")
-
-        task_id = self._new_task_id("apply", server_id)
-        metadata = ChunkPruneTaskMetadata(
-            task_id=task_id,
-            server_id=server_id,
-            operation="apply",
-            data_path=preview.data_path,
-            threshold_seconds=preview.threshold_seconds,
-            threshold_ticks=preview.threshold_ticks,
-            mode=preview.mode,
-            user_id=preview.user_id,
-            claims_file=preview.claims_file,
-        )
-        self._metadata[task_id] = metadata
-
-        task_manager.submit(
-            TaskType.CHUNK_PRUNE_APPLY,
-            f"区块清理删除 {server_id}",
-            self._run_apply_task(metadata),
-            server_id=server_id,
-            cancellable=True,
-            task_id=task_id,
-        )
+            raise ChunkPruneConflictError("另一项世界操作正在运行")
+        self.registry.require_ready(preview)
+        task_id = self._new_task_id("apply")
+        preview.apply_task_id = task_id
+        preview.references += 1
+        try:
+            await self._validate_inputs(preview)
+            metadata = ChunkPruneTaskMetadata(
+                task_id=task_id, server_id=server_id, operation="apply", reference=preview.reference,
+                data_path=preview.data_path, threshold_seconds=preview.threshold_seconds,
+                threshold_ticks=preview.threshold_ticks, mode=preview.mode, user_id=user_id,
+                claims_file=preview.claims_file, inputs=preview.inputs, preview_task_id=preview_task_id,
+                created_at=self.registry.now(),
+                affected_regions_by_dimension={key: set(value) for key, value in preview.affected_regions_by_dimension.items()},
+            )
+            self._metadata[task_id] = metadata
+            assert metadata.reference is not None
+            submitted = await get_task_manager().submit_durable(
+                TaskType.CHUNK_PRUNE_APPLY, f"区块清理删除 {server_id}", self._run_apply_task(metadata),
+                server_id=server_id, cancellable=True, task_id=task_id, actor_id=metadata.user_id,
+                claims=self._claims(metadata.reference),
+            )
+            metadata.task = submitted.task
+            submitted.awaitable.add_done_callback(lambda _: self._release_preview(preview))
+        except BaseException:
+            preview.apply_task_id = None
+            preview.references -= 1
+            self._metadata.pop(task_id, None)
+            raise
         return task_id
 
-    def get_preview_geometry(
-        self, *, server_id: str, preview_task_id: str
-    ) -> ChunkPrunePreviewGeometryResponse:
-        metadata = self._metadata.get(preview_task_id)
-        if metadata is None or metadata.operation != "preview":
-            raise ChunkPruneTaskNotFound("Preview task not found")
-        if metadata.server_id != server_id:
-            raise ChunkPruneTaskNotFound("Preview task not found")
-        task = task_manager.get_task(preview_task_id)
-        if task is None or task.status != TaskStatus.COMPLETED:
-            raise ChunkPruneValidationError("Preview task has not completed")
-        if metadata.geometry is None:
-            raise ChunkPruneValidationError("Preview geometry is not available")
-        return metadata.geometry
+    @staticmethod
+    def _release_preview(preview: ChunkPruneTaskMetadata) -> None:
+        preview.references -= 1
 
-    async def _run_apply_task(
-        self, metadata: ChunkPruneTaskMetadata
-    ) -> AsyncGenerator[TaskProgress]:
-        holder = LockHolder(
-            kind=ServerOperationKind.PRUNE,
-            started_at=datetime.now(UTC),
-            user_id=metadata.user_id,
-            description="区块清理",
-        )
-        async with self._operation_lock.acquire(metadata.server_id, holder):
+    def get_preview_geometry(self, *, server_id: str, preview_task_id: str) -> ChunkPrunePreviewGeometryResponse:
+        preview = self._preview(server_id, preview_task_id)
+        state = self.registry.state(preview).availability
+        if state in {"expired", "stale"} and not preview.references:
+            raise PrunePreviewConflict(state)
+        if preview.geometry is None:
+            raise ChunkPruneValidationError("裁剪预览图形不可用，请重新预览")
+        return preview.geometry
+
+    async def _read_claims(self, data_path: Path) -> dict | None:
+        roots = await discover_world_root_paths(data_path)
+        if not roots:
+            return None
+        try:
+            payload = await extract_claims_payload(roots[0].path, data_path)
+            return payload.model_dump(mode="json")
+        except NoFtbDataError:
+            return None
+        except Exception as error:
+            log_safe_error(error, "chunk prune claims extraction failed")
+            raise PublicOperationError("读取领地保护信息失败，请检查领地数据") from error
+
+    async def _capture_inputs(self, metadata: ChunkPruneTaskMetadata) -> tuple[PruneInputVersion, dict | None]:
+        reference = await self._reference(metadata.server_id)
+        if reference != metadata.reference:
+            raise PrunePreviewConflict("stale")
+        before = await world_manifest(reference.data_path)
+        payload = await self._read_claims(reference.data_path)
+        if before != await world_manifest(reference.data_path):
+            raise PrunePreviewConflict("stale")
+        return PruneInputVersion.capture(reference, metadata.threshold_ticks, metadata.mode, before, payload_digest(payload)), payload
+
+    async def _validate_inputs(self, preview: ChunkPruneTaskMetadata) -> None:
+        expires = self.registry.expires_at(preview)
+        if expires is not None and self.registry.now() >= expires:
+            preview.unavailable_reason = "expired"
+            raise PrunePreviewConflict("expired")
+        await require_supported_adapter()
+        try:
+            current, _ = await self._capture_inputs(preview)
+            if current != preview.inputs:
+                raise PrunePreviewConflict("stale")
+            if preview.claims_file is not None:
+                async with aiofiles.open(preview.claims_file) as file:
+                    if payload_digest(json.loads(await file.read())) != current.claims_digest:
+                        raise PrunePreviewConflict("stale")
+        except PrunePreviewConflict:
+            preview.unavailable_reason = "stale"
+            raise
+        except (FileNotFoundError, json.JSONDecodeError) as error:
+            preview.unavailable_reason = "stale"
+            raise PrunePreviewConflict("stale") from error
+
+    async def _run_preview_task(self, metadata: ChunkPruneTaskMetadata) -> AsyncGenerator[TaskProgress]:
+        ready = False
+        try:
+            await retain_artifact("prune_preview", metadata.task_id)
+            await require_supported_adapter()
+            inputs, payload = await self._capture_inputs(metadata)
+            task_dir = self._temp_base_dir / metadata.task_id
+            await aioos.makedirs(task_dir, exist_ok=False)
+            if payload is not None:
+                claims_file = task_dir / "claims.json"
+                metadata.claims_file = claims_file
+                async def write_claims() -> None:
+                    async with aiofiles.open(claims_file, "w") as file:
+                        await file.write(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+                await finalize(write_claims())
+            metadata.inputs = inputs
+            yield TaskProgress(progress=0, message="正在准备预览任务")
+            async with aclosing(run_prune(metadata, dry_run=True)) as events:
+                async for progress in events:
+                    yield progress
+            await self._validate_inputs(metadata)
+            metadata.completed_at = self.registry.now()
+            ready = True
+        finally:
+            if not ready:
+                metadata.unavailable_reason = "unavailable" if metadata.unavailable_reason is None else metadata.unavailable_reason
+                metadata.geometry = None
+            await finalize(release_artifact("prune_preview", metadata.task_id))
+
+    async def _run_prune_task(self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool) -> AsyncGenerator[TaskProgress]:
+        async with aclosing(run_prune(metadata, dry_run=dry_run)) as events:
+            async for progress in events:
+                yield progress
+
+    async def _run_apply_task(self, metadata: ChunkPruneTaskMetadata) -> AsyncGenerator[TaskProgress]:
+        assert metadata.reference is not None and metadata.preview_task_id is not None
+        preview = self._preview(metadata.server_id, metadata.preview_task_id)
+        holder = LockHolder(ServerOperationKind.PRUNE, datetime.now(UTC), metadata.user_id, "区块清理")
+        async with (
+            self._operation_lock.lease([metadata.server_id], holder, claims=self._claims(metadata.reference)),
+            settle_before_release(),
+        ):
             status = await self._docker.get_instance(metadata.server_id).get_status()
             if status not in STOPPED_STATUSES:
-                raise ChunkPruneConflictError("Stop the server before deleting chunks")
+                raise ChunkPruneConflictError("请先停止服务器再应用裁剪")
+            await self._validate_inputs(preview)
+            await async_fs.resolve_inside(metadata.data_path, metadata.data_path / ".mcmap" / "tiles")
+            for path in metadata.affected_regions_by_dimension:
+                await async_fs.resolve_inside(metadata.data_path, metadata.data_path / ".mcmap" / "tiles" / path)
+            await retain_artifact("prune_preview", preview.task_id)
             try:
-                async with aclosing(self._run_prune_task(metadata, dry_run=False)) as events:
+                await record_phase("pruning_world", changed=True)
+                async with aclosing(run_prune(metadata, dry_run=False)) as events:
                     async for progress in events:
                         yield progress
             finally:
-                with CancelScope(shield=True):
-                    pngs: set[Path] = set()
-                    for (
-                        region_dir_relpath,
-                        regions,
-                    ) in metadata.affected_regions_by_dimension.items():
-                        pngs.update(
-                            png_invalidate.pngs_for_regions(
-                                metadata.data_path,
-                                region_dir_relpath,
-                                regions,
-                            )
-                        )
-                    await png_invalidate.delete_pngs(pngs)
+                async def cleanup() -> None:
+                    try:
+                        pngs = set()
+                        for path, regions in metadata.affected_regions_by_dimension.items():
+                            pngs.update(png_invalidate.pngs_for_regions(metadata.data_path, path, regions))
+                        try:
+                            await png_invalidate.delete_pngs(pngs, data_path=metadata.data_path)
+                        except Exception:
+                            await mark_cache_degraded(metadata.server_id)
+                            raise
+                    finally:
+                        await release_artifact("prune_preview", preview.task_id)
+                await finalize(cleanup())
 
-    async def _run_prune_task(
-        self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool
-    ) -> AsyncGenerator[TaskProgress]:
-        selected_cells_by_dimension: dict[str, set[tuple[int, int]]] = {}
-        path_mapper = PruneEventPathMapper(metadata.data_path)
-        progress_percent = 0.0
-        saw_result = False
-
-        if metadata.claims_file is None and metadata.operation == "preview":
-            metadata.claims_file = await self._write_claims_file(
-                metadata.server_id,
-                metadata.data_path,
-            )
-
-        async with mcmap_runner.prune_inhabited(
-            path=metadata.data_path,
-            threshold_ticks=metadata.threshold_ticks,
-            mode=metadata.mode,
-            dry_run=dry_run,
-            owned_by=metadata.data_path,
-            exclude_ftb_claims=metadata.claims_file,
-        ) as proc:
-            async for event in proc.events(MCMAP_PRUNE_EVENT_ADAPTER):
-                task = task_manager.get_task(metadata.task_id)
-                if task is not None and task.cancel_requested:
-                    await proc.terminate()
-                    yield TaskProgress(progress=progress_percent, message="已取消")
-                    return
-
-                if isinstance(event, MCMapPruneRegionDirEvent):
-                    yield TaskProgress(
-                        progress=progress_percent,
-                        message=f"发现 {event.regions} 个区域文件",
-                    )
-                elif isinstance(event, MCMapPruneProgressEvent):
-                    if event.regions_total > 0:
-                        progress_percent = (
-                            event.regions_processed / event.regions_total * 100
-                        )
-                    yield TaskProgress(
-                        progress=progress_percent,
-                        message=(
-                            f"已处理 {event.regions_processed}/"
-                            f"{event.regions_total} 个区域文件"
-                        ),
-                    )
-                elif isinstance(event, MCMapChunksPrunedEvent):
-                    relpath = path_mapper.region_relpath(event.region)
-                    if relpath is None:
-                        logger.warning(
-                            "chunk-prune: ignored chunks event outside region dir: %s",
-                            event.region,
-                        )
-                        continue
-                    self._add_affected_region(
-                        metadata, relpath, event.region_x, event.region_z
-                    )
-                    if dry_run:
-                        selected_cells_by_dimension.setdefault(relpath, set()).update(
-                            (chunk.chunk_x, chunk.chunk_z) for chunk in event.chunks
-                        )
-                elif isinstance(event, MCMapRegionPrunedEvent):
-                    relpath = path_mapper.region_relpath(event.region)
-                    if relpath is None:
-                        logger.warning(
-                            "chunk-prune: ignored region event outside region dir: %s",
-                            event.region,
-                        )
-                        continue
-                    self._add_affected_region(
-                        metadata, relpath, event.region_x, event.region_z
-                    )
-                    if dry_run:
-                        selected_cells_by_dimension.setdefault(relpath, set()).add(
-                            (event.region_x, event.region_z)
-                        )
-                elif isinstance(event, MCMapPruneResultEvent):
-                    saw_result = True
-                    result = event.model_dump(exclude_none=True)
-                    result["threshold_seconds"] = metadata.threshold_seconds
-                    result["threshold_ticks"] = metadata.threshold_ticks
-                    result["affected_region_counts_by_dimension"] = {
-                        relpath: len(regions)
-                        for relpath, regions in sorted(
-                            metadata.affected_regions_by_dimension.items()
-                        )
-                    }
-                    if dry_run:
-                        metadata.geometry = build_preview_geometry(
-                            metadata,
-                            selected_cells_by_dimension,
-                        )
-                    metadata.result = result
-                    yield TaskProgress(
-                        progress=100,
-                        message="清理预览完成" if dry_run else "区块清理完成",
-                        result=result,
-                    )
-                elif isinstance(event, MCMapErrorEvent):
-                    raise ChunkPruneError(event.message)
-
-            if proc.returncode not in (0, None):
-                stderr = (await proc.stderr()).strip()
-                raise ChunkPruneError(stderr or "mcmap prune-inhabited failed")
-        if not saw_result:
-            raise ChunkPruneError("mcmap prune-inhabited produced no result")
-
-    async def _run_preview_task(
-        self, metadata: ChunkPruneTaskMetadata
-    ) -> AsyncGenerator[TaskProgress]:
-        yield TaskProgress(progress=0, message="正在准备预览任务")
-        async for progress in self._run_prune_task(metadata, dry_run=True):
-            yield progress
-
-    async def _ensure_server_exists(self, server_id: str) -> None:
-        instance = self._docker.get_instance(server_id)
-        if not await instance.exists():
-            raise ChunkPruneTaskNotFound(f"Server '{server_id}' not found")
-
-    async def _write_claims_file(
-        self, server_id: str, data_path: Path
-    ) -> Path | None:
-        world_root = await self._primary_world_root(data_path)
-        if world_root is None:
-            return None
-        try:
-            payload = await _run_extract(world_root, data_path)
-        except NoFtbDataError:
-            return None
-        except Exception:
-            logger.exception(
-                "chunk-prune: failed to extract FTB claims for %s", server_id
-            )
-            raise ChunkPruneError("Failed to extract FTB claims")
-
-        task_dir = PRUNE_TEMP_BASE_DIR / server_id
-        await aioos.makedirs(task_dir, exist_ok=True)
-        target = (
-            task_dir
-            / f"claims-{hashlib.sha256(str(datetime.now(UTC)).encode()).hexdigest()[:12]}.json"
-        )
-        async with aiofiles.open(target, "w") as f:
-            await f.write(
-                json.dumps(payload.model_dump(mode="json"), separators=(",", ":"))
-            )
-        return target
-
-    async def _primary_world_root(self, data_path: Path) -> Path | None:
-        roots = await discover_world_root_paths(data_path)
-        return roots[0].path if roots else None
-
-    def _add_affected_region(
-        self,
-        metadata: ChunkPruneTaskMetadata,
-        region_dir_relpath: str,
-        rx: int,
-        rz: int,
-    ) -> None:
-        metadata.affected_regions_by_dimension.setdefault(
-            region_dir_relpath, set()
-        ).add((rx, rz))
-
-    def _new_task_id(self, operation: str, server_id: str) -> str:
-        raw = f"{operation}:{server_id}:{datetime.now(UTC).isoformat()}"
-        suffix = hashlib.sha256(raw.encode()).hexdigest()[:24]
-        return f"chunk-prune-{operation}-{suffix}"
+    @staticmethod
+    def _new_task_id(operation: str) -> str:
+        return f"chunk-prune-{operation}-{secrets.token_hex(12)}"
 
 
 def seconds_to_ticks(seconds: int) -> int:
     return max(0, int(seconds) * TICKS_PER_SECOND)
 
 
-def build_preview_geometry(
-    metadata: ChunkPruneTaskMetadata,
-    selected_cells_by_dimension: dict[str, set[tuple[int, int]]],
-) -> ChunkPrunePreviewGeometryResponse:
-    unit = "chunk" if metadata.mode == "chunks" else "region"
-    dimensions: list[GridGeometryDimension] = []
-    for relpath, cells in sorted(selected_cells_by_dimension.items()):
-        shapes = [
-            GridShape(
-                id=shape.id,
-                cell_count=shape.cell_count,
-                bbox=shape.bbox,
-                rings=shape.rings,
-            )
-            for shape in build_grid_shapes(cells, id_prefix=relpath)
-        ]
-        dimensions.append(
-            GridGeometryDimension(
-                region_dir_relpath=relpath,
-                unit=unit,
-                cell_count=len(cells),
-                shapes=shapes,
-            )
-        )
-    return ChunkPrunePreviewGeometryResponse(
-        task_id=metadata.task_id,
-        server_id=metadata.server_id,
-        mode=metadata.mode,
-        threshold_seconds=metadata.threshold_seconds,
-        threshold_ticks=metadata.threshold_ticks,
-        dimensions=dimensions,
-    )
-
-
-class PruneEventPathMapper:
-    def __init__(self, data_path: Path) -> None:
-        self._data_root = normalize_event_path(os.path.abspath(os.fspath(data_path)))
-
-    def region_relpath(self, event_region: str) -> str | None:
-        event_path = normalize_event_path(event_region)
-        if not event_path or event_path == ".":
-            return None
-
-        if event_path.startswith("/"):
-            prefix = f"{self._data_root}/"
-            if event_path == self._data_root or not event_path.startswith(prefix):
-                return None
-            relpath = event_path[len(prefix) :]
-        else:
-            relpath = event_path
-
-        parts = relpath.split("/")
-        if (
-            len(parts) < 3
-            or any(part in ("", ".", "..") for part in parts)
-            or parts[-2] != "region"
-            or parse_region_filename(parts[-1]) is None
-        ):
-            return None
-        return "/".join(parts[:-1])
-
-
-def normalize_event_path(path: str) -> str:
-    return posixpath.normpath(path.replace("\\", "/"))
-
-
-def region_relpath_for_event(data_path: Path, event_region: str) -> str | None:
-    return PruneEventPathMapper(data_path).region_relpath(event_region)
-
-
-chunk_prune_service = ChunkPruneService(
-    docker=docker_mc_manager,
-    operation_lock=server_operation_lock,
-)
+def get_chunk_prune_service() -> ChunkPruneService:
+    return current_runtime().resource('chunk_prune_service')

@@ -1,48 +1,25 @@
 # Task Center
 
-Floating panel that surfaces every long-running operation in one place — backend background tasks (compression, populate, rebuild, world-restore staging) and browser-side downloads (archive download with progress). The panel is mounted globally so a task started on one page can be monitored after navigating elsewhere.
+The globally mounted task center displays backend tasks and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, polling, commands, downloads and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel.
 
-## Why one panel for two task kinds
+## Backend task state
 
-"Server compression" and "archive download" feel different — one runs on the backend, one in the browser — but from the user's standpoint they're the same: "something is running, show me progress, let me cancel". A single floating UI with two tabs ("后台任务" / "下载") and one badge count covers both, and removes a class of bugs where users lose track of in-flight work after navigating.
+`contracts.ts` contains the HTTP DTO and the camel-case view model; `api.ts` performs that explicit conversion. Backend statuses are lowercase `pending`, `running`, `completed`, `failed`, `cancelled`. Dynamic result objects remain feature-validated where a workflow consumes them.
 
-## Components
+TanStack Query is the only backend-task state owner. `queries.ts` owns `taskQueryKeys`, list/active/detail requests and polling. Lists and the badge poll every second while active tasks exist, otherwise every ten seconds; task details poll every two seconds until terminal. The badge reads the active-task query directly. There is no background-task Zustand mirror.
 
-- `TaskCenterTrigger.tsx` — draggable fixed-position button with a badge for active task count. Mounted at app root in `MainLayout` so every page can see it.
-- `TaskCenterPanel.tsx` — `<Card>` with `<Tabs>` (background tasks + downloads). Open/close, active-tab state, and launcher position live in `useTaskCenterStore`.
-- `BackgroundTaskList.tsx` / `BackgroundTaskItem.tsx` — backend task list. Polls `useBackgroundTasks` (1 s when at least one task is active, 10 s otherwise — the polling cadence flips automatically based on the result set).
-- `DownloadTaskList.tsx` / `DownloadTaskItem.tsx` — browser download list, sourced from `useDownloadStore` (Zustand, persisted to localStorage so a refresh doesn't lose progress).
+Task items render progress/message/result/error, allow explicit cancellation when a pending/running task is cancellable, and allow terminal records to be dismissed. The panel shows active tasks and terminal results from the last thirty minutes (records without an end time remain visible); clearing completed records sends the existing task API command.
 
-## Backend task lifecycle
+## Completion ownership
 
-Each task arrives from `/api/tasks/` with a status (`PENDING / RUNNING / COMPLETED / FAILED / CANCELLED`), `progress` (0–100 or null), `message`, and an optional `result`. The item renders:
+`app/operations/OperationObserver.tsx` owns business-cache completion effects through feature resource registries. Configuration, populate/compression/ownership presentation and world restore/prune views display outcomes without owning those effects. Closing independent-task dialogs does not cancel backend work. Dismissing generic task records does not destroy feature-owned prune preview metadata/projections. Task commands invalidate task queries; browser-owned partial uploads also invalidate their actual immediate writes.
 
-- A progress bar (indeterminate when `progress` is null)
-- The status message
-- A `<Popover>` with `result` JSON if present (so users can inspect what changed)
-- A cancel button (gated on `cancellable && status === RUNNING`)
+Finite restoration SSE remains request-owned and is cancelled when its view closes. It is distinct from independent background tasks even when both display progress.
 
-When a task completes, the item stays in the list until the user clicks dismiss, or `clear all completed` runs. Completion also fires a Sonner toast — useful for long compressions where the user has tabbed away.
+## Client state
 
-## Auto-completion + cache invalidation
+- `panelStore.ts`: panel open state, active tab and drag position. Only the launcher position persists.
+- `downloadStore.ts`: browser download records and live AbortControllers. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
+- `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback.
 
-The progress modal that *initiates* a task (e.g. `RebuildProgressModal`) owns the post-completion cache invalidation, not the task center. The task center is a passive viewer — it never invalidates business queries, only `taskQueryKeys`. This keeps invalidation logic close to the operation that triggered it.
-
-## Stores
-
-- `useTaskCenterStore` — `{ open: boolean, activeTab: 'background' | 'download', triggerPosition: { right: number, bottom: number } }`. Only the launcher position is persisted.
-- `useBackgroundTaskStore` — mirrors backend task list locally for the badge count + offline rendering.
-- `useDownloadStore` — pure-client downloads, persisted to localStorage so an in-progress download survives a refresh.
-
-## Files
-
-- `components/task-center/TaskCenterTrigger.tsx`
-- `components/task-center/TaskCenterPanel.tsx`
-- `components/task-center/BackgroundTaskList.tsx`
-- `components/task-center/BackgroundTaskItem.tsx`
-- `components/task-center/DownloadTaskList.tsx`
-- `components/task-center/DownloadTaskItem.tsx`
-- `hooks/queries/base/useTaskQueries.ts`
-- `hooks/mutations/useTaskMutations.ts`
-- `stores/useTaskCenterStore.ts`, `useBackgroundTaskStore.ts`, `useDownloadStore.ts`
-- `config/taskCenterLayout.ts`
+`ui/TaskCenterTrigger.tsx`, `TaskCenterPanel.tsx`, `BackgroundTaskList.tsx`, `BackgroundTaskItem.tsx`, `DownloadTaskList.tsx` and `DownloadTaskItem.tsx` present these states. The public `ui/index.ts` entry is used by the app shell.

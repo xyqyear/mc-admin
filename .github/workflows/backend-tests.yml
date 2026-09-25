@@ -1,73 +1,73 @@
 name: Backend Tests
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
   push:
+    branches: ["**"]
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.collect.outputs.matrix }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --locked --all-groups
+      - name: Collect the complete test inventory
+        id: collect
+        run: |
+          uv run pytest tests --collect-only --run-docker -q -o addopts= --collection-manifest .test-manifests/expected.json
+          matrix=$(uv run python tests/support/collection.py matrix .test-manifests/expected.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-inventory
+          overwrite: true
+          path: backend/.test-manifests/expected.json
+          include-hidden-files: true
+          if-no-files-found: error
+
   pytest:
     name: pytest (${{ matrix.test_group }})
+    needs: discover
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - test_group: root
-            pytest_target: tests/test_*.py
-          - test_group: archive
-            pytest_target: tests/archive
-          - test_group: background_tasks
-            pytest_target: tests/background_tasks
-          - test_group: cron
-            pytest_target: tests/cron
-          - test_group: dns
-            pytest_target: tests/dns
-          - test_group: dynamic_config
-            pytest_target: tests/dynamic_config
-          - test_group: events
-            pytest_target: tests/events
-          - test_group: files
-            pytest_target: tests/files
-          - test_group: ftb_claims
-            pytest_target: tests/ftb_claims
-          - test_group: mcmap
-            pytest_target: tests/mcmap
-          - test_group: migrations
-            pytest_target: tests/migrations
-          - test_group: player_locations
-            pytest_target: tests/player_locations
-          - test_group: players
-            pytest_target: tests/players
-          - test_group: self_check
-            pytest_target: tests/self_check
-          - test_group: servers
-            pytest_target: tests/servers
-          - test_group: snapshots
-            pytest_target: tests/snapshots
-          - test_group: templates
-            pytest_target: tests/templates
-          - test_group: utils
-            pytest_target: tests/utils
-          - test_group: world
-            pytest_target: tests/world
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     defaults:
       run:
         working-directory: backend
     env:
-      MASTER_TOKEN: test-master-token
-      JWT__SECRET_KEY: test-secret
-      SERVER_PATH: ${{ github.workspace }}/backend/dev-servers
-      STATIC_PATH: ${{ github.workspace }}/backend/.ci-static
       FD_BINARY_PATH: /usr/local/bin/fd
       MCMAP_BINARY_PATH: /usr/local/bin/mcmap
       RESTIC_BINARY_PATH: /usr/local/bin/restic
-      DATABASE_URL: sqlite+aiosqlite:///./test-${{ matrix.test_group }}.sqlite3
       PYTHONPATH: ${{ github.workspace }}/backend
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Install system test dependencies
         run: |
@@ -91,19 +91,12 @@ jobs:
           rm -rf "$tmpdir" /tmp/fd.tar.gz
           fd --version
 
-      - name: Prepare static files for API tests
-        run: |
-          mkdir -p .ci-static/assets .ci-static/static
-          cp -R ../frontend-react/public/static/. .ci-static/static/
-          cp ../frontend-react/public/robots.txt .ci-static/robots.txt
-          printf '<!doctype html><html><body></body></html>\n' > .ci-static/index.html
-
       - name: Install 7z test dependencies
-        if: matrix.test_group == 'root' || matrix.test_group == 'archive'
+        if: contains(matrix.capabilities, '7z')
         run: sudo apt-get install -y p7zip-full
 
       - name: Install restic test dependencies
-        if: matrix.test_group == 'snapshots' || matrix.test_group == 'world'
+        if: contains(matrix.capabilities, 'restic')
         run: |
           dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
           restic_version="$(awk -F= '$1 == "ARG RESTIC_VERSION" { print $2 }' "$dockerfile")"
@@ -121,13 +114,13 @@ jobs:
           restic version
 
       - name: Verify Docker test dependencies
-        if: matrix.test_group == 'root'
+        if: contains(matrix.capabilities, 'docker')
         run: |
           docker version
           docker compose version
 
       - name: Install mcmap test dependencies
-        if: matrix.test_group == 'world'
+        if: contains(matrix.capabilities, 'mcmap')
         run: |
           dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
           mcmap_version="$(awk -F= '$1 == "ARG MCMAP_VERSION" { print $2 }' "$dockerfile")"
@@ -157,4 +150,46 @@ jobs:
         run: uv sync --locked --all-groups
 
       - name: Run tests
-        run: uv run pytest ${{ matrix.pytest_target }}
+        run: uv run pytest tests --test-group "${{ matrix.test_group }}" --run-docker --require-capabilities --collection-manifest ".test-manifests/${{ matrix.test_group }}.json"
+
+      - name: Publish executed collection
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-group-${{ matrix.test_group }}
+          overwrite: true
+          path: backend/.test-manifests/${{ matrix.test_group }}.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  collection-audit:
+    if: always() && needs.discover.result == 'success'
+    needs: [discover, pytest]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: backend-test-inventory
+          path: backend/.test-manifests
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: backend-test-group-*
+          merge-multiple: true
+          path: backend/.test-manifests/groups
+      - name: Verify complete duplicate-free test collection
+        run: uv run --no-project python tests/support/collection.py audit .test-manifests/expected.json .test-manifests/groups/*.json
+
+      - name: Require successful execution as well as complete collection
+        env:
+          EXECUTION_RESULT: ${{ needs.pytest.result }}
+        run: test "$EXECUTION_RESULT" = success

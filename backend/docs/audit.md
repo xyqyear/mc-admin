@@ -44,3 +44,7 @@ sensitive_exact_fields = ["ak", "sk", "code", "ticket"]
 ## File
 
 - `audit.py` — `OperationAuditMiddleware`. Wired in `app.main` ASGI stack between CORS and the API sub-app.
+
+## Opaque configuration and file bodies
+
+JSON/form fields named `yaml_content`, `yaml_template`, or `content` are always masked, including nested fields and case variants. These strings can contain embedded passwords that key-based JSON filtering cannot inspect reliably. Request paths, actions and ordinary metadata remain available for auditing. The original request body is unchanged for business processing.

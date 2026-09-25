@@ -1,9 +1,15 @@
 import asyncio
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 
-from ..config import settings
+from app.self_check.system_models import (
+    CpuPercent,
+    DiskUsageInfo,
+    HealthCheck,
+    ServerInfo,
+)
+
+from ..config import get_settings
 from ..dependencies import get_current_user
 from ..system.resources import (
     get_cpu_load,
@@ -16,28 +22,6 @@ router = APIRouter(
     prefix="/system",
     tags=["system"],
 )
-
-
-class ServerInfo(BaseModel):
-    cpuLoad1Min: float
-    cpuLoad5Min: float
-    cpuLoad15Min: float
-    ramUsedGB: float
-    ramTotalGB: float
-
-
-class DiskUsageInfo(BaseModel):
-    diskUsedGB: float
-    diskTotalGB: float
-    diskAvailableGB: float
-
-
-class CpuPercent(BaseModel):
-    cpuPercentage: float
-
-
-class HealthCheck(BaseModel):
-    status: str
 
 
 @router.get(
@@ -68,6 +52,7 @@ async def get_server_info():
 )
 async def get_system_disk_usage():
     """Get system disk usage information for server path"""
+    settings = get_settings()
     disk_info = await get_disk_info(settings.server_path)
 
     return DiskUsageInfo(

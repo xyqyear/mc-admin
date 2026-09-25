@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models import SystemHeartbeat
+from app.players.models import SystemHeartbeat
 
 
 async def get_heartbeat(session: AsyncSession) -> SystemHeartbeat | None:

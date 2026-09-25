@@ -1,5 +1,8 @@
+import asyncio
+
+from ..operations.finalization import finalize
 from .types import AddRecordListT, AddRecordT, RecordIdListT, RecordListT
-from .utils import diff_dns_records
+from .utils import RecordDiff, diff_dns_records
 
 
 class DNSClient:
@@ -12,6 +15,9 @@ class DNSClient:
     def is_initialized(self) -> bool: ...
 
     async def init(self): ...
+
+    async def close(self) -> None:
+        pass
 
     async def list_records(self) -> RecordListT: ...
 
@@ -78,32 +84,41 @@ class DNSClient:
         # Calculate differences
         diff = diff_dns_records(current_records, target_records)
 
-        if diff.records_to_remove:
-            await self.remove_records(diff.records_to_remove)
+        await finalize(self.apply_diff(diff))
 
-        if diff.records_to_add:
-            await self.add_records(diff.records_to_add)
+    async def apply_diff(self, diff: RecordDiff) -> None:
+        limit = asyncio.Semaphore(4)
 
-        if not diff.records_to_update:
-            return
+        async def add(record: AddRecordT) -> None:
+            async with limit:
+                await self.add_records([record])
 
-        if self.has_update_capability():
-            await self._update_records_batch(diff.records_to_update)
-        else:
-            update_ids = [record.record_id for record in diff.records_to_update]
-            await self.remove_records(update_ids)
+        async def remove(record_id) -> None:
+            async with limit:
+                await self.remove_records([record_id])
 
-            # Convert update records back to add records
-            add_records = [
-                AddRecordT(
-                    sub_domain=record.sub_domain,
-                    value=record.value,
-                    record_type=record.record_type,
-                    ttl=record.ttl,
-                )
-                for record in diff.records_to_update
-            ]
-            await self.add_records(add_records)
+        async def update(record) -> None:
+            async with limit:
+                if self.has_update_capability():
+                    await self._update_records_batch([record])
+                else:
+                    await self.remove_records([record.record_id])
+                    await self.add_records([AddRecordT(record.sub_domain, record.value, record.record_type, record.ttl)])
+
+        failures: list[Exception] = []
+        for writing in (True, False):
+            jobs = (
+                [*(add(record) for record in diff.records_to_add), *(update(record) for record in diff.records_to_update)]
+                if writing else [remove(record_id) for record_id in diff.records_to_remove]
+            )
+            results = await asyncio.gather(*jobs, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    failures.append(result)
+                elif isinstance(result, BaseException):
+                    raise result
+        if failures:
+            raise ExceptionGroup("DNS 部分记录更新失败，请重试", failures)
 
     def has_update_capability(self) -> bool: ...
 

@@ -7,7 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import Integer, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Player, PlayerSession, Server
+from app.players.models import Player, PlayerSession
+from app.servers.models import Server
+
 from ....servers.crud import get_server_db_id
 
 
@@ -259,7 +261,7 @@ async def _build_player_detail(
     Returns:
         Player detail response
     """
-    from ....models import PlayerAchievement, PlayerChatMessage
+    from app.players.models import PlayerAchievement, PlayerChatMessage
 
     # Get total playtime including ongoing sessions
     playtime_result = await session.execute(

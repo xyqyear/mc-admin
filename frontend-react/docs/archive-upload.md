@@ -1,6 +1,6 @@
 # Archive Upload Dialog
 
-`ArchiveUploadDialog` renders the local `hooks/uploads/useArchiveUpload.ts` flow: selecting `.zip` / `.7z` files, sending resumable chunks, pausing/resuming the active upload, and verifying SHA256 after upload.
+`ArchiveUploadDialog` renders the local `features/archives/uploads/useArchiveUpload.ts` flow: selecting `.zip` / `.7z` files, sending resumable chunks, pausing/resuming the active upload, and verifying SHA256 after upload.
 
 ## Upload Flow
 
@@ -29,4 +29,4 @@ The progress bar is reused for verification by averaging local and server hash p
 
 ## SSE
 
-`utils/eventStream.ts` contains the authenticated fetch-based SSE reader and parser. `hooks/useEventStream.ts` wraps that reader for state-driven component use. Imperative flows such as archive SHA256 verification use `readEventStream` directly.
+`shared/http/eventStream.ts` contains the authenticated fetch-based SSE reader and parser. `shared/hooks/useEventStream.ts` wraps that reader for state-driven component use. Imperative flows such as archive SHA256 verification use `readEventStream` directly.

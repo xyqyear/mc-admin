@@ -14,54 +14,28 @@ This test file validates the newly added cgroup monitoring functionality:
 import asyncio
 import subprocess
 
-import aiofiles.os as aioos
 import pytest
-import pytest_asyncio
 
 from app.minecraft import DockerMCManager
 from app.minecraft.instance import MCInstance
-from app.utils import async_fs
-from app.utils.exec import exec_command
 
-from .fixtures.test_utils import (
-    TEST_ROOT_PATH,
-    create_mc_server_compose_yaml,
-)
+from .fixtures.test_utils import OwnedDockerResources
+
+pytestmark = pytest.mark.docker
 
 
-@pytest_asyncio.fixture(scope="session")  # type: ignore
-async def teardown_session():
-    """Session-scoped teardown fixture for cleaning up containers and directories"""
-    if await aioos.path.exists(TEST_ROOT_PATH):
-        await async_fs.rmtree(TEST_ROOT_PATH)
-    await aioos.makedirs(TEST_ROOT_PATH)
-    containers_to_remove = list[str]()
-    yield containers_to_remove
-    for container_name in containers_to_remove:
-        await exec_command("docker", "rm", "-f", container_name)
-    await async_fs.rmtree(TEST_ROOT_PATH)
-
-
-@pytest.fixture(scope="session")
-async def mc_server_session(teardown_session: list[str]):
-    """Session-scoped fixture to create and manage a Minecraft test server for monitoring"""
-    server_name = "cgroup-monitoring-test"
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
-    server = docker_mc_manager.get_instance(server_name)
-    teardown_session.append(f"mc-{server_name}")
-
-    # Create the server with Minecraft compose configuration
-    await server.create(create_mc_server_compose_yaml(server_name, 39000, 39001))
-
-    # Start the container
-    await server.up()
-
-    # Wait for it to be healthy
-    await server.wait_until_healthy()
-
-    yield server
-
-    # Cleanup is handled by teardown_session fixture
+@pytest.fixture(scope="module")
+async def mc_server_session(tmp_path_factory):
+    resources = OwnedDockerResources(tmp_path_factory.mktemp("monitoring"))
+    server_name = resources.name("monitoring")
+    server = DockerMCManager(resources.root).get_instance(server_name)
+    try:
+        await server.create(resources.compose(server_name, 39000, 39001))
+        await server.up()
+        await server.wait_until_healthy()
+        yield server
+    finally:
+        await resources.cleanup()
 
 
 @pytest.mark.asyncio
@@ -226,9 +200,9 @@ async def test_all_apis_integration_with_docker(mc_server_session: MCInstance):
 
 
 @pytest.mark.asyncio
-async def test_container_not_running_error_handling():
+async def test_container_not_running_error_handling(tmp_path):
     """Test error handling when container is not running"""
-    docker_mc_manager = DockerMCManager(TEST_ROOT_PATH)
+    docker_mc_manager = DockerMCManager(tmp_path)
     server = docker_mc_manager.get_instance("non-existent-server")
 
     # These should raise appropriate exceptions when container doesn't exist

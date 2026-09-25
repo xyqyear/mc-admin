@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.cron import crud
 from app.cron.manager import CronManager
-from app.cron.registry import CronRegistry, cron_registry
+from app.cron.models import CronJobStatus
+from app.cron.registry import CronRegistry, get_cron_registry
+from app.db.metadata import Base
 from app.dynamic_config.schemas import BaseConfigSchema
-from app.models import Base, CronJobStatus
+from tests.support.runtime import set_runtime_resource
 
 
 class SystemCronParams(BaseConfigSchema):
@@ -20,7 +22,7 @@ async def system_test_job(context) -> None:
 
 
 def test_self_check_system_cron_defaults_to_hourly() -> None:
-    registration = cron_registry.get_cronjob("self_check")
+    registration = get_cron_registry().get_cronjob("self_check")
 
     assert registration is not None
     assert registration.is_system is True
@@ -76,9 +78,8 @@ async def test_system_cronjob_created_and_protected(
         description="Other test job",
     )
 
-    import app.cron.manager as manager_module
 
-    monkeypatch.setattr(manager_module, "cron_registry", registry)
+    set_runtime_resource(monkeypatch, 'cron_registry', registry)
 
     manager = CronManager()
     await manager.initialize()
@@ -176,9 +177,8 @@ async def test_system_cronjob_repairs_invalid_params_on_startup(
             is_system=True,
         )
 
-    import app.cron.manager as manager_module
 
-    monkeypatch.setattr(manager_module, "cron_registry", registry)
+    set_runtime_resource(monkeypatch, 'cron_registry', registry)
 
     manager = CronManager()
     await manager.initialize()

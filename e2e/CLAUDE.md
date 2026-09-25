@@ -12,6 +12,7 @@ make build
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --no-reuse --seed 42
 ./bin/mc-admin-e2e coverage --require-complete --output coverage /path/to/run-one /path/to/run-two
+./bin/mc-admin-e2e browser --backend-image mc-admin:e2e -- pnpm --dir ../frontend-react test:browser
 ```
 
 Build the application image from the repository root with `docker build -t mc-admin:e2e .`. Go version and dependency checksums live in this module's `go.mod` and `go.sum`. The runtime binary needs no Go installation. `make lint` checks formatting and runs vet in the independent Static Checks push workflow. `make test` runs race-enabled framework tests with implicit vet disabled; `make check` runs both targets locally. The E2E workflow runs `make test` and `make build`; real scenarios run through the executable. Default local selection is `smoke`; CI selects `regression`, including smoke. Explicit external selections fail if required configuration or dependencies are absent.
@@ -19,6 +20,8 @@ Build the application image from the repository root with `docker build -t mc-ad
 ## Module map
 
 - `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint.
+- `cmd/mc-admin-e2e/browser.go` — owned provider wrapper for real browser/deployment commands, private fixture metadata, child-process draining and durable cleanup.
+- `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery and explicit world rollback through actual APIs.
 - `internal/engine/` — catalog, deterministic shard plan, exclusive workers and JSON/JUnit reports.
 - `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
 - `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.
@@ -27,6 +30,11 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `internal/coverage/` — deployed OpenAPI/WS operation observations, shard union and missing-case audits.
 - `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data.
 - `suites/<domain>/` — normal Go case functions, registered through `suites/catalog.go`.
+- `suites/servers/` — configuration versions, legacy mode conversions, stopped intent, real Docker startup failure and recovery, managed schedule generations, and stopped SQLite migration inputs.
+- `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes.
+- `suites/dns/` — incremental reconciliation through the real SDK and pinned MC Router, owned TLS service-edge faults, unknown/empty observations and cross-service failure isolation. Test hosts/CA changes stay inside the owned backend container; service helpers share only its private network namespace.
+- `suites/operations/` — startup handling of interrupted task/cron histories, scoped recovery permissions and cache degradation; local SQLite inputs are prepared only while the owned deployment is stopped.
+- `suites/world/` — real Restic scope/rollback including empty ranges and instance ownership, precise file conflicts, mcmap preview freshness and artifact leases; deterministic public-format inputs supplement actual Minecraft worlds.
 
 ## Rules
 

@@ -8,6 +8,7 @@ from app.players.identity_resolver import (
     resolve_player_by_name,
     resolve_player_by_uuid,
 )
+from app.runtime_resources import current_runtime
 from tests.players.helpers import make_offline_uuid, make_online_uuid
 
 
@@ -26,10 +27,7 @@ def _mock_usercache(monkeypatch, tmp_path: Path, entries) -> Path:
         json.dumps(entries),
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        "app.players.identity_resolver.docker_mc_manager.get_instance",
-        lambda server_id: _FakeInstance(data_path),
-    )
+    monkeypatch.setattr(current_runtime().resource('docker_mc_manager'), 'get_instance', lambda server_id: _FakeInstance(data_path))
     return data_path
 
 

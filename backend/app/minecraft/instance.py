@@ -8,9 +8,10 @@ import aiofiles
 import aiofiles.os as aioos
 import yaml
 
-from ..dynamic_config import config
+from ..dynamic_config import get_config
+from ..errors import log_safe_error
 from ..files.utils import get_uid_gid
-from ..logger import logger
+from ..logger import get_logger
 from ..utils import async_fs
 from ..utils.exec import exec_command
 from ..utils.system import get_process_cpu_usage
@@ -24,6 +25,12 @@ from .docker.cgroup import (
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
 from .docker.network import NetworkStats, read_container_network_stats
+from .paths import (
+    confined_server_file,
+    find_compose_file,
+    resolve_server_paths,
+    validate_server_name,
+)
 from .properties import ServerProperties
 
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -86,6 +93,7 @@ class DiskSpaceInfo:
 
 class MCInstance:
     def __init__(self, servers_path: str | Path, name: str) -> None:
+        validate_server_name(name)
         self._servers_path = Path(servers_path)
         self._name = name
         self._project_path = self._servers_path / self._name
@@ -104,28 +112,16 @@ class MCInstance:
         return self._project_path / "data"
 
     async def get_compose_file_path(self) -> Path | None:
-        candidates = [
-            self._project_path / "docker-compose.yml",
-            self._project_path / "docker-compose.yaml",
-            self._project_path / "compose.yml",
-            self._project_path / "compose.yaml",
-        ]
-
-        existence_checks = await asyncio.gather(
-            *[aioos.path.exists(path) for path in candidates], return_exceptions=True
-        )
-
-        for path, exists in zip(candidates, existence_checks):
-            if exists is True:
-                return path
-
-        return None
+        paths = await resolve_server_paths(self._servers_path, self._name)
+        return await find_compose_file(paths)
 
     def _get_server_properties_path(self) -> Path:
         return self.get_data_path() / "server.properties"
 
     async def get_server_properties(self) -> ServerProperties:
+        paths = await resolve_server_paths(self._servers_path, self._name)
         server_properties_path = self._get_server_properties_path()
+        await confined_server_file(paths.data_path, server_properties_path)
         async with aiofiles.open(server_properties_path) as f:
             server_properties_content = await f.read()
         return ServerProperties.from_server_properties(server_properties_content)
@@ -141,8 +137,8 @@ class MCInstance:
                     "服务器名称与container_name不匹配, container_name应该为mc-服务器名"
                 )
             return mc_compose.get_server_name() == self._name
-        except (yaml.YAMLError, ValueError, Exception):
-            logger.exception("Operation _verify_compose_yaml failed")
+        except Exception as exc:  # noqa: BLE001 - validation rejects input without exposing its values
+            log_safe_error(exc, "Operation _verify_compose_yaml failed")
             return False
 
     async def get_compose_file(self) -> str:
@@ -174,6 +170,7 @@ class MCInstance:
 
     async def create(self, compose_yaml: str) -> None:
         """Write a new compose file plus an empty ``data/`` dir for this server."""
+        await resolve_server_paths(self._servers_path, self._name)
         if not self._verify_compose_yaml(compose_yaml):
             raise ValueError(
                 "Invalid compose YAML or doesn't meet Minecraft server requirements"
@@ -217,23 +214,29 @@ class MCInstance:
             await file.write(compose_yaml)
 
     async def remove(self) -> None:
+        await self.get_compose_file_path()
         if await self._compose_manager.created():
             raise RuntimeError(f"Cannot remove server {self._name} while it is created")
         await async_fs.rmtree(self._project_path)
 
     async def up(self) -> None:
+        await self.get_compose_file_path()
         await self._compose_manager.up_detached()
 
     async def down(self) -> None:
+        await self.get_compose_file_path()
         await self._compose_manager.down()
 
     async def start(self) -> None:
+        await self.get_compose_file_path()
         await self._compose_manager.start()
 
     async def stop(self) -> None:
+        await self.get_compose_file_path()
         await self._compose_manager.stop()
 
     async def restart(self) -> None:
+        await self.get_compose_file_path()
         await self._compose_manager.restart()
 
     async def exists(self) -> bool:
@@ -243,15 +246,19 @@ class MCInstance:
 
     async def created(self) -> bool:
         """The container has been created but is not running."""
+        await self.get_compose_file_path()
         return await self._compose_manager.created()
 
     async def running(self) -> bool:
+        await self.get_compose_file_path()
         return await self._compose_manager.running()
 
     async def starting(self) -> bool:
+        await self.get_compose_file_path()
         return await self._compose_manager.starting("mc")
 
     async def healthy(self) -> bool:
+        await self.get_compose_file_path()
         return await self._compose_manager.healthy("mc")
 
     async def get_status(self) -> MCServerStatus:
@@ -281,6 +288,7 @@ class MCInstance:
 
     async def get_disk_space_info(self) -> DiskSpaceInfo:
         """Used/total/available bytes for the server's data dir."""
+        await resolve_server_paths(self._servers_path, self._name)
         if not await aioos.path.exists(self.get_data_path()):
             raise RuntimeError(f"Data directory does not exist for server {self._name}")
 
@@ -343,10 +351,10 @@ class MCInstance:
         if not server_properties.query_port:
             raise RuntimeError("Query port is not configured in server.properties")
 
-        query_command = config.players.query.query_command.replace(
+        query_command = get_config().players.query.query_command.replace(
             "25565", str(server_properties.query_port)
         )
-        timeout = str(config.players.query.timeout)
+        timeout = str(get_config().players.query.timeout)
 
         result = await self._compose_manager.exec(
             "mc", "timeout", timeout, "bash", "-c", query_command
@@ -368,6 +376,7 @@ class MCInstance:
 
     async def list_players(self) -> list[str]:
         """Try the query protocol first; fall back to RCON ``list``."""
+        logger = get_logger()
         try:
             return await self.list_players_query()
         except Exception as e:
@@ -400,6 +409,7 @@ class MCInstance:
 
     async def get_pid(self) -> int:
         """Locate the container's Java process PID via ``docker compose top``."""
+        await self.get_compose_file_path()
         result = await self._compose_manager.run_compose_command("top")
 
         lines = result.strip().split("\n")

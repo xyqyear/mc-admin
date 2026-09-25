@@ -143,3 +143,79 @@ func scheduledRestart(ctx context.Context, t *engine.Scope) error {
 		return fixtures.CheckFile(ctx, c, id, "/world/e2e-scheduled-restart.txt", marker)
 	})
 }
+
+func exactRestartSchedules(ctx context.Context, t *engine.Scope) error {
+	c, err := fixtures.Session(ctx, t, "owner")
+	if err != nil {
+		return err
+	}
+	first := fixtures.ServerOf(t.Env).ID
+	second := first + "2"
+	journal := environment.Get[*platform.Journal](t.Env, "journal")
+	options := environment.Get[fixtures.Options](t.Env, "options")
+	ports, err := platform.LeasePorts(ctx, journal.Docker, options.PortDirectory, 2)
+	if err != nil {
+		return err
+	}
+	t.Cleanup(func(context.Context) error { return ports.Close() })
+	if err = journal.Track(t.Env.ID, "mc-"+second, "e2e-"+t.Env.ID); err != nil {
+		return err
+	}
+	compose := fixtures.Compose(t.Env, second, fmt.Sprint(ports.Ports[0]), fmt.Sprint(ports.Ports[1]))
+	if err = c.JSON(ctx, "POST", "/api/servers/"+second, map[string]string{"yaml_content": compose}, nil, 200); err != nil {
+		return err
+	}
+	type schedule struct {
+		ID     string `json:"cronjob_id"`
+		Status string `json:"status"`
+		Cron   string `json:"cron"`
+	}
+	plans := make(map[string]schedule)
+	for _, id := range []string{first, second} {
+		var plan schedule
+		if err = c.JSON(ctx, "POST", "/api/servers/"+id+"/restart-schedule", map[string]string{"custom_cron": "0 6 1 1 *"}, &plan, 200); err != nil {
+			return err
+		}
+		plans[id] = plan
+	}
+	var custom schedule
+	if err = c.JSON(ctx, "POST", "/api/cron/", map[string]any{
+		"identifier": "restart_server", "params": map[string]string{"server_id": first},
+		"name": "custom-restart-" + first, "cron": "0 8 1 1 *",
+	}, &custom, 200); err != nil {
+		return err
+	}
+	return t.Step("prefix-similar schedules target one server and preserve independent cron jobs", func() error {
+		for _, action := range []struct{ method, suffix, cron, status string }{
+			{"GET", "", "", "active"},
+			{"POST", "", "0 9 1 1 *", "active"},
+			{"POST", "/pause", "", "paused"},
+			{"POST", "/resume", "", "active"},
+			{"DELETE", "", "", "cancelled"},
+		} {
+			var body any
+			if action.cron != "" {
+				body = map[string]string{"custom_cron": action.cron}
+			}
+			if err := c.JSON(ctx, action.method, "/api/servers/"+first+"/restart-schedule"+action.suffix, body, nil, 200); err != nil {
+				return err
+			}
+			var actual schedule
+			if err := c.JSON(ctx, "GET", "/api/servers/"+first+"/restart-schedule", nil, &actual, 200); err != nil {
+				return err
+			}
+			if actual.ID != plans[first].ID || actual.Status != action.status {
+				return fmt.Errorf("wrong managed schedule after %s%s: %+v", action.method, action.suffix, actual)
+			}
+			for _, protected := range []struct{ id, cron string }{{plans[second].ID, "0 6 1 1 *"}, {custom.ID, "0 8 1 1 *"}} {
+				if err := c.JSON(ctx, "GET", "/api/cron/"+protected.id, nil, &actual, 200); err != nil {
+					return err
+				}
+				if actual.ID != protected.id || actual.Status != "active" || actual.Cron != protected.cron {
+					return fmt.Errorf("unrelated schedule changed: %+v", actual)
+				}
+			}
+		}
+		return nil
+	})
+}

@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from ...config import settings
-from ...logger import logger
+from ...errors import log_safe_error, public_error_message
 from ...system.resources import get_disk_info
 from ..types import SelfCheckFindingResult
 from .base import (
@@ -18,14 +17,14 @@ async def check_backup_repository_usage(
     context: SelfCheckContext,
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["storage.backup_repository_usage"]
-    if settings.restic is None:
+    if context.dependencies.settings.restic is None:
         return skipped(definition, "未配置 Restic。")
 
-    repository_path = Path(settings.restic.repository_path)
+    repository_path = Path(context.dependencies.settings.restic.repository_path)
     try:
         disk = await get_disk_info(repository_path)
-    except Exception as exc:
-        logger.warning("Cannot inspect disk usage", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+        log_safe_error(exc, "Cannot inspect disk usage")
         return [
             finding(
                 check_id=definition.check_id,
@@ -34,7 +33,7 @@ async def check_backup_repository_usage(
                 status="warning",
                 title=definition.title,
                 message="无法读取备份仓库所在磁盘的使用情况。",
-                evidence={"path": str(repository_path), "error": str(exc)},
+                evidence={"path": str(repository_path), "error": public_error_message(exc)},
             )
         ]
 
@@ -67,9 +66,9 @@ async def check_server_directory_usage(
 ) -> list[SelfCheckFindingResult]:
     definition = DEFINITIONS["storage.server_directory_usage"]
     try:
-        disk = await get_disk_info(settings.server_path)
-    except Exception as exc:
-        logger.warning("Cannot inspect disk usage", exc_info=True)
+        disk = await get_disk_info(context.dependencies.settings.server_path)
+    except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+        log_safe_error(exc, "Cannot inspect disk usage")
         return [
             finding(
                 check_id=definition.check_id,
@@ -78,13 +77,13 @@ async def check_server_directory_usage(
                 status="warning",
                 title=definition.title,
                 message="无法读取服务器目录所在磁盘的使用情况。",
-                evidence={"path": str(settings.server_path), "error": str(exc)},
+                evidence={"path": str(context.dependencies.settings.server_path), "error": public_error_message(exc)},
             )
         ]
 
     percent = usage_percent(disk.used, disk.total)
     evidence = {
-        "path": str(settings.server_path),
+        "path": str(context.dependencies.settings.server_path),
         "used_bytes": int(disk.used),
         "total_bytes": int(disk.total),
         "usage_percent": percent,

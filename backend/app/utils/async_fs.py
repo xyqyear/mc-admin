@@ -16,6 +16,8 @@ from typing import IO
 
 from PIL import Image
 
+from ..operations.finalization import finalize
+
 
 async def iterdir(path: Path) -> list[Path]:
     return await asyncio.to_thread(_iterdir_sync, path)
@@ -50,7 +52,7 @@ async def resolve_inside(base: Path, candidate: Path) -> Path:
 
 
 async def touch(path: Path, *, exist_ok: bool = True) -> None:
-    await asyncio.to_thread(_touch_sync, path, exist_ok)
+    await finalize(asyncio.to_thread(_touch_sync, path, exist_ok))
 
 
 def _touch_sync(path: Path, exist_ok: bool) -> None:
@@ -58,11 +60,11 @@ def _touch_sync(path: Path, exist_ok: bool) -> None:
 
 
 async def rmtree(path: Path | str, *, ignore_errors: bool = False) -> None:
-    await asyncio.to_thread(shutil.rmtree, path, ignore_errors)
+    await finalize(asyncio.to_thread(shutil.rmtree, path, ignore_errors))
 
 
 async def copy2(src: Path | str, dst: Path | str) -> Path | str:
-    return await asyncio.to_thread(shutil.copy2, src, dst)
+    return await finalize(asyncio.to_thread(shutil.copy2, src, dst))
 
 
 async def copytree(
@@ -71,7 +73,7 @@ async def copytree(
     *,
     dirs_exist_ok: bool = False,
 ) -> Path | str:
-    return await asyncio.to_thread(_copytree_sync, src, dst, dirs_exist_ok)
+    return await finalize(asyncio.to_thread(_copytree_sync, src, dst, dirs_exist_ok))
 
 
 def _copytree_sync(src, dst, dirs_exist_ok: bool):
@@ -79,7 +81,7 @@ def _copytree_sync(src, dst, dirs_exist_ok: bool):
 
 
 async def move(src: Path | str, dst: Path | str) -> Path | str:
-    return await asyncio.to_thread(shutil.move, src, dst)
+    return await finalize(asyncio.to_thread(shutil.move, src, dst))
 
 
 async def disk_usage(path: Path | str) -> shutil._ntuple_diskusage:
@@ -87,15 +89,15 @@ async def disk_usage(path: Path | str) -> shutil._ntuple_diskusage:
 
 
 async def copyfileobj(src: IO[bytes], dst: IO[bytes], length: int = 16 * 1024) -> None:
-    await asyncio.to_thread(shutil.copyfileobj, src, dst, length)
+    await finalize(asyncio.to_thread(shutil.copyfileobj, src, dst, length))
 
 
 async def chown(path: Path | str, uid: int, gid: int) -> None:
-    await asyncio.to_thread(os.chown, path, uid, gid)
+    await finalize(asyncio.to_thread(os.chown, path, uid, gid))
 
 
 async def chmod(path: Path | str, mode: int) -> None:
-    await asyncio.to_thread(os.chmod, path, mode)
+    await finalize(asyncio.to_thread(os.chmod, path, mode))
 
 
 async def extract_skin_avatar(skin_bytes: bytes) -> bytes:

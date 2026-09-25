@@ -3,7 +3,6 @@
 from .heartbeat import get_heartbeat, upsert_heartbeat
 from .player import (
     get_all_player_names_with_ids,
-    get_or_add_player_by_name,
     get_player_by_db_id,
     get_player_by_name,
     get_player_by_uuid,
@@ -46,7 +45,6 @@ __all__ = [
     "get_heartbeat",
     "get_online_player_names_on_server",
     "get_online_players_with_names_grouped_by_server",
-    "get_or_add_player_by_name",
     # Player Session
     "get_or_create_session",
     "get_player_by_db_id",

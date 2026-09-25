@@ -285,6 +285,30 @@ func auditRedaction(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
+	if err = t.Step("application and SQL logs exclude submitted credentials", func() error {
+		backend := fixtures.BackendOf(t.Env)
+		containerLogs, err := backend.Docker.Run(ctx, "logs", backend.Name)
+		if err != nil {
+			return err
+		}
+		applicationLog, err := os.ReadFile(filepath.Join(t.Env.Dir, "logs", "app.log"))
+		if err != nil {
+			return err
+		}
+		for _, output := range []string{containerLogs, string(applicationLog)} {
+			if strings.TrimSpace(output) == "" {
+				return fmt.Errorf("application log is empty")
+			}
+			for _, credential := range []string{secret, accessID, backend.Password, backend.Master} {
+				if strings.Contains(output, credential) {
+					return fmt.Errorf("application or SQL log exposed a test credential")
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	return t.Step("audit masks login, user and provider fields; nested extras exercise middleware recursion", func() error {
 		return api.Wait(ctx, 100*time.Millisecond, "audit entries flushed", func(context.Context) (bool, error) {
 			data, err := os.ReadFile(filepath.Join(t.Env.Dir, "logs", "operations.log"))

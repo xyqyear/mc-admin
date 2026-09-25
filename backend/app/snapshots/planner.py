@@ -44,7 +44,17 @@ class FileStep:
     includes: tuple[str, ...]
 
 
-RestoreStep = DirStep | FileStep
+@dataclass(frozen=True)
+class EmptyStep:
+    original: DirStep | FileStep
+    ignored: tuple[Path, ...]
+
+    @property
+    def source_dir(self) -> Path:
+        return self.original.source_dir
+
+
+RestoreStep = DirStep | FileStep | EmptyStep
 
 
 @dataclass(frozen=True)
@@ -95,28 +105,30 @@ async def build_restore_plan(
 
     dir_targets: list[Path] = []
     file_groups: dict[Path, list[str]] = {}
+    empty_parents: set[Path] = set()
     for parent in sorted(by_parent):
         nodes = await client.ls(snapshot_id, parent)
         if not nodes:
             continue
+        if not any(nodes.get(target) is NodeKind.FILE for target in by_parent[parent]):
+            empty_parents.add(parent)
         for target in by_parent[parent]:
             if nodes.get(target) is NodeKind.DIR:
                 dir_targets.append(target)
             else:
                 file_groups.setdefault(parent, []).append(target.name)
 
-    steps: list[RestoreStep] = [
-        DirStep(
+    steps: list[RestoreStep] = []
+    for target in sorted(dir_targets):
+        directory = DirStep(
             source_dir=target,
             excludes=tuple(subtree_excludes(target, ignored)),
         )
-        for target in sorted(dir_targets)
-    ]
+        nodes = await client.ls(snapshot_id, target)
+        steps.append(EmptyStep(directory, tuple(ignored)) if nodes == {target: NodeKind.DIR} else directory)
     steps.extend(
-        FileStep(
-            source_dir=parent,
-            includes=tuple(f"/{name}" for name in sorted(names)),
-        )
+        EmptyStep(files, tuple(ignored)) if parent in empty_parents else files
         for parent, names in sorted(file_groups.items())
+        for files in [FileStep(source_dir=parent, includes=tuple(f"/{name}" for name in sorted(names)))]
     )
     return RestorePlan(snapshot_id=snapshot_id, steps=tuple(steps))

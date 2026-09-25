@@ -9,7 +9,7 @@ statistics from /proc/{PID}/net/dev for Docker containers.
 import aiofiles
 from pydantic import BaseModel
 
-from ...logger import logger
+from ...logger import get_logger
 
 
 class NetworkInterface(BaseModel):
@@ -174,6 +174,7 @@ class NetworkStats(BaseModel):
 
 async def read_network_stats(pid: int) -> NetworkStats:
     """Read network statistics for a process by PID."""
+    logger = get_logger()
     net_dev_path = f"/proc/{pid}/net/dev"
 
     try:

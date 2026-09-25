@@ -1,5 +1,9 @@
 import asyncio
 
+from app.config import ResticSettings
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource, patch_settings
+
 """
 End-to-end tests for snapshot API endpoints using real restic commands.
 
@@ -20,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import settings
+from app.config import get_settings
 from app.main import api_app
 from app.minecraft import MCServerStatus
 from app.snapshots import ResticClient, SnapshotService
@@ -58,7 +62,7 @@ def check_restic_available():
     """Check if restic command is available"""
     try:
         result = subprocess.run(
-            [str(settings.restic_binary_path), "version"],
+            [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
             timeout=5, check=False,
@@ -246,22 +250,17 @@ def mock_snapshot_dependencies_setup(
     )
 
     with (
-        patch("app.routers.snapshots.docker_mc_manager") as mock_manager,
-        patch("app.routers.snapshots.settings") as mock_settings,
-        patch("app.routers.servers.files.docker_mc_manager") as mock_file_manager,
-        patch("app.dependencies.settings") as mock_dep_settings,
-        patch("app.routers.snapshots.config", mock_config),
-        patch("app.snapshots.service.config", mock_config),
-        patch(
-            "app.routers.snapshots.restart_scheduler.get_backup_minutes",
-            return_value=set(),
-        ),  # No backup jobs by default
-        patch("app.routers.snapshots.snapshot_service", test_snapshot_service),
+        patch_runtime_resource('docker_mc_manager') as mock_manager,
+        patch_settings() as mock_settings,
+        patch_settings() as mock_dep_settings,
+        patch_runtime_resource('dynamic_configuration', mock_config),
+        patch_runtime_resource('dynamic_configuration', mock_config),
+        patch.object(current_runtime().resource('restart_scheduler'), 'get_backup_minutes', return_value=set()),  # No backup jobs by default
+        patch_runtime_resource('snapshot_service', test_snapshot_service),
     ):
         # Mock settings for snapshots
         mock_settings.server_path = instance.base_path
-        mock_settings.restic.repository_path = str(temp_restic_repo)
-        mock_settings.restic.password = restic_password
+        mock_settings.restic = ResticSettings(repository_path=str(temp_restic_repo), password=restic_password)
 
         # Mock settings for dependencies (master token)
         mock_dep_settings.master_token = "test_master_token"
@@ -272,7 +271,6 @@ def mock_snapshot_dependencies_setup(
         # tiles after a restore — return the single test instance here so
         # the await doesn't blow up on a bare MagicMock.
         mock_manager.get_all_instances = AsyncMock(return_value=[instance])
-        mock_file_manager.get_instance.return_value = instance
 
         yield
 
@@ -315,7 +313,7 @@ class TestSnapshotEndpoints:
         }
 
         try:
-            await exec_command(str(settings.restic_binary_path), "init", env=env)
+            await exec_command(str(get_settings().restic_binary_path), "init", env=env)
         except (OSError, RuntimeError) as e:
             pytest.fail(f"Failed to initialize restic repository: {e}")
 
@@ -331,7 +329,7 @@ class TestSnapshotEndpoints:
 
         try:
             await exec_command(
-                str(settings.restic_binary_path),
+                str(get_settings().restic_binary_path),
                 "init",
                 "--insecure-no-password",
                 env=env,
@@ -700,16 +698,16 @@ class TestSnapshotEndpoints:
             assert invalid_restore_response.status_code == 200
             events = _parse_sse_events(invalid_restore_response)
             assert events[-1].get("event_type") == "error"
-            assert "invalid" in events[-1].get("message", "").lower()
+            assert "invalid-snapshot-id" not in events[-1].get("message", "")
+            assert events[-1].get("message")
 
-            # Test preview with invalid snapshot ID — restic raises RuntimeError
-            # which the global handler converts to 500.
-            with pytest.raises(RuntimeError):
-                client.post(
-                    "/snapshots/restore/preview",
-                    headers={"Authorization": "Bearer test_master_token"},
-                    json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
-                )
+            preview = client.post(
+                "/snapshots/restore/preview",
+                headers={"Authorization": "Bearer test_master_token"},
+                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
+            )
+            assert preview.status_code == 500
+            assert preview.json()["detail"] == "服务器内部错误，请稍后重试"
 
     @pytest.mark.asyncio
     async def test_unauthorized_access(
@@ -1382,7 +1380,7 @@ class TestIgnoredPathsEndpoints:
             "RESTIC_REPOSITORY": str(temp_restic_repo),
             "RESTIC_PASSWORD": "test-password",
         }
-        await exec_command(str(settings.restic_binary_path), "init", env=env)
+        await exec_command(str(get_settings().restic_binary_path), "init", env=env)
         return temp_restic_repo
 
     def _auth(self):
@@ -1687,7 +1685,7 @@ class TestPathContainmentEndpoints:
             "RESTIC_REPOSITORY": str(temp_restic_repo),
             "RESTIC_PASSWORD": "test-password",
         }
-        await exec_command(str(settings.restic_binary_path), "init", env=env)
+        await exec_command(str(get_settings().restic_binary_path), "init", env=env)
         return temp_restic_repo
 
     def _auth(self):
@@ -1743,17 +1741,14 @@ class TestPathContainmentEndpoints:
         outside.mkdir(exist_ok=True)
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            with patch(
-                "app.routers.snapshots.docker_mc_manager.get_instance",
-                side_effect=lambda sid: MCInstance(instance.base_path, sid),
-            ):
+            with patch.object(current_runtime().resource('docker_mc_manager'), 'get_instance', side_effect=lambda sid: MCInstance(instance.base_path, sid)):
                 response = client.post(
                     "/snapshots",
                     headers=self._auth(),
                     json={"server_id": "../other"},
                 )
             assert response.status_code == 400
-            assert "越界" in response.json()["detail"]
+            assert response.json()["detail"] == "服务器名称必须是有效的单级目录名称"
 
     def test_symlink_escape_rejected(
         self, client, mock_instance, initialized_restic_repo
@@ -1787,3 +1782,5 @@ class TestPathContainmentEndpoints:
                 json={"server_id": server_id, "paths": ["/world_alias"]},
             )
             assert response.status_code == 200
+
+pytestmark = [pytestmark, pytest.mark.binary('restic')]

@@ -3,7 +3,6 @@
 Covers: empty diff, fs_only / db_only / mixed, validation errors, dry-run,
 empty-fs safety guard, and concurrent 409.
 """
-
 import asyncio
 import tempfile
 from datetime import UTC
@@ -15,10 +14,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
+from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
-from app.models import Base
+from app.runtime_resources import current_runtime
 from app.servers.crud import create_server_record
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -50,13 +51,10 @@ def _auth():
 
 
 def _set_session_cookies(client: TestClient, user):
-    from app.auth.session import (
-        AUTH_COOKIE_NAME,
-        CSRF_COOKIE_NAME,
-        create_session_token,
-    )
+    from app.auth.service import get_identity_service
+    from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME
 
-    token, csrf_token = create_session_token(user)
+    token, csrf_token = get_identity_service().create_session_token(user)
     client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
     client.cookies.set(CSRF_COOKIE_NAME, csrf_token, path="/")
     return csrf_token
@@ -87,6 +85,8 @@ async def test_db():
 
 @pytest.fixture
 def test_client(temp_server_path, test_db):
+    from app.auth.service import get_identity_service
+
     async def override_get_db():
         async with test_db() as session:
             yield session
@@ -95,40 +95,23 @@ def test_client(temp_server_path, test_db):
 
     real_mc_manager = DockerMCManager(temp_server_path)
     patches = [
-        patch("app.auth.session.get_async_session", test_db),
-        patch("app.config.settings.server_path", temp_server_path),
-        patch("app.config.settings.master_token", "test-master-token"),
-        patch("app.routers.servers.sync.docker_mc_manager", real_mc_manager),
-        patch(
-            "app.servers.lifecycle.orchestrators.docker_mc_manager",
-            real_mc_manager,
-        ),
-        patch(
-            "app.servers.lifecycle.primitives.docker_mc_manager", real_mc_manager
-        ),
-        patch("app.servers.port_utils.docker_mc_manager", real_mc_manager),
+        patch.object(get_identity_service(), "session_factory", test_db),
+        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
+        patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_runtime_resource('docker_mc_manager', real_mc_manager),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
-        patch(
-            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "app.servers.lifecycle.orchestrators.log_monitor.stop_watching",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
-            new_callable=AsyncMock,
-        ),
+        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('log_monitor'), 'stop_watching', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         patch(
             "app.servers.lifecycle.orchestrators.close_open_sessions",
             new_callable=AsyncMock,
             return_value=0,
         ),
-        patch(
-            "app.routers.servers.sync.simple_dns_manager.update",
-            new_callable=AsyncMock,
-        ),
+        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         patch(
             "app.minecraft.docker.manager.ComposeManager.created",
             new_callable=AsyncMock,
@@ -301,8 +284,9 @@ class TestSyncOwnerOnly:
 
         from datetime import datetime
 
-        from app.auth.session import CSRF_HEADER_NAME, user_to_public
-        from app.models import User, UserRole
+        from app.auth.models import User, UserRole
+        from app.auth.service import user_to_public
+        from app.auth.session import CSRF_HEADER_NAME
 
         async with _db() as session:
             user = User(

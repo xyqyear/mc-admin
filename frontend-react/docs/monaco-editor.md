@@ -2,6 +2,8 @@
 
 Monaco is the code editor for compose YAML, server config files, file-edit dialogs, and the template/server diff viewers. It runs as four web workers (editor, json, ts, css/html) plus a custom YAML worker, all wired in `main.tsx`. SNBT (Minecraft NBT serialized as text) is registered as a custom Monaco language so NBT data files open with proper tokenization.
 
+`MonacoDiffEditor` displays the supplied original/modified labels above its two panes and never logs source text. Configuration conflict comparison uses two explicitly sized diffs for baseline versus remote and remote versus draft, so both comparisons remain readable without overlapping.
+
 ## Worker setup
 
 `main.tsx` calls `MonacoEnvironment.getWorker(_, label)` and returns the right worker URL per label. The custom YAML worker is `yaml.worker.js` (loaded via Vite's `?worker` import), which monaco-yaml uses for schema validation.
@@ -30,12 +32,12 @@ Both are loaded as `fileMatch: ['*.yaml', '*.yml']`. The hints schema is project
 
 ## SNBT language
 
-`config/snbtLanguage.ts` exports two objects:
+`shared/editors/snbtLanguage.ts` exports two objects:
 
 - `snbtLanguageDefinition` — Monarch tokenizer rules covering numbers, strings, identifiers, brackets, the `1L` / `1.0f` numeric suffixes
 - `snbtLanguageConfiguration` — bracket pairs, comment rules, surrounding-pair config
 
-Registered once in `main.tsx` via `monaco.languages.register({ id: 'snbt' })` + `setMonarchTokensProvider`. `utils/fileLanguageDetector.ts` returns `'snbt'` for `.dat` / `.snbt` extensions, which `FileEditModal` passes to Monaco.
+Registered once in `main.tsx` via `monaco.languages.register({ id: 'snbt' })` + `setMonarchTokensProvider`. `features/files/languageDetection.ts` returns `'snbt'` for `.dat` / `.snbt` extensions, which `FileEditModal` passes to Monaco.
 
 ## Diff viewer
 
@@ -43,14 +45,14 @@ The compose-diff use cases (template change preview, file conflict resolution, m
 
 ## Components
 
-- `components/editors/ComposeYamlEditor.tsx` — the standard YAML editor (used in compose page, template editor)
-- `components/editors/SimpleEditor.tsx` — generic editor for arbitrary file content
-- `components/editors/MonacoDiffEditor.tsx` — diff viewer
+- `shared/editors/ComposeYamlEditor.tsx` — the standard YAML editor (used in compose page, template editor)
+- `shared/editors/SimpleEditor.tsx` — generic editor for arbitrary file content
+- `shared/editors/MonacoDiffEditor.tsx` — diff viewer
 
 ## Files
 
 - `src/main.tsx` — worker registration + SNBT language registration
 - `src/yaml.worker.js` — custom YAML worker (monaco-yaml)
-- `src/config/snbtLanguage.ts` — SNBT language definition
-- `src/utils/fileLanguageDetector.ts` — extension → Monaco language id mapping
+- `src/shared/editors/snbtLanguage.ts` — SNBT language definition
+- `src/features/files/languageDetection.ts` — extension → Monaco language id mapping
 - `public/static/mc-server-compose-schema.json` — docker-minecraft-server compose hints

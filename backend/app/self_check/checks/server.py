@@ -4,8 +4,8 @@ from pathlib import Path
 
 import aiofiles
 
-from ...logger import logger
-from ...minecraft import MCServerStatus, docker_mc_manager
+from ...errors import log_safe_error, public_error_message
+from ...minecraft import MCServerStatus
 from ...minecraft.game_port import get_game_port_mapping, get_properties_game_port
 from ..jar_metadata import extract_jar_metadata, normalize_jar_id
 from ..types import SelfCheckFindingResult
@@ -65,7 +65,7 @@ async def check_backup_mod_removed(
 
     findings: list[SelfCheckFindingResult] = []
     for server in active_servers:
-        data_path = docker_mc_manager.get_instance(server.server_id).get_data_path()
+        data_path = context.dependencies.minecraft.get_instance(server.server_id).get_data_path()
         matches = await asyncio.to_thread(
             find_backup_jars_sync,
             data_path,
@@ -121,9 +121,9 @@ async def check_filesystem_db_sync(
     for server_id in fs_only:
         try:
             await validate_adoption(context.db, server_id)
-        except Exception as exc:
-            logger.warning("Cannot preview adoption of %s", server_id, exc_info=True)
-            adoption_errors.append({"server_id": server_id, "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+            log_safe_error(exc, "Cannot preview server adoption")
+            adoption_errors.append({"server_id": server_id, "error": public_error_message(exc)})
 
     deactivation_preview: list[dict[str, object]] = []
     for server_id in db_only:
@@ -136,9 +136,9 @@ async def check_filesystem_db_sync(
                     "open_session_count": sessions,
                 }
             )
-        except Exception as exc:
-            logger.warning("Cannot preview deactivation of %s", server_id, exc_info=True)
-            deactivation_preview.append({"server_id": server_id, "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+            log_safe_error(exc, "Cannot preview server deactivation")
+            deactivation_preview.append({"server_id": server_id, "error": public_error_message(exc)})
 
     return [
         finding(
@@ -173,7 +173,7 @@ async def check_game_port_consistency(
         remediation = []
         stage = "status"
         try:
-            instance = docker_mc_manager.get_instance(server.server_id)
+            instance = context.dependencies.minecraft.get_instance(server.server_id)
             status = await instance.get_status()
             if status == MCServerStatus.STARTING:
                 severity, finding_status = "info", "skipped"
@@ -216,8 +216,8 @@ async def check_game_port_consistency(
                                 "请修改 Compose 并重建容器，普通重启不会应用新的环境变量。"
                             ),
                         ]
-        except Exception as exc:
-            logger.warning("Game port check failed for %s at %s", server.server_id, stage, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - report this failed check and continue the remaining checks
+            log_safe_error(exc, f"Game port check failed at {stage}")
             severity, finding_status = "warning", "failed"
             evidence["error_stage"] = stage
             evidence["error_type"] = type(exc).__name__

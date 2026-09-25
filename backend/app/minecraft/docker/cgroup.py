@@ -9,8 +9,8 @@ for Docker containers, including memory usage and block I/O statistics.
 import aiofiles
 from pydantic import BaseModel
 
-from ...config import settings
-from ...logger import logger
+from ...config import get_settings
+from ...logger import get_logger
 
 
 class MemoryStats(BaseModel):
@@ -166,6 +166,8 @@ class CGroupStats(BaseModel):
 
 async def read_memory_stats(container_id: str) -> MemoryStats:
     """Read memory statistics for a Docker container."""
+    settings = get_settings()
+    logger = get_logger()
     memory_stat_path = (
         settings.cgroup_path / f"system.slice/docker-{container_id}.scope/memory.stat"
     )
@@ -185,6 +187,8 @@ async def read_memory_stats(container_id: str) -> MemoryStats:
 
 async def read_block_io_stats(container_id: str) -> BlockIOStats:
     """Read block I/O statistics for a Docker container."""
+    settings = get_settings()
+    logger = get_logger()
     io_stat_path = (
         settings.cgroup_path / f"system.slice/docker-{container_id}.scope/io.stat"
     )

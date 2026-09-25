@@ -19,11 +19,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, Player, PlayerSession, Server
+from app.db.metadata import Base
 from app.players.crud.query.player_query import (
     get_all_players_summary,
     get_player_last_seen,
 )
+from app.players.models import Player, PlayerSession
+from app.servers.models import Server
 
 
 async def create_test_db():

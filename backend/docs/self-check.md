@@ -7,7 +7,7 @@ runner.
 
 ## Runtime Flow
 
-`run_self_check(trigger, requested_by_user_id?)` creates one run context, loads
+`SelfCheckService.run_self_check(trigger, requested_by_user_id?)` creates one run context, loads
 dynamic config at execution time, and executes checks whose boolean toggles are
 enabled in a fixed catalog order. Each check returns one or more
 `SelfCheckFindingResult` objects.
@@ -21,9 +21,22 @@ the UI can show complete healthy and unhealthy histories. Retention defaults to
 14 days.
 
 Built-in checks are grouped by operational category under
-`app.self_check.checks`. `runner.py` owns execution order, streaming, persistence,
+`app.self_check.checks`. `service.py` owns execution order, streaming, persistence,
 and error isolation; category modules own the actual check implementations and
 their `CheckDefinition` metadata.
+
+The runtime constructs the service with an actual database session factory,
+notification bus and `SelfCheckDependencies`. The context receives the owning
+settings, current configuration view, Minecraft manager, snapshot adapter,
+connectivity service, log monitor and operation locks. Each run reads current
+configuration, while the dependencies and retained history stay with their
+installation even if a different runtime is bound by the caller. The run lock
+belongs to the service instance.
+
+Adapter and notification errors use safe public messages and diagnostics that
+exclude exception values. A failed check preserves its finding and allows
+subsequent checks to execute. Notification sinks fail independently; their
+failure does not discard persisted findings or prevent delivery to other sinks.
 
 The current health state is derived from retained runs instead of stored in a
 separate state table. The latest full run is the baseline, and the latest
@@ -84,6 +97,12 @@ config.
 The two lock checks are informational. Servers newer than the configured
 snapshot freshness window do not produce backup coverage warnings before their
 first snapshot has had time to run.
+
+`dns.drift` consumes the connectivity observation rather than private provider
+clients. Unknown provider/router/server state produces a warning with explicit
+known-state flags and safe issues. An empty desired state is skipped and retains
+the documented no-deletion policy; it is not reported as a verified empty remote
+state. Known differences retain their separate DNS and route counts.
 
 `server.backup_mod_removed` scans `mods/*.jar` and `plugins/*.jar`. It reads jar
 metadata IDs from Fabric JSON (`id`), Quilt JSON (`quilt_loader.id`), Forge/NeoForge TOML, legacy Forge
@@ -152,7 +171,7 @@ not affect the self-check result.
 
 - `constants.py` — check IDs and trigger names
 - `types.py` — run, finding, catalog, event, and history response models
-- `runner.py` — catalog access, validation, event streaming, persistence, and notification publishing
+- `service.py` — owned catalog, validation, check isolation, event streaming, persistence and notifications
 - `checks/base.py` — shared check context, definition, and finding helpers
 - `checks/<category>.py` — built-in check implementations grouped by catalog category
 - `jar_metadata.py` — jar metadata ID extraction for Mod/plugin detection

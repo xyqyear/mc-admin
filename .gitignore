@@ -11,3 +11,9 @@
 !/.claude/skills/openspec-*/
 !/.claude/skills/openspec-*/*.md
 data
+__pycache__/
+/.e2e-runs/
+/.browser-runs/
+/candidate-artifacts/
+/e2e-artifacts/
+/backend/.test-manifests/

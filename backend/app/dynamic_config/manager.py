@@ -1,12 +1,14 @@
 """Dynamic configuration manager: in-memory cache backed by the database."""
 
 import logging
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.database import get_async_session
+from ..runtime_resources import current_runtime
 from . import crud
 from .migration import ConfigMigrator
 from .schemas import BaseConfigSchema
@@ -21,7 +23,10 @@ class ConfigRegistrationError(ValueError):
 class ConfigManager:
     """In-memory cache of registered config modules with DB persistence and schema migration."""
 
-    def __init__(self):
+    def __init__(
+        self, *, session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
+    ) -> None:
+        self.session_factory = session_factory or current_runtime().database.session_factory
         self._configs: dict[str, BaseConfigSchema] = {}
         self._schemas: dict[str, type[BaseConfigSchema]] = {}
         self._initialized = False
@@ -57,7 +62,7 @@ class ConfigManager:
 
         logger.info(f"Initializing {len(self._schemas)} configuration modules...")
 
-        async with get_async_session() as session:
+        async with self.session_factory() as session:
             existing_configs = await crud.get_all_configs(session)
 
             for module_name, schema_cls in self._schemas.items():
@@ -158,7 +163,7 @@ class ConfigManager:
                 f"Invalid configuration data for module '{module_name}': {e}"
             )
 
-        async with get_async_session() as session:
+        async with self.session_factory() as session:
             await crud.upsert_config(
                 session,
                 module_name,
@@ -218,4 +223,24 @@ class ConfigManager:
         return await self.update_config(module_name, default_data)
 
 
-config_manager = ConfigManager()
+def create_config_manager(*, session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None) -> ConfigManager:
+    from .configs.dns import DNSManagerConfig
+    from .configs.log_parser import LogParserConfig
+    from .configs.mcmap import MCMapConfig
+    from .configs.players import PlayersConfig
+    from .configs.self_check import SelfCheckConfig
+    from .configs.snapshots import SnapshotsConfig
+    from .configs.world import WorldConfig
+
+    manager = ConfigManager(session_factory=session_factory)
+    for name, schema in (
+        ("dns", DNSManagerConfig), ("snapshots", SnapshotsConfig),
+        ("log_parser", LogParserConfig), ("players", PlayersConfig),
+        ("mcmap", MCMapConfig), ("world", WorldConfig), ("self_check", SelfCheckConfig),
+    ):
+        manager.register_config(name, schema)
+    return manager
+
+
+def get_config_manager() -> ConfigManager:
+    return current_runtime().resource('config_manager')

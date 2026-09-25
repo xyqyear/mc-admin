@@ -1,11 +1,13 @@
 """CRUD operations for PlayerSession model."""
 
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models import PlayerSession
+from app.players.models import PlayerSession
 
 
 async def get_or_create_session(
@@ -25,7 +27,20 @@ async def get_or_create_session(
     Returns:
         Existing or newly created session
     """
-    # Check for existing open session
+    await session.execute(
+        insert(PlayerSession)
+        .values(
+            player_db_id=player_db_id,
+            server_db_id=server_db_id,
+            joined_at=joined_at,
+            left_at=None,
+            duration_seconds=None,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[PlayerSession.player_db_id, PlayerSession.server_db_id],
+            index_where=PlayerSession.left_at.is_(None),
+        )
+    )
     result = await session.execute(
         select(PlayerSession)
         .where(
@@ -35,24 +50,9 @@ async def get_or_create_session(
         )
         .order_by(PlayerSession.joined_at.desc())
     )
-    existing_session = result.scalar_one_or_none()
-
-    if existing_session:
-        # Reuse existing open session
-        return existing_session
-
-    # Create new session
-    new_session = PlayerSession(
-        player_db_id=player_db_id,
-        server_db_id=server_db_id,
-        joined_at=joined_at,
-        left_at=None,
-        duration_seconds=None,
-    )
-    session.add(new_session)
+    player_session = result.scalar_one()
     await session.commit()
-    await session.refresh(new_session)
-    return new_session
+    return player_session
 
 
 async def end_all_open_sessions(
@@ -84,17 +84,25 @@ async def end_all_open_sessions(
     )
     open_sessions = result.scalars().all()
 
+    return await _end_sessions(session, open_sessions, left_at)
+
+
+async def _end_sessions(
+    session: AsyncSession, open_sessions: Sequence[PlayerSession], left_at: datetime
+) -> int:
     count = 0
     for player_session in open_sessions:
         ended_at = max(left_at, player_session.joined_at)
         duration = int((ended_at - player_session.joined_at).total_seconds())
-        player_session.left_at = ended_at
-        player_session.duration_seconds = duration
-        count += 1
-
-    if count > 0:
+        result = await session.execute(
+            update(PlayerSession)
+            .where(PlayerSession.session_id == player_session.session_id, PlayerSession.left_at.is_(None))
+            .values(left_at=ended_at, duration_seconds=duration)
+            .returning(PlayerSession.session_id)
+        )
+        count += result.scalar_one_or_none() is not None
+    if open_sessions:
         await session.commit()
-
     return count
 
 
@@ -136,18 +144,7 @@ async def end_all_open_sessions_on_server(
     """
     open_sessions = await get_all_open_sessions_on_server(session, server_db_id)
 
-    count = 0
-    for player_session in open_sessions:
-        ended_at = max(left_at, player_session.joined_at)
-        duration = int((ended_at - player_session.joined_at).total_seconds())
-        player_session.left_at = ended_at
-        player_session.duration_seconds = duration
-        count += 1
-
-    if count > 0:
-        await session.commit()
-
-    return count
+    return await _end_sessions(session, open_sessions, left_at)
 
 
 async def get_online_players_with_names_grouped_by_server(
@@ -163,7 +160,8 @@ async def get_online_players_with_names_grouped_by_server(
     Returns:
         Dictionary mapping server_id to list of player names
     """
-    from ...models import Player, Server
+    from app.players.models import Player
+    from app.servers.models import Server
 
     result = await session.execute(
         select(Server.server_id, Player.current_name)
@@ -195,7 +193,7 @@ async def get_online_player_names_on_server(
     Returns:
         Set of player names currently online
     """
-    from ...models import Player
+    from app.players.models import Player
 
     result = await session.execute(
         select(Player.current_name)

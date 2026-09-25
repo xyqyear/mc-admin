@@ -6,6 +6,7 @@ from app.db import migrations
 
 from .helpers import (
     columns,
+    current_head_revision,
     has_table,
     indexes,
     run_alembic,
@@ -32,7 +33,7 @@ async def test_startup_upgrade_and_downgrade_self_check_schema(
 
     await migrations.ensure_database_schema()
 
-    assert version(db_path) == "2026090700"
+    assert version(db_path) == current_head_revision()
 
     run_alembic(db_path, "downgrade", REVISION)
     assert version(db_path) == REVISION

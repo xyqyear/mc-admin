@@ -16,24 +16,17 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import (
-    Base,
+from app.db.metadata import Base
+from app.players import get_player_service
+from app.players.crud import upsert_player
+from app.players.models import (
     Player,
     PlayerAchievement,
     PlayerChatMessage,
     PlayerSession,
-    Server,
-    ServerStatus,
 )
-from app.players.crud import upsert_player
 from app.players.skin_fetcher import SkinFetcher
-from app.players.tracking import (
-    close_server_sessions,
-    process_player_join,
-    process_player_left,
-    record_achievement,
-    record_chat_message,
-)
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
 
 # ============================================================================
@@ -95,7 +88,7 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
     """Initialize player system with mocked external dependencies."""
 
     patches = [
-        patch("app.players.tracking.get_async_session", test_database),
+        patch.object(get_player_service(), "session_factory", test_database),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
@@ -209,7 +202,7 @@ async def test_normal_flow_uuid_join_leave(player_system):
         await upsert_player(session, uuid, "Steve")
 
     # Player joins
-    await process_player_join("server1", "Steve")
+    await get_player_service().process_player_join("server1", "Steve")
 
     # Verify player is online
     player = await get_player(db, "Steve")
@@ -224,7 +217,7 @@ async def test_normal_flow_uuid_join_leave(player_system):
     assert session is not None
 
     # Player leaves
-    await process_player_left("server1", "Steve")
+    await get_player_service().process_player_left("server1", "Steve")
 
     # Verify player is offline
     assert await is_player_online(db, player.player_db_id, server_db_id) is False
@@ -244,7 +237,7 @@ async def test_server_stopping_marks_all_offline(player_system):
     for name in ["Steve", "Alex", "Bob"]:
         async with db() as session:
             await upsert_player(session, make_online_uuid(name), name)
-        await process_player_join("server1", name)
+        await get_player_service().process_player_join("server1", name)
 
     # Verify all online
     for name in ["Steve", "Alex", "Bob"]:
@@ -252,7 +245,7 @@ async def test_server_stopping_marks_all_offline(player_system):
         assert await is_player_online(db, player.player_db_id, server_db_id) is True
 
     # Server stops
-    await close_server_sessions("server1")
+    await get_player_service().close_server_sessions("server1")
 
     # Verify all offline
     for name in ["Steve", "Alex", "Bob"]:
@@ -268,7 +261,7 @@ async def test_missing_uuid_auto_fetch_from_mojang(player_system):
     server_db_id = await create_server(db, "server1")
 
     # Player joins WITHOUT prior UUID upsert - should auto-fetch from Mojang
-    await process_player_join("server1", "Steve")
+    await get_player_service().process_player_join("server1", "Steve")
 
     player = await get_player(db, "Steve")
     assert player is not None
@@ -296,13 +289,13 @@ async def test_session_duration_calculation(player_system):
 
     # Player joins
     join_time = datetime.now(UTC)
-    await process_player_join("server1", "Steve", timestamp=join_time)
+    await get_player_service().process_player_join("server1", "Steve", timestamp=join_time)
 
     player = await get_player(db, "Steve")
 
     # Player leaves after 5 minutes
     leave_time = join_time + timedelta(minutes=5)
-    await process_player_left("server1", "Steve", timestamp=leave_time)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=leave_time)
 
     # Check session duration
     async with db() as session:
@@ -327,13 +320,13 @@ async def test_multiple_sessions_recorded(player_system):
 
     # Session 1: 3 minutes
     t1 = datetime.now(UTC)
-    await process_player_join("server1", "Steve", timestamp=t1)
-    await process_player_left("server1", "Steve", timestamp=t1 + timedelta(minutes=3))
+    await get_player_service().process_player_join("server1", "Steve", timestamp=t1)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=t1 + timedelta(minutes=3))
 
     # Session 2: 7 minutes
     t2 = t1 + timedelta(minutes=10)
-    await process_player_join("server1", "Steve", timestamp=t2)
-    await process_player_left("server1", "Steve", timestamp=t2 + timedelta(minutes=7))
+    await get_player_service().process_player_join("server1", "Steve", timestamp=t2)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=t2 + timedelta(minutes=7))
 
     # Verify both sessions were recorded
     player = await get_player(db, "Steve")
@@ -364,11 +357,11 @@ async def test_server_stop_ends_sessions(player_system):
     for name in ["Steve", "Alex"]:
         async with db() as session:
             await upsert_player(session, make_online_uuid(name), name)
-        await process_player_join("server1", name, timestamp=join_time)
+        await get_player_service().process_player_join("server1", name, timestamp=join_time)
 
     # Server stops after 10 minutes
     stop_time = join_time + timedelta(minutes=10)
-    await close_server_sessions("server1", timestamp=stop_time)
+    await get_player_service().close_server_sessions("server1", timestamp=stop_time)
 
     # Check both sessions ended
     for name in ["Steve", "Alex"]:
@@ -405,14 +398,14 @@ async def test_chat_messages_recorded(player_system):
     async with db() as session:
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
-    await process_player_join("server1", "Steve")
+    await get_player_service().process_player_join("server1", "Steve")
 
     player = await get_player(db, "Steve")
 
     # Send chat messages
     messages = ["Hello world", "How are you?", "Goodbye"]
     for msg in messages:
-        await record_chat_message("server1", "Steve", msg)
+        await get_player_service().record_chat_message("server1", "Steve", msg)
 
     # Verify messages
     chat_msgs = await get_chat_messages(db, player.player_db_id)
@@ -433,11 +426,11 @@ async def test_achievements_recorded_and_deduplicated(player_system):
     player = await get_player(db, "Steve")
 
     # Earn achievements (player_name arg is the achievement text to match against)
-    await record_achievement("server1", "Steve", "Taking Inventory")
-    await record_achievement("server1", "Steve", "Getting Wood")
+    await get_player_service().record_achievement("server1", "Steve", "Taking Inventory")
+    await get_player_service().record_achievement("server1", "Steve", "Getting Wood")
 
     # Duplicate achievement (should be ignored)
-    await record_achievement("server1", "Steve", "Taking Inventory")
+    await get_player_service().record_achievement("server1", "Steve", "Taking Inventory")
 
     # Verify achievements (no duplicates)
     achievements = await get_achievements(db, player.player_db_id)
@@ -460,7 +453,7 @@ async def test_player_leave_without_join(player_system):
     await create_server(db, "server1")
 
     # Player leaves without joining (edge case)
-    await process_player_left("server1", "Steve")
+    await get_player_service().process_player_left("server1", "Steve")
 
     # Should not crash, player should be fetched from Mojang
     player = await get_player(db, "Steve")
@@ -512,10 +505,10 @@ async def test_multiple_servers_same_player(player_system):
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
     # Player joins server1
-    await process_player_join("server1", "Steve")
+    await get_player_service().process_player_join("server1", "Steve")
 
     # Same player joins server2
-    await process_player_join("server2", "Steve")
+    await get_player_service().process_player_join("server2", "Steve")
 
     player = await get_player(db, "Steve")
 
@@ -524,7 +517,7 @@ async def test_multiple_servers_same_player(player_system):
     assert await is_player_online(db, player.player_db_id, server2_id) is True
 
     # Leave server1, should still be online on server2
-    await process_player_left("server1", "Steve")
+    await get_player_service().process_player_left("server1", "Steve")
 
     assert await is_player_online(db, player.player_db_id, server1_id) is False
     assert await is_player_online(db, player.player_db_id, server2_id) is True
@@ -548,8 +541,8 @@ async def test_rapid_join_leave_cycles(player_system):
         join_time = base_time + timedelta(minutes=i * 2)
         leave_time = join_time + timedelta(minutes=1)
 
-        await process_player_join("server1", "Steve", timestamp=join_time)
-        await process_player_left("server1", "Steve", timestamp=leave_time)
+        await get_player_service().process_player_join("server1", "Steve", timestamp=join_time)
+        await get_player_service().process_player_left("server1", "Steve", timestamp=leave_time)
 
     # Check session count
     async with db() as session:
@@ -578,7 +571,7 @@ async def test_concurrent_players_on_same_server(player_system):
     for name in players:
         async with db() as session:
             await upsert_player(session, make_online_uuid(name), name)
-        await process_player_join("server1", name)
+        await get_player_service().process_player_join("server1", name)
 
     # Verify all online
     for name in players:
@@ -587,7 +580,7 @@ async def test_concurrent_players_on_same_server(player_system):
 
     # Some players leave
     for name in ["Steve", "Bob"]:
-        await process_player_left("server1", name)
+        await get_player_service().process_player_left("server1", name)
 
     # Verify correct online status
     online_players = ["Alex", "Alice", "Charlie"]
@@ -642,7 +635,7 @@ async def test_player_last_seen_update(player_system):
     async with db() as session:
         await upsert_player(session, make_online_uuid("Steve"), "Steve")
 
-    await process_player_join("server1", "Steve", timestamp=time1)
+    await get_player_service().process_player_join("server1", "Steve", timestamp=time1)
 
     player = await get_player(db, "Steve")
     async with db() as session:
@@ -653,7 +646,7 @@ async def test_player_last_seen_update(player_system):
 
     # Leave 30 minutes later (realistic session duration)
     leave_time = time1 + timedelta(minutes=30)
-    await process_player_left("server1", "Steve", timestamp=leave_time)
+    await get_player_service().process_player_left("server1", "Steve", timestamp=leave_time)
 
     # After leaving, last_seen should be the left_at time
     async with db() as session:
@@ -663,7 +656,7 @@ async def test_player_last_seen_update(player_system):
 
     # Rejoin later
     time2 = time1 + timedelta(hours=1)
-    await process_player_join("server1", "Steve", timestamp=time2)
+    await get_player_service().process_player_join("server1", "Steve", timestamp=time2)
 
     # Player is online again, last_seen should be current time
     async with db() as session:
@@ -686,10 +679,10 @@ async def test_achievement_same_name_different_servers(player_system):
     player = await get_player(db, "Steve")
 
     # Same achievement on server1
-    await record_achievement("server1", "Steve", "Taking Inventory")
+    await get_player_service().record_achievement("server1", "Steve", "Taking Inventory")
 
     # Same achievement on server2
-    await record_achievement("server2", "Steve", "Taking Inventory")
+    await get_player_service().record_achievement("server2", "Steve", "Taking Inventory")
 
     # Should have 2 achievement records
     achievements = await get_achievements(db, player.player_db_id)

@@ -85,6 +85,26 @@ Long operations require observable completion: task submission must reach a succ
 
 Domain inputs include deterministic NBT/MCA/FTB assets, representative appended Minecraft log lines, and legacy SQLite states. Generated data enters the owned deployment through file APIs or standard maintenance commands; public API state, downloaded content and actual process outcomes are the assertions. Operational Alembic inspection verifies startup revision gates. These helpers do not import backend services. Real Minecraft/RCON/console scenarios independently exercise the game's runtime integration.
 
+The operations suite stops its private deployment before using Python's standard
+SQLite module to insert representative interrupted journal and cron execution
+records. It binds inputs to servers already created through the API, then
+observes normal startup, public task/cron/operation history, recovery permissions
+and resulting file contents. A configuration fingerprint mismatch and a broken
+cache directory are created only inside that environment's owned server tree.
+These cases do not simulate arbitrary process ownership or kill host processes;
+they qualify recovery of persisted interruption inputs separately from the
+subprocess cancellation tests and real adapter scenarios.
+
+Configuration cases exercise optional optimistic versions through separate
+authenticated sessions and changes to the environment's own Compose file. A
+partial-application case starts the owned server container with a harmless sleep
+executable, then submits an invalid executable through the public configuration
+API. This produces a real Docker startup failure after configuration writes
+without depending on game downloads or adding a backend fault-injection hook.
+Legacy schedule cases stop their deployment, downgrade with shipped Alembic,
+and insert representative rows using standard SQLite; assertions use public
+schedule and execution-history APIs after normal startup.
+
 Each environment captures `/api/openapi.json` from the mounted API application. `coverage` applies its server path prefix and adds the three WebSocket routes, then matches only case traces against operations. Passed 2xx/101 observations, 4xx rejection assertions and failed-case observations remain separate. Reports check immutable image/schema/catalog compatibility and complete, duplicate-free selected case/shard results. Route visitation is an inventory check, not behavioral coverage or proof of every input combination; the feature mapping describes actual assertions.
 
 ## Resource ownership and recovery

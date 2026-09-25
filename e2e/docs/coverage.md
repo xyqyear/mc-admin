@@ -1,10 +1,12 @@
 # 后端功能完整覆盖清单与 E2E 测试范围
 
-本清单将已部署后端的各个功能域映射到 `suites/catalog.go` 中具有稳定 ID 的测试用例。当前共 **64 个场景：61 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。
+本清单将已部署后端的各个功能域映射到 `suites/catalog.go` 中具有稳定 ID 的测试用例。当前共 **83 个场景：80 个常规回归用例（其中包含 13 个冒烟用例），以及 3 个需要显式选择的外部服务用例**。
 
 下表描述测试代码已经实现的断言。实际使用的镜像、运行范围、失败情况和验证结果，以[验证记录](verification.md)及各次运行的证据文件为准；用例已经实现，不等于对应部署已经验证通过。
 
 `--tag regression` 选择冒烟用例及全部常规回归用例；`--tag smoke` 选择有代表性的核心工作流。带有 `external` 标签的用例需要显式选择，不属于常规回归集。可以使用 `list` 或 `plan`，结合筛选条件查看用例目录和环境配方。
+
+真实浏览器流程和[完整持久数据部署演练](deployment-rehearsal.md)使用同一个 owned provider 包装器，单独记录结果，不计入上述 Go API 用例数。部署演练通过真实 v5.3.0 镜像生成历史数据，覆盖升级后的 ID/配置/内容保留、旧代码拒绝新 schema、完整检查点灾备，以及世界快照恢复和安全快照回滚。
 
 ## 部署、身份认证与系统行为
 
@@ -20,8 +22,12 @@
 | 动态配置模块与结构 | `system.configuration-catalog` | 检查 `dns`、`snapshots`、`players`、`log_parser`、`mcmap`、`world`、`self_check` 七个模块的目录和 Schema；拒绝不存在的模块。 |
 | 配置持久化与重置 | `system.configuration-persistence`、`system.configuration-roundtrip` | 逐个模块更新和读取配置；代表性非法值及缺少必要捕获组的日志规则被拒绝，且不覆盖原有有效配置；真实重启后保留配置及登录会话；逐个模块恢复注册默认值。已保存日志规则的实际解析还由玩家用例验证，其他运行时刷新由世界、快照、自检及外部 DNS 用例验证。 |
 | 主机指标、静态资源与参数校验 | `system.metrics-static-validation` | 检查 CPU、内存、磁盘指标为有限值、范围合理且相互一致；验证生产 HTML、单页应用路由回退、打包资源和 robots 文件；验证 API 404、结构化参数错误、匿名指标访问被拒绝及公开健康检查。 |
-| 审计日志 | `system.audit-redaction` | 执行 API 操作后读取测试部署的审计日志；核对操作者、成功与被拒绝的写操作、只读请求不被记录；正常表单登录和用户创建中的密码脱敏；在 DNS 禁用状态下通过真实配置 API 保存并读回测试 ak/sk，确认审计脱敏；嵌套额外字段验证中间件递归，同时保留普通任务与状态字段。该配置测试不访问云服务。 |
+| 审计日志 | `system.audit-redaction` | 执行 API 操作后读取测试部署的审计日志；核对操作者、成功与被拒绝的写操作、只读请求不被记录；正常表单登录和用户创建中的密码脱敏；在 DNS 禁用状态下通过真实配置 API 保存并读回测试 ak/sk，检查审计、app.log 和容器标准输出（含 SQL 日志）均不包含本次合成凭据；嵌套额外字段验证中间件递归，同时保留普通任务与状态字段。该配置测试不访问云服务。 |
+| 配置凭据及异常日志 | `system.configuration-credential-logs` | 提交含合成密码的非法/合法 Compose 与文件正文，验证失败任务不泄漏、成功保存内容不变；非法快照触发的 HTTP 500 和 SSE 异常使用安全消息；审计、app.log、容器标准输出均不含测试凭据，成功操作的正文已脱敏且审计存在。 |
 | 公共事件连接 | `system.events-handshake` | 验证带会话认证的 WebSocket 连接，以及非法回放游标触发的重置协议。实际事件产生与持久化回放由 `players.tracking-events-and-history` 验证。 |
+| 中断任务与定时执行历史 | `operations.interrupted-task-and-cron-history` | 停止独占部署后预置运行中操作/任务/定时执行记录，正常启动后通过 API 验证中断终态、原执行 ID、原消息加中断说明、非负耗时、结束时间和暂停计划保留，执行次数只增加一次且暂停计划显示未注册；再次重启不重复计数或重放、不恢复旧任务，原文件及停服意图保持。此场景验证持久中断输入的启动处理，实际子进程取消与回收由后端进程测试及相关真实工具场景承担。 |
+| 恢复权限与局部阻断 | `operations.scoped-recovery-and-permissions` | 真实 Compose 与中断记录指纹不一致时，目标服务器写入被阻断但安全读取及另一服务器仍可用；操作历史要求登录，解除要求 owner/CSRF，无 force 绕过；拒绝操作保留原数据及阻断；修复独占目录中的 Compose 后显式解除，保留操作者、历史中断结论及重启后的解除结果。 |
+| 地图缓存降级恢复 | `operations.cache-degradation-and-recovery` | 在自有服务器中使 tiles 路径为普通文件，重启时缓存清理失败可见但不冻结文件管理或新任务；移除障碍后再次重启，允许丢弃的旧缓存被清理、降级解除，世界数据保持。 |
 
 ## 模板、服务器与 Minecraft 运行行为
 
@@ -30,11 +36,18 @@
 | 模板生命周期 | `templates.lifecycle` | 验证带类型变量的模板增删改查、Schema、渲染结果、非法变量拒绝和删除效果。 |
 | 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的 Schema 与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；模板和默认变量保存时拒绝非法正则、倒置范围及不符合约束的默认值，并保持原数据；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
 | 直接创建与模板创建服务器 | `servers.template-snapshot` | 验证直接创建、重复冲突、删除后按模板重新创建；删除源模板后保留服务器的模板快照；最终删除服务器。 |
-| Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态且元数据立即一致；源模板修改或删除后，服务器快照预览与保存仍使用保留定义；显式升级采用新源模板，直接模式与模板模式转换及 Compose 持久化正确。 |
+| Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态且元数据立即一致；每次配置任务均核对停服状态及原运行意图；源模板修改或删除后，服务器快照预览与保存仍使用保留定义；显式升级采用新源模板，直接模式与模板模式转换及 Compose 持久化正确，未携带版本的既有请求仍可用。 |
+| Configuration versions | `servers.configuration-versions` | Independent editors receive the same baseline; an accepted write changes the version and stale writes receive `configuration_conflict` with the current version without overwriting content. External Compose changes invalidate a previously observed version. Legacy saves remain accepted. Extraction/conversion previews carry the observed version; mode changes version their source metadata, and stale template/direct conversions are rejected. |
+| Partial configuration failure | `servers.configuration-partial-failure-recovery` | A real owned Docker container runs a harmless sleep command, without game downloads. Applying an invalid executable fails container startup after writing configuration; task and operation history report the failure, changed content and original running intent. Unconfirmed writers block further applies; down and explicit recovery allow a versioned repair while preserving the stopped state and original failed history. This qualifies Docker lifecycle failure, not Minecraft readiness. |
 | 重启计划与创建参数校验 | `servers.restart-schedule-and-creation` | 拒绝非法创建参数组合；创建服务器时一并建立重启计划；验证计划读取、更新、暂停、恢复、取消、稳定 ID、下次执行时间和自动默认值；删除服务器时取消计划。 |
+| Restart plan generations | `servers.restart-schedule-generation` | A generic restart job with exactly the managed display name remains independent through plan mutations and backend restart. Server removal retains its existing cancellation behavior for active restart jobs. Same-name recreation has no inherited plan, refuses resumption of the retired managed binding, and creates a new plan with a new generation while preserving both cancelled rows. An explicit generic resume still permits the independent job without making it managed. |
+| Legacy restart plan migration | `servers.restart-schedule-legacy-migration` | A stopped owned database is downgraded to revision `2026092501` and seeded with standard SQLite. Startup binds a unique historical plan, retains independent jobs, and diagnoses duplicate candidates without rewriting status or execution history. Ambiguous managed operations are rejected until explicit cancellation; replacement creates a new identity and leaves unrelated plans intact. |
 | 定时任务实际重启 Minecraft | `minecraft.scheduled-restart` | 建立真实的分钟级计划并检查下次执行时间；等待执行历史完成，确认 Docker 启动时间发生变化、服务器恢复健康；通过 RCON 验证白名单与记分板数值保留，并核对世界标记文件。 |
+| 受管计划精确身份 | `minecraft.exact-restart-schedules` | 建立服务器名称前缀相似的计划及独立自定义 cron；验证 GET、更新、暂停、恢复、删除均只作用于精确归属的受管计划，其他任务保持原状。 |
 | 文件系统与数据库同步 | `servers.sync-reconciliation` | 验证仅 owner 可同步、状态一致时的试运行、真实项目目录偏差及强制执行保护；停用与接管预览不修改状态；实际应用两种转换后核对服务器清单和状态。 |
-| Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；停止后修改配置并重建，确认新配置生效且保持停止，再次启动达到健康状态；执行重启、销毁 Compose 资源和删除服务器。 |
+| 显式服务器身份 | `minecraft.explicit-server-identity` | 孤立目录及接管预览均不允许写入；owner 显式接管后才可修改；缺失项目不能覆盖 ACTIVE 记录重建，停用后恢复目录不隐式激活；再次接管保留原文件，历史合法名称及登记在重启后仍可使用。实例代次与延迟任务复检由隔离的后端并发测试验证。 |
+| 服务器路径归属 | `minecraft.server-path-boundaries` | 拒绝 dot/dot-dot 服务器名称；项目 symlink 别名、指向根目录的 data symlink 均不能读取或写入目标；修复链接后通过 API 核对原文件完整。配置根 symlink 及本项目内部 data symlink 的兼容性由后端路径测试验证。 |
+| Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；停止后修改配置并重建，确认新配置生效且保持停止，再次启动达到健康状态；手动 up/start/restart/stop/down 均核对新增唯一成功操作历史、操作者、运行意图、结束阶段及同一服务器代次，最后删除服务器。 |
 | 运行概览与配置 | `minecraft.overview`、`minecraft.rcon-and-files` | 验证聚合概览、在线玩家与资源接口、生成的世界布局、真实 RCON 输出及生成的 `server.properties`。 |
 | Docker 控制台与运行时修改 | `minecraft.console-and-runtime-controls` | 验证 CPU、内存、IO、磁盘计数，控制台历史、尺寸调整、输入和未知消息协议；通过标准输入执行修改，再用 RCON 核对效果；验证格式化消息、运行中填充服务器数据的冲突、停止与启动，以及运行中修改 Compose 内存限制后的重建效果。 |
 | 已停止、缺失与非法请求 | `minecraft.stopped-and-invalid-requests` | 验证已停止服务器的指标、RCON、消息冲突和控制台错误帧；拒绝非法命令、消息长度与字段、非法操作；检查不存在的服务器响应。 |
@@ -66,12 +79,18 @@
 | 地图初始化与渲染 | `world.map-render-and-cache` | 使用真实 Minecraft 保存的世界；验证路径校验、实际客户端资源与调色板、缓存复用与强制重新生成；并发获取 512×512 PNG 瓦片；检查过期瓦片刷新和 ETag 变化。 |
 | 领地与存档玩家位置 | `world.claims-and-player-locations` | 解析 SNBT 格式的 FTB 团队与不相连领地分组、强制加载区块、已存在或无法解析的维度、gzip 玩家 NBT 和损坏文件；验证世界与地图接口别名及动态维度标签。 |
 | 按范围恢复与回滚 | `world.scoped-restore-and-rollback` | 筛选可用快照，分别按区块、区域、维度和世界预览与恢复；预览不修改数据；精确核对地形、实体、POI 边界及额外世界根目录；执行安全回滚，检查历史分页及安全快照缺失时的拒绝行为。 |
-| 缺失目录恢复与回滚 | `world.missing-sidecars-and-rollback` | 使用非空实体和 POI 区域数据；目标缺少 sidecar 目录时，按区块、区域和维度恢复其实际内容；安全回滚重新还原目录缺失状态。 |
-| 维护边界与关闭恢复页面 | `world.disconnect-restore-and-maintenance` | 普通文件允许在线恢复，整服恢复要求停服；恢复期间维护状态可查询，启动与手动全局备份被拒绝；单服、全局定时备份记录为 `skipped`，包含跳过原因和结束时间，且不产生新快照；关闭恢复连接后历史结束、维护释放，无需重启后端即可通过安全快照回滚。 |
+| 缺失目录恢复与回滚 | `world.missing-sidecars-and-rollback` | 使用非空实体和 POI 区域数据；目标缺少 sidecar 目录时，按世界、维度、区域和区块恢复其实际内容；安全回滚重新还原目录缺失状态。 |
+| 空范围恢复与重复回滚 | `world.empty-scope-rollback` | 真实 Restic 快照包含空 region 目录；随后写入区块，按维度或所选区域恢复为空，检查未选区域和普通文件保持；安全回滚恢复原始字节，再次回滚恢复空范围，全部历史保留有效安全快照。 |
+| 维护边界与关闭恢复页面 | `world.disconnect-restore-and-maintenance` | 普通文件允许在线恢复，整服恢复要求停服；恢复期间维护状态可查询，启动、重建、删除与手动全局备份被拒绝，Compose 内容保持不变；选中区域目录内的写入、重命名、删除、创建和多文件上传被拒绝，原内容保留，但无关普通文件仍可写入和恢复；定时重启及单服、全局定时备份记录带原因和结束时间的 `skipped`，不产生新快照；关闭恢复连接后历史结束、维护释放，无需重启后端即可通过安全快照回滚。 |
+| 删除期间的写入排空 | `world.delete-waits-for-writer` | 对归属明确的真实 mcmap 写入进程施加暂停；删除冻结期间拒绝新的启动、文件写入、所有权任务和地图初始化/渲染；应用自行终止并回收写入者后删除成功，核对取消任务 ID、进程退出、任务取消终态及操作历史的先后顺序，拒绝写入者仍存活时项目已消失。 |
 | 预览会话生命周期 | `world.preview-lifecycle` | 验证真实预览 PNG、心跳续期、预览替换、范围外请求被拒绝、结束操作幂等、磁盘空间保护，以及真实后台清理器执行的过期回收。 |
 | 区块清理 | `world.chunk-prune` | 验证配置与最新状态；拒绝非法请求和运行中服务器上的不允许操作；覆盖两种预览与应用模式、多边形几何、领地保护、处理后的 Anvil 区块表，以及活跃预览任务的取消。 |
+| 清理预览有效性 | `world.prune-preview-validity` | 使用独立生成的 NBT/Anvil/SNBT 输入和真实 mcmap；世界或领地文件变化后以 `prune_preview_stale` 拒绝旧预览且不改数据；动态 TTL 自然到期返回 `prune_preview_expired`；新预览完成实际删除并保留领地区块，重复应用返回 `prune_preview_consumed`，状态保留唯一应用 ID。输入版本用于检测变化，不宣称 mcmap 接受冻结的区块清单。 |
+| 应用期间关闭预览 | `world.prune-dismiss-active` | 对归属明确的真实 mcmap apply 进程暂停；从任务中心删除已完成预览后，实际领地保护文件及其 SHA256 不变，专属状态和几何仍可读，重复应用被拒绝；恢复同一进程后应用成功且内容符合领地边界。后台重启后旧预览产物不能再次读取或应用。 |
+| 恢复记录实例归属 | `world.restoration-generation` | 真实 Restic 恢复记录绑定服务器代次；删除后同名重建仍可查看旧历史与安全快照，但旧记录显示 `generation_changed` 并以 `restoration_identity_conflict` 拒绝回滚，新实例字节保持；后台重启保留保护，新实例可用自己的代次正常恢复。 |
 | 恢复中断后的处理 | `world.interrupted-restore-recovery` | 验证操作锁冲突；在恢复记录已经持久化的执行过程中杀死测试后端；正常重启后检查中断历史，并通过安全快照回滚恢复原始字节。 |
-| 玩家跟踪、历史与公共事件 | `players.tracking-events-and-history` | 通过真实日志监听处理上线、聊天、成就和离线事件；重复成就不重复入库；验证在线列表、详情、会话、聊天、成就接口及搜索、服务器、统计周期筛选；核对数据提交后的 WebSocket 事件和重启后的游标回放。 |
+| 玩家跟踪、历史与公共事件 | `players.tracking-events-and-history` | 通过真实日志监听处理上线、聊天、成就和离线事件；重复上线/离线保留唯一开放会话和原始离线时间/时长，重复成就不重复入库；验证在线列表、详情、会话、聊天、成就接口及搜索、服务器、统计周期筛选；核对数据提交后的 WebSocket 事件和重启后的游标回放。 |
+| 重复开放会话的历史迁移 | `players.duplicate-session-migration` | 在测试独占、已停止的部署中构造旧 schema 重复开放会话；迁移先拒绝，再经离线预检及显式报告审核修复；启动后通过公开 API 核对全部历史 ID、唯一有效会话和精确总在线 180 秒，保留独立修复证据。 |
 | 身份规则与动态刷新 | `players.identity-config-and-cleanup` | 验证日志解析配置刷新、离线模式 UUID 与忽略名称规则、无法解析及非法资料请求；核对清理预览数量，选择性删除玩家及其历史，保留其他玩家，并验证重复清理的幂等性；删除最高聊天 ID 后，新聊天使用更大的 ID，重启后旧游标仍能重放新消息。 |
 | 历史数据清理与资料缓存 | `players.legacy-cleanup-and-cached-profiles` | 准备测试独占的历史离线模式 UUID 和头像缓存数据；验证资料 SSE 的规范化、去重及终态数量；核对离线身份清理预览与关联数据删除，保留在线模式 UUID 身份，并验证皮肤刷新及玩家缺失的行为。 |
 | 心跳与崩溃恢复 | `players.heartbeat-crash-recovery` | 准备过期心跳和未关闭会话；启动时正常会话按心跳时间结束，时长精确为 120 秒；晚于最后心跳加入的会话结束时间不早于加入时间，时长为 0；再次正常重启后统计保持不变。 |
@@ -85,6 +104,7 @@
 | 功能域 | 稳定用例 ID | 已实现的验证内容 |
 | --- | --- | --- |
 | 定时任务配置 | `cron.configuration-and-weekdays` | 验证任务注册表、参数 Schema、受保护的系统任务、常用数字与名称形式的星期表达式；覆盖创建、读取、更新、暂停、恢复、取消，下次执行时间、筛选及非法输入。 |
+| 调度注册与无效历史 | `cron.registration-and-invalid-history` | 停止独占部署后将 API 创建的任务改为未知类型和缺失参数；重启后列表与详情仍展示 active 期望状态及 failed 注册状态，系统任务仍正常 registered；通过公开更新修复后保留原 ID，暂停/恢复显示 inactive/registered，已注册任务重复恢复仍 409。 |
 | 调度器真实执行 | `cron.execution-and-recovery` | 定时 Restic 备份生成真实快照和执行历史；暂停后不再继续执行；重启保留任务与历史；定时自检产生可查询的持久化结果。 |
 | 自检执行、事件流与历史 | `selfcheck.execution-history-and-stream` | 完整执行与流式执行的结果包含所有注册检查项；开始与结束事件、终态结果及持久化发现一致；验证单项执行、筛选、分页、状态与重启后的持久化。 |
 | 游戏端口自检 | `selfcheck.game-port-current-state` | 对比 properties 中最终生效的端口赋值与 Compose 目标端口；制造不匹配并修复；检查当前状态替换、禁用检查项和历史保留。 |
@@ -92,11 +112,12 @@
 | 备份自检 | `selfcheck.repository-health` | 配置真实 Restic 仓库；验证服务器快照覆盖与新鲜度、仓库访问、空闲锁状态，并核对相应自检发现。 |
 | 依赖与文件系统恢复 | `selfcheck.dependency-and-filesystem-recovery` | 移除再恢复测试部署内可执行文件的执行权限，移走再恢复测试项目目录；对应检查项反映失败与恢复状态。 |
 | DNS 禁用与配置校验 | `dns.disabled-and-validation` | 覆盖全部五个 DNS 路由，验证禁用时的状态与更新行为、匿名访问拒绝、非法供应商和地址配置；不访问云服务。 |
+| DNS 受控网络边界与降级 | `dns.owned-edge-reconciliation` | 完整部署通过原始 DNSPod SDK 请求独占 HTTPS 协议服务，并使用真实固定镜像 MC Router；确认无变化零写入、单条路由 upsert、两侧 unknown 独立保留与部分更新、单目标失败后只补缺失记录、空期望和禁用保留实际状态。DNS 降级时服务器同步主操作成功，完整自检保留 warning/evidence 且其它检查继续，HTTP/自检结果/app.log/容器日志不泄漏合成上游错误。CA、hosts 与端口仅属于测试容器，不访问云账号。此用例验证网络协议边界，不替代真实供应商资格验证。 |
 | DNSPod，需要显式选择 | `dns.dnspod-reconciliation` | 使用真实供应商及测试独占的 mc-router；独立 SDK 核对每条记录的唯一性、值和 TTL；验证启用状态、无修改的差异预览、A/AAAA/SRV 创建、幂等性、配置重载、路由偏差、地址与端口变化、CNAME 转换、部分删除及启用状态下的 DNS 自检；热禁用后生命周期触发不修改云端记录。 |
 | 华为 DNS，需要显式选择 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证与 DNSPod 相同的业务约定；在发生修改之前，注册仅清理本次命名空间的云端资源回收操作。 |
 | Mojang 真实访问，需要显式选择 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
 
-DNS 供应商用例已经实现，但云端验证仍等待明确提供的专用测试域名配置。禁用 DNS 的测试或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
+DNS 供应商用例已经实现，但云端验证仍等待明确提供的专用测试域名配置。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
 
 选择供应商前，应阅读[DNS 配置、资源归属与清理约定](../suites/dns/README.md)。缺少所选供应商配置时，用例明确失败并给出可执行的错误提示，不会被标记为跳过或通过。Mojang 真实访问用例要求外部请求实际成功，仅收到“资料未解析”的响应不能通过。外部用例的实际运行结果见[验证记录](verification.md)。
 

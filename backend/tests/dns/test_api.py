@@ -2,22 +2,24 @@
 Tests for the DNS API router
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from app.auth.models import UserRole
+from app.auth.schemas import UserPublic
 from app.dns.types import ReturnRecordT
 from app.main import app
-from app.models import UserPublic, UserRole
+from tests.dns.helpers import patch_accessor
 
 
 @pytest.fixture
 def client():
     """Create test client"""
     # Mock settings to set up master token
-    with patch("app.dependencies.settings") as mock_settings:
+    with patch_accessor("app.dependencies.get_settings") as mock_settings:
         mock_settings.master_token = "test_master_token"
         yield TestClient(app, raise_server_exceptions=False)
 
@@ -38,8 +40,8 @@ async def test_update_dns_endpoint_success(client, mock_admin_user):
     from app.routers.dns import update_dns
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -64,8 +66,8 @@ async def test_update_dns_endpoint_not_initialized(client, mock_admin_user):
     from app.routers.dns import update_dns
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -92,8 +94,8 @@ async def test_update_dns_endpoint_initialization_fails(client, mock_admin_user)
     from app.routers.dns import update_dns
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -115,8 +117,8 @@ async def test_update_dns_endpoint_update_fails(client, mock_admin_user):
     from app.routers.dns import update_dns
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -135,12 +137,13 @@ async def test_update_dns_endpoint_update_fails(client, mock_admin_user):
 @pytest.mark.asyncio
 async def test_get_dns_status_success(client, mock_admin_user):
     """Test getting DNS status"""
+    from app.dns.planning import ConnectivityObservation, RouteDiff
     from app.dns.utils import RecordDiff
     from app.routers.dns import get_dns_status
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -159,8 +162,8 @@ async def test_get_dns_status_success(client, mock_admin_user):
             "routes_to_remove": {},
             "routes_to_update": {},
         }
-        dns_manager_mock.get_current_diff = AsyncMock(
-            return_value=(mock_dns_diff, mock_router_diff)
+        dns_manager_mock.observe = AsyncMock(
+            return_value=ConnectivityObservation(mock_dns_diff, RouteDiff(**mock_router_diff))
         )
 
         result = await get_dns_status(mock_admin_user)
@@ -173,13 +176,13 @@ async def test_get_dns_status_success(client, mock_admin_user):
 
 @pytest.mark.asyncio
 async def test_get_dns_status_not_initialized(client, mock_admin_user):
-    """Status delegates initialization and preserves manager errors."""
-
+    """Uninitialized provider state remains visible without inventing an empty diff."""
+    from app.dns.planning import ConnectivityObservation, RouteDiff
     from app.routers.dns import get_dns_status
 
     with (
-        patch("app.routers.dns.simple_dns_manager") as dns_manager_mock,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -188,13 +191,14 @@ async def test_get_dns_status_not_initialized(client, mock_admin_user):
 
         # Mock DNS manager - not initialized
         dns_manager_mock.is_initialized = False
-        dns_manager_mock.get_current_diff = AsyncMock(
-            side_effect=RuntimeError("DNS manager not initialized")
-        )
-
-        with pytest.raises(RuntimeError, match="DNS manager not initialized"):
-            await get_dns_status(mock_admin_user)
-        dns_manager_mock.get_current_diff.assert_awaited_once()
+        dns_manager_mock.observe = AsyncMock(return_value=ConnectivityObservation(None, RouteDiff({}, {}, {}), issues=("DNS 状态未知",)))
+        result = await get_dns_status(mock_admin_user)
+        assert result.state == "degraded"
+        assert result.dns_diff is None
+        assert not result.dns_known
+        assert result.router_known
+        assert result.issues == ["DNS 状态未知"]
+        dns_manager_mock.observe.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -204,7 +208,7 @@ async def test_update_dns_endpoint_disabled(client, mock_admin_user):
 
     from app.routers.dns import update_dns
 
-    with patch("app.routers.dns.config") as mock_config:
+    with patch_accessor("app.routers.dns.get_config") as mock_config:
         # Mock DNS config as disabled
         mock_dns_config = Mock()
         mock_dns_config.enabled = False
@@ -223,7 +227,7 @@ async def test_get_dns_enabled_true(client, mock_admin_user):
     """Test getting DNS enabled status when enabled"""
     from app.routers.dns import get_dns_enabled
 
-    with patch("app.routers.dns.config") as mock_config:
+    with patch_accessor("app.routers.dns.get_config") as mock_config:
         # Mock DNS config as enabled
         mock_dns_config = Mock()
         mock_dns_config.enabled = True
@@ -239,7 +243,7 @@ async def test_get_dns_enabled_false(client, mock_admin_user):
     """Test getting DNS enabled status when disabled"""
     from app.routers.dns import get_dns_enabled
 
-    with patch("app.routers.dns.config") as mock_config:
+    with patch_accessor("app.routers.dns.get_config") as mock_config:
         # Mock DNS config as disabled
         mock_dns_config = Mock()
         mock_dns_config.enabled = False
@@ -253,7 +257,7 @@ async def test_get_dns_enabled_false(client, mock_admin_user):
 @pytest.mark.asyncio
 async def test_dns_update_response_model():
     """Test DNSUpdateResponse model"""
-    from app.routers.dns import DNSUpdateResponse
+    from app.dns.api_models import DNSUpdateResponse
 
     # Test successful response
     response = DNSUpdateResponse(success=True, message="DNS updated successfully")
@@ -289,8 +293,8 @@ def test_dns_router_authentication_required():
 def test_get_dns_records_success(client):
     """Test DNS records endpoint success"""
     with (
-        patch("app.routers.dns.simple_dns_manager") as mock_manager,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock manager as initialized
         mock_manager.is_initialized = True
@@ -343,8 +347,8 @@ def test_get_dns_records_success(client):
 def test_get_dns_records_not_initialized(client):
     """Test DNS records endpoint when manager not initialized"""
     with (
-        patch("app.routers.dns.simple_dns_manager") as mock_manager,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock manager as not initialized
         mock_manager.is_initialized = False
@@ -373,8 +377,8 @@ def test_get_dns_records_not_initialized(client):
 def test_get_router_routes_success(client):
     """Test router routes endpoint success"""
     with (
-        patch("app.routers.dns.simple_dns_manager") as mock_manager,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -407,8 +411,8 @@ def test_get_router_routes_success(client):
 def test_get_router_routes_not_initialized(client):
     """Test router routes endpoint when manager not initialized"""
     with (
-        patch("app.routers.dns.simple_dns_manager") as mock_manager,
-        patch("app.routers.dns.config") as mock_config,
+        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
+        patch_accessor("app.routers.dns.get_config") as mock_config,
     ):
         # Mock DNS config as enabled
         mock_dns_config = Mock()
@@ -439,8 +443,8 @@ def test_get_router_routes_not_initialized(client):
 )
 def test_dns_read_failure_returns_500(client, path, method):
     with (
-        patch("app.routers.dns.simple_dns_manager") as manager,
-        patch("app.routers.dns.config") as settings,
+        patch_accessor("app.routers.dns.get_dns_manager") as manager,
+        patch_accessor("app.routers.dns.get_config") as settings,
     ):
         settings.dns.enabled = True
         operation = AsyncMock(side_effect=RuntimeError("Provider unavailable"))
@@ -450,15 +454,15 @@ def test_dns_read_failure_returns_500(client, path, method):
             headers={"Authorization": "Bearer test_master_token"},
         )
         assert response.status_code == 500
-        assert "Provider unavailable" in response.json()["detail"]
+        assert response.json()["detail"] == "服务器内部错误，请稍后重试"
         operation.assert_awaited_once()
 
 
 @pytest.mark.parametrize("path", ["status", "records", "routes"])
 def test_disabled_dns_reads_return_503_without_initialization(client, path):
     with (
-        patch("app.routers.dns.simple_dns_manager") as manager,
-        patch("app.routers.dns.config") as settings,
+        patch_accessor("app.routers.dns.get_dns_manager") as manager,
+        patch_accessor("app.routers.dns.get_config") as settings,
     ):
         settings.dns.enabled = False
         response = client.get(

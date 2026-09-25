@@ -53,8 +53,8 @@ from .types import (
 # Internal utilities for testing
 from .utils import (
     _SESSION_TIMEOUT,
-    _upload_sessions,
     get_upload_session,
+    get_upload_sessions,
 )
 
 __all__ = [
@@ -80,7 +80,6 @@ __all__ = [
     "UploadConflictResponse",
     "UploadFileResult",
     "UploadSession",
-    "_upload_sessions",
     # Multi-file operations
     "check_upload_conflicts",
     # Base operations
@@ -90,6 +89,7 @@ __all__ = [
     "get_file_items",
     # Utilities
     "get_upload_session",
+    "get_upload_sessions",
     "rename_file_or_directory",
     "restore_tree_ownership_task",
     "search_files",

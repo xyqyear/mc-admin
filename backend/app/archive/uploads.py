@@ -15,6 +15,10 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from ..files.utils import makedirs_with_ownership, set_file_ownership
+from ..operations.context import current_execution, retain_recovery_reference
+from ..operations.coordinator import ConflictPolicy
+from ..operations.finalization import finalize
+from ..runtime_resources import current_runtime
 from ..utils import async_fs
 
 ARCHIVE_UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
@@ -85,8 +89,10 @@ class ArchiveUploadSession:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
-_archive_upload_sessions: dict[str, ArchiveUploadSession] = {}
-_archive_upload_sessions_lock = asyncio.Lock()
+def get_archive_upload_sessions() -> dict[str, ArchiveUploadSession]:
+    return current_runtime().resource('archive_upload_sessions')
+def get_archive_upload_lock() -> asyncio.Lock:
+    return current_runtime().resource('archive_upload_lock')
 
 
 def _now() -> float:
@@ -132,18 +138,18 @@ async def _cleanup_expired_sessions_locked() -> None:
     now = _now()
     expired = [
         upload_id
-        for upload_id, session in _archive_upload_sessions.items()
+        for upload_id, session in get_archive_upload_sessions().items()
         if session.expires_at < now
     ]
     for upload_id in expired:
-        session = _archive_upload_sessions.pop(upload_id)
+        session = get_archive_upload_sessions().pop(upload_id)
         await _delete_upload_temp(session)
 
 
 async def _get_session(upload_id: str) -> ArchiveUploadSession:
-    async with _archive_upload_sessions_lock:
+    async with get_archive_upload_lock():
         await _cleanup_expired_sessions_locked()
-        session = _archive_upload_sessions.get(upload_id)
+        session = get_archive_upload_sessions().get(upload_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
     return session
@@ -161,6 +167,15 @@ async def _delete_upload_temp(session: ArchiveUploadSession) -> None:
         await aioos.unlink(session.temp_path)
     except FileNotFoundError:
         pass
+
+
+async def close_archive_uploads() -> None:
+    async with get_archive_upload_lock():
+        sessions = list(get_archive_upload_sessions().values())
+        get_archive_upload_sessions().clear()
+    for session in sessions:
+        async with session.lock:
+            await _delete_upload_temp(session)
 
 
 async def init_archive_upload(
@@ -206,9 +221,9 @@ async def init_archive_upload(
         expires_at=now + ARCHIVE_UPLOAD_TTL_SECONDS,
     )
 
-    async with _archive_upload_sessions_lock:
+    async with get_archive_upload_lock():
         await _cleanup_expired_sessions_locked()
-        _archive_upload_sessions[upload_id] = session
+        get_archive_upload_sessions()[upload_id] = session
 
     return ArchiveUploadInitResponse(
         upload_id=upload_id,
@@ -231,7 +246,32 @@ async def archive_upload_headers(upload_id: str) -> dict[str, str]:
         }
 
 
-async def _publish_archive_upload(session: ArchiveUploadSession) -> None:
+async def _publish_archive_upload(session: ArchiveUploadSession, *, actor_id: int | None = None) -> None:
+    from .application import STAGE_PREFIX, mutate_archive
+
+    token = session.upload_id.replace("-", "")
+    stage = session.target_dir / f"{STAGE_PREFIX}{token}.tmp"
+
+    async def publish() -> None:
+        await retain_recovery_reference("archive_stage", token)
+        try:
+            await _publish_owned_upload(session)
+        finally:
+            try:
+                await aioos.unlink(stage)
+            except FileNotFoundError:
+                pass
+            execution = current_execution()
+            if execution is not None:
+                await execution.journal.resolve_reference(execution.operation_id, "archive_stage", token)
+
+    await mutate_archive(
+        session.base_path, [session.target_path, stage], publish,
+        kind="archive_publish", actor_id=actor_id, policy=ConflictPolicy.WAIT,
+    )
+
+
+async def _publish_owned_upload(session: ArchiveUploadSession) -> None:
     if await aioos.path.exists(session.target_dir):
         if not await aioos.path.isdir(session.target_dir):
             raise HTTPException(status_code=400, detail="Target path is not a directory")
@@ -243,7 +283,9 @@ async def _publish_archive_upload(session: ArchiveUploadSession) -> None:
     if not session.allow_overwrite and await aioos.path.exists(session.target_path):
         raise HTTPException(status_code=409, detail="File already exists")
 
-    staging_path = session.target_dir / f".{session.filename}.{session.upload_id}.uploading"
+    from .application import STAGE_PREFIX
+
+    staging_path = session.target_dir / f"{STAGE_PREFIX}{session.upload_id.replace('-', '')}.tmp"
     try:
         try:
             await aioos.unlink(staging_path)
@@ -304,16 +346,18 @@ async def append_archive_upload_chunk(
         if session.size > 0 and not body:
             raise HTTPException(status_code=400, detail="Upload chunk is empty")
 
-        if body:
-            async with aiofiles.open(session.temp_path, "ab") as f:
-                await f.write(body)
-
         new_offset = upload_offset + len(body)
-        session.expires_at = _new_expiry()
         complete = new_offset == session.size
-        if complete:
-            session.state = "uploaded"
-            session.server_sha256 = None
+
+        async def append() -> None:
+            if body:
+                async with aiofiles.open(session.temp_path, "ab") as stream:
+                    await stream.write(body)
+            session.expires_at = _new_expiry()
+            if complete:
+                session.state = "uploaded"
+                session.server_sha256 = None
+        await finalize(append())
 
     return ArchiveUploadChunkResponse(
         upload_id=upload_id,
@@ -326,9 +370,9 @@ async def append_archive_upload_chunk(
 
 
 async def cancel_archive_upload(upload_id: str) -> None:
-    async with _archive_upload_sessions_lock:
+    async with get_archive_upload_lock():
         await _cleanup_expired_sessions_locked()
-        session = _archive_upload_sessions.pop(upload_id, None)
+        session = get_archive_upload_sessions().pop(upload_id, None)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
     async with session.lock:
@@ -403,7 +447,7 @@ async def iter_archive_upload_sha256_events(
 
 
 async def verify_archive_upload(
-    upload_id: str, request: ArchiveUploadVerifyRequest
+    upload_id: str, request: ArchiveUploadVerifyRequest, *, actor_id: int | None = None,
 ) -> ArchiveUploadVerifyResponse:
     session = await _get_session(upload_id)
     async with session.lock:
@@ -415,17 +459,19 @@ async def verify_archive_upload(
         client_sha256 = request.sha256.lower()
         if client_sha256 != session.server_sha256:
             await _delete_upload_temp(session)
-            async with _archive_upload_sessions_lock:
-                _archive_upload_sessions.pop(upload_id, None)
+            async with get_archive_upload_lock():
+                get_archive_upload_sessions().pop(upload_id, None)
             raise HTTPException(status_code=409, detail="SHA256 mismatch")
 
-        await _publish_archive_upload(session)
-        response = ArchiveUploadVerifyResponse(
-            upload_id=upload_id,
-            path=session.archive_path,
-            filename=session.filename,
-            sha256=session.server_sha256,
-        )
-        async with _archive_upload_sessions_lock:
-            _archive_upload_sessions.pop(upload_id, None)
-        return response
+        async def publish() -> ArchiveUploadVerifyResponse:
+            await _publish_archive_upload(session, actor_id=actor_id)
+            response = ArchiveUploadVerifyResponse(
+                upload_id=upload_id,
+                path=session.archive_path,
+                filename=session.filename,
+                sha256=client_sha256,
+            )
+            async with get_archive_upload_lock():
+                get_archive_upload_sessions().pop(upload_id, None)
+            return response
+        return await finalize(publish())

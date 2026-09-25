@@ -1,4 +1,4 @@
-# FTB Claims Overlay (`components/world-restore/claims/`)
+# FTB Claims Overlay (`features/world/layers/claims/`)
 
 A Leaflet overlay on the world-restore page that paints each FTB team's
 claimed chunks as a coloured polygon, with a faint red rect and NW→SE
@@ -139,7 +139,7 @@ a click, then re-selecting takes another.
 ## File map
 
 ```
-components/world-restore/claims/
+features/world/layers/claims/
 ├── ClaimOverlayLayer.ts   # build L.LayerGroup from teams + currentDim
 ├── ClusterPopover.tsx     # base-ui Popover anchored to clicked label
 ├── TeamClusterList.tsx    # two-level side-panel list, search + sort

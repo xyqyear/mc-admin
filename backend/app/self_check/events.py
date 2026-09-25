@@ -1,9 +1,10 @@
 """Event-triggered self-check helper."""
 
-import asyncio
 
-from ..dynamic_config import config
-from ..logger import logger
+from ..dynamic_config import get_config
+from ..errors import log_safe_error
+from ..logger import get_logger
+from ..runtime_resources import spawn_background
 from .constants import (
     SERVER_CREATED_TRIGGER,
     SERVER_POPULATED_TRIGGER,
@@ -13,10 +14,11 @@ from .constants import (
 
 
 def _enabled_for_trigger(trigger: str) -> bool:
+    logger = get_logger()
     try:
-        event_config = config.self_check.event_triggers
-    except RuntimeError as exc:
-        logger.warning("self-check event trigger skipped: %s", exc)
+        event_config = get_config().self_check.event_triggers
+    except RuntimeError:
+        logger.warning("Self-check event trigger skipped: configuration unavailable")
         return False
 
     return {
@@ -32,14 +34,14 @@ def schedule_self_check_event(trigger: str, requested_by_user_id: int | None = N
         return
 
     async def _run() -> None:
-        from .runner import run_self_check
+        from app.self_check.service import get_self_check_service
 
         try:
-            await run_self_check(
+            await get_self_check_service().run_self_check(
                 trigger=trigger,
                 requested_by_user_id=requested_by_user_id,
             )
-        except Exception as exc:
-            logger.warning("event-triggered self-check failed: %s", exc, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - optional health work must not fail its initiating operation
+            log_safe_error(exc, "Event-triggered self-check failed")
 
-    asyncio.create_task(_run())
+    spawn_background(_run(), name="event-self-check")

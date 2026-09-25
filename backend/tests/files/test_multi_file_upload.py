@@ -563,7 +563,7 @@ class TestMultiFileUpload:
         base_path.mkdir(parents=True, exist_ok=True)
 
         # Manually create an expired session
-        from app.files import _SESSION_TIMEOUT, _upload_sessions
+        from app.files import _SESSION_TIMEOUT, get_upload_sessions
 
         session_id = "expired_session"
         expired_time = time.time() - _SESSION_TIMEOUT - 100  # Expired
@@ -575,7 +575,7 @@ class TestMultiFileUpload:
             created_at=expired_time - 100,
         )
 
-        _upload_sessions[session_id] = expired_session
+        get_upload_sessions()[session_id] = expired_session
 
         # Try to get the session - should be cleaned up
         session = get_upload_session(session_id)

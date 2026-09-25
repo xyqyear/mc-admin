@@ -8,11 +8,14 @@ from pathlib import Path
 
 from aiofiles import os as aioos
 
+from ..runtime_resources import current_runtime
 from ..utils import async_fs
 from .types import UploadSession
 
+
 # Global upload session storage
-_upload_sessions: dict[str, UploadSession] = {}
+def get_upload_sessions() -> dict[str, UploadSession]:
+    return current_runtime().resource('file_upload_sessions')
 _SESSION_TIMEOUT = 3600  # 1 hour timeout
 
 
@@ -21,11 +24,11 @@ def _cleanup_expired_sessions():
     current_time = time.time()
     expired_sessions = [
         session_id
-        for session_id, session in _upload_sessions.items()
+        for session_id, session in get_upload_sessions().items()
         if session.expires_at < current_time
     ]
     for session_id in expired_sessions:
-        del _upload_sessions[session_id]
+        del get_upload_sessions()[session_id]
 
 
 def _create_session_id() -> str:
@@ -36,19 +39,19 @@ def _create_session_id() -> str:
 def get_upload_session(session_id: str) -> UploadSession | None:
     """Get upload session by ID"""
     _cleanup_expired_sessions()
-    return _upload_sessions.get(session_id)
+    return get_upload_sessions().get(session_id)
 
 
 def set_upload_session(session_id: str, session: UploadSession):
     """Store upload session"""
     _cleanup_expired_sessions()
-    _upload_sessions[session_id] = session
+    get_upload_sessions()[session_id] = session
 
 
 def remove_upload_session(session_id: str) -> bool:
     """Remove upload session, returns True if existed"""
     _cleanup_expired_sessions()
-    return _upload_sessions.pop(session_id, None) is not None
+    return get_upload_sessions().pop(session_id, None) is not None
 
 
 def create_upload_session(conflicts, reusable: bool = False) -> str:

@@ -1,20 +1,26 @@
 import asyncio
+import json
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from pathlib import Path
 
 import aiofiles.os as aioos
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.auth.schemas import UserPublic
+
 from ...dependencies import get_current_user
-from ...dynamic_config import config
-from ...logger import logger
+from ...dynamic_config import get_config
+from ...errors import log_safe_error, public_error_message
+from ...files.resources import path_claims, require_same_claims
+from ...logger import get_logger
 from ...mcmap import (
     MapStatus,
     ServerMapCache,
     discover_level_dat,
     discover_mods_dir,
-    mcmap_manager,
+    get_mcmap_manager,
     palette_is_current,
     write_palette_hash,
 )
@@ -27,17 +33,28 @@ from ...mcmap.events import (
     MCMapGenPaletteResultEvent,
     MCMapProgressEvent,
 )
-from ...minecraft import docker_mc_manager
-from ...models import UserPublic
+from ...mcmap.ownership import require_usable_cache
+from ...mcmap.types import MCMapError
+from ...minecraft import get_docker_mc_manager
+from ...operations.context import current_execution, record_phase
+from ...operations.coordinator import (
+    ResourceClaim,
+    ResourceKind,
+    get_operation_coordinator,
+)
+from ...operations.execution import operation_scope, settle_before_release
+from ...operations.finalization import finalize
+from ...operations.journal_types import OperationState
 from ...utils import async_fs
 from ...utils.sse import sse_encode, sse_response
 from ...world.region_manifest import list_region_manifest
+from .admission import admit_server_io
 
 router = APIRouter(prefix="/servers", tags=["map"])
 
 
 async def _get_data_path(server_id: str) -> Path:
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
     return instance.get_data_path()
@@ -67,7 +84,7 @@ async def _list_regions(region_dir: Path) -> list[tuple[int, int, int]]:
 async def get_status(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ) -> MapStatus:
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
@@ -78,10 +95,8 @@ async def get_status(
     try:
         compose = await instance.get_compose_obj()
         version = compose.get_game_version()
-    except Exception:
-        logger.warning(
-            "读取地图状态时无法解析服务器配置: server_id=%s", server_id, exc_info=True
-        )
+    except Exception as error:  # noqa: BLE001 - malformed configuration must not expose its values
+        log_safe_error(error, "读取地图状态时无法解析服务器配置")
         version = None
 
     palette_current = False
@@ -123,21 +138,60 @@ async def _initialize_stream(
     server_id: str,
     *,
     force: bool = False,
+    actor_id: int | None = None,
 ) -> AsyncGenerator[bytes]:
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
+    data = instance.get_data_path()
+
+    async def claims_for_cache():
+        files = await path_claims(data.parent, [data / ".mcmap"], server_id=server_id)
+        return (*files, ResourceClaim(ResourceKind.MAP_CACHE, server_id))
+
+    claims = await claims_for_cache()
+    complete: bytes | None = None
+    async with (
+        operation_scope("map_initialize", [server_id], actor_id=actor_id, claims=claims),
+        get_operation_coordinator().acquire(claims),
+        settle_before_release(),
+    ):
+        require_same_claims(claims, await claims_for_cache())
+        await require_usable_cache(server_id)
+        await record_phase("initializing_map", changed=True)
+        async with aclosing(_initialize_owned_stream(server_id, force=force)) as events:
+            async for chunk in events:
+                event = json.loads(chunk.decode().removeprefix("data: ").strip())
+                if event.get("stage") == "complete" or event.get("phase") == "error":
+                    complete = chunk
+                    if event.get("phase") == "error" and (execution := current_execution()) is not None:
+                        execution.outcome = OperationState.FAILED
+                else:
+                    yield chunk
+    if complete is not None:
+        yield complete
+
+
+async def _initialize_owned_stream(
+    server_id: str,
+    *,
+    force: bool = False,
+) -> AsyncGenerator[bytes]:
+    logger = get_logger()
+    instance = get_docker_mc_manager().get_instance(server_id)
     data_path = instance.get_data_path()
     cache = ServerMapCache(data_path=data_path)
-    await cache.ensure_dir(cache.cache_dir)
+    await async_fs.resolve_inside(data_path, cache.cache_dir)
+    await finalize(cache.ensure_dir(cache.cache_dir))
 
     if force:
         try:
-            await _clear_prerequisite_cache(cache)
+            await finalize(_clear_prerequisite_cache(cache))
         except OSError as e:
+            log_safe_error(e, "清理地图缓存失败")
             yield sse_encode(
                 {
                     "stage": "client",
                     "phase": "error",
-                    "message": f"failed to clear map prerequisites: {e}",
+                    "message": public_error_message(e),
                 }
             )
             return
@@ -145,13 +199,13 @@ async def _initialize_stream(
     try:
         compose = await instance.get_compose_obj()
         version = compose.get_game_version()
-    except Exception as e:
-        logger.exception("初始化地图时无法解析服务器配置: server_id=%s", server_id)
+    except Exception as e:  # noqa: BLE001 - configuration errors remain safe SSE failures
+        log_safe_error(e, "初始化地图时无法解析服务器配置")
         yield sse_encode(
             {
                 "stage": "client",
                 "phase": "error",
-                "message": f"failed to read compose: {e}",
+                "message": public_error_message(e),
             }
         )
         return
@@ -199,27 +253,28 @@ async def _initialize_stream(
                             }
                         )
                     elif isinstance(event, MCMapErrorEvent):
+                        log_safe_error(MCMapError(event.message), "地图客户端下载失败")
                         yield sse_encode(
                             {
                                 "stage": "client",
                                 "phase": "error",
-                                "message": event.message,
+                                "message": "地图客户端下载失败，请稍后重试",
                             }
                         )
                         return
             if proc.returncode not in (0, None):
-                stderr_text = await proc.stderr()
+                logger.error("地图客户端下载失败: exit_code=%s", proc.returncode)
                 yield sse_encode(
                     {
                         "stage": "client",
                         "phase": "error",
-                        "message": stderr_text.strip() or "download-client failed",
+                        "message": "地图客户端下载失败，请稍后重试",
                     }
                 )
                 return
-        except Exception as e:
-            logger.exception("mcmap download-client failed")
-            yield sse_encode({"stage": "client", "phase": "error", "message": str(e)})
+        except Exception as e:  # noqa: BLE001 - adapter exception values are not public output
+            log_safe_error(e, "地图客户端下载失败")
+            yield sse_encode({"stage": "client", "phase": "error", "message": public_error_message(e)})
             return
 
     # Stage 2: palette
@@ -269,7 +324,7 @@ async def _initialize_stream(
                             }
                         )
                 elif isinstance(event, MCMapGenPaletteResultEvent):
-                    await write_palette_hash(cache, version, mods_dir)
+                    await finalize(write_palette_hash(cache, version, mods_dir))
                     yield sse_encode(
                         {
                             "stage": "palette",
@@ -279,46 +334,47 @@ async def _initialize_stream(
                         }
                     )
                 elif isinstance(event, MCMapErrorEvent):
+                    log_safe_error(MCMapError(event.message), "地图调色板生成失败")
                     yield sse_encode(
                         {
                             "stage": "palette",
                             "phase": "error",
-                            "message": event.message,
+                            "message": "地图调色板生成失败，请稍后重试",
                         }
                     )
                     return
         if proc.returncode not in (0, None):
-            stderr_text = await proc.stderr()
+            logger.error("地图调色板生成失败: exit_code=%s", proc.returncode)
             yield sse_encode(
                 {
                     "stage": "palette",
                     "phase": "error",
-                    "message": stderr_text.strip() or "gen-palette failed",
+                    "message": "地图调色板生成失败，请稍后重试",
                 }
             )
             return
-    except Exception as e:
-        logger.exception("mcmap gen-palette failed")
-        yield sse_encode({"stage": "palette", "phase": "error", "message": str(e)})
+    except Exception as e:  # noqa: BLE001 - adapter exception values are not public output
+        log_safe_error(e, "地图调色板生成失败")
+        yield sse_encode({"stage": "palette", "phase": "error", "message": public_error_message(e)})
         return
 
     yield sse_encode({"stage": "complete"})
 
 
-@router.post("/{server_id}/map/initialize")
+@router.post("/{server_id}/map/initialize", dependencies=[Depends(admit_server_io)])
 async def initialize(
     server_id: str,
     force: bool = Query(False, description="Delete cached prerequisites first"),
     _: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
-    instance = docker_mc_manager.get_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    return sse_response(_initialize_stream(server_id, force=force))
+    return sse_response(_initialize_stream(server_id, force=force, actor_id=_.id))
 
 
-@router.get("/{server_id}/map/tiles/{x}/{z}.png")
+@router.get("/{server_id}/map/tiles/{x}/{z}.png", dependencies=[Depends(admit_server_io)])
 async def get_tile(
     server_id: str,
     x: int,
@@ -326,7 +382,8 @@ async def get_tile(
     region: str = Query(..., description="Region folder relative to data/"),
     _: UserPublic = Depends(get_current_user),
 ) -> FileResponse:
-    instance = docker_mc_manager.get_instance(server_id)
+    await require_usable_cache(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
@@ -339,7 +396,7 @@ async def get_tile(
         )
 
     await _resolve_region_path(data_path, region)
-    cfg = config.mcmap
+    cfg = get_config().mcmap
 
     state = await cache.is_fresh(region, x, z)
     if state == "missing_mca":
@@ -347,7 +404,7 @@ async def get_tile(
     if state == "fresh":
         return await _png_response(cache.png_path(region, x, z))
 
-    queue = mcmap_manager.get_queue(server_id, region, cache)
+    queue = get_mcmap_manager().get_queue(server_id, region, cache)
     try:
         png = await asyncio.wait_for(
             queue.request(x, z), timeout=cfg.request_timeout_seconds

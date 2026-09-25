@@ -109,9 +109,45 @@ async def test_delete_pngs_removes_existing_and_skips_missing(fake_world: Path):
         _png(fake_world, "world_creative/region/r.0.0.png"),
         _png(fake_world, "world/region/r.99.99.png"),  # never existed
     }
-    removed = await png_invalidate.delete_pngs(pngs)
+    removed = await png_invalidate.delete_pngs(pngs, data_path=fake_world)
     assert removed == 2
     assert not _png(fake_world, "world/region/r.0.0.png").exists()
     assert not _png(fake_world, "world_creative/region/r.0.0.png").exists()
     # untouched tile still there
     assert _png(fake_world, "world/DIM-1/region/r.0.0.png").exists()
+
+
+async def test_delete_pngs_reports_failure_after_invalidating_other_tiles(fake_world: Path, monkeypatch):
+    denied = _png(fake_world, "world/region/r.0.0.png")
+    accessible = _png(fake_world, "world/region/r.1.-1.png")
+    original = png_invalidate.aioos.unlink
+
+    async def unlink(path):
+        if path == denied:
+            raise PermissionError("tile is not writable")
+        await original(path)
+
+    monkeypatch.setattr(png_invalidate.aioos, "unlink", unlink)
+    with pytest.raises(ExceptionGroup) as caught:
+        await png_invalidate.delete_pngs([denied, accessible], data_path=fake_world)
+    assert len(caught.value.exceptions) == 1
+    assert isinstance(caught.value.exceptions[0], PermissionError)
+    assert denied.exists()
+    assert not accessible.exists()
+
+
+async def test_delete_pngs_rejects_cache_directory_redirected_outside_server(tmp_path: Path):
+    from app.utils.async_fs import PathOutsideBaseError
+
+    data = tmp_path / "server-data"
+    cache = data / ".mcmap"
+    cache.mkdir(parents=True)
+    external = tmp_path / "external-tiles"
+    tile = external / "world" / "region" / "r.0.0.png"
+    tile.parent.mkdir(parents=True)
+    tile.write_bytes(b"outside server")
+    (cache / "tiles").symlink_to(external, target_is_directory=True)
+    pngs = png_invalidate.pngs_for_regions(data, "world/region", [(0, 0)])
+    with pytest.raises(PathOutsideBaseError):
+        await png_invalidate.delete_pngs(pngs, data_path=data)
+    assert tile.read_bytes() == b"outside server"

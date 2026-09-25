@@ -13,19 +13,22 @@ import (
 
 func Cases(r fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "cron.registration-and-invalid-history", Suite: "cron", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: registration},
 		{ID: "cron.configuration-and-weekdays", Suite: "cron", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: configuration},
 		{ID: "cron.execution-and-recovery", Suite: "cron", Tags: []string{"regression", "restic"}, Recipe: r.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: execution},
 	}
 }
 
 type job struct {
-	ID         string `json:"cronjob_id"`
-	Identifier string `json:"identifier"`
-	Name       string `json:"name"`
-	Cron       string `json:"cron"`
-	Status     string `json:"status"`
-	System     bool   `json:"is_system"`
-	Count      int    `json:"execution_count"`
+	Registration      string  `json:"registration_status"`
+	RegistrationError *string `json:"registration_error"`
+	ID                string  `json:"cronjob_id"`
+	Identifier        string  `json:"identifier"`
+	Name              string  `json:"name"`
+	Cron              string  `json:"cron"`
+	Status            string  `json:"status"`
+	System            bool    `json:"is_system"`
+	Count             int     `json:"execution_count"`
 }
 
 func request(id, expression, second string) map[string]any {
@@ -62,7 +65,7 @@ func configuration(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "GET", "/api/cron/system:self_check", nil, &system, 200); err != nil {
 			return err
 		}
-		if !system.System || system.Status != "active" || system.Identifier != "self_check" {
+		if !system.System || system.Status != "active" || system.Identifier != "self_check" || system.Registration != "registered" || system.RegistrationError != nil {
 			return fmt.Errorf("invalid automatic self-check job")
 		}
 		for _, action := range []string{"pause", "resume"} {

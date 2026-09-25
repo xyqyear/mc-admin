@@ -1,0 +1,76 @@
+{
+  "application_source": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+  "binaries": {
+    "fd": "fd 10.3.0",
+    "mcmap": "mcmap 0.8.4",
+    "restic": "restic 0.18.0 compiled with go1.24.1 on linux/amd64"
+  },
+  "limits": "Synthetic local workloads, warm process, ASGI in-process HTTP; RSS is process-wide. Empty-region mcmap protocol only, not rendering performance. No Docker or network services.",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+  "process_peak_rss_kib": 159888,
+  "python": "3.13.7",
+  "samples": 3,
+  "workloads": {
+    "file_search": {
+      "behavior": {
+        "bytes": 1048576,
+        "files": 256
+      },
+      "median_seconds": 0.063376,
+      "seconds": [
+        0.071439,
+        0.038371,
+        0.063376
+      ]
+    },
+    "mcmap_remove_empty_chunk": {
+      "behavior": {
+        "event_types": [
+          "chunk_removed",
+          "result"
+        ],
+        "region_bytes": 8192
+      },
+      "median_seconds": 0.002092,
+      "seconds": [
+        0.002092,
+        0.001934,
+        0.00211
+      ]
+    },
+    "restic_backup_restore": {
+      "behavior": {
+        "bytes": 4194304,
+        "events": 2,
+        "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+      },
+      "median_seconds": 5.063827,
+      "seconds": [
+        4.978938,
+        5.063827,
+        5.071885
+      ]
+    },
+    "upload_hash_publish": {
+      "behavior": {
+        "bytes": 4194304,
+        "chunk_bytes": 1048576,
+        "completed_retry_status": 200,
+        "requests": 10,
+        "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e",
+        "sse_event_types": [
+          "complete",
+          "progress",
+          "start"
+        ],
+        "stale_offset_status": 409
+      },
+      "median_seconds": 0.020999,
+      "seconds": [
+        0.033076,
+        0.020999,
+        0.020125
+      ]
+    }
+  }
+}

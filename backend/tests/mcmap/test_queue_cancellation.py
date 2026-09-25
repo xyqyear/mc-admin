@@ -1,5 +1,4 @@
 """Tests for queue cancellation: refcount, pre-batch skip, mid-batch terminate."""
-
 import asyncio
 import tempfile
 from contextlib import asynccontextmanager
@@ -11,6 +10,7 @@ import pytest
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
 from app.mcmap.types import MCMapError
+from tests.support.runtime import patch_runtime_resource
 
 
 class HangingProc:
@@ -86,7 +86,7 @@ async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
 
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch("app.mcmap.queue.config") as config_mock,
+        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
         config_mock.mcmap = _mcmap_cfg()
 
@@ -124,7 +124,7 @@ async def test_last_consumer_cancel_terminates_running_subprocess(
 
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch("app.mcmap.queue.config") as config_mock,
+        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
         config_mock.mcmap = _mcmap_cfg()
 
@@ -158,7 +158,7 @@ async def test_pre_batch_cancellation_skips_render(queue_with_cache):
 
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch("app.mcmap.queue.config") as config_mock,
+        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
         config_mock.mcmap = _mcmap_cfg()
 
@@ -219,7 +219,7 @@ async def test_mid_batch_partial_cancellation_keeps_others_alive(queue_with_cach
 
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch("app.mcmap.queue.config") as config_mock,
+        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
         config_mock.mcmap = _mcmap_cfg(batch_size=4)
 

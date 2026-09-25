@@ -2,8 +2,9 @@
 
 from datetime import time
 
-from ..models import CronJobStatus
-from .instance import cron_manager
+from app.cron.models import CronJobStatus
+
+from ..runtime_resources import current_runtime
 from .manager import CronManager
 
 
@@ -43,13 +44,11 @@ class RestartScheduler:
         )
 
         restart_time_slots = set()
+        excluded_job = await self.cron_manager.get_managed_restart_schedule(exclude_server_id) if exclude_server_id else None
 
         for job in restart_jobs:
-            # Don't conflict with the very job we're rescheduling.
-            if exclude_server_id:
-                schedule_name = f"restart-{exclude_server_id}"
-                if job.name == schedule_name:
-                    continue
+            if excluded_job is not None and job.cronjob_id == excluded_job.cronjob_id:
+                continue
 
             cron_parts = job.cron.strip().split()
             if len(cron_parts) >= 2:
@@ -157,4 +156,5 @@ class RestartScheduler:
         return (hour, minute) in restart_time_slots
 
 
-restart_scheduler = RestartScheduler(cron_manager)
+def get_restart_scheduler() -> RestartScheduler:
+    return current_runtime().resource('restart_scheduler')

@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models import PlayerAchievement
+from app.players.models import PlayerAchievement
 
 
 async def upsert_achievement(

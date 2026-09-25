@@ -1,0 +1,200 @@
+import type {
+  CreateFileRequest,
+  FileContent,
+  FileListResponse,
+  OwnershipRestoreTaskResponse,
+  RenameFileRequest,
+  FileSearchRequest, FileSearchResponse, MultiFileUploadRequest, UploadConflictResponse, OverwritePolicy, MultiFileUploadResult,
+} from "@/features/files/contracts";
+import { api } from "@/shared/http/api";
+
+export const fileApi = {
+  listFiles: async (
+    serverId: string,
+    path: string = "/"
+  ): Promise<FileListResponse> => {
+    const response = await api.get(`/servers/${serverId}/files`, {
+      params: { path },
+    });
+    return response.data;
+  },
+
+  getFileContent: async (
+    serverId: string,
+    path: string
+  ): Promise<FileContent> => {
+    const response = await api.get(`/servers/${serverId}/files/content`, {
+      params: { path },
+    });
+    return response.data;
+  },
+
+  updateFileContent: async (
+    serverId: string,
+    path: string,
+    content: string
+  ): Promise<{ message: string }> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/content`,
+      { content },
+      { params: { path } }
+    );
+    return response.data;
+  },
+
+  downloadFileWithProgress: async (
+    serverId: string,
+    path: string,
+    onProgress?: (progress: { loaded: number; total: number; percent: number; speed?: number }) => void,
+    signal?: AbortSignal
+  ): Promise<Blob> => {
+    const startTime = Date.now()
+
+    const response = await api.get(`/servers/${serverId}/files/download`, {
+      params: { path },
+      responseType: "blob",
+      timeout: 3600000,
+      signal,
+      onDownloadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+
+          const currentTime = Date.now()
+          const elapsedTime = (currentTime - startTime) / 1000
+          const speed = elapsedTime > 0 ? progressEvent.loaded / elapsedTime : 0
+
+          onProgress({
+            loaded: progressEvent.loaded,
+            total: progressEvent.total,
+            percent,
+            speed,
+          })
+        }
+      },
+    });
+
+    return response.data;
+  },
+
+  createFileOrDirectory: async (
+    serverId: string,
+    createRequest: CreateFileRequest
+  ): Promise<{ message: string }> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/create`,
+      createRequest
+    );
+    return response.data;
+  },
+
+  deleteFileOrDirectory: async (
+    serverId: string,
+    path: string
+  ): Promise<{ message: string }> => {
+    const response = await api.delete(`/servers/${serverId}/files`, {
+      params: { path },
+    });
+    return response.data;
+  },
+
+  renameFileOrDirectory: async (
+    serverId: string,
+    renameRequest: RenameFileRequest
+  ): Promise<{ message: string }> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/rename`,
+      renameRequest
+    );
+    return response.data;
+  },
+
+  restoreFileOwnership: async (
+    serverId: string
+  ): Promise<OwnershipRestoreTaskResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/ownership/restore`,
+      {},
+    );
+    return response.data;
+  },
+
+  checkUploadConflicts: async (
+    serverId: string,
+    path: string,
+    uploadRequest: MultiFileUploadRequest,
+    signal?: AbortSignal
+  ): Promise<UploadConflictResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/check`,
+      uploadRequest,
+      { params: { path }, signal }
+    );
+    return response.data;
+  },
+
+  setUploadPolicy: async (
+    serverId: string,
+    sessionId: string,
+    policy: OverwritePolicy,
+    reusable: boolean = false,
+    signal?: AbortSignal
+  ): Promise<{ message: string }> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/policy`,
+      policy,
+      { params: { session_id: sessionId, reusable }, signal }
+    );
+    return response.data;
+  },
+
+  uploadFileBatch: async (
+    serverId: string,
+    sessionId: string,
+    path: string,
+    files: File[],
+    onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
+    abortSignal?: AbortSignal
+  ): Promise<MultiFileUploadResult> => {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append("files", file, file.webkitRelativePath || file.name);
+    });
+
+    const response = await api.post(
+      `/servers/${serverId}/files/upload/multiple`,
+      formData,
+      {
+        params: { session_id: sessionId, path },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 1800000,
+        signal: abortSignal,
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onProgress({
+              loaded: progressEvent.loaded,
+              total: progressEvent.total,
+              percent,
+            });
+          }
+        },
+      }
+    );
+    return response.data;
+  },
+
+  searchFiles: async (
+    serverId: string,
+    path: string = "/",
+    searchRequest: FileSearchRequest
+  ): Promise<FileSearchResponse> => {
+    const response = await api.post(
+      `/servers/${serverId}/files/search`,
+      searchRequest,
+      { params: { path } }
+    );
+    return response.data;
+  },
+};

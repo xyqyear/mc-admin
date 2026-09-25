@@ -9,7 +9,7 @@ Earlier versions read `latest.log` via HTTP polling and used `mc-send-to-console
 ## Page composition
 
 ```
-pages/server/servers/ServerConsole.tsx
+features/servers/ServerConsoleScreen.tsx
 └─ PageHeader (server state tag, start/stop/restart buttons, status line)
 └─ ServerTerminal (xterm.js viewport)
 ```
@@ -49,13 +49,14 @@ Connection states: `DISCONNECTED → CONNECTING → CONNECTED | ERROR`.
 
 ## Lifecycle
 
-- Mount → `ServerTerminal` opens xterm; `ServerConsole` connects the WebSocket after the terminal reports its size
+- Mount → `ServerTerminal` opens xterm and reports readiness; the screen connects once both terminal size and server eligibility are available, regardless of query response order
+- Server stops or information becomes unavailable → close the socket and cancel retries; connection-state changes alone do not trigger the screen's initial connection effect
 - Window resize / drawer toggle → `term.fit()` → `sendResize(rows, cols)`
 - Keyboard input → xterm `onData` → `sendInput(data)`
 - Unmount → dispose terminal resources, close WebSocket, and clear retry timer
 
 ## Files
 
-- `pages/server/servers/ServerConsole.tsx`
-- `components/server/ServerTerminal.tsx`
-- `hooks/useServerConsoleWebSocket.ts`
+- `features/servers/ServerConsoleScreen.tsx`
+- `features/servers/ui/ServerTerminal.tsx`
+- `features/servers/useServerConsoleWebSocket.ts`

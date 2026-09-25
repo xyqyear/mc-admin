@@ -7,7 +7,13 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models import Player, PlayerAchievement, PlayerChatMessage, PlayerSession
+from app.players.models import (
+    Player,
+    PlayerAchievement,
+    PlayerChatMessage,
+    PlayerSession,
+)
+
 from ..identity_resolver import is_online_uuid
 from ..name_filters import get_ignored_name_prefixes, is_ignored_player_name
 from .query.player_query import _get_last_seen_expression

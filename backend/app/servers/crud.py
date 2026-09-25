@@ -3,9 +3,12 @@
 from datetime import datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Server, ServerStatus
+from app.servers.models import Server, ServerStatus
+
+from ..minecraft.paths import validate_server_name
 
 
 async def get_active_servers(session: AsyncSession) -> list[Server]:
@@ -135,6 +138,7 @@ async def create_server_record(
     Raises:
         ValueError: If an active server with the same server_id already exists
     """
+    validate_server_name(server_id)
     result = await session.execute(
         select(Server).where(
             Server.server_id == server_id, Server.status == ServerStatus.ACTIVE
@@ -154,6 +158,12 @@ async def create_server_record(
     )
     session.add(server)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        if await get_active_server_by_id(session, server_id) is not None:
+            raise ValueError(f"服务器 '{server_id}' 已存在") from None
+        raise
     await session.refresh(server)
     return server

@@ -1,4 +1,4 @@
-# Player Locations Overlay (`components/world-restore/players/`)
+# Player Locations Overlay (`features/world/layers/players/`)
 
 The world-restore page shows saved player positions from mcmap as both a
 sidebar tab and a translucent Leaflet overlay. Locations are last-saved player
@@ -7,7 +7,7 @@ file positions, not live online positions.
 ## Data Flow
 
 ```
-useWorldRestorePlayerLocations(serverId, mapInitialized)
+useWorldPlayerLocations(serverId, mapInitialized)
         |
         v
 PlayerLocationsResponse.players[] --> usePlayerMapProfiles(uuids) --> POST /players/profiles/stream
@@ -26,8 +26,8 @@ Location extraction is one request for the server/world. Profile resolution is
 one SSE request for the normalized UUID set, deduplicated by
 `usePlayerMapProfiles`. The stream emits cached profiles immediately, then
 fills in missing names and avatars as Mojang lookups complete. Each profile
-event also primes the matching TanStack Query cache entry keyed by normalized
-UUID.
+event writes the matching TanStack Query cache entry keyed by normalized
+UUID. Map and individual-profile consumers observe that same entry; disabling the stream does not detach cache updates. Stream progress/error remains local, without a second mutable profile store.
 
 ## Sidebar
 

@@ -11,9 +11,14 @@
     "build": "pnpm typecheck && pnpm build:bundle",
     "build:bundle": "vite build",
     "typecheck": "tsc -b",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 && pnpm check:boundaries",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "pnpm test:architecture && vitest run",
+    "test:browser": "playwright test",
+    "check:boundaries": "node scripts/check-import-boundaries.mjs",
+    "test:architecture": "node --test scripts/architecture.test.mjs",
+    "generate:contracts": "node scripts/generate-user-contracts.mjs",
+    "check:contracts": "node scripts/generate-user-contracts.mjs --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -56,6 +61,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.3",
@@ -68,6 +74,8 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "jsdom": "^30.0.1",
+    "msw": "^2.15.0",
+    "openapi-typescript": "^7.13.0",
     "shadcn": "^4.10.0",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.3",

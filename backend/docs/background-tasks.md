@@ -1,75 +1,117 @@
-# Background Tasks (`app.background_tasks`)
+# Background tasks
 
-In-memory async-task manager for long-running operations the user wants to track. Used for archive compression / extraction, server populate, server rebuild, file ownership repair, and the world-restore flows that stage data before a restore. Not persisted — restarting the backend cancels everything in flight, by design.
-
-## Why generators, not coroutines
-
-Long operations need to report incremental progress to the UI. A coroutine that returns a final result can't do that without callbacks. An async generator that yields `TaskProgress` is the natural shape: each `yield` is a progress update; the last yield (or `return result`) is the terminal value.
+The runtime owns a `BackgroundTaskManager` and a durable operation journal.
+Archive compression, server population, rebuild, file ownership repair and chunk
+prune submit async generators through `await task_manager.submit_durable(...)`.
+The journal commits acceptance before returning the task ID. The synchronous
+`submit(...)` remains a compatibility entry point for isolated callers without a
+journal; production routes use durable submission.
 
 ```python
-from app.background_tasks import task_manager, TaskType, TaskProgress
+async def my_operation() -> AsyncGenerator[TaskProgress]:
+    yield TaskProgress(progress=0, message="正在开始")
+    await perform_owned_work()
+    yield TaskProgress(progress=100, message="操作完成", result={"file_count": 42})
 
-async def my_operation() -> AsyncGenerator[TaskProgress, None]:
-    yield TaskProgress(progress=0, message="Starting…")
-    # … do work, yield progress along the way …
-    yield TaskProgress(progress=100, message="Done", result={"file_count": 42})
-
-result = task_manager.submit(
+result = await task_manager.submit_durable(
     task_type=TaskType.ARCHIVE_CREATE,
-    name="Compress survival_2025-05-10.7z",
+    name="压缩存档",
     task_generator=my_operation(),
     server_id="survival",
+    actor_id=user.id,
     cancellable=True,
 )
-# result.task_id → returned to the frontend; poll /api/tasks/{id} for detail.
 ```
 
-The manager wraps the generator in an `asyncio.Task`, intercepts each yield to update the in-memory `BackgroundTask` row, and resolves the `Future[TaskResult]` when iteration finishes. Cancellation flips the cooperative `cancel_requested` flag. At the next yield, the manager awaits the generator's `aclose()` before publishing `CANCELLED` or resolving its future. Exceptions escaping generator closure become task failures; cleanup errors handled inside the generator do not, including compression output deletion errors.
+`SubmitResult` contains the task ID, current task model and a
+`Future[TaskResult]`. Progress and feature-specific results stay in memory;
+bounded acceptance, phase, outcome and recovery evidence belong to the journal.
+A captured `ServerRef` binds delayed work to a registered server generation and
+confined paths. Acquiring an operation lease revalidates that identity before
+execution. Detached work does not inherit its parent's operation ownership.
 
-Generators own their child processes and temporary output. Use `finally` or handle `GeneratorExit` during cleanup, and explicitly close nested async generators with `contextlib.aclosing`. The subprocess stream terminates and reaps its direct child when closed; archive compression closes that stream before attempting to remove its output. The manager waits for generator closure before publishing cancellation. Cancellation is cooperative at progress yields, does not terminate arbitrary descendant process trees, and cannot guarantee file removal when the filesystem rejects cleanup.
+## Cancellation and completion
 
-## API
+Cancellation sets `cancel_requested` and directly cancels the owned worker, so a
+silent subprocess or an operation waiting for a lease need not yield progress.
+The visible status stays `RUNNING` while cleanup runs. Repeated cancellation is
+idempotent. Cancelling a queued task prevents its generator from executing.
 
-`BackgroundTaskManager` exposes:
+Generators close nested streams with `aclosing`. `operations.finalization`
+protects finite cleanup against both asyncio and AnyIO cancellation, including
+waiting for filesystem threads that have already started. Owned subprocesses
+start behind a gate: identity registration commits before the command executes.
+Cleanup signals only verified process handles, escalates from TERM to KILL and
+awaits pipe drainage and process exit. Unverifiable remaining writers retain
+recovery evidence and block the affected resource; they cannot publish success.
+See [operation ownership](operations.md) for Linux identity and restart recovery.
 
-- `submit(task_type, name, task_generator, server_id?, cancellable?) -> SubmitResult` — `SubmitResult` carries `task_id` and the `Future[TaskResult]` if you want to await locally instead of poll.
-- `cancel(task_id) -> bool` — sets the cancellation flag.
-- `get(task_id) -> BackgroundTask | None`.
-- `get_tasks_by_server_id(server_id)` / `get_future(task_id)` — used by `app.servers.lifecycle` to cancel-and-wait on a server's in-flight tasks before rmtree, so an `ARCHIVE_EXTRACT` cannot race the directory deletion.
-- `list(filters)` — listing with status / server / type filters.
-- `cleanup(...)` — drop completed/failed entries past their TTL.
+The manager closes the generator and confirms the journal's terminal outcome
+before publishing task status or resolving its future. A late cancellation
+cannot overwrite an already committed success. Unexpected failures use a generic
+Chinese error and safe type/stack diagnostics; authored `PublicOperationError`
+messages remain visible. Cleanup errors remain failures, and filesystem refusal
+can leave partial output for inspection.
 
-## Types
+Deletion freezes new writers, cancels tasks and waits for their futures without
+holding execution leases. Unsettled tasks or request-owned writers reject
+deletion; only a drained, validated deletion permit authorizes removing files.
+Runtime shutdown stops submission and drains its workers, including tasks that
+are not cancellable through the user API.
 
-`TaskType` (in `types.py`):
+## Durable history and compatibility
 
-- `ARCHIVE_CREATE` / `ARCHIVE_EXTRACT` — archive compression / extraction
-- `FILE_OWNERSHIP_REPAIR` — non-cancellable recursive `chown` for server data files
-- `SERVER_REBUILD` — template-config update triggering compose rewrite + `docker compose up -d`
-- `WORLD_RESTORE` — world-restore staging tasks (the SSE flows themselves are *not* background tasks; they stream live)
+The public task statuses remain `pending`, `running`, `completed`, `failed` and
+`cancelled`. Startup reconciles interrupted operations before admitting writes,
+then projects task journal records into the existing task center. Interrupted
+work appears as failed with an interruption message and is never replayed.
+Historical progress and result payloads are not reconstructed. The detailed
+operation API retains the internal state, phase and recovery references.
 
-`TaskStatus`: `PENDING → RUNNING → COMPLETED | FAILED | CANCELLED`.
+Task detail and summary include optional `error_code` alongside the existing
+string `error`. A configuration version conflict discovered after acceptance
+produces `failed` with `error_code="configuration_conflict"`; restored task
+history preserves that journal failure code. The code lets an editor retain its
+draft and reopen comparison without parsing translated error text. Preflight
+configuration conflicts still use an HTTP 409 response before task submission.
 
-`TaskProgress`: `progress: float | None`, `message: str`, `result: dict | None`.
+`SERVER_REBUILD` runs the configuration application service with its immutable
+prepared content and source metadata. File replacement, source commit and
+restoring the original running intent belong to the worker, not completion
+callbacks. An initially stopped server remains stopped. Failure settlement and
+necessary staging cleanup finish while maintenance ownership is still held;
+partial application can therefore report failure with a visible recovery block.
+See [configuration](configuration.md) for phases and recovery evidence.
 
-## REST API
+World restore is a request-owned SSE flow with its own restoration history and
+operation journal record. It does not become a detached task. Completion events
+are emitted only after required cleanup and journal finalization; disconnects
+close owned writers and retain safety snapshot references.
 
-Mounted at `/api/tasks/`:
+Deleting or clearing completed task entries dismisses the current in-memory
+projection. It does not delete operation evidence; retained records can appear
+again after restart. Journal retention is bounded and never evicts unresolved
+recovery material merely to admit another task.
 
-Every operation requires the same current-user authentication as task-producing feature APIs; both admin and owner users may access the task center. Cookie-authenticated mutations also require a valid CSRF token. Anonymous or invalid-session requests are rejected before task lookup or mutation. This does not introduce per-user task ownership or per-server access control.
+The frontend's application-level operation observer uses terminal journal
+outcomes to refresh registered configuration, task and server queries after
+success, failure, interruption or cancellation. It deduplicates handled operation
+IDs, catches up after reconnect and clears its session state at logout. Leaving
+the editor page does not suppress this synchronization or cancel a detached task.
 
-- `GET /` — summary list with filters; `result` is omitted so task center
-  polling never serializes feature-specific payloads.
-- `GET /{id}` — detail including `result`; feature pages use this only when
-  the result is intentionally small or is the feature's dedicated payload.
-- `POST /{id}/cancel`
-- `DELETE /{id}` — drop a finished entry from memory
-- `DELETE /` — bulk cleanup
+## API and modules
 
-## Files
+Every `/api/tasks` route requires a current user; cookie mutations also require
+CSRF. Both admin and owner users can access task history. Lists omit `result`;
+`GET /api/tasks/{id}` provides current detail. Cancellation uses
+`POST /api/tasks/{id}/cancel`; single and bulk `DELETE` dismiss terminal entries.
 
-- `manager.py` — `BackgroundTaskManager`, `task_manager` singleton
-- `models.py` — `BackgroundTask` Pydantic model
-- `types.py` — `TaskType`, `TaskStatus`, `TaskProgress`, `TaskResult`, `SubmitResult`
+`manager.py` owns submission, workers, cancellation and projection;
+`models.py` defines `BackgroundTask`; `types.py` defines task kinds, statuses,
+progress and results. `get_tasks_by_server_id`, `get_future` and
+`get_active_tasks` expose the owned work needed for lifecycle coordination.
 
-Implementation guide for callers: `.claude/background-tasks-guide.md`.
+`tests/operations/test_execution.py` verifies silent cancellation, queued
+cancellation, repeated cancellation during thread cleanup, gated process
+registration, pipe pressure, terminal publication and late cancellation.
+`tests/test_runtime.py` verifies application isolation and ordered shutdown.

@@ -13,8 +13,8 @@ from pathlib import Path
 
 import aiofiles.os as aioos
 
-from ..logger import logger
 from ..mcmap.cache import ServerMapCache
+from ..utils import async_fs
 
 _MCA_RE = re.compile(r"^r\.(-?\d+)\.(-?\d+)\.mca$")
 
@@ -57,16 +57,19 @@ def pngs_for_regions(
     return {cache.png_path(region_dir_relpath, rx, rz) for rx, rz in regions}
 
 
-async def delete_pngs(pngs: Iterable[Path]) -> int:
-    """Best-effort delete the given PNG files. Returns count actually removed."""
+async def delete_pngs(pngs: Iterable[Path], *, data_path: Path) -> int:
+    """Remove every accessible tile, reporting failures after remaining attempts."""
     removed = 0
+    failures: list[OSError] = []
     for png in pngs:
+        await async_fs.resolve_inside(data_path, png)
         try:
             await aioos.unlink(png)
             removed += 1
         except FileNotFoundError:
             continue
-        except OSError:
-            logger.warning("failed to delete tile %s", png, exc_info=True)
-            continue
+        except OSError as error:
+            failures.append(error)
+    if failures:
+        raise ExceptionGroup("Failed to invalidate map tiles", failures)
     return removed

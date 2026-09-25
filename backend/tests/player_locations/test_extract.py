@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.config import settings
-from app.models import UserPublic
+from app.auth.schemas import UserPublic
+from app.config import get_settings
 from app.player_locations import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
@@ -17,6 +17,9 @@ from app.player_locations import (
     runner,
 )
 from app.routers.servers import world_restore
+from tests.support.runtime import patch_runtime_resource
+
+pytestmark = [pytest.mark.binary('fd')]
 
 
 def _test_user() -> UserPublic:
@@ -136,7 +139,7 @@ async def test_extract_resolves_dimensions_and_keeps_skipped(world_data_path):
         ],
     }
     fake = _write_fake_mcmap(payload)
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_player_locations_for_server(world_data_path)
     fake.unlink()
 
@@ -170,8 +173,8 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
         "skipped": [],
     }
     fake = _write_fake_mcmap(payload)
-    monkeypatch.setattr(settings, "fd_binary_path", Path("/missing/fd"))
-    with patch.object(runner.settings, "mcmap_binary_path", str(fake)):
+    monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
+    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_player_locations_for_server(world_data_path)
     fake.unlink()
 
@@ -181,7 +184,7 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
 async def test_extract_error_propagates(world_data_path):
     fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
     with (
-        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(PlayerLocationExtractError),
     ):
         await extract_player_locations_for_server(world_data_path)
@@ -206,7 +209,7 @@ async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
     }
     fake = _write_fake_mcmap(payload)
     with (
-        patch.object(runner.settings, 'mcmap_binary_path', str(fake)),
+        patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(PlayerLocationExtractError, match='invalid JSON event'),
     ):
         await extract_player_locations_for_server(world_data_path)
@@ -241,8 +244,8 @@ async def test_endpoint_returns_player_locations(world_data_path):
     }
     fake = _write_fake_mcmap(payload)
     with (
-        patch.object(runner.settings, "mcmap_binary_path", str(fake)),
-        patch.object(world_restore, "docker_mc_manager", FakeDocker()),
+        patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)),
+        patch_runtime_resource('docker_mc_manager', FakeDocker()),
     ):
         result = await world_restore.get_player_locations("srv1", _=_test_user())
     fake.unlink()

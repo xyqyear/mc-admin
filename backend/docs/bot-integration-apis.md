@@ -118,11 +118,10 @@ to the maximum replayed id.
 
 ### Event Bus
 
-`app/events/` contains public wire models and the in-process `EventBus`
-singleton. It is a fan-out layer for external subscribers only:
+`app/events/` contains public wire models and the runtime-owned `EventBus`. It is a fan-out layer for external subscribers only:
 
 ```text
-LogMonitor._handle_event -> tracking.record_chat_message
+LogMonitor._handle_event -> PlayerService.record_chat_message
                               |
                               | DB commit
                               v
@@ -141,8 +140,7 @@ client reconnects with its last chat cursor.
 `record_chat_message()` publishes `ChatEvent` only after the chat row is
 committed and has a `message_id`. `process_player_join()`,
 `process_player_left()`, and `close_server_sessions()` publish live-only events
-after their database side effects complete. The log monitor still calls the
-tracking functions directly; no internal subsystem consumes the event bus.
+after their database side effects complete. The log monitor calls its owning player service directly; no internal subsystem consumes the event bus.
 
 Filtering and identity resolution happen before publication. Ignored player
 names are not streamed when they are not persisted, and unresolved online-mode

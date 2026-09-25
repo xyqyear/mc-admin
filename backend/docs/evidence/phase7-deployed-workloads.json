@@ -1,0 +1,1078 @@
+{
+  "after": {
+    "application_source": "sha256:ace315a8f9cea25544fb7776406f72c5efc1c88177176aa227c0eb4b660bc777",
+    "authentication": "fixture master token",
+    "environment_id": "71ff7648c3a1",
+    "image_id": "sha256:0397368ca98edc1c4f0e0e98fadb5b75a0a7269afd9b1f85e196d5e75321b9c5",
+    "limits": "Sequential synthetic loopback HTTP in a fresh owned Backup fixture. Archive measurement includes a public download for byte verification. Ordinary-file restore includes fixture writes and public byte verification; per-request timings separate backup and restore. Request/response bytes exclude headers. No latency thresholds, production-load claim or browser rendering measurement.",
+    "run_id": "phase7-deployed-current",
+    "samples": 3,
+    "workloads": {
+      "ordinary_file_backup_restore": {
+        "behavior": {
+          "bytes": 4194304,
+          "safety_snapshot": true,
+          "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577",
+          "sse_event_types": [
+            "complete",
+            "invalidate_cache",
+            "restore",
+            "safety_snapshot",
+            "start"
+          ],
+          "terminal_event": "complete"
+        },
+        "body_bytes_per_sample": [
+          {
+            "received": 4195935,
+            "sent": 4194671
+          },
+          {
+            "received": 4195932,
+            "sent": 4194671
+          },
+          {
+            "received": 4195932,
+            "sent": 4194671
+          }
+        ],
+        "median_seconds": 6.245191,
+        "requests": [
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.036738,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.033649,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.090622,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 760,
+              "seconds": 1.544674,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.032916,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 4.468257,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.030606,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.030652,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.036653,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.086103,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 757,
+              "seconds": 1.536864,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.031877,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 4.449712,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.029042,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.030617,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.035788,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.082025,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 757,
+              "seconds": 1.533958,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.036541,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 4.476289,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.040561,
+              "status": 200
+            }
+          ]
+        ],
+        "requests_per_sample": 7,
+        "seconds": [
+          6.251202,
+          6.211301,
+          6.245191
+        ]
+      },
+      "upload_hash_publish": {
+        "behavior": {
+          "bytes": 4194304,
+          "chunk_bytes": 1048576,
+          "completed_retry_status": 200,
+          "protocol_requests": 10,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e",
+          "sse_event_types": [
+            "complete",
+            "progress",
+            "start"
+          ],
+          "stale_offset_status": 409,
+          "verification_requests": 1
+        },
+        "body_bytes_per_sample": [
+          {
+            "received": 4195821,
+            "sent": 4194439
+          },
+          {
+            "received": 4195820,
+            "sent": 4194439
+          },
+          {
+            "received": 4195821,
+            "sent": 4194439
+          }
+        ],
+        "median_seconds": 0.175961,
+        "requests": [
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 116,
+              "seconds": 0.010382,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.01623,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.005214,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.026546,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.01289,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.015033,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.005012,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.005509,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.011352,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.04924,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.046072,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 115,
+              "seconds": 0.006832,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.01665,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.005912,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.018407,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.016259,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.017127,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.004625,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.00475,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.009329,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.040608,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.030862,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 116,
+              "seconds": 0.005963,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.023008,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.005186,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.012156,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.013477,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.013562,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.004157,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.003591,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.007958,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.040308,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.03425,
+              "status": 200
+            }
+          ]
+        ],
+        "requests_per_sample": 11,
+        "seconds": [
+          0.208431,
+          0.175961,
+          0.167549
+        ]
+      }
+    }
+  },
+  "before": {
+    "application_source": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
+    "authentication": "fixture master token",
+    "environment_id": "3d57464a3439",
+    "image_id": "sha256:df8b8bdc3972cbb447d4f976f5eceebf6312b7f53d0495deb95a553ce8aa42dc",
+    "limits": "Sequential synthetic loopback HTTP in a fresh owned Backup fixture. Archive measurement includes a public download for byte verification. Ordinary-file restore includes fixture writes and public byte verification; per-request timings separate backup and restore. Request/response bytes exclude headers. No latency thresholds, production-load claim or browser rendering measurement.",
+    "run_id": "phase7-deployed-before",
+    "samples": 3,
+    "workloads": {
+      "ordinary_file_backup_restore": {
+        "behavior": {
+          "bytes": 4194304,
+          "safety_snapshot": true,
+          "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577",
+          "sse_event_types": [
+            "complete",
+            "invalidate_cache",
+            "restore",
+            "safety_snapshot",
+            "start"
+          ],
+          "terminal_event": "complete"
+        },
+        "body_bytes_per_sample": [
+          {
+            "received": 4195934,
+            "sent": 4194671
+          },
+          {
+            "received": 4195931,
+            "sent": 4194671
+          },
+          {
+            "received": 4195931,
+            "sent": 4194671
+          }
+        ],
+        "median_seconds": 5.136702,
+        "requests": [
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.006141,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.005785,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.046679,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 759,
+              "seconds": 1.433396,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.006652,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 3.55348,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.032964,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.006441,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.006213,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.05178,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 756,
+              "seconds": 1.454395,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.006806,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 3.558534,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.041897,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "restore.prepare-directory",
+              "request_body_bytes": 56,
+              "response_body_bytes": 57,
+              "seconds": 0.006209,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-file",
+              "request_body_bytes": 60,
+              "response_body_bytes": 51,
+              "seconds": 0.006772,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.prepare-content",
+              "request_body_bytes": 4194319,
+              "response_body_bytes": 39,
+              "seconds": 0.05472,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.backup",
+              "request_body_bytes": 59,
+              "response_body_bytes": 756,
+              "seconds": 1.459866,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.modify",
+              "request_body_bytes": 35,
+              "response_body_bytes": 39,
+              "seconds": 0.006955,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "restore.apply",
+              "request_body_bytes": 142,
+              "response_body_bytes": 685,
+              "seconds": 3.563142,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "restore.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.040436,
+              "status": 200
+            }
+          ]
+        ],
+        "requests_per_sample": 7,
+        "seconds": [
+          5.097791,
+          5.136702,
+          5.147074
+        ]
+      },
+      "upload_hash_publish": {
+        "behavior": {
+          "bytes": 4194304,
+          "chunk_bytes": 1048576,
+          "completed_retry_status": 200,
+          "protocol_requests": 10,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e",
+          "sse_event_types": [
+            "complete",
+            "progress",
+            "start"
+          ],
+          "stale_offset_status": 409,
+          "verification_requests": 1
+        },
+        "body_bytes_per_sample": [
+          {
+            "received": 4195820,
+            "sent": 4194439
+          },
+          {
+            "received": 4195821,
+            "sent": 4194439
+          },
+          {
+            "received": 4195821,
+            "sent": 4194439
+          }
+        ],
+        "median_seconds": 0.148477,
+        "requests": [
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 115,
+              "seconds": 0.008834,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.017464,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.005349,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.023858,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.014878,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.018088,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.00509,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.00439,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.010455,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.006708,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.047462,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 116,
+              "seconds": 0.006331,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.01571,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.004679,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.016268,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.016122,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.016593,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.004584,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.003903,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.009535,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.007198,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.043313,
+              "status": 200
+            }
+          ],
+          [
+            {
+              "method": "POST",
+              "operation": "upload.init",
+              "request_body_bytes": 47,
+              "response_body_bytes": 116,
+              "seconds": 0.005427,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.01427,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.stale-offset",
+              "request_body_bytes": 5,
+              "response_body_bytes": 64,
+              "seconds": 0.004689,
+              "status": 409
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.017029,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 143,
+              "seconds": 0.0157,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.chunk",
+              "request_body_bytes": 1048576,
+              "response_body_bytes": 166,
+              "seconds": 0.015606,
+              "status": 200
+            },
+            {
+              "method": "PATCH",
+              "operation": "upload.completed-retry",
+              "request_body_bytes": 5,
+              "response_body_bytes": 166,
+              "seconds": 0.005625,
+              "status": 200
+            },
+            {
+              "method": "HEAD",
+              "operation": "upload.status",
+              "request_body_bytes": 0,
+              "response_body_bytes": 0,
+              "seconds": 0.004307,
+              "status": 204
+            },
+            {
+              "method": "GET",
+              "operation": "upload.hash",
+              "request_body_bytes": 0,
+              "response_body_bytes": 395,
+              "seconds": 0.009101,
+              "status": 200
+            },
+            {
+              "method": "POST",
+              "operation": "upload.publish",
+              "request_body_bytes": 78,
+              "response_body_bytes": 181,
+              "seconds": 0.006708,
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "operation": "upload.verify-download",
+              "request_body_bytes": 0,
+              "response_body_bytes": 4194304,
+              "seconds": 0.041593,
+              "status": 200
+            }
+          ]
+        ],
+        "requests_per_sample": 11,
+        "seconds": [
+          0.167863,
+          0.148477,
+          0.144267
+        ]
+      }
+    }
+  },
+  "candidate": {
+    "archive_sha256": "sha256:7b0e031b4e73817949244b8b591c9643bf4f7b12673c351f0c83b21382bf0a1d",
+    "config_digest": "sha256:0397368ca98edc1c4f0e0e98fadb5b75a0a7269afd9b1f85e196d5e75321b9c5",
+    "oci_manifest_digest": "sha256:8699348fc48a04eca8a1a164024d09c68ec5e701591203cb9ec79a19dc66b1d0",
+    "runner_sha256": "sha256:341fd454d8055e70ce352ccf7fd5f29035b92024d6439ad43b4f653efa82402f",
+    "source": {
+      "dirty": true,
+      "fingerprint": "sha256:ace315a8f9cea25544fb7776406f72c5efc1c88177176aa227c0eb4b660bc777",
+      "revision": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823"
+    },
+    "version": 1
+  }
+}

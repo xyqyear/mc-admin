@@ -11,9 +11,10 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.metadata import Base
 from app.dynamic_config import BaseConfigSchema
 from app.dynamic_config.manager import ConfigManager
-from app.models import Base, DynamicConfig
+from app.dynamic_config.models import DynamicConfig
 
 
 # Test configuration schemas with nested structures and deprecated fields
@@ -124,21 +125,10 @@ async def test_config_manager(test_db_engine):
         expire_on_commit=False,
     )
 
-    # Patch get_async_session to use test database
-    from unittest.mock import patch
-
-    with patch("app.dynamic_config.manager.get_async_session") as mock_get_session:
-
-        def get_test_session():
-            return TestSessionLocal()
-
-        mock_get_session.side_effect = get_test_session
-
-        # Register test configurations
-        manager.register_config("simple", SimpleTestConfig)
-        manager.register_config("complex", ComplexTestConfig)
-
-        yield manager
+    manager.session_factory = TestSessionLocal
+    manager.register_config("simple", SimpleTestConfig)
+    manager.register_config("complex", ComplexTestConfig)
+    yield manager
 
 
 class TestConfigManagerIntegration:

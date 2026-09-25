@@ -5,7 +5,6 @@ and orchestrators (create rollback paths, remove containers-up gate,
 rmtree-race regression, adopt/deactivate). All tests use fake/test doubles
 so they run safely without Docker.
 """
-
 import asyncio
 import tempfile
 from pathlib import Path
@@ -15,11 +14,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.background_tasks import BackgroundTaskManager, TaskProgress, TaskType
+from app.configuration.application import rebuild_server_task
+from app.configuration.preparation import ServerConfiguration
 from app.cron.jobs.backup import BackupJobParams
 from app.cron.jobs.restart import ServerRestartParams
+from app.db.metadata import Base
 from app.minecraft import DockerMCManager, MCServerStatus
-from app.models import Base
-from app.servers.configuration import ServerConfiguration
+from app.runtime_resources import current_runtime
 from app.servers.crud import create_server_record, get_active_server_by_id
 from app.servers.lifecycle import (
     CreateServerSpec,
@@ -33,7 +34,7 @@ from app.servers.lifecycle import (
     validate_adoption,
 )
 from app.servers.port_utils import get_server_used_ports
-from app.servers.rebuild import rebuild_server_task
+from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -96,22 +97,13 @@ def patch_singletons(temp_server_path):
     """
     mgr = DockerMCManager(temp_server_path)
     patches = [
-        patch("app.servers.lifecycle.orchestrators.docker_mc_manager", mgr),
-        patch("app.servers.lifecycle.primitives.docker_mc_manager", mgr),
-        patch("app.servers.port_utils.docker_mc_manager", mgr),
+        patch_runtime_resource('docker_mc_manager', mgr),
+        patch_runtime_resource('docker_mc_manager', mgr),
+        patch_runtime_resource('docker_mc_manager', mgr),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
-        patch(
-            "app.servers.lifecycle.orchestrators.log_monitor.start_server",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "app.servers.lifecycle.orchestrators.log_monitor.stop_watching",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "app.servers.lifecycle.orchestrators.simple_dns_manager.update",
-            new_callable=AsyncMock,
-        ),
+        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('log_monitor'), 'stop_watching', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
         patch(
             "app.servers.lifecycle.orchestrators.close_open_sessions",
             new_callable=AsyncMock,
@@ -143,10 +135,7 @@ def patch_singletons(temp_server_path):
 class TestCancelAndWaitForTasks:
     async def test_no_tasks_returns_empty(self):
         """If no tasks are associated with the server, the helper returns []."""
-        with patch(
-            "app.servers.lifecycle.primitives.task_manager",
-            new=BackgroundTaskManager(),
-        ):
+        with patch_runtime_resource('task_manager', new=BackgroundTaskManager()):
             result = await cancel_and_wait_for_tasks("ghost-server", timeout=1.0)
         assert result == []
 
@@ -177,7 +166,7 @@ class TestCancelAndWaitForTasks:
 
         await asyncio.sleep(0.06)
 
-        with patch("app.servers.lifecycle.primitives.task_manager", new=manager):
+        with patch_runtime_resource('task_manager', new=manager):
             await cancel_and_wait_for_tasks("server-a", timeout=5.0)
 
         for t in manager.get_tasks_by_server_id("server-a"):
@@ -192,31 +181,32 @@ class TestCancelAndWaitForTasks:
             )
 
     async def test_respects_timeout(self):
-        """A task that ignores cancel must not block the helper indefinitely."""
+        from fastapi import HTTPException
+
         manager = BackgroundTaskManager()
+        entered, release = asyncio.Event(), asyncio.Event()
 
-        async def never_yields():
-            try:
-                await asyncio.sleep(10)
-            finally:
-                yield TaskProgress(progress=100, message="done")
+        async def stubborn():
+            entered.set()
+            await release.wait()
+            yield TaskProgress(progress=100, message="done")
 
-        manager.submit(
-            task_type=TaskType.ARCHIVE_EXTRACT,
-            name="stubborn",
-            task_generator=never_yields(),
-            server_id="server-b",
-            cancellable=False,
+        submitted = manager.submit(
+            TaskType.ARCHIVE_EXTRACT, "stubborn", stubborn(),
+            server_id="server-b", cancellable=False,
         )
-
-        await asyncio.sleep(0.05)
-
-        with patch("app.servers.lifecycle.primitives.task_manager", new=manager):
-            t0 = asyncio.get_event_loop().time()
-            await cancel_and_wait_for_tasks("server-b", timeout=0.2)
-            elapsed = asyncio.get_event_loop().time() - t0
-
-        assert elapsed < 1.0, f"helper took {elapsed}s, should bail out at timeout"
+        await entered.wait()
+        try:
+            with (
+                patch_runtime_resource('task_manager', new=manager),
+                pytest.raises(HTTPException) as error,
+            ):
+                await cancel_and_wait_for_tasks("server-b", timeout=0)
+            assert error.value.status_code == 409
+            assert not submitted.awaitable.done()
+        finally:
+            release.set()
+            await submitted.awaitable
 
 
 class TestCancelRestartCronjobsForServer:
@@ -281,7 +271,7 @@ class TestCancelRestartCronjobsForServer:
             cancelled_ids.append(cronjob_id)
 
         with patch.object(
-            lifecycle_primitives.cron_manager,
+            lifecycle_primitives.get_cron_manager(),
             "cancel_cronjob",
             new=AsyncMock(side_effect=fake_cancel),
         ):
@@ -350,17 +340,20 @@ class TestValidateAdoption:
 
 
 @pytest.mark.parametrize("status", [MCServerStatus.EXISTS, MCServerStatus.CREATED, MCServerStatus.HEALTHY])
-async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, status):
+async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, db_factory, status):
     mgr = patch_singletons
     instance = mgr.get_instance("legacy")
     legacy = _yaml("legacy", 25780, 25790).replace('      SERVER_PORT: "25565"\n', '')
     await instance.create(legacy)
+    async with db_factory() as session:
+        await create_server_record(session, "legacy")
     assert (await instance.get_compose_obj()).get_game_port() == 25780
     with patch.object(mgr, "get_all_instances", AsyncMock(return_value=[instance])):
         assert await get_server_used_ports() == {25780, 25790}
     with (
-        patch("app.servers.rebuild.docker_mc_manager", mgr),
-        patch("app.servers.rebuild.check_port_conflicts", AsyncMock(return_value=[])),
+        patch_runtime_resource('docker_mc_manager', mgr),
+        patch("app.configuration.application.get_async_session", db_factory),
+        patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(instance, "get_status", AsyncMock(return_value=status)),
         patch.object(instance, "down", AsyncMock()) as down,
         patch.object(instance, "up", AsyncMock()) as up,
@@ -510,7 +503,7 @@ class TestCreateServerFullRollback:
             # We model that by returning, then raising via a manual hook.
             raise RuntimeError("schedule failed AFTER creating cronjob")
 
-        from app.cron import cron_manager
+        from app.cron import get_cron_manager
 
         # Set up: schedule fails, but we cannot trigger the rollback path
         # for restart_cronjob_id == None (since the failure was before
@@ -530,7 +523,7 @@ class TestCreateServerFullRollback:
         # ITSELF before return, ensuring restart_cronjob_id stays None and
         # cancel is NOT called (negative test).
         with patch.object(
-            cron_manager, "cancel_cronjob", new=AsyncMock(side_effect=fake_cancel)
+            get_cron_manager(), "cancel_cronjob", new=AsyncMock(side_effect=fake_cancel)
         ), patch(
             "app.servers.lifecycle.orchestrators.schedule_auto_restart",
             new=schedule_create_then_raise,
