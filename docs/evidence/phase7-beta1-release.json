@@ -1,7 +1,7 @@
 {
   "version": "6.0.0-beta.1",
   "issue": null,
-  "status": "ready_for_clean_source_qualification",
+  "status": "published_and_verified",
   "attempts": [
     {
       "source_revision": "8e727801283dd65ea9ba9345821851a54d953087",
@@ -49,6 +49,608 @@
         "conclusion": "skipped"
       },
       "closeout_evidence": "/tmp/mc-admin-release-original-closeout.json"
+    },
+    {
+      "source_revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+      "workflow_run": 36148282102,
+      "workflow_url": "https://github.com/xyqyear/mc-admin/actions/runs/36148282102",
+      "conclusion": "success",
+      "candidate_artifact": "application-candidate-36148282102-1",
+      "candidate_artifact_id": 10870408902,
+      "candidate": {
+        "version": 1,
+        "source": {
+          "revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+          "dirty": false,
+          "fingerprint": "sha256:f8a323ebdb733f1ca5717bbed63bae9acdf7f4d44cb440e046ddd4bafba5b7ea"
+        },
+        "oci_manifest_digest": "sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed",
+        "config_digest": "sha256:93f9cfb92f5c8b046eadafdd75367765608e0ab367d6ed3596ec756bfcc2713c",
+        "archive_sha256": "sha256:5579fc1d3cf9dc58f6198cd3eab6fee7644ae8c1b2e8b0b15a3015071bd76c25",
+        "runner_sha256": "sha256:8ee9d388ee0356d9a88dd73eed0e49feed3ed53241b09fa231b35d4dac04109a"
+      },
+      "backend": {
+        "inventory": {
+          "job_id": 108114815560,
+          "artifact_id": 10870393743,
+          "collected": 2183,
+          "selected": 2183,
+          "policy": {
+            "docker": true,
+            "external": false,
+            "group": null,
+            "expression": ""
+          }
+        },
+        "execution": {
+          "groups": 25,
+          "passed": 2183,
+          "failed": 0,
+          "skipped": 0,
+          "docker": 10,
+          "ordinary": 2173,
+          "external": 0
+        },
+        "collection_union": {
+          "count": 2183,
+          "missing": [],
+          "unexpected": [],
+          "duplicated": [],
+          "exact": true
+        },
+        "audit_job_id": 108135287185,
+        "groups": [
+          {
+            "group": "architecture",
+            "job_id": 108114986034,
+            "artifact_id": 10869843319,
+            "selected": 3,
+            "passed": 3,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "architecture",
+              "expression": ""
+            }
+          },
+          {
+            "group": "archive",
+            "job_id": 108114985884,
+            "artifact_id": 10870508811,
+            "selected": 57,
+            "passed": 57,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "archive",
+              "expression": ""
+            }
+          },
+          {
+            "group": "background_tasks",
+            "job_id": 108114985996,
+            "artifact_id": 10870715372,
+            "selected": 45,
+            "passed": 45,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "background_tasks",
+              "expression": ""
+            }
+          },
+          {
+            "group": "ci",
+            "job_id": 108114985983,
+            "artifact_id": 10870725427,
+            "selected": 34,
+            "passed": 34,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "ci",
+              "expression": ""
+            }
+          },
+          {
+            "group": "configuration",
+            "job_id": 108114985935,
+            "artifact_id": 10869798888,
+            "selected": 37,
+            "passed": 37,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "configuration",
+              "expression": ""
+            }
+          },
+          {
+            "group": "contracts",
+            "job_id": 108114985993,
+            "artifact_id": 10870334872,
+            "selected": 3,
+            "passed": 3,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "contracts",
+              "expression": ""
+            }
+          },
+          {
+            "group": "cron",
+            "job_id": 108114986086,
+            "artifact_id": 10869744362,
+            "selected": 161,
+            "passed": 161,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "cron",
+              "expression": ""
+            }
+          },
+          {
+            "group": "dns",
+            "job_id": 108114985995,
+            "artifact_id": 10870826154,
+            "selected": 147,
+            "passed": 147,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "dns",
+              "expression": ""
+            }
+          },
+          {
+            "group": "dynamic_config",
+            "job_id": 108114985949,
+            "artifact_id": 10871310255,
+            "selected": 79,
+            "passed": 79,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "dynamic_config",
+              "expression": ""
+            }
+          },
+          {
+            "group": "events",
+            "job_id": 108114985899,
+            "artifact_id": 10871235529,
+            "selected": 8,
+            "passed": 8,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "events",
+              "expression": ""
+            }
+          },
+          {
+            "group": "files",
+            "job_id": 108114986335,
+            "artifact_id": 10869914899,
+            "selected": 124,
+            "passed": 124,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "files",
+              "expression": ""
+            }
+          },
+          {
+            "group": "ftb_claims",
+            "job_id": 108114987965,
+            "artifact_id": 10871805034,
+            "selected": 22,
+            "passed": 22,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "ftb_claims",
+              "expression": ""
+            }
+          },
+          {
+            "group": "mcmap",
+            "job_id": 108114988011,
+            "artifact_id": 10871585652,
+            "selected": 88,
+            "passed": 88,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "mcmap",
+              "expression": ""
+            }
+          },
+          {
+            "group": "migrations",
+            "job_id": 108114987899,
+            "artifact_id": 10871665425,
+            "selected": 31,
+            "passed": 31,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "migrations",
+              "expression": ""
+            }
+          },
+          {
+            "group": "operations",
+            "job_id": 108114988155,
+            "artifact_id": 10870703289,
+            "selected": 109,
+            "passed": 109,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "operations",
+              "expression": ""
+            }
+          },
+          {
+            "group": "player_locations",
+            "job_id": 108114988128,
+            "artifact_id": 10870887594,
+            "selected": 8,
+            "passed": 8,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "player_locations",
+              "expression": ""
+            }
+          },
+          {
+            "group": "players",
+            "job_id": 108114988041,
+            "artifact_id": 10871172140,
+            "selected": 109,
+            "passed": 109,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "players",
+              "expression": ""
+            }
+          },
+          {
+            "group": "root",
+            "job_id": 108114988163,
+            "artifact_id": 10871646591,
+            "selected": 324,
+            "passed": 324,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "root",
+              "expression": ""
+            }
+          },
+          {
+            "group": "self_check",
+            "job_id": 108114988322,
+            "artifact_id": 10871766806,
+            "selected": 85,
+            "passed": 85,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "self_check",
+              "expression": ""
+            }
+          },
+          {
+            "group": "servers",
+            "job_id": 108114988578,
+            "artifact_id": 10871806866,
+            "selected": 163,
+            "passed": 163,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "servers",
+              "expression": ""
+            }
+          },
+          {
+            "group": "snapshots",
+            "job_id": 108114988955,
+            "artifact_id": 10872245638,
+            "selected": 208,
+            "passed": 208,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "snapshots",
+              "expression": ""
+            }
+          },
+          {
+            "group": "templates",
+            "job_id": 108114989772,
+            "artifact_id": 10871858602,
+            "selected": 146,
+            "passed": 146,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "templates",
+              "expression": ""
+            }
+          },
+          {
+            "group": "testing",
+            "job_id": 108114989747,
+            "artifact_id": 10872052577,
+            "selected": 13,
+            "passed": 13,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "testing",
+              "expression": ""
+            }
+          },
+          {
+            "group": "utils",
+            "job_id": 108114989837,
+            "artifact_id": 10872007651,
+            "selected": 3,
+            "passed": 3,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "utils",
+              "expression": ""
+            }
+          },
+          {
+            "group": "world",
+            "job_id": 108114989905,
+            "artifact_id": 10873011568,
+            "selected": 176,
+            "passed": 176,
+            "skipped": 0,
+            "failed": 0,
+            "policy": {
+              "docker": true,
+              "external": false,
+              "group": "world",
+              "expression": ""
+            }
+          }
+        ]
+      },
+      "frontend": {
+        "vitest_files": 28,
+        "vitest_passed": 143,
+        "architecture_passed": 4,
+        "boundary_production_files": 322,
+        "lint": "passed",
+        "typecheck": "passed",
+        "build": "passed"
+      },
+      "api": {
+        "shards": [
+          {
+            "shard": 1,
+            "job_id": 108115832303,
+            "artifact_id": 10871865294,
+            "passed_cases": 39,
+            "cleaned_environments": 35,
+            "report_sha256": "sha256:f589be59c51b6f712bcbf3c1196db4a9b31e4ce9e4b245c8dfc0df6414785508"
+          },
+          {
+            "shard": 2,
+            "job_id": 108115832221,
+            "artifact_id": 10871460169,
+            "passed_cases": 23,
+            "cleaned_environments": 23,
+            "report_sha256": "sha256:6d4f6bcfd83b2c40177956a4a663514d79eb7b6b89d3f4b2c9b17d1cf5c32193"
+          },
+          {
+            "shard": 3,
+            "job_id": 108115832235,
+            "artifact_id": 10869374228,
+            "passed_cases": 19,
+            "cleaned_environments": 19,
+            "report_sha256": "sha256:082b7bc07c48a6abb2d2688341d57ff0c074c6ebd703750c77d645d8f39c3de5"
+          }
+        ],
+        "coverage": {
+          "job_id": 108120400309,
+          "artifact_id": 10871201298,
+          "selected_cases": 81,
+          "passed_cases": 81,
+          "exact_disjoint_union": true,
+          "successfully_observed_operations": 159,
+          "declared_operations": 159,
+          "all_manifests_cleaned": true,
+          "cleaned_environment_count": 77,
+          "schema_sha256": "cf5dae7253666edfbf2b1d8dcbadaf00d8a738752f3045d076091f9b098dfae5"
+        }
+      },
+      "browser": {
+        "stats": {
+          "startTime": "2026-09-25T14:38:16.253Z",
+          "duration": 191350.465,
+          "expected": 6,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "retry_values": [
+          0
+        ],
+        "owned_cleanup_complete": true,
+        "job_id": 108115831378,
+        "artifact_id": 10870309945
+      },
+      "static_jobs": [
+        {
+          "databaseId": 108114816064,
+          "name": "static / frontend lint, types, tests and build",
+          "conclusion": "success",
+          "url": "https://github.com/xyqyear/mc-admin/actions/runs/36148282102/job/108114816064"
+        },
+        {
+          "databaseId": 108114816067,
+          "name": "static / Go format and vet",
+          "conclusion": "success",
+          "url": "https://github.com/xyqyear/mc-admin/actions/runs/36148282102/job/108114816067"
+        },
+        {
+          "databaseId": 108114816088,
+          "name": "static / backend lint and pyright",
+          "conclusion": "success",
+          "url": "https://github.com/xyqyear/mc-admin/actions/runs/36148282102/job/108114816088"
+        }
+      ],
+      "qualification": {
+        "job_id": 108135353546,
+        "artifact_id": 10873281091,
+        "receipt": {
+          "candidate": {
+            "version": 1,
+            "source": {
+              "revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+              "dirty": false,
+              "fingerprint": "sha256:f8a323ebdb733f1ca5717bbed63bae9acdf7f4d44cb440e046ddd4bafba5b7ea"
+            },
+            "oci_manifest_digest": "sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed",
+            "config_digest": "sha256:93f9cfb92f5c8b046eadafdd75367765608e0ab367d6ed3596ec756bfcc2713c",
+            "archive_sha256": "sha256:5579fc1d3cf9dc58f6198cd3eab6fee7644ae8c1b2e8b0b15a3015071bd76c25",
+            "runner_sha256": "sha256:8ee9d388ee0356d9a88dd73eed0e49feed3ed53241b09fa231b35d4dac04109a"
+          },
+          "gates": {
+            "api": "success",
+            "backend": "success",
+            "browser": "success",
+            "candidate": "success",
+            "static": "success"
+          }
+        }
+      },
+      "promotion": {
+        "job_id": 108135436907,
+        "artifact_id": 10872264607,
+        "receipt": {
+          "oci_manifest_digest": "sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed",
+          "destinations": [
+            "ghcr.io/xyqyear/mc-admin:6.0.0-beta.1",
+            "ghcr.io/xyqyear/mc-admin:sha-45a4764"
+          ],
+          "source": {
+            "revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+            "dirty": false,
+            "fingerprint": "sha256:f8a323ebdb733f1ca5717bbed63bae9acdf7f4d44cb440e046ddd4bafba5b7ea"
+          }
+        }
+      },
+      "published": true,
+      "registry_verification": {
+        "checked_at": "2026-09-25T15:30:49.029039+00:00",
+        "anonymous_read": true,
+        "tags": {
+          "6.0.0-beta.1": {
+            "exists": true,
+            "oci_manifest_digest": "sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed"
+          },
+          "sha-45a4764": {
+            "exists": true,
+            "oci_manifest_digest": "sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed"
+          },
+          "latest": {
+            "exists": true,
+            "oci_manifest_digest": "sha256:223b125e4e2981c8ac4195de2129396f6a29227723f5e6490ac72bacb42673a3"
+          },
+          "6": {
+            "exists": false,
+            "reason": "manifest unknown"
+          },
+          "6.0": {
+            "exists": false,
+            "reason": "manifest unknown"
+          },
+          "6.0.0": {
+            "exists": false,
+            "reason": "manifest unknown"
+          }
+        },
+        "latest_before": "sha256:223b125e4e2981c8ac4195de2129396f6a29227723f5e6490ac72bacb42673a3",
+        "tested_manifest_preserved": true,
+        "stable_aliases_unchanged": true
+      },
+      "independent_closeout_evidence": [
+        {
+          "path": "/tmp/mc-admin-beta1-fixed-backend-closeout.json",
+          "sha256": "sha256:69c701e863390d9af2b383d916f1652ba4fa8aa474bc2a8405b86b6ca954a3b8"
+        },
+        {
+          "path": "/tmp/mc-admin-beta1-fix-release-frontend-closeout.json",
+          "sha256": "sha256:2bb5314c9a78751538aa97894762a3e2f90ff211b76824c829bd3c69d7e1c8db"
+        },
+        {
+          "path": "/tmp/mc-admin-beta1-fixed-api-closeout.json",
+          "sha256": "sha256:b86dd3730c207e7eead143a8bc3422310e3415c9a172f653439494647776be44"
+        }
+      ]
     }
   ],
   "regression": {
@@ -195,5 +797,75 @@
         "sha256": "sha256:d3dd8abe14e51ff7dad30c4138ebf8afe80bc07c462787634e6696cf5b77549b"
       }
     ]
+  },
+  "publication": {
+    "version": "6.0.0-beta.1",
+    "source_revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+    "platform": "linux/amd64",
+    "release_id": 396724135,
+    "release_url": "https://github.com/xyqyear/mc-admin/releases/tag/v6.0.0-beta.1",
+    "published_at": "2026-09-25T15:31:54Z",
+    "prerelease": true,
+    "stable_image_aliases_unchanged": true,
+    "github_latest_release_unchanged": true,
+    "assets_download_verified": true,
+    "assets": [
+      {
+        "name": "browser-evidence.json",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/browser-evidence.json",
+        "sha256": "sha256:597a2475594335f7cf7bc22c2bb0eeafe566999656f72be051bc2b1d2fcbfae3"
+      },
+      {
+        "name": "candidate.json",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/candidate.json",
+        "sha256": "sha256:ece275d2903536eaa579b1158c1fb43a32ec565b17c2fa15b50c313a44f5f92e"
+      },
+      {
+        "name": "promotion.json",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/promotion.json",
+        "sha256": "sha256:1d6639994726b117b5abc810c684f5af4a09eb6566be335c1cf0232d7a7960b7"
+      },
+      {
+        "name": "qualification.json",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/qualification.json",
+        "sha256": "sha256:fba64ae34a43199d9b577da08f16d24bb4aacf0d40f7c7835e6654289e7ebf91"
+      },
+      {
+        "name": "SHA256SUMS",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/SHA256SUMS",
+        "sha256": "sha256:96ad9b4a4971ed8c0577150a21c0564e75dc5d3855be4f57d7f4d231eb9fa680"
+      },
+      {
+        "name": "verification.json",
+        "url": "https://github.com/xyqyear/mc-admin/releases/download/v6.0.0-beta.1/verification.json",
+        "sha256": "sha256:2792ca1aabb27e9adde790d8b8e0eb6196ea66dea3666d795a9020ceebbcf900"
+      }
+    ],
+    "tag_history": {
+      "initial_unpublished_revision": "8e727801283dd65ea9ba9345821851a54d953087",
+      "final_revision": "45a47640dedb60948b82418d5c1f989377e91af4",
+      "retargeted_before_any_image_or_release_publication": true,
+      "remote_update_guard": "compare-and-swap lease against the initial tag revision"
+    },
+    "boundaries": [
+      "The 159 API/WebSocket observations do not imply exhaustive behavioral coverage.",
+      "Three external-provider scenarios require separate accounts and are outside this regression selection.",
+      "Earlier local performance and deployment rehearsals have their own source/image identities; they are not evidence executed on this clean candidate.",
+      "CI cleanup is verified from the uploaded manifests, runtime receipts and successful cleanup steps."
+    ]
+  },
+  "spec_archive": {
+    "change": "refactor-application-boundaries",
+    "schema": "spec-driven",
+    "archive": "openspec/changes/archive/2026-09-25-refactor-application-boundaries",
+    "main_specs": 8,
+    "requirements": 47,
+    "scenarios": 122,
+    "completed_tasks": 56,
+    "total_tasks": 56,
+    "relocated_links": 37,
+    "broken_links": 0,
+    "metadata_preserved": true,
+    "specs_synced": true
   }
 }

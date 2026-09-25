@@ -57,7 +57,7 @@ API 契约以原始基线加经过审查的增量断言验证，没有重录基�
 | 计划与文档 | OpenSpec 严格校验及 `git diff --check` 通过；任务清单、功能文档和受影响的 CLAUDE.md 与当前实现保持一致。 |
 | 环境清理 | 两个候选及预检共 103 个自有环境全部清理，其中最终候选 51 个。独立核验运行标签、准确的 Compose 项目归属和运行目录均无残留；保留可复用镜像和端口锁文件。 |
 
-前端证据为 `/tmp/mc-admin-phase5-frontend-{tests,lint,build}-final.log`；类型检查包含在 build 中。后端静态检查为 `/tmp/mc-admin-phase5-{ruff,pyright}-final.log`，Go race 记录为 `/tmp/mc-admin-phase5-go-race-final.log`。候选构建、执行和覆盖命令见 [API E2E 验证记录](../../../e2e/docs/verification.md)；原始报告与独立清理证明在 `/tmp/mc-admin-phase5-e2e/`，完整后端输出在 `/tmp/mc-admin-phase5-full-pytest.log`。
+前端证据为 `/tmp/mc-admin-phase5-frontend-{tests,lint,build}-final.log`；类型检查包含在 build 中。后端静态检查为 `/tmp/mc-admin-phase5-{ruff,pyright}-final.log`，Go race 记录为 `/tmp/mc-admin-phase5-go-race-final.log`。候选构建、执行和覆盖命令见 [API E2E 验证记录](../../../../e2e/docs/verification.md)；原始报告与独立清理证明在 `/tmp/mc-admin-phase5-e2e/`，完整后端输出在 `/tmp/mc-admin-phase5-full-pytest.log`。
 
 最终候选为 `mc-admin:boundaries-phase5-candidate2`，两轮正式 API 验证均使用精确镜像 ID：
 

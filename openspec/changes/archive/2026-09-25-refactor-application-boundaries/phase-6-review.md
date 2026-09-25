@@ -54,7 +54,7 @@
 - `/tmp/mc-admin-phase6-e2e-cleanup-final.json`、`/tmp/mc-admin-phase6-e2e-independent-audit.json`。
 - `/tmp/mc-admin-phase6-workload-comparison-final.log`。
 
-部署命令、具体场景和证据边界见 [API E2E 验证记录](../../../e2e/docs/verification.md)。
+部署命令、具体场景和证据边界见 [API E2E 验证记录](../../../../e2e/docs/verification.md)。
 
 ## 保留的运行边界
 

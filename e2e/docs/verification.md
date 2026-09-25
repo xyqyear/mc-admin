@@ -4,6 +4,33 @@ The current scenario inventory is maintained in [coverage.md](coverage.md).
 Each record below identifies its own date, image and selection; historical
 results do not qualify a later image.
 
+## 6.0.0-beta.1 正式发布验证，2026-09-25
+
+干净提交 `45a47640dedb60948b82418d5c1f989377e91af4` 的
+[正式 CI](https://github.com/xyqyear/mc-admin/actions/runs/36148282102)
+完整通过；已发布为 [v6.0.0-beta.1](https://github.com/xyqyear/mc-admin/releases/tag/v6.0.0-beta.1)。
+API 与浏览器使用同一个候选 OCI 归档，晋升到 GHCR 后的清单摘要保持为
+`sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed`，
+Docker 配置摘要为
+`sha256:93f9cfb92f5c8b046eadafdd75367765608e0ab367d6ed3596ec756bfcc2713c`。
+
+- API 三片分别通过 39/39、23/23、19/19，完整并集为 81 项；77 个所属环境
+  均有清理完成回执，三个分片的报告摘要和镜像身份独立核对一致。
+- 159/159 API/WebSocket 操作有成功访问记录；此数字不代表穷尽业务组合。
+- 浏览器六项全部通过，每项只执行一次，零跳过、零重试、零 flaky，所属环境清理完成。
+- 后端 25 组共 2,183 项通过（包含 10 项 Docker 测试），零失败、零跳过，
+  实际执行清单与完整收集逐项相等；静态检查、Go vet/race 和前端检查通过。
+- 新增 `world.safety-snapshot-disconnect` 在真实 SSE 安全快照事件后断开连接，
+  核对终态、服务器代次及恢复引用，再验证独立数据库写入和安全快照回滚字节。
+- 三项外部服务资格场景仍需单独配置并显式选择，不属于上述普通回归。
+
+首轮正式候选在浏览器断流恢复测试中暴露 SQLite 锁残留，资格门槛拒绝发布；
+修复数据库取消及受理移交的收尾后，最终提交重新执行全部门槛。原始失败和
+本地修复复核没有被改写为本轮成功，完整记录见
+[beta 发布证据](../../docs/evidence/phase7-beta1-release.json)。
+GitHub 预发布附件保留候选、资格、提升及独立核验元数据和 SHA-256 校验文件。
+以下记录各自对应早期本地候选，不替代本节的正式发布验证。
+
 ## Full application qualification, 2026-09-25
 
 Group 7 uses the candidate 4 OCI archive and executable identified in the

@@ -1,10 +1,46 @@
 # 第 7 组验收：用户流程、性能和发布门槛
 
-本组围绕真实使用流程验证前六组重构，并把发布产物和验证结果连接起来。
-这里区分本地已执行的检查、候选应用验证与正式发布；没有远程 GitHub
-Actions 运行记录或 GHCR 发布记录时，不将其写作已完成。
+本重构清单已完成 56/56，三个增量规范已合并，变更按 `spec-driven` 流程归档。
+正式发布与早期本地演练分别记录；以下正式结果对应干净提交
+`45a47640dedb60948b82418d5c1f989377e91af4`。
 
-## 候选产物
+## 正式预发布结果
+
+[`v6.0.0-beta.1`](https://github.com/xyqyear/mc-admin/releases/tag/v6.0.0-beta.1)
+为 GitHub 预发布，不关联 issue。发布工作流
+[36148282102](https://github.com/xyqyear/mc-admin/actions/runs/36148282102)
+的 candidate、static、backend、API、browser 五个门槛全部通过，随后资格检查
+及镜像提升成功。发布没有重新构建镜像。
+
+| 检查 | 最终干净源码的实际结果 |
+| --- | --- |
+| 后端 | 25 组、2,183 项通过，0 失败、0 跳过，执行清单与完整收集逐项相等 |
+| Docker 集成 | 上述集合中的 10 项实际执行并通过 |
+| API | 81/81 通过，三片为 39/23/19，用例与分片并集完整 |
+| API 访问观察 | 159/159 API/WebSocket 操作有成功记录，不代表穷尽业务组合 |
+| 浏览器 | 6/6 通过，每项执行一次，0 跳过、0 重试、0 flaky |
+| 前端 | 143 项行为测试、4 项架构检查；lint、类型检查、构建通过 |
+| 其他静态检查 | 后端 Pyright/Ruff，Go 格式、vet 和候选构建中的 race 检查通过 |
+| 测试资源清理 | API 的 77 个环境及浏览器环境均有清理完成回执 |
+
+GHCR 的 `6.0.0-beta.1` 和 `sha-45a4764` 两个标签经独立匿名读取验证，
+清单摘要均为实测候选的
+`sha256:75eb6ec75d913b14a339fa1a694239b579ee4fd5b5c05818149d93927372e0ed`。
+`latest` 的原清单保持不变，未创建 `6`、`6.0`、`6.0.0` 稳定标签。
+源码身份、候选/资格/提升回执和附件校验值随 GitHub 预发布保留；两轮正式 CI
+（含首轮被拒绝的失败）及本地复核证据见
+[`phase7-beta1-release.json`](../../../../docs/evidence/phase7-beta1-release.json)。
+
+首次版本标签曾指向下文失败的 `8e72780`；在确认没有镜像或 GitHub Release
+发布后，以旧远端值为条件将该未发布标签移到修复提交 `45a4764`。已发布标签
+固定在通过资格检查的源码；后续规范归档提交不改变该标签。
+
+以下本地候选 4 的性能测量、逆序浏览器测试及持久数据部署演练是历史记录，
+其源码和镜像身份不改写为本次干净源码的正式发布结果。升级前仍需停止写入并
+保存完整一致性备份；v5.3.0 不支持直接读取新 schema，回退须使用匹配的旧版
+完整检查点，且不会自动合并检查点之后的数据。
+
+## 本地验收候选（历史记录）
 
 候选来源为工作区的冻结副本，基准提交是
 `9cf6f77b258a7ccf4507c51cb686a45f8f74d823`，`dirty=true`。
@@ -32,7 +68,7 @@ Actions 运行记录或 GHCR 发布记录时，不将其写作已完成。
 个文件指纹，逐字节比较了镜像内 320 个后端文件，并检查实际编译后的配置编辑
 调用；工作区生产构建输入与最终快照一致。
 
-## 用户流程与实际修正
+## 本地候选的用户流程与实际修正
 
 最终候选的六项浏览器验收已全部通过（2.9 分钟），并在新环境将五项业务流程
 逆序执行，再加地图观测，共六项再次全部通过（3.0 分钟）。均无跳过或失败重试，
@@ -56,7 +92,7 @@ Actions 运行记录或 GHCR 发布记录时，不将其写作已完成。
 另修正了离线会话修复工具及测试夹具的 SQLite 连接关闭，保留原有事务提交/
 回滚行为。
 
-## 测试结构和执行门槛
+## 本地验收时的测试结构和执行门槛
 
 - 后端 CI 从真实 pytest 收集结果生成分组，同时记录能力声明和选择策略。
   25 组实际收集的并集为 2,145 个用例，无遗漏和重复。
@@ -83,12 +119,12 @@ Actions 运行记录或 GHCR 发布记录时，不将其写作已完成。
 收集证据：`/tmp/mc-admin-phase7-ci-collection/` 和
 `/tmp/mc-admin-phase7-ci-default-collection/`。门槛演练证据：
 `/tmp/mc-admin-phase7-local-promotion.json`；实际应用的演练结果随代码保存为
-[`phase7-application-promotion.json`](../../../docs/evidence/phase7-application-promotion.json)。执行方法与当前 CI 图见
-[`docs/release.md`](../../../docs/release.md) 和
-[`backend/docs/testing.md`](../../../backend/docs/testing.md)。
+[`phase7-application-promotion.json`](../../../../docs/evidence/phase7-application-promotion.json)。执行方法与当前 CI 图见
+[`docs/release.md`](../../../../docs/release.md) 和
+[`backend/docs/testing.md`](../../../../backend/docs/testing.md)。
 
-API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资格测试需要独立
-外部账号与受管测试域名，不属于本次普通回归，也未声称已执行。第一次最终
+API 用例目录共 83 项，普通回归选择 80 项；3 项 Mojang/DNSPod/华为 DNS 外部服务资格测试需要独立
+外部配置与适用的受管测试域名，不属于本次普通回归，也未声称已执行。第一次最终
 候选分片执行为 79/80：唯一失败在官方地图客户端下载准备阶段，实际收到
 490,948 / 31,152,600 字节，尚未进入该用例的范围恢复断言。固定 mcmap 重新
 从官方下载完整文件成功后，以原镜像、原执行器和原种子完整重跑失败的 38 项
@@ -107,7 +143,7 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 候选镜像、冻结源码和验收报告属于有意保留的产物。审计为
 `/tmp/mc-admin-phase7-cleanup-final.json`。
 
-## 完整检查记录
+## 本地候选的完整检查记录
 
 | 检查 | 最终结果 |
 | --- | --- |
@@ -130,7 +166,7 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 集合保持不变。当前环境没有 IDE diagnostics 工具，静态结论来自实际 CLI 检查。
 
 检查结果及原始日志 SHA256 随代码保存于
-[`phase7-qualification.json`](../../../docs/evidence/phase7-qualification.json)，本地五门槛回执在
+[`phase7-qualification.json`](../../../../docs/evidence/phase7-qualification.json)，本地五门槛回执在
 `/tmp/mc-admin-phase7-qualified-local.json`。后端最后执行日志为
 `/tmp/mc-admin-phase7-final3-pytest.log`，Docker 逐项证据为
 `/tmp/mc-admin-phase7-docker-evidence.json`。
@@ -160,7 +196,7 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 其余约 0.12–0.22 s 无法在共享主机上精确归因，原始数据和限制均保留。
 
 完整原始指标随代码保存于 `backend/docs/evidence/`，方法和限制见
-[`workload-measurements.md`](../../../backend/docs/workload-measurements.md)。
+[`workload-measurements.md`](../../../../backend/docs/workload-measurements.md)。
 原始 HTTP 工作负载只使用公共接口；报告不保留凭据、请求内容或真实用户数据。
 
 真实旧镜像与最终候选的浏览器请求数如下；包含所有记录到的失败请求，未做美化：
@@ -177,8 +213,8 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 空闲窗口均无失败，未发现失控请求循环。两侧使用相同浏览器、视口和四个区域，
 但世界随机种子未固定，实际区域哈希不同；首屏观察还包含界面导航及等待时间，
 不能将其当成严格受控的纯渲染性能比较。原始指标与这些限制见
-[`浏览器验收方法`](../../../frontend-react/docs/browser-tests.md) 和
-[`浏览器对照数据`](../../../frontend-react/docs/evidence/phase7-browser-comparison.json)。
+[`浏览器验收方法`](../../../../frontend-react/docs/browser-tests.md) 和
+[`浏览器对照数据`](../../../../frontend-react/docs/evidence/phase7-browser-comparison.json)。
 
 ## 持久部署及回退
 
@@ -199,21 +235,10 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 
 最终演练通过 225 次公共接口调用完成，记录脚本及应用源码 SHA，并验证清理。
 证据为 `/tmp/mc-admin-phase7-rehearsal-candidate4.json`；当前操作步骤与限制见
-[`e2e/docs/deployment-rehearsal.md`](../../../e2e/docs/deployment-rehearsal.md)。固定工具也已在同一
+[`e2e/docs/deployment-rehearsal.md`](../../../../e2e/docs/deployment-rehearsal.md)。固定工具也已在同一
 最终候选中核验为 fd 10.4.2、Restic 0.18.1、mcmap 0.8.4。
 
-## 尚待收尾的验收
-
-重构清单已完成 54/56。7.4 的发布依赖及验证机制已实现，但正式发布需要
-选定已提交的源码和版本标签，再由同提交的发布工作流完成资格检查和提升；
-在实际 CI 和 GHCR 发布记录可核验之前，保留 7.4 未勾选。
-7.7 的用户兼容矩阵已复核，规范同步与归档保留至全部已批准的工作完成，
-没有提前归档或将尚未执行的正式发布写作完成。
-
-用户已确认本次发布目标为 `v6.0.0-beta.1`，不关联 issue。版本确认不代表
-发布完成：仍需以最终提交完成必要 CI 检查，并晋升该次验证的同一镜像 digest。
-现有本地验收证据不替代此版本的实际 CI、版本标签及 GHCR 发布记录；
-规范同步与归档仍待上述发布工作及剩余验收完成。
+## 预发布复核与取消边界修复
 
 预发布适配使用完整版本号 `6.0.0-beta.1`。前端版本比较按预发布优先级排序，
 正式版 `6.0.0` 高于各个 beta，构建元数据不改变顺序。额外的版本比较、更新
@@ -228,7 +253,7 @@ API 用例目录共 83 项，普通回归选择 80 项；3 项真实云 DNS 资�
 2,146 项全部通过且执行并集完整；资格检查明确因 browser 门槛失败拒绝，
 promote 步骤被跳过，没有产生发布回执。该候选没有发布。
 原始失败及候选身份保留在
-[`phase7-beta1-release.json`](../../../docs/evidence/phase7-beta1-release.json)。
+[`phase7-beta1-release.json`](../../../../docs/evidence/phase7-beta1-release.json)。
 
 真实文件数据库的同步屏障复现确认：SELECT 已由驱动线程执行、游标尚未关闭
 时取消，保留中的异常栈可能继续持有游标并阻塞独立连接写入。旧实现同一窗口
@@ -243,15 +268,15 @@ promote 步骤被跳过，没有产生发布回执。该候选没有发布。
 不能留下无人负责的排队记录。
 
 最终新增 37 项后端回归；操作与后台任务组 154 项通过，Pyright / Ruff
-无错误。本地完整收集为 2,183 项，最终执行并集仍以修复提交的 CI 审计为准。
+无错误。本地完整收集为 2,183 项，随后由本页首节的最终 CI 执行并集审计确认。
 前端清理失败不再覆盖原始断言，完整行为测试 143 项及架构检查 4 项通过。
 SQLite 核心修复镜像的浏览器六项通过，恢复 API 的普通及独立环境模式共
 4/4 通过，实际检查后续数据库写入和安全回滚字节；这些结果不冒充随后受理
-补口的镜像验证。最终发布资格仍需修复提交的完整 CI 和同一 OCI 产物验证，
-不复用旧提交的成功结果。
+补口的镜像验证。最终发布资格来自本页首节修复提交的完整 CI 和同一 OCI 产物验证，
+未复用旧提交的成功结果。
 
 包含受理补口的最终本地 Docker 镜像
 `sha256:7b0ff30c43c5bfe8ec1ed82fc8f45994d689718d9cc8d29f3a6ba9debf4a743e`
 再次完成浏览器 6/6（169.6 秒、无跳过或重试），以及恢复 API 两种模式
 4/4；所有所属环境已清理。其冻结源码及原始证据见上述 beta 发布记录。
-这是正式 CI 前的本地复核，尚未产生该版本的发布资格回执。
+这是正式 CI 前的本地复核；正式发布资格及镜像身份以本页首节为准。

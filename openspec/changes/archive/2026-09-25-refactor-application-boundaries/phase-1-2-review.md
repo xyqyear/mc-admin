@@ -16,11 +16,11 @@
 
 ## 可供审核的设计落点
 
-- [用户旅程与兼容契约](../../../backend/docs/administration-contracts.md)：用户流程、角色/CSRF、响应与事件、取消和部署边界，以及对应回归负责人。
-- [测试与基线](../../../backend/docs/testing.md)：隔离目录、能力标记、自动收集/分片审计、真实发布数据库、API/schema 和工作负载。
-- [删除和生命周期](../../../backend/docs/servers.md)：准入冻结与执行互斥分离，避免等待任务时持有任务自己需要的锁。
-- [数据库迁移](../../../backend/docs/database-migrations.md)：唯一索引、重复会话的离线预检/审核/修复及降级边界。
-- [API E2E 覆盖](../../../e2e/docs/coverage.md)：每个新增场景实际验证的业务效果，区别于仅访问路由。
+- [用户旅程与兼容契约](../../../../backend/docs/administration-contracts.md)：用户流程、角色/CSRF、响应与事件、取消和部署边界，以及对应回归负责人。
+- [测试与基线](../../../../backend/docs/testing.md)：隔离目录、能力标记、自动收集/分片审计、真实发布数据库、API/schema 和工作负载。
+- [删除和生命周期](../../../../backend/docs/servers.md)：准入冻结与执行互斥分离，避免等待任务时持有任务自己需要的锁。
+- [数据库迁移](../../../../backend/docs/database-migrations.md)：唯一索引、重复会话的离线预检/审核/修复及降级边界。
+- [API E2E 覆盖](../../../../e2e/docs/coverage.md)：每个新增场景实际验证的业务效果，区别于仅访问路由。
 
 核心实现是 `app.operation_admission`、`app.world.locks` 和请求级依赖，仍沿用现有服务入口；前端仅提取了小型编辑会话 hook 和共享错误/重试策略。这些边界为下一阶段迁移提供回归保护，尚不代表完整的操作协调器或领域拆分已经完成。
 

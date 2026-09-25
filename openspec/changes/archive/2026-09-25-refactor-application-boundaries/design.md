@@ -6,9 +6,9 @@
 
 相关的现有设计文档：
 
-- 后端：[服务器](../../../backend/docs/servers.md)、[模板](../../../backend/docs/templates.md)、[快照](../../../backend/docs/snapshots.md)、[世界恢复](../../../backend/docs/world-restore.md)、[裁剪](../../../backend/docs/chunk-prune.md)、[后台任务](../../../backend/docs/background-tasks.md)、[玩家](../../../backend/docs/players.md)、[定时任务](../../../backend/docs/cron.md)、[DNS](../../../backend/docs/dns.md)、[自检](../../../backend/docs/self-check.md)及[数据库迁移](../../../backend/docs/database-migrations.md)。
-- 前端：[数据架构](../../../frontend-react/docs/data-architecture.md)、[文件](../../../frontend-react/docs/file-management.md)、[任务中心](../../../frontend-react/docs/task-center.md)、[世界恢复](../../../frontend-react/docs/world-restore-page.md)、[裁剪](../../../frontend-react/docs/chunk-prune-page.md)及[上传](../../../frontend-react/docs/archive-upload.md)。
-- 验证：[E2E 架构](../../../e2e/docs/architecture.md)及[覆盖说明](../../../e2e/docs/coverage.md)。
+- 后端：[服务器](../../../../backend/docs/servers.md)、[模板](../../../../backend/docs/templates.md)、[快照](../../../../backend/docs/snapshots.md)、[世界恢复](../../../../backend/docs/world-restore.md)、[裁剪](../../../../backend/docs/chunk-prune.md)、[后台任务](../../../../backend/docs/background-tasks.md)、[玩家](../../../../backend/docs/players.md)、[定时任务](../../../../backend/docs/cron.md)、[DNS](../../../../backend/docs/dns.md)、[自检](../../../../backend/docs/self-check.md)及[数据库迁移](../../../../backend/docs/database-migrations.md)。
+- 前端：[数据架构](../../../../frontend-react/docs/data-architecture.md)、[文件](../../../../frontend-react/docs/file-management.md)、[任务中心](../../../../frontend-react/docs/task-center.md)、[世界恢复](../../../../frontend-react/docs/world-restore-page.md)、[裁剪](../../../../frontend-react/docs/chunk-prune-page.md)及[上传](../../../../frontend-react/docs/archive-upload.md)。
+- 验证：[E2E 架构](../../../../e2e/docs/architecture.md)及[覆盖说明](../../../../e2e/docs/coverage.md)。
 
 ### 已有的合理设计
 

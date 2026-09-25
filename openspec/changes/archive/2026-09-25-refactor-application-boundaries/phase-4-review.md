@@ -66,7 +66,7 @@ OpenSpec 严格校验和 `git diff --check` 通过。本组 4.1–4.7 均已完�
 - 前端：`/tmp/mc-admin-phase4-frontend-{tests,lint,build}.log`。
 - 镜像构建：`/tmp/mc-admin-phase4-candidate2-build.log`。
 - 最终 E2E：`/tmp/mc-admin-phase4-e2e/phase4-candidate2-{default,no-reuse}/results.json`；清理审计：`/tmp/mc-admin-phase4-e2e/cleanup-verification.json`。
-- 完整 E2E 命令与范围说明见 [E2E 验证记录](../../../e2e/docs/verification.md)。
+- 完整 E2E 命令与范围说明见 [E2E 验证记录](../../../../e2e/docs/verification.md)。
 
 ## 保留的运行限制
 
