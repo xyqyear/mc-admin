@@ -20,6 +20,9 @@ type completedGroup struct {
 }
 
 func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Result {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	options.abort = cancel
 	queuedAt := time.Now()
 	pending := make([]queuedGroup, len(plan.Groups))
 	for index, group := range plan.Groups {
@@ -52,6 +55,10 @@ func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Res
 			groupOptions := options
 			groupOptions.queueSeconds = now.Sub(item.queued).Seconds()
 			groupOptions.resourceWaitSeconds = item.resourceWait.Seconds()
+			if ctx.Err() != nil {
+				results = append(results, runGroup(ctx, item.group, factory, groupOptions)...)
+				continue
+			}
 			slots := item.group.Cases[0].Recipe.MinecraftSlots
 			if slots > options.MinecraftSlots {
 				for index, test := range item.group.Cases {
@@ -75,7 +82,9 @@ func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Res
 		select {
 		case group := <-completed:
 			results = append(results, group.results...)
-			occupied -= group.slots
+			if !hasTeardownFailure(group.results) {
+				occupied -= group.slots
+			}
 			running--
 		case <-cancelled:
 			cancelled = nil
@@ -83,4 +92,15 @@ func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Res
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
 	return results
+}
+
+func hasTeardownFailure(results []Result) bool {
+	for _, result := range results {
+		for _, issue := range result.Issues {
+			if issue.Phase == "teardown" {
+				return true
+			}
+		}
+	}
+	return false
 }

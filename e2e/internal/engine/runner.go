@@ -57,6 +57,7 @@ type Options struct {
 	Progress            func(string)
 	queueSeconds        float64
 	resourceWaitSeconds float64
+	abort               context.CancelCauseFunc
 }
 
 type Issue struct {
@@ -96,6 +97,8 @@ func (r *Result) issue(phase string, err error, redactor *evidence.Redactor) {
 }
 
 func runGroup(ctx context.Context, group Group, factory Factory, options Options) []Result {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	var env *environment.Environment
 	var release func()
 	var results []Result
@@ -104,7 +107,17 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 			result.issue("diagnostics", timedPhase(&result.Timings.DiagnosticsSeconds, context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
 				return factory.Capture(ctx, env)
 			}), options.Redactor)
-			result.issue("teardown", timedPhase(&result.Timings.TeardownSeconds, context.Background(), options.CleanupTimeout, env.Close), options.Redactor)
+			err := timedPhase(&result.Timings.TeardownSeconds, context.Background(), options.CleanupTimeout, env.Close)
+			result.issue("teardown", err, options.Redactor)
+			if err != nil {
+				cause := fmt.Errorf("environment %s teardown failed; resource ownership is unresolved: %w", env.ID, err)
+				cancel(cause)
+				if options.abort != nil {
+					options.abort(cause)
+				}
+				// Failed teardown cannot establish that the reserved resources are free.
+				release = nil
+			}
 			env = nil
 		}
 		if release != nil {
@@ -131,7 +144,7 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 		}
 		scope := &Scope{Recorder: recorder}
 		if ctx.Err() != nil {
-			result.issue("cancelled", ctx.Err(), options.Redactor)
+			result.issue("cancelled", context.Cause(ctx), options.Redactor)
 		} else {
 			result.Reused = env != nil
 			if env == nil {
@@ -142,6 +155,9 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 					return err
 				})
 				result.Timings.ReservationSeconds = time.Since(reservationStarted).Seconds()
+				if err == nil {
+					err = context.Cause(ctx)
+				}
 				result.issue("reservation", err, options.Redactor)
 				if err == nil {
 					err = timedPhase(&result.Timings.SetupSeconds, ctx, options.SetupTimeout, func(setupCtx context.Context) error {

@@ -3,12 +3,136 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"mc-admin/e2e/internal/environment"
 )
+
+type retirementFactory struct {
+	mu                                        sync.Mutex
+	mode                                      string
+	created, closed, live, maxLive            int
+	liveMinecraft, maxMinecraft, reservations int
+	minecraftReleases                         int
+	independentCleanup                        bool
+}
+
+func (f *retirementFactory) Reserve(ctx context.Context, recipe *environment.Recipe) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	f.reservations += recipe.MinecraftSlots
+	f.mu.Unlock()
+	return func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.reservations -= recipe.MinecraftSlots
+		if recipe.MinecraftSlots > 0 {
+			f.minecraftReleases++
+		}
+	}, nil
+}
+
+func (f *retirementFactory) New(ctx context.Context, recipe *environment.Recipe) (*environment.Environment, error) {
+	f.mu.Lock()
+	f.created++
+	id := fmt.Sprint(f.created)
+	f.live++
+	f.liveMinecraft += recipe.MinecraftSlots
+	f.maxLive = max(f.maxLive, f.live)
+	f.maxMinecraft = max(f.maxMinecraft, f.liveMinecraft)
+	f.mu.Unlock()
+	env := environment.New(id, "", nil)
+	env.Defer(func(ctx context.Context) error {
+		if recipe.MinecraftSlots > 0 {
+			switch f.mode {
+			case "timeout":
+				<-ctx.Done()
+				return ctx.Err()
+			case "expired-success":
+				<-ctx.Done()
+				return nil
+			case "panic":
+				panic("container removal panicked")
+			default:
+				return errors.New("container removal failed")
+			}
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.independentCleanup = ctx.Err() == nil
+		f.closed++
+		f.live--
+		return nil
+	})
+	return env, env.Setup(ctx, recipe)
+}
+
+func (f *retirementFactory) Capture(context.Context, *environment.Environment) error { return nil }
+
+func TestUnresolvedTeardownStopsAdmissionAndDrainsActiveGroups(t *testing.T) {
+	for _, mode := range []string{"error", "timeout", "expired-success", "panic"} {
+		t.Run(mode, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				minecraft, ordinary := testRecipe(), testRecipe()
+				minecraft.ID, minecraft.MinecraftSlots = "game", 1
+				ordinaryStarted := make(chan struct{})
+				first := testCase("case.first", minecraft, Fresh)
+				first.Run = func(context.Context, *Scope) error { <-ordinaryStarted; return nil }
+				active := testCase("case.active", ordinary, Fresh)
+				active.Timeout = time.Minute
+				active.Run = func(ctx context.Context, _ *Scope) error {
+					close(ordinaryStarted)
+					<-ctx.Done()
+					return ctx.Err()
+				}
+				pendingGame := testCase("case.pending-game", minecraft, Fresh)
+				pendingOrdinary := testCase("case.pending-ordinary", ordinary, Fresh)
+				for _, test := range []*Case{&pendingGame, &pendingOrdinary} {
+					test.Run = func(context.Context, *Scope) error {
+						t.Error("pending case executed after unconfirmed teardown")
+						return nil
+					}
+				}
+				plan := Plan{Groups: []Group{{Cases: []Case{first}}, {Cases: []Case{active}}, {Cases: []Case{pendingGame}}, {Cases: []Case{pendingOrdinary}}}}
+				factory := &retirementFactory{mode: mode}
+				options := runnerOptions(t)
+				options.MinecraftSlots = 1
+				results := Run(context.Background(), plan, factory, options)
+				if len(results) != 4 || factory.created != 2 || factory.closed != 1 || factory.live != 1 || factory.liveMinecraft != 1 || factory.maxLive > 2 || factory.maxMinecraft > 1 || factory.reservations != 1 || factory.minecraftReleases != 0 || !factory.independentCleanup {
+					t.Fatalf("unresolved teardown released capacity or lost cleanup: results=%+v, factory=%+v", results, factory)
+				}
+				for _, result := range results {
+					if result.Status != "failed" {
+						t.Fatalf("unresolved teardown was hidden: %+v", result)
+					}
+					if strings.HasPrefix(result.ID, "case.pending-") && (len(result.Issues) != 1 || result.Issues[0].Phase != "cancelled" || !strings.Contains(result.Issues[0].Message, "resource ownership is unresolved")) {
+						t.Fatalf("pending case lost teardown cancellation cause: %+v", result)
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestUnresolvedTeardownStopsReplacementWithinReuseGroup(t *testing.T) {
+	recipe := testRecipe()
+	recipe.MinecraftSlots = 1
+	first, second := testCase("case.first", recipe, ObserveReuse), testCase("case.second", recipe, ObserveReuse)
+	factory := &retirementFactory{mode: "error"}
+	options := runnerOptions(t)
+	options.NoReuse = true
+	results := runGroup(context.Background(), Group{Cases: []Case{first, second}}, factory, options)
+	if len(results) != 2 || results[0].Status != "failed" || results[1].Status != "failed" || results[1].Issues[0].Phase != "cancelled" || factory.created != 1 || factory.live != 1 || factory.reservations != 1 || factory.minecraftReleases != 0 {
+		t.Fatalf("reuse group replaced an unresolved environment: results=%+v, factory=%+v", results, factory)
+	}
+}
 
 func TestResourceAdmissionBypassesBlockedGroupsAndRetainsCleanupCapacity(t *testing.T) {
 	for _, noReuse := range []bool{false, true} {
