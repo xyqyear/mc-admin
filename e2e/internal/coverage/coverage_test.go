@@ -174,7 +174,7 @@ func TestShardUnionAndMissingCases(t *testing.T) {
 }
 
 func TestRejectIncompatibleAndDuplicateInputs(t *testing.T) {
-	for _, kind := range []string{"image", "schema", "catalog", "shard-count", "duplicate-shard", "duplicate-case", "duplicate-run", "unplanned", "missing-schema", "missing-passed-trace"} {
+	for _, kind := range []string{"image", "schema", "catalog", "shard-count", "scheduling-workers", "scheduling-slots", "scheduling-costs", "seed", "duplicate-shard", "duplicate-case", "duplicate-run", "unplanned", "missing-schema", "missing-passed-trace"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			first := singleReport("case.first", "case.second")
@@ -192,6 +192,14 @@ func TestRejectIncompatibleAndDuplicateInputs(t *testing.T) {
 			secondSchema := schemaFixture
 			firstSchema := schemaFixture
 			firstTraces := map[string]string{"case.first": ""}
+			if strings.HasPrefix(kind, "scheduling-") {
+				config := engine.Scheduling{Algorithm: "resource-weighted-v1", CostSHA256: strings.Repeat("a", 64), Workers: 2, MinecraftSlots: 1}
+				first.Plan.Scheduling, second.Plan.Scheduling = config, config
+				for index := range first.Plan.Catalog {
+					first.Plan.Catalog[index].EstimatedSeconds = 10
+					second.Plan.Catalog[index].EstimatedSeconds = 10
+				}
+			}
 			switch kind {
 			case "image":
 				second.Image = "different"
@@ -201,6 +209,14 @@ func TestRejectIncompatibleAndDuplicateInputs(t *testing.T) {
 				second.Plan.Catalog[0].Recipe = "different"
 			case "shard-count":
 				second.Plan.ShardCount = 3
+			case "scheduling-workers":
+				second.Plan.Scheduling.Workers = 3
+			case "scheduling-slots":
+				second.Plan.Scheduling.MinecraftSlots = 2
+			case "scheduling-costs":
+				second.Plan.Scheduling.CostSHA256 = strings.Repeat("b", 64)
+			case "seed":
+				second.Plan.Seed = 17
 			case "duplicate-shard":
 				second.Plan.ShardIndex = 1
 				second.Plan.Order = []string{"case.first"}

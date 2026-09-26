@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"math/rand/v2"
 	"regexp"
 	"sort"
@@ -31,22 +30,27 @@ type Case struct {
 }
 
 type Selection struct {
-	Suite      string
-	Match      string
-	Tag        string
-	ShardIndex int
-	ShardCount int
-	Seed       uint64
+	Suite          string
+	Match          string
+	Tag            string
+	ShardIndex     int
+	ShardCount     int
+	Seed           uint64
+	Costs          CostProfile
+	Workers        int
+	MinecraftSlots int
 }
 
 type Entry struct {
-	ID        string    `json:"id"`
-	Suite     string    `json:"suite"`
-	Tags      []string  `json:"tags"`
-	Recipe    string    `json:"recipe"`
-	Isolation Isolation `json:"isolation"`
-	Timeout   string    `json:"timeout"`
-	Shard     int       `json:"shard"`
+	ID               string    `json:"id"`
+	Suite            string    `json:"suite"`
+	Tags             []string  `json:"tags"`
+	Recipe           string    `json:"recipe"`
+	Isolation        Isolation `json:"isolation"`
+	Timeout          string    `json:"timeout"`
+	Shard            int       `json:"shard"`
+	EstimatedSeconds float64   `json:"estimated_seconds"`
+	MinecraftSlots   int       `json:"minecraft_slots"`
 }
 
 type Group struct {
@@ -54,12 +58,13 @@ type Group struct {
 	Cases []Case
 }
 type Plan struct {
-	Seed       uint64   `json:"seed"`
-	ShardIndex int      `json:"shard_index"`
-	ShardCount int      `json:"shard_count"`
-	Catalog    []Entry  `json:"catalog"`
-	Order      []string `json:"order"`
-	Groups     []Group  `json:"-"`
+	Seed       uint64     `json:"seed"`
+	ShardIndex int        `json:"shard_index"`
+	ShardCount int        `json:"shard_count"`
+	Catalog    []Entry    `json:"catalog"`
+	Order      []string   `json:"order"`
+	Groups     []Group    `json:"-"`
+	Scheduling Scheduling `json:"scheduling"`
 }
 
 func BuildPlan(catalog []Case, selection Selection) (Plan, error) {
@@ -67,6 +72,11 @@ func BuildPlan(catalog []Case, selection Selection) (Plan, error) {
 	if selection.ShardCount < 1 || selection.ShardIndex < 1 || selection.ShardIndex > selection.ShardCount {
 		return plan, fmt.Errorf("shard must be INDEX/COUNT, with 1 <= INDEX <= COUNT")
 	}
+	profile, config, err := scheduling(selection)
+	if err != nil {
+		return plan, err
+	}
+	plan.Scheduling = config
 	matcher, err := regexp.Compile(selection.Match)
 	if err != nil {
 		return plan, err
@@ -124,20 +134,26 @@ func BuildPlan(catalog []Case, selection Selection) (Plan, error) {
 		if test.Isolation == Fresh {
 			key = "case:" + test.ID
 		}
-		hash := fnv.New64a()
-		hash.Write([]byte(key))
-		shard := int(hash.Sum64()%uint64(selection.ShardCount)) + 1
-		plan.Catalog = append(plan.Catalog, Entry{test.ID, test.Suite, test.Tags, test.Recipe.ID, test.Isolation, test.Timeout.String(), shard})
-		if shard == selection.ShardIndex {
-			groups[key] = append(groups[key], test)
-		}
+		groups[key] = append(groups[key], test)
+		plan.Catalog = append(plan.Catalog, Entry{ID: test.ID, Suite: test.Suite, Tags: test.Tags, Recipe: test.Recipe.ID, Isolation: test.Isolation, Timeout: test.Timeout.String(), EstimatedSeconds: profile.estimate(test), MinecraftSlots: test.Recipe.MinecraftSlots})
 	}
 	if len(plan.Catalog) == 0 {
 		return plan, fmt.Errorf("selection matched no cases")
 	}
+	assignments := assignGroups(groups, profile, config, selection.ShardCount)
+	for index := range plan.Catalog {
+		entry := &plan.Catalog[index]
+		key := "recipe:" + entry.Recipe
+		if entry.Isolation == Fresh {
+			key = "case:" + entry.ID
+		}
+		entry.Shard = assignments[key]
+	}
 	var keys []string
 	for key := range groups {
-		keys = append(keys, key)
+		if assignments[key] == selection.ShardIndex {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
 	random := rand.New(rand.NewPCG(selection.Seed, selection.Seed^0x9e3779b97f4a7c15))

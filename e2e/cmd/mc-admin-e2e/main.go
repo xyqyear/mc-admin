@@ -96,6 +96,13 @@ func mainCode(args []string) int {
 		fmt.Fprintln(os.Stderr, "resource budgets and timeouts must be positive")
 		return 2
 	}
+	selection.Costs, err = suites.Costs()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	selection.Workers = workers
+	selection.MinecraftSlots = settings.MinecraftSlots
 	factory := fixtures.NewFactory(settings, nil, &evidence.Redactor{})
 	plan, err := engine.BuildPlan(suites.Catalog(factory.Recipes()), selection)
 	if err != nil {
@@ -181,7 +188,7 @@ func mainCode(args []string) int {
 			report.Errors = append(report.Errors, err.Error())
 		} else {
 			var progressMu sync.Mutex
-			report.Results = engine.Run(ctx, plan, factory, engine.Options{Workers: workers, NoReuse: noReuse, SetupTimeout: setupTimeout, CleanupTimeout: cleanupTimeout, Directory: dir, Redactor: redactor, Progress: func(message string) { progressMu.Lock(); defer progressMu.Unlock(); fmt.Println(message) }})
+			report.Results = engine.Run(ctx, plan, factory, engine.Options{Workers: workers, MinecraftSlots: settings.MinecraftSlots, NoReuse: noReuse, SetupTimeout: setupTimeout, CleanupTimeout: cleanupTimeout, Directory: dir, Redactor: redactor, Progress: func(message string) { progressMu.Lock(); defer progressMu.Unlock(); fmt.Println(message) }})
 		}
 	}
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), cleanupTimeout)

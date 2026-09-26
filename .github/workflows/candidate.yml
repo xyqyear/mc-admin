@@ -47,10 +47,19 @@ jobs:
           echo "revision=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
       - name: Verify and build the API executable
         working-directory: e2e
+        shell: bash
         run: |
-          make test
+          make --silent test TEST_FLAGS=-json | tee "$RUNNER_TEMP/go-test-results.jsonl"
           make build
           cp bin/mc-admin-e2e "$RUNNER_TEMP/candidate/"
+      - name: Upload individual Go test timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-test-results
+          path: ${{ runner.temp }}/go-test-results.jsonl
+          retention-days: 14
+          if-no-files-found: error
       - name: Build the only application artifact
         uses: docker/build-push-action@v7
         with:

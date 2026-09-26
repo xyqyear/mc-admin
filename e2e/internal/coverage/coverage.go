@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -94,6 +95,8 @@ func collect(runDirs []string) (Summary, error) {
 	var canonicalCatalog []engine.Entry
 	var canonicalSchema []byte
 	shardCount := 0
+	var canonicalScheduling engine.Scheduling
+	var canonicalSeed uint64
 	shards := map[int]bool{}
 	runs := map[string]bool{}
 	caseSources := map[string]string{}
@@ -124,7 +127,9 @@ func collect(runDirs []string) (Summary, error) {
 		if len(sources) == 0 {
 			canonicalCatalog = catalog
 			shardCount = report.Plan.ShardCount
-		} else if shardCount != report.Plan.ShardCount || !reflect.DeepEqual(canonicalCatalog, catalog) {
+			canonicalScheduling = report.Plan.Scheduling
+			canonicalSeed = report.Plan.Seed
+		} else if shardCount != report.Plan.ShardCount || canonicalScheduling != report.Plan.Scheduling || canonicalSeed != report.Plan.Seed || !reflect.DeepEqual(canonicalCatalog, catalog) {
 			return summary, fmt.Errorf("incompatible shard selections or catalogs in run %s", report.RunID)
 		}
 		if shards[report.Plan.ShardIndex] {
@@ -238,6 +243,9 @@ func validatePlan(plan engine.Plan) ([]engine.Entry, error) {
 	if plan.ShardCount < 1 || plan.ShardIndex < 1 || plan.ShardIndex > plan.ShardCount || len(plan.Catalog) == 0 {
 		return nil, fmt.Errorf("invalid shard plan")
 	}
+	if config := plan.Scheduling; config.Algorithm != "" && (config.Algorithm != "resource-weighted-v1" || config.Workers < 1 || config.MinecraftSlots < 1 || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(config.CostSHA256)) {
+		return nil, fmt.Errorf("invalid scheduling configuration")
+	}
 	catalog := append([]engine.Entry(nil), plan.Catalog...)
 	sort.Slice(catalog, func(i, j int) bool { return catalog[i].ID < catalog[j].ID })
 	ids := map[string]bool{}
@@ -246,6 +254,9 @@ func validatePlan(plan engine.Plan) ([]engine.Entry, error) {
 		entry := &catalog[index]
 		if !safeCaseID.MatchString(entry.ID) || ids[entry.ID] || entry.Shard < 1 || entry.Shard > plan.ShardCount {
 			return nil, fmt.Errorf("invalid catalog case %q", entry.ID)
+		}
+		if plan.Scheduling.Algorithm != "" && (entry.EstimatedSeconds <= 0 || math.IsNaN(entry.EstimatedSeconds) || math.IsInf(entry.EstimatedSeconds, 0) || entry.MinecraftSlots < 0) {
+			return nil, fmt.Errorf("invalid scheduling cost or capacity for %s", entry.ID)
 		}
 		ids[entry.ID] = true
 		entry.Tags = append([]string(nil), entry.Tags...)

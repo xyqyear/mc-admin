@@ -1,5 +1,6 @@
 GO ?= go
 GOFMT ?= gofmt
+TEST_FLAGS ?=
 
 .PHONY: build check lint test
 
@@ -16,6 +17,6 @@ lint:
 	$(GO) vet ./...
 
 test:
-	$(GO) test -race -vet=off -count=1 ./...
+	$(GO) test -race -vet=off -count=1 $(TEST_FLAGS) ./...
 
 check: lint test

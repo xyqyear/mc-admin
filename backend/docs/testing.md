@@ -38,31 +38,43 @@ Capabilities are declarations, not naming conventions:
 
 `--require-capabilities` fails before execution if a selected local binary is missing. `FD_BINARY_PATH`, `RESTIC_BINARY_PATH`, and `MCMAP_BINARY_PATH` select binary locations. Strict marker validation rejects unknown markers and malformed binary declarations. Pure tests that accidentally execute a known installed binary fail. Docker subprocesses and SDK clients are blocked in tests without the Docker marker and explicit opt-in. Adapter mocks can still replace those boundaries.
 
-Docker fixtures generate a random owner identifier and container names. They label containers and Compose networks, inspect ownership before removal, and remove verified Docker IDs. A same-name resource belonging to someone else is rejected. Cleanup attempts the other registered resources if one removal fails. No fixture removes `mc-testserver1` or `/tmp/test_temp_dir`. These fixtures are still run serially; random names do not establish that fixed host ports or shared application state support parallel execution.
+Docker fixtures generate a random owner identifier and container names. They ask Docker to allocate available host ports and inspect the owned container's actual port bindings. They label containers and Compose networks, inspect ownership before removal, and remove verified Docker IDs. A same-name resource belonging to someone else is rejected. Cleanup attempts the other registered resources if one removal fails. No fixture removes `mc-testserver1` or `/tmp/test_temp_dir`. Tests execute sequentially inside each runner; independent CI runners provide the parallelism, without pytest workers sharing a Docker host.
 
 `tests/testing/test_isolation.py` verifies default paths, CLI/SDK guards, owner mismatch refusal, cleanup continuation, and a subprocess run of the ordinary instance tests with a fake Docker executable. Its fault-injection subprocesses replace the snapshot restriction with an always-allow function and disable audit matching. Both regression suites must return a failing exit status. Snapshot window cases assert both sides of each configured time boundary; audit cases assert decisions and emitted files instead of printing mismatches.
 
 ## CI collection
 
-`.github/workflows/backend-tests.yml` collects the entire suite and derives its matrix from collected test identities. Groups are the first directory below `tests/`, with top-level files grouped as `root`. Each group reports its declared capabilities. CI installs Dockerfile-pinned fd, Restic, and mcmap binaries with checksum verification, then runs the group with required capabilities enabled.
+`.github/workflows/backend-tests.yml` collects the entire suite and plans four independent shards from the selected test identities. Each complete test file is an allocation unit. Files that share a fixture boundary can declare `pytestmark = pytest.mark.shard_group("boundary-name")`; all files carrying that label stay together, including their unmarked tests. Overlapping labels join transitively. Module fixtures therefore stay within their file, and session fixtures must own independent per-runner state unless their users declare a shared boundary. Common isolated session fixtures do not force unrelated tests into one shard.
 
-The inventory and every selected group are uploaded as JSON artifacts. A final audit rejects missing, unexpected, or duplicate test identities. Test execution failures independently fail their matrix jobs. A collection manifest proves selection, not successful execution or meaningful business assertions. New groups enter the matrix without a manually maintained directory list. External service tests need an explicitly configured CI environment before their marker can be enabled.
+`tests/ci/timing-weights.json` records historical file costs and their source. Its initial weights are approximate result-output intervals from successful release run 36148282102, not precise assertion durations. The planner sorts atomic groups by descending cost and places each in the lightest shard, using stable file names and shard indexes to break ties. Unknown files receive a positive 15-second default and enter the plan automatically. Deleted files' history has no effect. History affects placement only; the complete current collection and explicit capability policy determine selection. If fewer than four atomic groups are selected locally, the planner emits only nonempty shards.
+
+The plan binds the complete inventory, selected node IDs, capability declarations, fixture labels and selection policy with a canonical SHA-256 digest. Each shard declares the union of its required tools; CI installs Dockerfile-pinned binaries with checksum verification and requires their presence. At execution, pytest recollects the inventory and applies the same Docker/external, marker and keyword policy before validating and selecting its planned assignment. `--test-group` remains available locally for first-level directories and the top-level `root` group, but cannot combine with a plan.
+
+Inventory, immutable plan, executed collection, JUnit and exact phase timings are separate artifacts. `--timing-report` records every setup/call/teardown outcome and duration, including setup, assertion and teardown failures. Session completion runs after runtime cleanup; a failure there leaves the report incomplete. JSON is atomically published at session finish, including normal failing or interrupted sessions. An uncatchable process termination can leave no report, which fails the audit. Reports contain node IDs and timing/outcome metadata, without captured output or traceback contents.
+
+The final audit verifies plan identity, complete metadata, each shard's exact assignment, duplicate-free node-ID union and execution evidence bound to its collection manifest. Every selected node must have exactly one successful setup, call and teardown; failed, skipped, xfailed, incomplete or missing evidence fails qualification. JUnit and timing reports do not replace test assertions or the independent matrix success gate. External-service tests remain excluded until a CI environment explicitly opts in. Coverage stays enabled in each shard; raw coverage data is combined once for reports.
 
 ```bash
 uv run pytest tests --collect-only --run-docker -o addopts= -q \
   --collection-manifest /tmp/mc-admin-inventory.json
-uv run python tests/support/collection.py matrix /tmp/mc-admin-inventory.json
-uv run pytest tests --collect-only --run-docker --test-group contracts \
-  -o addopts= -q --collection-manifest /tmp/mc-admin-contracts.json
-# Supply all group manifests, not just the example group above.
-uv run python tests/support/collection.py audit /tmp/mc-admin-inventory.json /path/to/groups/*.json
+uv run --no-project python tests/support/collection.py plan /tmp/mc-admin-inventory.json \
+  --weights tests/ci/timing-weights.json --shards 4 --output /tmp/mc-admin-plan.json
+uv run pytest tests --run-docker --require-capabilities \
+  --test-plan /tmp/mc-admin-plan.json --test-shard 1 \
+  --collection-manifest /tmp/manifests/shard-1.json \
+  --timing-report /tmp/timings/timing-1.json --junitxml /tmp/junit/shard-1.xml
+# Supply all executed shard manifests and timing reports.
+uv run --no-project python tests/support/collection.py audit /tmp/mc-admin-inventory.json \
+  /tmp/manifests/shard-*.json --plan /tmp/mc-admin-plan.json --timings /tmp/timings/timing-*.json
+
+uv run pytest tests --test-group contracts
 ```
 
-A local verification collected all 21 actual groups independently and checked their exact union: 1,770 test identities, with no omissions or duplicates. Counts describe that capture; they are not coverage or release targets.
+JUnit reports include per-case totals; the phase JSON supplies the separate setup/call/teardown measurements needed to review future weights. Fixture setup and teardown remain charged to the cases where pytest executes them, so whole-file or shared-boundary costs should be aggregated before balancing. Concurrent shard durations cannot be summed into a workflow wall-clock duration. Collection, coverage reporting and runner preparation remain separate costs.
 
 ## Executable module boundaries
 
-`tests/architecture/test_import_boundaries.py` scans production Python imports. Feature modules cannot import HTTP routers, another feature's private symbols or private modules, retired compatibility modules, or the eager application metadata registry. Runtime resources use named, typed accessors; transparent proxies and import-time factory registration are rejected. The rule checks both full module imports and aliases such as `from app.servers import rebuild`. Fault snippets prove each prohibited dependency is detected. The architecture directory automatically enters the CI collection matrix.
+`tests/architecture/test_import_boundaries.py` scans production Python imports. Feature modules cannot import HTTP routers, another feature's private symbols or private modules, retired compatibility modules, or the eager application metadata registry. Runtime resources use named, typed accessors; transparent proxies and import-time factory registration are rejected. The rule checks both full module imports and aliases such as `from app.servers import rebuild`. Fault snippets prove each prohibited dependency is detected. Architecture tests automatically enter the CI shard plan.
 
 ```bash
 uv run pytest tests/architecture
@@ -125,8 +137,8 @@ Timings use an in-process ASGI client on a shared development host, with warm im
 
 ## Release qualification and capability audit
 
-The collected inventory includes each test's capability declarations and the explicit Docker, external-service and marker-expression selection policy. CI derives its matrix from the selected identities, so externally qualified tests remain deliberately excluded unless opted in. Every shard must report the same complete inventory and capability metadata, the same selection policy, and only its declared group's identities. The audit rejects omissions, duplicates, extra identities, changed declarations and policy drift.
+The collected inventory includes each test's capability and fixture-boundary declarations plus the explicit Docker, external-service, marker-expression and keyword selection policy. CI derives its matrix from the selected identities, so externally qualified tests remain deliberately excluded unless opted in. Every shard reports the same complete inventory and metadata, the same selection policy, and only its planned identities. The audit rejects omissions, duplicates, extra identities, changed declarations and policy drift.
 
-Backend groups currently run serially (`max-parallel: 1`); no pytest worker parallelism is enabled. Docker tests require both their marker and `--run-docker`, while ordinary tests retain the subprocess/SDK guard even in a Docker-enabled suite. A completed collection manifest is not evidence that execution passed: the CI audit also requires the test matrix result to be successful.
+Four independent backend runners execute their tests sequentially; no pytest worker parallelism is enabled. Docker tests require both their marker and `--run-docker`, while ordinary tests retain the subprocess/SDK guard even in a Docker-enabled suite. A completed collection manifest is not evidence that execution passed: the audit checks phase outcomes and the workflow independently requires the test matrix result to be successful.
 
 `tests/ci` contains executable collection and release-gate regression checks and is discovered like every other test group. The publication graph, immutable OCI archive, distinction between manifest/config digests and local validation commands are documented in [release qualification](../../docs/release.md). Current representative measurements and their limitations are recorded in [workload measurements](workload-measurements.md).

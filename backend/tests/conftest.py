@@ -10,7 +10,9 @@ from typing import Any
 
 import pytest
 
+from tests.support.collection import digest, validate_plan
 from tests.support.environment import configure_test_environment
+from tests.support.timing import TimingRecorder
 
 # Collection has an explicit owner separate from every test runtime.
 _environment = configure_test_environment()
@@ -25,6 +27,19 @@ _binary_environment = {
 
 _collection_runtime: pytest.StashKey[Any] = pytest.StashKey()
 _collection_binding: pytest.StashKey[Any] = pytest.StashKey()
+_plan: pytest.StashKey[dict[str, Any]] = pytest.StashKey()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "shard_group(name): keep files sharing a fixture boundary in one CI shard")
+    path, index = config.getoption("--test-plan"), config.getoption("--test-shard")
+    if bool(path) != (index is not None) or (path and config.getoption("--test-group")):
+        raise pytest.UsageError("--test-plan and --test-shard require each other and cannot combine with --test-group")
+    if path:
+        config.stash[_plan] = json.loads(Path(path).read_text())
+    output = config.getoption("--timing-report")
+    if output:
+        config.pluginmanager.register(TimingRecorder(Path(output), collection_manifest), "mc-admin-timing")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
@@ -56,6 +71,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption("--require-capabilities", action="store_true", help="Fail on missing declared binaries")
     group.addoption("--test-group", help="Select a collected first-level test group")
     group.addoption("--collection-manifest", help="Write collected and selected test identities as JSON")
+    group.addoption("--test-plan", help="Use the immutable collected CI shard plan")
+    group.addoption("--test-shard", type=int, help="Select a one-based shard from --test-plan")
+    group.addoption("--timing-report", help="Write exact setup/call/teardown durations and execution outcomes")
 
 
 def capabilities(item: pytest.Item) -> list[str]:
@@ -72,10 +90,20 @@ def test_group(item: pytest.Item) -> str:
     return relative.parts[0] if len(relative.parts) > 1 else "root"
 
 
+def shard_groups(item: pytest.Item) -> list[str]:
+    names = set()
+    for mark in item.iter_markers("shard_group"):
+        if len(mark.args) != 1 or not isinstance(mark.args[0], str) or not mark.args[0].strip() or mark.kwargs:
+            raise pytest.UsageError(f"{item.nodeid}: shard_group requires one nonempty group name")
+        names.add(mark.args[0])
+    return sorted(names)
+
+
 @pytest.hookimpl(wrapper=True, tryfirst=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> Generator[None]:
     config.stash[_inventory] = [
-        {"nodeid": item.nodeid, "group": test_group(item), "capabilities": capabilities(item)}
+        {"nodeid": item.nodeid, "group": test_group(item), "capabilities": capabilities(item),
+         "shard_groups": shard_groups(item)}
         for item in items
     ]
     selected, deselected = [], []
@@ -91,10 +119,40 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         config.hook.pytest_deselected(items=deselected)
         items[:] = selected
     yield
+    value = config.stash.get(_plan, None)
+    if value is not None:
+        manifest = {"collected": config.stash[_inventory], "selected": [item.nodeid for item in items],
+                    "policy": collection_policy(config)}
+        try:
+            validate_plan(manifest, value)
+            index = config.getoption("--test-shard")
+            if not isinstance(index, int) or not 1 <= index <= value["shard_count"]:
+                raise ValueError("Selected shard is outside the plan")
+            wanted = set(value["shards"][index - 1]["nodeids"])
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        remaining = [item for item in items if item.nodeid not in wanted]
+        items[:] = [item for item in items if item.nodeid in wanted]
+        config.hook.pytest_deselected(items=remaining)
     if config.getoption("--require-capabilities") and not config.option.collectonly:
         for name in {name for item in items for name in capabilities(item)}:
             if name in _binary_environment and not binary_path(name):
                 raise pytest.UsageError(f"Selected tests require missing binary: {name}")
+
+
+def collection_policy(config: pytest.Config) -> dict[str, Any]:
+    return {"docker": config.getoption("--run-docker"), "external": config.getoption("--run-external"),
+            "group": config.getoption("--test-group"), "expression": config.option.markexpr,
+            "keyword": config.option.keyword}
+
+
+def collection_manifest(session: pytest.Session) -> dict[str, Any]:
+    result = {"collected": session.config.stash.get(_inventory, []),
+              "selected": [item.nodeid for item in session.items], "policy": collection_policy(session.config)}
+    value = session.config.stash.get(_plan, None)
+    if value is not None:
+        result.update({"plan_sha256": digest(value), "shard": session.config.getoption("--test-shard")})
+    return result
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
@@ -102,16 +160,7 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     if output:
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "collected": session.config.stash.get(_inventory, []),
-            "selected": [item.nodeid for item in session.items],
-            "policy": {
-                "docker": session.config.getoption("--run-docker"),
-                "external": session.config.getoption("--run-external"),
-                "group": session.config.getoption("--test-group"),
-                "expression": session.config.option.markexpr,
-            },
-        }, indent=2) + "\n")
+        path.write_text(json.dumps(collection_manifest(session), indent=2) + "\n")
 
 
 def binary_path(name: str) -> str | None:

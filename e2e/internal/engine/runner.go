@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
-	"sync"
 	"time"
 
 	"mc-admin/e2e/internal/environment"
@@ -49,13 +47,16 @@ type Factory interface {
 }
 
 type Options struct {
-	Workers        int
-	NoReuse        bool
-	SetupTimeout   time.Duration
-	CleanupTimeout time.Duration
-	Directory      string
-	Redactor       *evidence.Redactor
-	Progress       func(string)
+	Workers             int
+	MinecraftSlots      int
+	NoReuse             bool
+	SetupTimeout        time.Duration
+	CleanupTimeout      time.Duration
+	Directory           string
+	Redactor            *evidence.Redactor
+	Progress            func(string)
+	queueSeconds        float64
+	resourceWaitSeconds float64
 }
 
 type Issue struct {
@@ -70,8 +71,21 @@ type Result struct {
 	Status      string    `json:"status"`
 	Started     time.Time `json:"started"`
 	Seconds     float64   `json:"seconds"`
+	Timings     Timings   `json:"timings"`
 	Steps       []Step    `json:"steps"`
 	Issues      []Issue   `json:"issues,omitempty"`
+}
+
+type Timings struct {
+	SchedulerQueueSeconds        float64 `json:"scheduler_queue_seconds"`
+	SchedulerResourceWaitSeconds float64 `json:"scheduler_resource_wait_seconds"`
+	ReservationSeconds           float64 `json:"reservation_seconds"`
+	SetupSeconds                 float64 `json:"setup_seconds"`
+	AssertionSeconds             float64 `json:"assertion_seconds"`
+	CaseCleanupSeconds           float64 `json:"case_cleanup_seconds"`
+	VerificationSeconds          float64 `json:"verification_seconds"`
+	DiagnosticsSeconds           float64 `json:"diagnostics_seconds"`
+	TeardownSeconds              float64 `json:"teardown_seconds"`
 }
 
 func (r *Result) issue(phase string, err error, redactor *evidence.Redactor) {
@@ -81,42 +95,16 @@ func (r *Result) issue(phase string, err error, redactor *evidence.Redactor) {
 	}
 }
 
-func Run(ctx context.Context, plan Plan, factory Factory, options Options) []Result {
-	jobs := make(chan Group)
-	var mu sync.Mutex
-	var results []Result
-	var workers sync.WaitGroup
-	for range options.Workers {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			for group := range jobs {
-				groupResults := runGroup(ctx, group, factory, options)
-				mu.Lock()
-				results = append(results, groupResults...)
-				mu.Unlock()
-			}
-		}()
-	}
-	for _, group := range plan.Groups {
-		jobs <- group
-	}
-	close(jobs)
-	workers.Wait()
-	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
-	return results
-}
-
 func runGroup(ctx context.Context, group Group, factory Factory, options Options) []Result {
 	var env *environment.Environment
 	var release func()
 	var results []Result
 	closeEnv := func(result *Result) {
 		if env != nil {
-			result.issue("diagnostics", runPhase(context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
+			result.issue("diagnostics", timedPhase(&result.Timings.DiagnosticsSeconds, context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
 				return factory.Capture(ctx, env)
 			}), options.Redactor)
-			result.issue("teardown", runPhase(context.Background(), options.CleanupTimeout, env.Close), options.Redactor)
+			result.issue("teardown", timedPhase(&result.Timings.TeardownSeconds, context.Background(), options.CleanupTimeout, env.Close), options.Redactor)
 			env = nil
 		}
 		if release != nil {
@@ -124,8 +112,12 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 			release = nil
 		}
 	}
-	for _, test := range group.Cases {
+	for index, test := range group.Cases {
 		result := Result{ID: test.ID, Suite: test.Suite, Started: time.Now().UTC(), Status: "passed"}
+		if index == 0 {
+			result.Timings.SchedulerQueueSeconds = options.queueSeconds
+			result.Timings.SchedulerResourceWaitSeconds = options.resourceWaitSeconds
+		}
 		if options.Progress != nil {
 			options.Progress("RUN " + test.ID)
 		}
@@ -133,6 +125,7 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 		if err != nil {
 			result.issue("report", err, options.Redactor)
 			closeEnv(&result)
+			result.Seconds = time.Since(result.Started).Seconds()
 			results = append(results, result)
 			continue
 		}
@@ -142,14 +135,16 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 		} else {
 			result.Reused = env != nil
 			if env == nil {
+				reservationStarted := time.Now()
 				err = environment.Protect(func() error {
 					var err error
 					release, err = factory.Reserve(ctx, test.Recipe)
 					return err
 				})
+				result.Timings.ReservationSeconds = time.Since(reservationStarted).Seconds()
 				result.issue("reservation", err, options.Redactor)
 				if err == nil {
-					err = runPhase(ctx, options.SetupTimeout, func(setupCtx context.Context) error {
+					err = timedPhase(&result.Timings.SetupSeconds, ctx, options.SetupTimeout, func(setupCtx context.Context) error {
 						var err error
 						env, err = factory.New(setupCtx, test.Recipe)
 						return err
@@ -162,22 +157,17 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 				scope.Env = env
 			}
 			if result.Status == "passed" {
-				testCtx, cancel := context.WithTimeout(ctx, test.Timeout)
-				err = environment.Protect(func() error { return test.Run(testCtx, scope) })
-				if err == nil {
-					err = testCtx.Err()
-				}
-				cancel()
+				err = timedPhase(&result.Timings.AssertionSeconds, ctx, test.Timeout, func(testCtx context.Context) error { return test.Run(testCtx, scope) })
 				result.issue("assertion", err, options.Redactor)
 			}
 		}
-		result.issue("case_cleanup", runPhase(context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
+		result.issue("case_cleanup", timedPhase(&result.Timings.CaseCleanupSeconds, context.Background(), options.CleanupTimeout, func(ctx context.Context) error {
 			return environment.CleanupAll(ctx, scope.cleanups)
 		}), options.Redactor)
 		if result.Status == "passed" && test.Isolation != Fresh && !options.NoReuse {
-			result.issue("verification", runPhase(context.Background(), options.CleanupTimeout, env.Verify), options.Redactor)
+			result.issue("verification", timedPhase(&result.Timings.VerificationSeconds, context.Background(), options.CleanupTimeout, env.Verify), options.Redactor)
 		}
-		if result.Status != "passed" || test.Isolation == Fresh || options.NoReuse {
+		if result.Status != "passed" || test.Isolation == Fresh || options.NoReuse || index == len(group.Cases)-1 {
 			closeEnv(&result)
 		}
 		result.Steps = scope.steps
@@ -191,10 +181,13 @@ func runGroup(ctx context.Context, group Group, factory Factory, options Options
 			options.Progress(fmt.Sprintf("%s %s (%.1fs, environment=%s, reused=%t)", result.Status, test.ID, result.Seconds, result.Environment, result.Reused))
 		}
 	}
-	if len(results) > 0 {
-		closeEnv(&results[len(results)-1])
-	}
 	return results
+}
+
+func timedPhase(seconds *float64, parent context.Context, budget time.Duration, action func(context.Context) error) error {
+	started := time.Now()
+	defer func() { *seconds += time.Since(started).Seconds() }()
+	return runPhase(parent, budget, action)
 }
 
 func runPhase(parent context.Context, budget time.Duration, action func(context.Context) error) error {

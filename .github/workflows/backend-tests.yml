@@ -13,9 +13,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: backend-tests-${{ (inputs.source_sha != '' || github.event_name == 'workflow_dispatch') && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ inputs.source_sha == '' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+
 jobs:
   discover:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.collect.outputs.matrix }}
     defaults:
@@ -37,23 +42,26 @@ jobs:
         id: collect
         run: |
           uv run pytest tests --collect-only --run-docker -q -o addopts= --collection-manifest .test-manifests/expected.json
-          matrix=$(uv run python tests/support/collection.py matrix .test-manifests/expected.json)
+          matrix=$(uv run --no-project python tests/support/collection.py plan .test-manifests/expected.json --weights tests/ci/timing-weights.json --shards 4 --output .test-manifests/plan.json)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: backend-test-inventory
           overwrite: true
-          path: backend/.test-manifests/expected.json
+          path: |
+            backend/.test-manifests/expected.json
+            backend/.test-manifests/plan.json
           include-hidden-files: true
           if-no-files-found: error
 
   pytest:
-    name: pytest (${{ matrix.test_group }})
+    name: pytest (shard ${{ matrix.test_shard }}/4)
     needs: discover
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     defaults:
       run:
@@ -63,6 +71,7 @@ jobs:
       MCMAP_BINARY_PATH: /usr/local/bin/mcmap
       RESTIC_BINARY_PATH: /usr/local/bin/restic
       PYTHONPATH: ${{ github.workspace }}/backend
+      COVERAGE_FILE: ${{ github.workspace }}/backend/.test-reports/coverage/.coverage.${{ matrix.test_shard }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -75,6 +84,7 @@ jobs:
           sudo apt-get install -y bzip2 curl
 
       - name: Install fd test dependency
+        if: contains(matrix.capabilities, 'fd')
         run: |
           dockerfile="${GITHUB_WORKSPACE}/Dockerfile"
           fd_version="$(awk -F= '$1 == "ARG FD_VERSION" { print $2 }' "$dockerfile")"
@@ -83,7 +93,7 @@ jobs:
             echo "Failed to read FD_VERSION or FD_SHA256 from ${dockerfile}" >&2
             exit 1
           fi
-          curl -L "https://github.com/sharkdp/fd/releases/download/${fd_version}/fd-${fd_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/fd.tar.gz
+          curl --fail --location --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "https://github.com/sharkdp/fd/releases/download/${fd_version}/fd-${fd_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/fd.tar.gz
           echo "${fd_sha256}  /tmp/fd.tar.gz" | sha256sum -c -
           tmpdir="$(mktemp -d)"
           tar -xzf /tmp/fd.tar.gz -C "$tmpdir"
@@ -105,7 +115,7 @@ jobs:
             echo "Failed to read RESTIC_VERSION or RESTIC_SHA256 from ${dockerfile}" >&2
             exit 1
           fi
-          curl -L "https://github.com/restic/restic/releases/download/v${restic_version}/restic_${restic_version}_linux_amd64.bz2" -o /tmp/restic.bz2
+          curl --fail --location --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "https://github.com/restic/restic/releases/download/v${restic_version}/restic_${restic_version}_linux_amd64.bz2" -o /tmp/restic.bz2
           echo "${restic_sha256}  /tmp/restic.bz2" | sha256sum -c -
           tmpdir="$(mktemp -d)"
           bunzip2 -c /tmp/restic.bz2 > "$tmpdir/restic"
@@ -129,7 +139,7 @@ jobs:
             echo "Failed to read MCMAP_VERSION or MCMAP_SHA256 from ${dockerfile}" >&2
             exit 1
           fi
-          curl -L "https://github.com/xyqyear/mcmap/releases/download/${mcmap_version}/mcmap-${mcmap_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/mcmap.tar.gz
+          curl --fail --location --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "https://github.com/xyqyear/mcmap/releases/download/${mcmap_version}/mcmap-${mcmap_version}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/mcmap.tar.gz
           echo "${mcmap_sha256}  /tmp/mcmap.tar.gz" | sha256sum -c -
           sudo tar -xzf /tmp/mcmap.tar.gz -C /usr/local/bin --strip-components=1
           sudo chmod +x /usr/local/bin/mcmap
@@ -149,16 +159,30 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-groups
 
-      - name: Run tests
-        run: uv run pytest tests --test-group "${{ matrix.test_group }}" --run-docker --require-capabilities --collection-manifest ".test-manifests/${{ matrix.test_group }}.json"
+      - name: Download the audited shard plan
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-test-inventory
+          path: backend/.test-manifests
 
-      - name: Publish executed collection
+      - name: Run tests
+        run: |
+          mkdir -p .test-reports/coverage
+          uv run pytest tests --test-plan .test-manifests/plan.json --test-shard "${{ matrix.test_shard }}" \
+            --run-docker --require-capabilities \
+            --collection-manifest ".test-reports/manifests/shard-${{ matrix.test_shard }}.json" \
+            --timing-report ".test-reports/timings/timing-${{ matrix.test_shard }}.json" \
+            --junitxml ".test-reports/junit/junit-${{ matrix.test_shard }}.xml" \
+            -o addopts='-vv --cov=app --cov-report=' --durations=20
+
+      - name: Publish collection, phase timings and coverage data
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: backend-test-group-${{ matrix.test_group }}
+          name: backend-test-shard-${{ matrix.test_shard }}
           overwrite: true
-          path: backend/.test-manifests/${{ matrix.test_group }}.json
+          path: backend/.test-reports/
+          retention-days: 14
           include-hidden-files: true
           if-no-files-found: error
 
@@ -166,6 +190,7 @@ jobs:
     if: always() && needs.discover.result == 'success'
     needs: [discover, pytest]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
@@ -177,17 +202,45 @@ jobs:
         with:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --locked --all-groups
       - uses: actions/download-artifact@v8
         with:
           name: backend-test-inventory
           path: backend/.test-manifests
       - uses: actions/download-artifact@v8
         with:
-          pattern: backend-test-group-*
+          pattern: backend-test-shard-*
           merge-multiple: true
-          path: backend/.test-manifests/groups
-      - name: Verify complete duplicate-free test collection
-        run: uv run --no-project python tests/support/collection.py audit .test-manifests/expected.json .test-manifests/groups/*.json
+          path: backend/.test-reports
+      - name: Verify complete duplicate-free selection and successful execution
+        run: |
+          uv run --no-project python tests/support/collection.py audit .test-manifests/expected.json \
+            .test-reports/manifests/shard-*.json --plan .test-manifests/plan.json \
+            --timings .test-reports/timings/timing-*.json
+
+      - name: Combine coverage and publish one report
+        run: |
+          uv run --no-project python ../scripts/ci/backend_timing.py .test-reports/timings/timing-*.json --output .test-reports
+          cat .test-reports/timing-summary.md >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage combine --keep .test-reports/coverage
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage report >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage xml -o .test-reports/coverage.xml
+          uv run coverage html -d .test-reports/coverage-html
+
+      - name: Upload combined reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports
+          path: backend/.test-reports/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Require successful execution as well as complete collection
         env:

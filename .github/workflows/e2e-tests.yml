@@ -43,6 +43,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: api-tests-${{ (inputs.source_sha != '' || github.event_name == 'workflow_dispatch') && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ inputs.source_sha == '' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+
 jobs:
   build:
     if: ${{ inputs.candidate_artifact == '' }}

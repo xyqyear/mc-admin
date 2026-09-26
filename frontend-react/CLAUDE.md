@@ -22,7 +22,7 @@ Backend URL is configured in `vite.config.ts` (default `http://localhost:5678`).
 
 Production builds split hashed output into `assets/vendor`, `assets/workers`, `assets/fonts`, `assets/styles`, `assets/media`, and `assets/app`; the root Dockerfile copies those directories as separate runtime layers.
 
-The Static Checks push workflow runs lint, typecheck, operation-flow tests and bundling as separate steps. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
+The Static Checks push workflow runs lint, typecheck, operation-flow tests and bundling as separate steps. Vitest uploads JSON results with individual test durations. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
 
 React Router 7 is used in declarative mode; import router APIs from `react-router`.
 

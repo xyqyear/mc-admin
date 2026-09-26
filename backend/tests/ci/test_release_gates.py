@@ -136,6 +136,38 @@ def test_release_workflow_cannot_bypass_jobs_or_rebuild_the_published_image():
     assert promotion.index("tags.py check") < promotion.index("candidate.py promote")
 
 
+@pytest.mark.parametrize("test_exit", [0, 29])
+def test_candidate_test_report_pipeline_preserves_failure(tmp_path, test_exit):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/candidate.yml").read_text())
+    step = next(step for step in workflow["jobs"]["build"]["steps"] if step.get("name") == "Verify and build the API executable")
+    assert step["shell"] == "bash"
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    adapter = tools / "make"
+    adapter.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "if 'test' in sys.argv:\n"
+        "    print(json.dumps({'Action': 'pass' if os.environ['TEST_EXIT'] == '0' else 'fail', 'Test': 'TestGate'}))\n"
+        "    sys.exit(int(os.environ['TEST_EXIT']))\n"
+        "Path('bin').mkdir()\n"
+        "Path('bin/mc-admin-e2e').write_text('verified executable')\n"
+    )
+    adapter.chmod(0o700)
+    (tmp_path / "candidate").mkdir()
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+             "RUNNER_TEMP": str(tmp_path), "TEST_EXIT": str(test_exit)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == test_exit
+    assert json.loads((tmp_path / "go-test-results.jsonl").read_text())["Action"] == ("pass" if test_exit == 0 else "fail")
+    assert (tmp_path / "candidate/mc-admin-e2e").exists() == (test_exit == 0)
+
+
 def test_release_tag_and_destination_policy_runs_before_promotion(tmp_path):
     workflow = yaml.safe_load((ROOT / ".github/workflows/docker-image.yml").read_text())
     steps = workflow["jobs"]["promote"]["steps"]

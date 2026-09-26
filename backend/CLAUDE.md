@@ -22,7 +22,7 @@ uv run pytest tests/architecture/ -o addopts=''
 - Pydantic models use `model_config = ConfigDict(...)`; preserve field aliases and defaults when changing model configuration.
 - Annotate `@asynccontextmanager` generators with `collections.abc.AsyncGenerator[T]`; use `AsyncIterator[T]` for interfaces that only promise iteration.
 - **Alembic migrations run during startup** before DB-backed subsystems start; see `docs/database-migrations.md`.
-- Tests run with isolated configuration/data roots by default. Capability markers declare Docker, external services and real CLI dependencies; Docker/external cases require explicit opt-in. The collection manifest and CI shard union are audited; see `docs/testing.md`.
+- Tests run with isolated configuration/data roots by default. Capability markers declare Docker, external services and real CLI dependencies; Docker/external cases require explicit opt-in. CI balances four independent runners using whole-file historical costs and explicit `shard_group` fixture boundaries. Plans, exact node-ID union, capability policy and successful setup/call/teardown evidence are audited; `--timing-report` records phase costs and failures. Local `--test-group` selection remains available. See `docs/testing.md`.
 - Observable backend feature changes require real API E2E coverage in `../e2e/suites/` and an update to `../e2e/docs/coverage.md`. The standalone runner deploys the current application image; see `../e2e/README.md` and `../e2e/docs/architecture.md` for execution and environment contracts.
 
 ## Module map

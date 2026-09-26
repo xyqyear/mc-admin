@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: static-checks-${{ (inputs.source_sha != '' || github.event_name == 'workflow_dispatch') && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ inputs.source_sha == '' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+
 jobs:
   frontend:
     name: frontend lint, types, tests and build
@@ -48,7 +52,16 @@ jobs:
         run: pnpm typecheck
 
       - name: Test frontend operation flows
-        run: pnpm test
+        run: pnpm test --reporter=default --reporter=json --outputFile=test-results/unit/vitest.json
+
+      - name: Upload individual frontend test timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-test-results
+          path: frontend-react/test-results/unit/vitest.json
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Build frontend assets
         run: pnpm build:bundle
@@ -84,8 +97,8 @@ jobs:
 
       - name: Run Ruff
         run: |
-          uv run ruff check . ../scripts/release
-          uv run pyright ../scripts/release
+          uv run ruff check . ../scripts
+          uv run pyright ../scripts
 
   go:
     name: Go format and vet

@@ -63,7 +63,7 @@ See [disposable deployment and rollback rehearsal](docs/deployment-rehearsal.md)
 
 External Mojang scenarios use `--tag mojang`. DNSPod/Huawei scenarios use `--tag dns` and require `--external-config /private/path/external.json`; select one with `--case '^dns\.dnspod-'` or `--case '^dns\.huawei-'`. See [DNS qualification](suites/dns/README.md) for the private configuration schema, owned test-domain scope and cloud cleanup contract. Missing configuration or unavailable dependencies fail explicitly.
 
-For concurrent CI processes, use the same executable, selection, shard count and seed, and a different shard index and run ID for each process:
+For concurrent CI processes, use the same executable, selection, shard count, worker/Minecraft limits and seed, and a different shard index and run ID for each process:
 
 ```bash
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --shard 1/2 --run-id e2e-local-one
@@ -72,7 +72,7 @@ For concurrent CI processes, use the same executable, selection, shard count and
 
 Run these commands in separate terminals or jobs. On a shared Docker host, runners under the same OS user must share `--port-directory` (default `/tmp/mc-admin-e2e-ports`). Port locks coordinate cooperating runners; they do not reserve ports against unrelated host processes. A setup-only retry handles a detected port conflict. Tests never retry a failed business operation automatically.
 
-`--workers` bounds live environments, while `--mc-slots` separately bounds Minecraft environments. Both limits are per runner. Recipe affinity keeps compatible cases on one shard for exclusive sequential reuse. `--seed` changes execution order without changing shard membership; `--no-reuse` creates a new environment for every selected case without changing selection or shard assignment.
+`--workers` bounds live environments, while `--mc-slots` separately bounds Minecraft environments. Both limits are per runner and participate in cost-balanced shard planning. Fresh cases and compatible recipe groups remain atomic. Historical costs are compiled into the executable; new cases use recipe/default costs and are discovered automatically. The dispatcher skips temporarily blocked groups so ordinary work can continue while another group occupies Minecraft capacity. `--seed` changes execution priority without changing shard membership; `--no-reuse` creates a new environment for every selected case without changing selection or shard assignment.
 
 Additional controls: `--output`, `--docker-socket`, `--setup-timeout`, `--cleanup-timeout`, `--timeout`, `--minecraft-image` and `--minecraft-version`. Use `run -h` for defaults. Exit codes are 0 for success, 1 for test/infrastructure/reporting failure, and 2 for invalid invocation or preparation of the local run directory.
 
@@ -93,6 +93,8 @@ runtime/<id>/              temporary deployment files; removed by cleanup
 active.lock                exclusive execution/recovery lock
 ```
 
+Case `seconds` includes all execution lifecycle phases after dispatch, including final reusable-group teardown. `timings` separates reservation, setup, scenario execution, compensation, verification, diagnostics and teardown. Scheduler queue time and its overlapping Minecraft-capacity wait are recorded separately on the first case of each group; they are excluded from case execution seconds. `Scope.Step` durations cover only explicitly declared steps. See [timing semantics and historical calibration](docs/architecture.md#timing-evidence-and-calibration) before aggregating these overlapping measurements. Framework checks can emit Go test JSON with `make test TEST_FLAGS=-json` while preserving race detection.
+
 HTTP bodies and errors are redacted; large/binary bodies are represented by size and digest. Container inspect evidence uses a restricted structure that excludes environment variables. Add newly introduced secret values to the redactor before issuing requests. CI uploads the report/evidence paths explicitly and never uploads `runtime/`, which contains real test credentials and mutable data.
 
 Audit one run or the union of all shards from the same executable, immutable application image and selection:
@@ -102,7 +104,7 @@ Audit one run or the union of all shards from the same executable, immutable app
   .runs/e2e-local-one .runs/e2e-local-two
 ```
 
-`coverage.json` and `coverage.md` distinguish successful operation observations, expected rejections, observations from failed cases and unobserved operations. Fixture traffic is excluded. `--require-complete` requires every selected case and shard to pass with trace evidence; it does not impose a 100% route threshold or claim that visiting an endpoint proves the full feature. Missing/duplicate cases and incompatible image/schema/catalog reports remain visible failures.
+`coverage.json` and `coverage.md` distinguish successful operation observations, expected rejections, observations from failed cases and unobserved operations. Fixture traffic is excluded. `--require-complete` requires every selected case and shard to pass with trace evidence; it does not impose a 100% route threshold or claim that visiting an endpoint proves the full feature. Missing/duplicate cases and incompatible image/schema/catalog, cost fingerprint, capacity configuration or seed remain visible failures.
 
 CI additionally uses `--require-observed` for the full regression selection: a deployed API/WS operation with no case observation fails the audit. This catches new routes omitted from the catalog; an observed rejection still does not establish the successful feature workflow. Filtered smoke/domain/external selections can produce valid partial operation reports without this flag.
 

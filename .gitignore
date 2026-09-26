@@ -17,3 +17,4 @@ __pycache__/
 /candidate-artifacts/
 /e2e-artifacts/
 /backend/.test-manifests/
+/backend/.test-reports/
