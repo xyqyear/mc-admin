@@ -14,6 +14,7 @@
 - [x] 3.1 Run four backend shards concurrently, upload timing/JUnit artifacts and centrally combine coverage without weakening inventory or release gates.
 - [x] 3.2 Harden pinned downloads and scope stale-run cancellation to standalone branch/PR workflows without cancelling release callers or siblings.
 - [x] 3.3 Update affected CLAUDE and design documents and validate backend static checks, Go checks and workflow syntax.
+- [x] 3.4 Preserve recovery UI state while asynchronous map status resolves, add a deterministic regression for the CI-discovered sidebar remount, and pass frontend lint, types, tests and build.
 
 ## 4. Actual CI qualification
 

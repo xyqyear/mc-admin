@@ -181,6 +181,9 @@ test.describe('owned administration journeys', () => {
     const snapshot = await api.json<{ snapshot: { id: string; short_id: string } }>(api.server('/world-restore/snapshots'), 'POST', { type: 'world' })
     await api.writeFile(marker, 'before-interruption\n')
     const proxy = await interruptRestoreAfterSafetySnapshot(owned.base_url)
+    let releaseMapStatus!: () => void
+    const mapStatusReleased = new Promise<void>(resolve => { releaseMapStatus = resolve })
+    let mapStatusHeld = false
     await withCleanup(async () => {
       await page.goto(`${proxy.url}/server/${owned.server_id}/world-restore`)
       await page.getByRole('button', { name: '恢复整个世界…', exact: true }).click()
@@ -199,10 +202,23 @@ test.describe('owned administration journeys', () => {
       expect(history?.safety_snapshot_exists).toBe(true)
       await api.writeFile(marker, 'after-interruption-before-rollback\n')
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('after-interruption-before-rollback\n')
+      await page.route('**/api/servers/*/map/status', async route => {
+        mapStatusHeld = true
+        await mapStatusReleased
+        await route.continue()
+      })
       await page.goto(`/server/${owned.server_id}/world-restore`)
       await page.getByRole('button', { name: '查看恢复历史', exact: true }).click()
       const historyRow = page.getByRole('dialog', { name: '恢复历史' }).locator('div.rounded-md.border.p-3').filter({ hasText: snapshot.snapshot.id.slice(0, 8) }).filter({ hasText: history!.safety_snapshot_id!.slice(0, 8) })
       await expect(historyRow).toHaveCount(1)
+      await expect(historyRow).toBeVisible()
+      await expect(historyRow.getByText('已中断', { exact: true })).toBeVisible()
+      expect(mapStatusHeld).toBe(true)
+      const playersTab = page.getByRole('tab', { name: '玩家位置', exact: true, includeHidden: true })
+      await expect(playersTab).toHaveCount(0)
+      releaseMapStatus()
+      await expect(playersTab).toBeVisible()
+      await expect(historyRow).toBeVisible()
       await expect(historyRow.getByText('已中断', { exact: true })).toBeVisible()
       await historyRow.getByRole('button', { name: '回滚', exact: true }).click()
       await page.getByRole('button', { name: '开始回滚', exact: true }).click()
@@ -210,6 +226,7 @@ test.describe('owned administration journeys', () => {
       expect((await api.file(marker)).content).toBe('before-interruption\n')
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('before-interruption\n')
     },
+    { label: 'map status route', run: async () => { releaseMapStatus(); await page.unrouteAll({ behavior: 'wait' }) } },
     { label: 'restore proxy', run: proxy.close },
     { label: 'restore marker', run: () => api.json(api.server(`/files?path=${encodeURIComponent(marker)}`), 'DELETE') },
     )

@@ -105,6 +105,8 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 
 `features/world/` owns layout/dimensions/map/claims/player-layer contracts, API and queries. `useWorldMapController` owns common map initialization, URL view/dimension, layer visibility, cross-dimension pan and explicit refresh. Restore and prune controllers own their respective selection and preview/apply lifecycles; route files delegate to feature screens. Claims/player implementations do not depend on the restore feature.
 
+`WorldRestoreSidebar` keeps the backup panel mounted at a stable position while map status, layout and optional layer tabs load. Snapshot and restoration-history drawers retain their local state across these responses; map rendering readiness does not gate access to recovery history.
+
 `shared/operations/useRestoreRequest` owns a finite request and its immutable restore target; navigation/cleanup aborts its SSE. `features/world/restore/useRestorationStream` supplies domain routes. `useRestorePreview` owns heartbeat and session deletion on close/unmount; expired sessions require regeneration. Independent prune/populate/compression tasks continue after views close. Prune state includes feature-owned preview metadata/projections even after task-center dismissal; only a matching ready preview can apply. Historical restores with `binding_issue` remain readable but cannot roll back into another server generation.
 
 ## Server Map Reuse

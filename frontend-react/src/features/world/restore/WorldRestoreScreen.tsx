@@ -17,7 +17,8 @@ import {
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Spinner } from '@/shared/ui/spinner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
+import { cn } from '@/shared/lib/utils'
 import { ClusterPopover } from '@/features/world/layers/claims/ClusterPopover'
 import { TeamClusterList } from '@/features/world/layers/claims/TeamClusterList'
 import { PlayerLocationList } from '@/features/world/layers/players/PlayerLocationList'
@@ -26,6 +27,7 @@ import MapInitDialog from '@/features/world/map/MapInitDialog'
 import ServerMap from '@/features/world/map/ServerMap'
 import { ServerStopGuard } from '@/features/world/restore/components/ServerStopGuard'
 import WorldRestoreSelectionPanel from '@/features/world/restore/components/WorldRestoreSelectionPanel'
+import { WorldRestoreSidebar } from '@/features/world/restore/components/WorldRestoreSidebar'
 
 const ServerWorldRestore: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -227,8 +229,12 @@ const ServerWorldRestore: React.FC = () => {
 
       <ServerStopGuard status={statusQ.data} />
 
-      {(mapInitialized || layoutQ.isLoading) && (
-        <div className="flex flex-col gap-4 md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px] md:grid-rows-1">
+      <div
+        className={cn('flex flex-col gap-4', (mapInitialized || layoutQ.isLoading)
+          ? 'md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px] md:grid-rows-1'
+          : 'md:w-67.5')}
+      >
+        {(mapInitialized || layoutQ.isLoading) && (
           <Card className="overflow-hidden py-0">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
               {regionsMap && regionRelpath ? (
@@ -250,90 +256,59 @@ const ServerWorldRestore: React.FC = () => {
               ) : null}
             </CardContent>
           </Card>
-
-          <div className="flex flex-col min-w-0 md:min-h-0 md:overflow-y-auto md:*:shrink-0">
-            <Card>
-              <CardContent>
-                {mapInitialized ? (
-                  <Tabs defaultValue="backup" className="gap-4">
-                    <TabsList
-                      className={
-                        claimsAvailable
-                          ? 'grid w-full grid-cols-3'
-                          : 'grid w-full grid-cols-2'
-                      }
-                    >
-                      <TabsTrigger value="backup">备份与恢复</TabsTrigger>
-                      {claimsAvailable && (
-                        <TabsTrigger value="claims">领地列表</TabsTrigger>
-                      )}
-                      <TabsTrigger value="players">玩家位置</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="backup">
-                      <WorldRestoreSelectionPanel
-                        serverId={serverId}
-                        regionDirRelpath={regionRelpath}
-                        selection={selection}
-                        mode={urlMode}
-                        serverStopped={serverStopped}
-                      />
-                    </TabsContent>
-                    <TabsContent value="claims">
-                      {claimsAvailable && (
-                        <TeamClusterList
-                          data={claimsQ.data}
-                          isLoading={claimsQ.isLoading}
-                          isError={claimsQ.isError}
-                          currentDimRelpath={regionRelpath}
-                          dimensionLabelByRelpath={dimensionLabelByRelpath}
-                          mode={urlMode}
-                          selection={selection}
-                          overlayVisible={claimsOverlayVisible}
-                          onOverlayVisibleChange={setClaimsOverlayVisible}
-                          onRefresh={handleRefreshClaims}
-                          onClusterHover={highlightClusters}
-                          onClusterClick={handleClusterClick}
-                          onClusterSelect={handleClusterSelect}
-                          onTeamHover={highlightClusters}
-                          onTeamSelectInDim={handleTeamSelectInDim}
-                        />
-                      )}
-                    </TabsContent>
-                    <TabsContent value="players">
-                      <PlayerLocationList
-                        data={playerLocationsQ.data}
-                        isLoading={playerLocationsQ.isLoading}
-                        isError={playerLocationsQ.isError}
-                        currentDimRelpath={regionRelpath}
-                        dimensionLabelByRelpath={dimensionLabelByRelpath}
-                        profilesByUuid={playerProfiles.profilesByUuid}
-                        pendingProfileUuids={playerProfiles.pendingUuids}
-                        onlinePlayerUuids={onlinePlayerUuids}
-                        onlineOnly={onlinePlayersOnly}
-                        onlineStatusLoading={onlinePlayersQ.isLoading}
-                        onlineStatusAvailable={onlineStatusAvailable}
-                        overlayVisible={playersOverlayVisible}
-                        onOverlayVisibleChange={setPlayersOverlayVisible}
-                        onOnlineOnlyChange={setOnlinePlayersOnly}
-                        onRefresh={handleRefreshPlayers}
-                        onPlayerClick={handlePlayerClick}
-                      />
-                    </TabsContent>
-                  </Tabs>
-                ) : (
-                  <WorldRestoreSelectionPanel
-                    serverId={serverId}
-                    regionDirRelpath={regionRelpath}
-                    selection={selection}
-                    mode={urlMode}
-                    serverStopped={serverStopped}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
+        )}
+        <WorldRestoreSidebar
+          mapInitialized={mapInitialized}
+          backup={
+            <WorldRestoreSelectionPanel
+              serverId={serverId}
+              regionDirRelpath={regionRelpath}
+              selection={selection}
+              mode={urlMode}
+              serverStopped={serverStopped}
+            />
+          }
+          claims={claimsAvailable ? (
+            <TeamClusterList
+              data={claimsQ.data}
+              isLoading={claimsQ.isLoading}
+              isError={claimsQ.isError}
+              currentDimRelpath={regionRelpath}
+              dimensionLabelByRelpath={dimensionLabelByRelpath}
+              mode={urlMode}
+              selection={selection}
+              overlayVisible={claimsOverlayVisible}
+              onOverlayVisibleChange={setClaimsOverlayVisible}
+              onRefresh={handleRefreshClaims}
+              onClusterHover={highlightClusters}
+              onClusterClick={handleClusterClick}
+              onClusterSelect={handleClusterSelect}
+              onTeamHover={highlightClusters}
+              onTeamSelectInDim={handleTeamSelectInDim}
+            />
+          ) : undefined}
+          players={
+            <PlayerLocationList
+              data={playerLocationsQ.data}
+              isLoading={playerLocationsQ.isLoading}
+              isError={playerLocationsQ.isError}
+              currentDimRelpath={regionRelpath}
+              dimensionLabelByRelpath={dimensionLabelByRelpath}
+              profilesByUuid={playerProfiles.profilesByUuid}
+              pendingProfileUuids={playerProfiles.pendingUuids}
+              onlinePlayerUuids={onlinePlayerUuids}
+              onlineOnly={onlinePlayersOnly}
+              onlineStatusLoading={onlinePlayersQ.isLoading}
+              onlineStatusAvailable={onlineStatusAvailable}
+              overlayVisible={playersOverlayVisible}
+              onOverlayVisibleChange={setPlayersOverlayVisible}
+              onOnlineOnlyChange={setOnlinePlayersOnly}
+              onRefresh={handleRefreshPlayers}
+              onPlayerClick={handlePlayerClick}
+            />
+          }
+        />
+      </div>
 
       {claimsPopover && popoverContext && (
         <ClusterPopover

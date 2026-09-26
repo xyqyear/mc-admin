@@ -44,17 +44,20 @@ Map initialization card
 ServerStopGuard
   - shown when the server is running/starting/healthy
 
-Main grid, once the map is initialized
-  - ServerMap on the left
-  - side card on the right with tabs:
-    - Backup & restore
-    - Claims, only when FTB claims data is available
-    - Player locations
+Main area
+  - ServerMap on the left when initialized, or a spinner while layout loads
+  - WorldRestoreSidebar remains mounted independently of map/layout readiness
+    - Backup & restore is always available
+    - Tab controls appear when the map is initialized
+      - Claims, only when FTB claims data is available
+      - Player locations
 ```
 
 `ServerStopGuard` is a pre-flight warning only. The backend re-checks before restoring or rolling back and returns 409 if the server is still running.
 
 The map is gated on mcmap initialization (`client_jar_present`, `palette_present`, `palette_current`). The page can refresh map metadata, force reinitialize rendering prerequisites, and reload map query keys after initialization or restore completion.
+
+`WorldRestoreSidebar` keeps the backup panel in the same mounted tab panel while map status and layout resolve independently. Opening snapshot selection or recovery history before initialization finishes preserves that drawer and its active request when the layer tabs appear. The backup panel remains mounted when another tab is selected; unavailable map/layer tabs fall back to Backup & restore.
 
 ## Selection state
 
