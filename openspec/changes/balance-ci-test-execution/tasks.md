@@ -19,4 +19,4 @@
 ## 4. Actual CI qualification
 
 - [x] 4.1 Commit and push the implementation branch, then trigger complete qualification with publication disabled and avoid redundant runs from this push.
-- [ ] 4.2 Inspect every required gate and timing artifact, correct failures and rerun as needed, and document measured before/after durations and remaining bottlenecks.
+- [x] 4.2 Inspect every required gate and timing artifact, correct failures and rerun as needed, and document measured before/after durations and remaining bottlenecks.
