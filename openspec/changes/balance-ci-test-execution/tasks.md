@@ -2,7 +2,7 @@
 
 - [x] 1.1 Generate four deterministic capability-aware shards from complete inventory and documented historical file costs; preserve local group selection and automatically include new tests.
 - [x] 1.2 Record precise per-phase timings and audit plan identity, exact-once selection and successful execution; add focused failure-path contract tests.
-- [ ] 1.3 Replace fixed host ports in owned Docker fixtures with inspected dynamic bindings and verify their real behavior and cleanup.
+- [x] 1.3 Replace fixed host ports in owned Docker fixtures with inspected dynamic bindings and verify their real behavior and cleanup.
 
 ## 2. API scheduling and measurement
 
@@ -17,5 +17,5 @@
 
 ## 4. Actual CI qualification
 
-- [ ] 4.1 Commit and push the implementation branch, then trigger complete qualification with publication disabled and avoid redundant runs from this push.
+- [x] 4.1 Commit and push the implementation branch, then trigger complete qualification with publication disabled and avoid redundant runs from this push.
 - [ ] 4.2 Inspect every required gate and timing artifact, correct failures and rerun as needed, and document measured before/after durations and remaining bottlenecks.

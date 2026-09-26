@@ -226,9 +226,11 @@ jobs:
           uv run --no-project python ../scripts/ci/backend_timing.py .test-reports/timings/timing-*.json --output .test-reports
           cat .test-reports/timing-summary.md >> "$GITHUB_STEP_SUMMARY"
           uv run coverage combine --keep .test-reports/coverage
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          uv run coverage report >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```text'
+            uv run coverage report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           uv run coverage xml -o .test-reports/coverage.xml
           uv run coverage html -d .test-reports/coverage-html
 
