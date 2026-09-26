@@ -30,9 +30,11 @@ async def mc_server_session(tmp_path_factory):
     server_name = resources.name("monitoring")
     server = DockerMCManager(resources.root).get_instance(server_name)
     try:
-        await server.create(resources.compose(server_name, 39000, 39001))
+        await server.create(resources.compose(server_name))
         await server.up()
         await server.wait_until_healthy()
+        game_port, rcon_port = await resources.published_ports(server_name)
+        assert game_port != rcon_port
         yield server
     finally:
         await resources.cleanup()

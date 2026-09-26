@@ -93,12 +93,8 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
 
     assert set(await docker_mc_manager.get_all_server_names()) == set()
 
-    server1_compose_yaml = resources.compose(
-        first_name, 34544, 34544 + 1
-    )
-    server2_compose_yaml = resources.compose(
-        second_name, 34554, 34554 + 1
-    )
+    server1_compose_yaml = resources.compose(first_name)
+    server2_compose_yaml = resources.compose(second_name)
     server1_create_coroutine = server1.create(server1_compose_yaml)
     server2_create_coroutine = server2.create(server2_compose_yaml)
     await aioos.makedirs(resources.root / "irrelevant_dir", exist_ok=True)
@@ -116,8 +112,8 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
                 max_memory_bytes=524288000,  # 500M in bytes
                 server_type=ServerType.VANILLA,
                 game_version="1.21.11",
-                game_port=34544,
-                rcon_port=34544 + 1,
+                game_port=0,
+                rcon_port=0,
             ),
             MCServerInfo(
                 name=second_name,
@@ -126,8 +122,8 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
                 max_memory_bytes=524288000,  # 500M in bytes
                 server_type=ServerType.VANILLA,
                 game_version="1.21.11",
-                game_port=34554,
-                rcon_port=34554 + 1,
+                game_port=0,
+                rcon_port=0,
             ),
         }
     assert set(await docker_mc_manager.get_running_server_names()) == set()
@@ -142,6 +138,10 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     wait_server2_coroutine = server2.wait_until_healthy()
     await asyncio.gather(wait_server1_coroutine, wait_server2_coroutine)
 
+    # Docker can reassign dynamic ports when a container restarts during startup.
+    server1_game_port, server1_rcon_port = await resources.published_ports(first_name)
+    server2_game_port, server2_rcon_port = await resources.published_ports(second_name)
+    assert len({server1_game_port, server1_rcon_port, server2_game_port, server2_rcon_port}) == 4
     assert set(await docker_mc_manager.get_running_server_names()) == {first_name, second_name}
 
     print("servers healthy")
@@ -150,14 +150,14 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
 
     assert await server1.list_players() == []
 
-    await client1.connect("localhost", 34544)
+    await client1.connect("127.0.0.1", server1_game_port)
     await asyncio.sleep(1)
 
     print("client1 connected")
 
     assert await server1.list_players() == ["client1"]
 
-    await client2.connect("localhost", 34544)
+    await client2.connect("127.0.0.1", server1_game_port)
     await asyncio.sleep(1)
 
     print("client2 connected")

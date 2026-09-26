@@ -27,7 +27,7 @@ def create_mc_server_compose_yaml(server_name: str, game_port: int, rcon_port: i
                 "SPAWN_NPCS": "false", "SPAWN_ANIMALS": "false", "SPAWN_MONSTERS": "false",
                 "FORCE_GAMEMODE": "true", "UID": str(os.getuid()), "GID": str(os.getgid()),
             },
-            "ports": [f"{game_port}:25565", f"{rcon_port}:25575"],
+            "ports": [f"127.0.0.1:{game_port}:25565", f"127.0.0.1:{rcon_port}:25575"],
             "volumes": ["./data:/data"], "stdin_open": True, "tty": True, "restart": "unless-stopped",
         }},
         "networks": {"default": {"labels": labels}},
@@ -43,9 +43,28 @@ class OwnedDockerResources:
     def name(self, suffix: str) -> str:
         return f"pytest-{self.owner[:12]}-{suffix}"
 
-    def compose(self, server_name: str, game_port: int, rcon_port: int) -> str:
+    def compose(self, server_name: str, game_port: int = 0, rcon_port: int = 0) -> str:
         self.containers.append(f"mc-{server_name}")
         return create_mc_server_compose_yaml(server_name, game_port, rcon_port, owner=self.owner)
+
+    async def published_ports(self, server_name: str) -> tuple[int, int]:
+        container_name = f"mc-{server_name}"
+        if container_name not in self.containers:
+            raise RuntimeError(f"Container is not registered to this test: {container_name}")
+        output = await exec_command("docker", "container", "inspect", container_name)
+        container = json.loads(output)[0]
+        if (container["Config"].get("Labels") or {}).get(OWNER_LABEL) != self.owner:
+            raise RuntimeError(f"Refusing to inspect ports without this test's ownership: {container_name}")
+        published = {}
+        for target in (25565, 25575):
+            bindings = container["NetworkSettings"]["Ports"].get(f"{target}/tcp") or []
+            if len(bindings) != 1 or bindings[0]["HostIp"] != "127.0.0.1":
+                raise RuntimeError(f"Expected one loopback port binding for {container_name}:{target}")
+            port = int(bindings[0]["HostPort"])
+            if not 0 < port <= 65535:
+                raise RuntimeError(f"Invalid published port for {container_name}:{target}: {port}")
+            published[target] = port
+        return published[25565], published[25575]
 
     async def remove(self, kind: str, name: str) -> None:
         try:

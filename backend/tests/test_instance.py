@@ -60,9 +60,7 @@ async def test_server_status_lifecycle_with_docker(owned_docker_resources: Owned
 
     # Create server -> EXISTS status
     print("Testing EXISTS status")
-    await server.create(
-        resources.compose(server_name, 34600, 34601)
-    )
+    await server.create(resources.compose(server_name))
     assert await server.get_status() == MCServerStatus.EXISTS
     assert await server.exists()
     assert not await server.created()
@@ -82,6 +80,8 @@ async def test_server_status_lifecycle_with_docker(owned_docker_resources: Owned
 
     # Wait for server to become healthy
     await server.wait_until_healthy()
+    game_port, rcon_port = await resources.published_ports(server_name)
+    assert game_port != rcon_port
 
     # Should now be HEALTHY
     print("Testing HEALTHY status")
