@@ -1,11 +1,15 @@
 """Execution ownership inherited by an operation's adapter calls."""
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from anyio.lowlevel import checkpoint_if_cancelled
+
+from .finalization import finalize
 from .journal_types import OperationState, RecoveryReference
 
 if TYPE_CHECKING:
@@ -47,9 +51,23 @@ async def revalidate_targets() -> None:
     from ..db.database import get_async_session
     from ..servers.references import revalidate_server_ref
 
-    async with get_async_session() as db:
-        for server in execution.servers:
-            await revalidate_server_ref(db, server)
+    await checkpoint_if_cancelled()
+
+    async def read_targets() -> None:
+        async with get_async_session() as db:
+            for server in execution.servers:
+                await revalidate_server_ref(db, server)
+
+    # Finish cursor consumption and session closure before cancellation can trigger journal writes.
+    try:
+        await finalize(read_targets())
+    except Exception as error:
+        try:
+            await checkpoint_if_cancelled()
+        except asyncio.CancelledError as cancelled:
+            raise cancelled from error
+        raise
+    await checkpoint_if_cancelled()
 
 
 async def record_phase(phase: str, *, changed: bool = False) -> None:

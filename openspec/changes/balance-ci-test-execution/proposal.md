@@ -8,6 +8,7 @@ The successful beta qualification took 56 minutes because 25 backend groups ran 
 - Balance API groups by worker and Minecraft costs, dispatch resource-ready groups, and expose timing phases without changing scenario assertions or reuse contracts.
 - Allocate Docker fixture host ports dynamically, harden pinned downloads, and avoid obsolete branch runs occupying capacity.
 - Preserve the open recovery history when asynchronously loaded map status changes the world sidebar layout; retain the real interrupted-restore and rollback browser assertions.
+- Complete server-reference database reads and session cleanup before propagating cancellation so accepted archive cancellation can settle durably; cover the race exposed by real isolated API tests.
 - Execute the complete qualification workflow on an implementation branch with publication disabled, then compare actual timings with the successful baseline.
 
 Non-goals: changing intended product behavior, persistence, HTTP contracts, weakening coverage, publishing a release, or introducing concurrent pytest workers within a shared Docker host. Cross-run reuse of qualification evidence requires a separate provenance design and is not used in this change.

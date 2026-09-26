@@ -15,8 +15,9 @@
 - [x] 3.2 Harden pinned downloads and scope stale-run cancellation to standalone branch/PR workflows without cancelling release callers or siblings.
 - [x] 3.3 Update affected CLAUDE and design documents and validate backend static checks, Go checks and workflow syntax.
 - [x] 3.4 Preserve recovery UI state while asynchronous map status resolves, add a deterministic regression for the CI-discovered sidebar remount, and pass frontend lint, types, tests and build.
+- [x] 3.5 Reproduce and fix cancellation during server-reference revalidation leaving SQLite reads unfinished; preserve cancellation and cleanup errors and verify real database writers can complete afterward.
 
 ## 4. Actual CI qualification
 
 - [x] 4.1 Commit and push the implementation branch, then trigger complete qualification with publication disabled and avoid redundant runs from this push.
-- [x] 4.2 Inspect every required gate and timing artifact, correct failures and rerun as needed, and document measured before/after durations and remaining bottlenecks.
+- [ ] 4.2 Inspect every required gate and timing artifact, correct failures and rerun as needed, and document measured before/after durations and remaining bottlenecks, including API execution with reuse disabled.

@@ -82,6 +82,8 @@ uv run pytest tests/architecture
 
 These checks enforce dependency direction. Runtime isolation, command ownership, persistence, cancellation, and API behavior still require the corresponding integration tests.
 
+`tests/operations/test_target_revalidation_cancellation.py` holds real SQLite server-query results before cursor consumption and cancels durable tasks at startup and resource-lease acquisition. It checks the cancelled journal result, absence of external work, lease release and an independent database writer. Asyncio and AnyIO cancellation, repeated cancellation during session close, close failures and server-identity conflicts retain their original semantics; test gates select the boundary without production sleeps or retries.
+
 ## API and protocol fixture
 
 `tests/contracts/fixtures/api-contract.json` contains:
