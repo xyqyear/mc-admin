@@ -67,6 +67,11 @@ class OperationCoordinator:
     def global_files_busy(self) -> bool:
         return any(held.kind == ResourceKind.FILES and not held.server_id and not held.path for lease in self._leases for held in lease.claims)
 
+    async def check_available(self, claims: Sequence[ResourceClaim]) -> None:
+        # This preflight does not reserve resources; workers must acquire them again.
+        async with self.acquire(claims, policy=ConflictPolicy.REJECT):
+            pass
+
     @asynccontextmanager
     async def delete(self, server_id: str, permit: object) -> AsyncGenerator[ResourceLease]:
         self.admission.validate_deletion(server_id, permit)

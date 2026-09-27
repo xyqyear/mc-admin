@@ -102,6 +102,62 @@ async def test_world_scope_blocks_overlapping_writes_but_allows_online_sibling_e
     assert completed.resources == (ResourceReference("files", "first", 1, "data/plugin.conf"),)
 
 
+async def test_delete_submission_rejects_restore_scope_and_preserves_unrelated_file_access(file_application):
+    env = file_application
+    (env.data / "alias").symlink_to(env.data / "world", target_is_directory=True)
+    claims = [ResourceClaim(ResourceKind.FILES, "first", "data/world")]
+    async with get_server_operation_lock().lease(["first"], holder(), claims=claims):
+        for path in ("world/level.dat", "alias/level.dat", "world"):
+            with pytest.raises(HTTPException) as conflict:
+                await env.application.submit_delete(path)
+            assert conflict.value.status_code == 423
+        assert not await env.journal.list()
+        assert (env.data / "world" / "level.dat").read_bytes() == b"world-original"
+        accepted = await env.application.submit_delete("plugin.conf")
+        result = await asyncio.wait_for(env.tasks.get_future(accepted.task_id), 5)
+        assert result.success, result.error
+        assert not (env.data / "plugin.conf").exists()
+    accepted = await env.application.submit_delete("world")
+    result = await asyncio.wait_for(env.tasks.get_future(accepted.task_id), 5)
+    assert result.success, result.error
+    assert not (env.data / "world").exists()
+
+
+@pytest.mark.parametrize("protection", ["active_writer", "recovery"])
+async def test_archive_delete_rejects_protected_scope_without_accepting_task(file_application, protection):
+    env = file_application
+    root = env.runtime.settings.archive_path
+    archive = archives.ArchiveApplication(root)
+    (root / "busy.zip").write_bytes(b"protected archive")
+    (root / "other.zip").write_bytes(b"unrelated archive")
+    admission = get_server_write_admission()
+
+    async def check_protection():
+        with pytest.raises(HTTPException) as conflict:
+            await archive.submit_delete("busy.zip")
+        assert conflict.value.status_code == 423
+        assert not await env.journal.list()
+        assert (root / "busy.zip").read_bytes() == b"protected archive"
+        accepted = await archive.submit_delete("other.zip")
+        result = await asyncio.wait_for(env.tasks.get_future(accepted.task_id), 5)
+        assert result.success, result.error
+        assert not (root / "other.zip").exists()
+
+    if protection == "active_writer":
+        async with get_operation_coordinator().acquire([ResourceClaim(ResourceKind.ARCHIVE, path="busy.zip")]):
+            await check_protection()
+    else:
+        admission.block_archive("busy.zip", "存档正在恢复")
+        try:
+            await check_protection()
+        finally:
+            admission.unblock_archive("busy.zip")
+    accepted = await archive.submit_delete("busy.zip")
+    result = await asyncio.wait_for(env.tasks.get_future(accepted.task_id), 5)
+    assert result.success, result.error
+    assert not (root / "busy.zip").exists()
+
+
 async def test_cancelled_world_file_restore_invalidates_cache_before_restic_file_events(file_application, monkeypatch):
     app = file_application
     monkeypatch.setattr(app.instance, "get_status", AsyncMock(return_value=MCServerStatus.CREATED))

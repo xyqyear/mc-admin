@@ -1,5 +1,3 @@
-from tests.support.runtime import patch_settings
-
 """
 Integration tests for the populate server endpoint.
 Tests the full flow: create server -> upload archive -> populate server -> verify files.
@@ -8,9 +6,6 @@ Tests handle the background task architecture:
 - Endpoint returns task_id immediately
 - Task progress is polled via /api/tasks/{task_id}
 - Task completion is verified through task status
-
-Note: For actual decompression testing, see test_decompression.py.
-The tests here focus on endpoint behavior and mocked task flows.
 """
 import asyncio
 import random
@@ -24,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.background_tasks import TaskType
 from app.db.database import get_db
@@ -32,7 +26,8 @@ from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_runtime_resource
+from tests.support.runtime import patch_runtime_resource, patch_settings
+from tests.support.tasks import task_result
 
 pytestmark = [pytest.mark.binary('7z')]
 
@@ -93,41 +88,16 @@ teleport-safety: true
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database for testing."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    yield TestSessionLocal
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(isolated_runtime):
+    async with isolated_runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    return isolated_runtime.database.session_factory
 
 
 @pytest.fixture
 def client(test_db):
-    """Create test client with test database."""
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(api_app)
-    api_app.dependency_overrides.clear()
+    with TestClient(api_app) as client:
+        yield client
 
 
 @pytest.fixture
@@ -142,79 +112,18 @@ def temp_dirs():
 
 @pytest.fixture
 def mock_settings_and_auth(temp_dirs, test_db):
-    """Mock settings, authentication, and database."""
     server_path, archive_path = temp_dirs
-    real_mc_manager = DockerMCManager(server_path)
-
-    # Override database dependency
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-
     with (
-        patch_settings() as mock_populate_settings,
-        patch_settings() as mock_archive_settings,
-        patch_settings() as mock_dep_settings,
-        patch_settings() as mock_decomp_settings,
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
+        patch_settings() as settings,
+        patch_runtime_resource('docker_mc_manager', DockerMCManager(server_path)),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
         patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
         patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
     ):
-        # Configure all settings mocks
-        for mock_settings_obj in [
-            mock_populate_settings,
-            mock_archive_settings,
-            mock_dep_settings,
-            mock_decomp_settings,
-        ]:
-            mock_settings_obj.server_path = server_path
-            mock_settings_obj.archive_path = archive_path
-            mock_settings_obj.master_token = "test_master_token"
-
+        settings.server_path = server_path
+        settings.archive_path = archive_path
+        settings.master_token = "test_master_token"
         yield server_path, archive_path
-
-    # Cleanup dependency override
-    api_app.dependency_overrides.clear()
-
-
-def wait_for_task_completion(
-    client: TestClient, task_id: str, timeout: float = 30.0
-) -> dict:
-    """
-    Poll task status until completion or timeout (sync version for TestClient).
-
-    Note: This only works with tests that mock task execution.
-    For actual async task execution, use wait_for_task_completion_async.
-    """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        response = client.get(
-            f"/api/tasks/{task_id}",
-            headers={"Authorization": "Bearer test_master_token"},
-        )
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to get task status: {response.text}")
-
-        task_data = response.json()
-        status = task_data.get("status")
-
-        if status in ["completed", "failed", "cancelled"]:
-            return task_data
-
-        time.sleep(0.5)
-
-    raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
 
 
 async def wait_for_task_completion_async(
@@ -291,10 +200,10 @@ services:
             json={"yaml_content": compose_yaml},
         )
 
-        assert create_response.status_code == 200, (
-            f"Server creation failed: {create_response.json()}"
-        )
-        assert create_response.json()["server_id"] == server_id
+        assert create_response.status_code == 202, create_response.text
+        creation = await wait_for_task_completion_async(async_client, create_response.json()["task_id"])
+        assert creation["status"] == "completed", creation
+        assert creation["result"]["server_id"] == server_id
 
         # Verify server exists on filesystem
         server_dir = server_path / server_id
@@ -448,11 +357,15 @@ services:
     restart: unless-stopped
 """
 
-        await async_client.post(
+        create_response = await async_client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
         )
+        assert create_response.status_code == 202, create_response.text
+        creation = await wait_for_task_completion_async(async_client, create_response.json()["task_id"])
+        assert creation["status"] == "completed", creation
+        assert creation["result"]["server_id"] == server_id
 
         # Try to populate with nonexistent archive
         response = await async_client.post(
@@ -496,11 +409,12 @@ services:
     restart: unless-stopped
 """
 
-        client.post(
+        create_response = client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
         )
+        assert task_result(client, create_response)["server_id"] == server_id
 
         # Create archive file
         archive_file_path = archive_path / archive_filename
@@ -553,11 +467,15 @@ services:
     restart: unless-stopped
 """
 
-        await async_client.post(
+        create_response = await async_client.post(
             f"/api/servers/{server_id}",
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
         )
+        assert create_response.status_code == 202, create_response.text
+        creation = await wait_for_task_completion_async(async_client, create_response.json()["task_id"])
+        assert creation["status"] == "completed", creation
+        assert creation["result"]["server_id"] == server_id
 
         # Create invalid archive (without server.properties)
         archive_file_path = archive_path / archive_filename
@@ -636,9 +554,10 @@ services:
             headers={"Authorization": "Bearer test_master_token"},
             json={"yaml_content": compose_yaml},
         )
-        assert create_response.status_code == 200, (
-            f"Server creation failed: {create_response.json()}"
-        )
+        assert create_response.status_code == 202, create_response.text
+        creation = await wait_for_task_completion_async(async_client, create_response.json()["task_id"])
+        assert creation["status"] == "completed", creation
+        assert creation["result"]["server_id"] == server_id
 
         # Create archive
         archive_file_path = archive_path / archive_filename

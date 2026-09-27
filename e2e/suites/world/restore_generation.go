@@ -52,7 +52,7 @@ func restorationGeneration(ctx context.Context, t *engine.Scope) error {
 	if err = fixtures.Operation(ctx, s.client, s.id, "remove"); err != nil {
 		return err
 	}
-	if err = s.client.JSON(ctx, "POST", s.base, map[string]string{"yaml_content": fixtures.ServerOf(t.Env).Compose}, nil, 200); err != nil {
+	if err = s.client.RunTask(ctx, "POST", s.base, map[string]string{"yaml_content": fixtures.ServerOf(t.Env).Compose}, nil); err != nil {
 		return err
 	}
 	if err = s.seedStoppedWorld(); err != nil {

@@ -8,13 +8,12 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
 from app.db.metadata import Base
 from app.main import api_app
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource
+from tests.support.tasks import task_result
 
 YAML_TEMPLATE = """
 version: '3.8'
@@ -153,72 +152,27 @@ def temp_server_path():
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database for testing."""
-    # Create temporary database file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    yield TestSessionLocal
-
-    # Cleanup
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(isolated_runtime):
+    async with isolated_runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
 
 
 @pytest.fixture
 def test_client_with_temp_path(temp_server_path, test_db):
-    """Create TestClient with temporary server path and test database."""
     from unittest.mock import AsyncMock
 
     from app.minecraft import DockerMCManager
 
-    # Override get_db dependency to use test database
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-
-    # Patch settings and create real mc_manager with temp path
     with (
         patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
         patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
+        patch_runtime_resource('docker_mc_manager', DockerMCManager(temp_server_path)),
+        patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
+        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+        TestClient(api_app, raise_server_exceptions=False) as client,
     ):
-        # Create real mc_manager with temporary server path
-        real_mc_manager = DockerMCManager(temp_server_path)
-        # Patch docker_mc_manager wherever it is imported
-        with (
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
-            patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-            patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
-            patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
-        ):
-            # Mock log_monitor.start_server to avoid log monitor issues
-            # Mock DNS update so tests don't hit the manager
-            client = TestClient(
-                api_app, raise_server_exceptions=False
-            )
-            yield client
-
-    # Clean up dependency override
-    api_app.dependency_overrides.pop(get_db, None)
+        yield client
 
 
 def generate_yaml(
@@ -255,8 +209,7 @@ class TestCreateServerSuccess:
             headers={"Authorization": "Bearer test-master-token"},
         )
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(test_client_with_temp_path, response)
         assert data["server_id"] == "test-server"
         assert data["game_port"] == 25565
         assert data["rcon_port"] == 25575
@@ -271,7 +224,7 @@ class TestCreateServerSuccess:
             json={"yaml_content": yaml1},
             headers={"Authorization": "Bearer test-master-token"},
         )
-        assert response1.status_code == 200
+        task_result(test_client_with_temp_path, response1)
 
         # Create second server with different ports
         yaml2 = generate_yaml("server-unique-2", 25566, 25576)
@@ -281,8 +234,7 @@ class TestCreateServerSuccess:
             headers={"Authorization": "Bearer test-master-token"},
         )
 
-        assert response2.status_code == 200
-        data = response2.json()
+        data = task_result(test_client_with_temp_path, response2)
         assert data["server_id"] == "server-unique-2"
         assert data["game_port"] == 25566
         assert data["rcon_port"] == 25576
@@ -300,7 +252,7 @@ class TestPortConflictDetection:
             json={"yaml_content": yaml1},
             headers={"Authorization": "Bearer test-master-token"},
         )
-        assert response1.status_code == 200
+        task_result(test_client_with_temp_path, response1)
 
         # Try to create second server with same ports
         yaml2 = generate_yaml("server2", 25565, 25575)  # Same ports
@@ -325,7 +277,7 @@ class TestPortConflictDetection:
             json={"yaml_content": yaml1},
             headers={"Authorization": "Bearer test-master-token"},
         )
-        assert response1.status_code == 200
+        task_result(test_client_with_temp_path, response1)
 
         # Try to create second server with same game port, different RCON port
         yaml2 = generate_yaml("server-game-conflict", 25565, 25576)
@@ -351,7 +303,7 @@ class TestPortConflictDetection:
             json={"yaml_content": yaml1},
             headers={"Authorization": "Bearer test-master-token"},
         )
-        assert response1.status_code == 200
+        task_result(test_client_with_temp_path, response1)
 
         # Try to create second server with different game port, same RCON port
         yaml2 = generate_yaml("server-rcon-conflict", 25566, 25575)
@@ -382,7 +334,7 @@ class TestDuplicateServerNames:
             json={"yaml_content": yaml_content},
             headers={"Authorization": "Bearer test-master-token"},
         )
-        assert response1.status_code == 200
+        task_result(test_client_with_temp_path, response1)
 
         # Try to create server with same name (even with different ports)
         yaml_different_ports = generate_yaml("duplicate-name", 25568, 25578)

@@ -67,6 +67,7 @@ class FileApplication:
         target = await resolve_file_path(data, path)
         await base.validate_delete_target(data, path)
         claims = await self.claims([target])
+        await get_operation_coordinator().check_available(claims)
 
         async def run() -> AsyncGenerator[TaskProgress]:
             yield TaskProgress(message=f"正在删除 {path}")

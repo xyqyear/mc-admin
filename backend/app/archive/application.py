@@ -76,6 +76,8 @@ class ArchiveApplication:
 
     async def submit_delete(self, path: str) -> TaskAccepted:
         target = await base.validate_delete_target(self.root, path)
+        claims = await archive_claims(self.root, [target])
+        await get_operation_coordinator().check_available(claims)
 
         async def run() -> AsyncGenerator[TaskProgress]:
             yield TaskProgress(message=f"正在删除存档 {path}")
@@ -84,7 +86,7 @@ class ArchiveApplication:
 
         submitted = await get_task_manager().submit_durable(
             TaskType.ARCHIVE_DELETE, f"删除存档 {path}", run(), actor_id=self.actor_id,
-            claims=await archive_claims(self.root, [target]), cancellable=False,
+            claims=claims, cancellable=False,
             exclusive_key=f"archive-delete:{target}",
         )
         return TaskAccepted(task_id=submitted.task_id)

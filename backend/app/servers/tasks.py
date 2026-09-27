@@ -56,7 +56,7 @@ async def submit_lifecycle(server_id: str, action: str, actor_id: int) -> TaskAc
     get_server_write_admission().check(server_id, allow_recovery_stop=action in {"stop", "down"})
     async with get_async_session() as session:
         reference = await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)
-    if action in ("start", "up", "restart") and get_server_operation_lock().is_locked(server_id):
+    if action in ("start", "up", "restart", "remove") and get_server_operation_lock().is_locked(server_id):
         raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
     if action == "remove" and await get_docker_mc_manager().get_instance(server_id).created():
         raise HTTPException(status_code=409, detail="服务器容器仍然存在，请先下线后再删除")

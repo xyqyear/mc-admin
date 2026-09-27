@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
+from httpx2 import ASGITransport, AsyncClient
 
 from app.background_tasks import get_task_manager
 from app.db.metadata import Base
+from app.main import api_app
 from app.minecraft import DockerMCManager, MCInstance
 from app.minecraft.docker.manager import ComposeManager
 from app.operation_admission import get_server_write_admission
@@ -17,6 +19,7 @@ from app.routers.servers.operations import server_maintenance
 from app.servers.crud import create_server_record, mark_server_removed
 from app.servers.lifecycle import CreateServerSpec, orchestrators
 from app.servers.tasks import submit_creation, submit_lifecycle
+from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 from tests.fixtures.test_utils import create_mc_server_compose_yaml
 from tests.support.runtime import set_runtime_resource
 
@@ -116,6 +119,36 @@ async def test_removal_does_not_wait_for_itself(management):
     assert accepted.task_id not in result.data['cancelled_background_task_ids']
     assert not env.instance.get_project_path().exists()
     assert not get_server_write_admission().is_frozen('managed')
+
+
+@pytest.mark.parametrize('kind', [ServerOperationKind.RESTORE, ServerOperationKind.BACKUP, ServerOperationKind.PRUNE])
+async def test_removal_during_maintenance_preserves_server_and_accepts_no_task(management, kind):
+    env = management
+    marker = env.instance.get_project_path() / 'data' / 'world-marker'
+    marker.write_bytes(b'world must survive maintenance')
+    holder = LockHolder(kind, datetime.now(UTC), 1, '正在维护世界')
+    lock = get_server_operation_lock()
+    async with AsyncClient(transport=ASGITransport(app=api_app), base_url='http://test') as client:
+        async with lock.acquire('managed', holder):
+            response = await client.post(
+                '/servers/managed/operations',
+                json={'action': 'remove'},
+                headers={'Authorization': f'Bearer {env.runtime.settings.master_token}'},
+            )
+            assert response.status_code == 423, response.text
+            assert '维护' in response.json()['detail']
+            assert not env.tasks.get_tasks_by_server_id('managed')
+            assert lock.get_holder('managed') == holder
+            assert marker.read_bytes() == b'world must survive maintenance'
+        response = await client.post(
+            '/servers/managed/operations',
+            json={'action': 'remove'},
+            headers={'Authorization': f'Bearer {env.runtime.settings.master_token}'},
+        )
+        assert response.status_code == 202, response.text
+    result = await completed(env, SimpleNamespace(task_id=response.json()['task_id']))
+    assert result.success, result.error
+    assert not env.instance.get_project_path().exists()
 
 
 async def test_creation_binds_committed_generation_and_preserves_prepared_yaml(management, monkeypatch):
