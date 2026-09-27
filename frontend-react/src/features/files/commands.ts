@@ -1,3 +1,4 @@
+import { waitForTaskResult } from '@/features/tasks/commands';
 import { getErrorMessage, type ApiError } from '@/shared/http/api'
 import type { CreateFileRequest, RenameFileRequest } from "@/features/files/contracts";
 import { taskQueryKeys } from "@/features/tasks/queries";
@@ -52,8 +53,8 @@ export const useFileMutations = (serverId: string | undefined) => {
 
   const useDeleteFile = () => {
     return useMutation({
-      mutationFn: (path: string) =>
-        fileApi.deleteFileOrDirectory(serverId!, path),
+      mutationFn: async (path: string) =>
+        waitForTaskResult(queryClient, await fileApi.deleteFileOrDirectory(serverId!, path)),
       onSuccess: () => {
         toast.success("删除成功");
         invalidateFileList();
@@ -68,7 +69,7 @@ export const useFileMutations = (serverId: string | undefined) => {
     return useMutation({
       mutationFn: async (paths: string[]) => {
         const results = await Promise.allSettled(
-          paths.map(path => fileApi.deleteFileOrDirectory(serverId!, path))
+          paths.map(async path => waitForTaskResult(queryClient, await fileApi.deleteFileOrDirectory(serverId!, path)))
         );
 
         const successful = results.filter(result => result.status === 'fulfilled').length;

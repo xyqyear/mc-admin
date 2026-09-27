@@ -26,6 +26,7 @@ class OperationExecution:
     cache_degraded: bool = False
     settled: bool = False
     failure_code: str | None = None
+    require_existing_targets: bool = True
 
 
 _execution: ContextVar[OperationExecution | None] = ContextVar("mc_admin_operation", default=None)
@@ -56,7 +57,7 @@ async def revalidate_targets() -> None:
     async def read_targets() -> None:
         async with get_async_session() as db:
             for server in execution.servers:
-                await revalidate_server_ref(db, server)
+                await revalidate_server_ref(db, server, require_exists=execution.require_existing_targets)
 
     # Finish cursor consumption and session closure before cancellation can trigger journal writes.
     try:

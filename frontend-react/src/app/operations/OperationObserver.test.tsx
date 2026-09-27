@@ -201,3 +201,17 @@ it('refreshes map initialization across pages without refreshing after tile rend
   expect(client.getQueryState(status)?.isInvalidated).toBe(false)
   expect(client.getQueryState(regions)?.isInvalidated).toBe(false)
 })
+
+it.each([
+  ['server_create', queryKeys.serverInfos.all],
+  ['server_sync', queryKeys.serverStatuses.all],
+  ['self_check', queryKeys.selfCheck.all],
+  ['dns_update', queryKeys.dns.all],
+  ['archive_publish', queryKeys.archive.all],
+  ['archive_delete', queryKeys.archive.all],
+] as const)('discovers %s completion before the first poll and refreshes its feature', async (kind, key) => {
+  client.setQueryData(key, { retained: true })
+  operations = [{ ...operation('finished-before-mount', 'succeeded'), kind }]
+  render(<Shell />)
+  await waitFor(() => expect(client.getQueryState(key)?.isInvalidated).toBe(true))
+})

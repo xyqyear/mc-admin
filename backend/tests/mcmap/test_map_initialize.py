@@ -1,4 +1,3 @@
-import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -10,7 +9,9 @@ from fastapi import FastAPI
 from httpx2 import ASGITransport, AsyncClient
 
 from app.auth.schemas import UserPublic
+from app.background_tasks import get_task_manager
 from app.dependencies import get_current_user
+from app.mcmap import initialization
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.events import (
     MCMapDownloadClientResultEvent,
@@ -62,16 +63,6 @@ class _FakeProc:
 
     async def stderr(self) -> str:
         return ""
-
-
-def _parse_sse(chunks: list[bytes]) -> list[dict]:
-    events: list[dict] = []
-    for block in b"".join(chunks).decode().strip().split("\n\n"):
-        if not block:
-            continue
-        line = block.removeprefix("data: ")
-        events.append(json.loads(line))
-    return events
 
 
 @pytest.mark.asyncio
@@ -136,13 +127,10 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
             ]
         )
 
-    monkeypatch.setattr(map_router.mcmap_runner, "download_client", fake_download_client)
-    monkeypatch.setattr(map_router.mcmap_runner, "gen_palette", fake_gen_palette)
+    monkeypatch.setattr(initialization.mcmap_runner, "download_client", fake_download_client)
+    monkeypatch.setattr(initialization.mcmap_runner, "gen_palette", fake_gen_palette)
 
-    chunks = [
-        chunk async for chunk in map_router._initialize_stream("server-1", force=True)
-    ]
-    events = _parse_sse(chunks)
+    events = [event.model_dump(exclude_none=True) async for event in initialization.initialize_events("server-1", force=True)]
 
     assert calls == [
         f"download:1.20.1:client.jar:{data_path.name}",
@@ -166,22 +154,22 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
     "client_exception", "client_event", "client_stderr",
     "palette_exception", "palette_event", "palette_stderr",
 ])
-async def test_initialization_http_sse_and_logs_do_not_expose_adapter_secrets(tmp_path, monkeypatch, caplog, failure):
+async def test_initialization_task_and_logs_do_not_expose_adapter_secrets(tmp_path, monkeypatch, caplog, failure):
     secret = "synthetic-map-secret-27d9d1"
     raw = f"password={secret}; INSERT INTO credentials VALUES ('{secret}')"
     cache = ServerMapCache(tmp_path / "data")
     await cache.ensure_dir(cache.cache_dir)
     instance = _FakeInstance(cache.data_path)
     set_runtime_resource(monkeypatch, 'docker_mc_manager', _FakeDockerMC(instance))
-    monkeypatch.setattr(map_router, "discover_mods_dir", AsyncMock(return_value=None))
-    monkeypatch.setattr(map_router, "discover_level_dat", AsyncMock(return_value=None))
-    monkeypatch.setattr(map_router, "palette_is_current", AsyncMock(return_value=False))
+    monkeypatch.setattr(initialization, "discover_mods_dir", AsyncMock(return_value=None))
+    monkeypatch.setattr(initialization, "discover_level_dat", AsyncMock(return_value=None))
+    monkeypatch.setattr(initialization, "palette_is_current", AsyncMock(return_value=False))
     if failure.startswith("palette"):
         cache.client_jar.write_bytes(b"client")
     elif failure == "compose_exception":
         monkeypatch.setattr(instance, "get_compose_obj", AsyncMock(side_effect=RuntimeError(raw)))
     elif failure == "cleanup_exception":
-        monkeypatch.setattr(map_router, "_clear_prerequisite_cache", AsyncMock(side_effect=OSError(raw)))
+        monkeypatch.setattr(initialization, "_clear_prerequisite_cache", AsyncMock(side_effect=OSError(raw)))
 
     @asynccontextmanager
     async def failing_adapter(*args, **kwargs):
@@ -193,20 +181,22 @@ async def test_initialization_http_sse_and_logs_do_not_expose_adapter_secrets(tm
         monkeypatch.setattr(process, "stderr", AsyncMock(return_value=raw))
         yield process
 
-    monkeypatch.setattr(map_router.mcmap_runner, "download_client", failing_adapter)
-    monkeypatch.setattr(map_router.mcmap_runner, "gen_palette", failing_adapter)
+    monkeypatch.setattr(initialization.mcmap_runner, "download_client", failing_adapter)
+    monkeypatch.setattr(initialization.mcmap_runner, "gen_palette", failing_adapter)
     application = FastAPI()
     application.include_router(map_router.router)
     application.dependency_overrides[get_current_user] = lambda: UserPublic(id=1, username="map-user", created_at=datetime.now(UTC))
     async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
         response = await client.post("/servers/server-1/map/initialize", params={"force": failure == "cleanup_exception"})
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("text/event-stream")
-        events = _parse_sse([response.content])
-        assert events[-1]["phase"] == "error"
-        assert events[-1]["stage"] == ("palette" if failure.startswith("palette") else "client")
-        assert not any(event["stage"] == "complete" for event in events)
-        assert secret not in response.text
+        assert response.status_code == 202
+        task_id = response.json()["task_id"]
+        future = get_task_manager().get_future(task_id)
+        assert future is not None
+        result = await future
+        assert not result.success
+        task = get_task_manager().get_task(task_id)
+        assert task is not None and task.error
+        assert secret not in task.model_dump_json()
         if failure == "compose_exception":
             status = await client.get("/servers/server-1/map/status")
             assert status.status_code == 200 and status.json()["version"] is None

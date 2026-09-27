@@ -1,3 +1,4 @@
+import type { TaskAccepted } from '@/features/tasks/contracts';
 import type {
   CreateFileRequest,
   FileContent,
@@ -90,8 +91,8 @@ export const fileApi = {
   deleteFileOrDirectory: async (
     serverId: string,
     path: string
-  ): Promise<{ message: string }> => {
-    const response = await api.delete(`/servers/${serverId}/files`, {
+  ): Promise<TaskAccepted> => {
+    const response = await api.delete<TaskAccepted>(`/servers/${serverId}/files`, {
       params: { path },
     });
     return response.data;

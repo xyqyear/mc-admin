@@ -1,3 +1,5 @@
+from tests.support.tasks import task_result, wait_task
+
 """End-to-end tests for POST /api/servers/sync.
 
 Covers: empty diff, fs_only / db_only / mixed, validation errors, dry-run,
@@ -95,6 +97,7 @@ def test_client(temp_server_path, test_db):
 
     real_mc_manager = DockerMCManager(temp_server_path)
     patches = [
+        patch_runtime_resource("session_factory", test_db),
         patch.object(get_identity_service(), "session_factory", test_db),
         patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
         patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"),
@@ -120,7 +123,8 @@ def test_client(temp_server_path, test_db):
     ]
     for p in patches:
         p.start()
-    yield TestClient(api_app, raise_server_exceptions=False), real_mc_manager, test_db
+    with TestClient(api_app, raise_server_exceptions=False) as client:
+        yield client, real_mc_manager, test_db
     for p in patches:
         p.stop()
     api_app.dependency_overrides.pop(get_db, None)
@@ -137,8 +141,7 @@ class TestSyncEmpty:
 
         response = client.post("/api/servers/sync", json={}, headers=_auth())
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         assert data["applied"] is True
         assert data["adopted"] == []
         assert data["removed"] == []
@@ -154,8 +157,7 @@ class TestSyncFsOnly:
 
         response = client.post("/api/servers/sync", json={}, headers=_auth())
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         assert data["applied"] is True
         assert len(data["adopted"]) == 1
         assert data["adopted"][0]["server_id"] == "orphan"
@@ -175,8 +177,7 @@ class TestSyncFsOnly:
 
         response = client.post("/api/servers/sync", json={}, headers=_auth())
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         # "broken" is filtered out at MCComposeFile validation by
         # get_all_server_names, so it won't even appear in fs_only.
         # That is the intended behavior — only valid MC servers show up.
@@ -199,8 +200,7 @@ class TestSyncDbOnly:
 
         response = client.post("/api/servers/sync", json={}, headers=_auth())
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         # stale-row gets deactivated; anchor gets adopted
         assert {r["server_id"] for r in data["removed"]} == {"stale-row"}
         assert {a["server_id"] for a in data["adopted"]} == {"anchor"}
@@ -219,8 +219,7 @@ class TestSyncEmptyFsGuard:
 
         response = client.post("/api/servers/sync", json={}, headers=_auth())
 
-        assert response.status_code == 409
-        assert "force=true" in response.json()["detail"]
+        assert "force=true" in wait_task(client, response, success=False)["error"]
 
     def test_empty_fs_with_force_succeeds(self, test_client):
         client, _mgr, db = test_client
@@ -235,8 +234,7 @@ class TestSyncEmptyFsGuard:
             "/api/servers/sync", json={"force": True}, headers=_auth()
         )
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         assert {r["server_id"] for r in data["removed"]} == {"orphaned-x"}
 
 
@@ -256,8 +254,7 @@ class TestSyncDryRun:
             "/api/servers/sync", json={"dry_run": True}, headers=_auth()
         )
 
-        assert response.status_code == 200
-        data = response.json()
+        data = task_result(client, response)
         assert data["applied"] is False
         assert data["adopted"] == []
         assert data["removed"] == []

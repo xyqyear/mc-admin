@@ -34,7 +34,7 @@ func scopedRestore(ctx context.Context, t *engine.Scope) error {
 	if err = s.stop(ctx); err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", s.base+"/map/initialize", nil, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", s.base+"/map/initialize", nil); err != nil {
 		return err
 	}
 	before, after := [2]string{"before zero", "before one"}, [2]string{"after zero", "after one"}

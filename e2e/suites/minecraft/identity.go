@@ -60,7 +60,7 @@ func serverIdentityAdoption(ctx context.Context, t *engine.Scope) error {
 	}
 	adopt := func() error {
 		var result syncResult
-		if err := client.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{}, &result, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{}, &result); err != nil {
 			return err
 		}
 		if !result.Applied || len(result.Errors) != 0 || len(result.Adopted) != 1 || result.Adopted[0].ID != id {
@@ -73,7 +73,7 @@ func serverIdentityAdoption(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		var preview syncResult
-		if err := client.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &preview, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &preview); err != nil {
 			return err
 		}
 		if preview.Applied || len(preview.Errors) != 0 || len(preview.Preview) != 1 || preview.Preview[0].ID != id || preview.Preview[0].Action != "adopt" {
@@ -101,7 +101,7 @@ func serverIdentityAdoption(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		var result syncResult
-		if err := client.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{}, &result, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{}, &result); err != nil {
 			return err
 		}
 		if len(result.Errors) != 0 || len(result.Removed) != 1 || result.Removed[0].ID != id {

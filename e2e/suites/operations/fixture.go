@@ -85,7 +85,7 @@ func createIndependentServer(ctx context.Context, t *engine.Scope, client *api.C
 		return "", err
 	}
 	compose := fixtures.Compose(t.Env, id, fmt.Sprint(ports.Ports[0]), fmt.Sprint(ports.Ports[1]))
-	if err = client.JSON(ctx, "POST", "/api/servers/"+id, map[string]string{"yaml_content": compose}, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/servers/"+id, map[string]string{"yaml_content": compose}, nil); err != nil {
 		return "", err
 	}
 	return id, nil

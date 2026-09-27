@@ -58,11 +58,11 @@ class ServerWriteAdmission:
     def is_frozen(self, server_id: str) -> bool:
         return server_id in self._frozen
 
-    def check(self, server_id: str) -> None:
+    def check(self, server_id: str, *, allow_recovery_stop: bool = False) -> None:
         if not self._accepting:
             raise HTTPException(status_code=503, detail="应用正在停止接收操作，请稍后重试")
         reason = self.recovery_reason(server_id)
-        if reason:
+        if reason and not allow_recovery_stop:
             raise HTTPException(status_code=423, detail=reason)
         if self.is_frozen(server_id):
             raise HTTPException(status_code=423, detail="服务器正在删除，请等待操作完成")

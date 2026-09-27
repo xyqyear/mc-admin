@@ -6,7 +6,7 @@ import { queryKeys } from '@/shared/http/api'
 export const fileOperationKinds = new Set([
   'file_write', 'file_create', 'file_delete', 'file_rename', 'file_upload',
   'file_ownership_repair', 'archive_create', 'archive_extract', 'archive_publish',
-  'archive_write', 'snapshot_restore', 'snapshot_backup',
+  'archive_write', 'archive_delete', 'archive_hash', 'snapshot_restore', 'snapshot_backup',
   'world_restore', 'chunk_prune_apply',
 ])
 

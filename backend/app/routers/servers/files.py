@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from app.auth.schemas import UserPublic
 
 from ...background_tasks import TaskType, get_task_manager
+from ...background_tasks.api_models import TaskAccepted
 from ...dependencies import get_current_user
 from ...files import (
     CreateFileRequest,
@@ -135,7 +136,7 @@ async def create_file_or_directory_endpoint(
     return {"message": message}
 
 
-@router.delete("/{server_id}/files")
+@router.delete("/{server_id}/files", response_model=TaskAccepted, status_code=202)
 async def delete_file_or_directory_endpoint(
     server_id: str, path: str, _: UserPublic = Depends(get_current_user)
 ):
@@ -146,9 +147,7 @@ async def delete_file_or_directory_endpoint(
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
-    message = await FileApplication(instance, server_id, _.id).delete(path)
-
-    return {"message": message}
+    return await FileApplication(instance, server_id, _.id).submit_delete(path)
 
 
 @router.post("/{server_id}/files/rename")

@@ -1,3 +1,4 @@
+import { waitForTaskResult } from '@/features/tasks/commands'
 import type { ApiError } from '@/shared/http/api'
 import { archiveApi } from '@/features/archives/api';
 import type { CreateArchiveFileRequest, CreateArchiveRequest, RenameArchiveFileRequest } from '@/features/archives/contracts';
@@ -35,7 +36,7 @@ export const useArchiveMutations = () => {
 
   const useDeleteItem = () => {
     return useMutation({
-      mutationFn: (path: string) => archiveApi.deleteArchiveItem(path),
+      mutationFn: async (path: string) => waitForTaskResult(queryClient, await archiveApi.deleteArchiveItem(path)),
       onSuccess: (_, path) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(getParentPath(path)) })
         toast.success('删除成功')

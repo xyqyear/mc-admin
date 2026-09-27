@@ -14,13 +14,14 @@ from app.dns.api_models import (
     DNSRecord,
     DNSRecordDiff,
     DNSStatusResponse,
-    DNSUpdateResponse,
     RouterDiff,
 )
 
+from ..background_tasks.api_models import TaskAccepted
 from ..db.database import get_db
 from ..dependencies import RequireRole, get_current_user
 from ..dns.manager import get_dns_manager
+from ..dns.tasks import submit_update
 from ..dynamic_config import get_config
 
 router = APIRouter(prefix="/dns", tags=["dns"])
@@ -33,28 +34,12 @@ def _require_dns_enabled() -> None:
             detail="DNS manager is disabled in configuration",
         )
 
-@router.post("/update", response_model=DNSUpdateResponse)
+@router.post("/update", response_model=TaskAccepted, status_code=202)
 async def update_dns(
-    _: UserPublic = Depends(RequireRole((UserRole.ADMIN, UserRole.OWNER))),
-    db: AsyncSession = Depends(get_db),
-) -> DNSUpdateResponse:
-    """
-    Trigger a DNS and MC Router update.
-
-    This endpoint:
-    1. Enumerates active servers from the database
-    2. Reads each server's compose to extract its port
-    3. Combines with address configuration to generate records
-    4. Applies independently observed DNS and MC Router differences
-
-    Requires ADMIN role or higher.
-    """
+    user: UserPublic = Depends(RequireRole((UserRole.ADMIN, UserRole.OWNER))),
+) -> TaskAccepted:
     _require_dns_enabled()
-    await get_dns_manager().update(db)
-
-    return DNSUpdateResponse(
-        success=True, message="DNS and MC Router updated successfully"
-    )
+    return await submit_update(user.id)
 
 @router.get("/status", response_model=DNSStatusResponse)
 async def get_dns_status(

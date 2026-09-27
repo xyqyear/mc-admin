@@ -17,6 +17,8 @@ import { Switch } from '@/shared/ui/switch'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 
+import { useTaskQueries } from '@/features/tasks/queries'
+import { openTaskCenter } from '@/features/tasks/commands'
 import PageHeader from '@/shared/layout/PageHeader'
 import ArchiveSelectionDialog from '@/features/archives/ui/ArchiveSelectionDialog'
 import PopulateProgressDialog from '@/features/archives/ui/PopulateProgressDialog'
@@ -30,6 +32,8 @@ type CreationMode = 'traditional' | 'template'
 
 const ServerNew: React.FC = () => {
   const navigate = useNavigate()
+  const { useActiveTasks } = useTaskQueries()
+  const activeTasks = useActiveTasks()
 
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
 
@@ -178,7 +182,8 @@ const ServerNew: React.FC = () => {
     navigate('/overview')
   }
 
-  const isLoading = createServerMutation.isPending || populateServerMutation.isPending
+  const existingCreation = activeTasks.data?.find(task => task.taskType === 'server_create' && task.serverId === (creationMode === 'template' ? templateFormData.name : serverName))
+  const isLoading = createServerMutation.isPending || populateServerMutation.isPending || Boolean(existingCreation)
 
   const isTemplateFormValid = !!selectedTemplateId && !!templateSchema?.json_schema &&
     validator.isValid(templateSchema.json_schema as RJSFSchema, templateFormData, templateSchema.json_schema as RJSFSchema)
@@ -297,7 +302,8 @@ const ServerNew: React.FC = () => {
         <CardContent className="pt-6">
           <div className="flex justify-between items-center">
             <div>
-              <p className="font-semibold">准备创建服务器</p>
+              <p className="font-semibold">{existingCreation ? existingCreation.message || '正在创建服务器' : '准备创建服务器'}</p>
+              {existingCreation && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
               <p className="text-sm text-muted-foreground">
                 {creationMode === 'template'
                   ? isTemplateFormValid

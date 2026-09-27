@@ -1,5 +1,4 @@
 import asyncio
-import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +11,7 @@ from fastapi import HTTPException
 
 from app.db.metadata import Base
 from app.files.application import FileApplication
+from app.mcmap import initialization as map_initialization
 from app.mcmap import runner
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.ownership import PreviewRenderTarget
@@ -24,7 +24,6 @@ from app.operations.coordinator import (
 )
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState, ResourceReference
-from app.routers.servers import map as map_router
 from app.servers.models import Server
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 from app.world.preview import PreviewMapCache
@@ -197,8 +196,8 @@ async def test_cancelled_render_waiter_does_not_spawn_after_world_lease(map_appl
 
 async def test_palette_initialization_waits_for_renderer_without_clearing_files(map_application, monkeypatch):
     app = map_application
-    monkeypatch.setattr(map_router, "discover_mods_dir", AsyncMock(return_value=None))
-    monkeypatch.setattr(map_router, "palette_is_current", AsyncMock(return_value=True))
+    monkeypatch.setattr(map_initialization, "discover_mods_dir", AsyncMock(return_value=None))
+    monkeypatch.setattr(map_initialization, "palette_is_current", AsyncMock(return_value=True))
     started = asyncio.Event()
     original = app.journal.start
 
@@ -210,7 +209,7 @@ async def test_palette_initialization_waits_for_renderer_without_clearing_files(
     monkeypatch.setattr(app.journal, "start", start)
 
     async def initialize():
-        return [json.loads(chunk.decode().removeprefix("data: ")) async for chunk in map_router._initialize_stream("maps")]
+        return [event.model_dump(exclude_none=True) async for event in map_initialization.initialize_events("maps")]
 
     async with get_operation_coordinator().acquire([ResourceClaim(ResourceKind.MAP_CACHE, "maps", "world/region")]):
         initialization = asyncio.create_task(initialize())

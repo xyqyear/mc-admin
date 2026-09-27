@@ -36,7 +36,7 @@ func missingSidecars(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	for _, directory := range directories {
-		if err = s.client.JSON(ctx, "DELETE", s.base+"/files?path="+url.QueryEscape("/"+directory), nil, nil, 200); err != nil {
+		if err = s.client.RunTask(ctx, "DELETE", s.base+"/files?path="+url.QueryEscape("/"+directory), nil, nil); err != nil {
 			return err
 		}
 	}
@@ -124,7 +124,7 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	before := [2]string{"before disconnect", "before disconnect neighbor"}
-	if err = s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "down"}, nil, 200); err != nil {
+	if err = s.client.RunTask(ctx, "POST", s.base+"/operations", map[string]any{"action": "down"}, nil); err != nil {
 		return err
 	}
 	if err = s.seedRegion(before); err != nil {

@@ -1,3 +1,5 @@
+import { waitForTaskResult } from '@/features/tasks/commands'
+import type { DNSUpdateResponse } from './contracts'
 import type { ApiError } from '@/shared/http/api'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,7 +10,7 @@ export const useUpdateDNS = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: dnsApi.updateDNS,
+    mutationFn: async () => waitForTaskResult<DNSUpdateResponse>(queryClient, await dnsApi.updateDNS()),
     onSuccess: (data) => {
       toast.success(data.message || 'DNS和路由更新成功')
     },

@@ -1,4 +1,5 @@
 from tests.support.runtime import patch_settings
+from tests.support.tasks import task_result
 
 """
 Comprehensive unit tests for archive operations API endpoints.
@@ -6,7 +7,6 @@ Tests archive file management functionality using temporary directories.
 """
 
 import hashlib
-import json
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -37,36 +37,21 @@ def mock_archive_operations_setup(archive_path: Path):
         yield
 
 
-def parse_sse_events(text: str) -> list[dict]:
-    events = []
-    for block in text.strip().split("\n\n"):
-        data = "\n".join(
-            line.removeprefix("data:").strip()
-            for line in block.splitlines()
-            if line.startswith("data:")
-        )
-        if data:
-            events.append(json.loads(data))
-    return events
-
 
 def verify_archive_upload(client: TestClient, upload_id: str, content: bytes) -> dict:
     expected_hash = hashlib.sha256(content).hexdigest()
-    sha_response = client.get(
-        f"/archive/upload/{upload_id}/sha256/stream",
+    sha_response = client.post(
+        f"/archive/upload/{upload_id}/sha256",
         headers={"Authorization": "Bearer test_master_token"},
     )
-    assert sha_response.status_code == 200
-    events = parse_sse_events(sha_response.text)
-    assert events[-1]["sha256"] == expected_hash
+    assert task_result(client, sha_response)["sha256"] == expected_hash
 
     verify_response = client.post(
         f"/archive/upload/{upload_id}/verify",
         headers={"Authorization": "Bearer test_master_token"},
         json={"sha256": expected_hash},
     )
-    assert verify_response.status_code == 200
-    return verify_response.json()
+    return task_result(client, verify_response)
 
 
 class TestArchiveOperations:
@@ -75,7 +60,8 @@ class TestArchiveOperations:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(api_app)
+        with TestClient(api_app) as client:
+            yield client
 
     @pytest.fixture
     def temp_dir(self):
@@ -435,8 +421,8 @@ class TestArchiveOperations:
             assert cancel_response.status_code == 204
             assert not (archive_path / "pending.zip").exists()
 
-            sha_response = client.get(
-                f"/archive/upload/{upload_id}/sha256/stream",
+            sha_response = client.post(
+                f"/archive/upload/{upload_id}/sha256",
                 headers={"Authorization": "Bearer test_master_token"},
             )
             assert sha_response.status_code == 404
@@ -503,8 +489,7 @@ class TestArchiveOperations:
                 headers={"Authorization": "Bearer test_master_token"},
             )
 
-            assert response.status_code == 200
-            assert "deleted successfully" in response.json()["message"]
+            assert task_result(client, response)["path"]
 
             # Verify file was deleted
             deleted_file = archive_path / "readme.txt"
@@ -520,8 +505,7 @@ class TestArchiveOperations:
                 headers={"Authorization": "Bearer test_master_token"},
             )
 
-            assert response.status_code == 200
-            assert "deleted successfully" in response.json()["message"]
+            assert task_result(client, response)["path"]
 
             # Verify directory was deleted
             deleted_dir = archive_path / "backups"

@@ -1,5 +1,6 @@
+import type { TaskAccepted } from '@/features/tasks/contracts'
 import api from '@/shared/http/api';
-import type { ArchiveFileListResponse, CreateArchiveFileRequest, RenameArchiveFileRequest, CreateArchiveRequest, CreateArchiveResponse, InitArchiveUploadRequest, InitArchiveUploadResponse, ArchiveUploadStatus, ArchiveUploadChunkResponse, VerifyArchiveUploadRequest, VerifyArchiveUploadResponse } from '@/features/archives/contracts';
+import type { ArchiveFileListResponse, CreateArchiveFileRequest, RenameArchiveFileRequest, CreateArchiveRequest, CreateArchiveResponse, InitArchiveUploadRequest, InitArchiveUploadResponse, ArchiveUploadStatus, ArchiveUploadChunkResponse, VerifyArchiveUploadRequest } from '@/features/archives/contracts';
 
 
 const parseHeaderNumber = (value: string | undefined, fallback = 0) => {
@@ -63,6 +64,8 @@ export const archiveApi = {
       chunkSize: parseHeaderNumber(response.headers['upload-chunk-size'], 8 * 1024 * 1024),
       expiresAt: parseHeaderNumber(response.headers['upload-expires']),
       filename: response.headers['upload-filename'] ?? '',
+      hashTaskId: response.headers['upload-hash-task'] || undefined,
+      publishTaskId: response.headers['upload-publish-task'] || undefined,
     }
   },
 
@@ -88,14 +91,17 @@ export const archiveApi = {
     uploadId: string,
     request: VerifyArchiveUploadRequest,
     signal?: AbortSignal,
-  ): Promise<VerifyArchiveUploadResponse> =>
-    api.post(`/archive/upload/${uploadId}/verify`, request, { signal }).then((res: any) => res.data),
+  ): Promise<TaskAccepted> =>
+    api.post<TaskAccepted>(`/archive/upload/${uploadId}/verify`, request, { signal }).then(res => res.data),
+
+  hashArchiveUpload: (uploadId: string): Promise<TaskAccepted> =>
+    api.post<TaskAccepted>(`/archive/upload/${uploadId}/sha256`).then(res => res.data),
 
   createArchiveItem: (request: CreateArchiveFileRequest) =>
     api.post('/archive/create', request).then((res: any) => res.data),
 
-  deleteArchiveItem: (path: string) =>
-    api.delete('/archive', { params: { path } }).then((res: any) => res.data),
+  deleteArchiveItem: (path: string): Promise<TaskAccepted> =>
+    api.delete<TaskAccepted>('/archive', { params: { path } }).then(res => res.data),
 
   renameArchiveItem: (request: RenameArchiveFileRequest) =>
     api.post('/archive/rename', request).then((res: any) => res.data),

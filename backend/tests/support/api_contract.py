@@ -11,6 +11,9 @@ REPRESENTATIVE_PATHS = {
     "/servers/{server_id}/compose", "/servers/{server_id}/operations",
     "/servers/{server_id}/files/content", "/servers/{server_id}/world-restore/restore",
     "/servers/{server_id}/world-restore/restorations", "/servers/{server_id}/maintenance",
+    "/servers/{server_id}", "/servers/sync", "/servers/{server_id}/files", "/archive",
+    "/servers/{server_id}/map/initialize", "/archive/upload/{upload_id}/sha256",
+    "/self-check/run", "/self-check/checks/{check_id}/run", "/dns/update",
 }
 
 

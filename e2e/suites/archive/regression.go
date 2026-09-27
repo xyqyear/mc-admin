@@ -35,7 +35,7 @@ func publish(ctx context.Context, c *api.Client, name string, data []byte, overw
 	if err = c.Expect(response, 200); err != nil {
 		return err
 	}
-	event, err := c.SSE(ctx, "GET", path+"/sha256/stream", nil, "complete")
+	event, err := c.RunTaskResult(ctx, "POST", path+"/sha256", nil)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func publish(ctx context.Context, c *api.Client, name string, data []byte, overw
 	if event["sha256"] != digest {
 		return fmt.Errorf("uploaded archive hash differs")
 	}
-	return c.JSON(ctx, "POST", path+"/verify", map[string]string{"sha256": digest}, nil, 200)
+	return c.RunTask(ctx, "POST", path+"/verify", map[string]string{"sha256": digest}, nil)
 }
 
 func management(ctx context.Context, t *engine.Scope) error {
@@ -68,7 +68,7 @@ func management(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "GET", path+"/sha256/stream", nil, nil, 409); err != nil {
+	if err = c.JSON(ctx, "POST", path+"/sha256", nil, nil, 409); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "POST", path+"/verify", map[string]string{"sha256": strings.Repeat("0", 64)}, nil, 409); err != nil {
@@ -103,7 +103,7 @@ func management(ctx context.Context, t *engine.Scope) error {
 	if err = c.Expect(response, 200); err != nil {
 		return err
 	}
-	if _, err = c.SSE(ctx, "GET", path+"/sha256/stream", nil, "complete"); err != nil {
+	if _, err = c.RunTaskResult(ctx, "POST", path+"/sha256", nil); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "POST", path+"/verify", map[string]string{"sha256": strings.Repeat("0", 64)}, nil, 409); err != nil {
@@ -173,7 +173,12 @@ func management(ctx context.Context, t *engine.Scope) error {
 		{"POST", "/compress", map[string]string{"server_id": fixtures.ServerOf(t.Env).ID, "path": ".."}, 400},
 		{"POST", "/compress", map[string]string{"server_id": "missing", "path": "/"}, 404},
 	} {
-		if err = c.JSON(ctx, op.method, "/api/archive"+op.route, op.body, nil, op.status); err != nil {
+		if op.method == "DELETE" && op.status == 200 {
+			err = c.RunTask(ctx, op.method, "/api/archive"+op.route, op.body, nil)
+		} else {
+			err = c.JSON(ctx, op.method, "/api/archive"+op.route, op.body, nil, op.status)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -249,7 +254,7 @@ func concurrentPublication(ctx context.Context, c *api.Client, first, second []b
 		if err = c.Expect(response, 200); err != nil {
 			return err
 		}
-		if _, err = c.SSE(ctx, "GET", path+"/sha256/stream", nil, "complete"); err != nil {
+		if _, err = c.RunTaskResult(ctx, "POST", path+"/sha256", nil); err != nil {
 			return err
 		}
 	}
@@ -271,10 +276,25 @@ func concurrentPublication(ctx context.Context, c *api.Client, first, second []b
 				outcomes <- outcome{index: i, err: err}
 				return
 			}
-			if response.Status != 200 && response.Status != 409 {
-				err = c.Expect(response, 200)
+			if err = c.Expect(response, 202); err != nil {
+				outcomes <- outcome{index: i, err: err}
+				return
 			}
-			outcomes <- outcome{index: i, status: response.Status, err: err}
+			var accepted api.TaskAccepted
+			if err = json.Unmarshal(response.Body, &accepted); err != nil {
+				outcomes <- outcome{index: i, err: err}
+				return
+			}
+			task, taskErr := c.Task(ctx, accepted.ID)
+			status := 0
+			if taskErr == nil {
+				status = 200
+			} else if task.Status == "failed" && strings.Contains(task.Error, "File already exists") {
+				status = 409
+			} else {
+				err = taskErr
+			}
+			outcomes <- outcome{index: i, status: status, err: err}
 		}()
 	}
 	close(start)
@@ -309,5 +329,5 @@ func concurrentPublication(ctx context.Context, c *api.Client, first, second []b
 	if err = c.JSON(ctx, "DELETE", paths[1-winner], nil, nil, 204); err != nil {
 		return err
 	}
-	return c.JSON(ctx, "DELETE", "/api/archive?path=/same-name.zip", nil, nil, 200)
+	return c.RunTask(ctx, "DELETE", "/api/archive?path=/same-name.zip", nil, nil)
 }

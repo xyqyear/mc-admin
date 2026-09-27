@@ -46,7 +46,7 @@ func templateSnapshot(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	if err = t.Step("create server from a template and retain its snapshot after deletion", func() error {
-		if err := client.JSON(ctx, "POST", "/api/servers/"+server.ID, map[string]any{"template_id": template.ID, "variable_values": map[string]any{"name": server.ID, "game_port": server.GamePort, "rcon_port": server.RCONPort}}, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/servers/"+server.ID, map[string]any{"template_id": template.ID, "variable_values": map[string]any{"name": server.ID, "game_port": server.GamePort, "rcon_port": server.RCONPort}}, nil); err != nil {
 			return err
 		}
 		if err := client.JSON(ctx, "DELETE", fmt.Sprintf("/api/templates/%d", template.ID), nil, nil, 204); err != nil {

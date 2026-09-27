@@ -1,5 +1,6 @@
+import type { TaskAccepted } from '@/features/tasks/contracts'
 import { api } from '@/shared/http/api';
-import type { SelfCheckRunResult, SelfCheckCatalogItem, SelfCheckRunDetail, SelfCheckRunsResponse, SelfCheckStatusResponse } from '@/features/health/contracts';
+import type { SelfCheckCatalogItem, SelfCheckRunDetail, SelfCheckRunsResponse, SelfCheckStatusResponse } from '@/features/health/contracts';
 
 
 export const selfCheckApi = {
@@ -25,12 +26,12 @@ export const selfCheckApi = {
     return response.data
   },
 
-  runSelfCheck: async (): Promise<SelfCheckRunResult> => {
+  runSelfCheck: async (): Promise<TaskAccepted> => {
     const response = await api.post('/self-check/run')
     return response.data
   },
 
-  runSelfCheckItem: async (checkId: string): Promise<SelfCheckRunResult> => {
+  runSelfCheckItem: async (checkId: string): Promise<TaskAccepted> => {
     const response = await api.post(`/self-check/checks/${encodeURIComponent(checkId)}/run`)
     return response.data
   },

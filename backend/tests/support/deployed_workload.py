@@ -57,6 +57,17 @@ class Client:
         body, _ = self.request(method, path, **kwargs)
         return json.loads(body)
 
+    def task(self, path: str, *, metric: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        accepted = self.json("POST", path, data=data, expected=202, metric=metric + ".accept")
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            task = self.json("GET", "/tasks/" + accepted["task_id"], metric=metric + ".status")
+            if task["status"] in {"completed", "failed", "cancelled"}:
+                assert task["status"] == "completed", task
+                return task["result"]
+            time.sleep(.1)
+        raise AssertionError(f"{metric}: task did not settle")
+
 
 def stream_events(body: bytes) -> list[dict[str, Any]]:
     return [json.loads(line[5:].strip()) for line in body.decode().splitlines() if line.startswith("data:")]
@@ -79,18 +90,15 @@ def upload(client: Client, index: int) -> dict[str, Any]:
     assert duplicate["offset"] == len(payload)
     _, headers = client.request("HEAD", path, expected=204, metric="upload.status")
     assert int({key.lower(): value for key, value in headers.items()}["upload-offset"]) == len(payload)
-    hashed, _ = client.request("GET", path + "/sha256/stream", metric="upload.hash")
-    events = stream_events(hashed)
-    assert events[0]["event_type"] == "start"
-    assert events[-1]["event_type"] == "complete" and events[-1]["sha256"] == digest
-    client.request("POST", path + "/verify", data={"sha256": digest}, metric="upload.publish")
+    hashed = client.task(path + "/sha256", metric="upload.hash")
+    assert hashed["sha256"] == digest
+    client.task(path + "/verify", data={"sha256": digest}, metric="upload.publish")
     published, _ = client.request("GET", "/archive/download?" + urlencode({"path": "/" + filename}), metric="upload.verify-download")
     assert published == payload
     return {
         "bytes": len(payload), "chunk_bytes": chunk_size, "sha256": digest,
         "stale_offset_status": 409, "completed_retry_status": 200,
-        "sse_event_types": sorted({event["event_type"] for event in events}),
-        "protocol_requests": 10, "verification_requests": 1,
+        "hash_status": "completed", "publication_status": "completed",
     }
 
 
@@ -130,10 +138,9 @@ def measure(client: Client, operation: Callable[[int], dict[str, Any]], samples:
         durations.append(round(time.perf_counter() - started, 6))
         requests.append(client.requests[start_index:])
     assert all(outcome == outcomes[0] for outcome in outcomes)
-    assert all(len(sample) == len(requests[0]) for sample in requests)
     return {
         "seconds": durations, "median_seconds": statistics.median(durations),
-        "behavior": outcomes[0], "requests_per_sample": len(requests[0]), "requests": requests,
+        "behavior": outcomes[0], "requests_per_sample": [len(sample) for sample in requests], "requests": requests,
         "body_bytes_per_sample": [{
             "sent": sum(request["request_body_bytes"] for request in sample),
             "received": sum(request["response_body_bytes"] for request in sample),

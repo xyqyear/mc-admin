@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...configuration.preparation import (
+    ServerConfiguration,
     capture_template_snapshot,
     prepare_template_configuration,
 )
@@ -18,7 +19,7 @@ from ...logger import get_logger
 from ...minecraft import MCInstance, get_docker_mc_manager
 from ...minecraft.game_port import validate_game_port_initialization
 from ...operation_admission import get_server_write_admission
-from ...operations.context import record_phase
+from ...operations.context import current_execution, record_phase, revalidate_targets
 from ...operations.coordinator import (
     ResourceClaim,
     ResourceKind,
@@ -32,6 +33,7 @@ from ...templates import (
 )
 from ..crud import create_server_record, get_active_server_by_id, mark_server_removed
 from ..port_utils import check_port_conflicts, extract_ports_from_yaml
+from ..references import resolve_server_ref
 from ..restart_schedule import schedule_auto_restart
 from .primitives import (
     cancel_and_wait_for_tasks,
@@ -82,19 +84,22 @@ async def _resolve_yaml_and_metadata(
 
 
 async def create_server_full(
-    db: AsyncSession, server_id: str, spec: CreateServerSpec
+    db: AsyncSession, server_id: str, spec: CreateServerSpec,
+    *, configuration: ServerConfiguration | None = None,
 ) -> CreateServerResult:
     if get_operation_coordinator().global_files_busy():
         raise HTTPException(status_code=423, detail="服务器文件正在恢复或修改，请稍后重试")
     async with get_operation_coordinator().acquire([ResourceClaim(ResourceKind.PORT_ALLOCATION), ResourceClaim(ResourceKind.FILES, server_id)]):
-        return await _create_server_with_ports(db, server_id, spec)
+        return await _create_server_with_ports(db, server_id, spec, configuration=configuration)
 
 
 async def _create_server_with_ports(
-    db: AsyncSession, server_id: str, spec: CreateServerSpec
+    db: AsyncSession, server_id: str, spec: CreateServerSpec,
+    *, configuration: ServerConfiguration | None = None,
 ) -> CreateServerResult:
     logger = get_logger()
-    yaml_content, snapshot, vars_dict = await _resolve_yaml_and_metadata(db, spec)
+    configuration = configuration or await prepare_server_creation(db, server_id, spec)
+    yaml_content, snapshot, vars_dict = configuration.yaml_content, configuration.template_snapshot, configuration.variable_values
 
     instance = get_docker_mc_manager().get_instance(server_id)
     if await get_active_server_by_id(db, server_id) is not None or await instance.exists():
@@ -136,8 +141,14 @@ async def _create_server_with_ports(
                 json.dumps(vars_dict) if vars_dict else None
             ),
         )
+        if execution := current_execution():
+            reference = await resolve_server_ref(db, server_id, servers_root=instance.get_project_path().parent)
+            await db.rollback()
+            await execution.journal.bind_created_server(execution.operation_id, server_id, reference.generation)
+            execution.servers = (reference,)
 
     try:
+        await record_phase("creating_server", changed=True)
         # Cancellation cannot race cleanup against unfinished aiofiles executor writes.
         await finalize(write_instance())
         try:
@@ -165,6 +176,23 @@ async def _create_server_with_ports(
     except (Exception, asyncio.CancelledError):
         await finalize(_rollback_server_creation(db, instance, restart_cronjob_id))
         raise
+
+
+async def prepare_server_creation(db: AsyncSession, server_id: str, spec: CreateServerSpec) -> ServerConfiguration:
+    from ...configuration.preparation import validate_server_configuration
+
+    content, snapshot, values = await _resolve_yaml_and_metadata(db, spec)
+    instance = get_docker_mc_manager().get_instance(server_id)
+    if await get_active_server_by_id(db, server_id) is not None or await aioos.path.exists(instance.get_project_path()) or await aioos.path.islink(instance.get_project_path()):
+        raise HTTPException(status_code=409, detail=f"服务器 '{server_id}' 已存在，请先检查目录或登记状态")
+    try:
+        game_port, rcon_port = validate_server_configuration(server_id, content)
+        validate_game_port_initialization(content)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if conflicts := await check_port_conflicts(game_port, rcon_port):
+        raise HTTPException(status_code=409, detail=f"端口冲突: {'; '.join(conflicts)}")
+    return ServerConfiguration(content, snapshot, values)
 
 
 async def _rollback_server_creation(
@@ -305,6 +333,7 @@ async def deactivate_server_partial(
         with get_server_write_admission().freeze(server_id):
             cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
             get_server_write_admission().require_drained(server_id)
+            await revalidate_targets()
             return await finalize(_deactivate_drained_server(db, server_id, cancelled_tasks))
 
 

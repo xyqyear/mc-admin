@@ -27,6 +27,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
 - `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.
 - `internal/api/` — sessions/CSRF, HTTP, bounded waits, tasks, SSE and WebSocket.
+- `internal/api/wait.go` — `StartTask` validates 202 acceptance; `RunTask`/`RunTaskResult` wait for confirmed completion and decode the business result. Lifecycle, creation, synchronization, deletion, manual self-check/DNS, map initialization and upload hashing/publication use these task contracts.
 - `internal/evidence/` — structured evidence, secret redaction and bounded payloads.
 - `internal/coverage/` — deployed OpenAPI/WS operation observations, shard union and missing-case audits.
 - `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data.

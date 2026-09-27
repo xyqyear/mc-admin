@@ -7,7 +7,8 @@ from typing import TypeVar
 
 from fastapi import UploadFile
 
-from ..background_tasks import TaskProgress
+from ..background_tasks import TaskProgress, TaskType, get_task_manager
+from ..background_tasks.api_models import TaskAccepted
 from ..minecraft import MCInstance
 from ..operations.context import record_phase
 from ..operations.coordinator import (
@@ -60,6 +61,24 @@ class FileApplication:
         data = self.instance.get_data_path()
         target = await resolve_file_path(data, path)
         return await self._write("file_delete", [target], lambda: base.delete_file_or_directory(data, path))
+
+    async def submit_delete(self, path: str) -> TaskAccepted:
+        data = self.instance.get_data_path()
+        target = await resolve_file_path(data, path)
+        await base.validate_delete_target(data, path)
+        claims = await self.claims([target])
+
+        async def run() -> AsyncGenerator[TaskProgress]:
+            yield TaskProgress(message=f"正在删除 {path}")
+            message = await self.delete(path)
+            yield TaskProgress(progress=100, message=message, result={"message": message, "path": path})
+
+        submitted = await get_task_manager().submit_durable(
+            TaskType.FILE_DELETE, f"删除 {self.server_id}/{path}", run(),
+            server_id=self.server_id, actor_id=self.actor_id, claims=claims, cancellable=False,
+            exclusive_key=f"file-delete:{target}",
+        )
+        return TaskAccepted(task_id=submitted.task_id)
 
     async def rename(self, request: RenameFileRequest) -> str:
         validate_file_name(request.new_name)

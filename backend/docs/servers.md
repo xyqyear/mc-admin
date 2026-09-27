@@ -21,7 +21,7 @@ Lifecycle is **not transactional**. Each primitive issues its own commit; rollba
 
 ## Sync endpoint
 
-`POST /api/servers/sync` (OWNER-only) reconciles filesystem directories vs `ACTIVE` `Server` rows. Body supports `dry_run=true` (preview only — returns the same `SyncResult` shape but `applied=false`) and `force=true` (bypass the empty-filesystem safety guard that would otherwise refuse to deactivate every row when the mount fails). Concurrent calls return 409 immediately rather than queuing on the internal `asyncio.Lock`. Each apply batch ends with a single DNS update.
+`POST /api/servers/sync` (OWNER-only) reconciles filesystem directories vs `ACTIVE` `Server` rows. The endpoint returns 202 with a task ID. Body supports `dry_run=true` (preview only — the task result is `SyncResult` with `applied=false`) and `force=true` (bypass the empty-filesystem safety guard that would otherwise refuse to deactivate every row when the mount fails). Concurrent submissions return 423 with the owning task ID. The empty-directory refusal is a failed task with `error_code=sync_empty_directory`. Each apply batch ends with a single DNS update.
 
 ## Module layout
 
@@ -115,3 +115,5 @@ always creates a fresh row. A cancelled creation waits for the initial file/DB
 write to settle before compensating, and retains its lease through mandatory
 cleanup. Cleanup attempts every step; any failure reports the affected server
 and remaining cleanup categories instead of claiming successful cleanup.
+
+手动启停、下线、删除和创建由 `app.servers.tasks` 提交。接受阶段即预留同服务器生命周期操作，worker 捕获用户和 ServerRef 并自行打开 DB 会话。创建先捕获不可变配置，再在端口/目录租约内生成记录，将 prospective 文件范围绑定到新 generation。停止和下线允许处理恢复保护中的服务器，但不清除保护。登记同步在 `app.servers.synchronization` 内执行，捕获所有现有实例并核对登记状态；逐项结果和错误归入任务结果。

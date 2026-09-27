@@ -1,3 +1,6 @@
+import { serversOperationResources } from '@/features/servers/operationResources'
+import { healthOperationResources } from '@/features/health/operationResources'
+import { dnsOperationResources } from '@/features/dns/operationResources'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { api, AUTH_EXPIRED_EVENT, getErrorStatus, queryKeys } from '@/shared/http/api'
@@ -6,7 +9,7 @@ import { worldOperationResources } from '@/features/world/operationResources'
 import { configurationOperationResources } from '@/features/configuration/operationResources'
 import { isTerminalOperation, type Operation } from '@/shared/operations/contracts'
 
-const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources]
+const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources, serversOperationResources, healthOperationResources, dnsOperationResources]
 type ObservedOperation = Operation & { unavailable?: true }
 const isSettled = (operation: ObservedOperation) => operation.unavailable === true || isTerminalOperation(operation)
 

@@ -88,11 +88,11 @@ These checks enforce dependency direction. Runtime isolation, command ownership,
 
 `tests/contracts/fixtures/api-contract.json` contains:
 
-- All 153 HTTP operations and three WebSocket routes, including their declared dependencies, role restrictions, and cookie-CSRF applicability.
-- Request/response schemas and recursively referenced models for 14 representative authentication, task, upload, Compose, operation, file, maintenance, and world-restore paths.
+- All declared HTTP operations and WebSocket routes, including their dependencies, role restrictions, and cookie-CSRF applicability.
+- Request/response schemas and recursively referenced models for representative authentication, task, upload, Compose, operation, file, maintenance, self-check, DNS, map and world-restore paths, including 202 acceptance for non-snapshot tasks.
 - Public event, task progress/result, and task status/type schemas.
 
-`test_api_contract.py` compares the live declarations and schemas with this fixture. The initial capture was independently reproduced from an unmodified archive of commit `9cf6f77b258a7ccf4507c51cb686a45f8f74d823`; provenance is recorded alongside the fixture. A declaration comparison cannot prove every role combination or stream lifecycle works at runtime. Domain integration tests and Go API E2E remain responsible for those behaviors; see [administration-contracts.md](administration-contracts.md).
+`test_api_contract.py` compares the live declarations and schemas directly with the reviewed fixture; provenance is recorded alongside it. A declaration comparison cannot prove every role combination or stream lifecycle works at runtime. Domain integration tests and Go API E2E remain responsible for those behaviors; see [administration-contracts.md](administration-contracts.md).
 
 To review an intended contract change, generate a separate candidate and inspect its diff before replacing the fixture:
 

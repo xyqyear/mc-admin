@@ -56,8 +56,14 @@ export class OwnedApi {
     return response.json() as Promise<T>
   }
 
+  async deleteFile(relativePath: string) {
+    const accepted = await this.json<{ task_id: string }>(this.server(`/files?path=${encodeURIComponent(relativePath)}`), 'DELETE', undefined, 202)
+    await this.task(accepted.task_id)
+  }
+
   async operation(action: string) {
-    await this.json(this.server('/operations'), 'POST', { action })
+    const accepted = await this.json<{ task_id: string }>(this.server('/operations'), 'POST', { action }, 202)
+    await this.task(accepted.task_id)
   }
 
   async stopped() {
@@ -112,11 +118,8 @@ export class OwnedApi {
       }
       this.clientSource = { version: metadata.version, url: metadata.url, sha1: metadata.sha1, bytes: metadata.size }
     }
-    const response = await this.response(this.server('/map/initialize'), 'POST', {})
-    expect(response.status).toBe(200)
-    const body = await response.text()
-    const events = body.split('\n').filter(line => line.startsWith('data:')).map(line => JSON.parse(line.slice(5)))
-    expect(events.at(-1)?.stage, 'real map initialization must complete').toBe('complete')
+    const accepted = await this.json<{ task_id: string }>(this.server('/map/initialize'), 'POST', {}, 202)
+    await this.task(accepted.task_id)
     expect((await this.json<{ palette_current: boolean }>(this.server('/map/status'))).palette_current).toBe(true)
   }
 }

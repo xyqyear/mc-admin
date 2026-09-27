@@ -1,6 +1,6 @@
 import type { ServerDiskUsageResponse } from '@/features/servers/contracts';
 import { serverOnlinePlayersQueryOptions } from "@/features/players/queries";
-import { serverCpuPercentQueryOptions, serverMemoryQueryOptions, serverDiskUsageQueryOptions, serverStatusesQueryOptions, useServerQueries } from "@/features/servers/queries";
+import { serverCpuPercentQueryOptions, serverMemoryQueryOptions, serverDiskUsageQueryOptions, serverMaintenanceQueryOptions, serverStatusesQueryOptions, useServerQueries } from "@/features/servers/queries";
 import { useSnapshotQueries } from "@/features/backups/queries";
 import { useSystemQueries } from "@/features/system/queries";
 import type { ServerStatus } from "@/features/servers/contracts";
@@ -35,6 +35,7 @@ export const useOverviewData = () => {
   const cpuQueries = useQueries({ queries: runningServerIds.map((id) => serverCpuPercentQueryOptions(id, serverStatuses[id])) });
   const memoryQueries = useQueries({ queries: runningServerIds.map((id) => serverMemoryQueryOptions(id, serverStatuses[id])) });
   const diskUsageQueries = useQueries({ queries: serverIds.map((id) => serverDiskUsageQueryOptions(id)) });
+  const maintenanceQueries = useQueries({ queries: serverIds.map((id) => serverMaintenanceQueryOptions(id)) });
   const serverRuntimeData = useMemo(() => {
     const data: Record<string, {
       cpu?: {
@@ -78,8 +79,9 @@ export const useOverviewData = () => {
     diskUsageQueries,
   ]);
   const onlinePlayerNum = useMemo(() => Object.values(serverRuntimeData).reduce((total, data) => total + (data.players?.length || 0), 0), [serverRuntimeData]);
-  const enrichedServers = useMemo(() => serversData.map((server) => ({
+  const enrichedServers = useMemo(() => serversData.map((server, index) => ({
     ...server,
+    maintenance: maintenanceQueries[index]?.data,
     status: serverStatuses[server.id] || ("UNKNOWN" as ServerStatus),
     onlinePlayers: serverRuntimeData[server.id]?.players || [],
     cpuPercentage: serverRuntimeData[server.id]?.cpu?.cpuPercentage,
@@ -87,7 +89,7 @@ export const useOverviewData = () => {
     diskUsageBytes: serverRuntimeData[server.id]?.diskUsage?.diskUsageBytes,
     diskTotalBytes: serverRuntimeData[server.id]?.diskUsage?.diskTotalBytes,
     diskAvailableBytes: serverRuntimeData[server.id]?.diskUsage?.diskAvailableBytes,
-  })), [serversData, serverStatuses, serverRuntimeData]);
+  })), [serversData, serverStatuses, serverRuntimeData, maintenanceQueries]);
   const isStatusLoading = statusesQuery.isLoading;
   const isCpuLoading = cpuQueries.some((q) => q.isLoading);
   const isMemoryLoading = memoryQueries.some((q) => q.isLoading);
@@ -139,6 +141,7 @@ export const useOverviewData = () => {
       memoryQueries.forEach((q) => q.refetch());
       playersQueries.forEach((q) => q.refetch());
       diskUsageQueries.forEach((q) => q.refetch());
+      maintenanceQueries.forEach((q) => q.refetch());
     },
   };
 };

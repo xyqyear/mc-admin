@@ -3,6 +3,7 @@ import asyncio
 from app.config import ResticSettings
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource, patch_settings
+from tests.support.tasks import wait_task
 
 """
 End-to-end tests for snapshot API endpoints using real restic commands.
@@ -281,7 +282,8 @@ class TestSnapshotEndpoints:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(api_app)
+        with TestClient(api_app) as client:
+            yield client
 
     @pytest.fixture
     def temp_server_dir(self):
@@ -797,7 +799,7 @@ class TestSnapshotEndpoints:
                 headers={"Authorization": "Bearer test_master_token"},
                 params={"path": "/bukkit.yml"},
             )
-            assert delete_response.status_code == 200
+            wait_task(client, delete_response)
 
             # Confirm the damage actually happened before restoring.
             assert (

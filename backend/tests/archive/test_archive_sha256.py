@@ -1,9 +1,9 @@
 from tests.support.runtime import patch_settings
+from tests.support.tasks import task_result
 
 """Tests for the archive SHA256 SSE endpoint."""
 
 import hashlib
-import json
 import tempfile
 from pathlib import Path
 
@@ -13,22 +13,10 @@ from fastapi.testclient import TestClient
 from app.main import api_app
 
 
-def parse_sse_events(text: str) -> list[dict]:
-    events = []
-    for block in text.strip().split("\n\n"):
-        data = "\n".join(
-            line.removeprefix("data:").strip()
-            for line in block.splitlines()
-            if line.startswith("data:")
-        )
-        if data:
-            events.append(json.loads(data))
-    return events
-
-
 @pytest.fixture
 def client():
-    return TestClient(api_app)
+    with TestClient(api_app) as client:
+        yield client
 
 
 @pytest.fixture
@@ -82,22 +70,20 @@ class TestArchiveSHA256:
         upload_id = self.create_pending_upload(client, "test_file.zip", test_content)
         expected_hash = hashlib.sha256(test_content).hexdigest()
 
-        response = client.get(
-            f"/archive/upload/{upload_id}/sha256/stream",
+        response = client.post(
+            f"/archive/upload/{upload_id}/sha256",
             headers={"Authorization": "Bearer test_master_token"},
         )
 
-        assert response.status_code == 200
-        events = parse_sse_events(response.text)
-        assert events[0]["event_type"] == "start"
-        assert events[-1]["event_type"] == "complete"
-        assert events[-1]["filename"] == "test_file.zip"
-        assert events[-1]["sha256"] == expected_hash
+        result = task_result(client, response)
+        assert result["event_type"] == "complete"
+        assert result["filename"] == "test_file.zip"
+        assert result["sha256"] == expected_hash
         assert not (temp_archive_dir / "test_file.zip").exists()
 
     def test_calculate_sha256_nonexistent_upload(self, client, mock_archive_settings):
-        response = client.get(
-            "/archive/upload/not-found/sha256/stream",
+        response = client.post(
+            "/archive/upload/not-found/sha256",
             headers={"Authorization": "Bearer test_master_token"},
         )
 
@@ -114,8 +100,8 @@ class TestArchiveSHA256:
         )
         upload_id = response.json()["upload_id"]
 
-        response = client.get(
-            f"/archive/upload/{upload_id}/sha256/stream",
+        response = client.post(
+            f"/archive/upload/{upload_id}/sha256",
             headers={"Authorization": "Bearer test_master_token"},
         )
 
@@ -123,7 +109,7 @@ class TestArchiveSHA256:
         assert "Upload is not complete" in response.json()["detail"]
 
     def test_unauthorized_access(self, client, mock_archive_settings):
-        response = client.get("/archive/upload/test-upload/sha256/stream")
+        response = client.post("/archive/upload/test-upload/sha256")
 
         assert response.status_code in [401, 422]
 
@@ -133,11 +119,11 @@ class TestArchiveSHA256:
         upload_id = self.create_pending_upload(client, "publish.zip", test_content)
         expected_hash = hashlib.sha256(test_content).hexdigest()
 
-        response = client.get(
-            f"/archive/upload/{upload_id}/sha256/stream",
+        response = client.post(
+            f"/archive/upload/{upload_id}/sha256",
             headers={"Authorization": "Bearer test_master_token"},
         )
-        assert response.status_code == 200
+        task_result(client, response)
 
         verify_response = client.post(
             f"/archive/upload/{upload_id}/verify",
@@ -145,8 +131,7 @@ class TestArchiveSHA256:
             json={"sha256": expected_hash},
         )
 
-        assert verify_response.status_code == 200
-        assert verify_response.json()["path"] == "/publish.zip"
+        assert task_result(client, verify_response)["path"] == "/publish.zip"
         assert (temp_archive_dir / "publish.zip").read_bytes() == test_content
 
     def test_verify_requires_server_sha256(self, client, mock_archive_settings):
@@ -160,7 +145,7 @@ class TestArchiveSHA256:
         )
 
         assert verify_response.status_code == 409
-        assert "Server SHA256 has not completed" in verify_response.json()["detail"]
+        assert "服务端 SHA256 校验尚未完成" in verify_response.json()["detail"]
 
     def test_verify_sha256_mismatch_removes_pending_upload(
         self, client, mock_archive_settings
@@ -169,11 +154,11 @@ class TestArchiveSHA256:
         test_content = b"mismatched content"
         upload_id = self.create_pending_upload(client, "mismatch.zip", test_content)
 
-        response = client.get(
-            f"/archive/upload/{upload_id}/sha256/stream",
+        response = client.post(
+            f"/archive/upload/{upload_id}/sha256",
             headers={"Authorization": "Bearer test_master_token"},
         )
-        assert response.status_code == 200
+        task_result(client, response)
 
         verify_response = client.post(
             f"/archive/upload/{upload_id}/verify",
@@ -182,7 +167,7 @@ class TestArchiveSHA256:
         )
 
         assert verify_response.status_code == 409
-        assert "SHA256 mismatch" in verify_response.json()["detail"]
+        assert "SHA256 校验失败" in verify_response.json()["detail"]
         assert not (temp_archive_dir / "mismatch.zip").exists()
 
         status_response = client.head(
@@ -262,9 +247,7 @@ async def test_parallel_no_overwrite_publish_keeps_one_complete_result(tmp_path,
     assert (await uploads.archive_upload_headers(sessions[1].upload_id))["Upload-State"] == "hashed"
     retained = await uploads._get_session(sessions[1].upload_id)
     assert retained.temp_path.read_bytes() == contents[1]
-    with pytest.raises(HTTPException) as consumed:
-        await uploads.archive_upload_headers(sessions[0].upload_id)
-    assert consumed.value.status_code == 404
+    assert (await uploads.archive_upload_headers(sessions[0].upload_id))["Upload-State"] == "published"
     async with get_operation_coordinator().acquire(await archive_claims(target, [target / "shared.zip"]), policy=ConflictPolicy.REJECT):
         assert (target / "shared.zip").read_bytes() == contents[0]
     await uploads.cancel_archive_upload(sessions[1].upload_id)

@@ -1,4 +1,5 @@
 from tests.support.runtime import patch_settings
+from tests.support.tasks import task_result
 
 """
 Comprehensive unit tests for file operations API endpoints.
@@ -95,7 +96,8 @@ class TestFileOperations:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(api_app, raise_server_exceptions=False)
+        with TestClient(api_app, raise_server_exceptions=False) as client:
+            yield client
 
     @pytest.fixture
     def temp_dir(self):
@@ -364,8 +366,7 @@ class TestFileOperations:
                 headers={"Authorization": "Bearer test_master_token"},
             )
 
-            assert response.status_code == 200
-            assert "deleted successfully" in response.json()["message"]
+            assert task_result(client, response)["path"]
 
             # Verify file was deleted
             deleted_file = instance.data_path / "readme.txt"
@@ -381,8 +382,7 @@ class TestFileOperations:
                 headers={"Authorization": "Bearer test_master_token"},
             )
 
-            assert response.status_code == 200
-            assert "deleted successfully" in response.json()["message"]
+            assert task_result(client, response)["path"]
 
             # Verify directory was deleted
             deleted_dir = instance.data_path / "world"

@@ -79,7 +79,7 @@ func directories(ctx context.Context, t *engine.Scope) error {
 	if err = fixtures.CheckFile(ctx, c, id, "/renamed/deeper/large.txt", strings.Repeat("z", 100)); err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "DELETE", base+"?path=/renamed", nil, nil, 200); err != nil {
+	if err = c.RunTask(ctx, "DELETE", base+"?path=/renamed", nil, nil); err != nil {
 		return err
 	}
 	if err = c.JSON(ctx, "GET", base+"/content?path=/renamed/TOP.txt", nil, nil, 404); err != nil {
@@ -103,7 +103,7 @@ func directories(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "GET", base+"/content?path="+url.QueryEscape(original), nil, nil, 404); err != nil {
 			return err
 		}
-		if err := c.JSON(ctx, "DELETE", base+"?path="+url.QueryEscape(renamed), nil, nil, 200); err != nil {
+		if err := c.RunTask(ctx, "DELETE", base+"?path="+url.QueryEscape(renamed), nil, nil); err != nil {
 			return err
 		}
 		return c.JSON(ctx, "GET", base+"/content?path="+url.QueryEscape(renamed), nil, nil, 404)

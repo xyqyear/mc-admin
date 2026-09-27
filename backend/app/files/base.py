@@ -134,14 +134,18 @@ async def create_file_or_directory(
     return message
 
 
-async def delete_file_or_directory(base_path: Path, path: str) -> str:
-    """Delete a file or directory."""
+async def validate_delete_target(base_path: Path, path: str) -> Path:
     target_path = await resolve_file_path(base_path, path)
     if await async_fs.resolve(target_path) == await async_fs.resolve(base_path):
         raise HTTPException(status_code=400, detail="Cannot delete file root directory")
 
     if not await aioos.path.exists(target_path):
         raise HTTPException(status_code=404, detail="File or directory not found")
+    return target_path
+
+
+async def delete_file_or_directory(base_path: Path, path: str) -> str:
+    target_path = await validate_delete_target(base_path, path)
 
     if await aioos.path.isfile(target_path):
         await aioos.unlink(target_path)

@@ -137,7 +137,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			return err
 		}
 		if err = t.Step("reconciliation creates real provider records and router mappings and is idempotent", func() error {
-			if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+			if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 				return err
 			}
 			if err := waitClean(ctx, client); err != nil {
@@ -146,7 +146,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if err := checkState(ctx, t, client, expectedRecords(primary, secondary), map[string]string{route("primary"): backend, route("secondary"): backend}, config.TTL); err != nil {
 				return err
 			}
-			if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+			if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 				return err
 			}
 			return waitClean(ctx, client)
@@ -170,7 +170,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if len(current.DNSDiff.Update) != 2 || current.RouterDiff.Update[route("primary")]["current"] != "localhost:1" || current.RouterDiff.Update[route("primary")]["target"] != backend {
 				return fmt.Errorf("DNS or router drift was not detected")
 			}
-			if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+			if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 				return err
 			}
 			if err := waitClean(ctx, client); err != nil {
@@ -194,7 +194,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if len(current.DNSDiff.Remove) != 3 || len(current.DNSDiff.Add) != 1 || len(current.RouterDiff.Remove) != 1 {
 				return fmt.Errorf("removal preview did not include obsolete address records and route")
 			}
-			if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+			if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 				return err
 			}
 			if err := waitClean(ctx, client); err != nil {
@@ -208,7 +208,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 					Status string `json:"status"`
 				} `json:"findings"`
 			}
-			if err := client.JSON(ctx, "POST", "/api/self-check/checks/dns.drift/run", nil, &health, 200); err != nil {
+			if err := client.RunTask(ctx, "POST", "/api/self-check/checks/dns.drift/run", nil, &health); err != nil {
 				return err
 			}
 			if len(health.Findings) != 1 || health.Findings[0].Status != "passed" {
@@ -233,7 +233,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			if err != nil {
 				return err
 			}
-			if err := owner.JSON(ctx, "POST", "/api/servers/sync", map[string]any{"dry_run": false}, nil, 200); err != nil {
+			if err := owner.RunTask(ctx, "POST", "/api/servers/sync", map[string]any{"dry_run": false}, nil); err != nil {
 				return err
 			}
 			return checkProviderRecords(ctx, t, retainedRecords, config.TTL)

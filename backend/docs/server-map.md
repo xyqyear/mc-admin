@@ -22,7 +22,7 @@ data/.mcmap/
 
 ## Initialization
 
-`POST /servers/{id}/map/initialize` runs a two-stage SSE flow:
+`POST /servers/{id}/map/initialize` returns HTTP 202 and a `map_initialize` task ID. `app.mcmap.initialization` owns its two-stage worker:
 
 1. **Client jar** — `mcmap download-client <version> client.jar`. The version comes from the server's compose (`docker-minecraft-server` `VERSION` env var). Cached fast-path if `client.jar` exists.
 2. **Palette** — `mcmap gen-palette --level-dat <data>/<level-name>/level.dat -p <mods_dir?> -p client.jar -o palette.json`. The backend always passes `--level-dat` when the file exists; mcmap auto-picks 1.7.10 / 1.12.2 / 1.13+ pipelines from its content (and ignores it for 1.13+). Mods directory is included as an extra pack when `data/mods/` contains at least one `.jar`.
@@ -32,10 +32,10 @@ data/.mcmap/
 cached prerequisites may be corrupt or tied to the wrong client.
 
 Both stages validate mcmap NDJSON with command-specific Pydantic event models,
-then stream progress through to the browser as SSE.
+then project the latest client/palette progress into task `result.stages`.
 Failure events retain the same stage/phase shape and use safe Chinese messages.
 Raw adapter error events, stderr and configuration exception values are excluded
-from SSE and application logs; diagnostics retain exception types and frame locations.
+from task responses and application logs; diagnostics retain exception types and frame locations.
 
 ### Palette currency
 
@@ -83,17 +83,17 @@ Mounted under `/api/servers/{server_id}/map/`:
 
 - `GET /status` — initialization state + game version
 - `GET /regions?region=<rel-path>` — `[x, z, mtime]` triples from `app.world.region_manifest` for every non-empty regular `r.X.Z.mca` (frontend skips HTTP for absent regions; mtime is appended to tile URLs as `?mt=`)
-- `POST /initialize?force=<bool>` — two-stage SSE; force clears prerequisites first
+- `POST /initialize?force=<bool>` — 202 task acceptance; detail `result.stages` reports client/palette progress; force clears prerequisites first
 - `GET /tiles/{x}/{z}.png?region=<rel-path>` — tile fetch (404 missing MCA, 409 not initialized, 503 render timeout)
 
 ## Deletion admission
 
-Map initialization retains request-scoped write admission through SSE closure. Tile requests, queued consumers and active render batches participate in the same deletion gate. A disconnected final consumer may release its request, but the worker retains admission until subprocess/cache cleanup finishes. Deletion rejects active map writers and new map writes during its freeze.
+Map initialization retains task-owned write admission through subprocess/cache settlement. Observer disconnection does not stop the worker. Tile requests, queued consumers and active render batches participate in the same deletion gate. A disconnected final tile consumer may release its request, but the worker retains admission until subprocess/cache cleanup finishes. Deletion drains active map writers and rejects new map writes during its freeze.
 
 Each actual render batch owns a durable `map_render` operation and a `MAP_CACHE`
 claim for its server generation and region directory. Initialization owns
 `map_initialize` and the server cache root, including prerequisite deletion,
-downloads and palette hash publication. Terminal initialization SSE events follow
+downloads and palette hash publication. Terminal initialization task results follow
 cleanup and settlement. Workers detach from the requesting operation so background
 rendering cannot reuse a finished request's journal context.
 

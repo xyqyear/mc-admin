@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createSHA256 } from 'hash-wasm'
 import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { archiveApi } from '@/features/archives/api';
-import type { ArchiveSHA256Event } from '@/features/archives/contracts';
+import type { ArchiveSHA256Event, VerifyArchiveUploadResponse } from '@/features/archives/contracts';
 import { queryKeys } from '@/shared/http/api'
-import { readEventStream } from '@/shared/http/eventStream'
+import { waitForTaskResult } from '@/features/tasks/commands'
 import { formatUtils } from '@/features/servers/presentation'
 
 type UploadPhase =
@@ -23,6 +23,7 @@ interface ActiveUpload {
   offset: number
   chunkSize: number
   path?: string
+  backgroundStarted?: boolean
 }
 
 interface VerifyProgress {
@@ -112,55 +113,19 @@ async function hashLocalFile(
   return hasher.digest('hex') as string
 }
 
-function hashServerUpload(
+async function hashServerUpload(
+  queryClient: QueryClient,
   uploadId: string,
   signal: AbortSignal,
   onProgress: (percent: number) => void,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const handleAbort = () => {
-      if (!settled) {
-        settled = true
-        reject(new DOMException('Aborted', 'AbortError'))
-      }
-    }
-    signal.addEventListener('abort', handleAbort, { once: true })
-    const finish = (callback: () => void) => {
-      if (settled) return
-      settled = true
-      signal.removeEventListener('abort', handleAbort)
-      callback()
-    }
-    if (signal.aborted) {
-      handleAbort()
-      return
-    }
-    void readEventStream<ArchiveSHA256Event>({
-      url: `/archive/upload/${encodeURIComponent(uploadId)}/sha256/stream`,
-      method: 'GET',
-      signal,
-      onEvent: (event) => {
-        if (event.event_type === 'error') {
-          finish(() => reject(new Error(event.message || 'SHA256 calculation failed')))
-          return
-        }
-        if (event.percent !== undefined) {
-          onProgress(event.percent)
-        }
-        const sha256 = event.sha256
-        if (event.event_type === 'complete' && sha256) {
-          finish(() => resolve(sha256))
-        }
-      },
-      onError: (message) => {
-        finish(() => reject(new Error(message)))
-      },
-      onClose: () => {
-        finish(() => reject(new Error('SHA256 stream closed before completion')))
-      },
-    })
+  const accepted = await archiveApi.hashArchiveUpload(uploadId)
+  const result = await waitForTaskResult<ArchiveSHA256Event>(queryClient, accepted, {
+    signal,
+    onProgress: task => onProgress(task.progress ?? 0),
   })
+  if (!result.sha256) throw new Error('服务器校验结果缺少 SHA256')
+  return result.sha256
 }
 
 interface UploadView {
@@ -191,20 +156,21 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
   const action = useRef(0)
   const retryAction = useRef<(() => void) | null>(null)
 
-  const dispose = useCallback(() => {
+  const dispose = useCallback((cancel = false) => {
     action.current += 1
     runner.current?.abort()
     runner.current = null
     retryAction.current = null
     const uploadId = activeUpload.current?.uploadId
+    const backgroundStarted = activeUpload.current?.backgroundStarted
     activeUpload.current = null
-    if (uploadId) void archiveApi.cancelArchiveUpload(uploadId).catch(() => undefined)
+    if ((cancel || !backgroundStarted) && uploadId) void archiveApi.cancelArchiveUpload(uploadId).catch(() => undefined)
     queue.current = []
     index.current = 0
   }, [])
 
   const close = useCallback(() => {
-    dispose()
+    dispose(true)
     setUploadFiles([])
     setAllowOverwrite(false)
     setView(emptyView())
@@ -333,13 +299,15 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
           verification[side] = percent
           update({ progress: Math.round((verification.local + verification.server) / 2), detailText: `本地 ${Math.round(verification.local)}% / 服务器 ${Math.round(verification.server)}%` })
         }
+        current.backgroundStarted = true
         const [localHash, serverHash] = await Promise.all([
           hashLocalFile(file, DEFAULT_CHUNK_SIZE, signal, percent => reportVerification('local', percent)),
-          hashServerUpload(current.uploadId, signal, percent => reportVerification('server', percent)),
+          hashServerUpload(queryClient, current.uploadId, signal, percent => reportVerification('server', percent)),
         ])
         check()
         if (localHash !== serverHash) throw new Error('SHA256 校验失败，服务器文件与本地文件不一致')
-        const verified = await request(file.name, `发布 ${file.name}`, () => archiveApi.verifyArchiveUpload(current.uploadId, { sha256: localHash }, signal), true, 'verifying')
+        const accepted = await request(file.name, `发布 ${file.name}`, () => archiveApi.verifyArchiveUpload(current.uploadId, { sha256: localHash }, signal), true, 'verifying')
+        const verified = await waitForTaskResult<VerifyArchiveUploadResponse>(queryClient, accepted, { signal, onProgress: task => update({ statusText: task.message }) })
         current.path = verified.path
         activeUpload.current = null
         await queryClient.invalidateQueries({ queryKey: queryKeys.archive.files(ROOT_ARCHIVE_PATH) })

@@ -9,7 +9,8 @@ from uuid import uuid4
 
 from aiofiles import os as aioos
 
-from ..background_tasks import TaskProgress
+from ..background_tasks import TaskProgress, TaskType, get_task_manager
+from ..background_tasks.api_models import TaskAccepted
 from ..config import get_settings
 from ..files import base
 from ..files.paths import resolve_file_path, validate_file_name
@@ -72,6 +73,21 @@ class ArchiveApplication:
     async def delete(self, path: str) -> str:
         target = await resolve_file_path(self.root, path)
         return await mutate_archive(self.root, [target], lambda: base.delete_file_or_directory(self.root, path), actor_id=self.actor_id)
+
+    async def submit_delete(self, path: str) -> TaskAccepted:
+        target = await base.validate_delete_target(self.root, path)
+
+        async def run() -> AsyncGenerator[TaskProgress]:
+            yield TaskProgress(message=f"正在删除存档 {path}")
+            message = await self.delete(path)
+            yield TaskProgress(progress=100, message="存档删除完成", result={"message": message, "path": path})
+
+        submitted = await get_task_manager().submit_durable(
+            TaskType.ARCHIVE_DELETE, f"删除存档 {path}", run(), actor_id=self.actor_id,
+            claims=await archive_claims(self.root, [target]), cancellable=False,
+            exclusive_key=f"archive-delete:{target}",
+        )
+        return TaskAccepted(task_id=submitted.task_id)
 
     async def rename(self, request: RenameFileRequest) -> str:
         validate_file_name(request.new_name)

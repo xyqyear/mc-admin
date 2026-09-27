@@ -214,7 +214,7 @@ func cacheRecovery(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "DELETE", "/api/servers/"+id+"/files?path=/.mcmap/tiles", nil, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "DELETE", "/api/servers/"+id+"/files?path=/.mcmap/tiles", nil, nil); err != nil {
 		return err
 	}
 	if err = fixtures.CreateFile(ctx, client, id, "/.mcmap/tiles/stale-cache.txt", "cache can be discarded"); err != nil {

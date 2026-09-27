@@ -7,6 +7,10 @@ from app.background_tasks.models import BackgroundTask
 from app.background_tasks.types import TaskStatus, TaskType
 
 
+class TaskAccepted(BaseModel):
+    task_id: str
+
+
 class BackgroundTaskResponse(BaseModel):
     """API response model for a background task."""
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { openTaskCenter } from '@/features/tasks/commands';
 import { Play, Square, RotateCw, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
@@ -32,6 +33,10 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   const { useServerMaintenance } = useServerQueries();
   const maintenance = useServerMaintenance(serverId);
 
+  const isPending = serverOperationMutation.isPending || Boolean(maintenance.data?.task_id);
+  const taskId = maintenance.data?.task_id ?? (serverOperationMutation.isPending ? serverOperationMutation.taskId : null);
+  const reason = maintenance.data?.active ? maintenance.data.description : serverOperationMutation.isPending ? '正在提交并等待操作完成' : null;
+
   const isOperationAvailable = (operation: string) => {
     if (!status) return false;
     if ((maintenanceActive || maintenance.data?.active) && ['start', 'up', 'restart'].includes(operation)) return false;
@@ -59,54 +64,60 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
     <>
       <Button
         variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
-        disabled={serverOperationMutation.isPending || (!isOperationAvailable('start') && !isOperationAvailable('up'))}
+        disabled={isPending || (!isOperationAvailable('start') && !isOperationAvailable('up'))}
         onClick={handleStartServer}
         title={maintenance.data?.active ? maintenance.data.description ?? '服务器正在维护' : '启动服务器'}
       >
-        {serverOperationMutation.isPending
-          ? <Spinner className="mr-2 size-4" />
+        {isPending
+          ? <Spinner aria-hidden="true" className="mr-2 size-4" />
           : <Play className="mr-2 h-4 w-4" />
         }
         启动
       </Button>
       <Button
         variant="destructive"
-        disabled={serverOperationMutation.isPending || !isOperationAvailable('stop')}
+        disabled={isPending || !isOperationAvailable('stop')}
         onClick={() => handleConfirmableServerOperation('stop')}
         title="停止服务器"
       >
-        {serverOperationMutation.isPending
-          ? <Spinner className="mr-2 size-4" />
+        {isPending
+          ? <Spinner aria-hidden="true" className="mr-2 size-4" />
           : <Square className="mr-2 h-4 w-4" />
         }
         停止
       </Button>
       <Button
         variant="destructive"
-        disabled={serverOperationMutation.isPending || !isOperationAvailable('restart')}
+        disabled={isPending || !isOperationAvailable('restart')}
         onClick={() => handleConfirmableServerOperation('restart')}
         title="重启服务器"
       >
-        {serverOperationMutation.isPending
-          ? <Spinner className="mr-2 size-4" />
+        {isPending
+          ? <Spinner aria-hidden="true" className="mr-2 size-4" />
           : <RotateCw className="mr-2 h-4 w-4" />
         }
         重启
       </Button>
       <Button
         variant="destructive"
-        disabled={serverOperationMutation.isPending || !isOperationAvailable('down')}
+        disabled={isPending || !isOperationAvailable('down')}
         onClick={() => handleConfirmableServerOperation('down')}
         title="下线服务器"
       >
-        {serverOperationMutation.isPending
-          ? <Spinner className="mr-2 size-4" />
+        {isPending
+          ? <Spinner aria-hidden="true" className="mr-2 size-4" />
           : <ChevronDown className="mr-2 h-4 w-4" />
         }
         下线
       </Button>
       {showReturnButton && (
         <Button variant="outline" onClick={() => navigate('/overview')}>返回总览</Button>
+      )}
+      {reason && (
+        <div role="status" className="flex basis-full items-center gap-2 text-sm text-muted-foreground">
+          <span>{reason}</span>
+          {taskId && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
+        </div>
       )}
       {confirmDialog}
     </>

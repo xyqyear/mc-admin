@@ -79,7 +79,7 @@ func scheduleGeneration(ctx context.Context, t *engine.Scope) error {
 		if err := checkIndependent("cancelled"); err != nil {
 			return err
 		}
-		if err := c.JSON(ctx, "POST", base, map[string]string{"yaml_content": server.Compose}, nil, 200); err != nil {
+		if err := c.RunTask(ctx, "POST", base, map[string]string{"yaml_content": server.Compose}, nil); err != nil {
 			return err
 		}
 		var absent *scheduleIdentity

@@ -1,3 +1,5 @@
+from tests.support.tasks import task_result
+
 """Integration tests for template-mode server creation."""
 import tempfile
 from pathlib import Path
@@ -77,15 +79,14 @@ def test_client(temp_server_path, test_db):
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
+            patch_runtime_resource("session_factory", test_db),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
             patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
             patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+            TestClient(api_app, raise_server_exceptions=False) as client,
         ):
-            client = TestClient(
-                api_app, raise_server_exceptions=False
-            )
             yield client
 
     api_app.dependency_overrides.pop(get_db, None)
@@ -144,8 +145,7 @@ class TestTemplateServerCreation:
             },
             headers=auth_headers(),
         )
-        assert response.status_code == 200
-        assert response.json()["game_port"] == 25565
+        assert task_result(test_client, response)["game_port"] == 25565
 
     def test_template_not_found(self, test_client):
         """Test creation fails with non-existent template."""
@@ -228,7 +228,7 @@ services:
             },
             headers=auth_headers(),
         )
-        assert response.status_code == 200
+        task_result(test_client, response)
 
     def test_mutual_exclusion(self, test_client):
         """Test creation fails with both yaml_content and template_id."""

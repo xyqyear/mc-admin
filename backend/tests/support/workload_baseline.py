@@ -59,8 +59,10 @@ async def workloads(root: Path, samples: int) -> dict[str, Any]:
             started = time.perf_counter()
             outcomes.append(await operation(index))
             durations.append(round(time.perf_counter() - started, 6))
+        request_counts = [outcome.pop("requests", None) for outcome in outcomes]
         assert all(outcome == outcomes[0] for outcome in outcomes), name
-        results[name] = {"seconds": durations, "median_seconds": statistics.median(durations), "behavior": outcomes[0]}
+        results[name] = {"seconds": durations, "median_seconds": statistics.median(durations),
+                         "behavior": outcomes[0], "requests_per_sample": request_counts}
 
     async def upload(index: int) -> dict[str, Any]:
         requests = 0
@@ -97,20 +99,26 @@ async def workloads(root: Path, samples: int) -> dict[str, Any]:
             assert status.status_code == 204
             assert int(status.headers["Upload-Offset"]) == len(payload)
             assert not (settings.archive_path / filename).exists()
-            hashed = await client.get(path + "/sha256/stream")
-            assert hashed.status_code == 200
-            assert hashed.headers["content-type"].startswith("text/event-stream")
-            events = [json.loads(line.removeprefix("data: ")) for line in hashed.text.splitlines() if line.startswith("data: ")]
-            assert events[0]["event_type"] == "start"
-            assert events[-1]["event_type"] == "complete"
-            assert events[-1]["sha256"] == digest
-            verified = await client.post(path + "/verify", json={"sha256": digest})
-            assert verified.status_code == 200, verified.text
+            async def task_result(response) -> dict[str, Any]:
+                assert response.status_code == 202, response.text
+                async with asyncio.timeout(60):
+                    while True:
+                        status = await client.get("/tasks/" + response.json()["task_id"])
+                        assert status.status_code == 200, status.text
+                        task = status.json()
+                        if task["status"] in {"completed", "failed", "cancelled"}:
+                            assert task["status"] == "completed", task
+                            return task["result"]
+                        await asyncio.sleep(.02)
+
+            hashed = await task_result(await client.post(path + "/sha256"))
+            assert hashed["sha256"] == digest
+            await task_result(await client.post(path + "/verify", json={"sha256": digest}))
             assert (settings.archive_path / filename).read_bytes() == payload
             return {"bytes": len(payload), "chunk_bytes": chunk_size, "requests": requests,
                     "sha256": digest, "stale_offset_status": conflict_status,
                     "completed_retry_status": duplicate.status_code,
-                    "sse_event_types": sorted({event["event_type"] for event in events})}
+                    "hash_status": "completed", "publication_status": "completed"}
 
     tree = root / "search"
     tree.mkdir()
@@ -138,7 +146,7 @@ async def workloads(root: Path, samples: int) -> dict[str, Any]:
         recovered = (target / "region.mca").read_bytes()
         assert recovered == payload
         assert events
-        return {"bytes": len(recovered), "sha256": hashlib.sha256(recovered).hexdigest(), "events": len(events)}
+        return {"bytes": len(recovered), "sha256": hashlib.sha256(recovered).hexdigest(), "received_progress": True}
 
     async def chunks(index: int) -> dict[str, Any]:
         region = root / f"r.{index}.0.mca"

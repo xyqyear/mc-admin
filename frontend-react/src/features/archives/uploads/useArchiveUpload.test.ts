@@ -4,17 +4,14 @@ import { useArchiveUpload } from '@/features/archives/uploads/useArchiveUpload'
 
 const mocks = vi.hoisted(() => ({
   initArchiveUpload: vi.fn(), uploadArchiveChunk: vi.fn(), getArchiveUploadStatus: vi.fn(),
+  hashArchiveUpload: vi.fn(), waitForTaskResult: vi.fn(),
   verifyArchiveUpload: vi.fn(), cancelArchiveUpload: vi.fn(), invalidateQueries: vi.fn(),
 }))
 vi.mock('@/features/archives/api', () => ({ archiveApi: mocks }))
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => mocks }))
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() } }))
 vi.mock('hash-wasm', () => ({ createSHA256: async () => ({ init() {}, update() {}, digest: () => 'hash' }) }))
-vi.mock('@/shared/http/eventStream', () => ({
-  readEventStream: async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
-    onEvent({ event_type: 'complete', percent: 100, sha256: 'hash' })
-  },
-}))
+vi.mock('@/features/tasks/commands', () => ({ waitForTaskResult: mocks.waitForTaskResult }))
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -35,7 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.initArchiveUpload.mockImplementation(async ({ filename }: { filename: string }) => ({ upload_id: filename, offset: 0, chunk_size: 3 }))
   mocks.uploadArchiveChunk.mockImplementation(async (_id: string, offset: number, chunk: Blob) => ({ offset: offset + chunk.size, complete: true }))
-  mocks.verifyArchiveUpload.mockResolvedValue({ path: '/published.zip' })
+  mocks.hashArchiveUpload.mockResolvedValue({ task_id: 'hash' })
+  mocks.verifyArchiveUpload.mockResolvedValue({ task_id: 'publish' })
+  mocks.waitForTaskResult.mockImplementation(async (_client, accepted) => accepted.task_id === 'hash' ? { sha256: 'hash' } : { path: '/published.zip' })
   mocks.cancelArchiveUpload.mockResolvedValue(undefined)
   mocks.invalidateQueries.mockResolvedValue(undefined)
 })
@@ -125,4 +124,17 @@ describe('archive upload lifecycle', () => {
     expect(mocks.verifyArchiveUpload.mock.calls[0][0]).toBe('new.zip')
     expect(mocks.cancelArchiveUpload).toHaveBeenCalledWith('old.zip')
   })
+})
+
+it('detaches from hash observation on unmount without cancelling its input', async () => {
+  const hash = deferred<{ sha256: string }>()
+  mocks.waitForTaskResult.mockReturnValueOnce(hash.promise)
+  const files = [archive('hashing.zip')]
+  const { result, unmount } = renderHook(() => useArchiveUpload(true, files))
+  act(() => result.current.start())
+  await waitFor(() => expect(mocks.hashArchiveUpload).toHaveBeenCalled())
+  unmount()
+  expect(mocks.cancelArchiveUpload).not.toHaveBeenCalled()
+  await act(async () => hash.resolve({ sha256: 'hash' }))
+  expect(mocks.verifyArchiveUpload).not.toHaveBeenCalled()
 })

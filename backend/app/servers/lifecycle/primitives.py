@@ -13,6 +13,7 @@ from ...logger import get_logger
 from ...minecraft import get_docker_mc_manager
 from ...minecraft.compose import MCComposeFile
 from ...minecraft.docker.compose_file import ComposeFile
+from ...operations.context import current_execution
 from ...players.crud import (
     end_all_open_sessions_on_server,
     get_all_open_sessions_on_server,
@@ -24,9 +25,10 @@ from ..port_utils import check_port_conflicts
 async def cancel_and_wait_for_tasks(
     server_id: str, *, timeout: float = 30.0
 ) -> list[str]:
-    # cancel() only sets a flag; awaiting futures closes the race against rmtree.
     logger = get_logger()
-    tasks = get_task_manager().get_tasks_by_server_id(server_id)
+    owner = current_execution()
+    tasks = [task for task in get_task_manager().get_tasks_by_server_id(server_id)
+             if owner is None or task.task_id != owner.operation_id]
     if not tasks:
         return []
 

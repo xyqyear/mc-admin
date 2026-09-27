@@ -41,7 +41,7 @@ type run struct {
 
 func single(ctx context.Context, c *api.Client, id string) (run, error) {
 	var result run
-	err := c.JSON(ctx, "POST", "/api/self-check/checks/"+id+"/run", nil, &result, 200)
+	err := c.RunTask(ctx, "POST", "/api/self-check/checks/"+id+"/run", nil, &result)
 	if err == nil && (result.ID == "" || result.Scope != "check" || result.Check != id || len(result.Findings) == 0 || result.Error != nil) {
 		err = fmt.Errorf("invalid single-check run for %s", id)
 	}
@@ -77,7 +77,7 @@ func history(ctx context.Context, t *engine.Scope) error {
 	}
 	var full run
 	if err = t.Step("full self-check runs every registered check and persists all healthy and unhealthy findings", func() error {
-		if err := c.JSON(ctx, "POST", "/api/self-check/run", nil, &full, 200); err != nil {
+		if err := c.RunTask(ctx, "POST", "/api/self-check/run", nil, &full); err != nil {
 			return err
 		}
 		if full.ID == "" || full.Scope != "full" || full.Trigger != "manual" || full.Error != nil || full.Summary.Total != len(full.Findings) {
@@ -114,45 +114,30 @@ func history(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if err = t.Step("streamed execution reports each started/finished check and stores its terminal result", func() error {
-		started, finished := map[string]bool{}, map[string]bool{}
-		event, err := c.SSEEvents(ctx, "POST", "/api/self-check/run/stream", nil, "completed", func(event map[string]any) error {
-			id, _ := event["check_id"].(string)
-			switch event["type"] {
-			case "check_started":
-				if started[id] {
-					return fmt.Errorf("duplicate check start %s", id)
+	if err = t.Step("task execution retains every check result", func() error {
+		var result run
+		if err := c.RunTask(ctx, "POST", "/api/self-check/run", nil, &result); err != nil {
+			return err
+		}
+		if result.ID == "" || result.Error != nil || len(result.Findings) == 0 {
+			return fmt.Errorf("task has no valid self-check result")
+		}
+		for _, entry := range catalog {
+			found := false
+			for _, finding := range result.Findings {
+				if finding.Check == entry.Check {
+					found = true
 				}
-				started[id] = true
-			case "check_finished":
-				if !started[id] || finished[id] {
-					return fmt.Errorf("out-of-order check completion %s", id)
-				}
-				finished[id] = true
 			}
-			return nil
-		})
-		if err != nil {
-			return err
+			if !found {
+				return fmt.Errorf("task omitted check %s", entry.Check)
+			}
 		}
-		if len(started) != len(catalog) || len(finished) != len(catalog) {
-			return fmt.Errorf("stream omitted check transitions")
-		}
-		data, err := json.Marshal(event["result"])
-		if err != nil {
-			return err
-		}
-		var streamed run
-		if err = json.Unmarshal(data, &streamed); err != nil {
-			return err
-		}
-		if streamed.ID == "" || streamed.Error != nil || len(streamed.Findings) == 0 {
-			return fmt.Errorf("stream has no valid result")
-		}
-		return c.JSON(ctx, "GET", "/api/self-check/runs/"+streamed.ID, nil, nil, 200)
+		return c.JSON(ctx, "GET", "/api/self-check/runs/"+result.ID, nil, nil, 200)
 	}); err != nil {
 		return err
 	}
+
 	for _, entry := range catalog {
 		result, err := single(ctx, c, entry.Check)
 		if err != nil {
@@ -221,7 +206,7 @@ func gamePort(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	var full run
-	if err = c.JSON(ctx, "POST", "/api/self-check/run", nil, &full, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/self-check/run", nil, &full); err != nil {
 		return err
 	}
 	if err = expectFinding(full, "server.game_port_consistency", "warning"); err != nil {
@@ -348,7 +333,7 @@ func jarMetadata(ctx context.Context, t *engine.Scope) error {
 			if !bytes.Contains(encoded, []byte("ordinary.jar")) || !bytes.Contains(encoded, []byte("ftbbackups2")) || !bytes.Contains(encoded, []byte(format.metadata)) {
 				return fmt.Errorf("jar evidence omitted matched file and metadata ID")
 			}
-			if err = c.JSON(ctx, "DELETE", "/api/servers/"+id+"/files?path="+url.QueryEscape(format.path+"/ordinary.jar"), nil, nil, 200); err != nil {
+			if err = c.RunTask(ctx, "DELETE", "/api/servers/"+id+"/files?path="+url.QueryEscape(format.path+"/ordinary.jar"), nil, nil); err != nil {
 				return err
 			}
 		}
@@ -379,7 +364,7 @@ func jarMetadata(ctx context.Context, t *engine.Scope) error {
 			if err = expectFinding(result, "server.backup_mod_removed", "passed"); err != nil {
 				return fmt.Errorf("%s: %w", fixture.name, err)
 			}
-			if err = c.JSON(ctx, "DELETE", "/api/servers/"+id+"/files?path="+url.QueryEscape("/mods/ordinary.jar"), nil, nil, 200); err != nil {
+			if err = c.RunTask(ctx, "DELETE", "/api/servers/"+id+"/files?path="+url.QueryEscape("/mods/ordinary.jar"), nil, nil); err != nil {
 				return err
 			}
 		}

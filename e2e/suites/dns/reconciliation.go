@@ -73,7 +73,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if err := observe("pending", true, true); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		if err := observe("ready", true, true); err != nil {
@@ -89,7 +89,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if _, err := edgeControl(ctx, t, map[string]any{"clear_calls": true}); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		state, err := edgeControl(ctx, t, nil)
@@ -136,7 +136,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if routes[route("primary")] != backend || routes[route("secondary")] != backend {
 			return fmt.Errorf("healthy router did not converge: %+v", routes)
 		}
-		if err := client.JSON(ctx, "POST", "/api/servers/sync", map[string]any{"dry_run": false}, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/servers/sync", map[string]any{"dry_run": false}, nil); err != nil {
 			return err
 		}
 		if err := checkDegradedHealth(ctx, client); err != nil {
@@ -149,7 +149,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 	if _, err = edgeControl(ctx, t, map[string]any{"dns_read_failure": false}); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 		return err
 	}
 	if err = observe("ready", true, true); err != nil {
@@ -188,7 +188,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if _, err := edgeControl(ctx, t, map[string]any{"router_read_failure": false}); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		return observe("ready", true, true)
@@ -224,7 +224,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if _, err := edgeControl(ctx, t, map[string]any{"fail_name": nil, "clear_calls": true}); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		state, err = edgeControl(ctx, t, nil)
@@ -240,7 +240,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if _, err := edgeControl(ctx, t, map[string]any{"clear_calls": true}); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		state, err = edgeControl(ctx, t, nil)
@@ -265,7 +265,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if _, err := edgeControl(ctx, t, map[string]any{"clear_calls": true}); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "POST", "/api/dns/update", nil, nil, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/dns/update", nil, nil); err != nil {
 			return err
 		}
 		state, err := edgeControl(ctx, t, nil)
@@ -304,11 +304,15 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 }
 
 func safeFailedUpdate(ctx context.Context, client *api.Client) error {
-	var response map[string]any
-	if err := client.JSON(ctx, "POST", "/api/dns/update", nil, &response, 500); err != nil {
+	accepted, err := client.StartTask(ctx, "POST", "/api/dns/update", nil)
+	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(response)
+	task, taskErr := client.Task(ctx, accepted.ID)
+	if taskErr == nil || task.Status != "failed" {
+		return fmt.Errorf("DNS update must fail through its task: %+v", task)
+	}
+	data, err := json.Marshal(task)
 	if err != nil {
 		return err
 	}
@@ -328,7 +332,7 @@ func checkDegradedHealth(ctx context.Context, client *api.Client) error {
 			Evidence map[string]any `json:"evidence"`
 		} `json:"findings"`
 	}
-	if err := client.JSON(ctx, "POST", "/api/self-check/run", nil, &health, 200); err != nil {
+	if err := client.RunTask(ctx, "POST", "/api/self-check/run", nil, &health); err != nil {
 		return err
 	}
 	if health.ID == "" || health.Error != nil {

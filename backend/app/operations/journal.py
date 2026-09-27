@@ -248,6 +248,18 @@ class OperationJournal:
     stage = phase
 
     @_complete_write
+    async def bind_created_server(self, operation_id: str, server_id: str, generation: int) -> None:
+        async with self._write() as session:
+            row = await self._row(session, operation_id)
+            self._active(row)
+            resources = _record(row).resources
+            prospective = ResourceReference("files", path=server_id)
+            if row.kind != "server_create" or resources != (prospective,):
+                raise InvalidOperationTransition()
+            row.resources_json = _resources((ResourceReference("server", server_id, generation),), self.limits.max_resources)
+            row.updated_at = self.clock()
+
+    @_complete_write
     async def retain_artifact(self, operation_id: str, resource: ResourceReference) -> None:
         async with self._write() as session:
             row = await self._row(session, operation_id)

@@ -239,7 +239,7 @@ func schedules(ctx context.Context, t *engine.Scope) error {
 	var created struct {
 		Schedule string `json:"restart_cronjob_id"`
 	}
-	if err = c.JSON(ctx, "POST", base, map[string]any{"yaml_content": s.Compose, "restart_schedule": map[string]string{"custom_cron": "17 4 * * *"}}, &created, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", base, map[string]any{"yaml_content": s.Compose, "restart_schedule": map[string]string{"custom_cron": "17 4 * * *"}}, &created); err != nil {
 		return err
 	}
 	if created.Schedule == "" {
@@ -295,7 +295,7 @@ func schedules(ctx context.Context, t *engine.Scope) error {
 	var removed struct {
 		IDs []string `json:"cancelled_restart_cronjob_ids"`
 	}
-	if err = c.JSON(ctx, "POST", base+"/operations", map[string]string{"action": "remove"}, &removed, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", base+"/operations", map[string]string{"action": "remove"}, &removed); err != nil {
 		return err
 	}
 	if len(removed.IDs) != 1 || removed.IDs[0] != current.ID {
@@ -330,7 +330,7 @@ func reconciliation(ctx context.Context, t *engine.Scope) error {
 		Errors  []any `json:"errors"`
 	}
 	var result syncResult
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &result, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &result); err != nil {
 		return err
 	}
 	if result.Applied || len(result.Preview) != 0 {
@@ -340,16 +340,21 @@ func reconciliation(ctx context.Context, t *engine.Scope) error {
 	if err = os.Rename(original, holding); err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]any{}, nil, 409); err != nil {
+	rejected, err := c.StartTask(ctx, "POST", "/api/servers/sync", map[string]any{})
+	if err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true, "force": true}, &result, 200); err != nil {
+	failure, failureErr := c.Task(ctx, rejected.ID)
+	if failureErr == nil || failure.Status != "failed" || !strings.Contains(failure.Error, "force=true") {
+		return fmt.Errorf("empty directory sync was not protected: %+v", failure)
+	}
+	if err = c.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true, "force": true}, &result); err != nil {
 		return err
 	}
 	if len(result.Preview) != 1 || result.Preview[0].ID != s.ID || result.Preview[0].Action != "deactivate" {
 		return fmt.Errorf("drift preview incorrect: %+v", result)
 	}
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{"force": true}, &result, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{"force": true}, &result); err != nil {
 		return err
 	}
 	if len(result.Removed) != 1 || len(result.Errors) != 0 || !result.Applied {
@@ -358,13 +363,13 @@ func reconciliation(ctx context.Context, t *engine.Scope) error {
 	if err = os.Rename(holding, original); err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &result, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/servers/sync", map[string]bool{"dry_run": true}, &result); err != nil {
 		return err
 	}
 	if len(result.Preview) != 1 || result.Preview[0].Action != "adopt" {
 		return fmt.Errorf("filesystem adoption not previewed")
 	}
-	if err = c.JSON(ctx, "POST", "/api/servers/sync", map[string]any{}, &result, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/servers/sync", map[string]any{}, &result); err != nil {
 		return err
 	}
 	if len(result.Adopted) != 1 || len(result.Errors) != 0 {

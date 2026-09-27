@@ -50,7 +50,7 @@ Scheduled runs also have cron execution history in `CronJobExecution`.
 
 ## Triggers
 
-- `manual` — `POST /api/self-check/run` or `POST /api/self-check/run/stream`
+- `manual` — `POST /api/self-check/run` (202 task acceptance)
 - `scheduled` — cron job `system:self_check`
 - `server_created` — after a server creation request succeeds
 - `server_populated` — after the archive extraction task completes
@@ -151,12 +151,13 @@ and properties failures to the existing file browser with a literal
 `server.properties` search. No file changes, migration, lifecycle gates, or extra
 event triggers run as part of this check.
 
+手动全量与单项检查由 `app.self_check.tasks` 提交任务。任务状态表示检查执行结果，健康程度由 result.status/findings 表示；发现警告不等于任务失败。中间结果累积 findings、当前 check_id 和完成数量。自动触发仍使用原有历史和调度路径。
+
 ## API
 
 - `GET /api/self-check/catalog` — configured catalog with enabled flags
 - `GET /api/self-check/status` — catalog, current health state, and recent run summaries
 - `POST /api/self-check/run` — manual run, returns the full run result
-- `POST /api/self-check/run/stream` — manual full run over SSE
 - `POST /api/self-check/checks/{check_id}/run` — single-check rerun
 - `GET /api/self-check/runs` — paginated retained run history
 - `GET /api/self-check/runs/{id}` — retained run detail with findings

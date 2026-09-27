@@ -17,10 +17,7 @@ Query hooks:
 - `useSelfCheckHealth()` derives unresolved warning and critical counts from
   the current health state for global indicators.
 
-Manual full runs use `useEventStream()` against `/api/self-check/run/stream` so
-findings appear as each check completes. Single-card reruns use
-`useSelfCheckMutations().useRunSelfCheckItem()`. Completed runs invalidate
-`queryKeys.selfCheck.all`.
+手动全量检查提交 `/api/self-check/run`，然后读取任务详情中的累计 findings 和当前检查项；单项重跑也等待对应任务。按钮在真实终态前保持忙碌；查询失败保留进度并重连，重新进入页面可接上活跃自检。健康检查告警与执行失败分别展示。完成后由全局 operation observer 刷新 `queryKeys.selfCheck.all`。
 
 ## Page Behavior
 
@@ -28,7 +25,7 @@ The dashboard shows:
 
 - summary counts for the displayed run
 - manual run button
-- every finding from the current health state, live stream, or selected history run
+- every finding from the current health state, live task, or selected history run
 - per-card rerun controls
 - retained run history
 

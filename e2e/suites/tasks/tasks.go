@@ -12,7 +12,9 @@ import (
 )
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
-	return []engine.Case{{ID: "tasks.failure-filter-delete-clear", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: history}}
+	return []engine.Case{
+		{ID: "tasks.management-acceptance-and-reconnect", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: management},
+		{ID: "tasks.failure-filter-delete-clear", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: history}}
 }
 
 func history(ctx context.Context, t *engine.Scope) error {
@@ -21,6 +23,9 @@ func history(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	id := fixtures.ServerOf(t.Env).ID
+	if err = c.JSON(ctx, "DELETE", "/api/tasks", nil, nil, 200); err != nil {
+		return err
+	}
 	var started struct {
 		ID string `json:"task_id"`
 	}

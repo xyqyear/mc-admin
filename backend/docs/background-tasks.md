@@ -1,11 +1,9 @@
 # Background tasks
 
 The runtime owns a `BackgroundTaskManager` and a durable operation journal.
-Archive compression, server population, rebuild, file ownership repair and chunk
-prune submit async generators through `await task_manager.submit_durable(...)`.
-The journal commits acceptance before returning the task ID. The synchronous
-`submit(...)` remains a compatibility entry point for isolated callers without a
-journal; production routes use durable submission.
+任务覆盖服务器启停/下线/删除/创建/登记同步、文件和压缩包删除、地图初始化、手动自检、手动 DNS/router 更新、上传 SHA256 和发布，以及压缩、填充、重建、所有权修复和区块清理。功能模块拥有 worker；路由只做鉴权、准备和提交。快照、恢复、回滚及其预览保持原有执行方式。
+
+本轮迁移的执行入口返回 HTTP 202 和 `{task_id}`。查询 `/tasks/{id}` 获取阶段、进度、结果和错误；任务摘要不包含详细结果。已废弃的自检和 SHA256 SSE 执行接口不存在。`submit_durable` 在返回之前提交 journal，`submit` 是 manager 内部的执行登记入口，也用于无 journal 的隔离单元测试。接口清单与 UI 约束见 [非快照操作](non-snapshot-operations.md)。
 
 ```python
 async def my_operation() -> AsyncGenerator[TaskProgress]:
@@ -53,7 +51,7 @@ Chinese error and safe type/stack diagnostics; authored `PublicOperationError`
 messages remain visible. Cleanup errors remain failures, and filesystem refusal
 can leave partial output for inspection.
 
-Deletion freezes new writers, cancels tasks and waits for their futures without
+Deletion excludes its own operation ID, freezes new writers, cancels other tasks and waits for their futures without
 holding execution leases. Unsettled tasks or request-owned writers reject
 deletion; only a drained, validated deletion permit authorizes removing files.
 Runtime shutdown stops submission and drains its workers, including tasks that

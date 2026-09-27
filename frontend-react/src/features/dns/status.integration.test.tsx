@@ -5,6 +5,8 @@ import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import DnsManagementScreen from '@/features/dns/DnsManagementScreen'
 import type { DNSStatusResponse } from '@/features/dns/contracts'
+import type { BackgroundTaskResponse } from '@/features/tasks/contracts'
+import { useTaskCenterStore } from '@/features/tasks/panelStore'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
@@ -15,16 +17,23 @@ let client: ReturnType<typeof createTestClient>
 let status: DNSStatusResponse
 let routes: Record<string, string>
 let updates = 0
+let activeTasks: BackgroundTaskResponse[]
+const updatingTask: BackgroundTaskResponse = {
+  task_id: 'dns-sync', task_type: 'dns_update', name: '同步 DNS 和路由', status: 'running',
+  progress: null, message: '正在更新 DNS 和路由', server_id: null,
+  created_at: '2026-09-27T00:00:00Z', cancellable: false,
+}
 const noDnsChanges = { records_to_add: [], records_to_remove: [], records_to_update: [] }
 const noRouteChanges = { routes_to_add: {}, routes_to_remove: {}, routes_to_update: {} }
 beforeEach(() => {
-  client = createTestClient(); updates = 0; routes = {}
+  client = createTestClient(); updates = 0; routes = {}; activeTasks = []
   status = { initialized: true, dns_diff: null, router_diff: noRouteChanges, state: 'degraded', dns_known: false, router_known: true, unknown_servers: ['alpha'], issues: ['DNS记录读取失败，暂缓删除未知配置'] }
   server.use(
     http.get('*/api/dns/enabled', () => HttpResponse.json({ enabled: true })),
     http.get('*/api/dns/status', () => HttpResponse.json(status)),
     http.get('*/api/dns/records', () => HttpResponse.json([])),
     http.get('*/api/dns/routes', () => HttpResponse.json(routes)),
+    http.get('*/api/tasks', () => HttpResponse.json({ tasks: activeTasks, total: activeTasks.length })),
     http.post('*/api/dns/update', () => { updates++; routes = { 'alpha.example.test': 'alpha:25565' }; return HttpResponse.json({ detail: '部分同步失败，请检查DNS提供商后重试' }, { status: 500 }) }),
   )
 })
@@ -32,17 +41,47 @@ afterEach(() => { client.clear(); server.resetHandlers(); vi.restoreAllMocks() }
 
 it('shows unknown state and preserves updates; a partial failure still refreshes changed routes', async () => {
   const error = vi.spyOn(toast, 'error')
+  let failed = false
+  server.use(
+    http.post('*/api/dns/update', () => {
+      updates++
+      return HttpResponse.json({ task_id: updatingTask.task_id }, { status: 202 })
+    }),
+    http.get('*/api/tasks/dns-sync', () => {
+      if (!failed) return HttpResponse.json(updatingTask)
+      routes = { 'alpha.example.test': 'alpha:25565' }
+      return HttpResponse.json({ ...updatingTask, status: 'failed', error: '部分同步失败，请检查DNS提供商后重试' })
+    }),
+  )
   render(<TestProviders client={client}><DnsManagementScreen /></TestProviders>)
   await screen.findByText('同步状态不完整')
   await screen.findByText('DNS记录读取失败，暂缓删除未知配置')
   expect(screen.queryByText('状态正常')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '更新记录' }))
-  await waitFor(() => expect(error).toHaveBeenCalledWith('DNS更新失败: 部分同步失败，请检查DNS提供商后重试'))
+  await screen.findByText('正在同步 DNS 和路由')
+  expect((screen.getByRole('button', { name: '更新记录' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(error).not.toHaveBeenCalled()
+  failed = true
+  await waitFor(() => expect(error).toHaveBeenCalledWith('DNS更新失败: 部分同步失败，请检查DNS提供商后重试'), { timeout: 3000 })
   await screen.findByText('alpha:25565')
   expect(updates).toBe(1)
   status = { initialized: true, dns_diff: noDnsChanges, router_diff: noRouteChanges, state: 'ready', dns_known: true, router_known: true, issues: [], unknown_servers: [] }
   fireEvent.click(screen.getByTitle('重新获取DNS记录和路由信息'))
   await screen.findByText('状态正常')
+})
+
+it('restores the active update reason after navigation and prevents another submission', async () => {
+  activeTasks = [updatingTask]
+  useTaskCenterStore.getState().setOpen(false)
+  render(<TestProviders client={client}><DnsManagementScreen /></TestProviders>)
+  await screen.findByText(updatingTask.message)
+  const update = screen.getByRole('button', { name: '更新记录' })
+  expect((update as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(update)
+  expect(updates).toBe(0)
+  fireEvent.click(screen.getByRole('button', { name: '查看任务' }))
+  expect(useTaskCenterStore.getState().isOpen).toBe(true)
+  useTaskCenterStore.getState().setOpen(false)
 })
 
 it('reports failed refresh instead of a success toast', async () => {

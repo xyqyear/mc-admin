@@ -47,6 +47,8 @@ export interface InitArchiveUploadResponse {
 }
 
 export interface ArchiveUploadStatus {
+  hashTaskId?: string
+  publishTaskId?: string
   offset: number
   total: number
   chunkSize: number

@@ -162,7 +162,7 @@ func exactRestartSchedules(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	compose := fixtures.Compose(t.Env, second, fmt.Sprint(ports.Ports[0]), fmt.Sprint(ports.Ports[1]))
-	if err = c.JSON(ctx, "POST", "/api/servers/"+second, map[string]string{"yaml_content": compose}, nil, 200); err != nil {
+	if err = c.RunTask(ctx, "POST", "/api/servers/"+second, map[string]string{"yaml_content": compose}, nil); err != nil {
 		return err
 	}
 	type schedule struct {

@@ -46,6 +46,7 @@ export interface ServerStatusResponse {
 }
 
 export interface ServerMaintenanceResponse {
+  task_id?: string;
   active: boolean;
   kind: string | null;
   description: string | null;

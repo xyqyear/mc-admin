@@ -1,3 +1,7 @@
+import { useState } from 'react';
+import { waitForTaskResult } from '@/features/tasks/commands';
+import { taskApi } from '@/features/tasks/api';
+import type { ApiError } from '@/shared/http/api';
 import { serverApi } from "@/features/servers/api";
 import { taskQueryKeys } from "@/features/tasks/queries";
 import type {
@@ -15,7 +19,8 @@ export const useServerMutations = () => {
   const queryClient = useQueryClient();
 
   const useServerOperation = () => {
-    return useMutation({
+    const [taskId, setTaskId] = useState<string | null>(null);
+    const mutation = useMutation({
       mutationFn: async ({
         action,
         serverId,
@@ -23,22 +28,10 @@ export const useServerMutations = () => {
         action: string;
         serverId: string;
       }): Promise<unknown> => {
-        switch (action) {
-          case "start":
-            return serverApi.startServer(serverId);
-          case "stop":
-            return serverApi.stopServer(serverId);
-          case "restart":
-            return serverApi.restartServer(serverId);
-          case "up":
-            return serverApi.upServer(serverId);
-          case "down":
-            return serverApi.downServer(serverId);
-          case "remove":
-            return serverApi.removeServerFull(serverId);
-          default:
-            throw new Error(`Unknown action: ${action}`);
-        }
+        setTaskId(null);
+        const accepted = await serverApi.serverOperation(serverId, action);
+        setTaskId(accepted.task_id);
+        return waitForTaskResult(queryClient, accepted);
       },
       onSuccess: (data, { action, serverId }) => {
         if (action === "remove") {
@@ -52,40 +45,6 @@ export const useServerMutations = () => {
         } else {
           toast.success(`服务器 ${serverId} ${action} 操作完成`);
         }
-
-        // Container state takes a moment to settle after the operation lands;
-        // refetching immediately tends to capture the pre-action state.
-        setTimeout(() => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverInfos.detail(serverId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverStatuses.all,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.serverRuntimes.all,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.players.serverOnline(serverId),
-          });
-
-          // Server lifecycle changes affect host-level resource usage.
-          queryClient.invalidateQueries({ queryKey: queryKeys.system.info() });
-
-          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
-
-          if (action === "remove") {
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.restartSchedule.detail(serverId),
-            });
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.cron.all,
-            });
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.dns.all,
-            });
-          }
-        }, 1000);
       },
       onError: (error: Error, { action, serverId }) => {
         toast.error(
@@ -93,6 +52,7 @@ export const useServerMutations = () => {
         );
       },
     });
+    return { ...mutation, taskId };
   };
 
   // Returns task_id; populate progress is polled via the task API.
@@ -126,12 +86,13 @@ export const useServerMutations = () => {
         variableValues?: Record<string, unknown>;
         restartSchedule?: RestartScheduleRequest | null;
       }): Promise<CreateServerResult> => {
-        return serverApi.createServer(serverId, {
+        const accepted = await serverApi.createServer(serverId, {
           yaml_content: yamlContent,
           template_id: templateId,
           variable_values: variableValues,
           restart_schedule: restartSchedule ?? undefined,
         });
+        return waitForTaskResult<CreateServerResult>(queryClient, accepted);
       },
       onSuccess: (result, { serverId }) => {
         toast.success(
@@ -140,17 +101,14 @@ export const useServerMutations = () => {
             : `服务器 "${serverId}" 创建成功!`,
         );
 
-        // Allow the backend to finish wiring up the new server before refetching.
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
-          if (result.restart_cronjob_id) {
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.restartSchedule.detail(serverId),
-            });
-            queryClient.invalidateQueries({ queryKey: queryKeys.cron.all });
-          }
-          queryClient.invalidateQueries({ queryKey: queryKeys.dns.all });
-        }, 1000);
+        queryClient.invalidateQueries({ queryKey: queryKeys.servers() });
+        if (result.restart_cronjob_id) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.restartSchedule.detail(serverId),
+          });
+          queryClient.invalidateQueries({ queryKey: queryKeys.cron.all });
+        }
+        queryClient.invalidateQueries({ queryKey: queryKeys.dns.all });
       },
       onError: (error: Error, { serverId }) => {
         toast.error(`创建服务器 "${serverId}" 失败: ${error.message}`);
@@ -161,7 +119,19 @@ export const useServerMutations = () => {
   const useSyncServers = () => {
     return useMutation({
       mutationFn: async (request: SyncRequest = {}): Promise<SyncResult> => {
-        return serverApi.syncServers(request);
+        if (request.dry_run) {
+          const active = (await taskApi.getActiveTasks()).find(task => task.taskType === 'server_sync');
+          if (active) return waitForTaskResult<SyncResult>(queryClient, { task_id: active.taskId });
+        }
+        try {
+          return await waitForTaskResult<SyncResult>(queryClient, await serverApi.syncServers(request));
+        } catch (error) {
+          const detail = (error as ApiError).detail as { task_id?: string } | undefined;
+          if (request.dry_run && (error as ApiError).code === 'task_conflict' && detail?.task_id) {
+            return waitForTaskResult<SyncResult>(queryClient, { task_id: detail.task_id });
+          }
+          throw error;
+        }
       },
       onSuccess: (result) => {
         if (result.applied) {

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from ..errors import log_safe_error, public_error_code, public_error_message
@@ -17,7 +18,8 @@ from .types import TaskProgress, TaskResult, TaskStatus, TaskType
 if TYPE_CHECKING:
     from ..operations.coordinator import ResourceClaim
     from ..operations.journal import OperationJournal
-    from ..operations.journal_types import OperationRecord
+    from ..operations.journal_types import OperationRecord, ResourceReference
+    from ..servers.references import ServerRef
 
 
 class SubmitResult(BaseModel):
@@ -39,6 +41,7 @@ class BackgroundTaskManager:
         self._futures: dict[str, asyncio.Future[TaskResult]] = {}
         self._accepting = True
         self.journal = journal
+        self._submission_keys: dict[str, str] = {}
 
     async def submit_durable(
         self,
@@ -52,6 +55,45 @@ class BackgroundTaskManager:
         actor_id: int | None = None,
         configuration_version: str | None = None,
         claims: Sequence["ResourceClaim"] | None = None,
+        server_refs: Sequence["ServerRef"] | None = None,
+        resources: Sequence["ResourceReference"] | None = None,
+        require_existing_targets: bool = True,
+        exclusive_key: str | None = None,
+    ) -> SubmitResult:
+        task_id = task_id or str(uuid4())
+        if exclusive_key is not None:
+            if active_id := self._submission_keys.get(exclusive_key):
+                await task_generator.aclose()
+                raise HTTPException(status_code=423, detail={
+                    "code": "task_conflict", "message": "已有相同或冲突的任务正在执行，请等待完成", "task_id": active_id,
+                })
+            self._submission_keys[exclusive_key] = task_id
+
+        def release(_: object = None) -> None:
+            if exclusive_key is not None and self._submission_keys.get(exclusive_key) == task_id:
+                del self._submission_keys[exclusive_key]
+
+        try:
+            submitted = await self._submit_durable(
+                task_type, name, task_generator, server_id, cancellable, task_id,
+                actor_id=actor_id, configuration_version=configuration_version, claims=claims,
+                server_refs=server_refs, resources=resources, require_existing_targets=require_existing_targets,
+            )
+        except BaseException:
+            release()
+            await finalize(task_generator.aclose())
+            raise
+        submitted.awaitable.add_done_callback(release)
+        return submitted
+
+    async def _submit_durable(
+        self, task_type: TaskType, name: str, task_generator: AsyncGenerator[TaskProgress],
+        server_id: str | None, cancellable: bool, task_id: str,
+        *, actor_id: int | None, configuration_version: str | None,
+        claims: Sequence["ResourceClaim"] | None,
+        server_refs: Sequence["ServerRef"] | None,
+        resources: Sequence["ResourceReference"] | None,
+        require_existing_targets: bool,
     ) -> SubmitResult:
         if self.journal is None:
             return self.submit(task_type=task_type, name=name, task_generator=task_generator, server_id=server_id, cancellable=cancellable, task_id=task_id)
@@ -72,11 +114,14 @@ class BackgroundTaskManager:
         from ..operations.resources import journal_resources
         from ..servers.references import resolve_server_ref
 
-        servers = ()
+        servers = tuple(server_refs or ())
         if server_id is not None:
-            get_server_write_admission().check(server_id)
+            get_server_write_admission().check(server_id, allow_recovery_stop=task_type in {TaskType.SERVER_STOP, TaskType.SERVER_DOWN})
+        if server_refs is None and server_id is not None:
             async with get_async_session() as db:
                 servers = (await resolve_server_ref(db, server_id, servers_root=settings.server_path),)
+        for server in servers:
+            get_server_write_admission().check(server.server_id, allow_recovery_stop=task_type in {TaskType.SERVER_STOP, TaskType.SERVER_DOWN})
         task_id = task_id or str(uuid4())
         resource_kind = {
             TaskType.SERVER_REBUILD: "configuration",
@@ -85,8 +130,10 @@ class BackgroundTaskManager:
             TaskType.WORLD_RESTORE: "world",
             TaskType.ARCHIVE_EXTRACT: "files",
             TaskType.FILE_OWNERSHIP_REPAIR: "files",
+            TaskType.FILE_DELETE: "files",
+            TaskType.MAP_INITIALIZE: "cache",
         }.get(task_type, "server")
-        resources = tuple(ResourceReference(resource_kind, ref.server_id, ref.generation) for ref in servers) or (ResourceReference("archive"),)
+        resources = tuple(resources) if resources is not None else tuple(ResourceReference(resource_kind, ref.server_id, ref.generation) for ref in servers) or (ResourceReference("archive"),)
         if claims is not None:
             resources = journal_resources(servers, claims, default_kind=resource_kind, empty_kind="archive")
         try:
@@ -101,7 +148,7 @@ class BackgroundTaskManager:
             except BaseException as cleanup_failure:
                 raise failure from cleanup_failure
             raise
-        execution = OperationExecution(self.journal, record.operation_id, servers)
+        execution = OperationExecution(self.journal, record.operation_id, servers, require_existing_targets=require_existing_targets)
 
         async def durable_generator() -> AsyncGenerator[TaskProgress]:
             state = OperationState.FAILED
@@ -111,7 +158,7 @@ class BackgroundTaskManager:
                     await revalidate_targets()
                     async for progress in task_generator:
                         yield progress
-                    state = OperationState.SUCCEEDED
+                    state = execution.outcome or OperationState.SUCCEEDED
                 except (asyncio.CancelledError, GeneratorExit):
                     state = OperationState.CANCELLED
                     raise
@@ -215,7 +262,7 @@ class BackgroundTaskManager:
         if not self._accepting:
             raise RuntimeError("后台任务管理器正在关闭")
         if server_id is not None:
-            get_server_write_admission().check(server_id)
+            get_server_write_admission().check(server_id, allow_recovery_stop=task_type in {TaskType.SERVER_STOP, TaskType.SERVER_DOWN})
         if task_id is not None and task_id in self._tasks:
             raise ValueError(f"Task {task_id} already exists")
 

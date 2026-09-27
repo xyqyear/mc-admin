@@ -1,3 +1,4 @@
+import type { TaskAccepted } from '@/features/tasks/contracts'
 import { api } from '@/shared/http/api'
 import type { MapStatus, RegionList } from '@/features/world/map/contracts'
 import type { FtbClaimsResponse } from '@/features/world/layers/claims/contracts'
@@ -5,6 +6,9 @@ import type { PlayerLocationsResponse } from '@/features/world/layers/players/co
 import type { WorldLayoutResponse, DimensionLabelsResponse } from '@/features/world/contracts'
 
 export const worldApi = {
+  initializeMap: (serverId: string, force: boolean): Promise<TaskAccepted> =>
+    api.post<TaskAccepted>(`/servers/${serverId}/map/initialize`, null, { params: { force } }).then(r => r.data),
+
   getLayout: (serverId: string) =>
     api
       .get<WorldLayoutResponse>(`/servers/${serverId}/world-restore/layout`)

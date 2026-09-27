@@ -1,6 +1,10 @@
 export type BackgroundTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export type BackgroundTaskType =
+  | 'server_start' | 'server_up' | 'server_restart' | 'server_stop' | 'server_down'
+  | 'server_remove' | 'server_create' | 'server_sync'
+  | 'file_delete' | 'archive_delete' | 'map_initialize' | 'self_check' | 'dns_update'
+  | 'archive_hash' | 'archive_publish'
   | 'archive_create'
   | 'archive_extract'
   | 'file_ownership_repair'
@@ -8,6 +12,10 @@ export type BackgroundTaskType =
   | 'world_restore'
   | 'chunk_prune_preview'
   | 'chunk_prune_apply'
+
+export interface TaskAccepted {
+  task_id: string
+}
 
 export interface BackgroundTask {
   taskId: string

@@ -1,8 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { useOverviewData } from '@/app/overview/useOverviewData'
+import OverviewScreen from '@/app/overview/Overview'
+import { useTaskCenterStore } from '@/features/tasks/panelStore'
 import { useServerDetailData } from '@/features/servers/useServerDetailData'
 import { queryKeys } from '@/shared/http/api'
 import { createTestClient } from '@/test/http'
@@ -21,6 +23,8 @@ beforeEach(() => {
     http.get('*/api/servers/', () => HttpResponse.json([info])),
     http.get('*/api/servers/alpha', () => HttpResponse.json(info)),
     http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'HEALTHY' })),
+    http.get('*/api/servers/alpha/maintenance', () => HttpResponse.json({ active: false })),
+    http.get('*/api/user/me', () => HttpResponse.json({ id: 1, username: 'owner', role: 'OWNER' })),
     http.get('*/api/servers/alpha/cpu_percent', () => { cpuReads++; return HttpResponse.json({ cpuPercentage: cpu }) }),
     http.get('*/api/servers/alpha/memory', () => HttpResponse.json({ memoryUsageBytes: 128 })),
     http.get('*/api/servers/alpha/disk-usage', () => HttpResponse.json({ diskUsageBytes: 128, diskTotalBytes: 1024, diskAvailableBytes: 896 })),
@@ -32,6 +36,22 @@ beforeEach(() => {
     http.get('*/api/system/disk-usage', () => HttpResponse.json({ diskUsedGB: 1, diskTotalGB: 8, diskAvailableGB: 7 })),
     http.get('*/api/snapshots/repository-usage', () => HttpResponse.json({ backupUsedGB: 1, backupTotalGB: 8, backupAvailableGB: 7 })),
   )
+})
+
+it('restores lifecycle blocking and explains maintenance in the overview row', async () => {
+  server.use(http.get('*/api/servers/alpha/maintenance', () => HttpResponse.json({
+    active: true, kind: 'server_restart', description: '正在重启服务器', task_id: 'restart-alpha',
+  })))
+  useTaskCenterStore.getState().setOpen(false)
+  render(<TestProviders client={client}><OverviewScreen /></TestProviders>)
+  await screen.findByText('正在重启服务器')
+  for (const action of ['启动服务器', '停止服务器', '重启服务器', '下线服务器', '删除服务器']) {
+    expect((screen.getByTitle(action) as HTMLButtonElement).disabled).toBe(true)
+  }
+  expect((screen.getByTitle('服务器详情') as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: '查看任务' }))
+  expect(useTaskCenterStore.getState().isOpen).toBe(true)
+  useTaskCenterStore.getState().setOpen(false)
 })
 afterEach(() => { client.clear(); server.resetHandlers() })
 function Overview() {

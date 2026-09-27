@@ -23,16 +23,15 @@ from ..archive.uploads import (
     ArchiveUploadInitRequest,
     ArchiveUploadInitResponse,
     ArchiveUploadVerifyRequest,
-    ArchiveUploadVerifyResponse,
     append_archive_upload_chunk,
     archive_upload_headers,
     cancel_archive_upload,
-    ensure_archive_upload_ready_for_sha256,
     init_archive_upload,
-    iter_archive_upload_sha256_events,
-    verify_archive_upload,
+    submit_archive_hash,
+    submit_archive_publication,
 )
 from ..background_tasks import TaskType, get_task_manager
+from ..background_tasks.api_models import TaskAccepted
 from ..config import get_settings
 from ..dependencies import get_current_user
 from ..files import (
@@ -43,7 +42,6 @@ from ..files import (
 )
 from ..files.paths import resolve_file_path
 from ..minecraft import get_docker_mc_manager
-from ..utils.sse import sse_response
 
 router = APIRouter(
     prefix="/archive",
@@ -132,23 +130,17 @@ async def cancel_archive_upload_endpoint(
     await cancel_archive_upload(upload_id)
 
 
-@router.get("/upload/{upload_id}/sha256/stream")
-async def stream_archive_upload_sha256(
-    upload_id: str, _: UserPublic = Depends(get_current_user)
-):
-    """Calculate SHA256 for a pending archive upload as Server-Sent Events."""
-    await ensure_archive_upload_ready_for_sha256(upload_id)
-    return sse_response(iter_archive_upload_sha256_events(upload_id))
+@router.post("/upload/{upload_id}/sha256", response_model=TaskAccepted, status_code=202)
+async def hash_archive_upload(upload_id: str, user: UserPublic = Depends(get_current_user)) -> TaskAccepted:
+    return await submit_archive_hash(upload_id, user.id)
 
 
-@router.post("/upload/{upload_id}/verify", response_model=ArchiveUploadVerifyResponse)
+@router.post("/upload/{upload_id}/verify", response_model=TaskAccepted, status_code=202)
 async def verify_archive_upload_endpoint(
-    upload_id: str,
-    request: ArchiveUploadVerifyRequest,
-    _: UserPublic = Depends(get_current_user),
-):
-    """Publish a pending archive upload after SHA256 verification."""
-    return await verify_archive_upload(upload_id, request, actor_id=_.id)
+    upload_id: str, request: ArchiveUploadVerifyRequest,
+    user: UserPublic = Depends(get_current_user),
+) -> TaskAccepted:
+    return await submit_archive_publication(upload_id, request, user.id)
 
 
 @router.post("/create")
@@ -163,15 +155,13 @@ async def create_archive_file_or_directory(
     return {"message": message}
 
 
-@router.delete("")
+@router.delete("", response_model=TaskAccepted, status_code=202)
 async def delete_archive_file_or_directory(
     path: str, _: UserPublic = Depends(get_current_user)
 ):
     """Delete an archive file or directory"""
     base_path = await _get_archive_base_path()
-    message = await ArchiveApplication(base_path, _.id).delete(path)
-
-    return {"message": message}
+    return await ArchiveApplication(base_path, _.id).submit_delete(path)
 
 
 @router.post("/rename")

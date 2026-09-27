@@ -153,3 +153,39 @@ func (c *Client) Task(ctx context.Context, id string) (Task, error) {
 	}
 	return task, nil
 }
+
+type TaskAccepted struct {
+	ID string `json:"task_id"`
+}
+
+func (c *Client) StartTask(ctx context.Context, method, path string, input any) (TaskAccepted, error) {
+	var accepted TaskAccepted
+	if err := c.JSON(ctx, method, path, input, &accepted, http.StatusAccepted); err != nil {
+		return accepted, err
+	}
+	if accepted.ID == "" {
+		return accepted, fmt.Errorf("%s accepted a task without an ID", path)
+	}
+	return accepted, nil
+}
+
+func (c *Client) RunTask(ctx context.Context, method, path string, input, output any) error {
+	result, err := c.RunTaskResult(ctx, method, path, input)
+	if err != nil || output == nil {
+		return err
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, output)
+}
+
+func (c *Client) RunTaskResult(ctx context.Context, method, path string, input any) (map[string]any, error) {
+	accepted, err := c.StartTask(ctx, method, path, input)
+	if err != nil {
+		return nil, err
+	}
+	task, err := c.Task(ctx, accepted.ID)
+	return task.Result, err
+}

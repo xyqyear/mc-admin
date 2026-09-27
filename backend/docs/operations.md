@@ -8,9 +8,10 @@ writers and installs admission blocks. `processes.py` owns external process
 identity and cleanup, and `execution.py` connects task, request and cron entry
 points to this contract.
 
-Manual `up`, `start`, `restart`, `stop` and `down` requests record their actor,
+Manual `up`, `start`, `restart`, `stop` and `down` tasks record their actor,
 captured server generation and running intent under `server_<action>` operation
-kinds. `daemon.py` commits unknown daemon ownership before invoking Docker and
+kinds with origin `task`. Acceptance returns 202; task and operation IDs are the
+same. `daemon.py` commits unknown daemon ownership before invoking Docker and
 confirms it only after the command returns successfully. Manual starts and
 scheduled restarts retain their maintenance lease through failed or cancelled
 execution settlement, including installation of any recovery block. Cancelling
@@ -19,6 +20,13 @@ Unconfirmed scheduled execution appears as failed in legacy cron history;
 cancellation with confirmed stopped writers remains cancelled. `stop` and `down`
 remain available through recovery blocks, but completing either command does not
 silently resolve evidence belonging to another operation.
+
+Task submission reserves conflicting lifecycle commands before journal I/O.
+Creation records a prospective directory and binds the committed server generation
+before continuing. Synchronization captures existing generations even when their
+directories are absent and revalidates them before deactivation. Removal drains
+other writers while excluding only its own task identity. See
+[non-snapshot operations](non-snapshot-operations.md) for the task/API inventory.
 
 ## Durable state
 

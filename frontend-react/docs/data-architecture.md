@@ -30,7 +30,7 @@ The shared Axios instance and `ApiError` live in `shared/http/api.ts`: same-orig
 
 ## Writes
 
-Single-resource writes invalidate their detail key; list/aggregate changes invalidate parent keys. Cross-domain changes explicitly invalidate dependent resources (for example restart schedules invalidate both the server card and cron list/detail). Server lifecycle commands retain their delayed status refresh because the Docker daemon may settle after the CLI response. Independent task completion belongs to the application observer below.
+Single-resource writes invalidate their detail key; list/aggregate changes invalidate parent keys. Cross-domain changes explicitly invalidate dependent resources (for example restart schedules invalidate both the server card and cron list/detail). Long management commands return task acceptance; `features/tasks/commands.ts` observes real completion while preserving the initiating view's blocking behavior and retries failed status reads without resubmitting. Server lifecycle commands finish when their Docker command and cleanup settle; Minecraft readiness remains an independent status query. Independent task completion belongs to the application observer below.
 
 ## Features and operation completion
 
@@ -38,7 +38,7 @@ Single-resource writes invalidate their detail key; list/aggregate changes inval
 
 `app/operations/OperationObserver.tsx` is mounted once within the authenticated layout. Its QueryClient-backed `/operations` query reads paginated history (1,000 rows per page), polls every two seconds while operations are active and every ten seconds otherwise, and resynchronizes on reconnect/focus. Initial discovery scans history; subsequent reads stop at known records and separately recheck older active operations, avoiding full-history downloads every poll. A retained active reference whose detail now returns 404 is marked unavailable internally, synchronizes its resources once, and leaves tracking without claiming success; other read errors remain retryable failures. Query cancellation uses an AbortSignal. No second mutable task/operation store is introduced.
 
-Features register affected keys through `operationResources.ts`; configuration registers `server_rebuild` and `configuration_apply`. Terminal operation IDs are handled once per login session. Success, failure, cancellation, interruption and skipped outcomes invalidate the affected Compose, template binding/values, server info/status/runtime/maintenance, player and task keys. Failed partial changes therefore refresh even if the submitting page or progress dialog has closed. Only registered operation kinds affect business caches in this migration.
+Features register affected keys through `operationResources.ts`; configuration, servers, files/archives, world, health and DNS declare their own operations. Terminal operation IDs are handled once per login session. Success, failure, cancellation, interruption and skipped outcomes invalidate affected configuration, server, file, player, self-check, DNS, map and task queries. Failed partial changes therefore refresh even if the submitting page or progress dialog has closed. Only registered operation kinds affect business caches.
 
 The observer is independent of route pages. Its in-memory completion set and query data clear with logout; a new login rediscovers terminal history conservatively. `RebuildProgressDialog` owns progress and outcome presentation only. Populate/compression/ownership presentation and world restore/prune views also delegate business completion to the observer.
 

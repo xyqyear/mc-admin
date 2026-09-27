@@ -1,157 +1,19 @@
-import asyncio
-
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Body, Depends
 
 from app.auth.models import UserRole
 from app.auth.schemas import UserPublic
 from app.servers.api_models import SyncRequest
 
-from ...db.database import get_db
+from ...background_tasks.api_models import TaskAccepted
 from ...dependencies import RequireRole
-from ...dns import get_dns_manager
-from ...logger import get_logger
-from ...minecraft import get_docker_mc_manager
-from ...runtime_resources import current_runtime
-from ...servers.crud import get_active_servers
-from ...servers.lifecycle import (
-    CreateServerResult,
-    RemoveServerResult,
-    SyncDryRunEntry,
-    SyncEntryError,
-    SyncResult,
-    adopt_server_partial,
-    deactivate_server_partial,
-    preview_deactivation,
-    validate_adoption,
-)
+from ...servers.synchronization import submit_sync
 
-router = APIRouter(
-    prefix="/servers",
-    tags=["server-sync"],
-)
+router = APIRouter(prefix="/servers", tags=["server-sync"])
 
 
-def get_sync_lock() -> asyncio.Lock:
-    return current_runtime().resource('server_sync_lock')
-
-
-@router.post("/sync", response_model=SyncResult)
+@router.post("/sync", response_model=TaskAccepted, status_code=202)
 async def sync_servers(
-    body: SyncRequest = Body(
-        default_factory=SyncRequest,
-        json_schema_extra={"default": {"dry_run": False, "force": False}},
-    ),
-    db: AsyncSession = Depends(get_db),
-    _: UserPublic = Depends(RequireRole(UserRole.OWNER)),
-) -> SyncResult:
-    logger = get_logger()
-    if get_sync_lock().locked():
-        raise HTTPException(
-            status_code=409, detail="另一个同步任务正在进行中"
-        )
-
-    async with get_sync_lock():
-        fs_set = set(await get_docker_mc_manager().get_all_server_names())
-        active = await get_active_servers(db)
-        active_set = {s.server_id for s in active}
-
-        fs_only = sorted(fs_set - active_set)
-        db_only = sorted(active_set - fs_set)
-
-        if not body.force and len(fs_set) == 0 and len(db_only) > 0:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "拒绝在服务器目录为空时停用所有数据库记录；"
-                    "如确认请使用 force=true"
-                ),
-            )
-
-        admit: list[tuple[str, int, int]] = []
-        errors: list[SyncEntryError] = []
-        preview: list[SyncDryRunEntry] = []
-
-        for sid in fs_only:
-            try:
-                game_port, rcon_port = await validate_adoption(db, sid)
-                admit.append((sid, game_port, rcon_port))
-                preview.append(
-                    SyncDryRunEntry(
-                        server_id=sid,
-                        action="adopt",
-                        game_port=game_port,
-                        rcon_port=rcon_port,
-                    )
-                )
-            except Exception as e:
-                logger.exception("同步服务器校验失败: server_id=%s", sid)
-                errors.append(
-                    SyncEntryError(
-                        server_id=sid, stage="validate", error=str(e)
-                    )
-                )
-
-        for sid in db_only:
-            try:
-                jobs, sessions = await preview_deactivation(db, sid)
-            except Exception:
-                logger.warning(
-                    "同步服务器停用预览失败: server_id=%s", sid, exc_info=True
-                )
-                jobs, sessions = 0, 0
-            preview.append(
-                SyncDryRunEntry(
-                    server_id=sid,
-                    action="deactivate",
-                    restart_cronjob_count=jobs,
-                    open_session_count=sessions,
-                )
-            )
-
-        if body.dry_run:
-            return SyncResult(
-                applied=False, preview=preview, errors=errors
-            )
-
-        adopted: list[CreateServerResult] = []
-        removed: list[RemoveServerResult] = []
-
-        for sid, game_port, rcon_port in admit:
-            try:
-                adopted.append(
-                    await adopt_server_partial(
-                        db, sid, game_port=game_port, rcon_port=rcon_port
-                    )
-                )
-            except Exception as e:
-                logger.exception("同步服务器接管失败: server_id=%s", sid)
-                errors.append(
-                    SyncEntryError(
-                        server_id=sid, stage="adopt", error=str(e)
-                    )
-                )
-
-        for sid in db_only:
-            try:
-                removed.append(await deactivate_server_partial(db, sid))
-            except Exception as e:
-                logger.exception("同步服务器停用失败: server_id=%s", sid)
-                errors.append(
-                    SyncEntryError(
-                        server_id=sid, stage="deactivate", error=str(e)
-                    )
-                )
-
-        try:
-            await get_dns_manager().update(db)
-        except Exception:
-            logger.warning("同步服务器后的 DNS 更新失败", exc_info=True)
-
-        return SyncResult(
-            applied=True,
-            adopted=adopted,
-            removed=removed,
-            preview=preview,
-            errors=errors,
-        )
+    body: SyncRequest = Body(default_factory=SyncRequest),
+    user: UserPublic = Depends(RequireRole(UserRole.OWNER)),
+) -> TaskAccepted:
+    return await submit_sync(body, user.id)

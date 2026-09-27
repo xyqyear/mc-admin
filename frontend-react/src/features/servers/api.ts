@@ -1,5 +1,6 @@
+import type { TaskAccepted } from '@/features/tasks/contracts';
 import { getErrorStatus } from '@/shared/http/api';
-import type { CreateServerResult, RemoveServerResult, SyncRequest, SyncResult } from "@/features/servers/lifecycleContracts";
+import type { SyncRequest } from "@/features/servers/lifecycleContracts";
 import type { ServerInfo, ServerStatus } from "@/features/servers/contracts";
 import { api } from "@/shared/http/api";
 import type { ServerListItem, ServerStatusResponse, ServerMaintenanceResponse, ServerCpuPercentResponse, ServerMemoryResponse, ServerIOStatsResponse, ServerDiskUsageResponse, ServerOperationRequest, CreateServerRequest, PopulateServerRequest, PopulateServerResponse, RestartScheduleResponse } from '@/features/servers/contracts';
@@ -81,49 +82,16 @@ export const serverApi = {
     return res.data;
   },
 
-  serverOperation: async (id: string, action: string): Promise<void> => {
-    await api.post(`/servers/${id}/operations`, {
-      action,
-    } as ServerOperationRequest);
-  },
-
-  removeServerFull: async (id: string): Promise<RemoveServerResult> => {
-    const res = await api.post<RemoveServerResult>(
-      `/servers/${id}/operations`,
-      { action: "remove" } as ServerOperationRequest,
-    );
+  serverOperation: async (id: string, action: string): Promise<TaskAccepted> => {
+    const res = await api.post<TaskAccepted>(`/servers/${id}/operations`, { action } as ServerOperationRequest);
     return res.data;
-  },
-
-  startServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "start");
-  },
-
-  stopServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "stop");
-  },
-
-  restartServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "restart");
-  },
-
-  upServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "up");
-  },
-
-  downServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "down");
-  },
-
-  removeServer: async (id: string): Promise<void> => {
-    await serverApi.serverOperation(id, "remove");
   },
 
   createServer: async (
     serverId: string,
     request: CreateServerRequest,
-  ): Promise<CreateServerResult> => {
-    const res = await api.post<CreateServerResult>(
+  ): Promise<TaskAccepted> => {
+    const res = await api.post<TaskAccepted>(
       `/servers/${serverId}`,
       request,
     );
@@ -131,8 +99,8 @@ export const serverApi = {
   },
 
   // 服务器文件系统 ↔ 数据库 同步 (OWNER-only)
-  syncServers: async (request: SyncRequest = {}): Promise<SyncResult> => {
-    const res = await api.post<SyncResult>(`/servers/sync`, request);
+  syncServers: async (request: SyncRequest = {}): Promise<TaskAccepted> => {
+    const res = await api.post<TaskAccepted>(`/servers/sync`, request);
     return res.data;
   },
 

@@ -46,8 +46,8 @@ app/
 ├── auth/                  # owned identity service, user persistence/DTOs, cookies, CSRF and login codes
 ├── db/                    # async engine, declarative base, explicit metadata registration and migrations
 ├── events/                # public event wire models + in-memory external subscriber bus
-├── routers/               # HTTP/WS routers (servers/* per-server endpoints; servers/sync OWNER-only fs↔DB reconciler)
-├── servers/               # identity/CRUD, public queries/commands, restart scheduling and lifecycle
+├── routers/               # HTTP/WS routers; servers/sync is OWNER-only task submission
+├── servers/               # identity/CRUD, commands, restart scheduling, lifecycle tasks and fs↔DB reconciliation
 ├── configuration/         # immutable preparation, versioned state, staged application and source metadata
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
 ├── players/               # owned identity/session service, producers, dynamic filters, chat, achievements and skins
@@ -84,7 +84,7 @@ Adding a wrapper to `async_fs`: only when aiofiles has no equivalent. Use `async
 
 ## Background tasks
 
-Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `await task_manager.submit_durable(...)` (in `app.background_tasks`). Every `/api/tasks` operation requires a current user; cookie-authenticated mutations also require CSRF protection. The global task center polls summary-only lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Used by archive compression, server population, server rebuild, file ownership repair and chunk prune.
+Long-running operations are async generators yielding `TaskProgress(progress, message, result)`, submitted via `await task_manager.submit_durable(...)` (in `app.background_tasks`). Every `/api/tasks` operation requires a current user; cookie-authenticated mutations also require CSRF protection. The global task center polls summary-only lists; feature pages may use `/api/tasks/{id}` details or server-scoped state endpoints when task visibility must not cross server boundaries. Lifecycle/create/sync, file/archive deletion, map initialization, manual self-check/DNS and upload hashing/publication return 202 task acceptance; compression, population, rebuild, ownership repair and chunk prune retain their existing task contracts. The operation inventory and blocking rules are in `docs/non-snapshot-operations.md`.
 
 Cancellation directly interrupts the owned worker, closes nested generators, and waits for registered subprocesses and finite cleanup before publishing a terminal status. The durable journal remains authoritative after late cancellation or restart; interrupted work maps to existing failed task/cron states and is never replayed. Filesystem refusal may leave partial output behind. See `docs/background-tasks.md` and `docs/operations.md`.
 
@@ -149,7 +149,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/players.md` — owned identity/session service, producers and DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain and shared player-service dispatch
 - `docs/files.md` — file CRUD helpers, session-based multi-file upload, `fd`-backed deep search
-- `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 SSE
+- `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 and publication tasks
 - `docs/snapshots.md` — restic client, ignored paths (`<LEVEL_NAME>`), restore planner, retention, lock interaction
 - `docs/cron.md` — APScheduler integration, registry metadata, system jobs, built-in jobs
 - `docs/self-check.md` — check catalog, triggers, persistence, notification extension point
@@ -185,3 +185,5 @@ When changing function signatures, module structure, or any project-wide convent
 ## External documentation
 
 Use the Context7 MCP tool: `/tiangolo/fastapi`, `/websites/sqlalchemy-en-20`, `/pydantic/pydantic`, `/restic/restic`. Resolve library id first, then fetch with a topic.
+
+`servers/tasks.py`, `servers/synchronization.py`, `mcmap/initialization.py`, `self_check/tasks.py` and `dns/tasks.py` own detached non-snapshot execution. File/archive applications submit deletion; archive uploads coordinate hashing/publication input with task lifetime. New management routes return 202 task acceptance; obsolete execution SSE routes are absent. See `docs/non-snapshot-operations.md`.

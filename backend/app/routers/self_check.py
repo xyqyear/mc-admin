@@ -2,24 +2,22 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
-from fastapi.responses import StreamingResponse
 
 from app.auth.schemas import UserPublic
 from app.self_check.api_models import SelfCheckStatusResponse
 from app.self_check.service import get_self_check_service
 
+from ..background_tasks.api_models import TaskAccepted
 from ..db.database import get_async_session
 from ..dependencies import get_current_user
 from ..dynamic_config import get_config
 from ..self_check import crud
-from ..self_check.constants import MANUAL_TRIGGER
+from ..self_check.tasks import submit_self_check
 from ..self_check.types import (
     SelfCheckCatalogItem,
     SelfCheckRunDetail,
-    SelfCheckRunResult,
     SelfCheckRunsResponse,
 )
-from ..utils.sse import sse_response
 
 router = APIRouter(prefix="/self-check", tags=["self-check"])
 
@@ -31,30 +29,18 @@ async def list_self_check_catalog(
     return get_self_check_service().get_catalog()
 
 
-@router.post("/run", response_model=SelfCheckRunResult)
+@router.post("/run", response_model=TaskAccepted, status_code=202)
 async def run_manual_self_check(
     user: UserPublic = Depends(get_current_user),
-) -> SelfCheckRunResult:
-    return await get_self_check_service().run_self_check(trigger=MANUAL_TRIGGER, requested_by_user_id=user.id)
+) -> TaskAccepted:
+    return await submit_self_check(user.id)
 
 
-@router.post("/run/stream", response_class=StreamingResponse)
-async def stream_manual_self_check(
-    user: UserPublic = Depends(get_current_user),
-) -> StreamingResponse:
-    return sse_response(
-        get_self_check_service().iter_self_check_events(
-            trigger=MANUAL_TRIGGER,
-            requested_by_user_id=user.id,
-        )
-    )
-
-
-@router.post("/checks/{check_id}/run", response_model=SelfCheckRunResult)
+@router.post("/checks/{check_id}/run", response_model=TaskAccepted, status_code=202)
 async def run_manual_self_check_item(
     check_id: str,
     user: UserPublic = Depends(get_current_user),
-) -> SelfCheckRunResult:
+) -> TaskAccepted:
     try:
         get_self_check_service().validate_check_id(check_id)
     except ValueError as exc:
@@ -62,12 +48,7 @@ async def run_manual_self_check_item(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    return await get_self_check_service().run_self_check(
-        trigger=MANUAL_TRIGGER,
-        requested_by_user_id=user.id,
-        check_ids=(check_id,),
-        scope="check",
-    )
+    return await submit_self_check(user.id, check_id)
 
 
 @router.get("/runs", response_model=SelfCheckRunsResponse)

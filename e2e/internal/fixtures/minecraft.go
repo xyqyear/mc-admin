@@ -71,7 +71,7 @@ func (f *Factory) server(ctx context.Context, env *environment.Environment) erro
 		ports := environment.Get[[]int](env, "ports")
 		server.GamePort, server.RCONPort = ports[0], ports[1]
 		server.Compose = Compose(env, server.ID, fmt.Sprint(server.GamePort), fmt.Sprint(server.RCONPort))
-		err := BackendOf(env).Admin.JSON(ctx, "POST", "/api/servers/"+server.ID, map[string]any{"yaml_content": server.Compose}, nil, 200)
+		err := BackendOf(env).Admin.RunTask(ctx, "POST", "/api/servers/"+server.ID, map[string]any{"yaml_content": server.Compose}, nil)
 		if err == nil {
 			break
 		}
@@ -92,7 +92,7 @@ func (f *Factory) server(ctx context.Context, env *environment.Environment) erro
 }
 
 func Operation(ctx context.Context, client *api.Client, id, action string) error {
-	return client.JSON(ctx, "POST", "/api/servers/"+id+"/operations", map[string]string{"action": action}, nil, 200)
+	return client.RunTask(ctx, "POST", "/api/servers/"+id+"/operations", map[string]string{"action": action}, nil)
 }
 
 func Status(ctx context.Context, client *api.Client, id, expected string) error {

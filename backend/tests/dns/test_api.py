@@ -35,103 +35,43 @@ def mock_admin_user():
 
 
 @pytest.mark.asyncio
-async def test_update_dns_endpoint_success(client, mock_admin_user):
-    """Test successful DNS update"""
+@pytest.mark.parametrize("initialized", [True, False])
+async def test_update_dns_endpoint_accepts_owned_task(mock_admin_user, initialized):
+    from app.background_tasks import get_task_manager
     from app.routers.dns import update_dns
-
     with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
+        patch_accessor("app.dns.tasks.get_dns_manager") as manager,
+        patch_accessor("app.routers.dns.get_config") as config,
     ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager
-        dns_manager_mock.is_initialized = True
-        dns_manager_mock.update = AsyncMock()
-
-        # Call the endpoint function directly, bypassing auth
-        result = await update_dns(mock_admin_user)
-
-        assert result.success is True
-        assert "successfully" in result.message
-        dns_manager_mock.update.assert_called_once()
+        config.dns.enabled = True
+        manager.is_initialized = initialized
+        manager.update = AsyncMock()
+        accepted = await update_dns(mock_admin_user)
+        future = get_task_manager().get_future(accepted.task_id)
+        assert future is not None
+        result = await future
+        assert result.success and result.data and result.data["success"]
+        manager.update.assert_awaited_once()
+        manager.initialize.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_update_dns_endpoint_not_initialized(client, mock_admin_user):
-    """Test DNS update when manager is not initialized"""
+async def test_update_dns_failure_is_reported_by_task(mock_admin_user):
+    from app.background_tasks import get_task_manager
     from app.routers.dns import update_dns
-
     with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
+        patch_accessor("app.dns.tasks.get_dns_manager") as manager,
+        patch_accessor("app.routers.dns.get_config") as config,
     ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager - not initialized
-        dns_manager_mock.is_initialized = False
-        dns_manager_mock.initialize = AsyncMock()
-        dns_manager_mock.update = AsyncMock()
-
-        result = await update_dns(mock_admin_user)
-
-        assert result.success is True
-
-        dns_manager_mock.initialize.assert_not_called()
-        dns_manager_mock.update.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_update_dns_endpoint_initialization_fails(client, mock_admin_user):
-    """Initialization failures from the manager propagate through the route."""
-
-    from app.routers.dns import update_dns
-
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager - initialization fails
-        dns_manager_mock.is_initialized = False
-        dns_manager_mock.update = AsyncMock(side_effect=RuntimeError("Init failed"))
-
-        with pytest.raises(RuntimeError, match="Init failed"):
-            await update_dns(mock_admin_user)
-        dns_manager_mock.update.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_update_dns_endpoint_update_fails(client, mock_admin_user):
-    """Test DNS update when update operation fails - raises Exception"""
-    from app.routers.dns import update_dns
-
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager - update fails
-        dns_manager_mock.is_initialized = True
-        dns_manager_mock.update = AsyncMock(side_effect=Exception("Update failed"))
-
-        # Update failure is not wrapped in HTTPException, so original exception is raised
-        with pytest.raises(Exception, match="Update failed"):
-            await update_dns(mock_admin_user)
+        config.dns.enabled = True
+        manager.update = AsyncMock(side_effect=RuntimeError("secret-provider-error"))
+        accepted = await update_dns(mock_admin_user)
+        future = get_task_manager().get_future(accepted.task_id)
+        assert future is not None
+        result = await future
+        assert not result.success and result.error
+        assert "secret-provider-error" not in result.error
+        manager.update.assert_awaited_once()
 
 
 @pytest.mark.asyncio

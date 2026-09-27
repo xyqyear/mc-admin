@@ -3,7 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 
+from app.background_tasks import get_task_manager
 from app.db.metadata import Base
 from app.minecraft import MCServerStatus
 from app.routers.servers import operations
@@ -99,19 +101,21 @@ async def test_server_cannot_start_during_world_maintenance(
     async with lock.acquire("one", holder):
         status = await operations.server_maintenance("one", Mock())
         assert status["active"]
-        with pytest.raises(operations.HTTPException) as error:
+        with pytest.raises(HTTPException) as error:
             await operations.server_operation(
                 "one",
                 operations.ServerOperation(action=action),
-                AsyncMock(),
                 Mock(id=1),
             )
         assert error.value.status_code == 423
     assert not (await operations.server_maintenance("one", Mock()))["active"]
     getattr(manager.get_instance("one"), action).assert_not_awaited()
-    await operations.server_operation(
-        "one", operations.ServerOperation(action=action), AsyncMock(), Mock(id=1)
+    accepted = await operations.server_operation(
+        "one", operations.ServerOperation(action=action), Mock(id=1)
     )
+    future = get_task_manager().get_future(accepted.task_id)
+    assert future is not None
+    assert (await future).success
     getattr(manager.get_instance("one"), action).assert_awaited_once()
 
 

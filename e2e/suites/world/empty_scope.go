@@ -20,7 +20,7 @@ func emptyScopeRollback(ctx context.Context, t *engine.Scope) error {
 	}
 	selected := fixtureRegion + "/r.0.0.mca"
 	neighbor := fixtureRegion + "/r.1.0.mca"
-	if err = s.client.JSON(ctx, "DELETE", s.base+"/files?path="+url.QueryEscape("/"+selected), nil, nil, 200); err != nil {
+	if err = s.client.RunTask(ctx, "DELETE", s.base+"/files?path="+url.QueryEscape("/"+selected), nil, nil); err != nil {
 		return err
 	}
 	var backup struct {

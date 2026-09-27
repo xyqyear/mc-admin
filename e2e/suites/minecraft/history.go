@@ -65,7 +65,7 @@ func (h *lifecycleHistory) run(ctx context.Context, action string) error {
 		if operation.ID == "" || operation.State != "succeeded" || operation.Phase != expectedPhase || operation.Ended == nil || operation.Ended.Before(operation.Created) || !operation.WritersStopped || operation.RecoveryReason != nil {
 			return fmt.Errorf("manual %s lost its confirmed successful history: %+v", action, operation)
 		}
-		if operation.ActorID == nil || *operation.ActorID != h.actorID || operation.Origin != "request" || operation.LegacyID != nil || operation.RunningIntent == nil || *operation.RunningIntent != wantRunning {
+		if operation.ActorID == nil || *operation.ActorID != h.actorID || operation.Origin != "task" || operation.LegacyID == nil || *operation.LegacyID != operation.ID || operation.RunningIntent == nil || *operation.RunningIntent != wantRunning {
 			return fmt.Errorf("manual %s lost its caller or running intent: %+v", action, operation)
 		}
 		if len(operation.Resources) != 1 || operation.Resources[0].Kind != "server" || operation.Resources[0].ServerID != h.serverID || operation.Resources[0].Generation <= 0 {

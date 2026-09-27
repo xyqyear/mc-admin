@@ -32,13 +32,15 @@ class ServerCommands:
         actor_id: int | None = None,
         only_if_running: bool = False,
         expected_generation: int | None = None,
+        reference: ServerRef | None = None,
     ) -> ServerCommandResult:
         settings = get_settings()
         if only_if_running and action != "restart":
             raise ValueError("仅定时重启支持跳过已停止服务器")
         try:
-            async with get_async_session() as session:
-                reference = await resolve_server_ref(session, server_id, servers_root=settings.server_path)
+            if reference is None:
+                async with get_async_session() as session:
+                    reference = await resolve_server_ref(session, server_id, servers_root=settings.server_path)
         except HTTPException as exc:
             if only_if_running and expected_generation is not None and exc.status_code in (404, 409):
                 return ServerCommandResult(True, "计划绑定的服务器实例已停用，跳过同名新实例的重启")
@@ -49,7 +51,7 @@ class ServerCommands:
             await self._run(reference, action, actor_id)
             return ServerCommandResult()
 
-        holder = LockHolder(ServerOperationKind.START, datetime.now(UTC), actor_id, "定时重启服务器" if only_if_running else "启动服务器")
+        holder = LockHolder(ServerOperationKind.START, datetime.now(UTC), actor_id, "定时重启服务器" if only_if_running else "重启服务器" if action == "restart" else "启动服务器")
         async with get_server_operation_lock().try_acquire(server_id, holder) as acquired:
             if not acquired:
                 if only_if_running:

@@ -1,3 +1,5 @@
+from tests.support.tasks import task_result
+
 """Integration tests for template configuration endpoints."""
 import json
 import tempfile
@@ -102,16 +104,15 @@ def test_client(temp_server_path, test_db):
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
+            patch_runtime_resource("session_factory", test_db),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
             patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
             patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+            TestClient(api_app, raise_server_exceptions=False) as client,
         ):
-            client = TestClient(
-                api_app, raise_server_exceptions=False
-            )
             yield client
 
     api_app.dependency_overrides.pop(get_db, None)
@@ -142,7 +143,7 @@ def create_template(client) -> int:
 
 def create_template_server(client, template_id: int, server_id: str):
     """Helper to create a server using template."""
-    return client.post(
+    response = client.post(
         f"/api/servers/{server_id}",
         json={
             "template_id": template_id,
@@ -155,6 +156,9 @@ def create_template_server(client, template_id: int, server_id: str):
         },
         headers=auth_headers(),
     )
+
+    task_result(client, response)
+    return response
 
 
 class TestGetTemplateConfig:
@@ -178,12 +182,13 @@ class TestGetTemplateConfig:
     def test_get_config_non_template_server(self, test_client):
         """Test getting config fails for non-template server."""
         # Create traditional server
-        test_client.post(
+        accepted = test_client.post(
             "/api/servers/traditional-server",
             json={"yaml_content": get_traditional_yaml("traditional-server")},
             headers=auth_headers(),
         )
 
+        task_result(test_client, accepted)
         response = test_client.get(
             "/api/servers/traditional-server/template-config", headers=auth_headers()
         )
@@ -208,12 +213,13 @@ class TestTemplateConfigPreview:
 
     def test_preview_non_template(self, test_client):
         """Test preview returns is_template_based=False for traditional server."""
-        test_client.post(
+        accepted = test_client.post(
             "/api/servers/trad-preview",
             json={"yaml_content": get_traditional_yaml("trad-preview", 25567, 25577)},
             headers=auth_headers(),
         )
 
+        task_result(test_client, accepted)
         response = test_client.get(
             "/api/servers/trad-preview/template-config/preview",
             headers=auth_headers(),
@@ -225,7 +231,7 @@ class TestTemplateConfigPreview:
     def test_render_preview_uses_server_snapshot(self, test_client, delete_source):
         template_id = create_template(test_client)
         server_id = "snapshot-preview"
-        assert create_template_server(test_client, template_id, server_id).status_code == 200
+        assert create_template_server(test_client, template_id, server_id).status_code == 202
         source_path = f"/api/templates/{template_id}"
         if delete_source:
             assert test_client.delete(source_path, headers=auth_headers()).status_code == 204

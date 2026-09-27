@@ -73,7 +73,7 @@ func content(ctx context.Context, t *engine.Scope) error {
 		if string(response.Body) != "Minecraft 冒烟测试\n" {
 			return fmt.Errorf("download content mismatch")
 		}
-		if err = client.JSON(ctx, "DELETE", base+"?path=/renamed.txt", nil, nil, 200); err != nil {
+		if err = client.RunTask(ctx, "DELETE", base+"?path=/renamed.txt", nil, nil); err != nil {
 			return err
 		}
 		return client.JSON(ctx, "GET", base+"/content?path=/renamed.txt", nil, nil, 404)

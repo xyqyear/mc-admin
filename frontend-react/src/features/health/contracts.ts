@@ -13,13 +13,6 @@ export type SelfCheckRunStatus = 'success' | 'warning' | 'critical'
 
 export type SelfCheckRunScope = 'full' | 'check'
 
-export type SelfCheckRunEventType =
-  | 'started'
-  | 'check_started'
-  | 'check_finished'
-  | 'completed'
-  | 'error'
-
 export interface SelfCheckFinding {
   check_id: string
   category: string
@@ -101,18 +94,4 @@ export interface SelfCheckStatusResponse extends SelfCheckRunsResponse {
   catalog: SelfCheckCatalogItem[]
   current_state?: SelfCheckCurrentState | null
   retention_runs_keep_days: number
-}
-
-export interface SelfCheckRunEvent {
-  type: SelfCheckRunEventType
-  run_id: string
-  trigger: string
-  scope: SelfCheckRunScope
-  check_id?: string | null
-  total_checks?: number | null
-  started_at?: string | null
-  finished_at?: string | null
-  findings?: SelfCheckFinding[] | null
-  result?: SelfCheckRunResult | null
-  message?: string | null
 }

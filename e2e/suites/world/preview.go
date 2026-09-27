@@ -33,7 +33,7 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", s.base+"/map/initialize", nil, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", s.base+"/map/initialize", nil); err != nil {
 		return err
 	}
 	selection := map[string]any{"type": "regions", "region_dir_relpath": "world/region", "regions": [][2]int64{{rx, rz}}}

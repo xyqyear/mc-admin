@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -9,7 +9,11 @@ import {
 } from '@/shared/ui/dialog'
 import { Progress } from '@/shared/ui/progress'
 import type { InitEvent } from '@/features/world/map/contracts'
-import { readEventStream } from '@/shared/http/eventStream'
+import { useQueryClient } from '@tanstack/react-query'
+import { worldApi } from '@/features/world/api'
+import { taskApi } from '@/features/tasks/api'
+import type { TaskAccepted } from '@/features/tasks/contracts'
+import { waitForTaskResult } from '@/features/tasks/commands'
 
 interface MapInitDialogProps {
   open: boolean
@@ -40,6 +44,9 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   onClose,
   onComplete,
 }) => {
+  const queryClient = useQueryClient()
+  const request = useRef<{ key: string; accepted: Promise<TaskAccepted> } | null>(null)
+  const [isActive, setIsActive] = useState(true)
   const [client, setClient] = useState<StageState>(initialStage)
   const [palette, setPalette] = useState<StageState>(initialStage)
   const [errored, setErrored] = useState<string | null>(null)
@@ -63,48 +70,41 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open) { request.current = null; return }
     setClient(initialStage)
     setPalette(initialStage)
     setErrored(null)
-
+    setIsActive(true)
     const ctrl = new AbortController()
-    let completed = false
-
-    void readEventStream<InitEvent>({
-      url: `/servers/${serverId}/map/initialize${force ? '?force=true' : ''}`,
-      method: 'POST',
-      signal: ctrl.signal,
-      onEvent: (event) => {
-        applyEvent(event)
-        if (event.stage === 'complete') {
-          completed = true
-        }
-        if (event.phase === 'error') {
-          setErrored(event.message ?? '未知错误')
-          ctrl.abort()
-        }
-      },
-      onClose: () => {
-        if (!completed) {
-          setErrored((previous) => previous ?? '连接中断，请重试地图初始化')
-          return
-        }
-        toast.success('地图初始化完成')
-        onComplete()
-      },
-      onError: (message) => {
-        setErrored(message)
-      },
-    })
-
-    return () => {
-      ctrl.abort()
+    const key = `${serverId}:${force}`
+    if (request.current?.key !== key) {
+      request.current = {
+        key,
+        accepted: taskApi.getActiveTasks().then(tasks => {
+          const active = tasks.find(task => task.taskType === 'map_initialize' && task.serverId === serverId)
+          return active ? { task_id: active.taskId } : worldApi.initializeMap(serverId, force)
+        }),
+      }
     }
+    void request.current.accepted.then(accepted => waitForTaskResult(queryClient, accepted, {
+      signal: ctrl.signal,
+      onProgress: task => {
+        const result = task.result as { stages?: Record<string, InitEvent> } | undefined
+        Object.values(result?.stages ?? {}).forEach(applyEvent)
+      },
+    })).then(() => {
+      if (ctrl.signal.aborted) return
+      setIsActive(false)
+      toast.success('地图初始化完成')
+      onComplete()
+    }).catch((error: Error) => {
+      if (ctrl.signal.aborted) return
+      setIsActive(false)
+      setErrored(error.message)
+    })
+    return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, serverId, force])
-
-  const isActive = !errored && (!client.done || !palette.done)
+  }, [open, serverId, force, queryClient])
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>

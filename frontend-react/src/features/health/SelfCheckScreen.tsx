@@ -33,8 +33,10 @@ import {
   useSelfCheckStatus,
 } from '@/features/health/queries'
 import { useSelfCheckMutations } from '@/features/health/commands'
-import { useEventStream } from '@/shared/hooks/useEventStream'
-import type { SelfCheckCatalogItem, SelfCheckCurrentState, SelfCheckFinding, SelfCheckStatusResponse, SelfCheckRunDetail, SelfCheckRunEvent, SelfCheckRunResult, SelfCheckRunStatus, SelfCheckRunSummaryRecord, SelfCheckSeverity, SelfCheckSummary } from '@/features/health/contracts';
+import { selfCheckApi } from '@/features/health/api'
+import { waitForTaskResult } from '@/features/tasks/commands'
+import { useTaskQueries } from '@/features/tasks/queries'
+import type { SelfCheckCatalogItem, SelfCheckCurrentState, SelfCheckFinding, SelfCheckStatusResponse, SelfCheckRunDetail, SelfCheckRunResult, SelfCheckRunStatus, SelfCheckRunSummaryRecord, SelfCheckSeverity, SelfCheckSummary } from '@/features/health/contracts';
 import { queryKeys } from '@/shared/http/api'
 import { formatDateTime } from '@/shared/utils/formatUtils'
 import { cn } from '@/shared/lib/utils'
@@ -497,10 +499,13 @@ const SelfCheck: React.FC = () => {
   const statusQuery = useSelfCheckStatus()
   const { useRunSelfCheckItem } = useSelfCheckMutations()
   const runItemMutation = useRunSelfCheckItem()
-  const [streaming, setStreaming] = useState(false)
-  const [streamFindings, setStreamFindings] = useState<DisplayFinding[] | null>(null)
-  const [streamResult, setStreamResult] = useState<SelfCheckRunResult | null>(null)
-  const [streamStartedAt, setStreamStartedAt] = useState<string | null>(null)
+  const { useActiveTasks } = useTaskQueries()
+  const activeTasks = useActiveTasks()
+  const [taskId, setTaskId] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const [taskFindings, setTaskFindings] = useState<DisplayFinding[] | null>(null)
+  const [taskResult, setTaskResult] = useState<SelfCheckRunResult | null>(null)
+  const [taskStartedAt, setTaskStartedAt] = useState<string | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [rerunningCheckId, setRerunningCheckId] = useState<string | null>(null)
 
@@ -508,7 +513,7 @@ const SelfCheck: React.FC = () => {
 
   const currentState = statusQuery.data?.current_state ?? null
   const displayRun: SelfCheckRunResult | SelfCheckRunDetail | SelfCheckCurrentState | null =
-    streamResult ?? selectedRunQuery.data ?? currentState
+    taskResult ?? selectedRunQuery.data ?? currentState
   const catalog = statusQuery.data?.catalog ?? emptyCatalog
   const checkLabelById = useMemo(
     () => new Map(catalog.map((item) => [item.check_id, item.title])),
@@ -516,13 +521,13 @@ const SelfCheck: React.FC = () => {
   )
 
   const displayFindings = useMemo<DisplayFinding[]>(() => {
-    if (streamFindings) return sortFindings(streamFindings)
+    if (taskFindings) return sortFindings(taskFindings)
     return sortFindings(displayRun?.findings ?? [])
-  }, [displayRun?.findings, streamFindings])
+  }, [displayRun?.findings, taskFindings])
 
   const displaySummary = useMemo(
-    () => streamFindings ? summarizeFindings(streamFindings.filter((finding) => !finding.running)) : displayRun?.summary ?? emptySummary,
-    [displayRun?.summary, streamFindings]
+    () => taskFindings ? summarizeFindings(taskFindings.filter((finding) => !finding.running)) : displayRun?.summary ?? emptySummary,
+    [displayRun?.summary, taskFindings]
   )
 
   const historyRuns = statusQuery.data?.runs ?? []
@@ -530,103 +535,81 @@ const SelfCheck: React.FC = () => {
   const selectedIsHistory = selectedRunId !== null
 
   useEffect(() => {
-    if (streaming) return
-    if (!streamResult) return
-    setStreamFindings(null)
-  }, [streamResult, streaming])
+    if (running) return
+    if (!taskResult) return
+    setTaskFindings(null)
+  }, [taskResult, running])
 
-  useEventStream<SelfCheckRunEvent>({
-    enabled: streaming,
-    url: '/self-check/run/stream',
-    method: 'POST',
-    onEvent: (event) => {
-      if (event.type === 'started') {
-        setSelectedRunId(null)
-        setStreamResult(null)
-        setStreamStartedAt(event.started_at ?? null)
-        setStreamFindings([])
-        return
-      }
+  useEffect(() => {
+    if (taskId) return
+    const active = activeTasks.data?.find(task => task.taskType === 'self_check')
+    if (active) { setTaskId(active.taskId); setRunning(true) }
+  }, [activeTasks.data, taskId])
 
-      if (event.type === 'check_started' && event.check_id) {
-        const item = catalog.find((catalogItem) => catalogItem.check_id === event.check_id)
-        const runningFinding: DisplayFinding = {
-          check_id: event.check_id,
-          category: item?.category ?? 'self_check',
-          severity: 'info',
-          status: 'info',
-          title: item?.title ?? '自检项',
-          message: '检测中',
-          evidence: {},
-          remediation: [],
-          created_at: new Date().toISOString(),
-          running: true,
+  useEffect(() => {
+    if (!taskId) return
+    const controller = new AbortController()
+    void waitForTaskResult<SelfCheckRunResult>(queryClient, { task_id: taskId }, {
+      signal: controller.signal,
+      onProgress: task => {
+        const result = task.result as {
+          findings?: SelfCheckFinding[]; check_id?: string; started_at?: string; checking?: boolean
+        } | undefined
+        if (!result) return
+        const findings: DisplayFinding[] = [...(result.findings ?? [])]
+        if (result.checking && result.check_id) {
+          const item = catalog.find(item => item.check_id === result.check_id)
+          findings.push({ check_id: result.check_id, category: item?.category ?? 'self_check',
+            severity: 'info', status: 'info', title: item?.title ?? '自检项', message: '检测中',
+            evidence: {}, remediation: [], created_at: new Date().toISOString(), running: true })
         }
-        setStreamFindings((current) => {
-          const next = (current ?? []).filter((finding) => finding.check_id !== event.check_id || !finding.running)
-          return [...next, runningFinding]
-        })
-        return
-      }
+        setTaskFindings(findings)
+        setTaskStartedAt(result.started_at ?? null)
+      },
+    }).then(result => {
+      if (controller.signal.aborted) return
+      setTaskResult(result)
+      setTaskFindings(result.findings)
+      setRunning(false)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
+      if (result.status === 'success') toast.success('自检完成，未发现问题')
+      else toast.warning('自检完成，发现需要处理的项目')
+    }).catch((error: Error) => {
+      if (controller.signal.aborted) return
+      setRunning(false)
+      toast.error(`自检失败: ${error.message}`)
+    })
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, queryClient])
 
-      if (event.type === 'check_finished' && event.check_id) {
-        const findings = event.findings ?? []
-        setStreamFindings((current) => {
-          const next = (current ?? []).filter((finding) => finding.check_id !== event.check_id)
-          return [...next, ...findings]
-        })
-        return
-      }
-
-      if (event.type === 'error') {
-        if (event.findings?.length) {
-          setStreamFindings((current) => [...(current ?? []), ...(event.findings ?? [])])
-        }
-        toast.error(event.message ?? '自检失败')
-        return
-      }
-
-      if (event.type === 'completed' && event.result) {
-        setStreamResult(event.result)
-        setStreamFindings(event.result.findings)
-        setStreaming(false)
-        void queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
-        if (event.result.status === 'success') {
-          toast.success('自检完成，未发现问题')
-        } else {
-          toast.warning('自检完成，发现需要处理的项目')
-        }
-      }
-    },
-    onError: (message) => {
-      setStreaming(false)
-      toast.error(`自检失败: ${message}`)
-    },
-    onClose: () => {
-      setStreaming(false)
-    },
-  })
-
-  const handleRun = () => {
+  const handleRun = async () => {
     setSelectedRunId(null)
-    setStreamResult(null)
-    setStreamFindings(null)
-    setStreaming(true)
+    setTaskResult(null)
+    setTaskFindings([])
+    setRunning(true)
+    try {
+      const accepted = await selfCheckApi.runSelfCheck()
+      setTaskId(accepted.task_id)
+    } catch (error) {
+      setRunning(false)
+      toast.error(`自检提交失败: ${(error as Error).message}`)
+    }
   }
 
   const handleShowCurrentState = () => {
     setSelectedRunId(null)
-    setStreamResult(null)
-    setStreamFindings(null)
-    setStreaming(false)
+    setTaskResult(null)
+    setTaskFindings(null)
+    setRunning(false)
   }
 
   const handleRerunItem = async (finding: SelfCheckFinding) => {
     setRerunningCheckId(finding.check_id)
     try {
       const result = await runItemMutation.mutateAsync(finding.check_id)
-      setStreamResult(null)
-      setStreamFindings(null)
+      setTaskResult(null)
+      setTaskFindings(null)
       setSelectedRunId(null)
       queryClient.setQueryData<SelfCheckStatusResponse>(
         queryKeys.selfCheck.status(),
@@ -639,7 +622,7 @@ const SelfCheck: React.FC = () => {
 
   const sourceLabel = selectedIsHistory
     ? '历史自检结果'
-    : streaming
+    : running
       ? '实时自检结果'
       : '当前自检状态'
 
@@ -650,8 +633,8 @@ const SelfCheck: React.FC = () => {
         icon={<ShieldCheck />}
         actions={
           <div className="ml-auto flex items-center gap-2">
-            <Button onClick={handleRun} disabled={streaming}>
-              {streaming ? (
+            <Button onClick={handleRun} disabled={running}>
+              {running ? (
                 <Spinner data-icon="inline-start" />
               ) : (
                 <Play data-icon="inline-start" />
@@ -678,7 +661,7 @@ const SelfCheck: React.FC = () => {
           {sourceLabel}
           {displayRun && 'updated_at' in displayRun && ` · ${formatDateTime(displayRun.updated_at)}`}
           {displayRun && 'finished_at' in displayRun && ` · ${formatDateTime(displayRun.finished_at)}`}
-          {streaming && streamStartedAt && ` · 开始于 ${formatDateTime(streamStartedAt)}`}
+          {running && taskStartedAt && ` · 开始于 ${formatDateTime(taskStartedAt)}`}
           {displayRun && 'duration_ms' in displayRun && ` · ${displayRun.duration_ms}ms`}
         </div>
         {selectedIsHistory && (
@@ -693,7 +676,7 @@ const SelfCheck: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-3">
-          {statusQuery.isLoading && !displayRun && !streaming ? (
+          {statusQuery.isLoading && !displayRun && !running ? (
             <div className="flex items-center justify-center py-16">
               <Spinner />
             </div>
@@ -702,7 +685,7 @@ const SelfCheck: React.FC = () => {
               <FindingCard
                 key={`${finding.check_id}-${finding.server_id ?? 'global'}-${index}-${finding.running ? 'running' : 'done'}`}
                 finding={finding}
-                canRerun={!streaming && !finding.running}
+                canRerun={!running && !finding.running}
                 rerunning={rerunningCheckId === finding.check_id}
                 onRerun={() => void handleRerunItem(finding)}
               />
@@ -734,9 +717,9 @@ const SelfCheck: React.FC = () => {
                   selected={selectedRunId === run.id}
                   checkLabel={run.check_id ? checkLabelById.get(run.check_id) ?? '未知自检项' : undefined}
                   onSelect={() => {
-                    setStreaming(false)
-                    setStreamResult(null)
-                    setStreamFindings(null)
+                    if (running) return
+                    setTaskResult(null)
+                    setTaskFindings(null)
                     setSelectedRunId(run.id)
                   }}
                 />

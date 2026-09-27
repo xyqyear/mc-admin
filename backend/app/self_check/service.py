@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 
@@ -86,7 +86,7 @@ class SelfCheckService:
         requested_by_user_id: int | None = None,
         check_ids: tuple[str, ...] | None = None,
         scope: SelfCheckRunScope = "full",
-    ) -> AsyncIterator[SelfCheckRunEvent]:
+    ) -> AsyncGenerator[SelfCheckRunEvent]:
         if check_ids is not None:
             for check_id in check_ids:
                 self.validate_check_id(check_id)

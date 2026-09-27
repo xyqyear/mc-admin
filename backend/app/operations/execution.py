@@ -181,7 +181,7 @@ async def operation_scope(
         origin=origin, legacy_id=legacy_id, name=name or kind,
         configuration_version=configuration_version,
     ))
-    execution = OperationExecution(journal, record.operation_id, servers)
+    execution = OperationExecution(journal, record.operation_id, servers, require_existing_targets=require_exists)
     with bind_execution(execution):
         state = OperationState.FAILED
         try:

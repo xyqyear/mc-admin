@@ -16,13 +16,13 @@ GET /world-restore/layout
 GET /world-restore/dimension-labels
                          →   useWorldLayout / useWorldDimensionLabels
 GET /map/regions        →   useMapRegions          ┐
-POST /map/initialize    →   (SSE via useEventStream)
+POST /map/initialize    →   202 task acceptance + task status polling
 GET /map/tiles/X/Z.png  →                          │
                                                     └──→  ServerMap
                                                           ServerMapTileLayer
 ```
 
-`useMapStatus.client_jar_present && palette_present && palette_current` gates tile rendering. When false, the page shows the init prompt (`MapInitDialog`) instead of the map; the dialog drives the two-stage initialize SSE and re-fetches `useMapStatus` on completion.
+`useMapStatus.client_jar_present && palette_present && palette_current` gates tile rendering. When false, the page shows the init prompt (`MapInitDialog`) instead of the map; the dialog observes the two-stage initialization task and re-fetches `useMapStatus` on completion.
 
 ## Coordinate model
 
@@ -63,7 +63,7 @@ Leaflet creates normal `<img>` elements. When panning or zooming removes a tile,
 
 ## Init dialog
 
-`features/world/map/MapInitDialog.tsx` is the entry-point UI for the two-stage `POST /map/initialize` SSE. It uses the shared `readEventStream` helper so abort, parsing, cookie auth, and CSRF handling match the rest of the app. Stages are `client` (download client jar) and `palette` (build block-color palette); both stream progress events. The dialog accepts `force=true` for the destructive toolbar action, which calls `POST /map/initialize?force=true` so the backend deletes `client.jar`, `palette.json`, and `palette.hash` before redownloading/regenerating prerequisites.
+`features/world/map/MapInitDialog.tsx` 接收任务 ID，并从 `result.stages` 更新 client 和 palette 进度。重新进入可接上同服务器的活跃初始化任务。组件卸载只中止观察；显式任务取消由后台等待子进程和缓存清理。即使两个阶段均为 100%，弹窗也等待任务终态才允许关闭。读取失败保持阻塞并提示重连；成功后执行原有 onComplete。force=true 的缓存重建语义保持一致。
 
 ## Shared feature controller
 

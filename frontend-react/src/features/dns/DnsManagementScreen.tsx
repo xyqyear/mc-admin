@@ -33,6 +33,8 @@ import { RefreshButton } from '@/shared/components/RefreshButton'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/features/dns/queries'
 import { useUpdateDNS, useRefreshDNSData } from '@/features/dns/commands'
 import type { DNSRecord, DNSStatusResponse } from '@/features/dns/contracts'
+import { useTaskQueries } from '@/features/tasks/queries'
+import { openTaskCenter } from '@/features/tasks/commands'
 
 const dnsRecordsColumns: ColumnDef<DNSRecord, any>[] = [
   {
@@ -114,6 +116,9 @@ const DnsManagement: React.FC = () => {
   const { data: routerRoutes, isLoading: routesLoading, error: routesError } = useRouterRoutes(isDNSEnabled)
 
   const updateDNSMutation = useUpdateDNS()
+  const { data: activeTasks } = useTaskQueries().useActiveTasks()
+  const activeUpdate = activeTasks?.find(task => task.taskType === 'dns_update')
+  const isUpdating = updateDNSMutation.isPending || !!activeUpdate
   const refreshDataMutation = useRefreshDNSData()
 
   const handleRefresh = () => {
@@ -407,11 +412,11 @@ const DnsManagement: React.FC = () => {
             />
             <Button
               onClick={handleUpdate}
-              disabled={updateDNSMutation.isPending || !dnsEnabled?.enabled}
+              disabled={isUpdating || !dnsEnabled?.enabled}
               title="手动触发DNS和路由更新"
             >
-              {updateDNSMutation.isPending
-                ? <Spinner className="mr-2 size-4" />
+              {isUpdating
+                ? <Spinner aria-hidden="true" className="mr-2 size-4" />
                 : <RefreshCw className="mr-2 h-4 w-4" />
               }
               更新记录
@@ -428,6 +433,10 @@ const DnsManagement: React.FC = () => {
         }
       />
 
+      {isUpdating && <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span>{activeUpdate?.message || '正在同步 DNS 和路由'}</span>
+        <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>
+      </div>}
       {renderErrors()}
       {!!dnsStatus?.issues?.length && <Alert variant={dnsStatus.state === 'degraded' ? 'destructive' : 'default'}>
         <AlertTitle>DNS与路由同步提示</AlertTitle>

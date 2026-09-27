@@ -11,6 +11,47 @@ test.describe('owned administration journeys', () => {
   const journey = (name: string, run: (typeof journeys)[number]['run']) => { journeys.push({ name, run }) }
   test.beforeEach(async ({ page, owned }) => { await login(page, owned) })
 
+  journey('lifecycle acceptance stays blocked until task status confirms completion', async ({ page, api, owned }) => {
+    await api.stopped()
+    await api.operation('down')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let taskId = ''
+    let observed = false
+    await page.route('**/api/servers/*/operations', async route => {
+      const response = await route.fetch()
+      expect(response.status()).toBe(202)
+      taskId = (await response.json()).task_id
+      await route.fulfill({ response })
+    })
+    await page.route('**/api/tasks/*', async route => {
+      if (route.request().method() !== 'GET' || !taskId || !route.request().url().endsWith('/' + taskId)) return route.continue()
+      const response = await route.fetch()
+      observed = true
+      await gate
+      await route.fulfill({ response })
+    })
+    try {
+      await page.goto(`/server/${owned.server_id}/console`)
+      const start = page.getByRole('button', { name: '启动', exact: true })
+      await expect(start).toBeEnabled()
+      await start.click()
+      await expect.poll(() => observed).toBe(true)
+      await expect(page.getByRole('status').filter({ hasText: /正在/ }).first()).toBeVisible()
+      await expect(start).toBeDisabled()
+      await expect(page.getByRole('button', { name: '下线', exact: true })).toBeDisabled()
+      await page.getByRole('button', { name: '查看任务', exact: true }).click()
+      await expect(page.getByText('任务中心', { exact: true }).first()).toBeVisible()
+      release()
+      await api.task(taskId)
+      await expect(page.getByRole('button', { name: '下线', exact: true })).toBeEnabled()
+    } finally {
+      release()
+      await page.unrouteAll({ behavior: 'wait' })
+      await api.running()
+    }
+  })
+
   journey('file loading and save failures retain the draft, retry writes exact and deliberately empty bytes', async ({ page, api, owned }) => {
     const filename = 'browser-edit.txt'
     const original = 'loaded-from-real-file\n'
@@ -53,7 +94,7 @@ test.describe('owned administration journeys', () => {
       expect((await readFile(path.join(owned.server_path, 'data', filename))).length).toBe(0)
     } finally {
       await page.unrouteAll({ behavior: 'wait' })
-      await api.json(api.server(`/files?path=${filename}`), 'DELETE')
+      await api.deleteFile(filename)
     }
   })
 
@@ -228,7 +269,7 @@ test.describe('owned administration journeys', () => {
     },
     { label: 'map status route', run: async () => { releaseMapStatus(); await page.unrouteAll({ behavior: 'wait' }) } },
     { label: 'restore proxy', run: proxy.close },
-    { label: 'restore marker', run: () => api.json(api.server(`/files?path=${encodeURIComponent(marker)}`), 'DELETE') },
+    { label: 'restore marker', run: () => api.deleteFile(marker) },
     )
   })
 

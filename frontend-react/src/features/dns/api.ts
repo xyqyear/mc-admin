@@ -1,13 +1,13 @@
+import type { TaskAccepted } from '@/features/tasks/contracts'
 import api from '@/shared/http/api'
 import type {
   DNSRecord,
   DNSStatusResponse,
   DNSEnabledResponse,
-  DNSUpdateResponse,
   RouterRoutes
 } from '@/features/dns/contracts'
 
-export const updateDNS = async (): Promise<DNSUpdateResponse> => {
+export const updateDNS = async (): Promise<TaskAccepted> => {
   const response = await api.post('/dns/update')
   return response.data
 }

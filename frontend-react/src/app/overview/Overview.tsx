@@ -39,6 +39,7 @@ import { serverStatusUtils } from '@/features/servers/presentation'
 import SyncWithFilesystemDialog from '@/features/servers/ui/SyncWithFilesystemDialog'
 import { useServerOperationConfirm } from '@/features/servers/ui/ServerOperationConfirmDialog'
 import { useConfirm } from '@/shared/hooks/useConfirm'
+import { openTaskCenter } from '@/features/tasks/commands'
 
 const gradientIndicatorStyle = (percent: number): React.CSSProperties => {
   const clamped = Math.max(0, Math.min(100, percent))
@@ -109,8 +110,6 @@ const Overview: React.FC = () => {
         serverId,
         onConfirm: async (action, serverIdParam) => {
           try {
-            // Backend bundles remove + cron cancellation + DNS update
-            // into a single round-trip — no chained requests needed.
             await serverOperationMutation.mutateAsync({ action, serverId: serverIdParam })
           } catch (error: any) {
             console.error('服务器操作失败:', error)
@@ -131,6 +130,10 @@ const Overview: React.FC = () => {
     gamePort: server.gamePort,
     maxMemoryBytes: server.maxMemoryBytes,
     status: server.status,
+    maintenance: server.maintenance,
+    taskId: server.maintenance?.task_id ?? (serverOperationMutation.isPending && serverOperationMutation.variables?.serverId === server.id ? serverOperationMutation.taskId : null),
+    pending: serverOperationMutation.isPending || !!server.maintenance?.task_id,
+    reason: server.maintenance?.active ? server.maintenance.description : serverOperationMutation.isPending && serverOperationMutation.variables?.serverId === server.id ? '正在提交并等待操作完成' : null,
     onlinePlayers: server.onlinePlayers,
     maxPlayers: 20,
     cpuPercentage: server.cpuPercentage,
@@ -373,7 +376,7 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7"
                             title="启动服务器"
-                            disabled={serverOperationMutation.isPending || (!isOperationAvailable('start', record.status) && !isOperationAvailable('up', record.status))}
+                            disabled={record.pending || record.maintenance?.active || (!isOperationAvailable('start', record.status) && !isOperationAvailable('up', record.status))}
                             onClick={() => handleStartServer(record.id, record.status)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -383,7 +386,7 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             title="停止服务器"
-                            disabled={serverOperationMutation.isPending || !isOperationAvailable('stop', record.status)}
+                            disabled={record.pending || !isOperationAvailable('stop', record.status)}
                             onClick={() => handleServerOperation('stop', record.id)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <Square className="h-3.5 w-3.5" />}
@@ -393,7 +396,7 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             title="重启服务器"
-                            disabled={serverOperationMutation.isPending || !isOperationAvailable('restart', record.status)}
+                            disabled={record.pending || record.maintenance?.active || !isOperationAvailable('restart', record.status)}
                             onClick={() => handleServerOperation('restart', record.id)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <RotateCw className="h-3.5 w-3.5" />}
@@ -403,7 +406,7 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             title="下线服务器"
-                            disabled={serverOperationMutation.isPending || !isOperationAvailable('down', record.status)}
+                            disabled={record.pending || !isOperationAvailable('down', record.status)}
                             onClick={() => handleServerOperation('down', record.id)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -431,12 +434,16 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             title="删除服务器"
-                            disabled={serverOperationMutation.isPending || !isOperationAvailable('remove', record.status)}
+                            disabled={record.pending || record.maintenance?.active || !isOperationAvailable('remove', record.status)}
                             onClick={() => handleServerOperation('remove', record.id)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
+                        {record.reason && <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{record.reason}</span>
+                          {record.taskId && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
+                        </div>}
                       </TableCell>
                     </TableRow>
                   ))

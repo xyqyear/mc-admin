@@ -59,7 +59,7 @@ func deletionWaitsForWriter(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	if err = s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "down"}, nil, 200); err != nil {
+	if err = s.client.RunTask(ctx, "POST", s.base+"/operations", map[string]any{"action": "down"}, nil); err != nil {
 		return err
 	}
 	for index := range 256 {
@@ -92,7 +92,7 @@ func deletionWaitsForWriter(ctx context.Context, t *engine.Scope) error {
 		Cancelled []string `json:"cancelled_background_task_ids"`
 	}
 	go func() {
-		result <- s.client.JSON(deleteCtx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, &removed, 200)
+		result <- s.client.RunTask(deleteCtx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, &removed)
 	}()
 	if err = api.Wait(ctx, 50*time.Millisecond, "delete closes server write admission", func(ctx context.Context) (bool, error) {
 		var state struct {
@@ -101,7 +101,7 @@ func deletionWaitsForWriter(ctx context.Context, t *engine.Scope) error {
 		if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &state, 200); err != nil {
 			return false, api.Permanent(err)
 		}
-		return state.Kind == "remove", nil
+		return state.Kind == "server_remove", nil
 	}); err != nil {
 		return err
 	}

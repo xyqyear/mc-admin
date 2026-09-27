@@ -61,14 +61,19 @@ func mapRendering(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	for i, suffix := range []string{"", "", "?force=true"} {
+		var result struct {
+			Stages map[string]struct {
+				Cached bool `json:"cached"`
+			} `json:"stages"`
+		}
+		if err = s.client.RunTask(ctx, "POST", s.base+"/map/initialize"+suffix, nil, &result); err != nil {
+			return err
+		}
 		cached := 0
-		if _, err = s.client.SSEEvents(ctx, "POST", s.base+"/map/initialize"+suffix, nil, "complete", func(event map[string]any) error {
-			if event["cached"] == true {
+		for _, stage := range result.Stages {
+			if stage.Cached {
 				cached++
 			}
-			return nil
-		}); err != nil {
-			return err
 		}
 		if i == 1 && cached != 2 {
 			return fmt.Errorf("second initialization reused %d prerequisites, expected client and palette", cached)

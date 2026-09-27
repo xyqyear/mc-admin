@@ -1,5 +1,6 @@
 {
-  "source_commit": "9cf6f77b258a7ccf4507c51cb686a45f8f74d823",
-  "source": "Archived unmodified HEAD app; compared with working implementation",
-  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI and SSE/task payload schemas"
+  "base_commit": "b4a83a8ec0e057d9e2b4c93abbe05f7bb2a227e5",
+  "source": "Reviewed working tree for background-non-snapshot-operations",
+  "captured_on": "2026-09-27",
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance; public event and task payload schemas"
 }

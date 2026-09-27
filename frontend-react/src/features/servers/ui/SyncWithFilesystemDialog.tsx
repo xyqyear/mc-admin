@@ -55,7 +55,7 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
       setErrors(result.errors)
       setHasLoaded(true)
     } catch (e: any) {
-      if (e?.status === 409 && typeof e?.message === 'string' && e.message.includes('force=true')) {
+      if (e?.code === 'sync_empty_directory') {
         setNeedsForce(true)
         setPreview([])
         setErrors([])
@@ -90,7 +90,7 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
       )
       onClose()
     } catch (e: any) {
-      if (e?.status === 409 && typeof e?.message === 'string' && e.message.includes('force=true')) {
+      if (e?.code === 'sync_empty_directory') {
         setNeedsForce(true)
         return
       }

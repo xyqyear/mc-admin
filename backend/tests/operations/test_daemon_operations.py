@@ -28,7 +28,7 @@ from app.operations.journal_types import (
     ResourceReference,
 )
 from app.operations.recovery import RecoveryService
-from app.routers.servers import operations
+from app.servers.commands import ServerCommandResult, ServerCommands
 from app.servers.models import Server
 from app.world.locks import ServerOperationLock
 from app.world.models import RestorationType
@@ -69,8 +69,7 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
     user = UserPublic(id=17, username="operator", created_at=datetime.now(UTC))
 
     async def manual(action):
-        async with runtime.database.session_factory() as session:
-            return await operations.server_operation("first", operations.ServerOperation(action=action), session, user)
+        return await ServerCommands().execute("first", action, actor_id=user.id)
 
     context = SimpleNamespace(
         runtime=runtime, journal=journal, recovery=recovery, lock=lock,
@@ -88,7 +87,7 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
     ("restart", "server_restarted", True), ("stop", "server_stopped", False),
     ("down", "server_down", False),
 ])
-async def test_manual_lifecycle_preserves_response_and_durable_history(daemon_runtime, action, phase, intent):
+async def test_lifecycle_command_preserves_durable_history(daemon_runtime, action, phase, intent):
     env = daemon_runtime
 
     async def command():
@@ -100,7 +99,7 @@ async def test_manual_lifecycle_preserves_response_and_durable_history(daemon_ru
         assert pending.running_intent is intent
 
     getattr(env.instance, action).side_effect = command
-    assert await env.manual(action) == {"message": f"Server 'first' {action} operation completed"}
+    assert await env.manual(action) == ServerCommandResult()
     [record] = await env.journal.list()
     assert record.kind == f"server_{action}" and record.phase == phase
     assert record.origin == "request" and record.actor_id == 17 and record.legacy_id is None

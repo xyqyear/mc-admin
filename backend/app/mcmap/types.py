@@ -15,7 +15,7 @@ class MapStatus(BaseModel):
 
 
 class InitEvent(BaseModel):
-    """A single SSE event emitted by /initialize."""
+    """Progress for one stage of map initialization."""
 
     stage: Literal["client", "palette", "complete"]
     phase: Literal["starting", "downloading", "verifying", "pack_loaded", "resolving", "done", "error"] | None = None

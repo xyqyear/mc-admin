@@ -1,3 +1,5 @@
+import { waitForTaskResult } from '@/features/tasks/commands'
+import type { SelfCheckRunResult } from './contracts'
 import { getErrorMessage, type ApiError } from '@/shared/http/api'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,26 +10,9 @@ import { queryKeys } from '@/shared/http/api'
 export const useSelfCheckMutations = () => {
   const queryClient = useQueryClient()
 
-  const useRunSelfCheck = () => {
-    return useMutation({
-      mutationFn: selfCheckApi.runSelfCheck,
-      onSuccess: async (result) => {
-        if (result.status === 'success') {
-          toast.success('自检完成，未发现问题')
-        } else {
-          toast.warning('自检完成，发现需要处理的项目')
-        }
-        await queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
-      },
-      onError: (error: ApiError) => {
-        toast.error(`自检失败: ${getErrorMessage(error)}`)
-      },
-    })
-  }
-
   const useRunSelfCheckItem = () => {
     return useMutation({
-      mutationFn: selfCheckApi.runSelfCheckItem,
+      mutationFn: async (checkId: string) => waitForTaskResult<SelfCheckRunResult>(queryClient, await selfCheckApi.runSelfCheckItem(checkId)),
       onSuccess: async (result) => {
         if (result.status === 'success') {
           toast.success('自检项已通过')
@@ -43,7 +28,6 @@ export const useSelfCheckMutations = () => {
   }
 
   return {
-    useRunSelfCheck,
     useRunSelfCheckItem,
   }
 }

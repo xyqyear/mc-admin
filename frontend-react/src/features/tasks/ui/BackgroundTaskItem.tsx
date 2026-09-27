@@ -44,28 +44,35 @@ const getTaskTypeIcon = (taskType: BackgroundTaskType) => {
     case 'chunk_prune_apply':
       return <Eraser className="h-3.5 w-3.5" />
     default:
-      return <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      return <Wrench className="h-3.5 w-3.5" />
   }
 }
 
-const getTaskTypeName = (taskType: BackgroundTaskType): string => {
-  switch (taskType) {
-    case 'archive_create':
-      return '创建压缩包'
-    case 'archive_extract':
-      return '解压文件'
-    case 'file_ownership_repair':
-      return '修复文件所有权'
-    case 'server_rebuild':
-      return '重建服务器'
-    case 'chunk_prune_preview':
-      return '区块清理预览'
-    case 'chunk_prune_apply':
-      return '区块清理删除'
-    default:
-      return '未知任务'
-  }
+const taskTypeNames: Record<BackgroundTaskType, string> = {
+  server_start: '启动服务器',
+  server_up: '创建并启动容器',
+  server_restart: '重启服务器',
+  server_stop: '停止服务器',
+  server_down: '下线服务器',
+  server_remove: '删除服务器',
+  server_create: '创建服务器',
+  server_sync: '同步服务器',
+  file_delete: '删除文件',
+  archive_delete: '删除压缩包',
+  map_initialize: '初始化地图',
+  self_check: '系统自检',
+  dns_update: '更新连接信息',
+  archive_hash: '校验上传文件',
+  archive_publish: '发布上传文件',
+  archive_create: '创建压缩包',
+  archive_extract: '解压文件',
+  file_ownership_repair: '修复文件所有权',
+  server_rebuild: '重建服务器',
+  world_restore: '恢复世界',
+  chunk_prune_preview: '区块清理预览',
+  chunk_prune_apply: '区块清理删除',
 }
+const getTaskTypeName = (type: BackgroundTaskType) => taskTypeNames[type]
 
 const getStatusIcon = (status: BackgroundTask['status']) => {
   switch (status) {

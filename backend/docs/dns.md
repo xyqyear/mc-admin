@@ -51,3 +51,5 @@ Each constructed client is immediately registered for cleanup. Provider initiali
 - `types.py`, `utils.py` — record types, keys and DNS differences.
 
 Focused checks: `uv run pytest --no-cov -q tests/dns` and the owned external contract `uv run pytest --no-cov -q tests/dns/test_router_live.py --run-docker`.
+
+手动 `POST /api/dns/update` 返回 202 和任务 ID，由 `app.dns.tasks` 使用独立 DB 会话执行现有 reconciliation。权限及 DNS 禁用检查在接受前完成；执行失败进入任务错误，查询状态仍保留各提供方的部分成功和未知状态。自动更新不新增任务中心记录。

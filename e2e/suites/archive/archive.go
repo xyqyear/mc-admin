@@ -94,7 +94,7 @@ func roundtrip(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	if err = t.Step("streamed SHA256 matches local bytes and verification publishes the archive", func() error {
-		event, err := client.SSE(ctx, "GET", path+"/sha256/stream", nil, "complete")
+		event, err := client.RunTaskResult(ctx, "POST", path+"/sha256", nil)
 		if err != nil {
 			return err
 		}
@@ -102,7 +102,7 @@ func roundtrip(ctx context.Context, t *engine.Scope) error {
 		if event["sha256"] != digest {
 			return fmt.Errorf("server SHA256 does not match local archive")
 		}
-		if err = client.JSON(ctx, "POST", path+"/verify", map[string]string{"sha256": digest}, nil, 200); err != nil {
+		if err = client.RunTask(ctx, "POST", path+"/verify", map[string]string{"sha256": digest}, nil); err != nil {
 			return err
 		}
 		response, err := client.Do(ctx, "GET", "/api/archive/download?path=/smoke.zip", nil, nil)

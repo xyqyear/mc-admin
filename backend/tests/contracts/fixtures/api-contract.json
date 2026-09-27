@@ -123,12 +123,12 @@
       "path": "/api/archive/upload/{upload_id}"
     },
     {
-      "cookie_csrf": false,
+      "cookie_csrf": true,
       "declared_authorization": [
         "session_or_master"
       ],
-      "method": "GET",
-      "path": "/api/archive/upload/{upload_id}/sha256/stream"
+      "method": "POST",
+      "path": "/api/archive/upload/{upload_id}/sha256"
     },
     {
       "cookie_csrf": true,
@@ -345,6 +345,31 @@
         "session_or_master"
       ],
       "method": "GET",
+      "path": "/api/operations"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/operations/{operation_id}"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "roles:owner",
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/operations/{operation_id}/resolve"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
       "path": "/api/players/"
     },
     {
@@ -450,14 +475,6 @@
       ],
       "method": "POST",
       "path": "/api/self-check/run"
-    },
-    {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "POST",
-      "path": "/api/self-check/run/stream"
     },
     {
       "cookie_csrf": false,
@@ -1583,6 +1600,21 @@
       "cancelled"
     ],
     "task_type": [
+      "server_start",
+      "server_up",
+      "server_restart",
+      "server_stop",
+      "server_down",
+      "server_remove",
+      "server_create",
+      "server_sync",
+      "file_delete",
+      "archive_delete",
+      "map_initialize",
+      "self_check",
+      "dns_update",
+      "archive_hash",
+      "archive_publish",
       "archive_create",
       "archive_extract",
       "file_ownership_repair",
@@ -1716,34 +1748,6 @@
           "title": "ArchiveUploadVerifyRequest",
           "type": "object"
         },
-        "ArchiveUploadVerifyResponse": {
-          "properties": {
-            "filename": {
-              "title": "Filename",
-              "type": "string"
-            },
-            "path": {
-              "title": "Path",
-              "type": "string"
-            },
-            "sha256": {
-              "title": "Sha256",
-              "type": "string"
-            },
-            "upload_id": {
-              "title": "Upload Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "upload_id",
-            "path",
-            "filename",
-            "sha256"
-          ],
-          "title": "ArchiveUploadVerifyResponse",
-          "type": "object"
-        },
         "BackgroundTaskListResponse": {
           "description": "API response model for a list of background tasks.",
           "properties": {
@@ -1800,6 +1804,17 @@
                 }
               ],
               "title": "Error"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Code"
             },
             "message": {
               "title": "Message",
@@ -1918,6 +1933,17 @@
                 }
               ],
               "title": "Error"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Code"
             },
             "message": {
               "title": "Message",
@@ -2063,6 +2089,17 @@
         },
         "ComposeConfig": {
           "properties": {
+            "expected_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Version"
+            },
             "yaml_content": {
               "title": "Yaml Content",
               "type": "string"
@@ -2072,6 +2109,57 @@
             "yaml_content"
           ],
           "title": "ComposeConfig",
+          "type": "object"
+        },
+        "CreateServerRequest": {
+          "description": "Request model for server creation.\n\nSupports two modes:\n- Traditional mode: Provide yaml_content directly\n- Template mode: Provide template_id and variable_values\n\nOptionally bundles a restart schedule, eliminating the need for a\nfollow-up POST /restart-schedule round-trip.",
+          "properties": {
+            "restart_schedule": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RestartScheduleRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "template_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Template Id"
+            },
+            "variable_values": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variable Values"
+            },
+            "yaml_content": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Yaml Content"
+            }
+          },
+          "title": "CreateServerRequest",
           "type": "object"
         },
         "FileContent": {
@@ -2085,6 +2173,64 @@
             "content"
           ],
           "title": "FileContent",
+          "type": "object"
+        },
+        "FileItem": {
+          "properties": {
+            "modified_at": {
+              "title": "Modified At",
+              "type": "number"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "size": {
+              "title": "Size",
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "file",
+                "directory"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type",
+            "size",
+            "modified_at",
+            "path"
+          ],
+          "title": "FileItem",
+          "type": "object"
+        },
+        "FileListResponse": {
+          "properties": {
+            "current_path": {
+              "title": "Current Path",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/FileItem"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "items",
+            "current_path"
+          ],
+          "title": "FileListResponse",
           "type": "object"
         },
         "HTTPValidationError": {
@@ -2146,8 +2292,37 @@
           "title": "RebuildResponse",
           "type": "object"
         },
+        "RestartScheduleRequest": {
+          "description": "Request model for creating/updating restart schedule.",
+          "properties": {
+            "custom_cron": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Custom Cron"
+            }
+          },
+          "title": "RestartScheduleRequest",
+          "type": "object"
+        },
         "RestorationResponse": {
           "properties": {
+            "binding_issue": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Binding Issue"
+            },
             "error_message": {
               "anyOf": [
                 {
@@ -2207,6 +2382,17 @@
             },
             "selection": {
               "$ref": "#/components/schemas/RestorationSelection"
+            },
+            "server_generation": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Generation"
             },
             "server_id": {
               "title": "Server Id",
@@ -2343,6 +2529,35 @@
           "title": "ServerOperation",
           "type": "object"
         },
+        "SyncRequest": {
+          "properties": {
+            "dry_run": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            },
+            "force": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          },
+          "title": "SyncRequest",
+          "type": "object"
+        },
+        "TaskAccepted": {
+          "properties": {
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "TaskAccepted",
+          "type": "object"
+        },
         "TaskStatus": {
           "enum": [
             "pending",
@@ -2356,6 +2571,21 @@
         },
         "TaskType": {
           "enum": [
+            "server_start",
+            "server_up",
+            "server_restart",
+            "server_stop",
+            "server_down",
+            "server_remove",
+            "server_create",
+            "server_sync",
+            "file_delete",
+            "archive_delete",
+            "map_initialize",
+            "self_check",
+            "dns_update",
+            "archive_hash",
+            "archive_publish",
             "archive_create",
             "archive_extract",
             "file_ownership_repair",
@@ -2443,6 +2673,54 @@
           "title": "ValidationError",
           "type": "object"
         },
+        "app__routers__servers__misc__ServerInfo": {
+          "properties": {
+            "gamePort": {
+              "title": "Gameport",
+              "type": "integer"
+            },
+            "gameVersion": {
+              "title": "Gameversion",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "javaVersion": {
+              "title": "Javaversion",
+              "type": "integer"
+            },
+            "maxMemoryBytes": {
+              "title": "Maxmemorybytes",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rconPort": {
+              "title": "Rconport",
+              "type": "integer"
+            },
+            "serverType": {
+              "title": "Servertype",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "serverType",
+            "gameVersion",
+            "gamePort",
+            "maxMemoryBytes",
+            "rconPort",
+            "javaVersion"
+          ],
+          "title": "ServerInfo",
+          "type": "object"
+        },
         "app__routers__servers__world_restore__RestoreRequest": {
           "properties": {
             "selection": {
@@ -2463,6 +2741,143 @@
       }
     },
     "paths": {
+      "/archive": {
+        "delete": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "path",
+              "required": true,
+              "schema": {
+                "title": "Path",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "get": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "path",
+              "required": false,
+              "schema": {
+                "default": "/",
+                "title": "Path",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FileListResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/archive/upload/init": {
         "post": {
           "parameters": [
@@ -2736,6 +3151,75 @@
           }
         }
       },
+      "/archive/upload/{upload_id}/sha256": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "upload_id",
+              "required": true,
+              "schema": {
+                "title": "Upload Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/archive/upload/{upload_id}/verify": {
         "post": {
           "parameters": [
@@ -2792,11 +3276,11 @@
             "required": true
           },
           "responses": {
-            "200": {
+            "202": {
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/ArchiveUploadVerifyResponse"
+                    "$ref": "#/components/schemas/TaskAccepted"
                   }
                 }
               },
@@ -2869,6 +3353,410 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/LoginResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/dns/update": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/self-check/checks/{check_id}/run": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "check_id",
+              "required": true,
+              "schema": {
+                "title": "Check Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/self-check/run": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/sync": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__routers__servers__misc__ServerInfo"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateServerRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
                   }
                 }
               },
@@ -3013,6 +3901,161 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/RebuildResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}/files": {
+        "delete": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "path",
+              "required": true,
+              "schema": {
+                "title": "Path",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "path",
+              "required": false,
+              "schema": {
+                "default": "/",
+                "title": "Path",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FileListResponse"
                   }
                 }
               },
@@ -3258,6 +4301,87 @@
           }
         }
       },
+      "/servers/{server_id}/map/initialize": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "description": "Delete cached prerequisites first",
+              "in": "query",
+              "name": "force",
+              "required": false,
+              "schema": {
+                "default": false,
+                "description": "Delete cached prerequisites first",
+                "title": "Force",
+                "type": "boolean"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/servers/{server_id}/operations": {
         "post": {
           "parameters": [
@@ -3314,10 +4438,12 @@
             "required": true
           },
           "responses": {
-            "200": {
+            "202": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
                 }
               },
               "description": "Successful Response"
