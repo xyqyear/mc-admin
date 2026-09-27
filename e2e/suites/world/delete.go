@@ -95,6 +95,14 @@ func deletionWaitsForWriter(ctx context.Context, t *engine.Scope) error {
 		result <- s.client.RunTask(deleteCtx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, &removed)
 	}()
 	if err = api.Wait(ctx, 50*time.Millisecond, "delete closes server write admission", func(ctx context.Context) (bool, error) {
+		select {
+		case err := <-result:
+			if err != nil {
+				return false, api.Permanent(err)
+			}
+			return false, api.Permanent(fmt.Errorf("deletion completed before writer admission was observed"))
+		default:
+		}
 		var state struct {
 			Kind string `json:"kind"`
 		}

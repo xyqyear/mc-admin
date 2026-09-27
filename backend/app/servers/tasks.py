@@ -12,7 +12,7 @@ from ..operation_admission import get_server_write_admission
 from ..operations.journal_types import ResourceReference
 from ..self_check.constants import SERVER_CREATED_TRIGGER
 from ..self_check.events import schedule_self_check_event
-from ..world.locks import get_server_operation_lock
+from ..world.locks import ServerOperationKind, get_server_operation_lock
 from .commands import ServerAction, ServerCommands
 from .lifecycle import CreateServerSpec, create_server_full, remove_server_full
 from .lifecycle.orchestrators import prepare_server_creation
@@ -56,10 +56,16 @@ async def submit_lifecycle(server_id: str, action: str, actor_id: int) -> TaskAc
     get_server_write_admission().check(server_id, allow_recovery_stop=action in {"stop", "down"})
     async with get_async_session() as session:
         reference = await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)
-    if action in ("start", "up", "restart", "remove") and get_server_operation_lock().is_locked(server_id):
+    lock = get_server_operation_lock()
+    if action in ("start", "up", "restart") and lock.is_locked(server_id):
         raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
-    if action == "remove" and await get_docker_mc_manager().get_instance(server_id).created():
-        raise HTTPException(status_code=409, detail="服务器容器仍然存在，请先下线后再删除")
+    if action == "remove":
+        holder = lock.get_holder(server_id)
+        # Snapshot requests cannot be cancelled and drained by the task manager.
+        if holder is not None and holder.kind in (ServerOperationKind.BACKUP, ServerOperationKind.RESTORE):
+            raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
+        if await get_docker_mc_manager().get_instance(server_id).created():
+            raise HTTPException(status_code=409, detail="服务器容器仍然存在，请先下线后再删除")
     submitted = await get_task_manager().submit_durable(
         TaskType(f"server_{action}"), f"{ACTION_NAMES[action]} {server_id}",
         lifecycle_task(reference, action, actor_id), server_id=server_id,

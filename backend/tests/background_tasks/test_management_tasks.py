@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from httpx2 import ASGITransport, AsyncClient
 
-from app.background_tasks import get_task_manager
+from app.background_tasks import TaskProgress, TaskType, get_task_manager
 from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager, MCInstance
@@ -121,8 +121,8 @@ async def test_removal_does_not_wait_for_itself(management):
     assert not get_server_write_admission().is_frozen('managed')
 
 
-@pytest.mark.parametrize('kind', [ServerOperationKind.RESTORE, ServerOperationKind.BACKUP, ServerOperationKind.PRUNE])
-async def test_removal_during_maintenance_preserves_server_and_accepts_no_task(management, kind):
+@pytest.mark.parametrize('kind', [ServerOperationKind.RESTORE, ServerOperationKind.BACKUP])
+async def test_removal_during_snapshot_maintenance_preserves_server_and_accepts_no_task(management, kind):
     env = management
     marker = env.instance.get_project_path() / 'data' / 'world-marker'
     marker.write_bytes(b'world must survive maintenance')
@@ -149,6 +149,46 @@ async def test_removal_during_maintenance_preserves_server_and_accepts_no_task(m
     result = await completed(env, SimpleNamespace(task_id=response.json()['task_id']))
     assert result.success, result.error
     assert not env.instance.get_project_path().exists()
+
+
+async def test_removal_waits_for_cancelled_prune_writer_before_deleting_files(management):
+    env = management
+    entered, cancelling, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    marker = env.instance.get_data_path() / 'world-marker'
+    marker.write_bytes(b'writer still owns this world')
+
+    async def prune():
+        holder = LockHolder(ServerOperationKind.PRUNE, datetime.now(UTC), 1, '正在清理区块')
+        async with get_server_operation_lock().acquire('managed', holder):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+                yield TaskProgress(progress=100)
+            finally:
+                cancelling.set()
+                await release.wait()
+
+    writer = await env.tasks.submit_durable(TaskType.CHUNK_PRUNE_APPLY, '清理区块', prune(), server_id='managed')
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        accepted = await submit_lifecycle('managed', 'remove', 1)
+        await asyncio.wait_for(cancelling.wait(), 2)
+        assert marker.read_bytes() == b'writer still owns this world'
+        assert get_server_write_admission().is_frozen('managed')
+        with pytest.raises(HTTPException) as conflict:
+            await submit_lifecycle('managed', 'start', 1)
+        assert conflict.value.status_code == 423
+        status = await server_maintenance('managed', Mock())
+        assert status['task_id'] == accepted.task_id and status['kind'] == 'server_remove'
+    finally:
+        release.set()
+    assert not (await writer.awaitable).success
+    result = await completed(env, accepted)
+    assert result.success, result.error
+    assert result.data['cancelled_background_task_ids'] == [writer.task_id]
+    assert not env.instance.get_project_path().exists()
+    record = await env.journal.get(writer.task_id)
+    assert record and record.state is OperationState.CANCELLED and record.writers_stopped
 
 
 async def test_creation_binds_committed_generation_and_preserves_prepared_yaml(management, monkeypatch):
