@@ -74,3 +74,5 @@ Standalone branch/PR workflows cancel superseded runs within component-specific 
 - `openspec/specs/` is the source of truth for observable behavior. Administration compatibility, operation consistency and operation recovery have separate contracts. Active proposals and implementation plans live under `openspec/changes/`; completed changes are retained under `openspec/changes/archive/` after their specs are synced. Keep technical design rationale in the corresponding component's `docs/`.
 
 Non-snapshot management work uses feature-owned background workers and task acceptance; blocking interfaces retain their original completion guards while observing task status. Snapshot/restore workflows retain their existing execution model. See `backend/docs/non-snapshot-operations.md`.
+
+The proposed snapshot/recovery unification is awaiting review under `openspec/changes/unify-snapshot-recovery/`; `docs/snapshot-recovery-roadmap.md` records its user requirements. These planning artifacts do not describe implemented behavior.
