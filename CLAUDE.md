@@ -46,6 +46,14 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 
 ## CI
 
+### 交付与测试要求
+
+- 每次项目变更优先在独立分支开发。本地验证完成后，必须 commit 并 push 到 GitHub，再对该分支的最新提交运行完整 CI；本地通过或部分远端检查通过不能视为完成。
+- 完整验证使用 `Qualify and Publish Application`（`.github/workflows/docker-image.yml`）手动触发，指定开发分支并设置 `publish=false`。必须核对同一提交 SHA 的 candidate/Go、static/frontend、全部 backend 分片及覆盖审计、全部 API E2E 分片及覆盖审计、browser 和最终 qualification 均成功。普通 push 自动检查不能替代缺失的完整验证。
+- 持续跟踪实际运行结果，失败时先查明原因，再修复、提交、推送并重新完整验证最新提交。不得用旧提交的绿灯、仅重跑局部用例、跳过失败检查或降低业务断言冒充通过。报告需附提交 SHA 和 GitHub Actions 链接；远端完整验证尚未通过时，明确说明尚未通过，不宣称交付完成。
+- 每次新增或修改功能，都要按业务行为新增、调整或删除对应测试。测试从用户场景、输入输出、数据副作用、权限、失败与恢复边界验证需求；不得机械复刻实现、只验证内部调用顺序，或照抄生产算法计算预期值。删除旧测试必须有行为已移除、契约已替换或有效覆盖已合并的依据，不能只为让 CI 变绿。
+- 功能由同步/流式接口迁移到后台任务时，所有测试调用方和 fixture 都要等待真实任务终态，再验证业务结果；同时覆盖受理不等于完成、重复提交、断线观察、取消/关闭及资源清理。保留独立的业务不变量断言。
+
 - `.github/workflows/backend-tests.yml` collects the actual pytest inventory and derives four capability-aware shards from measured file costs. Independent runners execute each shard sequentially, upload per-phase timings and JUnit results, and audit exact node-ID coverage, selection policy and outcomes before combining coverage reports. Docker cases require explicit opt-in; external services stay outside ordinary CI. CLI versions come from `Dockerfile`. New tests enter the plan automatically; historical weights affect placement only.
 - `.github/workflows/static-checks.yml` runs frontend lint/TypeScript checks/operation-flow tests/asset build, backend Pyright/Ruff, and Go formatting/vet. It uploads Vitest JSON timings and supports both push checks and reuse by release qualification.
 - `.github/workflows/candidate.yml` builds one single-platform OCI archive and the race-tested Go runner from a checked source revision. Go test events are uploaded separately from candidate inputs. Candidate metadata records the source fingerprint, archive hash, OCI manifest digest, Docker config digest and runner hash. API and browser jobs consume this artifact.
