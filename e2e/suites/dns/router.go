@@ -19,9 +19,9 @@ const routerImage = "itzg/mc-router@sha256:e06735ea74877a7de649bcaec4cb917bf9525
 const routerURL = "http://127.0.0.1:26666"
 const routerScript = `import json, sys, urllib.request
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-method, path = sys.argv[1:3]
-body = sys.argv[3].encode() if len(sys.argv) > 3 else None
-request = urllib.request.Request("http://127.0.0.1:26666" + path, data=body, headers={"Content-Type":"application/json","Accept":"application/json"}, method=method)
+base, method, path = sys.argv[1:4]
+body = sys.argv[4].encode() if len(sys.argv) > 4 else None
+request = urllib.request.Request(base + path, data=body, headers={"Content-Type":"application/json","Accept":"application/json"}, method=method)
 with opener.open(request, timeout=10) as response:
     raw = response.read()
     print(raw.decode() if raw else "{}")
@@ -38,7 +38,17 @@ func startRouter(ctx context.Context, t *engine.Scope) error {
 	if err := j.Track(t.Env.ID, name, ""); err != nil {
 		return err
 	}
-	if _, err := j.Docker.Run(ctx, "run", "-d", "--name", name, "--network", "container:"+fixtures.BackendOf(t.Env).Name, "--label", platform.RunLabel+"="+j.Manifest.RunID, "--label", platform.EnvLabel+"="+t.Env.ID, routerImage, "--api-binding", "127.0.0.1:26666"); err != nil {
+	network := "container:" + fixtures.BackendOf(t.Env).Name
+	apiBinding := "127.0.0.1:26666"
+	routerArgs := []string{}
+	if fixtures.BackendOf(t.Env).HostPort != 0 {
+		ports := environment.Get[[]int](t.Env, "ports")
+		network = "host"
+		apiBinding = fmt.Sprintf("127.0.0.1:%d", ports[3])
+		routerArgs = []string{"--port", fmt.Sprint(ports[4]), "--connection-rate-limit", "100", "--clients-to-allow", "127.0.0.1,::1"}
+	}
+	args := []string{"run", "-d", "--name", name, "--network", network, "--label", platform.RunLabel + "=" + j.Manifest.RunID, "--label", platform.EnvLabel + "=" + t.Env.ID, routerImage, "--api-binding", apiBinding}
+	if _, err := j.Docker.Run(ctx, append(args, routerArgs...)...); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(t.Env.Dir, "dns-router.py"), []byte(routerScript), 0600); err != nil {
@@ -51,7 +61,7 @@ func startRouter(ctx context.Context, t *engine.Scope) error {
 }
 
 func routerRequest(ctx context.Context, t *engine.Scope, method, path string, input any) (map[string]any, error) {
-	args := []string{"exec", fixtures.BackendOf(t.Env).Name, "python", "/data/dns-router.py", method, path}
+	args := []string{"exec", fixtures.BackendOf(t.Env).Name, "python", "/data/dns-router.py", routerEndpoint(t), method, path}
 	if input != nil {
 		data, err := json.Marshal(input)
 		if err != nil {
@@ -69,4 +79,11 @@ func routerRequest(ctx context.Context, t *engine.Scope, method, path string, in
 	}
 	t.Recorder.Event("dns_router", map[string]any{"method": method, "path": path, "response": response})
 	return response, nil
+}
+
+func routerEndpoint(t *engine.Scope) string {
+	if fixtures.BackendOf(t.Env).HostPort != 0 {
+		return fmt.Sprintf("http://127.0.0.1:%d", environment.Get[[]int](t.Env, "ports")[3])
+	}
+	return routerURL
 }

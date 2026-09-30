@@ -49,9 +49,17 @@ jobs:
       source_sha: ${{ github.sha }}
       candidate_artifact: ${{ needs.candidate.outputs.artifact }}
 
+  dns:
+    needs: candidate
+    uses: ./.github/workflows/dns-tests.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ github.sha }}
+      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+
   qualification:
     if: always()
-    needs: [candidate, static, backend, api, browser]
+    needs: [candidate, static, backend, api, browser, dns]
     outputs:
       artifact: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
     runs-on: ubuntu-latest

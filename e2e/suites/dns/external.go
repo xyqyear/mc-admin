@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -25,8 +23,14 @@ type record struct {
 }
 
 type status struct {
-	Initialized bool `json:"initialized"`
-	DNSDiff     struct {
+	Initialized    bool     `json:"initialized"`
+	State          string   `json:"state"`
+	DNSKnown       bool     `json:"dns_known"`
+	RouterKnown    bool     `json:"router_known"`
+	Issues         []string `json:"issues"`
+	UnknownServers []string `json:"unknown_servers"`
+	Empty          bool     `json:"empty_desired"`
+	DNSDiff        struct {
 		Add    []record `json:"records_to_add"`
 		Remove []string `json:"records_to_remove"`
 		Update []record `json:"records_to_update"`
@@ -39,40 +43,15 @@ type status struct {
 }
 
 func (s status) clean() bool {
-	return s.Initialized && len(s.DNSDiff.Add)+len(s.DNSDiff.Remove)+len(s.DNSDiff.Update)+len(s.RouterDiff.Add)+len(s.RouterDiff.Remove)+len(s.RouterDiff.Update) == 0
+	return s.Initialized && s.State == "ready" && s.DNSKnown && s.RouterKnown && !s.Empty && len(s.Issues) == 0 && len(s.UnknownServers) == 0 && len(s.DNSDiff.Add)+len(s.DNSDiff.Remove)+len(s.DNSDiff.Update)+len(s.RouterDiff.Add)+len(s.RouterDiff.Remove)+len(s.RouterDiff.Update) == 0
 }
 
 func external(provider string) func(context.Context, *engine.Scope) error {
 	return func(ctx context.Context, t *engine.Scope) error {
-		options := environment.Get[fixtures.Options](t.Env, "options")
-		config, err := loadConfig(options.ExternalConfig, provider)
+		config, scope, err := prepareCloud(ctx, t, provider)
 		if err != nil {
 			return err
 		}
-		t.Recorder.Redactor.Add(config.ID, config.Key, config.AK, config.SK)
-		scope := config.Prefix + "-" + t.Env.ID
-		t.Recorder.Event("external_dns_scope", map[string]any{"provider": provider, "domain": config.Domain, "managed_sub_domain": scope, "router_image": routerImage})
-		helperData, err := json.Marshal(map[string]any{"provider": provider, "scope": scope, "config": config})
-		if err != nil {
-			return err
-		}
-		if err = os.WriteFile(filepath.Join(t.Env.Dir, "dns-external.json"), helperData, 0600); err != nil {
-			return err
-		}
-		if err = os.WriteFile(filepath.Join(t.Env.Dir, "dns-cleanup.py"), []byte(cleanupScript), 0600); err != nil {
-			return err
-		}
-		if _, err = fixtures.DeploymentCommand(ctx, t.Env, "dns-scope-check", "python", "/data/dns-cleanup.py", "/data/dns-external.json", "check"); err != nil {
-			return fmt.Errorf("external DNS read access and empty-scope preflight: %w", err)
-		}
-		t.Cleanup(func(cleanupCtx context.Context) error {
-			output, err := fixtures.DeploymentCommand(cleanupCtx, t.Env, "dns-cloud-cleanup", "python", "/data/dns-cleanup.py", "/data/dns-external.json", "cleanup")
-			t.Recorder.Event("external_dns_cleanup", map[string]any{"provider": provider, "domain": config.Domain, "managed_sub_domain": scope, "output": output})
-			if err != nil {
-				return fmt.Errorf("external DNS cleanup failed for %s.%s; remove only records under this generated scope: %w", scope, config.Domain, err)
-			}
-			return nil
-		})
 		if err = startRouter(ctx, t); err != nil {
 			return err
 		}
@@ -273,7 +252,10 @@ func checkState(ctx context.Context, t *engine.Scope, c *api.Client, expectedRec
 	if !reflect.DeepEqual(routes, expectedRoutes) {
 		return fmt.Errorf("router maps differ from desired backend addresses")
 	}
-	return checkProviderRecords(ctx, t, expectedRecords, ttl)
+	if err := checkProviderRecords(ctx, t, expectedRecords, ttl); err != nil {
+		return err
+	}
+	return checkAuthoritative(ctx, t, environment.Get[providerConfig](t.Env, "cloud-config"), expectedRecords)
 }
 
 func checkProviderRecords(ctx context.Context, t *engine.Scope, expected map[string]string, ttl int) error {

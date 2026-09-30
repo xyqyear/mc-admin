@@ -88,6 +88,11 @@ class DNSClient:
 
     async def apply_diff(self, diff: RecordDiff) -> None:
         limit = asyncio.Semaphore(4)
+        conflicting_ids = {record.record_id for record in diff.conflicting_records}
+        replacements: dict[str, AddRecordListT] = {}
+        for record in diff.records_to_add:
+            if any(old.sub_domain == record.sub_domain for old in diff.conflicting_records):
+                replacements.setdefault(record.sub_domain, []).append(record)
 
         async def add(record: AddRecordT) -> None:
             async with limit:
@@ -105,11 +110,24 @@ class DNSClient:
                     await self.remove_records([record.record_id])
                     await self.add_records([AddRecordT(record.sub_domain, record.value, record.record_type, record.ttl)])
 
+        async def replace(name: str, records: AddRecordListT) -> None:
+            conflicts = [old for old in diff.conflicting_records if old.sub_domain == name]
+            if any(old.record_id not in diff.records_to_remove for old in conflicts):
+                raise RuntimeError("Conflicting DNS records cannot be removed while inventory is unknown")
+            for old in conflicts:
+                await remove(old.record_id)
+            for record in records:
+                await add(record)
+
         failures: list[Exception] = []
         for writing in (True, False):
             jobs = (
-                [*(add(record) for record in diff.records_to_add), *(update(record) for record in diff.records_to_update)]
-                if writing else [remove(record_id) for record_id in diff.records_to_remove]
+                [
+                    *(add(record) for record in diff.records_to_add if record.sub_domain not in replacements),
+                    *(replace(name, records) for name, records in replacements.items()),
+                    *(update(record) for record in diff.records_to_update),
+                ]
+                if writing else [remove(record_id) for record_id in diff.records_to_remove if record_id not in conflicting_ids]
             )
             results = await asyncio.gather(*jobs, return_exceptions=True)
             for result in results:

@@ -18,6 +18,7 @@ import (
 )
 
 type Backend struct {
+	HostPort  int
 	Name      string
 	URL       string
 	Master    string
@@ -33,7 +34,12 @@ func BackendOf(env *environment.Environment) *Backend {
 }
 
 func (f *Factory) backend(ctx context.Context, env *environment.Environment) error {
+	return f.backendNetwork(ctx, env, 0)
+}
+
+func (f *Factory) backendNetwork(ctx context.Context, env *environment.Environment, hostPort int) error {
 	b := &Backend{Name: "mca-e2e-" + env.ID, Master: platform.ID() + platform.ID() + platform.ID(), Password: platform.ID() + platform.ID(), Docker: f.Journal.Docker, Configs: map[string]any{}}
+	b.HostPort = hostPort
 	f.Redactor.Add(b.Master, b.Password)
 	env.Set("backend", b)
 	for _, name := range []string{"servers", "archives", "logs", "restic"} {
@@ -60,11 +66,17 @@ func (f *Factory) backend(ctx context.Context, env *environment.Environment) err
 		return err
 	}
 	args := []string{"create", "--name", b.Name, "--label", platform.RunLabel + "=" + f.Journal.Manifest.RunID, "--label", platform.EnvLabel + "=" + env.ID,
-		"--env-file", envFile, "--publish", "127.0.0.1::8000", "--pid", "host",
+		"--env-file", envFile, "--pid", "host",
 		"--mount", "type=bind,src=" + f.Journal.Docker.Socket + ",dst=/var/run/docker.sock",
 		"--mount", "type=bind,src=" + env.Dir + ",dst=/data",
 		"--mount", "type=bind,src=" + filepath.Join(env.Dir, "servers") + ",dst=" + filepath.Join(env.Dir, "servers"),
-		"--mount", "type=bind,src=/sys/fs/cgroup,dst=/cgroup,readonly", f.Options.Image}
+		"--mount", "type=bind,src=/sys/fs/cgroup,dst=/cgroup,readonly"}
+	if hostPort == 0 {
+		args = append(args, "--publish", "127.0.0.1::8000", f.Options.Image)
+	} else {
+		args = append(args, "--network", "host", "--health-cmd", fmt.Sprintf("curl -f http://127.0.0.1:%d/api/system/health || exit 1", hostPort), f.Options.Image,
+			"uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", fmt.Sprint(hostPort), "--log-level", "info")
+	}
 	if _, err := f.Journal.Docker.Run(ctx, args...); err != nil {
 		return err
 	}
@@ -75,10 +87,14 @@ func (f *Factory) backend(ctx context.Context, env *environment.Environment) err
 	if err != nil {
 		return err
 	}
-	if container == nil || len(container.NetworkSettings.Ports["8000/tcp"]) != 1 {
+	if container == nil || (hostPort == 0 && len(container.NetworkSettings.Ports["8000/tcp"]) != 1) {
 		return fmt.Errorf("backend has no unique published API port")
 	}
-	b.URL = "http://127.0.0.1:" + container.NetworkSettings.Ports["8000/tcp"][0].HostPort
+	if hostPort == 0 {
+		b.URL = "http://127.0.0.1:" + container.NetworkSettings.Ports["8000/tcp"][0].HostPort
+	} else {
+		b.URL = fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	}
 	b.Admin = api.New(b.URL, env.Recorder)
 	b.Admin.ResolveURL = func() string { return b.URL }
 	b.Admin.Bearer = b.Master
@@ -144,10 +160,12 @@ func (b *Backend) Restart(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if container == nil || len(container.NetworkSettings.Ports["8000/tcp"]) != 1 {
+	if container == nil || (b.HostPort == 0 && len(container.NetworkSettings.Ports["8000/tcp"]) != 1) {
 		return fmt.Errorf("restarted backend has no published port")
 	}
-	b.URL = "http://127.0.0.1:" + container.NetworkSettings.Ports["8000/tcp"][0].HostPort
+	if b.HostPort == 0 {
+		b.URL = "http://127.0.0.1:" + container.NetworkSettings.Ports["8000/tcp"][0].HostPort
+	}
 	return b.Ready(ctx)
 }
 

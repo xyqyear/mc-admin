@@ -76,7 +76,7 @@ func (f *Factory) server(ctx context.Context, env *environment.Environment) erro
 			break
 		}
 		var status *api.StatusError
-		if attempt == 2 || !errors.As(err, &status) || status.Code != 409 || !strings.Contains(status.Body, "端口冲突") {
+		if BackendOf(env).HostPort != 0 || attempt == 2 || !errors.As(err, &status) || status.Code != 409 || !strings.Contains(status.Body, "端口冲突") {
 			return err
 		}
 		env.Recorder.Event("port_conflict", map[string]any{"attempt": attempt + 1, "ports": ports})

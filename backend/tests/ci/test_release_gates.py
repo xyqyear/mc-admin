@@ -111,9 +111,9 @@ def test_release_workflow_cannot_bypass_jobs_or_rebuild_the_published_image():
     assert set(jobs["qualification"]["needs"]) == candidate.REQUIRED_GATES
     assert set(jobs["promote"]["needs"]) == {"candidate", "qualification"}
     assert "success()" in jobs["promote"]["if"]
-    for job in ("candidate", "static", "backend", "api", "browser"):
+    for job in candidate.REQUIRED_GATES:
         assert jobs[job]["with"]["source_sha"] == "${{ github.sha }}"
-    for job in ("api", "browser"):
+    for job in ("api", "browser", "dns"):
         assert jobs[job]["with"]["candidate_artifact"] == "${{ needs.candidate.outputs.artifact }}"
     steps = jobs["promote"]["steps"]
     assert not any("build-push-action" in step.get("uses", "") for step in steps)

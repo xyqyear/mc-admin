@@ -155,7 +155,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/snapshots.md` — restic client, ignored paths (`<LEVEL_NAME>`), restore planner, retention, lock interaction
 - `docs/cron.md` — APScheduler integration, registry metadata, system jobs, built-in jobs
 - `docs/self-check.md` — check catalog, triggers, persistence, notification extension point
-- `docs/dns.md` — DNSPod / Huawei providers, mc-router sync, reconciliation flow
+- `docs/dns.md` — DNSPod / paginated Huawei providers, guarded CNAME replacement, mc-router sync and independent partial reconciliation
 - `docs/templates.md` — variable definitions, `TemplateSnapshot`, two-mode editing, conversion
 - `docs/configuration.md` — immutable preparation, optional version checks, staged application, source consistency and recovery
 - `docs/dynamic-config.md` — schema-versioned runtime config with Pydantic migration

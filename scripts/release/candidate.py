@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-REQUIRED_GATES = frozenset({"candidate", "static", "backend", "api", "browser"})
+REQUIRED_GATES = frozenset({"candidate", "static", "backend", "api", "browser", "dns"})
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 REVISION = re.compile(r"[0-9a-f]{40}")
 

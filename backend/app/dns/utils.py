@@ -29,6 +29,7 @@ class RecordDiff(NamedTuple):
     records_to_add: AddRecordListT
     records_to_remove: RecordIdListT
     records_to_update: RecordListT
+    conflicting_records: tuple[ReturnRecordT, ...] = ()
 
 
 def diff_dns_records(
@@ -84,4 +85,13 @@ def diff_dns_records(
         records_to_add=records_to_add,
         records_to_remove=records_to_remove,
         records_to_update=records_to_update,
+        conflicting_records=tuple(
+            old for old in old_records
+            if any(
+                old.sub_domain == new.sub_domain
+                and old.record_type != new.record_type
+                and "CNAME" in (old.record_type, new.record_type)
+                for new in records_to_add
+            )
+        ),
     )

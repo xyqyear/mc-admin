@@ -33,7 +33,7 @@ on:
       selection:
         description: Regression or explicit external qualification (DNS needs E2E_EXTERNAL_CONFIG)
         type: choice
-        options: [regression, smoke, mojang, dnspod, huawei]
+        options: [regression, smoke, mojang, dnspod]
         default: regression
       no_reuse:
         description: Create a fresh environment for every case
@@ -96,11 +96,11 @@ jobs:
 
       - name: Run real API scenarios
         env:
-          E2E_EXTERNAL_CONFIG: ${{ secrets.E2E_EXTERNAL_CONFIG }}
+          E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
         run: |
           umask 077
           selection_args=(--tag "$E2E_SELECTION")
-          if [ "$E2E_SELECTION" = dnspod ] || [ "$E2E_SELECTION" = huawei ]; then
+          if [ "$E2E_SELECTION" = dnspod ]; then
             config_file=$(mktemp "$RUNNER_TEMP/e2e-external.XXXXXX")
             trap 'rm -f "$config_file"' EXIT
             printf '%s' "$E2E_EXTERNAL_CONFIG" > "$config_file"

@@ -31,6 +31,44 @@ class MockListRecordSetsByZoneResponse:
         self.recordsets = recordsets
 
 
+async def test_zone_after_first_page_is_discovered(mock_huawei_client):
+    client, sdk = mock_huawei_client
+    pages = {
+        0: [MockZoneInfo(str(i), f"zone-{i}.example.org.") for i in range(500)],
+        500: [MockZoneInfo("target", "example.com.")],
+    }
+    sdk.list_public_zones.side_effect = lambda request: MockListPublicZonesResponse(pages[request.offset])
+    await client.init()
+    assert client._zone_id == "target"
+
+
+async def test_records_after_first_page_are_observed(mock_huawei_client):
+    client, sdk = mock_huawei_client
+    client._zone_id = "zone"
+    pages = {
+        0: [MockRecordSet(str(i), f"unrelated-{i}.example.com.", "TXT", 600, ['"retained"']) for i in range(500)],
+        500: [MockRecordSet("managed", "*.mc.example.com.", "A", 600, ["192.0.2.1"])],
+    }
+    sdk.list_record_sets_by_zone.side_effect = lambda request: MockListRecordSetsByZoneResponse(pages[request.offset])
+    records = await client.list_relevant_records("mc")
+    assert len(records) == 1
+    assert records[0].record_id == "managed"
+
+
+async def test_later_page_failure_never_returns_partial_inventory(mock_huawei_client):
+    client, sdk = mock_huawei_client
+    client._zone_id = "zone"
+    sdk.list_record_sets_by_zone.side_effect = [
+        MockListRecordSetsByZoneResponse([
+            MockRecordSet(str(i), f"*.address-{i}.mc.example.com.", "A", 600, ["192.0.2.1"])
+            for i in range(500)
+        ]),
+        RuntimeError("provider unavailable"),
+    ]
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        await client.list_records()
+
+
 @pytest.fixture
 def mock_huawei_client():
     with patch("app.dns.huawei.DnsClient") as mock_dns_client_class:

@@ -23,7 +23,7 @@ Empty desired state retains the existing deletion policy: no configured addresse
 
 ## Providers and mc-router
 
-`DNSClient` defines listing/filtering and incremental application over DNSPod and Huawei adapters. Filtering retains only wildcard A/AAAA/CNAME and Minecraft SRV records under the configured managed subdomain. Unrelated DNS records are outside the plan. DNSPod replaces a changed record with delete then add, retaining its propagation delay; Huawei supports updating a record in place. A failed DNSPod replacement is visible as a pending addition on the next successful observation.
+`DNSClient` defines listing/filtering and incremental application over DNSPod and Huawei adapters. Filtering retains only wildcard A/AAAA/CNAME and Minecraft SRV records under the configured managed subdomain. Unrelated DNS records are outside the plan. DNSPod replaces a changed record with delete then add, retaining its propagation delay; Huawei reads every zone/record page before planning and supports updating a record in place. A CNAME/address type replacement removes only conflicting records before creating the replacement, while unrelated targets continue independently. Unknown inventory still prevents those removals. A failed DNSPod replacement is visible as a pending addition on the next successful observation.
 
 `MCRouterClient` accepts both legacy string-valued route maps and objects containing `backend`, exposing backend strings through MC Admin's API. Missing, empty or non-string backend values fail observation; they do not authorize deleting routes. DELETE 404 succeeds idempotently; other remote failures remain failures.
 

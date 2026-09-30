@@ -137,28 +137,38 @@ class HuaweiDNSClient(DNSClient):
         raise RuntimeError("How did you get here?")
 
     async def init(self):
-        request = ListPublicZonesRequest()
-        response = await self._try_request(
-            self._huawei_client.list_public_zones, request
-        )
-
-        for zone_info in response.zones:
-            if zone_info.name == self.get_domain() + ".":
-                self._zone_id = zone_info.id
-                return
+        offset = 0
+        while True:
+            request = ListPublicZonesRequest(limit=500, offset=offset)
+            response = await self._try_request(
+                self._huawei_client.list_public_zones, request
+            )
+            for zone_info in response.zones:
+                if zone_info.name == self.get_domain() + ".":
+                    self._zone_id = zone_info.id
+                    return
+            if len(response.zones) < 500:
+                break
+            offset += len(response.zones)
 
         raise RuntimeError(
             f"There is no domain named {self.get_domain()} in this account."
         )
 
     async def list_records(self):
-        request = ListRecordSetsByZoneRequest(zone_id=self._zone_id)
-        response = await self._try_request(
-            self._huawei_client.list_record_sets_by_zone, request
-        )
-
+        recordsets: list[RecordSetT] = []
+        offset = 0
+        while True:
+            request = ListRecordSetsByZoneRequest(zone_id=self._zone_id, limit=500, offset=offset)
+            response = await self._try_request(
+                self._huawei_client.list_record_sets_by_zone, request
+            )
+            recordsets.extend(response.recordsets)
+            if len(response.recordsets) < 500:
+                break
+            offset += len(response.recordsets)
         sanitized_record_list = RecordListT()
-        for record_set in response.recordsets:
+        for record_set in recordsets:
             # we extract subdomain from the name
             name = record_set.name
             sub_domain_suffix = f".{self.get_domain()}."

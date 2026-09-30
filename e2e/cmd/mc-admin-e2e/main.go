@@ -21,6 +21,7 @@ import (
 	"mc-admin/e2e/internal/fixtures"
 	"mc-admin/e2e/internal/platform"
 	"mc-admin/e2e/suites"
+	dnssuite "mc-admin/e2e/suites/dns"
 )
 
 func main() { os.Exit(mainCode(os.Args[1:])) }
@@ -35,11 +36,14 @@ func mainCode(args []string) int {
 	if args[0] == "cleanup" {
 		return cleanup(args[1:])
 	}
+	if args[0] == "cleanup-dns" {
+		return cleanupDNS(args[1:])
+	}
 	if args[0] == "coverage" {
 		return auditCoverage(args[1:])
 	}
 	if args[0] != "run" && args[0] != "list" && args[0] != "plan" {
-		fmt.Fprintln(os.Stderr, "usage: mc-admin-e2e run|list|plan|browser|cleanup|coverage [options]")
+		fmt.Fprintln(os.Stderr, "usage: mc-admin-e2e run|list|plan|browser|cleanup|cleanup-dns|coverage [options]")
 		return 2
 	}
 	command := args[0]
@@ -215,6 +219,30 @@ func mainCode(args []string) int {
 	if report.Failed() {
 		return 1
 	}
+	return 0
+}
+
+func cleanupDNS(args []string) int {
+	flags := flag.NewFlagSet("cleanup-dns", flag.ContinueOnError)
+	manifest := flags.String("manifest", "", "non-secret cloud ownership manifest")
+	config := flags.String("external-config", "", "private provider configuration authorizing this scope")
+	image := flags.String("backend-image", "", "application image providing vendor SDKs")
+	socket := flags.String("docker-socket", "/var/run/docker.sock", "local Docker socket")
+	timeout := flags.Duration("timeout", 3*time.Minute, "cloud recovery deadline")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 || *manifest == "" || *config == "" || *image == "" || *timeout <= 0 {
+		fmt.Fprintln(os.Stderr, "cleanup-dns requires --manifest, --external-config, --backend-image and a positive timeout")
+		return 2
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	if err := dnssuite.RecoverCloud(ctx, platform.Docker{Socket: *socket}, *image, *config, *manifest); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Println("Cloud scope reclaimed:", *manifest)
 	return 0
 }
 

@@ -35,7 +35,7 @@ func NewFactory(options Options, journal *platform.Journal, redactor *evidence.R
 	return &Factory{Options: options, Journal: journal, Redactor: redactor, slots: make(chan struct{}, options.MinecraftSlots), slotGate: make(chan struct{}, 1)}
 }
 
-type Recipes struct{ Base, Server, Lifecycle, Running, Backup, World *environment.Recipe }
+type Recipes struct{ Base, Server, Lifecycle, Running, Backup, World, Connectivity *environment.Recipe }
 
 func (f *Factory) Recipes() Recipes {
 	backend := environment.Provider{ID: "backend", Setup: f.backend, Verify: verifyBackend}
@@ -43,13 +43,18 @@ func (f *Factory) Recipes() Recipes {
 	server := environment.Provider{ID: "server", DependsOn: []string{"backend", "ports"}, Setup: f.server, Verify: verifyServer}
 	running := environment.Provider{ID: "running", DependsOn: []string{"server"}, Setup: f.running, Verify: verifyRunning}
 	restic := environment.Provider{ID: "restic", DependsOn: []string{"backend"}, Setup: f.restic}
+	connectivityPorts := environment.Provider{ID: "ports", Setup: func(ctx context.Context, env *environment.Environment) error { return f.leasePorts(ctx, env, 8) }}
+	hostBackend := environment.Provider{ID: "backend", DependsOn: []string{"ports"}, Setup: func(ctx context.Context, env *environment.Environment) error {
+		return f.backendNetwork(ctx, env, environment.Get[[]int](env, "ports")[2])
+	}}
 	return Recipes{
-		Base:      &environment.Recipe{ID: "backend-v1", Providers: []environment.Provider{backend}},
-		Server:    &environment.Recipe{ID: "server-v1", Providers: []environment.Provider{backend, ports, server}},
-		Lifecycle: &environment.Recipe{ID: "lifecycle-v1", Providers: []environment.Provider{backend, ports, server}, MinecraftSlots: 1},
-		Running:   &environment.Recipe{ID: "running-v1", Providers: []environment.Provider{backend, ports, server, running}, MinecraftSlots: 1},
-		Backup:    &environment.Recipe{ID: "backup-v1", Providers: []environment.Provider{backend, ports, server, restic}},
-		World:     &environment.Recipe{ID: "world-v1", Providers: []environment.Provider{backend, ports, server, running, restic}, MinecraftSlots: 1},
+		Base:         &environment.Recipe{ID: "backend-v1", Providers: []environment.Provider{backend}},
+		Server:       &environment.Recipe{ID: "server-v1", Providers: []environment.Provider{backend, ports, server}},
+		Lifecycle:    &environment.Recipe{ID: "lifecycle-v1", Providers: []environment.Provider{backend, ports, server}, MinecraftSlots: 1},
+		Running:      &environment.Recipe{ID: "running-v1", Providers: []environment.Provider{backend, ports, server, running}, MinecraftSlots: 1},
+		Backup:       &environment.Recipe{ID: "backup-v1", Providers: []environment.Provider{backend, ports, server, restic}},
+		World:        &environment.Recipe{ID: "world-v1", Providers: []environment.Provider{backend, ports, server, running, restic}, MinecraftSlots: 1},
+		Connectivity: &environment.Recipe{ID: "connectivity-v1", Providers: []environment.Provider{connectivityPorts, hostBackend, server}, MinecraftSlots: 1},
 	}
 }
 
@@ -125,7 +130,11 @@ func (f *Factory) Capture(ctx context.Context, env *environment.Environment) err
 }
 
 func (f *Factory) ports(ctx context.Context, env *environment.Environment) error {
-	lease, err := platform.LeasePorts(ctx, f.Journal.Docker, f.Options.PortDirectory, 2)
+	return f.leasePorts(ctx, env, 2)
+}
+
+func (f *Factory) leasePorts(ctx context.Context, env *environment.Environment, count int) error {
+	lease, err := platform.LeasePorts(ctx, f.Journal.Docker, f.Options.PortDirectory, count)
 	if err != nil {
 		return err
 	}

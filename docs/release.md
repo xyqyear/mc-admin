@@ -1,10 +1,10 @@
 # Candidate qualification and publication
 
-The application is built once as a single-platform `linux/amd64` OCI archive. Static checks, backend tests, API regression shards and browser journeys must succeed for the same source revision before the archive can be promoted. A registry push is a copy of the tested manifest, never another application build.
+The application is built once as a single-platform `linux/amd64` OCI archive. Static checks, backend tests, API regression shards, browser journeys and Huawei DNS/Minecraft connectivity must succeed for the same source revision before the archive can be promoted. A registry push is a copy of the tested manifest, never another application build.
 
 ## Workflow graph
 
-`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API and browser workflows. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
+`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API, browser and Huawei DNS workflows. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
 
 The immutable `application-candidate` artifact contains:
 
@@ -12,9 +12,9 @@ The immutable `application-candidate` artifact contains:
 - `candidate.json`: source revision, dirty flag, source fingerprint, archive checksum, OCI manifest digest, image config digest and Go executable checksum.
 - `mc-admin-e2e`: the executable built and tested from that revision.
 
-API and browser jobs validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each job then compares its actual run manifest and result with the candidate identity and requires owned cleanup to have finished. Browser evidence additionally requires a nonempty Playwright result with no failed, flaky or skipped journeys. API shard and selected-case completeness remain enforced by the runner's coverage audit; the number of observed HTTP routes is diagnostic, not an assertion-coverage threshold.
+API, browser and Huawei DNS jobs validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each job then compares its actual run manifest and result with the candidate identity and requires owned cleanup to have finished. Browser evidence additionally requires a nonempty Playwright result with no failed, flaky or skipped journeys. API shard and selected-case completeness remain enforced by the runner's coverage audit; the number of observed HTTP routes is diagnostic, not an assertion-coverage threshold.
 
-The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`) with every result equal to `success`. Missing, failed, cancelled and skipped jobs cannot produce a qualification receipt. Both the backend collection audit and API coverage audit also explicitly require their execution matrices to succeed.
+The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`, `dns`) with every result equal to `success`. Missing, failed, cancelled and skipped jobs cannot produce a qualification receipt. Both the backend collection audit and API coverage audit also explicitly require their execution matrices to succeed.
 
 Only the promotion job has `packages: write`. It requires successful qualification and a semantic version tag. Tag pushes qualify and promote; manual dispatch defaults to qualification only, and its `publish` option is effective only for a semantic version tag ref. Promotion revalidates the candidate and receipt, copies with `skopeo copy --preserve-digests`, and reads back every destination's raw manifest to compare its digest. A registry that requires a manifest rewrite causes failure. Images and build cache are not pushed to GHCR during candidate construction.
 
@@ -71,7 +71,7 @@ uv run --project backend python -m scripts.release.verify_local \
 
 This synthetic image checks the transfer and gate mechanism. It is not an application regression run or a production publication. Real GHCR credentials, a version tag and approved source selection remain separate from local validation. The workflow is statically validated with pinned actionlint; local execution does not claim that a remote GitHub Actions run has occurred.
 
-After the actual candidate's static, backend, API and browser evidence is complete, the same loopback exercise can consume that candidate and its real qualification receipt:
+After the actual candidate's static, backend, API, browser and Huawei DNS evidence is complete, the same loopback exercise can consume that candidate and its real qualification receipt:
 
 ```bash
 uv run --project backend python -m scripts.release.verify_local \
