@@ -4,7 +4,9 @@ import asyncio
 import os
 import signal
 import sys
-from collections.abc import Iterator
+import time
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from weakref import WeakKeyDictionary
@@ -87,34 +89,70 @@ def _owned_handles(identity: ProcessIdentity) -> list[tuple[int, ProcessIdentity
     if _identity(identity.pid) != identity:
         return []
     handles: list[tuple[int, ProcessIdentity]] = []
+    deadline = time.monotonic() + 2.0
     try:
-        for pid in _group_pids(identity.pgid):
-            try:
-                candidate = _identity(pid)
-            except PermissionError:
-                continue
-            if candidate is None or (
-                candidate.pgid != identity.pgid or candidate.boot_id != identity.boot_id
-                or (candidate.root_dev, candidate.root_ino) != (identity.root_dev, identity.root_ino)
-                or candidate.start_ticks < identity.start_ticks
-            ):
-                continue
-            if _identity(identity.pid) != identity:
-                break
-            try:
-                fd = open_pidfd(candidate.pid)
-            except ProcessLookupError:
-                continue
-            handles.append((fd, candidate))
-            if _identity(candidate.pid) != candidate:
-                handles.pop()
-                os.close(fd)
-                continue
-        return handles
+        # Freeze before enumeration so a late fork cannot outlive its parent.
+        _freeze_process(identity, handles, deadline)
+        while True:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("无法确认操作进程的完整归属")
+            count = len(handles)
+            known = {candidate.pid for _, candidate in handles}
+            for pid in _group_pids(identity.pgid):
+                if pid in known:
+                    continue
+                try:
+                    candidate = _identity(pid)
+                except PermissionError:
+                    continue
+                if candidate is None or (
+                    candidate.pgid != identity.pgid or candidate.boot_id != identity.boot_id
+                    or (candidate.root_dev, candidate.root_ino) != (identity.root_dev, identity.root_ino)
+                    or candidate.start_ticks < identity.start_ticks
+                ):
+                    continue
+                if _identity(identity.pid) != identity:
+                    raise RuntimeError("操作进程归属在清理期间发生变化")
+                _freeze_process(candidate, handles, deadline)
+            if len(handles) == count:
+                return handles
     except BaseException:
-        for fd, _ in handles:
-            os.close(fd)
+        _close_handles(handles)
         raise
+
+
+def _freeze_process(
+    identity: ProcessIdentity,
+    handles: list[tuple[int, ProcessIdentity]],
+    deadline: float,
+) -> None:
+    try:
+        fd = open_pidfd(identity.pid)
+    except ProcessLookupError:
+        return
+    try:
+        matches = _identity(identity.pid) == identity
+    except BaseException:
+        os.close(fd)
+        raise
+    if not matches:
+        os.close(fd)
+        return
+    handles.append((fd, identity))
+    try:
+        send_signal(fd, signal.SIGSTOP)
+    except ProcessLookupError:
+        return
+    while _identity(identity.pid) == identity:
+        try:
+            state = (Path("/proc") / str(identity.pid) / "stat").read_text().rsplit(")", 1)[1].split()[0]
+        except (FileNotFoundError, ProcessLookupError):
+            return
+        if state in {"T", "t", "Z"}:
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError("无法暂停操作进程以确认其子进程归属")
+        time.sleep(0.001)
 
 
 def _signal(handles: list[tuple[int, ProcessIdentity]], sig: signal.Signals) -> None:
@@ -126,15 +164,35 @@ def _signal(handles: list[tuple[int, ProcessIdentity]], sig: signal.Signals) -> 
 
 
 def _close_handles(handles: list[tuple[int, ProcessIdentity]]) -> None:
-    for fd, _ in handles:
-        os.close(fd)
+    try:
+        _signal(handles, signal.SIGCONT)
+    finally:
+        for fd, _ in handles:
+            os.close(fd)
+
+
+@asynccontextmanager
+async def _process_handles(
+    identity: ProcessIdentity | None,
+) -> AsyncGenerator[list[tuple[int, ProcessIdentity]]]:
+    handles: list[tuple[int, ProcessIdentity]] = []
+
+    async def collect() -> None:
+        if identity is not None:
+            handles.extend(await asyncio.to_thread(_owned_handles, identity))
+
+    try:
+        await finalize(collect())
+        yield handles
+    finally:
+        _close_handles(handles)
 
 
 async def stop_process(process: asyncio.subprocess.Process, *, grace: float = 2.0) -> None:
     identity = _identities.get(process)
-    handles = await asyncio.to_thread(_owned_handles, identity) if identity is not None else []
-    try:
+    async with _process_handles(identity) as handles:
         _signal(handles, signal.SIGTERM)
+        _signal(handles, signal.SIGCONT)
         try:
             await asyncio.wait_for(process.wait(), timeout=grace)
         except TimeoutError:
@@ -144,8 +202,6 @@ async def stop_process(process: asyncio.subprocess.Process, *, grace: float = 2.
         await asyncio.wait_for(
             asyncio.gather(_drain(process.stdout), _drain(process.stderr), process.wait()), timeout=grace,
         )
-    finally:
-        _close_handles(handles)
     execution = current_execution()
     if execution is not None and identity is not None:
         if await asyncio.to_thread(_confirmed_exit, identity):
@@ -168,11 +224,11 @@ async def confirm_stopped(record: OperationRecord) -> bool:
         try:
             if await asyncio.to_thread(_confirmed_exit, identity):
                 continue
-            handles = await asyncio.to_thread(_owned_handles, identity)
-            if not handles:
-                return False
-            try:
+            async with _process_handles(identity) as handles:
+                if not handles:
+                    return False
                 _signal(handles, signal.SIGTERM)
+                _signal(handles, signal.SIGCONT)
                 for _ in range(20):
                     if await asyncio.to_thread(_confirmed_exit, identity):
                         break
@@ -181,8 +237,6 @@ async def confirm_stopped(record: OperationRecord) -> bool:
                     _signal(handles, signal.SIGKILL)
                 if not await asyncio.to_thread(_confirmed_exit, identity):
                     return False
-            finally:
-                _close_handles(handles)
         except (OSError, ValueError):
             return False
     return True

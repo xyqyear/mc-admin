@@ -233,6 +233,12 @@ Owned process cancellation requires Linux `pidfd_open` and `pidfd_send_signal`.
 The adapter uses Python wrappers when available and libc otherwise. Unavailable
 or unverifiable process handles fail cleanup and retain ownership evidence;
 there is no fallback that signals a potentially reused numeric PID.
+Cancellation freezes verified processes before enumerating their descendants,
+then repeats discovery until every captured process is stopped. This prevents
+a concurrent fork from escaping the termination set and retaining output pipes.
+TERM is queued before CONT so normal shutdown handlers can run; timed-out
+children receive KILL through the same handles. Failed discovery resumes the
+captured processes and retains recovery evidence instead of guessing ownership.
 
 Downgrade of `2026092501` refuses to drop the journal while protected records
 remain. Rehearse migration and rollback using a disposable database copy and
