@@ -2497,17 +2497,21 @@
         },
         "RestorationStatus": {
           "enum": [
+            "pending",
             "running",
             "succeeded",
             "failed",
-            "interrupted"
+            "interrupted",
+            "cancelled"
           ],
           "title": "RestorationStatus",
           "type": "string"
         },
         "RestorationType": {
-          "description": "Granularity of a world-restoration operation.",
           "enum": [
+            "global",
+            "server",
+            "paths",
             "world",
             "dimension",
             "regions",
