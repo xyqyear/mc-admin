@@ -73,3 +73,5 @@ Configure the GitHub `dns-e2e` Environment before running the workflow:
 | `HUAWEICLOUD_DNS_REGION` | Variable, optional | `cn-north-4` by default |
 
 Keep actual account domains and credentials in GitHub configuration or a private local JSON file, never in source, examples or committed test evidence. Successful, failed and cancelled scenarios all execute independent cloud cleanup. The workflow repeats recovery in an `always()` step and fails if cleanup cannot be verified; use retained manifests for explicit recovery when infrastructure or provider outages prevent completion.
+
+[Qualification evidence](../../../docs/evidence/huawei-dns-qualification.json) records the tested revision, real cloud and Minecraft observations, interrupted-run cleanup and independent cloud closeout without account domains or credentials.

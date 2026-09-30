@@ -8,13 +8,13 @@
 
 - [x] 2.1 Support a fixed authorized parent namespace with independent descendant scopes, input validation and collision refusal.
 - [x] 2.2 Persist non-secret cloud ownership and add independent, idempotent recovery with boundary and failure tests.
-- [ ] 2.3 Extend provider scenarios with protected records, lifecycle triggers, configuration changes and cleanup assertions.
+- [x] 2.3 Extend provider scenarios with protected records, lifecycle triggers, configuration changes and cleanup assertions.
 
 ## 3. DNS and Minecraft traffic
 
 - [x] 3.1 Add an owned host-network recipe with leased ports and real Minecraft/router traffic regression.
 - [x] 3.2 Verify independent provider records, authoritative address/SRV/CNAME answers and initial recursive observation.
-- [ ] 3.3 Exercise Huawei DNS-derived Minecraft routing, drift repair, port changes and wrong-host rejection.
+- [x] 3.3 Exercise Huawei DNS-derived Minecraft routing, drift repair, port changes and wrong-host rejection.
 
 ## 4. CI and credentials
 
@@ -25,5 +25,5 @@
 ## 5. Verification and documentation
 
 - [x] 5.1 Update CLAUDE, DNS, E2E architecture/coverage, CI and release documentation.
-- [ ] 5.2 Run targeted backend tests, Pyright/Ruff, Go formatting/vet/race tests and affected real E2E cases normally and without reuse.
-- [ ] 5.3 Commit and push the implementation; complete full non-publishing qualification for the latest SHA and record cloud cleanup evidence.
+- [x] 5.2 Run targeted backend tests, Pyright/Ruff, Go formatting/vet/race tests and affected real E2E cases normally and without reuse.
+- [x] 5.3 Commit and push the implementation; complete full non-publishing qualification for the latest SHA and record cloud cleanup evidence.
