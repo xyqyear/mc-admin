@@ -11,10 +11,10 @@ vi.mock('./config', async importOriginal => ({
   get currentVersion() { return bundledVersion.value },
 }))
 
-const releaseCount = versionUpdates.length
+const bundledUpdates = [...versionUpdates]
 
 afterEach(() => {
-  versionUpdates.splice(releaseCount)
+  versionUpdates.splice(0, versionUpdates.length, ...bundledUpdates)
   bundledVersion.value = '6.0.0-beta.1'
   localStorage.clear()
   vi.useRealTimers()
@@ -22,10 +22,12 @@ afterEach(() => {
 
 describe('version update notifications', () => {
   it('lists only newer releases in descending SemVer order, including the final release', () => {
-    versionUpdates.push(
+    versionUpdates.splice(0, versionUpdates.length,
+      { version: '6.0.0-beta.1', date: '2026-09-25', title: '首个测试版', description: '' },
       { version: '6.0.0-beta.2', date: '2026-09-25', title: '第二个测试版', description: '' },
       { version: '6.0.0', date: '2026-09-25', title: '正式版', description: '' },
       { version: '6.0.0-beta.10', date: '2026-09-25', title: '第十个测试版', description: '' },
+      { version: '7.0.0', date: '2026-09-25', title: '后续版本', description: '' },
     )
     const props = { open: true, onClose: vi.fn(), onRemindLater: vi.fn(), fromVersion: '6.0.0-beta.1' }
     const view = render(<VersionUpdateDialog {...props} toVersion="6.0.0" />)
@@ -35,6 +37,14 @@ describe('version update notifications', () => {
 
     view.rerender(<VersionUpdateDialog {...props} toVersion="6.0.0-beta.2" />)
     expect(screen.getAllByRole('heading', { level: 5 }).map(heading => heading.textContent)).toEqual(['第二个测试版'])
+  })
+
+  it('shows the bundled beta.2 notes once when upgrading from beta.1', () => {
+    render(<VersionUpdateDialog open onClose={vi.fn()} onRemindLater={vi.fn()}
+      fromVersion="6.0.0-beta.1" toVersion="6.0.0-beta.2" />)
+    expect(screen.getAllByRole('heading', { level: 5 }).map(heading => heading.textContent)).toEqual([
+      '统一恢复与任务进度',
+    ])
   })
 
   it('notifies an existing stable user about the prerelease and acknowledges that exact version', () => {
