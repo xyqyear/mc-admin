@@ -1,4 +1,5 @@
 import { fileSnapshotScope, useSnapshotOperation } from '@/features/backups/commands'
+import { SnapshotPreviewDialog } from '@/features/backups/ui/SnapshotPreviewDialog'
 import { RestorationHistoryDialog } from '@/features/backups/ui/RestorationHistoryDialog'
 import {
   getCoreRowModel,
@@ -17,7 +18,6 @@ import {
 import React, { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -27,8 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
-import { Separator } from '@/shared/ui/separator'
-import { Spinner } from '@/shared/ui/spinner'
 import {
   Tooltip,
   TooltipContent,
@@ -37,14 +35,13 @@ import {
 
 import { DataTable } from '@/shared/components/DataTable'
 import { SortableHeader } from '@/shared/components/SortableHeader'
-import { StatusBadge, type BadgeTone } from '@/shared/components/StatusBadge'
+import { StatusBadge } from '@/shared/components/StatusBadge'
 import type { FileItem } from '@/features/files/contracts'
-import type { RestorePreviewAction, Snapshot } from '@/features/backups/contracts';
+import type { Snapshot, SnapshotPreviewRequest } from '@/features/backups/contracts';
 import { useSnapshotMutations } from '@/features/backups/commands'
 import { useSnapshotQueries } from '@/features/backups/queries'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import { formatDateTime } from '@/shared/utils/formatUtils'
-import { formatUtils } from '@/features/servers/presentation'
 
 import {
   type RestoreProgressState
@@ -211,102 +208,6 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
   )
 }
 
-interface PreviewDialogProps {
-  open: boolean
-  onCancel: () => void
-  previewData: RestorePreviewAction[] | null
-  previewSummary: string | null
-  loading: boolean
-  snapshotId: string
-  isServerMode?: boolean
-}
-
-const actionToneMap: Record<string, BadgeTone> = {
-  updated: 'warning',
-  deleted: 'danger',
-  restored: 'success',
-}
-
-const actionLabelMap: Record<string, string> = {
-  updated: '更新',
-  deleted: '删除',
-  restored: '恢复',
-}
-
-const PreviewDialog: React.FC<PreviewDialogProps> = ({
-  open,
-  onCancel,
-  previewData,
-  previewSummary,
-  loading,
-  snapshotId,
-  isServerMode = false,
-}) => (
-  <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-    <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>
-          预览{isServerMode ? '服务器' : ''}快照恢复 - {snapshotId}
-        </DialogTitle>
-      </DialogHeader>
-
-      {loading ? (
-        <div className="text-center py-8">
-          <Spinner className="mx-auto size-6 mb-2" />
-          <span className="text-sm text-muted-foreground">正在生成预览...</span>
-        </div>
-      ) : previewData ? (
-        <div className="space-y-4">
-          {previewSummary && (
-            <div className="bg-blue-50 dark:bg-blue-950/40 p-3 rounded-md border border-blue-200 dark:border-blue-900">
-              <span className="font-semibold text-sm">{previewSummary}</span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <Separator className="flex-1" />
-            <span className="text-xs text-muted-foreground">详细变更列表</span>
-            <Separator className="flex-1" />
-          </div>
-
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {previewData.map((action, index) => (
-              <div key={index} className="p-3 border rounded-md bg-muted/50">
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const tone = actionToneMap[action.action]
-                    const label = actionLabelMap[action.action] || action.action
-                    return tone ? (
-                      <StatusBadge tone={tone} badgeStyle="soft">{label}</StatusBadge>
-                    ) : (
-                      <Badge variant="outline">{label}</Badge>
-                    )
-                  })()}
-                  <span className="font-mono text-xs">{action.item}</span>
-                  {action.action !== 'deleted' && action.size != null && (
-                    <span className="text-xs text-muted-foreground">
-                      ({formatUtils.formatBytes(action.size)})
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-            {previewData.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                没有变更
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="text-center py-8 text-muted-foreground">
-          无法生成预览
-        </div>
-      )}
-    </DialogContent>
-  </Dialog>
-)
-
 interface FileSnapshotActionsProps {
   file?: FileItem
   serverId: string
@@ -323,9 +224,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 }) => {
   const [isSnapshotDialogOpen, setIsSnapshotDialogOpen] = useState(false)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('')
-  const [isPreviewVisible, setIsPreviewVisible] = useState(false)
-  const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
-  const [previewSummary, setPreviewSummary] = useState<string | null>(null)
+  const [previewRequest, setPreviewRequest] = useState<SnapshotPreviewRequest | null>(null)
 
   const actualPath = path || file?.path || '/'
   const scope = useMemo(() => fileSnapshotScope(serverId, [actualPath]), [serverId, actualPath])
@@ -334,11 +233,10 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
   const { confirm, confirmDialog } = useConfirm()
 
-  const { useCreateSnapshot, usePreviewRestore } = useSnapshotMutations()
+  const { useCreateSnapshot } = useSnapshotMutations()
   const { useSnapshotsForPath } = useSnapshotQueries()
 
   const createSnapshotMutation = useCreateSnapshot()
-  const previewRestoreMutation = usePreviewRestore()
 
   const displayName = isServerMode ? '整个服务器' : (file?.name || '服务器')
 
@@ -388,25 +286,9 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
     setIsSnapshotDialogOpen(false)
   }
 
-  const handlePreviewRestore = async (snapshotId: string) => {
-    try {
-      setSelectedSnapshotId(snapshotId)
-      setPreviewData(null)
-      setPreviewSummary(null)
-      setIsPreviewVisible(true)
-
-      const previewResult = await previewRestoreMutation.mutateAsync({
-        snapshot_id: snapshotId,
-        server_id: serverId,
-        paths: [actualPath],
-      })
-
-      setPreviewData(previewResult.actions)
-      setPreviewSummary(previewResult.preview_summary)
-    } catch (error: any) {
-      toast.error(`预览失败: ${error?.message || '未知错误'}`)
-      setIsPreviewVisible(false)
-    }
+  const handlePreviewRestore = (snapshotId: string) => {
+    setSelectedSnapshotId(snapshotId)
+    setPreviewRequest({ scope, source_snapshot_id: snapshotId })
   }
 
   return (
@@ -466,20 +348,18 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         restoreLoading={restoreState.active}
         filePath={actualPath}
         onPreview={handlePreviewRestore}
-        previewLoading={previewRestoreMutation.isPending}
+        previewLoading={!!previewRequest}
         isServerMode={isServerMode}
         restoreState={restoreState}
         onCloseAfterRestore={handleCloseAfterRestore}
       />
 
-      <PreviewDialog
-        open={isPreviewVisible}
-        onCancel={() => setIsPreviewVisible(false)}
-        previewData={previewData}
-        previewSummary={previewSummary}
-        loading={previewRestoreMutation.isPending}
-        snapshotId={selectedSnapshotId}
-        isServerMode={isServerMode}
+      <SnapshotPreviewDialog
+        request={previewRequest}
+        onClose={() => setPreviewRequest(null)}
+        onRestore={previewId => {
+          void startRestore(selectedSnapshotId, previewId).then(() => setPreviewRequest(null))
+        }}
       />
 
       {isServerMode && <Button variant="outline" onClick={() => setHistoryOpen(true)}>恢复历史</Button>}

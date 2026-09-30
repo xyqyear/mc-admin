@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.snapshots import ResticRestoreAction, ResticSnapshot
+from app.snapshots import ResticSnapshot
 
 from .restoration_models import RestorationStatus
 from .scopes import SnapshotScope
@@ -14,17 +14,12 @@ class CreateSnapshotRequest(BaseModel):
     scope: SnapshotScope
 
 
-class RestorePreviewRequest(BaseModel):
-    snapshot_id: str
-    server_id: str | None = None
-    paths: list[str] | None = None
-
-
 class RestoreRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scope: SnapshotScope
     source_snapshot_id: str = Field(pattern="^[0-9a-f]{64}$")
     entry_point: Literal["files", "world", "snapshots"] = "files"
+    preview_id: str | None = Field(default=None, pattern="^[0-9a-f]{32}$")
 
 
 class SnapshotTaskAccepted(BaseModel):
@@ -65,17 +60,6 @@ class ListSnapshotsResponse(BaseModel):
     snapshots: list[ResticSnapshot]
 
 
-class RestorePreviewAction(BaseModel):
-    action: ResticRestoreAction
-    item: str | None = None
-    size: int | None = None
-
-
-class RestorePreviewResponse(BaseModel):
-    actions: list[RestorePreviewAction]
-    preview_summary: str
-
-
 class BackupRepositoryUsage(BaseModel):
     backupUsedGB: float
     backupTotalGB: float
@@ -84,8 +68,3 @@ class BackupRepositoryUsage(BaseModel):
 
 class ListLocksResponse(BaseModel):
     locks: str
-
-
-class UnlockResponse(BaseModel):
-    message: str
-    output: str

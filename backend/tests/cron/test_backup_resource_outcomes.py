@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,16 +9,21 @@ from app.cron.jobs import backup
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
 from app.db.metadata import Base
+from app.dynamic_config.configs.snapshots import SnapshotsConfig
 from app.minecraft import get_docker_mc_manager
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState, ResourceReference
 from app.servers.models import Server
+from app.snapshots import ResticClient, SnapshotService
+from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 
 
+@pytest.mark.binary("restic")
 @pytest.mark.parametrize("busy", [False, True])
-async def test_global_backup_records_success_or_skip_with_nested_file_scope(isolated_runtime, monkeypatch, busy):
+async def test_global_backup_records_success_or_skip_with_nested_file_scope(isolated_runtime, tmp_path, busy):
     runtime = isolated_runtime
+    runtime.resources["dynamic_configuration"] = SimpleNamespace(snapshots=SnapshotsConfig())
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
@@ -40,10 +44,11 @@ async def test_global_backup_records_success_or_skip_with_nested_file_scope(isol
         "    ports: ['25565:25565', '25575:25575']\n"
     )
     assert [instance.get_name() for instance in await get_docker_mc_manager().get_all_instances()] == ["survival"]
-    snapshots = SimpleNamespace(create_snapshot=AsyncMock(return_value=SimpleNamespace(
-        id="owned-snapshot", short_id="owned", summary=None,
-    )))
-    monkeypatch.setattr(backup, "_get_snapshot_service", lambda: snapshots)
+    client = ResticClient(str(tmp_path / "repository"), password="cron-backup-test")
+    await exec_command(str(client.binary_path), "init", env=client.env)
+    snapshots = SnapshotService(client, get_docker_mc_manager())
+    runtime.resources["snapshot_service"] = snapshots
+    (project / "data" / "settings.txt").write_text("retained cron data")
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     manager = CronManager()
@@ -72,7 +77,9 @@ async def test_global_backup_records_success_or_skip_with_nested_file_scope(isol
     assert ResourceReference("files") in record.resources
     assert record.writers_stopped and not record.processes
     if busy:
-        snapshots.create_snapshot.assert_not_awaited()
+        assert await snapshots.list_snapshots() == []
         assert any("跳过备份" in message for message in rows[0].messages)
     else:
-        snapshots.create_snapshot.assert_awaited_once_with([runtime.settings.server_path])
+        saved = await snapshots.list_snapshots()
+        assert len(saved) == 1 and saved[0].paths == [str(runtime.settings.server_path)]
+        assert (project / "data" / "settings.txt").read_text() == "retained cron data"

@@ -1,7 +1,5 @@
 from pydantic import BaseModel
 
-from app.snapshots.selection_models import RestorationSelection
-
 
 class DimensionInfoResponse(BaseModel):
     region_dir: str
@@ -21,8 +19,3 @@ class WorldLayoutResponse(BaseModel):
 
 class DimensionLabelsResponse(BaseModel):
     dimension_labels: dict[str, str]
-
-
-class PreviewRequest(BaseModel):
-    source_snapshot_id: str
-    selection: RestorationSelection

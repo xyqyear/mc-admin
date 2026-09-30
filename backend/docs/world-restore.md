@@ -4,8 +4,8 @@ Selective rollback of Minecraft world data at four granularities — chunk, regi
 
 `snapshots/commands.py` owns common task acceptance, recovery and rollback. `selection.py` plans confined paths
 and resource scopes; `scope_execution.py` merges protected chunks with mcmap; `snapshots/file_restore.py` applies file replacements; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
-invalidates caches; `preview_service.py` owns preview lifetime; `preview_application.py` builds previews using the
-reference-counted manager in `preview.py`. `artifacts.py` ties feature scratch
+invalidates caches; `snapshots/previews.py` owns preview tasks and binding; `preview_rendering.py` builds map copies using the
+reference-counted manager in `snapshots/preview_sessions.py`. `artifacts.py` ties feature scratch
 directories to operation recovery evidence. Adapters do not discover the
 current server again after an operation has captured its `ServerRef`.
 
@@ -97,9 +97,9 @@ Previewing a restore means showing the user what the world *would* look like aft
 
 - **One session per server.** Starting a new preview tears down the prior session for that server.
 - **Tmpdir layout.** Sessions live under `/tmp/mc-admin-world-artifacts/<installation>/restore/<session_id>/`. Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched. Chunk restore stages use a separate `restore-stage/` feature directory in the same installation namespace.
-- **Lazy tile rendering.** `begin_preview` stages MCAs with restic, runs the chunk merge for CHUNKS scope, and attaches a per-session `ServerRenderQueue` for REGIONS/CHUNKS previews before emitting `ready`. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `request_preview_tile` is the orchestrator's tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set or for scopes without an attached render queue.
-- **Heartbeat-driven TTL.** Default 30 minutes. The browser pings every 30 s; on close, `DELETE /preview/{session_id}` tears down. A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Tearing down a session also calls `ServerRenderQueue.shutdown()` to cancel the worker, fail outstanding waiters, and terminate any running mcmap subprocess.
-- **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; REGIONS uses the selected region count, CHUNKS uses the unique parent-region count, and WORLD/DIMENSION use a conservative default. If the FS lacks headroom, the preview SSE emits an `error` event with `free` and `required`.
+- **Lazy tile rendering.** `WorldPreviewRenderer.prepare` stages MCAs with restic, runs the chunk merge for CHUNKS scope, and attaches a per-session `ServerRenderQueue` for REGIONS/CHUNKS previews before the preparation task completes. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `SnapshotPreviews.tile` is the tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set or for scopes without an attached render queue.
+- **Heartbeat-driven TTL.** Default 30 minutes. The browser pings every 30 s; on close, `DELETE /api/snapshots/previews/{id}` submits cleanup. A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Cleanup awaits `ServerRenderQueue.close()` and active readers before deleting artifacts.
+- **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; REGIONS uses the selected region count, CHUNKS uses the unique parent-region count, and WORLD/DIMENSION use a conservative default. If the FS lacks headroom, the preparation task reports insufficient temporary disk space.
 
 Builds and tile reads hold active references. The tile endpoint reads the PNG
 bytes while pinned and then returns the response, so response delivery cannot
@@ -156,10 +156,10 @@ Rollback rows are flat `Restoration` rows with `is_rollback=true`. A rollback al
 The application runtime, in order:
 
 1. Recover journal ownership and resources, then mark abandoned restoration rows interrupted.
-2. `runtime_factories.py` builds `SnapshotCommands` and `WorldPreviewService` when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
+2. `runtime_factories.py` builds `SnapshotCommands` and `SnapshotPreviews` when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
 3. `prepare()` reaps eligible orphan previews and restore stages before producers and admission; `start_janitor()` launches periodic preview cleanup. Shutdown drains request writers and closes preview queues before deleting unreferenced artifacts whose writers have stopped.
 
-The map preview router accesses its service through the current runtime’s typed `get_world_preview_service()` accessor. Restoration operations retain safety references before writes and publish terminal task status after journal finalization. Adapter failures persist safe public messages in task results and restoration history.
+The common preview router accesses its service through the current runtime’s typed `get_snapshot_previews()` accessor. Restoration operations retain safety references before writes and publish terminal task status after journal finalization. Adapter failures persist safe public messages in task results and restoration history.
 
 ## Settings
 
@@ -187,3 +187,5 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 - `POST /snapshots/restorations`：202 返回任务与历史 ID；停服/维护预检查仍返回 409/423。
 - `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史。
 - `POST /snapshots/restorations/{id}/rollback`：新的恢复任务，保存当前状态并关联原记录。
+
+地图预览与文件预览共用 `/api/snapshots/previews`。区域副本保留被保护的在线附属文件；区块副本先复制在线 MCA 及其 MCC，再仅合并允许的选中区块，未选中和被忽略的外部区块保持原状。绑定与分页契约见 `snapshots.md`。准备期间的进度延长会话寿命，就绪后使用心跳和 TTL；停止观察不取消准备。

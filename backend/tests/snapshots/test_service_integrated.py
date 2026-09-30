@@ -329,9 +329,9 @@ class TestPreview:
             extraneous.write_text("x")
             (data / ".mcmap" / "tiles" / "r.0.0.png").write_bytes(b"new-tile")
 
-            previewed = await service.preview(
-                snapshot.id, [server.get_project_path()]
-            )
+            previewed = [event async for event in service.restore(
+                snapshot.id, [server.get_project_path()], dry_run=True
+            ) if event.kind == "file" and event.action != "unchanged" and not (event.action == "restored" and not event.size)]
 
             assert mca.read_bytes() == b"CHANGED"  # dry run did not touch disk
 

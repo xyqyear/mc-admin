@@ -9,7 +9,7 @@ class RepositoryUse:
     def __init__(self) -> None:
         self._readers = 0
         self._snapshots: Counter[str] = Counter()
-        self._maintenance = False
+        self._maintenance: object | None = None
 
     @property
     def active_snapshots(self) -> frozenset[str]:
@@ -34,13 +34,18 @@ class RepositoryUse:
             self._snapshots += Counter()
 
     @contextmanager
-    def maintain(self) -> Generator[None]:
-        if self._maintenance or self._readers:
+    def maintain(self, reservation: object | None = None) -> Generator[object]:
+        if reservation is not None:
+            if reservation is not self._maintenance:
+                raise RuntimeError("仓库维护占用已失效")
+            yield reservation
+            return
+        if self._maintenance is not None or self._readers:
             raise HTTPException(
                 status_code=423, detail="快照仓库仍被活动操作使用，无法删除快照或清理锁"
             )
-        self._maintenance = True
+        self._maintenance = object()
         try:
-            yield
+            yield self._maintenance
         finally:
-            self._maintenance = False
+            self._maintenance = None

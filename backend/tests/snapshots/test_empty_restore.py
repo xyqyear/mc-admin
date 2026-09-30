@@ -109,7 +109,7 @@ async def test_empty_restore_dry_run_matches_deletion_events_without_writing(emp
     selected = app.region / "r.0.0.mca"
     selected.write_bytes(b"preview-only")
     targets = [app.region] if scope == "directory" else [selected]
-    preview = await app.service.preview(app.snapshot.id, targets)
+    preview = [event async for event in app.service.restore(app.snapshot.id, targets, dry_run=True) if event.kind == "file" and event.action != "unchanged"]
     assert selected.read_bytes() == b"preview-only"
     actual = [event async for event in app.service.restore(app.snapshot.id, targets)]
     assert [event.model_dump() for event in preview] == [event.model_dump() for event in actual if event.kind == "file"]

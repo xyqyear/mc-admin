@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from dataclasses import dataclass
 from pathlib import Path
 
 import aiofiles
@@ -9,26 +10,22 @@ import aiofiles.os as aioos
 from app.snapshots.restoration_models import RestorationType
 from app.snapshots.selection_models import RestorationSelection
 
+from ..background_tasks import TaskProgress
 from ..dynamic_config import get_config as get_dynamic_config
-from ..errors import log_safe_error, public_error_message
 from ..mcmap.cache import ServerMapCache
 from ..mcmap.ownership import PreviewRenderTarget
 from ..mcmap.queue import ServerRenderQueue
-from ..operations.context import current_execution
-from ..operations.journal_types import OperationState
 from ..snapshots import SnapshotService
-from ..utils import async_fs
-from .artifacts import release_artifact
-from .events import PreviewEvent, RestoreError, SelectionResolutionError
-from .layout import discover_world_roots
-from .preview import (
-    PreviewMapCache,
+from ..snapshots.preview_sessions import (
     PreviewSessionManager,
     PreviewSessionNotFoundError,
 )
+from ..snapshots.protection import SnapshotProtection
+from ..utils import async_fs
+from .events import RestoreError, SelectionResolutionError
+from .layout import discover_world_roots
 from .scope_execution import RestoreScopeExecutor, _stage_destination
 from .selection import (
-    _count_affected_regions,
     _find_dimension,
     _restore_dimension,
     group_chunks_by_region,
@@ -36,102 +33,99 @@ from .selection import (
 )
 
 
-class WorldPreviewApplication:
-    def __init__(self, snapshots: SnapshotService, executor: RestoreScopeExecutor, manager: PreviewSessionManager) -> None:
+@dataclass
+class PreviewMapCache:
+    """``ServerMapCache``-shaped resolver for preview rendering.
+
+    Implements the surface ``ServerRenderQueue`` reaches into, rooted at a
+    session's staged MCAs and a session-local tiles dir. ``data_path``
+    points at the live world's data dir so mcmap's ``--chown`` targets the
+    data-dir owner; ``palette_json`` reuses the live world's palette.
+    """
+
+    palette_json: Path
+    data_path: Path
+    staged_region_dir: Path
+    tiles_root: Path
+
+    def mca_path(self, _region_path: str, x: int, z: int) -> Path:
+        return self.staged_region_dir / f"r.{x}.{z}.mca"
+
+    def tiles_dir(self, _region_path: str) -> Path:
+        return self.tiles_root
+
+    def png_path(self, _region_path: str, x: int, z: int) -> Path:
+        return self.tiles_root / f"r.{x}.{z}.png"
+
+    async def ensure_dir(self, target: Path) -> None:
+        await aioos.makedirs(target, exist_ok=True)
+
+
+class WorldPreviewRenderer:
+    def __init__(
+        self,
+        snapshots: SnapshotService,
+        executor: RestoreScopeExecutor,
+        manager: PreviewSessionManager,
+    ) -> None:
         self._snapshots = snapshots
         self._executor = executor
         self._preview_manager = manager
 
-    async def begin_preview(
+    async def prepare(
         self,
-        server_id: str,
+        *,
+        session_id: str,
         data_path: Path,
         source_snapshot_id: str,
         selection: RestorationSelection,
-        server_generation: int,
-    ) -> AsyncGenerator[PreviewEvent]:
-        """Stage snapshot MCAs to a session dir, run chunk merge, attach a lazy-render queue.
-
-        Tiles render on first request via a per-session ``ServerRenderQueue``
-        that reuses the live world's palette. Missing palette surfaces as an
-        ``error`` event prompting the user to initialize the live map first.
-        """
-        paths = await resolve_paths(data_path, selection, include_mcc=True)
-        if not paths:
-            raise SelectionResolutionError(
-                f"选择范围没有解析到任何文件路径: {selection.model_dump()}"
+        paths: tuple[Path, ...],
+        protection: SnapshotProtection,
+    ) -> AsyncGenerator[TaskProgress]:
+        session_dir = self._preview_manager.get_session_dir(session_id)
+        if session_dir is None:
+            raise PreviewSessionNotFoundError(session_id)
+        await aioos.makedirs(session_dir / "source", exist_ok=True)
+        yield TaskProgress(message="正在提取快照中的地图数据")
+        async with aclosing(
+            self._snapshots.stage(
+                source_snapshot_id,
+                paths,
+                session_dir / "source",
+                protection=protection,
             )
-
-        affected_regions = _count_affected_regions(selection)
-        session_dir = await self._preview_manager.create_session(
-            server_id, affected_regions=affected_regions, server_generation=server_generation,
-            source_snapshot_id=source_snapshot_id,
-        )
-        session_id = session_dir.name
-
-        ready = False
-        try:
-            async with self._preview_manager.use(session_id):
-                yield PreviewEvent(
-                    event_type="start",
-                    session_id=session_id,
-                    message=f"正在从快照 {source_snapshot_id[:8]} 准备预览",
-                )
-                await aioos.makedirs(session_dir / "source", exist_ok=True)
-                async with aclosing(self._snapshots.stage(
-                    source_snapshot_id, paths, session_dir / "source"
-                )) as events:
-                    async for _ in events:
-                        pass
-                yield PreviewEvent(
-                    event_type="stage",
-                    session_id=session_id,
-                    message="快照 MCA 文件准备完成",
-                )
-
-                if selection.type is RestorationType.CHUNKS:
-                    async for ev in self._preview_chunk_merge(
-                        data_path=data_path,
-                        selection=selection,
-                        session_dir=session_dir,
-                        session_id=session_id,
-                    ):
-                        yield ev
-
-                if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
-                    await self._attach_preview_render_queue(
-                        data_path=data_path,
-                        selection=selection,
-                        session_dir=session_dir,
-                        session_id=session_id,
+        ) as events:
+            async for event in events:
+                if event.kind == "status":
+                    yield TaskProgress(
+                        message="正在提取快照中的地图数据",
+                        progress=event.percent_done * 100
+                        if event.percent_done is not None
+                        else None,
                     )
-
-                ready = True
-                yield PreviewEvent(
-                    event_type="ready",
-                    session_id=session_id,
-                    message="预览已就绪",
-                )
-        except Exception as exc:  # noqa: BLE001 - the SSE error boundary excludes adapter exception values
-            operation = current_execution()
-            if operation is not None:
-                operation.outcome = OperationState.FAILED
-            log_safe_error(exc, "world preview failed")
-            yield PreviewEvent(
-                event_type="error",
+        if selection.type is RestorationType.REGIONS:
+            for path in await resolve_paths(data_path, selection, include_mcc=True):
+                if protection.permits(path) or not await aioos.path.isfile(path):
+                    continue
+                source = await async_fs.resolve_inside(data_path, path)
+                destination = await _stage_destination(session_dir / "source", path)
+                await aioos.makedirs(destination.parent, exist_ok=True)
+                await async_fs.copy2(source, destination)
+        if selection.type is RestorationType.CHUNKS:
+            async for event in self._preview_chunk_merge(
+                data_path=data_path,
+                selection=selection,
+                session_dir=session_dir,
+                protection=protection,
+            ):
+                yield event
+        if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
+            await self._attach_preview_render_queue(
+                data_path=data_path,
+                selection=selection,
+                session_dir=session_dir,
                 session_id=session_id,
-                message=public_error_message(exc),
             )
-        finally:
-            from ..operations.finalization import finalize
-
-            async def cleanup() -> None:
-                await release_artifact("world_preview", session_id)
-                session = self._preview_manager._sessions.get(session_id)
-                if not ready or (session is not None and session.closing):
-                    await self._preview_manager.end(session_id)
-
-            await finalize(cleanup())
 
     async def _preview_chunk_merge(
         self,
@@ -139,15 +133,15 @@ class WorldPreviewApplication:
         data_path: Path,
         selection: RestorationSelection,
         session_dir: Path,
-        session_id: str,
-    ) -> AsyncGenerator[PreviewEvent]:
+        protection: SnapshotProtection,
+    ) -> AsyncGenerator[TaskProgress]:
         """Copy live MCAs into ``preview/`` then splice selected chunks from the staged snapshot."""
         roots = await discover_world_roots(data_path)
         if selection.region_dir_relpath is None:
-            raise SelectionResolutionError(
-                "区块恢复选择范围需要指定维度路径"
-            )
-        dim = _restore_dimension(_find_dimension(data_path, roots, selection.region_dir_relpath))
+            raise SelectionResolutionError("区块恢复选择范围需要指定维度路径")
+        dim = _restore_dimension(
+            _find_dimension(data_path, roots, selection.region_dir_relpath)
+        )
 
         grouped = group_chunks_by_region(selection.chunks)
         live_subdirs: dict[str, Path | None] = {
@@ -164,15 +158,36 @@ class WorldPreviewApplication:
                 if live_dir is None:
                     continue
                 live_mca = live_dir / f"r.{rx}.{rz}.mca"
-                staged_mca = await _stage_destination(
-                    session_dir / "source", live_mca
-                )
+                staged_mca = await _stage_destination(session_dir / "source", live_mca)
                 preview_subdir = await _stage_destination(preview_dir, live_dir)
                 await aioos.makedirs(preview_subdir, exist_ok=True)
                 preview_mca = preview_subdir / f"r.{rx}.{rz}.mca"
 
                 if await aioos.path.exists(live_mca):
                     await async_fs.copy2(live_mca, preview_mca)
+                    for sidecar in await async_fs.iterdir(live_dir):
+                        if sidecar.suffix != ".mcc":
+                            continue
+                        parts = sidecar.name.split(".")
+                        if len(parts) != 4 or parts[0] != "c":
+                            continue
+                        try:
+                            in_region = (
+                                int(parts[1]) // 32 == rx and int(parts[2]) // 32 == rz
+                            )
+                        except ValueError:
+                            continue
+                        if in_region and await aioos.path.isfile(sidecar):
+                            confined = await async_fs.resolve_inside(data_path, sidecar)
+                            await async_fs.copy2(
+                                confined, preview_subdir / sidecar.name
+                            )
+                allowed = await self._executor.allowed_chunks(
+                    data_path, live_mca, rx, rz, local_chunks, protection
+                )
+                if not allowed:
+                    done += 1
+                    continue
                 if await aioos.path.exists(staged_mca):
                     if not await aioos.path.exists(preview_mca):
                         # Snapshot has the region but live doesn't; seed an
@@ -182,20 +197,19 @@ class WorldPreviewApplication:
                     await self._executor._merge_replace(
                         source_mca=staged_mca,
                         target_mca=preview_mca,
-                        chunks=local_chunks,
+                        chunks=allowed,
                         owned_by=data_path,
                     )
                 elif await aioos.path.exists(preview_mca):
                     await self._executor._merge_remove(
                         target_mca=preview_mca,
-                        chunks=local_chunks,
+                        chunks=allowed,
                         owned_by=data_path,
                     )
                 done += 1
-                yield PreviewEvent(
-                    event_type="merge_region",
-                    session_id=session_id,
-                    percent=(done / total) * 100.0 if total else 100.0,
+                yield TaskProgress(
+                    message="正在合并所选区块的预览副本",
+                    progress=(done / total) * 100.0 if total else 100.0,
                 )
 
     async def _attach_preview_render_queue(
@@ -235,7 +249,7 @@ class WorldPreviewApplication:
 
         staged_region_dir = await _stage_destination(source_root, live_region_dir)
         affected_keys: set[tuple[int, int]] = set()
-        for (rx, rz) in affected_iter:
+        for rx, rz in affected_iter:
             mca = staged_region_dir / f"r.{rx}.{rz}.mca"
             if await aioos.path.exists(mca):
                 affected_keys.add((rx, rz))
@@ -253,7 +267,11 @@ class WorldPreviewApplication:
             tiles_root=tiles_dir,
         )
         session = self._preview_manager.get_session(session_id)
-        if session is None or session.server_generation is None:
+        if (
+            session is None
+            or session.server_generation is None
+            or session.server_id is None
+        ):
             raise PreviewSessionNotFoundError(session_id)
         queue = ServerRenderQueue(
             server_name=session.server_id,
@@ -288,7 +306,6 @@ class WorldPreviewApplication:
         ``asyncio.TimeoutError`` when the render exceeds ``timeout``.
         """
         async with self._preview_manager.use(session_id) as sess:
-
             png = sess.base_dir / "tiles" / f"r.{rx}.{rz}.png"
             if await aioos.path.exists(png):
                 return png
@@ -308,4 +325,6 @@ class WorldPreviewApplication:
                 if timeout is not None
                 else float(get_dynamic_config().mcmap.request_timeout_seconds)
             )
-            return await asyncio.wait_for(queue.request(rx, rz), timeout=effective_timeout)
+            return await asyncio.wait_for(
+                queue.request(rx, rz), timeout=effective_timeout
+            )

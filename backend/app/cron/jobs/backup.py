@@ -4,15 +4,18 @@ from typing import Annotated, cast
 
 import aiofiles.os as aioos
 import httpx2
+from fastapi import HTTPException
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ...config import get_settings
 from ...dynamic_config.schemas import BaseConfigSchema
 from ...logger import get_logger
 from ...minecraft import get_docker_mc_manager
+from ...minecraft.paths import ServerPathError
 from ...snapshots import get_snapshot_service
-from ...snapshots.application import SnapshotApplication, SnapshotMaintenanceConflict
-from ...utils import async_fs
+from ...snapshots.application import SnapshotMaintenanceConflict, resolve_backup_paths
+from ...snapshots.commands import get_snapshot_commands
+from ...snapshots.scopes import GlobalScope, PathsScope, ServerScope
 from ...world import (
     GLOBAL_LOCK_KEY,
     get_server_operation_lock,
@@ -89,7 +92,9 @@ class BackupJobParams(BaseConfigSchema):
     # Uptime Kuma integration
     uptimekuma_url: Annotated[
         str | None,
-        Field(title="Uptime Kuma 推送 URL", description="Uptime Kuma 推送监控 URL，可选。"),
+        Field(
+            title="Uptime Kuma 推送 URL", description="Uptime Kuma 推送监控 URL，可选。"
+        ),
     ] = None
 
     @model_validator(mode="after")
@@ -175,42 +180,18 @@ async def _send_uptimekuma_notification(
 
 
 async def _resolve_backup_path(server_id: str | None, path: str | None) -> Path:
-    """
-    Resolve the actual backup path based on server_id and path parameters
-
-    The resolved path (symlinks followed) must stay inside the servers root
-    — and, for ``path``, inside the server's data directory.
-
-    Args:
-        server_id: Optional server identifier
-        path: Optional path within server (relative to data directory)
-
-    Returns:
-        Absolute path to backup
-    """
-    settings = get_settings()
-
-    if not server_id and not path:
-        # Backup entire servers directory
-        return await async_fs.resolve(settings.server_path)
-
-    if not server_id:
-        raise ValueError("不能在未指定server_id的情况下指定路径")
-
-    instance = get_docker_mc_manager().get_instance(server_id)
     try:
-        project_path = await async_fs.resolve_inside(
-            Path(settings.server_path), instance.get_project_path()
+        paths = await resolve_backup_paths(
+            get_docker_mc_manager(),
+            get_settings().server_path,
+            server_id,
+            [path] if path else None,
         )
-        if not path:
-            return project_path
-
-        data_path = instance.get_data_path()
-        return await async_fs.resolve_inside(
-            data_path, data_path / path.lstrip("/")
-        )
-    except async_fs.PathOutsideBaseError as e:
-        raise ValueError(f"备份路径越界，不在服务器目录内: {e}")
+    except ServerPathError:
+        raise
+    except HTTPException as error:
+        raise ValueError(str(error.detail)) from error
+    return paths[0]
 
 
 async def backup_cronjob(context: ExecutionContext):
@@ -230,13 +211,23 @@ async def backup_cronjob(context: ExecutionContext):
 
     lock_key = params.server_id if params.server_id else GLOBAL_LOCK_KEY
 
-    async def skip_busy() -> None:
+    async def skip_busy(reason: str | None = None) -> None:
         current = get_server_operation_lock().get_holder(lock_key)
-        description = f" ({current.description}, 起始 {current.started_at.isoformat()})" if current is not None else ""
-        skip_msg = f"跳过备份: 服务器 '{lock_key}' 当前被占用{description}"
+        description = (
+            f" ({current.description}, 起始 {current.started_at.isoformat()})"
+            if current is not None
+            else ""
+        )
+        skip_msg = f"跳过备份: {reason}" if reason else f"跳过备份: 服务器 '{lock_key}' 当前被占用{description}"
         context.skip(skip_msg)
         if params.uptimekuma_url and params.uptimekuma_url.strip():
-            await _send_uptimekuma_notification(context, params.uptimekuma_url, True, f"skipped: {skip_msg}", time.time() - start_time)
+            await _send_uptimekuma_notification(
+                context,
+                params.uptimekuma_url,
+                True,
+                f"skipped: {skip_msg}",
+                time.time() - start_time,
+            )
 
     if get_server_operation_lock().is_locked(lock_key):
         await skip_busy()
@@ -269,9 +260,26 @@ async def backup_cronjob(context: ExecutionContext):
         try:
             if get_server_operation_lock().is_locked(lock_key):
                 raise SnapshotMaintenanceConflict("服务器正在维护")
-            snapshot = await SnapshotApplication(service, get_docker_mc_manager(), get_server_operation_lock()).backup([backup_path])
+            commands = get_snapshot_commands()
+            if commands is None:
+                raise RuntimeError("快照服务未配置")
+            scope = (
+                GlobalScope()
+                if not params.server_id
+                else PathsScope(
+                    server_id=params.server_id, paths=(params.path.lstrip("/") or ".",)
+                )
+                if params.path
+                else ServerScope(server_id=params.server_id)
+            )
+            snapshot = await commands.backup(scope)
         except SnapshotMaintenanceConflict:
             await skip_busy()
+            return
+        except HTTPException as error:
+            if error.status_code != 423:
+                raise
+            await skip_busy(str(error.detail))
             return
 
         context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
@@ -298,6 +306,17 @@ async def backup_cronjob(context: ExecutionContext):
                     prune=params.prune,
                 )
                 context.log("旧快照清理完成")
+            except HTTPException as error:
+                if error.status_code != 423:
+                    raise
+                message = f"快照已创建，跳过保留策略清理：{error.detail}"
+                context.skip(message)
+                if params.uptimekuma_url and params.uptimekuma_url.strip():
+                    await _send_uptimekuma_notification(
+                        context, params.uptimekuma_url, True,
+                        f"skipped: {message}", time.time() - start_time,
+                    )
+                return
             except Exception as e:
                 logger.exception("Operation backup_cronjob failed")
                 context.log(f"警告: 清理旧快照时出错: {e!s}")

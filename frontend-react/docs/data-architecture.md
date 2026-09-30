@@ -40,3 +40,5 @@ selected scope, first saving a new safety snapshot so that rollback is reversibl
 Excluded descendants remain untouched and receive a brief notice.
 
 `features/backups` owns explicit snapshot scopes, creation mutations, recovery task observation and reusable progress/history UI. File management and world recovery import only these public contracts, commands and UI entries. The backups operation-resource registry refreshes snapshots and history after all terminal outcomes, even if the initiating file page has unmounted.
+
+`features/backups/useSnapshotPreview` observes preparation tasks for both file lists and maps. Ready results retain heartbeat state; closing them submits cleanup. Preparation observation can end without cancellation. File details are paginated by the backend; the map composes its own rendering component without a backups dependency on world internals. Snapshot deletion and stale-lock cleanup mutations await their actual terminal task results.

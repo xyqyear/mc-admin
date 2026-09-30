@@ -1,6 +1,6 @@
 import type { BackupRepositoryUsage } from "@/features/backups/contracts";
 import { api } from "@/shared/http/api";
-import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, DeleteSnapshotResponse, ListLocksResponse, UnlockResponse, RestorePreviewRequest, RestorePreviewResponse } from '@/features/backups/contracts';
+import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, ListLocksResponse, SnapshotPreviewRequest, SnapshotPreviewResult, SnapshotPreviewActions } from '@/features/backups/contracts';
 
 
 export const snapshotApi = {
@@ -23,10 +23,14 @@ export const snapshotApi = {
     return res.data;
   },
 
-  previewRestore: async (data: RestorePreviewRequest): Promise<RestorePreviewResponse> => {
-    const res = await api.post<RestorePreviewResponse>("/snapshots/restore/preview", data);
-    return res.data;
-  },
+  preparePreview: async (request: SnapshotPreviewRequest) =>
+    (await api.post<SnapshotTaskAccepted>('/snapshots/previews', request)).data,
+  getPreview: async (id: string) => (await api.get<SnapshotPreviewResult>(`/snapshots/previews/${id}`)).data,
+  previewActions: async (id: string, cursor = 0) =>
+    (await api.get<SnapshotPreviewActions>(`/snapshots/previews/${id}/actions`, { params: { cursor, limit: 100 } })).data,
+  heartbeatPreview: async (id: string) => { await api.post(`/snapshots/previews/${id}/heartbeat`) },
+  closePreview: async (id: string) =>
+    (await api.delete<SnapshotTaskAccepted>(`/snapshots/previews/${id}`)).data,
 
   restore: async (request: SnapshotRestoreRequest): Promise<SnapshotTaskAccepted> => {
     return (await api.post<SnapshotTaskAccepted>('/snapshots/restorations', request)).data;
@@ -41,12 +45,12 @@ export const snapshotApi = {
   },
 
   getBackupRepositoryUsage: async (): Promise<BackupRepositoryUsage> => {
-    const res = await api.get<BackupRepositoryUsage>("/snapshots/repository-usage");
+    const res = await api.get<BackupRepositoryUsage>("/snapshots/usage");
     return res.data;
   },
 
-  deleteSnapshot: async (snapshotId: string): Promise<DeleteSnapshotResponse> => {
-    const res = await api.delete<DeleteSnapshotResponse>(`/snapshots/${snapshotId}`);
+  deleteSnapshot: async (snapshotId: string): Promise<SnapshotTaskAccepted> => {
+    const res = await api.delete<SnapshotTaskAccepted>(`/snapshots/${snapshotId}`);
     return res.data;
   },
 
@@ -55,8 +59,8 @@ export const snapshotApi = {
     return res.data;
   },
 
-  unlockRepository: async (): Promise<UnlockResponse> => {
-    const res = await api.post<UnlockResponse>("/snapshots/unlock");
+  unlockRepository: async (): Promise<SnapshotTaskAccepted> => {
+    const res = await api.post<SnapshotTaskAccepted>("/snapshots/unlock");
     return res.data;
   },
 };

@@ -3,7 +3,9 @@ import 'leaflet/dist/leaflet.css'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RestorePreviewRequest } from '@/features/world/restore/contracts'
-import { useRestorePreview } from '@/features/world/restore/useRestorePreview'
+import { useSnapshotPreview } from '@/features/backups/commands'
+import { Button } from '@/shared/ui/button'
+import type { SnapshotPreviewRequest } from '@/features/backups/contracts'
 
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import {
@@ -37,6 +39,7 @@ interface RestorePreviewModalProps {
   serverId: string
   request: RestorePreviewRequest | null
   onClose: () => void
+  onRestore?: (previewId: string) => void
 }
 
 interface BlockBounds {
@@ -87,6 +90,7 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   serverId,
   request,
   onClose,
+  onRestore,
 }) => {
   const open = !!request
   // Latch the active request so the dialog body keeps rendering through the
@@ -97,7 +101,9 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
   }, [request])
   const selection = latched?.selection ?? null
 
-  const state = useRestorePreview(serverId, request)
+  const commonRequest = useMemo<SnapshotPreviewRequest | null>(() => request ? { source_snapshot_id: request.sourceSnapshotId, scope: { kind: 'world', server_id: serverId, selection: request.selection } } : null, [request, serverId])
+  const preview = useSnapshotPreview(commonRequest)
+  const state = { ...preview, sessionId: preview.result?.preview_id, ready: !!preview.result, percent: preview.progress }
   // Map lives in both a ref (for synchronous teardown in the container ref
   // callback) and state (so layer/overlay effects re-run once it's available).
   const mapRef = useRef<L.Map | null>(null)
@@ -167,7 +173,6 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
       mapInstance.removeLayer(layerRef.current)
     }
     const layer = new PreviewTileLayer({
-      serverId,
       sessionId: state.sessionId,
       available: availableSet,
       bounds: tileBounds,
@@ -231,12 +236,12 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
     >
       <DialogContent
         className="w-full max-w-4xl"
-        showCloseButton={!!state.error || state.ready || !state.sessionId}
+        showCloseButton
       >
         <DialogHeader>
           <DialogTitle>恢复预览</DialogTitle>
           <DialogDescription>
-            预览不会修改实时世界。关闭对话框后会清理临时渲染数据。
+            预览不会修改实时世界。准备中关闭仅停止观察；就绪后关闭会清理临时数据。
           </DialogDescription>
         </DialogHeader>
 
@@ -262,11 +267,13 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
               <span className="text-muted-foreground">
                 {state.error ?? state.message}
               </span>
-              <span className="ml-auto tabular-nums text-muted-foreground">
-                {Math.round(state.percent)}%
-              </span>
+              {state.percent != null && <span className="ml-auto tabular-nums text-muted-foreground">{Math.round(state.percent)}%</span>}
             </div>
-            <Progress value={state.percent} />
+            {state.percent != null && <Progress value={state.percent} />}
+            {preview.result && <p className="text-sm text-muted-foreground">{preview.result.notice}</p>}
+            {!!preview.result?.skipped_count && <p className="text-sm">所选范围包含忽略内容，将保持不变。</p>}
+            {preview.active && <Button variant="destructive" disabled={!preview.taskId || preview.cancelling} onClick={() => void preview.cancel()}>停止准备</Button>}
+            {preview.result && onRestore && <Button onClick={() => onRestore(preview.result!.preview_id)}>按此预览恢复</Button>}
 
             {/* Mount only after `ready`; earlier tile fetches 404 because the
                 per-session render queue isn't attached yet. `isolate` +

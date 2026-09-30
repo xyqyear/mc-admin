@@ -11,6 +11,7 @@ export type BackgroundTaskType =
   | 'server_rebuild'
   | 'world_restore'
   | 'snapshot_create' | 'snapshot_restore'
+  | 'snapshot_preview' | 'snapshot_preview_cleanup' | 'snapshot_delete' | 'snapshot_unlock'
   | 'chunk_prune_preview'
   | 'chunk_prune_apply'
 

@@ -37,7 +37,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes.
 - `suites/dns/` — incremental reconciliation through the real SDK and pinned MC Router, owned TLS service-edge faults, unknown/empty observations and cross-service failure isolation. Test hosts/CA changes stay inside the owned backend container; service helpers share only its private network namespace.
 - `suites/operations/` — startup handling of interrupted task/cron histories, scoped recovery permissions and cache degradation; local SQLite inputs are prepared only while the owned deployment is stopped.
-- `suites/snapshots/` — task-based global/project/path creation, file recovery history and reversible rollback, source/current exclusion protection, repository policy and real lock recovery.
+- `suites/snapshots/` — task-based global/project/path creation, file recovery history and reversible rollback, source/current exclusion protection, task-owned paginated previews and stale-preview rejection, repository maintenance tasks and real lock recovery.
 - `suites/world/` — real Restic scope/rollback including empty ranges and instance ownership, precise file conflicts, task-observation disconnection, explicit cancellation and process interruption with database-write recovery, mcmap preview freshness and artifact leases; deterministic public-format inputs supplement actual Minecraft worlds.
 
 ## Rules

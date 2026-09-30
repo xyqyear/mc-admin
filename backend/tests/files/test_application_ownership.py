@@ -41,7 +41,7 @@ from app.servers.lifecycle import (
 )
 from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
-from app.snapshots.application import SnapshotApplication, SnapshotMaintenanceConflict
+from app.snapshots.application import SnapshotMaintenanceConflict
 from app.snapshots.commands import SnapshotCommands
 from app.snapshots.scopes import PathsScope
 from app.utils.exec import exec_command
@@ -270,11 +270,10 @@ async def test_real_online_restore_reuses_file_lease_and_preserves_ignored_paths
     (data / "plugin.conf").write_text("changed")
     (data / "ignored").mkdir()
     (data / "ignored" / "retained.txt").write_text("retain")
-    application = SnapshotApplication(snapshots, file_application.manager, get_server_operation_lock())
     service = SnapshotCommands(snapshots, file_application.manager, get_server_operation_lock(), file_application.tasks, file_application.runtime.database.session_factory, file_application.runtime.settings.server_path)
     async with get_server_operation_lock().lease(["first"], holder(), claims=[ResourceClaim(ResourceKind.FILES, "first", "data/world")]):
         with pytest.raises(SnapshotMaintenanceConflict):
-            await application.backup([data])
+            await service.backup(PathsScope(server_id="first", paths=(".",)))
         accepted = await service.restore(PathsScope(server_id="first", paths=("plugin.conf",)), snapshot.id, 0)
         assert (await file_application.tasks.get_future(accepted["task_id"])).success
         assert (data / "plugin.conf").read_text() == "plugin-original"

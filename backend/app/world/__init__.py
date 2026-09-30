@@ -6,7 +6,6 @@ from .dimension_labels import (
     label_for_dimension_path,
 )
 from .events import (
-    PreviewEvent,
     RestoreError,
     SelectionResolutionError,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "DimensionFolderResolution",
     "DimensionInfo",
     "LockHolder",
-    "PreviewEvent",
     "RestoreError",
     "SelectionResolutionError",
     "ServerOperationKind",

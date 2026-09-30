@@ -37,15 +37,15 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	selection := map[string]any{"type": "regions", "region_dir_relpath": "world/region", "regions": [][2]int64{{rx, rz}}}
-	preview, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/preview", request(snapshot, selection), "ready")
+	preview, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/previews", s.previewRequest(snapshot, selection))
 	if err != nil {
 		return err
 	}
-	session, _ := preview["session_id"].(string)
+	session, _ := preview["preview_id"].(string)
 	if session == "" {
 		return fmt.Errorf("preview returned no session")
 	}
-	path := s.base + "/world-restore/preview/" + session
+	path := "/api/snapshots/previews/" + session
 	for _, operation := range []struct{ method, path string }{
 		{"DELETE", "/api/snapshots/" + snapshot},
 		{"POST", "/api/snapshots/unlock"},
@@ -57,7 +57,7 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	if err = s.client.JSON(ctx, "POST", path+"/heartbeat", nil, nil, 204); err != nil {
 		return err
 	}
-	tile := fmt.Sprintf("%s/tile/%d/%d.png", path, rx, rz)
+	tile := fmt.Sprintf("%s/tiles/%d/%d.png", path, rx, rz)
 	response, err := s.client.Do(ctx, "GET", tile, nil, nil)
 	if err != nil {
 		return err
@@ -81,14 +81,14 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	if !bytes.Equal(response.Body, cached.Body) {
 		return fmt.Errorf("same preview tile changed")
 	}
-	if err = s.client.JSON(ctx, "GET", path+"/tile/999/999.png", nil, nil, 404); err != nil {
+	if err = s.client.JSON(ctx, "GET", path+"/tiles/999/999.png", nil, nil, 404); err != nil {
 		return err
 	}
-	second, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/preview", request(snapshot, selection), "ready")
+	second, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/previews", s.previewRequest(snapshot, selection))
 	if err != nil {
 		return err
 	}
-	secondID, _ := second["session_id"].(string)
+	secondID, _ := second["preview_id"].(string)
 	if secondID == session || secondID == "" {
 		return fmt.Errorf("replacement preview reused prior session ID")
 	}
@@ -99,7 +99,7 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	for range 2 {
-		if err = s.client.JSON(ctx, "DELETE", s.base+"/world-restore/preview/"+secondID, nil, nil, 204); err != nil {
+		if err = s.client.RunTask(ctx, "DELETE", "/api/snapshots/previews/"+secondID, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -109,8 +109,8 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	_, err = s.client.SSE(ctx, "POST", s.base+"/world-restore/preview", request(snapshot, selection), "ready")
-	if err == nil || !strings.Contains(err.Error(), "insufficient disk for preview") {
+	_, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/previews", s.previewRequest(snapshot, selection))
+	if err == nil || !strings.Contains(err.Error(), "预览临时空间不足") {
 		return fmt.Errorf("preview disk guard did not reject capacity requirement: %v", err)
 	}
 	if err = s.config(ctx, "snapshots", func(config map[string]any) {
@@ -121,11 +121,11 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	expiring, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/preview", request(snapshot, selection), "ready")
+	expiring, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/previews", s.previewRequest(snapshot, selection))
 	if err != nil {
 		return err
 	}
-	expiringID, _ := expiring["session_id"].(string)
+	expiringID, _ := expiring["preview_id"].(string)
 	// Every tile/heartbeat API extends TTL, so observe owned staging removal before the final API assertion.
 	waitCtx, cancel := context.WithTimeout(ctx, 140*time.Second)
 	defer cancel()
@@ -151,8 +151,8 @@ print(paths[0])`, expiringID)
 	}); err != nil {
 		return err
 	}
-	if err = s.client.JSON(ctx, "POST", s.base+"/world-restore/preview/"+expiringID+"/heartbeat", nil, nil, 404); err != nil {
+	if err = s.client.JSON(ctx, "POST", "/api/snapshots/previews/"+expiringID+"/heartbeat", nil, nil, 404); err != nil {
 		return err
 	}
-	return s.client.JSON(ctx, "DELETE", "/api/snapshots/"+snapshot, nil, nil, 200)
+	return s.client.RunTask(ctx, "DELETE", "/api/snapshots/"+snapshot, nil, nil)
 }

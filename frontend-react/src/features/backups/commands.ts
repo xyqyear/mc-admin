@@ -1,7 +1,7 @@
 import type { ApiError } from '@/shared/http/api'
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
-import type { CreateSnapshotResponse, DeleteSnapshotResponse } from '@/features/backups/contracts';
+import type { CreateSnapshotResponse, DeleteSnapshotResponse, UnlockResponse } from '@/features/backups/contracts';
 import { queryKeys } from "@/shared/http/api";
 import { toast } from "sonner";
 import { waitForTaskResult } from '@/features/tasks/commands';
@@ -57,19 +57,9 @@ export const useSnapshotMutations = () => {
     });
   };
 
-  const usePreviewRestore = () => {
-    return useMutation({
-      mutationFn: snapshotApi.previewRestore,
-      onError: (error: ApiError) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`预览失败: ${errorDetail}`);
-      },
-    });
-  };
-
   const useDeleteSnapshot = () => {
     return useMutation({
-      mutationFn: snapshotApi.deleteSnapshot,
+      mutationFn: async (id: string) => waitForTaskResult<DeleteSnapshotResponse>(queryClient, await snapshotApi.deleteSnapshot(id)),
       onSuccess: (data: DeleteSnapshotResponse) => {
         toast.success(data.message);
 
@@ -86,7 +76,7 @@ export const useSnapshotMutations = () => {
 
   const useUnlockRepository = () => {
     return useMutation({
-      mutationFn: snapshotApi.unlockRepository,
+      mutationFn: async () => waitForTaskResult<UnlockResponse>(queryClient, await snapshotApi.unlockRepository()),
       onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.snapshots.locks(),
@@ -102,8 +92,9 @@ export const useSnapshotMutations = () => {
   return {
     useCreateGlobalSnapshot,
     useCreateSnapshot,
-    usePreviewRestore,
     useDeleteSnapshot,
     useUnlockRepository,
   };
 };
+
+export { useSnapshotPreview } from './useSnapshotPreview'

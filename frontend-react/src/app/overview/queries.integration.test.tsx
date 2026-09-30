@@ -34,7 +34,7 @@ beforeEach(() => {
     http.get('*/api/system/info', () => HttpResponse.json({ cpuPercentage: 0, cpuLoad1Min: 0, cpuLoad5Min: 0, cpuLoad15Min: 0, ramUsedGB: 1, ramTotalGB: 8 })),
     http.get('*/api/system/cpu_percent', () => HttpResponse.json({ cpuPercentage: 0 })),
     http.get('*/api/system/disk-usage', () => HttpResponse.json({ diskUsedGB: 1, diskTotalGB: 8, diskAvailableGB: 7 })),
-    http.get('*/api/snapshots/repository-usage', () => HttpResponse.json({ backupUsedGB: 1, backupTotalGB: 8, backupAvailableGB: 7 })),
+    http.get('*/api/snapshots/usage', () => HttpResponse.json({ backupUsedGB: 1, backupTotalGB: 8, backupAvailableGB: 7 })),
   )
 })
 

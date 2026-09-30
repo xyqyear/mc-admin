@@ -974,38 +974,6 @@
       "path": "/api/servers/{server_id}/world-restore/player-locations"
     },
     {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "POST",
-      "path": "/api/servers/{server_id}/world-restore/preview"
-    },
-    {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "DELETE",
-      "path": "/api/servers/{server_id}/world-restore/preview/{session_id}"
-    },
-    {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "POST",
-      "path": "/api/servers/{server_id}/world-restore/preview/{session_id}/heartbeat"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/world-restore/preview/{session_id}/tile/{rx}/{rz}.png"
-    },
-    {
       "cookie_csrf": false,
       "declared_authorization": [
         "session_or_master"
@@ -1038,12 +1006,52 @@
       "path": "/api/snapshots/locks"
     },
     {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/snapshots/previews"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "DELETE",
+      "path": "/api/snapshots/previews/{preview_id}"
+    },
+    {
       "cookie_csrf": false,
       "declared_authorization": [
         "session_or_master"
       ],
       "method": "GET",
-      "path": "/api/snapshots/repository-usage"
+      "path": "/api/snapshots/previews/{preview_id}"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/snapshots/previews/{preview_id}/actions"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/snapshots/previews/{preview_id}/heartbeat"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/snapshots/previews/{preview_id}/tiles/{rx}/{rz}.png"
     },
     {
       "cookie_csrf": false,
@@ -1083,15 +1091,15 @@
         "session_or_master"
       ],
       "method": "POST",
-      "path": "/api/snapshots/restore/preview"
+      "path": "/api/snapshots/unlock"
     },
     {
-      "cookie_csrf": true,
+      "cookie_csrf": false,
       "declared_authorization": [
         "session_or_master"
       ],
-      "method": "POST",
-      "path": "/api/snapshots/unlock"
+      "method": "GET",
+      "path": "/api/snapshots/usage"
     },
     {
       "cookie_csrf": true,
@@ -1606,6 +1614,10 @@
       "world_restore",
       "snapshot_create",
       "snapshot_restore",
+      "snapshot_preview",
+      "snapshot_preview_cleanup",
+      "snapshot_delete",
+      "snapshot_unlock",
       "chunk_prune_preview",
       "chunk_prune_apply"
     ]
@@ -2770,6 +2782,18 @@
               "title": "Entry Point",
               "type": "string"
             },
+            "preview_id": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview Id"
+            },
             "scope": {
               "discriminator": {
                 "mapping": {
@@ -2938,6 +2962,10 @@
             "world_restore",
             "snapshot_create",
             "snapshot_restore",
+            "snapshot_preview",
+            "snapshot_preview_cleanup",
+            "snapshot_delete",
+            "snapshot_unlock",
             "chunk_prune_preview",
             "chunk_prune_apply"
           ],

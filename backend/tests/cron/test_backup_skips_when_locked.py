@@ -1,5 +1,3 @@
-from app.config import get_settings
-
 """Test that backup_cronjob skips when the per-server lock is already held."""
 from datetime import UTC, datetime
 
@@ -14,7 +12,6 @@ from app.world import (
     ServerOperationKind,
     get_server_operation_lock,
 )
-from tests.support.runtime import set_runtime_resource
 
 
 def _make_context(params: BackupJobParams) -> ExecutionContext:
@@ -70,29 +67,3 @@ async def test_backup_skips_when_global_lock_is_held():
     assert context.status == ExecutionStatus.SKIPPED
     assert "跳过备份" in joined
     assert GLOBAL_LOCK_KEY in joined
-
-
-async def test_global_backup_skips_when_an_affected_server_is_restoring(tmp_path, monkeypatch):
-    from unittest.mock import AsyncMock, Mock
-
-    from app.cron.jobs import backup
-
-    instance = Mock()
-    instance.get_name.return_value = "affected"
-    instance.get_project_path.return_value = tmp_path / "affected"
-    instance.get_data_path.return_value = tmp_path / "affected" / "data"
-    manager = Mock()
-    manager.get_all_instances = AsyncMock(return_value=[instance])
-    set_runtime_resource(monkeypatch, 'docker_mc_manager', manager)
-    monkeypatch.setattr(get_settings(), "server_path", tmp_path)
-    snapshots = Mock()
-    snapshots.create_snapshot = AsyncMock()
-    monkeypatch.setattr(backup, "_get_snapshot_service", lambda: snapshots)
-    holder = LockHolder(ServerOperationKind.RESTORE, datetime.now(UTC), None, "restoring")
-    context = _make_context(BackupJobParams(keep_last=1))
-    async with get_server_operation_lock().acquire("affected", holder):
-        await backup_cronjob(context)
-        assert not get_server_operation_lock().is_locked(GLOBAL_LOCK_KEY)
-    snapshots.create_snapshot.assert_not_awaited()
-    assert context.status == ExecutionStatus.SKIPPED
-    assert any("跳过备份" in message for message in context.messages)

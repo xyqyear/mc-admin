@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Path as PathParameter
+from fastapi.responses import Response
 
 from app.auth.schemas import UserPublic
 from app.snapshots.api_models import (
@@ -13,20 +15,16 @@ from app.snapshots.api_models import (
     ListRestorationsResponse,
     ListSnapshotsResponse,
     RestorationResponse,
-    RestorePreviewAction,
-    RestorePreviewRequest,
-    RestorePreviewResponse,
     RestoreRequest,
     SnapshotTaskAccepted,
-    UnlockResponse,
 )
 
+from ..background_tasks import get_task_manager
 from ..config import get_settings
 from ..cron import get_restart_scheduler
 from ..db.database import get_session_factory
 from ..dependencies import get_current_user
 from ..dynamic_config import get_config
-from ..logger import get_logger
 from ..minecraft import get_docker_mc_manager
 from ..snapshots import (
     TargetIgnoredError,
@@ -38,7 +36,10 @@ from ..snapshots.file_restore import (
     SnapshotMaintenanceConflict,
     SnapshotServerRunning,
 )
+from ..snapshots.maintenance import SnapshotMaintenance
 from ..snapshots.policy import check_backup_time_restriction
+from ..snapshots.preview_models import PreviewActions, PreviewRequest, PreviewResult
+from ..snapshots.previews import get_snapshot_previews
 from ..snapshots.queries import RestorationQueries
 from ..system.resources import get_disk_info
 
@@ -125,31 +126,71 @@ async def eligible_snapshots(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.post("/restore/preview", response_model=RestorePreviewResponse)
-async def preview_global_restore(
-    request: RestorePreviewRequest, _: UserPublic = Depends(get_current_user)
+def _previews():
+    previews = get_snapshot_previews()
+    if previews is None:
+        raise HTTPException(
+            status_code=503, detail="尚未配置快照仓库，无法预览恢复结果"
+        )
+    return previews
+
+
+@router.post("/previews", status_code=202, response_model=SnapshotTaskAccepted)
+async def prepare_preview(
+    request: PreviewRequest, user: UserPublic = Depends(get_current_user)
 ):
-    """Preview restore operation (dry run)"""
-    target_paths = await _resolve_backup_paths(request.server_id, request.paths)
-
-    service = _get_snapshot_service()
     try:
-        events = await service.preview(request.snapshot_id, target_paths)
-    except TargetIgnoredError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return await _previews().submit(
+            request.scope, request.source_snapshot_id, user.id
+        )
+    except TargetIgnoredError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
-    actions = [
-        RestorePreviewAction(action=ev.action, item=ev.item, size=ev.size)
-        for ev in events
-        if ev.action is not None
-    ]
 
-    updated_count = sum(1 for a in actions if a.action == "updated")
-    deleted_count = sum(1 for a in actions if a.action == "deleted")
-    restored_count = sum(1 for a in actions if a.action == "restored")
+@router.get("/previews/{preview_id}", response_model=PreviewResult)
+async def get_preview(preview_id: str, _: UserPublic = Depends(get_current_user)):
+    return await _previews().get(preview_id)
 
-    summary = f"预览结果：{updated_count} 个文件更新，{deleted_count} 个文件删除，{restored_count} 个文件恢复"
-    return RestorePreviewResponse(actions=actions, preview_summary=summary)
+
+@router.get("/previews/{preview_id}/actions", response_model=PreviewActions)
+async def get_preview_actions(
+    preview_id: str,
+    cursor: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=200),
+    _: UserPublic = Depends(get_current_user),
+):
+    return await _previews().actions(preview_id, cursor, limit)
+
+
+@router.post("/previews/{preview_id}/heartbeat", status_code=204)
+async def heartbeat_preview(
+    preview_id: str, _: UserPublic = Depends(get_current_user)
+) -> None:
+    await _previews().heartbeat(preview_id)
+
+
+@router.delete(
+    "/previews/{preview_id}", status_code=202, response_model=SnapshotTaskAccepted
+)
+async def close_preview(preview_id: str, user: UserPublic = Depends(get_current_user)):
+    return await _previews().end(preview_id, user.id)
+
+
+@router.get("/previews/{preview_id}/tiles/{rx}/{rz}.png")
+async def get_preview_tile(
+    preview_id: str, rx: int, rz: int, _: UserPublic = Depends(get_current_user)
+):
+    try:
+        tile = await _previews().tile(preview_id, rx, rz)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="该区域没有可预览的地形") from error
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=503, detail="预览瓦片仍在生成，请稍后重试"
+        ) from error
+    return Response(
+        content=tile, media_type="image/png", headers={"Cache-Control": "private, max-age=60"}
+    )
 
 
 @router.post("/restorations", status_code=202, response_model=SnapshotTaskAccepted)
@@ -162,6 +203,7 @@ async def restore_snapshot(
             request.source_snapshot_id,
             user.id,
             entry_point=request.entry_point,
+            preview_id=request.preview_id,
         )
     except SnapshotMaintenanceConflict as error:
         raise HTTPException(status_code=423, detail=str(error)) from error
@@ -210,20 +252,10 @@ async def rollback_restoration(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.delete("/{snapshot_id}")
-async def delete_snapshot(snapshot_id: str, _: UserPublic = Depends(get_current_user)):
-    """Delete a specific snapshot by ID"""
-    logger = get_logger()
-    service = _get_snapshot_service()
-    await service.forget_id(snapshot_id=snapshot_id, prune=True)
-    logger.info("Snapshot deleted: %s", snapshot_id)
-    return {"message": f"Snapshot {snapshot_id} deleted successfully"}
-
-
 # Backup repository disk usage models
 
 
-@router.get("/repository-usage", response_model=BackupRepositoryUsage)
+@router.get("/usage", response_model=BackupRepositoryUsage)
 async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user)):
     """Get backup repository disk usage information"""
     settings = get_settings()
@@ -254,13 +286,18 @@ async def list_locks(_: UserPublic = Depends(get_current_user)):
     return ListLocksResponse(locks=locks_output)
 
 
-@router.post("/unlock", response_model=UnlockResponse)
-async def unlock_repository(_: UserPublic = Depends(get_current_user)):
-    """Remove stale locks from the repository"""
-    logger = get_logger()
-    service = _get_snapshot_service()
-    unlock_output = await service.unlock()
-    logger.info("Repository unlocked")
-    return UnlockResponse(
-        message="Repository unlocked successfully", output=unlock_output
-    )
+@router.post("/unlock", status_code=202, response_model=SnapshotTaskAccepted)
+async def unlock_repository(user: UserPublic = Depends(get_current_user)):
+    return await SnapshotMaintenance(
+        _get_snapshot_service(), get_task_manager()
+    ).submit(user.id)
+
+
+@router.delete("/{snapshot_id}", status_code=202, response_model=SnapshotTaskAccepted)
+async def delete_snapshot(
+    snapshot_id: str = PathParameter(pattern="^[0-9a-f]{64}$"),
+    user: UserPublic = Depends(get_current_user),
+):
+    return await SnapshotMaintenance(
+        _get_snapshot_service(), get_task_manager()
+    ).submit(user.id, snapshot_id=snapshot_id)

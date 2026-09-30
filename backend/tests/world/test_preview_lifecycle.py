@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from app.dynamic_config import get_config
 from app.dynamic_config.configs.snapshots import WorldRestoreConfig
 from app.mcmap.queue import ServerRenderQueue
-from app.world.preview import (
+from app.snapshots.preview_sessions import (
     PreviewDiskGuardError,
     PreviewSessionManager,
     PreviewSessionNotFoundError,
@@ -52,11 +52,11 @@ async def test_concurrent_creates_keep_only_latest_session(manager):
 
 
 async def test_tile_read_keeps_reference_until_bytes_are_loaded(manager):
-    from app.world.preview_application import WorldPreviewApplication
+    from app.world.preview_rendering import WorldPreviewRenderer
     from app.world.scope_execution import RestoreScopeExecutor
 
     snapshots = AsyncMock()
-    application = WorldPreviewApplication(snapshots, RestoreScopeExecutor(snapshots), manager)
+    application = WorldPreviewRenderer(snapshots, RestoreScopeExecutor(snapshots), manager)
     directory = await manager.create_session("srv1")
     rendering = asyncio.Event()
     finish_rendering = asyncio.Event()
@@ -81,7 +81,7 @@ async def test_tile_read_keeps_reference_until_bytes_are_loaded(manager):
 
 
 async def test_orphan_reaper_preserves_session_created_during_directory_listing(manager, monkeypatch):
-    from app.world import preview
+    from app.snapshots import preview_sessions as preview
 
     original = preview.async_fs.iterdir
     created = []
@@ -97,7 +97,7 @@ async def test_orphan_reaper_preserves_session_created_during_directory_listing(
 
 
 async def test_cancel_during_session_directory_creation_waits_and_cleans(manager, monkeypatch):
-    from app.world import preview
+    from app.snapshots import preview_sessions as preview
 
     original = preview.aioos.makedirs
     created = asyncio.Event()
@@ -119,45 +119,6 @@ async def test_cancel_during_session_directory_creation_waits_and_cleans(manager
         await task
     assert manager.get_active_for_server("srv1") is None
     assert not manager._sessions
-    assert not list(manager.base_dir.iterdir())
-
-
-async def test_preview_sse_failure_records_failed_outcome_and_removes_artifact(manager, monkeypatch, isolated_runtime):
-    from app.db.metadata import Base
-    from app.operations.context import OperationExecution, bind_execution
-    from app.operations.journal import OperationJournal
-    from app.operations.journal_types import (
-        OperationSpec,
-        OperationState,
-        ResourceReference,
-    )
-    from app.snapshots.restoration_models import RestorationType
-    from app.snapshots.selection_models import RestorationSelection
-    from app.world import preview_application
-    from app.world.preview_application import WorldPreviewApplication
-    from app.world.scope_execution import RestoreScopeExecutor
-
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    journal = OperationJournal(isolated_runtime.database.session_factory)
-    isolated_runtime.journal = journal
-    record = await journal.accept(OperationSpec(kind="world_preview", resources=(ResourceReference("cache", "srv1", 1),)))
-    execution = OperationExecution(journal, record.operation_id)
-    snapshots = AsyncMock()
-
-    async def fail_stage(*_args):
-        raise RuntimeError("synthetic preview secret")
-        yield
-
-    snapshots.stage = fail_stage
-    monkeypatch.setattr(preview_application, "resolve_paths", AsyncMock(return_value=[manager.base_dir / "region"]))
-    application = WorldPreviewApplication(snapshots, RestoreScopeExecutor(snapshots), manager)
-    with bind_execution(execution):
-        events = [event async for event in application.begin_preview("srv1", manager.base_dir, "source-id", RestorationSelection(type=RestorationType.WORLD), 1)]
-    assert events[-1].event_type == "error"
-    assert events[-1].message is not None
-    assert "synthetic preview secret" not in events[-1].message
-    assert execution.outcome is OperationState.FAILED
     assert not list(manager.base_dir.iterdir())
 
 
@@ -378,3 +339,59 @@ async def test_janitor_reaps_stale_in_background(base_dir, monkeypatch):
         assert not session_dir.exists()
     finally:
         await manager.stop_janitor()
+
+
+async def test_global_preview_replacement_releases_all_overlapping_server_owners(manager):
+    first = await manager.create_session("srv1", source_snapshot_id="first")
+    second = await manager.create_session("srv2", source_snapshot_id="second")
+    global_preview = await manager.create_session(
+        None, server_ids=("srv1", "srv2"), source_snapshot_id="global-source"
+    )
+    assert not first.exists() and not second.exists()
+    assert manager.get_active_for_server("srv1") == global_preview.name
+    assert manager.get_active_for_server("srv2") == global_preview.name
+    replacement = await manager.create_session("srv2", source_snapshot_id="replacement")
+    assert not global_preview.exists()
+    assert manager.get_active_for_server("srv1") is None
+    assert manager.get_active_for_server(None) is None
+    assert manager._repository_use.active_snapshots == {"replacement"}
+    await manager.end_and_wait(replacement.name)
+    assert not manager._repository_use.active_snapshots
+
+
+async def test_cleanup_and_restart_preserve_unknown_preview_writer_artifacts(
+    manager, isolated_runtime,
+):
+    from app.db.metadata import Base
+    from app.operations.journal import OperationJournal
+    from app.operations.journal_types import (
+        OperationSpec,
+        OperationState,
+        RecoveryReference,
+        ResourceReference,
+    )
+
+    async with isolated_runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    journal = OperationJournal(isolated_runtime.database.session_factory)
+    isolated_runtime.journal = journal
+    directory = await manager.create_session("srv1", source_snapshot_id="source")
+    record = await journal.accept(OperationSpec(
+        kind="world_preview_render", resources=(ResourceReference("cache", "srv1", 1),)
+    ))
+    await journal.start(record.operation_id)
+    await journal.phase(record.operation_id, "rendering", recovery_refs=(RecoveryReference("world_preview", directory.name),))
+    await journal.set_ownership_known(record.operation_id, False)
+    await journal.finish(record.operation_id, OperationState.INTERRUPTED, writers_stopped=False)
+    with pytest.raises(HTTPException, match="预览写入状态尚未确认"):
+        await manager.end_and_wait(directory.name)
+    assert directory.exists()
+    assert manager._repository_use.active_snapshots == {"source"}
+    restarted = PreviewSessionManager(manager.base_dir)
+    assert await restarted.reap_orphan_dirs() == []
+    with pytest.raises(PreviewSessionNotFoundError):
+        restarted.heartbeat(directory.name)
+    await journal.resolve(record.operation_id, actor_id=0, writers_stopped=True, resolve_references=True)
+    assert await restarted.reap_orphan_dirs() == [directory]
+    await manager.end_and_wait(directory.name)
+    assert not manager._repository_use.active_snapshots

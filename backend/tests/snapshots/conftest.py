@@ -4,6 +4,7 @@ import pytest
 
 from app.background_tasks.manager import BackgroundTaskManager
 from app.db.metadata import Base
+from app.dynamic_config.configs.snapshots import WorldRestoreConfig
 from app.dynamic_config.configs.world import WorldConfig
 from app.minecraft import MCServerStatus
 from app.operations.journal import OperationJournal
@@ -52,7 +53,7 @@ async def case(tmp_path):
         def get_instance(self, _):
             return instance
 
-    config = SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[]))
+    config = SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[], world_restore=WorldRestoreConfig()))
     runtime.resources.update(docker_mc_manager=Manager(), dynamic_configuration=config)
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -81,6 +82,7 @@ async def case(tmp_path):
         client=client,
     )
     await tasks.shutdown()
+    await runtime.resource("snapshot_previews").close()
 
 
 @pytest.fixture

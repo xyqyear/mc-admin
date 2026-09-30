@@ -74,15 +74,14 @@ func configurationCredentialLogs(ctx context.Context, t *engine.Scope) error {
 	if err = fixtures.CheckFile(ctx, client, id, "/private.properties", "rcon.password="+secret); err != nil {
 		return err
 	}
-	var failure struct {
-		Detail string `json:"detail"`
-	}
-	missingSnapshot := map[string]any{"snapshot_id": "missing-snapshot", "server_id": id, "paths": []string{"/private.properties"}}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/restore/preview", missingSnapshot, &failure, 500); err != nil {
+	missingSnapshot := map[string]any{"source_snapshot_id": strings.Repeat("0", 64), "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"private.properties"}}}
+	preview, err := client.StartTask(ctx, "POST", "/api/snapshots/previews", missingSnapshot)
+	if err != nil {
 		return err
 	}
-	if failure.Detail != "服务器内部错误，请稍后重试" {
-		return fmt.Errorf("unexpected request error did not use the safe public message")
+	failedPreview, previewErr := client.Task(ctx, preview.ID)
+	if previewErr == nil || failedPreview.Status != "failed" || failedPreview.Error != "服务器内部错误，请稍后重试" {
+		return fmt.Errorf("unexpected preview task failure did not use the safe public message")
 	}
 	accepted, err := client.StartTask(ctx, "POST", "/api/snapshots/restorations", map[string]any{"source_snapshot_id": strings.Repeat("0", 64), "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"private.properties"}}})
 	if err != nil {

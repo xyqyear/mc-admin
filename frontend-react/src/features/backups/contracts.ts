@@ -96,6 +96,7 @@ export interface SnapshotRestoreRequest {
   source_snapshot_id: string
   scope: SnapshotScope
   entry_point?: 'files' | 'world' | 'snapshots'
+  preview_id?: string
 }
 
 export interface DeleteSnapshotResponse {
@@ -111,21 +112,32 @@ export interface UnlockResponse {
   output: string;
 }
 
-export interface RestorePreviewRequest {
-  snapshot_id: string;
-  server_id?: string;
-  paths?: string[];
+export interface SnapshotPreviewRequest {
+  scope: SnapshotScope
+  source_snapshot_id: string
 }
 
 export interface RestorePreviewAction {
-  action: string;
-  item?: string;
-  size?: number;
+  action: 'updated' | 'deleted' | 'restored'
+  item: string
+  size: number | null
 }
 
-export interface RestorePreviewResponse {
-  actions: RestorePreviewAction[];
-  preview_summary: string;
+export interface SnapshotPreviewResult {
+  preview_id: string
+  kind: 'files' | 'map'
+  preview_summary: string
+  updated: number
+  deleted: number
+  restored: number
+  skipped_paths: string[]
+  skipped_count: number
+  notice: string
+}
+
+export interface SnapshotPreviewActions {
+  actions: RestorePreviewAction[]
+  next_cursor: number | null
 }
 
 export interface BackupRepositoryUsage {

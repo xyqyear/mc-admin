@@ -27,6 +27,10 @@ class TaskType(str, Enum):
     WORLD_RESTORE = "world_restore"
     SNAPSHOT_CREATE = "snapshot_create"
     SNAPSHOT_RESTORE = "snapshot_restore"
+    SNAPSHOT_PREVIEW = "snapshot_preview"
+    SNAPSHOT_PREVIEW_CLEANUP = "snapshot_preview_cleanup"
+    SNAPSHOT_DELETE = "snapshot_delete"
+    SNAPSHOT_UNLOCK = "snapshot_unlock"
     CHUNK_PRUNE_PREVIEW = "chunk_prune_preview"
     CHUNK_PRUNE_APPLY = "chunk_prune_apply"
 

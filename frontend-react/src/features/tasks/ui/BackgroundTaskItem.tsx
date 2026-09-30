@@ -71,6 +71,10 @@ const taskTypeNames: Record<BackgroundTaskType, string> = {
   world_restore: '恢复世界',
   snapshot_create: '创建快照',
   snapshot_restore: '恢复快照',
+  snapshot_preview: '准备恢复预览',
+  snapshot_preview_cleanup: '清理恢复预览',
+  snapshot_delete: '删除快照',
+  snapshot_unlock: '清理失效仓库锁',
   chunk_prune_preview: '区块清理预览',
   chunk_prune_apply: '区块清理删除',
 }

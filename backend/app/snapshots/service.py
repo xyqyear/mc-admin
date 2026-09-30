@@ -215,25 +215,6 @@ class SnapshotService:
                 async for event in events:
                     yield event
 
-    async def preview(
-        self, snapshot_id: str, targets: Sequence[Path]
-    ) -> list[ResticRestoreEvent]:
-        """Dry-run restore returning meaningful per-file actions.
-
-        Zero-size ``restored`` items (directory entries restic reports but
-        doesn't really restore) and ``unchanged`` items are dropped.
-        """
-        actions: list[ResticRestoreEvent] = []
-        async for event in self.restore(snapshot_id, targets, dry_run=True):
-            if event.kind != "file":
-                continue
-            if event.action == "unchanged":
-                continue
-            if event.action == "restored" and not event.size:
-                continue
-            actions.append(event)
-        return actions
-
     async def stage(
         self,
         snapshot_id: str,
@@ -462,8 +443,8 @@ class SnapshotService:
         excludes = [await async_fs.resolve(Path(e)) for e in snapshot.excludes]
         return paths, excludes
 
-    async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
-        with self.repository_use.maintain():
+    async def forget_id(self, snapshot_id: str, prune: bool = True, *, reservation: object | None = None) -> str:
+        with self.repository_use.maintain(reservation):
             await self._require_stopped_repository_writers()
             return await self._client.forget_id(snapshot_id, prune=prune)
 
@@ -496,8 +477,8 @@ class SnapshotService:
     async def list_locks(self) -> str:
         return await self._client.list_locks()
 
-    async def unlock(self) -> str:
-        with self.repository_use.maintain():
+    async def unlock(self, *, reservation: object | None = None) -> str:
+        with self.repository_use.maintain(reservation):
             await self._require_stopped_repository_writers()
             return await self._client.unlock()
 

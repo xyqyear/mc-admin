@@ -39,7 +39,7 @@ freezes expanded current exclusions together with source and retained-chain
 protection. Execution rechecks current exclusions and rejects configuration or
 `LEVEL_NAME` drift before invoking Restic.
 
-Repository readers can coexist. Manual tasks hold repository references from acceptance through queued work and subprocess cleanup; ready map previews retain
+Repository readers can coexist. Manual tasks hold repository references from acceptance through queued work and subprocess cleanup; ready file and map previews retain
 their source through close/expiry and outstanding tile reads. Forget/prune and
 lock cleanup reject while those references exist. Completed history does not
 permanently prevent retention. References are bounded per runtime.
@@ -68,7 +68,7 @@ It splits the request into Restic steps and explicit empty-selection cleanup:
 
 Targets whose parent directory is absent from the snapshot are skipped — restic can neither restore them nor traverse-delete there. (Known restic limitation, unchanged from the previous architecture: deletion-by-include cannot reach through directories the snapshot lacks; the chunks restore scope compensates with `mcmap remove-chunks`.)
 
-`SnapshotService` executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute path mirrored under a stage root — `SnapshotService.stage_destination` maps live paths to staged ones). `preview` is the same plan with `--dry-run`. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
+`SnapshotService` executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute path mirrored under a stage root — `SnapshotService.stage_destination` maps live paths to staged ones). `restore(dry_run=True)` executes the same plan without writing. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
 
 Empty-selection cleanup first checks its complete removal list against the owned
 server and selected scope, rejects escaping symlinks and never traverses symlink
@@ -149,6 +149,16 @@ and again while frozen/exclusive; completed history does not block repository
 retention. A missing safety snapshot leaves its history readable with an explicit
 unavailable reason. Ordinary file restoration remains available online.
 
-World execution uses the same commands and history as file recovery, with a protected mcmap chunk adapter. Map previews and cron backup applications share the low-level protection, planner and repository reference registry. Their current
-adapters are described in `world-restore.md`; common task migration is tracked by
-`openspec/changes/unify-snapshot-recovery/tasks.md`.
+世界执行使用相同的命令、历史和保护规划，mcmap 仅承担区块合并。`preparation.py` 解析目标、实例、缺失范围与源保护，供恢复和预览共用。cron 通过 `SnapshotCommands.backup` 执行同一创建逻辑，不另建手动任务或重复历史；维护冲突记录 `skipped`。备份已完成但保留策略因活动引用被拒绝时，cron 明确记录已创建快照及跳过清理的原因。
+
+## 预览与仓库维护任务
+
+`POST /api/snapshots/previews` 接受相同的 `scope` 与完整 `source_snapshot_id`，返回 202 任务。`snapshots/previews.py` 负责准备、绑定与查询，`preview_sessions.py` 统一心跳、有效期和清理，`world/preview_rendering.py` 只处理地图临时副本及瓦片。预览不创建安全快照，不写入恢复历史或在线目标。
+
+文件预览保存 JSONL 明细，`GET /previews/{id}/actions?cursor=...&limit=...` 每页最多 200 条；响应提供下一页位置，零字节文件和目录动作也保留在明细中。明细总量上限为 64 MiB，单行上限为 32 KiB。超过限制时任务失败并要求缩小范围，不把截断结果当作完整预览。任务结果只含计数、说明和至多 100 个忽略路径。
+
+就绪结果可由 `GET /previews/{id}` 读取，`POST /previews/{id}/heartbeat` 延长有效期。`DELETE /previews/{id}` 返回清理任务，等待读取与渲染退出后才完成。准备中关闭观察不取消任务；显式停止使用通用任务取消接口。每台服务器最多一个活动预览，全局预览同时占用其捕获的服务器集合。重启后结果不可再应用；未知写入者的临时目录和阻断证据仍保留。
+
+带 `preview_id` 恢复时，受理和实际写入前都核对源 ID、规范化范围、服务器代次、当前保护规则和已观测目标版本。版本结合选中目标的文件元数据与相关路径的操作记录；普通在线文件不扫描整棵目录、不承诺外部程序的原子状态。范围外的文件写入不会使预览失效。直接恢复仍可用，安全快照始终捕获执行前的真实状态。
+
+`GET /api/snapshots/usage`、`GET /locks` 为普通读取。`DELETE /{snapshot_id}` 和 `POST /unlock` 返回任务；仓库独占占用从受理保留至所属进程及收尾结束，期间拒绝新的快照依赖。清锁只移除 Restic 判断已失效的锁，不能强制移除活跃锁。

@@ -37,7 +37,7 @@ func repository(ctx context.Context, t *engine.Scope) error {
 		Total     float64 `json:"backupTotalGB"`
 		Available float64 `json:"backupAvailableGB"`
 	}
-	if err = client.JSON(ctx, "GET", "/api/snapshots/repository-usage", nil, &usage, 200); err != nil {
+	if err = client.JSON(ctx, "GET", "/api/snapshots/usage", nil, &usage, 200); err != nil {
 		return err
 	}
 	if usage.Total <= 0 || usage.Used < 0 || usage.Available <= 0 || usage.Available > usage.Total {
@@ -52,10 +52,10 @@ func repository(ctx context.Context, t *engine.Scope) error {
 	var unlocked struct {
 		Message string `json:"message"`
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/unlock", nil, &unlocked, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/snapshots/unlock", nil, &unlocked); err != nil {
 		return err
 	}
-	if unlocked.Message != "Repository unlocked successfully" {
+	if !strings.Contains(unlocked.Message, "失效的仓库锁已清理") {
 		return fmt.Errorf("unlock did not complete")
 	}
 	for _, directory := range []string{"alpha", "beta", "world"} {
@@ -110,6 +110,11 @@ func repository(ctx context.Context, t *engine.Scope) error {
 		}
 		ids = append(ids, response.Snapshot.ID)
 	}
+	for _, invalidID := range []string{"--keep-last=0", "latest", ids[0][:8]} {
+		if err = client.JSON(ctx, "DELETE", "/api/snapshots/"+invalidID, nil, nil, 422); err != nil {
+			return err
+		}
+	}
 	for _, suffix := range []string{"", "?server_id=" + id, "?server_id=" + id + "&path=" + url.QueryEscape("/alpha")} {
 		var listed struct {
 			Snapshots []struct {
@@ -127,11 +132,11 @@ func repository(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("snapshot coverage listing %q returned %d, expected %d", suffix, len(listed.Snapshots), expected)
 		}
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/restore/preview", map[string]any{"snapshot_id": ids[2], "server_id": id, "paths": []string{"/world/protected.txt"}}, nil, 400); err != nil {
+	if err = client.JSON(ctx, "POST", "/api/snapshots/previews", map[string]any{"source_snapshot_id": ids[2], "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"world/protected.txt"}}}, nil, 400); err != nil {
 		return err
 	}
 	for _, snapshot := range ids {
-		if err = client.JSON(ctx, "DELETE", "/api/snapshots/"+snapshot, nil, nil, 200); err != nil {
+		if err = client.RunTask(ctx, "DELETE", "/api/snapshots/"+snapshot, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -211,7 +216,7 @@ func staleLock(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/unlock", nil, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/snapshots/unlock", nil, nil); err != nil {
 		return err
 	}
 	if err = client.JSON(ctx, "GET", "/api/snapshots/locks", nil, &locks, 200); err != nil {
@@ -238,7 +243,7 @@ func staleLock(ctx context.Context, t *engine.Scope) error {
 	if _, err = backend.Docker.Run(ctx, "exec", backend.Name, "sh", "-c", `kill -KILL "$1"`, "--", strconv.Itoa(pid)); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/unlock", nil, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/snapshots/unlock", nil, nil); err != nil {
 		return err
 	}
 	if err = client.JSON(ctx, "GET", "/api/snapshots/locks", nil, &locks, 200); err != nil {

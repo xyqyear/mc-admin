@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { worldRestoreApi } from '@/features/world/restore/api'
 import { createSnapshot } from '@/features/backups/commands'
 import type { ApiError } from '@/shared/http/api'
 import type { RestorationSelection } from '@/features/backups/contracts'
@@ -25,28 +24,5 @@ export const useWorldRestoreMutations = () => {
       },
     })
 
-  const useEndPreview = (serverId: string) =>
-    useMutation({
-      mutationFn: (sessionId: string) =>
-        worldRestoreApi.endPreview(serverId, sessionId),
-      onError: (error: ApiError) => {
-        // Tear-down failures are non-blocking (the janitor will reap stale
-        // sessions) — surface as a low-priority info toast rather than error.
-        const detail = error?.message ?? '未知错误'
-        toast.message(`预览会话结束失败: ${detail}`)
-      },
-    })
-
-  const useHeartbeatPreview = (serverId: string) =>
-    useMutation({
-      mutationFn: (sessionId: string) =>
-        worldRestoreApi.heartbeatPreview(serverId, sessionId),
-
-    })
-
-  return {
-    useCreateWorldSnapshot,
-    useEndPreview,
-    useHeartbeatPreview,
-  }
+  return { useCreateWorldSnapshot }
 }

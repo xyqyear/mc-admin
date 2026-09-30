@@ -26,7 +26,7 @@ from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState, ResourceReference
 from app.servers.models import Server
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
-from app.world.preview import PreviewMapCache
+from app.world.preview_rendering import PreviewMapCache
 from tests.support.runtime import set_runtime_resource
 
 

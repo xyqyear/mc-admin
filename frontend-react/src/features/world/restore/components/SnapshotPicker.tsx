@@ -57,15 +57,16 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   const [previewReq, setPreviewReq] =
     useState<RestorePreviewRequest | null>(null)
 
-  const handleRowRestore = (snapshotId: string, shortId: string) => {
+  const handleRowRestore = (snapshotId: string, shortId: string, previewId?: string) => {
     if (!selection) return
     confirm({
       title: '恢复确认',
       description: `将先创建一个安全快照，然后从 ${shortId} 恢复 ${SCOPE_LABEL[selection.type] ?? selection.type}。是否继续？`,
       confirmText: '开始恢复',
       variant: 'destructive',
-      onConfirm: () => {
-        void start(snapshotId)
+      onConfirm: async () => {
+        await start(snapshotId, previewId)
+        setPreviewReq(null)
       },
     })
   }
@@ -206,6 +207,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
       <RestorePreviewModal
         serverId={serverId}
         request={previewReq}
+        onRestore={previewId => { if (previewReq) handleRowRestore(previewReq.sourceSnapshotId, previewReq.sourceSnapshotId.slice(0, 8), previewId) }}
         onClose={() => setPreviewReq(null)}
       />
     </Sheet>

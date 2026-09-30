@@ -88,14 +88,14 @@ async def test_accepted_world_restore_revalidates_generation_before_writes(
     case = world_case
     source = await create(case)
     entered, release = asyncio.Event(), asyncio.Event()
-    original = case.commands._revalidate
+    original = case.commands._planner.revalidate
 
     async def paused(prepared):
         entered.set()
         await release.wait()
         await original(prepared)
 
-    monkeypatch.setattr(case.commands, "_revalidate", paused)
+    monkeypatch.setattr(case.commands._planner, "revalidate", paused)
     accepted = await case.commands.restore(scope(), source, 1)
     try:
         await asyncio.wait_for(entered.wait(), 10)

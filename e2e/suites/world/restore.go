@@ -122,15 +122,15 @@ func scopedRestore(ctx context.Context, t *engine.Scope) error {
 		if err = fixtures.WriteFile(ctx, s.client, s.id, "/world/e2e-world.txt", "after world"); err != nil {
 			return err
 		}
-		preview, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/preview", request(snapshot, selection), "ready")
+		preview, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/previews", s.previewRequest(snapshot, selection))
 		if err != nil {
 			return err
 		}
-		session, ok := preview["session_id"].(string)
+		session, ok := preview["preview_id"].(string)
 		if !ok || session == "" {
 			return fmt.Errorf("%s preview has no session", kind)
 		}
-		if err = s.client.JSON(ctx, "DELETE", s.base+"/world-restore/preview/"+session, nil, nil, 204); err != nil {
+		if err = s.client.RunTask(ctx, "DELETE", "/api/snapshots/previews/"+session, nil, nil); err != nil {
 			return err
 		}
 		expected0, _ := chunkPayload(regionData(after), 0)
@@ -226,7 +226,7 @@ func scopedRestore(ctx context.Context, t *engine.Scope) error {
 	if history.Total != 8 || len(history.Rows) != 2 {
 		return fmt.Errorf("history pagination returned %d rows total %d", len(history.Rows), history.Total)
 	}
-	if err = s.client.JSON(ctx, "DELETE", "/api/snapshots/"+last.Safety, nil, nil, 200); err != nil {
+	if err = s.client.RunTask(ctx, "DELETE", "/api/snapshots/"+last.Safety, nil, nil); err != nil {
 		return err
 	}
 	if err = s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+last.ID, nil, &last, 200); err != nil {

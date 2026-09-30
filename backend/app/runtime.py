@@ -129,7 +129,7 @@ class Runtime:
             from .operation_admission import get_server_write_admission
             from .operations.single_writer import SingleWriterGuard
             from .players import start_player_system
-            from .world.preview_service import get_world_preview_service
+            from .snapshots.previews import get_snapshot_previews
 
             get_server_write_admission().close()
             try:
@@ -141,7 +141,7 @@ class Runtime:
                 await get_config_manager().initialize_all_configs()
                 await self._recover()
 
-                previews = get_world_preview_service()
+                previews = get_snapshot_previews()
                 await self.resource("chunk_prune_service").start()
                 if previews is not None:
                     await previews.prepare()
@@ -171,13 +171,13 @@ class Runtime:
                 closer = getattr(resource, method)
                 result = (
                     closer(preserve_artifacts=True)
-                    if name in {"world_preview_service", "chunk_prune_service"} and not self._temporary_cleanup_safe
+                    if name in {"snapshot_previews", "chunk_prune_service"} and not self._temporary_cleanup_safe
                     else closer()
                 )
                 if inspect.isawaitable(result):
                     await result
             except BaseException:
-                if name in {"mcmap_manager", "world_preview_service"}:
+                if name in {"mcmap_manager", "snapshot_previews"}:
                     self._scratch_cleanup_safe = False
                 if name == "task_manager":
                     self._temporary_cleanup_safe = self._scratch_cleanup_safe = False
@@ -244,7 +244,7 @@ class Runtime:
                         ("app_logger", "close"), ("audit_logger", "close"),
                         ("database", "close"), ("event_bus", "close"),
                         ("login_code_manager", "close"), ("dns_manager", "close"),
-                        ("mcmap_manager", "close"), ("world_preview_service", "close"),
+                        ("mcmap_manager", "close"), ("snapshot_previews", "close"),
                         ("chunk_prune_service", "close"),
                     ):
                         shutdown.push_async_callback(self._close_resource, name, method)

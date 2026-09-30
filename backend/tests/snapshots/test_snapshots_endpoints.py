@@ -1,6 +1,7 @@
 import asyncio
 
 from app.config import ResticSettings
+from app.dynamic_config.configs.snapshots import WorldRestoreConfig
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource, patch_settings
 from tests.support.tasks import task_result, wait_task
@@ -39,6 +40,20 @@ def _scope(server_id=None, paths=None):
 
 def _restore_safety_snapshot_id(client, response) -> str:
     return task_result(client, response)["safety_snapshot_id"]
+
+
+def _preview_result(client, response):
+    result = task_result(client, response)
+    base = "/snapshots/previews/" + result["preview_id"]
+    headers = {"Authorization": "Bearer test_master_token"}
+    actions, cursor = [], 0
+    while cursor is not None:
+        page = client.get(base + "/actions", params={"cursor": cursor}, headers=headers)
+        assert page.status_code == 200, page.text
+        actions.extend(page.json()["actions"])
+        cursor = page.json()["next_cursor"]
+    task_result(client, client.delete(base, headers=headers))
+    return {**result, "actions": actions}
 
 
 @pytest.fixture(autouse=True)
@@ -233,6 +248,7 @@ def mock_snapshot_dependencies_setup(
     mock_snapshots_config = MagicMock()
     mock_snapshots_config.time_restriction = mock_time_restriction
     mock_snapshots_config.ignored_paths = ignored_paths or []
+    mock_snapshots_config.world_restore = WorldRestoreConfig()
 
     mock_config = MagicMock()
     mock_config.snapshots = mock_snapshots_config
@@ -253,7 +269,6 @@ def mock_snapshot_dependencies_setup(
         patch_runtime_resource('docker_mc_manager') as mock_manager,
         patch_settings() as mock_settings,
         patch_settings() as mock_dep_settings,
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch_runtime_resource('dynamic_configuration', mock_config),
         patch.object(current_runtime().resource('restart_scheduler'), 'get_backup_minutes', return_value=set()),  # No backup jobs by default
         patch_runtime_resource('snapshot_service', test_snapshot_service),
@@ -439,13 +454,13 @@ class TestSnapshotEndpoints:
 
             # Preview restore
             preview_response = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id, None)},
             )
 
-            assert preview_response.status_code == 200
-            data = preview_response.json()
+            assert preview_response.status_code == 202
+            data = _preview_result(client, preview_response)
 
             # Verify response structure
             assert "actions" in data
@@ -701,12 +716,12 @@ class TestSnapshotEndpoints:
             assert history["restorations"][0]["safety_snapshot_id"] is None
 
             preview = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
+                json={"source_snapshot_id": 'invalid-snapshot-id', "scope": _scope(server_id, None)},
             )
-            assert preview.status_code == 500
-            assert preview.json()["detail"] == "服务器内部错误，请稍后重试"
+            assert preview.status_code == 422
+            assert preview.json()["detail"]
 
     @pytest.mark.asyncio
     async def test_unauthorized_access(
@@ -1082,13 +1097,13 @@ modified=true
 
             # Preview restore
             preview_response = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id, None)},
             )
 
-            assert preview_response.status_code == 200
-            data = preview_response.json()
+            assert preview_response.status_code == 202
+            data = _preview_result(client, preview_response)
 
             # Verify response structure
             assert "actions" in data
@@ -1221,8 +1236,8 @@ modified=true
                 f"/snapshots/{snapshot1_id}",
                 headers={"Authorization": "Bearer test_master_token"},
             )
-            assert delete_response.status_code == 200
-            assert "deleted successfully" in delete_response.json()["message"]
+            assert delete_response.status_code == 202
+            assert "已删除" in task_result(client, delete_response)["message"]
 
             # Verify only second snapshot remains
             list_after_delete = client.get(
@@ -1273,16 +1288,12 @@ modified=true
 
             # Preview reports actions for both roots
             preview_response = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={
-                    "snapshot_id": snapshot_id,
-                    "server_id": server_id,
-                    "paths": ["/plugins", "/world"],
-                },
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id, ['/plugins', '/world'])},
             )
-            assert preview_response.status_code == 200
-            actions = preview_response.json()["actions"]
+            assert preview_response.status_code == 202
+            actions = _preview_result(client, preview_response)["actions"]
             items = [a.get("item", "") for a in actions]
             assert any(str(data_path / "plugins") in item for item in items)
             assert any(str(data_path / "world") in item for item in items)
@@ -1480,12 +1491,12 @@ class TestIgnoredPathsEndpoints:
             (data_path / "extraneous.txt").write_text("x")
 
             preview_response = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers=self._auth(),
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id, None)},
             )
-            assert preview_response.status_code == 200
-            actions = preview_response.json()["actions"]
+            assert preview_response.status_code == 202
+            actions = _preview_result(client, preview_response)["actions"]
             items = [a["item"] for a in actions]
             assert str(data_path / "extraneous.txt") in items
             assert not any(".mcmap" in item for item in items)
@@ -1520,13 +1531,9 @@ class TestIgnoredPathsEndpoints:
             snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             response = client.post(
-                "/snapshots/restore/preview",
+                "/snapshots/previews",
                 headers=self._auth(),
-                json={
-                    "snapshot_id": snapshot_id,
-                    "server_id": server_id,
-                    "paths": ["/cache"],
-                },
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id, ['/cache'])},
             )
             assert response.status_code == 400
             assert "忽略" in response.json()["detail"]
@@ -1687,11 +1694,10 @@ class TestPathContainmentEndpoints:
             for endpoint, payload in [
                 ("/snapshots", {"scope": _scope(server_id, [escape_path])}),
                 (
-                    "/snapshots/restore/preview",
+                    "/snapshots/previews",
                     {
-                        "snapshot_id": "irrelevant",
-                        "server_id": server_id,
-                        "paths": [escape_path],
+                        "source_snapshot_id": "0" * 64,
+                        "scope": _scope(server_id, [escape_path]),
                     },
                 ),
                 (
@@ -1703,7 +1709,7 @@ class TestPathContainmentEndpoints:
                 ),
             ]:
                 response = client.post(endpoint, headers=self._auth(), json=payload)
-                assert response.status_code == (400 if endpoint.endswith("/preview") else 422), (
+                assert response.status_code == 422, (
                     f"{endpoint} accepted escaping path {escape_path!r}"
                 )
                 assert response.json()["detail"]

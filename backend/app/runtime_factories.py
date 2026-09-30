@@ -82,19 +82,21 @@ def create_resource(runtime: "Runtime", name: str) -> Any:
                 runtime.resource("task_manager"),
                 runtime.database.session_factory,
                 runtime.settings.server_path,
+                runtime.resource("snapshot_previews"),
             )
-        case "world_preview_service":
-            from .world.artifacts import artifact_root
-            from .world.preview_service import WorldPreviewService
+        case "snapshot_previews":
+            from .snapshots.previews import SnapshotPreviews
 
             snapshots = runtime.resource("snapshot_service")
             if snapshots is None:
                 return None
-            return WorldPreviewService(
-                snapshot_service=snapshots,
-                session_factory=runtime.database.session_factory,
-                preview_base_dir=artifact_root("restore"),
-                servers_root=runtime.settings.server_path,
+            return SnapshotPreviews(
+                snapshots,
+                runtime.resource("docker_mc_manager"),
+                runtime.resource("server_operation_lock"),
+                runtime.resource("task_manager"),
+                runtime.database.session_factory,
+                runtime.settings.server_path,
             )
         case "chunk_prune_service":
             from .chunk_prune.service import ChunkPruneService

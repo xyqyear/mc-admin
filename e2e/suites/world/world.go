@@ -78,8 +78,10 @@ func (s *scenario) config(ctx context.Context, module string, mutate func(map[st
 	return s.client.JSON(ctx, "PUT", "/api/config/modules/"+module, map[string]any{"config_data": response.Data}, nil, 200)
 }
 
-func request(snapshot string, selection map[string]any) map[string]any {
-	return map[string]any{"source_snapshot_id": snapshot, "selection": selection}
+func (s *scenario) previewRequest(snapshot string, selection map[string]any) map[string]any {
+	body := s.scopeRequest(selection)
+	body["source_snapshot_id"] = snapshot
+	return body
 }
 
 func (s *scenario) scopeRequest(selection map[string]any) map[string]any {

@@ -1,6 +1,6 @@
 # World Restore Page
 
-`/server/{id}/world-restore` lets an admin inspect the rendered world map, select chunks or regions, and roll that range, a dimension, or all detected world roots back to a Restic snapshot. The page is the largest interactive surface in the app: map initialization controls, an embedded selection map, FTB-claims and player-location overlays, a tabbed side panel, task-driven recovery and streamed map previews, and a history drawer with rollback.
+`/server/{id}/world-restore` lets an admin inspect the rendered world map, select chunks or regions, and roll that range, a dimension, or all detected world roots back to a Restic snapshot. The page is the largest interactive surface in the app: map initialization controls, an embedded selection map, FTB-claims and player-location overlays, a tabbed side panel, task-driven recovery and map previews, and a history drawer with rollback.
 
 ## URL is the source of truth
 
@@ -102,13 +102,12 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 `features/world/restore/components/RestorePreviewModal.tsx` is a `<Dialog>` containing a mini Leaflet map (`CRS.Simple`) and a custom `<PreviewTileLayer>`:
 
-- Drives `POST /preview` via `useEventStream<PreviewEvent>`.
-- Captures `session_id` from the `ready` event.
-- Mounts the Leaflet map only after `ready` so tile requests do not race the backend render queue.
-- Heartbeats every 30 s (`POST /preview/{session_id}/heartbeat`).
-- Fires `DELETE /preview/{session_id}` on close, request replacement or unmount. Heartbeat 404/409/410 removes the ready map and requests regeneration.
-- A stream that ends before `ready` or an explicit error enters a closable connection-error state. Map initialization uses the same terminal expectation.
-- The preview tile layer is a clone of `ServerMapTileLayer` pointed at `/preview/{session_id}/tile/{rx}/{rz}.png`, gated by an `available` set so empty regions don't 404.
+- 使用 backups 的 `useSnapshotPreview` 提交共用预览任务，显示真实阶段和可用的进度。
+- 仅在任务成功、获得 `preview_id` 后挂载地图；任务读取失败保持观察和重连提示。
+- 每 30 秒发送 `/snapshots/previews/{id}/heartbeat`。404/409/410 会移除就绪地图并提示重新准备。
+- 准备中关闭或卸载只停止观察；“停止准备”显式取消任务。就绪后关闭、替换或卸载提交清理任务。
+- 地图请求 `/snapshots/previews/{id}/tiles/{rx}/{rz}.png`，沿用已有瓦片组件及区域集合。
+- “按此预览恢复”在确认后携带预览 ID，后端在写入前复核绑定；直接恢复仍可使用。
 - Paints affected region rectangles immediately; for chunk selections up to 5,000 chunks it also paints per-chunk rectangles.
 - Shows an in-dialog message instead of a blank canvas when invoked with a dimension/world selection.
 
@@ -123,7 +122,7 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 回滚按统一历史的 `rollback_available` 与原因提示控制，同时要求世界服务器停服。回滚会覆盖选中范围内后来的修改，并先创建新的安全快照。当前任务未结束或任务读取失败时保持阻塞；浏览器断线不会中断后台恢复。
 
-`useWorldRestoreController` owns selection and mode confirmation. `useRestorePreview` owns the request-based preview, heartbeat and session deletion. The application operation observer refreshes file/world/history resources after terminal outcomes independently of the initiating page.
+`useWorldRestoreController` owns selection and mode confirmation. `features/backups/useSnapshotPreview` owns task observation, heartbeat and cleanup submission for both presentation types. The application operation observer refreshes file/world/history resources after terminal outcomes independently of the initiating page.
 
 ## Routing
 

@@ -59,7 +59,7 @@ export function useSnapshotOperation(scope: SnapshotScope | null, resumeAny = fa
     state,
     taskId,
     history,
-    start: (sourceSnapshotId: string) => scope ? submit(() => snapshotApi.restore({ source_snapshot_id: sourceSnapshotId, scope: structuredClone(scope), entry_point: scope.kind === 'world' ? 'world' : 'files' })) : Promise.resolve(),
+    start: (sourceSnapshotId: string, previewId?: string) => scope ? submit(() => snapshotApi.restore({ source_snapshot_id: sourceSnapshotId, preview_id: previewId, scope: structuredClone(scope), entry_point: scope.kind === 'world' ? 'world' : 'files' })) : Promise.resolve(),
     rollback: (id: string) => submit(() => snapshotApi.rollback(id)),
     reset: () => { if (!state.active) { setAccepted(null); setError(null) } },
   }
