@@ -8,6 +8,7 @@ import (
 
 	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
+	"mc-admin/e2e/internal/fixtures"
 )
 
 func (s *scenario) prunePreview(ctx context.Context, mode string, threshold int) (api.Task, error) {
@@ -53,12 +54,33 @@ func chunkPrune(ctx context.Context, t *engine.Scope) error {
 	if err = s.client.JSON(ctx, "GET", s.base+"/chunk-prune/previews/missing/geometry", nil, nil, 404); err != nil {
 		return err
 	}
-	running, err := s.prunePreview(ctx, "chunks", 0)
+	if err = s.stop(ctx); err != nil {
+		return err
+	}
+	ready, err := s.prunePreview(ctx, "chunks", 0)
 	if err != nil {
 		return err
 	}
-	if err = s.client.JSON(ctx, "POST", s.base+"/chunk-prune/apply", map[string]any{"preview_task_id": running.ID}, nil, 409); err != nil {
+	if err = fixtures.Operation(ctx, s.client, s.id, "start"); err != nil {
 		return err
+	}
+	if err = fixtures.WaitStatus(ctx, s.client, s.id, "healthy"); err != nil {
+		return err
+	}
+	var rejected struct {
+		Detail string `json:"detail"`
+	}
+	if err = s.client.JSON(ctx, "POST", s.base+"/chunk-prune/apply", map[string]any{"preview_task_id": ready.ID}, &rejected, 409); err != nil {
+		return err
+	}
+	if !strings.Contains(rejected.Detail, "请先停止服务器") {
+		return fmt.Errorf("running-server apply rejected for unrelated reason: %q", rejected.Detail)
+	}
+	if err = s.client.JSON(ctx, "GET", s.base+"/chunk-prune/state", nil, &state, 200); err != nil {
+		return err
+	}
+	if state.Apply != nil {
+		return fmt.Errorf("rejected running-server apply created a task")
 	}
 	if err = s.stop(ctx); err != nil {
 		return err
