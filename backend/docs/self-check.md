@@ -54,8 +54,8 @@ Scheduled runs also have cron execution history in `CronJobExecution`.
 - `scheduled` — cron job `system:self_check`
 - `server_created` — after a server creation request succeeds
 - `server_populated` — after the archive extraction task completes
-- `world_restored` — after a restore SSE stream emits `complete`
-- `world_rolled_back` — after a rollback SSE stream emits `complete`
+- `world_restored` — after a world restore task finishes data and cache work
+- `world_rolled_back` — after a world rollback task finishes data and cache work
 
 Event-triggered runs are fire-and-forget coroutines. Failures are logged and do
 not fail the user operation that already succeeded.

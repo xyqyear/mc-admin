@@ -6,15 +6,31 @@ from pathlib import Path
 from typing import Any
 
 REPRESENTATIVE_PATHS = {
-    "/auth/token", "/auth/code/complete", "/user/me", "/tasks", "/tasks/{task_id}",
-    "/archive/upload/init", "/archive/upload/{upload_id}", "/archive/upload/{upload_id}/verify",
-    "/servers/{server_id}/compose", "/servers/{server_id}/operations",
-    "/servers/{server_id}/files/content", "/servers/{server_id}/world-restore/restore",
-    "/servers/{server_id}/world-restore/restorations", "/servers/{server_id}/maintenance",
-    "/servers/{server_id}", "/servers/sync", "/servers/{server_id}/files", "/archive",
-    "/servers/{server_id}/map/initialize", "/archive/upload/{upload_id}/sha256",
-    "/self-check/run", "/self-check/checks/{check_id}/run", "/dns/update",
-    "/snapshots", "/snapshots/restorations", "/snapshots/restorations/{restoration_id}",
+    "/auth/token",
+    "/auth/code/complete",
+    "/user/me",
+    "/tasks",
+    "/tasks/{task_id}",
+    "/archive/upload/init",
+    "/archive/upload/{upload_id}",
+    "/archive/upload/{upload_id}/verify",
+    "/servers/{server_id}/compose",
+    "/servers/{server_id}/operations",
+    "/servers/{server_id}/files/content",
+    "/snapshots/eligible",
+    "/servers/{server_id}/maintenance",
+    "/servers/{server_id}",
+    "/servers/sync",
+    "/servers/{server_id}/files",
+    "/archive",
+    "/servers/{server_id}/map/initialize",
+    "/archive/upload/{upload_id}/sha256",
+    "/self-check/run",
+    "/self-check/checks/{check_id}/run",
+    "/dns/update",
+    "/snapshots",
+    "/snapshots/restorations",
+    "/snapshots/restorations/{restoration_id}",
     "/snapshots/restorations/{restoration_id}/rollback",
 }
 
@@ -64,11 +80,16 @@ def capture() -> dict[str, Any]:
             continue
         methods = route.methods if isinstance(route, APIRoute) else {"WS"}
         for method in sorted(methods):
-            inventory.append({
-                "method": method, "path": "/api" + route.path,
-                "declared_authorization": sorted(requirements(route.dependant)),
-                "cookie_csrf": method != "WS" and method not in SAFE_METHODS and route.path not in CSRF_EXEMPT_PATHS,
-            })
+            inventory.append(
+                {
+                    "method": method,
+                    "path": "/api" + route.path,
+                    "declared_authorization": sorted(requirements(route.dependant)),
+                    "cookie_csrf": method != "WS"
+                    and method not in SAFE_METHODS
+                    and route.path not in CSRF_EXEMPT_PATHS,
+                }
+            )
     schema = api_app.openapi()
     paths = {}
     missing = REPRESENTATIVE_PATHS - schema["paths"].keys()
@@ -76,8 +97,11 @@ def capture() -> dict[str, Any]:
         raise RuntimeError(f"Representative API routes disappeared: {sorted(missing)}")
     for path in sorted(REPRESENTATIVE_PATHS):
         paths[path] = {
-            method: {key: value for key, value in operation.items()
-                     if key in {"parameters", "requestBody", "responses", "security"}}
+            method: {
+                key: value
+                for key, value in operation.items()
+                if key in {"parameters", "requestBody", "responses", "security"}
+            }
             for method, operation in schema["paths"][path].items()
         }
     components: dict[str, Any] = {}
@@ -98,13 +122,26 @@ def capture() -> dict[str, Any]:
 
     collect_references(paths)
     return {
-        "inventory": sorted(inventory, key=lambda entry: (entry["path"], entry["method"])),
-        "authentication": {"session_cookie": AUTH_COOKIE_NAME, "csrf_cookie": CSRF_COOKIE_NAME,
-                           "csrf_header": CSRF_HEADER_NAME, "csrf_exempt_paths": sorted(CSRF_EXEMPT_PATHS)},
-        "representative_openapi": {"paths": paths, "components": {"schemas": components}},
-        "protocols": {"public_event": TypeAdapter(PublicEventFrame).json_schema(),
-                      "task_progress": TaskProgress.model_json_schema(), "task_result": TaskResult.model_json_schema(),
-                      "task_status": [status.value for status in TaskStatus], "task_type": [kind.value for kind in TaskType]},
+        "inventory": sorted(
+            inventory, key=lambda entry: (entry["path"], entry["method"])
+        ),
+        "authentication": {
+            "session_cookie": AUTH_COOKIE_NAME,
+            "csrf_cookie": CSRF_COOKIE_NAME,
+            "csrf_header": CSRF_HEADER_NAME,
+            "csrf_exempt_paths": sorted(CSRF_EXEMPT_PATHS),
+        },
+        "representative_openapi": {
+            "paths": paths,
+            "components": {"schemas": components},
+        },
+        "protocols": {
+            "public_event": TypeAdapter(PublicEventFrame).json_schema(),
+            "task_progress": TaskProgress.model_json_schema(),
+            "task_result": TaskResult.model_json_schema(),
+            "task_status": [status.value for status in TaskStatus],
+            "task_type": [kind.value for kind in TaskType],
+        },
     }
 
 
@@ -117,7 +154,9 @@ def main() -> None:
     environment = configure_test_environment()
     try:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(capture(), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        args.output.write_text(
+            json.dumps(capture(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
     finally:
         environment.cleanup()
 

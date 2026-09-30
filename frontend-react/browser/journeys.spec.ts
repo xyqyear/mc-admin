@@ -213,13 +213,14 @@ test.describe('owned administration journeys', () => {
     expect(sockets).toHaveLength(connections)
   })
 
-  journey('a real restore connection interrupted after its safety snapshot stays visible and can roll back', async ({ page, api, owned }) => {
+  journey('a disconnected task observer stays blocked while world restoration completes and remains reversible', async ({ page, api, owned }) => {
     await api.stopped()
     await api.initializeMap()
     const marker = 'world/browser-recovery.txt'
     await api.json(api.server('/files/create'), 'POST', { path: '/world', name: 'browser-recovery.txt', type: 'file' })
     await api.writeFile(marker, 'snapshot-state\n')
-    const snapshot = await api.json<{ snapshot: { id: string; short_id: string } }>(api.server('/world-restore/snapshots'), 'POST', { type: 'world' })
+    const created = await api.json<{ task_id: string }>('/api/snapshots', 'POST', { scope: { kind: 'world', server_id: owned.server_id, selection: { type: 'world' } } }, 202)
+    const snapshot = (await api.task(created.task_id)).result as { snapshot: { id: string; short_id: string } }
     await api.writeFile(marker, 'before-interruption\n')
     const proxy = await interruptRestoreAfterSafetySnapshot(owned.base_url)
     let releaseMapStatus!: () => void
@@ -232,13 +233,19 @@ test.describe('owned administration journeys', () => {
       await row.getByRole('button', { name: '恢复', exact: true }).click()
       await page.getByRole('button', { name: '开始恢复', exact: true }).click()
       await proxy.interrupted
-      await expect(page.getByText('恢复失败', { exact: true }).first()).toBeVisible()
+      await expect(page.getByText('暂时无法获取任务状态，正在重新连接', { exact: true }).first()).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog', { name: '选择快照恢复' })).toBeVisible()
       let history: { id: string; status: string; safety_snapshot_id: string | null; safety_snapshot_exists: boolean } | undefined
       await expect.poll(async () => {
-        const data = await api.json<{ restorations: Array<{ id: string; status: string; source_snapshot_id: string; safety_snapshot_id: string | null; safety_snapshot_exists: boolean }> }>(api.server('/world-restore/restorations'))
+        const data = await api.json<{ restorations: Array<{ id: string; status: string; source_snapshot_id: string; safety_snapshot_id: string | null; safety_snapshot_exists: boolean }> }>(`/api/snapshots/restorations?server_id=${owned.server_id}`)
         history = data.restorations.find(row => row.source_snapshot_id === snapshot.snapshot.id)
         return history?.status
-      }, { timeout: 60_000 }).toBe('interrupted')
+      }, { timeout: 60_000 }).toBe('succeeded')
+      expect((await api.file(marker)).content).toBe('snapshot-state\n')
+      expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('snapshot-state\n')
+      proxy.resume()
+      await expect(page.getByText('恢复完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
       expect(history?.safety_snapshot_id).toBeTruthy()
       expect(history?.safety_snapshot_exists).toBe(true)
       await api.writeFile(marker, 'after-interruption-before-rollback\n')
@@ -253,17 +260,17 @@ test.describe('owned administration journeys', () => {
       const historyRow = page.getByRole('dialog', { name: '恢复历史' }).locator('div.rounded-md.border.p-3').filter({ hasText: snapshot.snapshot.id.slice(0, 8) }).filter({ hasText: history!.safety_snapshot_id!.slice(0, 8) })
       await expect(historyRow).toHaveCount(1)
       await expect(historyRow).toBeVisible()
-      await expect(historyRow.getByText('已中断', { exact: true })).toBeVisible()
+      await expect(historyRow.getByText('已完成', { exact: true })).toBeVisible()
       expect(mapStatusHeld).toBe(true)
       const playersTab = page.getByRole('tab', { name: '玩家位置', exact: true, includeHidden: true })
       await expect(playersTab).toHaveCount(0)
       releaseMapStatus()
       await expect(playersTab).toBeVisible()
       await expect(historyRow).toBeVisible()
-      await expect(historyRow.getByText('已中断', { exact: true })).toBeVisible()
+      await expect(historyRow.getByText('已完成', { exact: true })).toBeVisible()
       await historyRow.getByRole('button', { name: '回滚', exact: true }).click()
       await page.getByRole('button', { name: '开始回滚', exact: true }).click()
-      await expect(page.getByText('回滚完成', { exact: true })).toBeVisible({ timeout: 60_000 })
+      await expect(page.getByRole('dialog', { name: '恢复历史' }).getByText('恢复完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
       expect((await api.file(marker)).content).toBe('before-interruption\n')
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('before-interruption\n')
     },

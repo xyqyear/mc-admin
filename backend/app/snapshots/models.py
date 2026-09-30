@@ -18,6 +18,7 @@ class ResticSnapshot(BaseModel):
     time: datetime
     paths: list[str]
     excludes: list[str] = []
+    tags: list[str] = []
     hostname: str
     username: str
     program_version: str | None = None

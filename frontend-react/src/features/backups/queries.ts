@@ -3,6 +3,16 @@ import { getErrorStatus, shouldRetryQuery } from '@/shared/http/api';
 import { useQuery } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
+import type { SnapshotScope } from './contracts';
+
+export function useEligibleSnapshots(scope: SnapshotScope | null) {
+  return useQuery({
+    queryKey: [...queryKeys.snapshots.all, 'eligible', scope],
+    queryFn: () => snapshotApi.eligible(scope!),
+    enabled: !!scope,
+    staleTime: 5000,
+  });
+}
 
 export function useRestorationHistory(serverId?: string, offset = 0, enabled = true) {
   return useQuery({

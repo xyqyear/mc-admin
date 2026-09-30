@@ -129,7 +129,7 @@ class Runtime:
             from .operation_admission import get_server_write_admission
             from .operations.single_writer import SingleWriterGuard
             from .players import start_player_system
-            from .world import get_world_restore_orchestrator
+            from .world.preview_service import get_world_preview_service
 
             get_server_write_admission().close()
             try:
@@ -141,10 +141,10 @@ class Runtime:
                 await get_config_manager().initialize_all_configs()
                 await self._recover()
 
-                orchestrator = get_world_restore_orchestrator()
+                previews = get_world_preview_service()
                 await self.resource("chunk_prune_service").start()
-                if orchestrator is not None:
-                    await orchestrator.prepare()
+                if previews is not None:
+                    await previews.prepare()
 
                 try:
                     await get_dns_manager().initialize()
@@ -156,8 +156,8 @@ class Runtime:
                     log_safe_error(exc, "Optional connectivity reconciliation failed")
                 await start_player_system()
                 await get_cron_manager().initialize()
-                if orchestrator is not None:
-                    orchestrator.start_janitor()
+                if previews is not None:
+                    previews.start_janitor()
                 get_server_write_admission().open()
                 self.started = True
             except BaseException:
@@ -171,13 +171,13 @@ class Runtime:
                 closer = getattr(resource, method)
                 result = (
                     closer(preserve_artifacts=True)
-                    if name in {"world_restore_orchestrator", "chunk_prune_service"} and not self._temporary_cleanup_safe
+                    if name in {"world_preview_service", "chunk_prune_service"} and not self._temporary_cleanup_safe
                     else closer()
                 )
                 if inspect.isawaitable(result):
                     await result
             except BaseException:
-                if name in {"mcmap_manager", "world_restore_orchestrator"}:
+                if name in {"mcmap_manager", "world_preview_service"}:
                     self._scratch_cleanup_safe = False
                 if name == "task_manager":
                     self._temporary_cleanup_safe = self._scratch_cleanup_safe = False
@@ -244,7 +244,7 @@ class Runtime:
                         ("app_logger", "close"), ("audit_logger", "close"),
                         ("database", "close"), ("event_bus", "close"),
                         ("login_code_manager", "close"), ("dns_manager", "close"),
-                        ("mcmap_manager", "close"), ("world_restore_orchestrator", "close"),
+                        ("mcmap_manager", "close"), ("world_preview_service", "close"),
                         ("chunk_prune_service", "close"),
                     ):
                         shutdown.push_async_callback(self._close_resource, name, method)

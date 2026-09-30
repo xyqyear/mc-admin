@@ -37,6 +37,14 @@ export type SnapshotScope =
   | { kind: 'global' }
   | { kind: 'server'; server_id: string }
   | { kind: 'paths'; server_id: string; paths: string[] }
+  | { kind: 'world'; server_id: string; selection: RestorationSelection }
+
+export interface RestorationSelection {
+  type: 'world' | 'dimension' | 'regions' | 'chunks'
+  region_dir_relpath?: string | null
+  regions?: Array<[number, number]>
+  chunks?: Array<[number, number]>
+}
 
 export interface SnapshotTaskAccepted {
   task_id: string
@@ -57,6 +65,9 @@ export interface Restoration {
   id: string
   operation_id: string | null
   server_id: string | null
+  server_generation: number | null
+  binding_issue: string | null
+  entry_point: string | null
   scope: SnapshotScope | null
   source_snapshot_id: string
   safety_snapshot_id: string | null

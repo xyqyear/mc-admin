@@ -4,6 +4,7 @@ import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequ
 
 
 export const snapshotApi = {
+  eligible: async (scope: SnapshotScope) => (await api.post<ListSnapshotsResponse>('/snapshots/eligible', { scope })).data,
   getAllSnapshots: async (params?: {
     server_id?: string;
     path?: string;

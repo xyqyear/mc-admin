@@ -1,6 +1,6 @@
 # World Restore Page
 
-`/server/{id}/world-restore` lets an admin inspect the rendered world map, select chunks or regions, and roll that range, a dimension, or all detected world roots back to a Restic snapshot. The page is the largest interactive surface in the app: map initialization controls, an embedded selection map, FTB-claims and player-location overlays, a tabbed side panel, SSE-driven preview/restore flows, and a history drawer with rollback.
+`/server/{id}/world-restore` lets an admin inspect the rendered world map, select chunks or regions, and roll that range, a dimension, or all detected world roots back to a Restic snapshot. The page is the largest interactive surface in the app: map initialization controls, an embedded selection map, FTB-claims and player-location overlays, a tabbed side panel, task-driven recovery and streamed map previews, and a history drawer with rollback.
 
 ## URL is the source of truth
 
@@ -95,7 +95,7 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 `features/world/restore/components/SnapshotPicker.tsx` is a right-anchored `<Sheet>` listing eligible snapshots from `useEligibleSnapshots`. Each row always offers Restore. It offers Preview only for REGIONS/CHUNKS selections because the preview map needs an affected-region set.
 
-- **Restore** → destructive confirm via `useConfirm`, then latches snapshot/selection in `useRestorationStream` and drives the finite SSE through `shared/operations/useRestoreRequest` and renders progress in-place via `<RestoreProgressCard>`.
+- **Restore** → destructive confirm via `useConfirm`, then submits an immutable world scope through `features/backups/useSnapshotOperation` and observes its task and renders progress in-place via `<RestoreProgressCard>`.
 - **Preview** → opens `<RestorePreviewModal>` with the clicked snapshot id and the latched selection.
 
 ## Preview modal
@@ -114,35 +114,16 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 ## Restoration history drawer
 
-`features/world/restore/components/RestorationHistoryDrawer.tsx` lists rows from `useRestorations`, auto-refreshing every 5 s. Per-row rollback is gated on:
+`features/world/restore/components/RestorationHistoryDrawer.tsx` composes `features/backups/ui/RestorationHistoryDialog`, with unified paginated recovery history and world preview actions. Per-row rollback is gated on:
 
 - `status ∈ {succeeded, failed, interrupted}`
 - `safety_snapshot_id` is set
 - `safety_snapshot_exists === true`
 - server stopped and no `binding_issue` (old or uncertain server-generation bindings remain visible with an explanation)
 
-The "needs rollback" alert highlights `interrupted` rows. Request disconnection finalizes an interrupted restore before releasing maintenance ownership; a backend crash is reconciled on startup. Failed rows with retained safety snapshots also offer rollback.
+回滚按统一历史的 `rollback_available` 与原因提示控制，同时要求世界服务器停服。回滚会覆盖选中范围内后来的修改，并先创建新的安全快照。当前任务未结束或任务读取失败时保持阻塞；浏览器断线不会中断后台恢复。
 
-Rollback rows are rollback-able too. Their safety snapshot captures the pre-rollback state, so rolling back a rollback is how the UI undoes that rollback.
-
-Rows with REGIONS/CHUNKS selections also offer Preview, using the row's safety snapshot and stored selection so the admin can inspect what rollback would restore.
-
-## Overlay tabs
-
-FTB claims and player locations share `ServerMap`'s generic overlay hook (`overlays?: ServerMapOverlay[]`) and the same cross-dimension pending-pan path.
-
-- Claims use `useFtbClaims(serverId, mapInitialized)`. When `available` is true, the side panel adds a Claims tab and `useClaimsOverlay` paints cluster polygons/labels for the current dimension. The list can hover-highlight, pan to clusters, select a cluster, or select all of a team's clusters in the current dimension. Details live in `docs/ftb-claims-overlay.md`.
-- Player locations use `useWorldPlayerLocations(serverId, mapInitialized)`, `usePlayerMapProfiles`, and `useServerOnlinePlayers`. The Player locations tab can toggle overlay visibility, filter to online players, refresh extracted positions, and click rows to pan or switch dimension. Details live in `docs/player-locations-overlay.md`.
-
-## Shared SSE reducer
-
-`shared/operations/restoreProgress.ts` exports `applyRestoreEvent`, a reducer that turns `RestoreEvent` SSE payloads into UI state. It's used by both the snapshot picker (forward restore) and the history drawer (rollback) so the progress UI stays consistent.
-
-## SSE consumer
-
-`useWorldMapController` owns the shared world/map/layer controls; `useWorldRestoreController` owns restore selection and mode confirmation. `useRestorePreview` owns session lifetime and heartbeat. Progress components never invalidate business caches; the app operation observer refreshes the registered resources after terminal outcomes.
-
-All three world-restore flows — `POST /preview`, `POST /restore`, `POST /restorations/{id}/rollback` — go through `shared/hooks/useEventStream.ts`. It handles fetch + `AbortController` + `\n\n` block parsing, same-origin cookies, CSRF header injection, and body fingerprinting via `JSON.stringify` so caller-side inline objects don't restart the stream every render.
+`useWorldRestoreController` owns selection and mode confirmation. `useRestorePreview` owns the request-based preview, heartbeat and session deletion. The application operation observer refreshes file/world/history resources after terminal outcomes independently of the initiating page.
 
 ## Routing
 

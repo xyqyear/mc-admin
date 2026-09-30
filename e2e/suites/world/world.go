@@ -58,7 +58,7 @@ func (s *scenario) snapshot(ctx context.Context, selection map[string]any) (stri
 			ID string `json:"id"`
 		} `json:"snapshot"`
 	}
-	if err := s.client.JSON(ctx, "POST", s.base+"/world-restore/snapshots", selection, &response, 200); err != nil {
+	if err := s.client.RunTask(ctx, "POST", "/api/snapshots", s.scopeRequest(selection), &response); err != nil {
 		return "", err
 	}
 	if response.Snapshot.ID == "" {
@@ -80,4 +80,29 @@ func (s *scenario) config(ctx context.Context, module string, mutate func(map[st
 
 func request(snapshot string, selection map[string]any) map[string]any {
 	return map[string]any{"source_snapshot_id": snapshot, "selection": selection}
+}
+
+func (s *scenario) scopeRequest(selection map[string]any) map[string]any {
+	return map[string]any{"scope": map[string]any{"kind": "world", "server_id": s.id, "selection": selection}}
+}
+
+func (s *scenario) restoreRequest(snapshot string, selection map[string]any) map[string]any {
+	body := s.scopeRequest(selection)
+	body["source_snapshot_id"] = snapshot
+	body["entry_point"] = "world"
+	return body
+}
+
+func (s *scenario) startRestore(ctx context.Context, snapshot string, selection map[string]any) (string, string, error) {
+	var accepted struct {
+		TaskID        string `json:"task_id"`
+		RestorationID string `json:"restoration_id"`
+	}
+	if err := s.client.JSON(ctx, "POST", "/api/snapshots/restorations", s.restoreRequest(snapshot, selection), &accepted, 202); err != nil {
+		return "", "", err
+	}
+	if accepted.TaskID == "" || accepted.RestorationID == "" {
+		return "", "", fmt.Errorf("restore acceptance omitted task or history identity: %+v", accepted)
+	}
+	return accepted.TaskID, accepted.RestorationID, nil
 }

@@ -2,10 +2,9 @@
 
 Selective rollback of Minecraft world data at four granularities — chunk, region, dimension, or whole world. Built on Restic for snapshot storage and the `mcmap replace-chunks` / `remove-chunks` subcommands for sub-region splicing. Every restore creates a safety snapshot first, so any rollback is undoable with one click.
 
-`restore.py` owns application orchestration. `selection.py` plans confined paths
-and resource scopes; `scope_execution.py` performs scope-specific Restic/mcmap
-work; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
-invalidates caches; `preview_application.py` builds previews using the
+`snapshots/commands.py` owns common task acceptance, recovery and rollback. `selection.py` plans confined paths
+and resource scopes; `scope_execution.py` merges protected chunks with mcmap; `snapshots/file_restore.py` applies file replacements; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
+invalidates caches; `preview_service.py` owns preview lifetime; `preview_application.py` builds previews using the
 reference-counted manager in `preview.py`. `artifacts.py` ties feature scratch
 directories to operation recovery evidence. Adapters do not discover the
 current server again after an operation has captured its `ServerRef`.
@@ -60,34 +59,13 @@ dimension scan for endpoints and restore flows that need the complete layout.
 
 Before any restore touches the live world, the orchestrator creates a Restic snapshot at the same scope as the planned restore (a "safety snapshot"). Its id is recorded on the `Restoration` row. Rollback simply runs the restore in reverse: the safety snapshot is the source, the same `selection` is the target.
 
-The history row and recovery references exist before the SSE event containing
-the completed safety snapshot is sent. Disconnecting at that event leaves a
-recoverable interrupted row. History captures the server's persistent instance
-generation; rollback validates it before the stream and again under the lease.
-Migration `2026092503` binds historical rows only when lifetime evidence is
-unambiguous. `server_generation` and `binding_issue` remain visible in history;
-unknown ownership and same-name replacements return HTTP 409 with
-`restoration_identity_conflict` instead of applying old history to new data.
+恢复记录与任务在受理时关联；安全快照引用和缺失路径证据必须持久化后，才能开始写入。当前规则、源快照排除项和恢复链保护集合共同限制 Restic、mcmap、缺失目标删除及空父目录清理。忽略的溢出文件与其 MCA 区块入口作为同一单元保留，其他允许区块仍可恢复。
 
-Successful, failed and interrupted restorations can be rolled back while their
-safety snapshot exists. Selection JSON records `world_roots` for WORLD restores
-and `absent_directories` for selected directories and their missing ancestors,
-all relative to server data. Reads retain compatibility with
-`absent_sidecar_dirs`. When older WORLD history lacks roots, rollback derives
-them only from its safety snapshot's paths and rejects the data root, outside
-paths and escaping symlinks. Restoring away the last MCA therefore does not make
-history depend on rediscovering a currently populated world.
+手动维度快照以 `mc-admin-absence-v1:` Restic 标签保存当时缺失的附属目录。标签是有界、版本化的路径证据。旧快照未覆盖、且没有缺失证据的附属范围保持原状，并在跳过列表中说明；覆盖某个父目录但该目录中缺少子文件则属于可确认的源缺失。
 
-A safety snapshot of a fully missing range uses empty directories inside the
-already declared scope. File selections use unique `.mc-admin-absence-*` empty
-markers only where no selected file exists, so unrelated sibling MCAs do not
-enter the backup. Finite cleanup removes the owned markers and newly created
-empty ancestors. Leases include required missing ancestors before acquisition
-and recheck them under ownership. Rollback restores the saved absence only within
-its selected scope, honors ignores, and removes empty ancestors with `rmdir`.
-Region rollback deletes only selected region/overflow files; chunk rollback
-removes selected chunks and newly empty MCA files. Every rollback records its
-own safety state, including absence, so it can itself be undone.
+历史保存服务器代次、实际路径、缺失路径/祖先、保护集合和回滚父记录。回滚使用这些证据，不要求当前世界仍有 MCA。全空目标的安全证据写在操作拥有的临时目录，不为备份修改在线世界。删除仅限允许的选中目标；空祖先使用 `rmdir`，保留新出现的兄弟文件。每次回滚都保存当前状态，因此可以再次回滚。
+
+保留旧 `selection_json` 中的 `world_roots`、`absent_directories` 和 `absent_sidecar_dirs` 解码。旧世界记录缺少根目录时，只从安全快照中推导数据目录内的严格子路径；拒绝整个 data 根目录、外部路径或符号链接逃逸。归属不明或同名新实例不能使用旧记录写入。
 
 ## Per-server lock
 
@@ -102,7 +80,7 @@ stopped status after acquisition; start/up/restart and rebuild retain ownership
 through process/configuration settlement. Map rendering takes its own cache and
 output-file resources, so conflicting cache writes wait without holding
 maintenance. Unrelated ordinary online file work remains available.
-Request-scoped restoration also participates in deletion admission.
+Accepted tasks retain target references through finalization and reject server deletion, including while queued.
 
 `LockHolder` records kind, start time, optional user, description and restoration ID. `GET /api/servers/{server_id}/maintenance` exposes the current holder's active flag, kind and description. Shared frontend operation buttons poll this state; the prune page also immediately disables startup while its apply task is active.
 
@@ -151,8 +129,7 @@ mcmap subcommands (`replace-chunks`, `remove-chunks`, `render`) run with the bac
 ## Map tile cache invalidation
 
 Restore/rollback finalization invalidates cached PNG tiles for affected region
-MCAs, including after partial failure or cancellation. Successful streams emit
-`invalidate_cache` before `complete`. Successful WORLD/DIMENSION invalidation
+MCAs and MCC overflow files, including after partial failure or cancellation. Task completion follows confirmed cache finalization. Successful WORLD/DIMENSION invalidation
 uses Restic verbose-status items; interrupted broad restores clear the confined
 server/dimension tile subtree even if Restic emitted no file event before
 interruption. REGIONS/CHUNKS use the explicit selection. Only `region/` MCAs map
@@ -166,7 +143,7 @@ region manifest and uses MCA mtimes as cache-busting query params.
 
 ## Cancellation and crash recovery
 
-Disconnecting the SSE stream cancels the current restore; it does not create a detached background operation. Response, router, orchestrator and Restic generators close their owned child streams explicitly. Subprocess reaping, cache cleanup and history finalization are shielded from request cancel scopes and finish before maintenance ownership is released. An interrupted connection records `INTERRUPTED` immediately without restarting the backend; ordinary restore/cache failures record `FAILED`. Failed history with a retained safety snapshot offers rollback too. The API does not automatically retry or undo destructive operations.
+恢复任务独立于浏览器连接。断线、刷新和页面卸载只停止观察，不取消后台写入。显式取消通过任务接口执行，等待子进程、缓存清理和历史收尾后才发布终态。失败和取消记录保留安全快照，允许用户核对后回滚；不自动重试或自动撤销。
 
 If the backend crashes mid-restore, its `Restoration` row can remain `RUNNING` and an external writer may still exist. Before starting producers or admitting writes, operation recovery verifies recorded process ownership, reconciles the captured server generation and invalidates affected map caches. Unconfirmed writers block their resource; failed cache cleanup degrades the cache without permanently freezing server management.
 
@@ -179,10 +156,10 @@ Rollback rows are flat `Restoration` rows with `is_rollback=true`. A rollback al
 The application runtime, in order:
 
 1. Recover journal ownership and resources, then mark abandoned restoration rows interrupted.
-2. `initialize_world_restore_orchestrator()` builds the runtime's orchestrator when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
+2. `runtime_factories.py` builds `SnapshotCommands` and `WorldPreviewService` when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
 3. `prepare()` reaps eligible orphan previews and restore stages before producers and admission; `start_janitor()` launches periodic preview cleanup. Shutdown drains request writers and closes preview queues before deleting unreferenced artifacts whose writers have stopped.
 
-The router accesses the orchestrator through the current runtime’s typed `get_world_restore_orchestrator()` accessor. Restoration operations retain safety snapshot references before emitting them, and completion SSE events wait for journal finalization. Unexpected adapter failures produce safe public messages in both streams and restoration history.
+The map preview router accesses its service through the current runtime’s typed `get_world_preview_service()` accessor. Restoration operations retain safety references before writes and publish terminal task status after journal finalization. Adapter failures persist safe public messages in task results and restoration history.
 
 ## Settings
 
@@ -198,12 +175,15 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 - `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
 - `GET /claims` — FTB claims extracted from the primary world root via mcmap; returns `available=false` when no supported FTB data is detected
 - `GET /player-locations` — saved player positions extracted from the primary world root via mcmap, with dimension ids resolved to `region_dir_relpath` when possible
-- `POST /eligible-snapshots` (body: `RestorationSelection`) — newest-first list of snapshots that cover *all* MCA paths the selection resolves to (uses `SnapshotService.find_snapshots_covering`; speculative MCC sidecars are excluded from eligibility)
-- `POST /snapshots` (body: `{type: "world"|"dimension", region_dir_relpath?}`) — creates a manual snapshot at world or dimension scope; returns 423 if the server lock is held
 - `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (`start` → `stage` → optional `merge_region` → `ready`, or `error`); returns `session_id` in the `ready` event
 - `POST /preview/{session_id}/heartbeat` — extends the TTL; 404 if the session is unknown
 - `DELETE /preview/{session_id}` — idempotent teardown
 - `GET /preview/{session_id}/tile/{rx}/{rz}.png` — preview tile (also heartbeats)
-- `POST /restore` (body: `{source_snapshot_id, selection}`) — SSE stream of `RestoreEvent`; pre-checks return 409 (server running) or 423 (locked) before SSE handshake so the frontend can render distinct UI
-- `GET /restorations?limit=&offset=` / `GET /restorations/{id}` — restoration history rows, including source/safety snapshot existence flags
-- `POST /restorations/{id}/rollback` — SSE stream of `RestoreEvent`; uses the row's `safety_snapshot_id` as the source and pre-checks 400 (missing/deleted safety snapshot), 409 (server running), and 423 (locked)
+
+创建、筛选、恢复和回滚使用 `/api/snapshots` 公共接口，显式传入 `{kind: "world", server_id, selection}`：
+
+- `POST /snapshots`：世界或维度创建，202 任务受理。
+- `POST /snapshots/eligible`：筛选覆盖允许范围的快照，不要求不存在的推测 MCC 文件。
+- `POST /snapshots/restorations`：202 返回任务与历史 ID；停服/维护预检查仍返回 409/423。
+- `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史。
+- `POST /snapshots/restorations/{id}/rollback`：新的恢复任务，保存当前状态并关联原记录。

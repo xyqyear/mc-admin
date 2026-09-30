@@ -53,7 +53,7 @@ it('keeps restore blocked through acceptance and failed observations, without re
   await act(async () => { await client.invalidateQueries({ queryKey: taskQueryKeys.all }) })
   await waitFor(() => expect(result.current.state.done).toBe(true))
   expect(result.current.state.active).toBe(false)
-  expect(requests).toEqual([{ scope, source_snapshot_id: 'source' }])
+  expect(requests).toEqual([{ scope, source_snapshot_id: 'source', entry_point: 'files' }])
 })
 
 it('resumes a pending history after remount and never cancels on navigation', async () => {

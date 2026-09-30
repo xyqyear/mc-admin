@@ -2,30 +2,18 @@ from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import desc, func, select
 
 from app.auth.schemas import UserPublic
-from app.servers.models import Server, ServerStatus
-from app.snapshots.restoration_models import Restoration, RestorationType
-from app.snapshots.selection_models import RestorationSelection
 from app.world.api_models import (
-    CreateSnapshotResponse,
     DimensionInfoResponse,
     DimensionLabelsResponse,
-    ListEligibleSnapshotsResponse,
-    ListRestorationsResponse,
-    ManualSnapshotRequest,
     PreviewRequest,
-    RestorationResponse,
-    RestoreRequest,
     WorldLayoutResponse,
     WorldRootResponse,
 )
 
-from ... import world as world_subsystem
-from ...db.database import get_async_session
 from ...dependencies import get_current_user
 from ...dynamic_config import get_config
 from ...errors import log_safe_error, public_error_message
@@ -34,27 +22,22 @@ from ...ftb_claims import (
     FtbExtractError,
     extract_claims_for_server,
 )
-from ...logger import get_logger
-from ...minecraft import MCServerStatus, get_docker_mc_manager
+from ...minecraft import get_docker_mc_manager
 from ...player_locations import (
     PlayerLocationExtractError,
     PlayerLocationsResponse,
     extract_player_locations_for_server,
 )
-from ...self_check.constants import WORLD_RESTORED_TRIGGER, WORLD_ROLLED_BACK_TRIGGER
-from ...self_check.events import schedule_self_check_event
-from ...snapshots import get_snapshot_service
-from ...snapshots.restoration_store import restoration_binding_issue
 from ...utils.sse import sse_encode, sse_response
 from ...world import (
     SelectionResolutionError,
-    ServerNotStoppedError,
     WorldLayoutDiscoveryError,
     WorldRoot,
     discover_world_root_paths,
     discover_world_roots,
 )
 from ...world.preview import PreviewDiskGuardError, PreviewSessionNotFoundError
+from ...world.preview_service import get_world_preview_service
 from .admission import admit_server_write
 
 router = APIRouter(
@@ -64,90 +47,20 @@ router = APIRouter(
 )
 
 
-# --- Helpers ---------------------------------------------------------------
-
-
-def _get_orchestrator():
-    orch = world_subsystem.get_world_restore_orchestrator()
-    if not orch:
+def _get_previews():
+    previews = get_world_preview_service()
+    if not previews:
         raise HTTPException(
             status_code=503,
-            detail=(
-                "World restore is unavailable: restic is not configured "
-                "(check restic settings in config.toml)."
-            ),
+            detail="尚未配置快照仓库，无法预览恢复结果",
         )
-    return orch
+    return previews
 
 
 async def _ensure_server_exists(server_id: str) -> None:
     instance = get_docker_mc_manager().get_instance(server_id)
     if not await instance.exists():
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
-
-
-async def _server_is_running(server_id: str) -> bool:
-    instance = get_docker_mc_manager().get_instance(server_id)
-    status = await instance.get_status()
-    return status in (
-        MCServerStatus.RUNNING,
-        MCServerStatus.STARTING,
-        MCServerStatus.HEALTHY,
-    )
-
-
-def _holder_dict(holder) -> dict:
-    return {
-        "kind": holder.kind.value,
-        "started_at": holder.started_at.isoformat(),
-        "user_id": holder.user_id,
-        "description": holder.description,
-        "restoration_id": holder.restoration_id,
-    }
-
-
-# --- Response models -------------------------------------------------------
-
-
-async def _existing_snapshot_ids() -> set[str] | None:
-    # None when restic is unconfigured — existence checks are then skipped.
-    snapshot_service = get_snapshot_service()
-    if not snapshot_service:
-        return None
-    snapshots = await snapshot_service.list_snapshots()
-    return {s.id for s in snapshots}
-
-
-def _restoration_to_response(
-    row: Restoration, existing_ids: set[str] | None, generation: int | None
-) -> RestorationResponse:
-    if row.server_id is None:
-        raise HTTPException(status_code=404, detail="该记录不属于单服务器世界恢复")
-    def _exists(snap_id: str | None) -> bool:
-        if snap_id is None:
-            return False
-        if existing_ids is None:
-            return True
-        return snap_id in existing_ids
-
-    return RestorationResponse(
-        id=row.id,
-        server_id=row.server_id,
-        server_generation=row.server_generation,
-        binding_issue=restoration_binding_issue(row, generation),
-        type=row.type,
-        source_snapshot_id=row.source_snapshot_id,
-        safety_snapshot_id=row.safety_snapshot_id,
-        source_snapshot_exists=_exists(row.source_snapshot_id),
-        safety_snapshot_exists=_exists(row.safety_snapshot_id),
-        selection=RestorationSelection.model_validate_json(row.selection_json),
-        is_rollback=row.is_rollback,
-        initiated_by_user_id=row.initiated_by_user_id,
-        started_at=row.started_at,
-        finished_at=row.finished_at,
-        status=row.status,
-        error_message=row.error_message,
-    )
 
 
 def _world_root_to_response(root: WorldRoot) -> WorldRootResponse:
@@ -172,9 +85,6 @@ async def _get_world_roots(data_path: Path) -> list[WorldRoot]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-# --- Layout ----------------------------------------------------------------
-
-
 @router.get("/{server_id}/world-restore/layout", response_model=WorldLayoutResponse)
 async def get_layout(
     server_id: str, _: UserPublic = Depends(get_current_user)
@@ -195,10 +105,9 @@ async def get_dimension_labels(
     server_id: str, _: UserPublic = Depends(get_current_user)
 ) -> DimensionLabelsResponse:
     await _ensure_server_exists(server_id)
-    return DimensionLabelsResponse(dimension_labels=dict(get_config().world.dimension_labels))
-
-
-# --- FTB claims ------------------------------------------------------------
+    return DimensionLabelsResponse(
+        dimension_labels=dict(get_config().world.dimension_labels)
+    )
 
 
 @router.get(
@@ -228,9 +137,6 @@ async def get_ftb_claims(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Player locations ------------------------------------------------------
-
-
 @router.get(
     "/{server_id}/player-locations",
     response_model=PlayerLocationsResponse,
@@ -258,74 +164,6 @@ async def get_player_locations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Eligible snapshots ----------------------------------------------------
-
-
-@router.post(
-    "/{server_id}/world-restore/eligible-snapshots",
-    response_model=ListEligibleSnapshotsResponse,
-)
-async def eligible_snapshots(
-    server_id: str,
-    selection: RestorationSelection,
-    _: UserPublic = Depends(get_current_user),
-) -> ListEligibleSnapshotsResponse:
-    await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
-    try:
-        snapshots = await orch.list_eligible_snapshots(server_id, selection)
-    except SelectionResolutionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return ListEligibleSnapshotsResponse(snapshots=snapshots)
-
-
-# --- Snapshot creation -----------------------------------------------------
-
-
-@router.post(
-    "/{server_id}/world-restore/snapshots",
-    response_model=CreateSnapshotResponse,
-)
-async def create_snapshot(
-    server_id: str,
-    request: ManualSnapshotRequest,
-    user: UserPublic = Depends(get_current_user),
-) -> CreateSnapshotResponse:
-    logger = get_logger()
-    await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
-    if world_subsystem.get_server_operation_lock().is_locked(server_id):
-        holder = world_subsystem.get_server_operation_lock().get_holder(server_id)
-        raise HTTPException(
-            status_code=423,
-            detail={
-                "reason": "locked",
-                "holder": _holder_dict(holder) if holder else None,
-            },
-        )
-    selection = RestorationSelection(
-        type=RestorationType(request.type),
-        region_dir_relpath=request.region_dir_relpath,
-    )
-    try:
-        snapshot = await orch.create_snapshot(server_id, selection, user.id)
-    except SelectionResolutionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    logger.info(
-        "world snapshot created: %s for server=%s (type=%s)",
-        snapshot.short_id,
-        server_id,
-        selection.type.value,
-    )
-    return CreateSnapshotResponse(
-        message=f"Snapshot {snapshot.short_id} created",
-        snapshot=snapshot,
-    )
-
-
-# --- Preview ---------------------------------------------------------------
-
-
 @router.post("/{server_id}/world-restore/preview")
 async def begin_preview(
     server_id: str,
@@ -333,15 +171,17 @@ async def begin_preview(
     _: UserPublic = Depends(get_current_user),
 ) -> StreamingResponse:
     await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
+    orch = _get_previews()
 
     async def event_gen() -> AsyncGenerator[bytes]:
         try:
-            async with aclosing(orch.begin_preview(
-                server_id=server_id,
-                source_snapshot_id=body.source_snapshot_id,
-                selection=body.selection,
-            )) as events:
+            async with aclosing(
+                orch.begin_preview(
+                    server_id=server_id,
+                    source_snapshot_id=body.source_snapshot_id,
+                    selection=body.selection,
+                )
+            ) as events:
                 async for event in events:
                     yield sse_encode(event.model_dump(exclude_none=True))
         except PreviewDiskGuardError as e:
@@ -357,7 +197,9 @@ async def begin_preview(
             yield sse_encode({"event_type": "error", "message": str(e)})
         except Exception as e:  # noqa: BLE001 - preview failures must exclude raw adapter diagnostics
             log_safe_error(e, "World preview stream failed")
-            yield sse_encode({"event_type": "error", "message": public_error_message(e)})
+            yield sse_encode(
+                {"event_type": "error", "message": public_error_message(e)}
+            )
 
     return sse_response(event_gen())
 
@@ -372,7 +214,7 @@ async def heartbeat_preview(
     _: UserPublic = Depends(get_current_user),
 ) -> None:
     await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
+    orch = _get_previews()
     try:
         await orch.require_preview_owner(server_id, session_id)
         orch.heartbeat_preview(session_id)
@@ -390,7 +232,7 @@ async def end_preview(
     _: UserPublic = Depends(get_current_user),
 ) -> None:
     await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
+    orch = _get_previews()
     try:
         await orch.require_preview_owner(server_id, session_id, missing_ok=True)
     except PreviewSessionNotFoundError:
@@ -407,7 +249,7 @@ async def get_preview_tile(
     _: UserPublic = Depends(get_current_user),
 ) -> Response:
     await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
+    orch = _get_previews()
 
     # Heartbeat before awaiting render so coalesced bursts keep the session alive.
     try:
@@ -431,205 +273,3 @@ async def get_preview_tile(
             "Cache-Control": "private, max-age=60",
         },
     )
-
-
-# --- Restoration -----------------------------------------------------------
-
-
-@router.post("/{server_id}/world-restore/restore")
-async def begin_restore(
-    server_id: str,
-    body: RestoreRequest,
-    user: UserPublic = Depends(get_current_user),
-) -> StreamingResponse:
-    await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
-
-    if await _server_is_running(server_id):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "reason": "server_running",
-                "message": "Stop the server before starting a restore",
-            },
-        )
-    if world_subsystem.get_server_operation_lock().is_locked(server_id):
-        holder = world_subsystem.get_server_operation_lock().get_holder(server_id)
-        raise HTTPException(
-            status_code=423,
-            detail={
-                "reason": "locked",
-                "holder": _holder_dict(holder) if holder else None,
-            },
-        )
-
-    async def event_gen() -> AsyncGenerator[bytes]:
-        try:
-            terminal = None
-            async with aclosing(orch.begin_restore(
-                server_id=server_id,
-                source_snapshot_id=body.source_snapshot_id,
-                selection=body.selection,
-                user_id=user.id,
-            )) as events:
-                async for event in events:
-                    if event.event_type in {"complete", "error"}:
-                        terminal = event
-                    else:
-                        yield sse_encode(event.model_dump(exclude_none=True))
-            if terminal is not None:
-                if terminal.event_type == "complete":
-                    schedule_self_check_event(WORLD_RESTORED_TRIGGER, user.id)
-                yield sse_encode(terminal.model_dump(exclude_none=True))
-        except ServerNotStoppedError as e:
-            yield sse_encode({"event_type": "error", "message": str(e)})
-        except SelectionResolutionError as e:
-            yield sse_encode({"event_type": "error", "message": str(e)})
-        except Exception as e:  # noqa: BLE001 - retain the finite stream's safe error event
-            log_safe_error(e, "World restore stream failed")
-            yield sse_encode({"event_type": "error", "message": public_error_message(e)})
-
-    return sse_response(event_gen())
-
-
-# --- Restoration history ---------------------------------------------------
-
-
-@router.get(
-    "/{server_id}/world-restore/restorations",
-    response_model=ListRestorationsResponse,
-)
-async def list_restorations(
-    server_id: str,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    _: UserPublic = Depends(get_current_user),
-) -> ListRestorationsResponse:
-    await _ensure_server_exists(server_id)
-
-    async with get_async_session() as session:
-        generation = await session.scalar(select(Server.id).where(
-            Server.server_id == server_id, Server.status == ServerStatus.ACTIVE,
-        ))
-        total = (
-            await session.execute(
-                select(func.count(Restoration.id)).where(
-                    Restoration.server_id == server_id, Restoration.type.in_([RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS])
-                )
-            )
-        ).scalar_one()
-        rows = (
-            (
-                await session.execute(
-                    select(Restoration)
-                    .where(Restoration.server_id == server_id, Restoration.type.in_([RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS]))
-                    .order_by(desc(Restoration.started_at))
-                    .limit(limit)
-                    .offset(offset)
-                )
-            )
-            .scalars()
-            .all()
-        )
-    existing_ids = await _existing_snapshot_ids()
-    return ListRestorationsResponse(
-        restorations=[_restoration_to_response(r, existing_ids, generation) for r in rows],
-        total=int(total),
-    )
-
-
-@router.get(
-    "/{server_id}/world-restore/restorations/{restoration_id}",
-    response_model=RestorationResponse,
-)
-async def get_restoration(
-    server_id: str,
-    restoration_id: str,
-    _: UserPublic = Depends(get_current_user),
-) -> RestorationResponse:
-    await _ensure_server_exists(server_id)
-    async with get_async_session() as session:
-        generation = await session.scalar(select(Server.id).where(
-            Server.server_id == server_id, Server.status == ServerStatus.ACTIVE,
-        ))
-        row = (
-            await session.execute(
-                select(Restoration).where(Restoration.id == restoration_id)
-            )
-        ).scalar_one_or_none()
-    if row is None or row.server_id != server_id:
-        raise HTTPException(status_code=404, detail="Restoration not found")
-    existing_ids = await _existing_snapshot_ids()
-    return _restoration_to_response(row, existing_ids, generation)
-
-
-@router.post("/{server_id}/world-restore/restorations/{restoration_id}/rollback")
-async def rollback_restoration(
-    server_id: str,
-    restoration_id: str,
-    user: UserPublic = Depends(get_current_user),
-) -> StreamingResponse:
-    await _ensure_server_exists(server_id)
-    orch = _get_orchestrator()
-
-    # Validate up-front so 404/400 surfaces before the SSE handshake.
-    async with get_async_session() as session:
-        row = (
-            await session.execute(
-                select(Restoration).where(Restoration.id == restoration_id)
-            )
-        ).scalar_one_or_none()
-    if row is None or row.server_id != server_id:
-        raise HTTPException(status_code=404, detail="Restoration not found")
-    await orch.require_rollback_owner(row)
-    if not row.safety_snapshot_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Restoration has no safety snapshot to roll back to",
-        )
-    existing_ids = await _existing_snapshot_ids()
-    if existing_ids is not None and row.safety_snapshot_id not in existing_ids:
-        raise HTTPException(
-            status_code=400,
-            detail="Safety snapshot has been deleted; rollback is no longer possible",
-        )
-
-    if await _server_is_running(server_id):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "reason": "server_running",
-                "message": "Stop the server before rolling back a restoration",
-            },
-        )
-    if world_subsystem.get_server_operation_lock().is_locked(server_id):
-        holder = world_subsystem.get_server_operation_lock().get_holder(server_id)
-        raise HTTPException(
-            status_code=423,
-            detail={
-                "reason": "locked",
-                "holder": _holder_dict(holder) if holder else None,
-            },
-        )
-
-    async def event_gen() -> AsyncGenerator[bytes]:
-        try:
-            terminal = None
-            async with aclosing(orch.rollback(restoration_id, user.id)) as events:
-                async for event in events:
-                    if event.event_type in {"complete", "error"}:
-                        terminal = event
-                    else:
-                        yield sse_encode(event.model_dump(exclude_none=True))
-            if terminal is not None:
-                if terminal.event_type == "complete":
-                    schedule_self_check_event(WORLD_ROLLED_BACK_TRIGGER, user.id)
-                yield sse_encode(terminal.model_dump(exclude_none=True))
-        except Exception as e:  # noqa: BLE001 - retain the finite stream's safe error event
-            log_safe_error(e, "World rollback stream failed")
-            yield sse_encode({"event_type": "error", "message": public_error_message(e)})
-
-    return sse_response(event_gen())
-
-
-# --- Crash recovery --------------------------------------------------------

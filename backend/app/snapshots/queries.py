@@ -9,7 +9,11 @@ from ..operations.models import OperationJournalEntry
 from ..servers.models import Server, ServerStatus
 from .api_models import ListRestorationsResponse, RestorationResponse
 from .restoration_models import Restoration, RestorationStatus
-from .restoration_store import SessionFactory, restoration_status
+from .restoration_store import (
+    SessionFactory,
+    restoration_binding_issue,
+    restoration_status,
+)
 from .scopes import scope_adapter
 from .service import SnapshotService
 
@@ -98,6 +102,11 @@ class RestorationQueries:
                 and row.safety_snapshot_id in snapshots
             )
             targets = json.loads(row.targets_json or "[]")
+            binding_issue = (
+                restoration_binding_issue(row, servers.get(row.server_id))
+                if row.server_id
+                else row.binding_issue
+            )
             reason = None
             if status in {RestorationStatus.PENDING, RestorationStatus.RUNNING}:
                 reason = "恢复任务尚未结束"
@@ -109,7 +118,7 @@ class RestorationQueries:
                 reason = "安全快照不存在，可能已按保留策略删除"
             elif (
                 scope is None
-                or row.binding_issue
+                or binding_issue
                 or any(
                     target.get("generation") is None
                     or servers.get(target["server_id"]) != target["generation"]
@@ -122,6 +131,10 @@ class RestorationQueries:
                     id=row.id,
                     operation_id=row.operation_id,
                     server_id=row.server_id,
+                    server_generation=row.server_generation,
+                    binding_issue=binding_issue,
+                    entry_point=row.entry_point,
+                    initiated_by_user_id=row.initiated_by_user_id,
                     scope=scope,
                     source_snapshot_id=row.source_snapshot_id,
                     safety_snapshot_id=row.safety_snapshot_id,

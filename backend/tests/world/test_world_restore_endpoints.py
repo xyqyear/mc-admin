@@ -1,6 +1,6 @@
 """End-to-end tests for the world-restore router using httpx2.AsyncClient.
 
-These exercise the HTTP/SSE surface against a real ``WorldRestoreOrchestrator``
+These exercise the HTTP/SSE surface against a real ``WorldPreviewService``
 backed by a real restic repository and a real ``mcmap`` binary (chunks-scope
 tests skip themselves if mcmap is unavailable). The Docker side of MCInstance
 is replaced with a fake instance so tests don't need containers.
@@ -10,6 +10,7 @@ We use ``httpx2.AsyncClient`` with ``ASGITransport`` (rather than the synchronou
 — that's what lets the per-server ``asyncio.Lock`` tests observe each other's
 state.
 """
+
 import asyncio
 import json
 import subprocess
@@ -17,7 +18,6 @@ import sys
 import tempfile
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,18 +34,14 @@ from app.minecraft import MCServerStatus
 from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
 from app.snapshots.restoration_models import (
-    Restoration,
-    RestorationStatus,
     RestorationType,
 )
 from app.snapshots.selection_models import RestorationSelection
 from app.utils.exec import exec_command
 from app.world import (
-    ServerOperationKind,
     ServerOperationLock,
-    WorldRestoreOrchestrator,
 )
-from app.world.locks import LockHolder
+from app.world.preview_service import WorldPreviewService
 from tests.support.runtime import patch_runtime_resource
 
 
@@ -55,7 +51,8 @@ def _restic_available() -> bool:
             [str(get_settings().restic_binary_path), "version"],
             capture_output=True,
             text=True,
-            timeout=5, check=False,
+            timeout=5,
+            check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -65,16 +62,18 @@ def _restic_available() -> bool:
 def _mcmap_available() -> bool:
     try:
         result = subprocess.run(
-            ["mcmap", "--version"], capture_output=True, text=True, timeout=5, check=False
+            ["mcmap", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
 
 
-pytestmark = pytest.mark.skipif(
-    not _restic_available(), reason="restic not installed"
-)
+pytestmark = pytest.mark.skipif(not _restic_available(), reason="restic not installed")
 
 
 # --- Fakes ------------------------------------------------------------------
@@ -129,7 +128,9 @@ def data_path() -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="mc-restore-endpoint-data-") as tmp:
         data = Path(tmp) / "srv1" / "data"
         data.mkdir(parents=True)
-        (data.parent / "compose.yaml").write_text("services: {mc: {container_name: mc-srv1, image: minecraft}}\n")
+        (data.parent / "compose.yaml").write_text(
+            "services: {mc: {container_name: mc-srv1, image: minecraft}}\n"
+        )
         world = data / "world"
         ow_region = world / "region"
         ow_region.mkdir(parents=True)
@@ -198,10 +199,8 @@ def lock() -> ServerOperationLock:
 
 @pytest.fixture
 def orchestrator(restic_client, fake_docker, lock, session_factory):
-    return WorldRestoreOrchestrator(
+    return WorldPreviewService(
         snapshot_service=SnapshotService(restic_client, fake_docker),
-        docker_mc_manager=fake_docker,
-        server_operation_lock=lock,
         session_factory=session_factory,
         servers_root=fake_docker._instance.get_project_path().parent,
     )
@@ -209,13 +208,11 @@ def orchestrator(restic_client, fake_docker, lock, session_factory):
 
 @contextmanager
 def _patch_router(orchestrator, fake_docker, lock, session_factory):
-    from app.routers.servers import world_restore as world_restore_module
 
     with (
-        patch_runtime_resource("world_restore_orchestrator", orchestrator),
+        patch_runtime_resource("world_preview_service", orchestrator),
         patch_runtime_resource("server_operation_lock", lock),
         patch_runtime_resource("docker_mc_manager", fake_docker),
-        patch.object(world_restore_module, "get_async_session", session_factory),
         patch_runtime_resource("snapshot_service", orchestrator._snapshots),
         patch.object(get_settings(), "master_token", "test_master_token"),
     ):
@@ -275,61 +272,7 @@ async def test_get_dimension_labels_returns_dynamic_mapping(http: AsyncClient):
 # --- Eligible snapshots ----------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_eligible_snapshots_filters_by_coverage(
-    http: AsyncClient, orchestrator
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-
-    response = await http.post(
-        "/api/servers/srv1/world-restore/eligible-snapshots",
-        headers=_auth(),
-        json=selection.model_dump(),
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert any(s["id"] == snap.id for s in data["snapshots"])
-
-
 # --- Snapshot creation -----------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_create_snapshot_endpoint(http: AsyncClient):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    response = await http.post(
-        "/api/servers/srv1/world-restore/snapshots",
-        headers=_auth(),
-        json=selection.model_dump(),
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["snapshot"]["id"]
-    assert len(data["snapshot"]["id"]) == 64
-
-
-@pytest.mark.asyncio
-async def test_create_snapshot_returns_423_when_locked(
-    http: AsyncClient, lock
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    holder = LockHolder(
-        kind=ServerOperationKind.RESTORE,
-        started_at=datetime.now(UTC),
-        user_id=42,
-        description="held by test",
-    )
-    async with lock.acquire("srv1", holder):
-        response = await http.post(
-            "/api/servers/srv1/world-restore/snapshots",
-            headers=_auth(),
-            json=selection.model_dump(),
-        )
-    assert response.status_code == 423
-    detail = response.json()["detail"]
-    assert detail["reason"] == "locked"
-    assert detail["holder"]["kind"] == "restore"
 
 
 # --- Preview ---------------------------------------------------------------
@@ -338,7 +281,7 @@ async def test_create_snapshot_returns_423_when_locked(
 @pytest.mark.skipif(not _mcmap_available(), reason="mcmap not installed")
 @pytest.mark.asyncio
 async def test_preview_sse_stream_emits_ready(
-    http: AsyncClient, orchestrator
+    http: AsyncClient, orchestrator, fake_docker
 ):
     # Use DIMENSION scope: it stages from restic but skips the mcmap render
     # step, so the test does not need a fully initialized live-map palette.
@@ -348,7 +291,9 @@ async def test_preview_sse_stream_emits_ready(
         type=RestorationType.DIMENSION,
         region_dir_relpath="world/region",
     )
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
+    snap = await orchestrator._snapshots.create_snapshot(
+        [fake_docker._instance.get_data_path() / "world"]
+    )
 
     response = await http.post(
         "/api/servers/srv1/world-restore/preview",
@@ -371,10 +316,12 @@ async def test_preview_sse_stream_emits_ready(
 
 @pytest.mark.asyncio
 async def test_preview_heartbeat_and_delete(
-    http: AsyncClient, orchestrator
+    http: AsyncClient, orchestrator, fake_docker
 ):
     reference = await orchestrator._reference("srv1")
-    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
+    session_dir = await orchestrator._preview_manager.create_session(
+        "srv1", server_generation=reference.generation
+    )
     sid = session_dir.name
 
     r = await http.post(
@@ -402,10 +349,12 @@ async def test_preview_heartbeat_and_delete(
 
 @pytest.mark.asyncio
 async def test_preview_tile_404_when_missing(
-    http: AsyncClient, orchestrator
+    http: AsyncClient, orchestrator, fake_docker
 ):
     reference = await orchestrator._reference("srv1")
-    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
+    session_dir = await orchestrator._preview_manager.create_session(
+        "srv1", server_generation=reference.generation
+    )
     sid = session_dir.name
     r = await http.get(
         f"/api/servers/srv1/world-restore/preview/{sid}/tile/0/0.png",
@@ -416,10 +365,12 @@ async def test_preview_tile_404_when_missing(
 
 @pytest.mark.asyncio
 async def test_preview_tile_serves_png_when_present(
-    http: AsyncClient, orchestrator
+    http: AsyncClient, orchestrator, fake_docker
 ):
     reference = await orchestrator._reference("srv1")
-    session_dir = await orchestrator._preview_manager.create_session("srv1", server_generation=reference.generation)
+    session_dir = await orchestrator._preview_manager.create_session(
+        "srv1", server_generation=reference.generation
+    )
     sid = session_dir.name
     tiles = session_dir / "tiles"
     tiles.mkdir()
@@ -433,7 +384,12 @@ async def test_preview_tile_serves_png_when_present(
 
 
 async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
-    http: AsyncClient, orchestrator, data_path, tmp_path, monkeypatch, isolated_runtime,
+    http: AsyncClient,
+    orchestrator,
+    data_path,
+    tmp_path,
+    monkeypatch,
+    isolated_runtime,
 ):
     from app.mcmap import runner
     from app.mcmap.cache import ServerMapCache
@@ -468,12 +424,26 @@ async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
     monkeypatch.setattr(get_config().mcmap, "batch_size", 1)
     monkeypatch.setattr(get_config().mcmap, "thread_count", 1)
     monkeypatch.setattr(get_config().mcmap, "request_timeout_seconds", 10)
-    selection = RestorationSelection(type=RestorationType.REGIONS, region_dir_relpath="world/region", regions=[(0, 0)])
-    source = await asyncio.wait_for(orchestrator.create_snapshot("srv1", selection, None), 30)
+    selection = RestorationSelection(
+        type=RestorationType.REGIONS,
+        region_dir_relpath="world/region",
+        regions=[(0, 0)],
+    )
+    source = await asyncio.wait_for(
+        orchestrator._snapshots.create_snapshot([data_path / "world"]), 30
+    )
     isolated_runtime.journal = journal
-    response = await asyncio.wait_for(http.post("/api/servers/srv1/world-restore/preview", headers=_auth(), json={
-        "source_snapshot_id": source.id, "selection": selection.model_dump(),
-    }), 30)
+    response = await asyncio.wait_for(
+        http.post(
+            "/api/servers/srv1/world-restore/preview",
+            headers=_auth(),
+            json={
+                "source_snapshot_id": source.id,
+                "selection": selection.model_dump(),
+            },
+        ),
+        30,
+    )
     assert response.status_code == 200, response.text
     events = _parse_sse_lines(response.text)
     assert events[-1]["event_type"] == "ready", events
@@ -482,18 +452,30 @@ async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
     assert directory is not None
     assert not (directory / "tiles/r.0.0.png").exists()
     try:
-        response = await http.get(f"/api/servers/srv1/world-restore/preview/{session_id}/tile/0/0.png", headers=_auth())
+        response = await http.get(
+            f"/api/servers/srv1/world-restore/preview/{session_id}/tile/0/0.png",
+            headers=_auth(),
+        )
         assert response.status_code == 200, response.text
         assert response.headers["content-type"] == "image/png"
         assert response.content == b"\x89PNG\r\n\x1a\npreview-rendered"
         assert (live_tiles / "r.0.0.png").read_bytes() == b"live tile remains intact"
-        records = [record for record in await journal.list() if record.kind == "world_preview_render"]
+        records = [
+            record
+            for record in await journal.list()
+            if record.kind == "world_preview_render"
+        ]
         assert len(records) == 1
         assert records[0].state is OperationState.SUCCEEDED
-        assert all(resource.server_id == "srv1" and resource.generation == 1 for resource in records[0].resources)
+        assert all(
+            resource.server_id == "srv1" and resource.generation == 1
+            for resource in records[0].resources
+        )
         assert all(reference.resolved for reference in records[0].recovery_refs)
     finally:
-        response = await http.delete(f"/api/servers/srv1/world-restore/preview/{session_id}", headers=_auth())
+        response = await http.delete(
+            f"/api/servers/srv1/world-restore/preview/{session_id}", headers=_auth()
+        )
         assert response.status_code == 204
     assert not directory.exists()
 
@@ -501,167 +483,15 @@ async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
 # --- Restoration -----------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_restore_409_when_server_running(
-    http: AsyncClient, orchestrator, fake_instance
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-    fake_instance.set_status(MCServerStatus.RUNNING)
-    r = await http.post(
-        "/api/servers/srv1/world-restore/restore",
-        headers=_auth(),
-        json={"source_snapshot_id": snap.id, "selection": selection.model_dump()},
-    )
-    assert r.status_code == 409
-    assert r.json()["detail"]["reason"] == "server_running"
-
-
-@pytest.mark.asyncio
-async def test_restore_423_when_locked(
-    http: AsyncClient, orchestrator, lock
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-
-    holder = LockHolder(
-        kind=ServerOperationKind.BACKUP,
-        started_at=datetime.now(UTC),
-        user_id=None,
-        description="held by test",
-    )
-    async with lock.acquire("srv1", holder):
-        r = await http.post(
-            "/api/servers/srv1/world-restore/restore",
-            headers=_auth(),
-            json={
-                "source_snapshot_id": snap.id,
-                "selection": selection.model_dump(),
-            },
-        )
-    assert r.status_code == 423
-    assert r.json()["detail"]["reason"] == "locked"
-
-
-@pytest.mark.asyncio
-async def test_restore_sse_completes_and_writes_row(
-    http: AsyncClient, orchestrator, session_factory, data_path
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-    (data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"corrupt")
-
-    r = await http.post(
-        "/api/servers/srv1/world-restore/restore",
-        headers=_auth(),
-        json={
-            "source_snapshot_id": snap.id,
-            "selection": selection.model_dump(),
-        },
-    )
-    assert r.status_code == 200
-    events = _parse_sse_lines(r.text)
-    assert events[0]["event_type"] == "start"
-    assert events[-1]["event_type"] == "complete"
-    rid = events[0]["restoration_id"]
-    async with session_factory() as session:
-        from sqlalchemy import select
-
-        row = (
-            await session.execute(
-                select(Restoration).where(Restoration.id == rid)
-            )
-        ).scalar_one()
-        assert row.status is RestorationStatus.SUCCEEDED
-
-
 # --- Restoration history ---------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_list_and_get_restorations(
-    http: AsyncClient, orchestrator
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-
-    async for _ in orchestrator.begin_restore(
-        server_id="srv1",
-        source_snapshot_id=snap.id,
-        selection=selection,
-        user_id=99,
-    ):
-        pass
-
-    r = await http.get(
-        "/api/servers/srv1/world-restore/restorations",
-        headers=_auth(),
-        params={"limit": 10},
-    )
-    assert r.status_code == 200
-    data = r.json()
-    assert data["total"] >= 1
-    rid = data["restorations"][0]["id"]
-
-    r2 = await http.get(
-        f"/api/servers/srv1/world-restore/restorations/{rid}", headers=_auth()
-    )
-    assert r2.status_code == 200
-    assert r2.json()["id"] == rid
-    assert r2.json()["initiated_by_user_id"] == 99
-
-
-@pytest.mark.asyncio
-async def test_rollback_creates_new_row(
-    http: AsyncClient, orchestrator, data_path
-):
-    selection = RestorationSelection(type=RestorationType.WORLD)
-    snap = await orchestrator.create_snapshot("srv1", selection, user_id=None)
-
-    (data_path / "world" / "region" / "r.0.0.mca").write_bytes(b"pre-restore")
-
-    rid = None
-    async for ev in orchestrator.begin_restore(
-        server_id="srv1",
-        source_snapshot_id=snap.id,
-        selection=selection,
-        user_id=None,
-    ):
-        if ev.event_type == "start":
-            rid = ev.restoration_id
-    assert rid is not None
-
-    r = await http.post(
-        f"/api/servers/srv1/world-restore/restorations/{rid}/rollback",
-        headers=_auth(),
-    )
-    assert r.status_code == 200
-    events = _parse_sse_lines(r.text)
-    assert events[-1]["event_type"] == "complete"
-    assert (
-        data_path / "world" / "region" / "r.0.0.mca"
-    ).read_bytes() == b"pre-restore"
-
-
-@pytest.mark.asyncio
-async def test_rollback_404_when_not_found(http: AsyncClient):
-    r = await http.post(
-        "/api/servers/srv1/world-restore/restorations/deadbeef/rollback",
-        headers=_auth(),
-    )
-    assert r.status_code == 404
 
 
 # --- Validation guardrails -------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_list_restorations_validates_pagination(http: AsyncClient):
-    r = await http.get(
-        "/api/servers/srv1/world-restore/restorations",
-        headers=_auth(),
-        params={"limit": 0},
-    )
-    assert r.status_code == 422
-
-pytestmark = [pytestmark, pytest.mark.binary('fd'), pytest.mark.binary('restic'), pytest.mark.binary('mcmap')]
+pytestmark = [
+    pytestmark,
+    pytest.mark.binary("fd"),
+    pytest.mark.binary("restic"),
+    pytest.mark.binary("mcmap"),
+]

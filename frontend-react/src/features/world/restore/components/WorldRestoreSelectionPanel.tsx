@@ -13,7 +13,7 @@ import { useConfirm } from '@/shared/hooks/useConfirm'
 import { useWorldRestoreMutations } from '@/features/world/restore/commands'
 import type { WorldRestoreSelectionMode } from '@/features/world/restore/selectionStore'
 import type { ChunkKey } from '@/features/world/map/contracts'
-import type { RestorationSelection } from '@/features/world/restore/contracts'
+import type { RestorationSelection } from '@/features/backups/contracts'
 
 import { buildSelection, computeSelectionStats } from '@/features/world/restore/components/selectionUtils'
 import { SnapshotPicker } from '@/features/world/restore/components/SnapshotPicker'

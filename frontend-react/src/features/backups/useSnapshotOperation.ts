@@ -6,15 +6,24 @@ import { snapshotApi } from './api'
 import { useRestorationHistory } from './queries'
 import type { RestoreProgressState, SnapshotScope, SnapshotTaskAccepted } from './contracts'
 
-export function useSnapshotOperation(scope: SnapshotScope) {
+function scopeKey(scope: SnapshotScope | null): string {
+  if (!scope || scope.kind === 'global') return scope?.kind ?? ''
+  if (scope.kind === 'server') return JSON.stringify([scope.kind, scope.server_id])
+  if (scope.kind === 'paths') return JSON.stringify([scope.kind, scope.server_id, [...new Set(scope.paths)].sort()])
+  const selection = scope.selection
+  return JSON.stringify([scope.kind, scope.server_id, selection.type, selection.region_dir_relpath ?? null,
+    (selection.regions ?? []).map(pair => pair.join(',')).sort(), (selection.chunks ?? []).map(pair => pair.join(',')).sort()])
+}
+
+export function useSnapshotOperation(scope: SnapshotScope | null, resumeAny = false) {
   const client = useQueryClient()
-  const history = useRestorationHistory('server_id' in scope ? scope.server_id : undefined)
+  const history = useRestorationHistory(scope && 'server_id' in scope ? scope.server_id : undefined, 0, !!scope)
   const [accepted, setAccepted] = useState<SnapshotTaskAccepted | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submittingRef = useRef(false)
   const pending = history.data?.restorations.find(row =>
-    (row.status === 'pending' || row.status === 'running') && JSON.stringify(row.scope) === JSON.stringify(scope))
+    (row.status === 'pending' || row.status === 'running') && (resumeAny || scopeKey(row.scope) === scopeKey(scope)))
   const taskId = accepted?.task_id ?? pending?.operation_id ?? ''
   const task = useTaskQueries().useTask(taskId)
   const terminal = task.data && ['completed', 'failed', 'cancelled'].includes(task.data.status)
@@ -50,7 +59,7 @@ export function useSnapshotOperation(scope: SnapshotScope) {
     state,
     taskId,
     history,
-    start: (sourceSnapshotId: string) => submit(() => snapshotApi.restore({ source_snapshot_id: sourceSnapshotId, scope })),
+    start: (sourceSnapshotId: string) => scope ? submit(() => snapshotApi.restore({ source_snapshot_id: sourceSnapshotId, scope: structuredClone(scope), entry_point: scope.kind === 'world' ? 'world' : 'files' })) : Promise.resolve(),
     rollback: (id: string) => submit(() => snapshotApi.rollback(id)),
     reset: () => { if (!state.active) { setAccepted(null); setError(null) } },
   }

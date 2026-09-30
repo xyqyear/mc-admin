@@ -5,7 +5,7 @@ from app.snapshots.selection_models import RestorationSelection
 
 from ..mcmap.cache import ServerMapCache
 from ..utils import async_fs
-from .selection import _group_chunks_by_region
+from .selection import group_chunks_by_region
 
 
 async def invalidate_map_cache(
@@ -44,7 +44,7 @@ async def invalidate_map_cache(
     elif selection.type is RestorationType.CHUNKS:
         if selection.region_dir_relpath is None:
             return 0
-        grouped = _group_chunks_by_region(selection.chunks)
+        grouped = group_chunks_by_region(selection.chunks)
         pngs = png_invalidate.pngs_for_regions(
             data_path, selection.region_dir_relpath, set(grouped.keys())
         )

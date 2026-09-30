@@ -3,7 +3,6 @@ package world
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -51,7 +50,7 @@ func missingSidecars(ctx context.Context, t *engine.Scope) error {
 		if kind == "chunks" {
 			selection["chunks"] = [][2]int{{0, 0}}
 		}
-		complete, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/restore", request(snapshot, selection), "complete")
+		complete, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", s.restoreRequest(snapshot, selection))
 		if err != nil {
 			return err
 		}
@@ -70,7 +69,7 @@ func missingSidecars(ctx context.Context, t *engine.Scope) error {
 			}
 		}
 		id, _ := complete["restoration_id"].(string)
-		if _, err = s.client.SSE(ctx, "POST", s.base+"/world-restore/restorations/"+id+"/rollback", nil, "complete"); err != nil {
+		if _, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations/"+id+"/rollback", nil); err != nil {
 			return err
 		}
 		var listing struct {
@@ -145,85 +144,80 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 	if err = startResticPauses(ctx, t); err != nil {
 		return err
 	}
-	disconnect := errors.New("close restore response after persisted start")
-	id := ""
-	_, err = s.client.SSEEvents(ctx, "POST", s.base+"/world-restore/restore", request(snapshot, map[string]any{"type": "dimension", "region_dir_relpath": fixtureRegion}), "complete", func(event map[string]any) error {
-		if event["event_type"] == "start" {
-			if err := waitResticPause(ctx, t, "backup"); err != nil {
-				return err
-			}
-			var maintenance struct {
-				Active bool `json:"active"`
-			}
-			if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &maintenance, 200); err != nil {
-				return err
-			}
-			if !maintenance.Active {
-				return fmt.Errorf("restore does not advertise active maintenance")
-			}
-			if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "start"}, nil, 423); err != nil {
-				return err
-			}
-			var compose struct {
-				YAML string `json:"yaml_content"`
-			}
-			if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &compose, 200); err != nil {
-				return err
-			}
-			if err := s.client.JSON(ctx, "POST", s.base+"/compose", map[string]any{"yaml_content": compose.YAML}, nil, 423); err != nil {
-				return err
-			}
-			if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, nil, 423); err != nil {
-				return err
-			}
-			var unchanged struct {
-				YAML string `json:"yaml_content"`
-			}
-			if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &unchanged, 200); err != nil {
-				return err
-			}
-			if unchanged.YAML != compose.YAML {
-				return fmt.Errorf("rejected rebuild or deletion changed the compose")
-			}
-			if err := s.scheduledRestartSkips(ctx); err != nil {
-				return err
-			}
-			if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "global"}}, nil, 423); err != nil {
-				return err
-			}
-			if err := t.Step("scheduled backups persist skipped results during restore", func() error {
-				return s.scheduledBackupsSkip(ctx)
-			}); err != nil {
-				return err
-			}
-			return resumeResticBackup(ctx, t)
-		}
-		if event["event_type"] == "restore" {
-			if err := waitResticPause(ctx, t, "ls"); err != nil {
-				return err
-			}
-			if err := t.Step("overlapping files conflict while unrelated files remain usable", func() error {
-				return s.checkScopedFiles(ctx, uploadSession, fileSnapshot.Snapshot.ID)
-			}); err != nil {
-				return err
-			}
-			id, _ = event["restoration_id"].(string)
-			return disconnect
-		}
-		return nil
-	})
-	if !errors.Is(err, disconnect) || id == "" {
-		return fmt.Errorf("restore did not reach disconnection point: %w", err)
+	taskID, id, err := s.startRestore(ctx, snapshot, map[string]any{"type": "dimension", "region_dir_relpath": fixtureRegion})
+	if err != nil {
+		return err
 	}
-	if err = api.Wait(ctx, 100*time.Millisecond, "disconnected restore finishes cleanup", func(ctx context.Context) (bool, error) {
+	if err := waitResticPause(ctx, t, "backup"); err != nil {
+		return err
+	}
+	var maintenance struct {
+		Active bool `json:"active"`
+	}
+	if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &maintenance, 200); err != nil {
+		return err
+	}
+	if !maintenance.Active {
+		return fmt.Errorf("restore does not advertise active maintenance")
+	}
+	if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "start"}, nil, 423); err != nil {
+		return err
+	}
+	var compose struct {
+		YAML string `json:"yaml_content"`
+	}
+	if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &compose, 200); err != nil {
+		return err
+	}
+	if err := s.client.JSON(ctx, "POST", s.base+"/compose", map[string]any{"yaml_content": compose.YAML}, nil, 423); err != nil {
+		return err
+	}
+	if err := s.client.JSON(ctx, "POST", s.base+"/operations", map[string]any{"action": "remove"}, nil, 423); err != nil {
+		return err
+	}
+	var unchanged struct {
+		YAML string `json:"yaml_content"`
+	}
+	if err := s.client.JSON(ctx, "GET", s.base+"/compose", nil, &unchanged, 200); err != nil {
+		return err
+	}
+	if unchanged.YAML != compose.YAML {
+		return fmt.Errorf("rejected rebuild or deletion changed the compose")
+	}
+	if err := s.scheduledRestartSkips(ctx); err != nil {
+		return err
+	}
+	if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "global"}}, nil, 423); err != nil {
+		return err
+	}
+	if err := t.Step("scheduled backups persist skipped results during restore", func() error {
+		return s.scheduledBackupsSkip(ctx)
+	}); err != nil {
+		return err
+	}
+	if err = resumeResticBackup(ctx, t); err != nil {
+		return err
+	}
+	if err := waitResticPause(ctx, t, "ls"); err != nil {
+		return err
+	}
+	if err := t.Step("overlapping files conflict while unrelated files remain usable", func() error {
+		return s.checkScopedFiles(ctx, uploadSession, fileSnapshot.Snapshot.ID)
+	}); err != nil {
+		return err
+	}
+	if err = s.client.JSON(ctx, "POST", "/api/tasks/"+taskID+"/cancel", nil, nil, 200); err != nil {
+		return err
+	}
+	if err = api.Wait(ctx, 100*time.Millisecond, "cancelled restore drains its writer and finishes cleanup", func(ctx context.Context) (bool, error) {
 		var row restoration
-		if err := s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+id, nil, &row, 200); err != nil {
+		if err := s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &row, 200); err != nil {
 			return false, api.Permanent(err)
 		}
 		if row.Status == "running" {
 			return false, nil
 		}
-		if row.Status != "interrupted" || row.Finished == nil || !row.SafetyExists {
+		if row.Status != "cancelled" || row.Finished == nil || !row.SafetyExists {
 			return false, api.Permanent(fmt.Errorf("disconnected restore has inconsistent terminal state: %+v", row))
 		}
 		var maintenance struct {
@@ -236,7 +230,7 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", s.base+"/world-restore/restorations/"+id+"/rollback", nil, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations/"+id+"/rollback", nil); err != nil {
 		return err
 	}
 	for x := range 2 {

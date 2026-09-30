@@ -2,8 +2,6 @@ import asyncio
 from collections.abc import Iterable
 from pathlib import Path
 
-import aiofiles.os as aioos
-
 from app.snapshots.restoration_models import RestorationType
 from app.snapshots.selection_models import RestorationSelection
 
@@ -22,7 +20,7 @@ def _selection_label(selection: RestorationSelection) -> str:
     return RESTORATION_TYPE_LABELS.get(selection.type, selection.type.value)
 
 
-def _group_chunks_by_region(
+def group_chunks_by_region(
     chunks: Iterable[tuple[int, int]],
 ) -> dict[tuple[int, int], list[tuple[int, int]]]:
     """Group absolute ``(cx, cz)`` by region; values are region-relative ``0..31`` coords."""
@@ -151,7 +149,7 @@ async def _plan_paths(
         return expand(dim, selection.regions)
 
     if selection.type is RestorationType.CHUNKS:
-        grouped = _group_chunks_by_region(selection.chunks)
+        grouped = group_chunks_by_region(selection.chunks)
         return expand(dim, list(grouped.keys()))
 
     raise SelectionResolutionError(f"不支持的选择范围类型: {selection.type}")
@@ -210,33 +208,3 @@ async def resolve_dimension(
     if allow_missing:
         return _restore_dimension(DimensionInfo(region, None, None))
     return _find_dimension(data_path, roots if roots is not None else await discover_world_roots(data_path), relative)
-
-
-def selection_directories(paths: list[Path], selection: RestorationSelection) -> list[Path]:
-    if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
-        return sorted({path.parent for path in paths})
-    return paths
-
-
-async def absent_directories(data_path: Path, paths: list[Path], selection: RestorationSelection) -> list[str]:
-    absent: set[str] = set()
-    for directory in selection_directories(paths, selection):
-        while directory != data_path and not await aioos.path.exists(directory):
-            relative = directory.relative_to(data_path).as_posix()
-            await confined_history_path(data_path, relative)
-            absent.add(relative)
-            directory = directory.parent
-    return sorted(absent)
-
-
-async def absent_sidecar_dirs(
-    data_path: Path, selection: RestorationSelection
-) -> list[str]:
-    if selection.type is RestorationType.WORLD or not selection.region_dir_relpath:
-        return []
-    dimension = data_path / selection.region_dir_relpath
-    return [
-        (dimension.parent / kind).relative_to(data_path).as_posix()
-        for kind in ("entities", "poi")
-        if not await aioos.path.exists(dimension.parent / kind)
-    ]

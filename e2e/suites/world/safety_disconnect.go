@@ -52,21 +52,37 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if err = s.seed(region, live); err != nil {
 		return err
 	}
-	disconnect := errors.New("close SSE on the first persisted safety snapshot")
-	var id, safety string
-	_, err = s.client.SSEEvents(ctx, "POST", s.base+"/world-restore/restore", request(snapshot, selection), "complete", func(event map[string]any) error {
-		if event["event_type"] != "safety_snapshot" {
-			return nil
-		}
-		safety, _ = event["safety_snapshot_id"].(string)
-		if safety == "" {
-			return nil
-		}
-		id, _ = event["restoration_id"].(string)
-		return disconnect
-	})
-	if !errors.Is(err, disconnect) || id == "" || safety == "" {
-		return fmt.Errorf("restore did not expose a persisted safety snapshot before disconnect: id=%q safety=%q error=%v", id, safety, err)
+	if err = startResticPauses(ctx, t); err != nil {
+		return err
+	}
+	taskID, id, err := s.startRestore(ctx, snapshot, selection)
+	if err != nil {
+		return err
+	}
+	if err = waitResticPause(ctx, t, "backup"); err != nil {
+		return err
+	}
+	if err = resumeResticBackup(ctx, t); err != nil {
+		return err
+	}
+	if err = waitResticPause(ctx, t, "ls"); err != nil {
+		return err
+	}
+	var persisted restoration
+	if err = s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &persisted, 200); err != nil {
+		return err
+	}
+	safety := persisted.Safety
+	if safety == "" || !persisted.SafetyExists || persisted.Status != "running" {
+		return fmt.Errorf("accepted task has no durable safety before its first write: %+v", persisted)
+	}
+	observe, disconnect := context.WithCancel(ctx)
+	disconnect()
+	if _, err = s.client.Task(observe, taskID); !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("task observation did not disconnect: %v", err)
+	}
+	if err = resumeRestic(ctx, t); err != nil {
+		return err
 	}
 	t.Recorder.Event("restore_safety_disconnect", map[string]string{"restoration_id": id, "safety_snapshot_id": safety})
 	if err = t.Step("early disconnect settles matching history and operation without restarting the application", func() error {
@@ -82,7 +98,7 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if err = s.seedRegion([2]string{"changed after disconnect zero", "changed after disconnect one"}); err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", s.base+"/world-restore/restorations/"+id+"/rollback", nil, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations/"+id+"/rollback", nil); err != nil {
 		return err
 	}
 	restored, err := s.download(ctx, region)
@@ -98,18 +114,18 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 func (s *scenario) waitSafetyDisconnect(ctx context.Context, id, safety string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	return api.Wait(ctx, 100*time.Millisecond, "early SSE disconnection releases history, journal and maintenance", func(ctx context.Context) (bool, error) {
+	return api.Wait(ctx, 100*time.Millisecond, "task observation disconnection releases history, journal and maintenance", func(ctx context.Context) (bool, error) {
 		var history restoration
-		if err := s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+id, nil, &history, 200); err != nil {
+		if err := s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &history, 200); err != nil {
 			return false, api.Permanent(err)
 		}
 		if history.ID != id || history.Safety != safety || !history.SafetyExists || history.Generation == nil || *history.Generation <= 0 {
 			return false, api.Permanent(fmt.Errorf("early-disconnect history lost its persisted safety reference or generation: %+v", history))
 		}
-		if history.Status == "running" {
+		if history.Status == "running" || history.Status == "pending" {
 			return false, fmt.Errorf("restoration %s is still running", id)
 		}
-		if (history.Status != "interrupted" && history.Status != "succeeded") || history.Finished == nil || *history.Finished == "" {
+		if history.Status != "succeeded" || history.Finished == nil || *history.Finished == "" {
 			return false, api.Permanent(fmt.Errorf("early-disconnect history did not settle safely: %+v", history))
 		}
 		var operations []restoreOperation
@@ -118,7 +134,7 @@ func (s *scenario) waitSafetyDisconnect(ctx context.Context, id, safety string) 
 		}
 		var matches []restoreOperation
 		for _, operation := range operations {
-			if operation.Kind == "world_restore" && operation.LegacyID == id {
+			if operation.Kind == "snapshot_restore" && operation.ID == history.OperationID {
 				matches = append(matches, operation)
 			}
 		}
@@ -130,8 +146,8 @@ func (s *scenario) waitSafetyDisconnect(ctx context.Context, id, safety string) 
 		case "queued", "running", "cancelling", "finalizing":
 			return false, fmt.Errorf("restoration operation %s is still %s", operation.ID, operation.State)
 		}
-		settled := operation.State == history.Status || (history.Status == "succeeded" && operation.State == "interrupted")
-		if operation.ID == "" || !settled || operation.Ended == nil || !operation.WritersStopped || operation.RecoveryReason != nil || operation.Origin != "request" || operation.ActorID == nil || *operation.ActorID <= 0 {
+		settled := operation.State == history.Status
+		if operation.ID == "" || !settled || operation.Ended == nil || !operation.WritersStopped || operation.RecoveryReason != nil || operation.Origin != "task" || operation.ActorID == nil || *operation.ActorID <= 0 {
 			return false, api.Permanent(fmt.Errorf("early-disconnect operation disagrees with safe terminal history: %+v", operation))
 		}
 		bound := false

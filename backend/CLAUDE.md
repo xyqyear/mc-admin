@@ -65,7 +65,7 @@ app/
 ├── chunk_prune/           # versioned inputs, retained preview registry, geometry, execution and guarded apply
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
-├── world/                 # selection planning, scope execution, generation-bound history, preview artifacts and finalization
+├── world/                 # selection planning, protected chunk merging, preview sessions and cache finalization
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression, SSE helpers
 ```
@@ -88,7 +88,7 @@ Long-running operations are async generators yielding `TaskProgress(progress, me
 
 Cancellation directly interrupts the owned worker, closes nested generators, and waits for registered subprocesses and finite cleanup before publishing a terminal status. The durable journal remains authoritative after late cancellation or restart; interrupted work maps to existing failed task/cron states and is never replayed. Filesystem refusal may leave partial output behind. See `docs/background-tasks.md` and `docs/operations.md`.
 
-Manual snapshot creation and file restore/rollback return durable tasks. `snapshots/commands.py` owns accepted target/repository references, safety evidence before writes and terminal history hooks. `snapshots/queries.py` projects authoritative journal state and rollback availability. File recovery history is available under `/snapshots/restorations`; the synchronous file restore route is absent. World restoration remains a request-owned SSE flow with durable restoration history. Stream closure records interruption, releasing maintenance after confirmed writer termination and required cleanup; uncertain writers retain recovery blocks, and rollback requires an existing safety snapshot and restoration record. See `docs/world-restore.md`.
+Manual snapshot creation and file/world restore/rollback return common durable tasks. `snapshots/commands.py` owns accepted target/repository references, safety evidence before writes and terminal history hooks. `snapshots/queries.py` projects authoritative journal state and rollback availability. File recovery history is available under `/snapshots/restorations`; the synchronous file restore route is absent. World and file recovery use the same acceptance, protection, safety evidence, rollback and history boundary. Closing an observer does not cancel execution. Explicit task cancellation releases maintenance only after confirmed writer termination and cleanup; uncertain writers retain recovery blocks. World preview sessions belong to `world/preview_service.py`. See `docs/world-restore.md`.
 
 ## Dynamic config
 

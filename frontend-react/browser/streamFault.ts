@@ -2,26 +2,37 @@ import http from 'node:http'
 import { once } from 'node:events'
 
 export async function interruptRestoreAfterSafetySnapshot(baseURL: string) {
-  let cut = false
+  let taskId = ''
+  let disconnected = false
+  let resumed = false
   let resolveCut!: () => void
   const interrupted = new Promise<void>(resolve => { resolveCut = resolve })
   const server = http.createServer((request, response) => {
     const upstream = http.request(new URL(request.url ?? '/', baseURL), { method: request.method, headers: { ...request.headers, host: new URL(baseURL).host } }, incoming => {
-      response.writeHead(incoming.statusCode ?? 502, incoming.headers)
-      let tail = ''
-      incoming.on('data', (chunk: Buffer) => {
-        response.write(chunk)
-        if (!cut && request.method === 'POST' && request.url?.endsWith('/world-restore/restore')) {
-          tail = (tail + chunk.toString('utf8')).slice(-16_384)
-          if (/"event_type"\s*:\s*"safety_snapshot"/.test(tail) && /"safety_snapshot_id"\s*:\s*"[a-f0-9]+"/.test(tail)) {
-            cut = true
-            upstream.destroy()
-            response.destroy()
-            resolveCut()
+      const acceptance = request.method === 'POST' && request.url === '/api/snapshots/restorations'
+      const observation = request.method === 'GET' && taskId && request.url === `/api/tasks/${taskId}`
+      if (acceptance || observation) {
+        const chunks: Buffer[] = []
+        incoming.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+        incoming.on('end', () => {
+          const body = Buffer.concat(chunks)
+          if (incoming.statusCode === 202 && acceptance) taskId = JSON.parse(body.toString()).task_id
+          if (observation && !resumed) {
+            const ready = incoming.statusCode === 200 && JSON.parse(body.toString()).result?.safety_snapshot_id
+            if (ready || disconnected) {
+              disconnected = true
+              response.destroy()
+              resolveCut()
+              return
+            }
           }
-        }
-      })
-      incoming.on('end', () => response.end())
+          response.writeHead(incoming.statusCode ?? 502, incoming.headers)
+          response.end(body)
+        })
+      } else {
+        response.writeHead(incoming.statusCode ?? 502, incoming.headers)
+        incoming.pipe(response)
+      }
       incoming.on('error', () => response.destroy())
     })
     upstream.on('error', () => response.destroy())
@@ -31,10 +42,11 @@ export async function interruptRestoreAfterSafetySnapshot(baseURL: string) {
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   const address = server.address()
-  if (!address || typeof address === 'string') throw new Error('Failed to bind the owned stream fault proxy.')
+  if (!address || typeof address === 'string') throw new Error('Failed to bind the owned task observation fault proxy.')
   return {
     url: `http://127.0.0.1:${address.port}`,
     interrupted,
+    resume: () => { resumed = true },
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => { if (error) reject(error); else resolve() })
       server.closeAllConnections()

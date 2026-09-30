@@ -55,36 +55,57 @@ class SnapshotService:
         self.repository_use = RepositoryUse()
 
     async def protection(
-        self, snapshot_id: str | None = None, *, retained: Sequence[Path] = (),
+        self,
+        snapshot_id: str | None = None,
+        *,
+        retained: Sequence[Path] = (),
         data_paths: Sequence[Path] | None = None,
     ) -> SnapshotProtection:
         current = await self._current_ignores(data_paths)
-        protection = SnapshotProtection.capture(current, retained, data_paths=data_paths)
+        protection = SnapshotProtection.capture(
+            current, retained, data_paths=data_paths
+        )
         if snapshot_id is not None:
-            return await self.with_source_protection(protection, await self.get_snapshot(snapshot_id))
+            return await self.with_source_protection(
+                protection, await self.get_snapshot(snapshot_id)
+            )
         return protection
 
-    async def with_source_protection(self, protection: SnapshotProtection, source: ResticSnapshot) -> SnapshotProtection:
+    async def with_source_protection(
+        self, protection: SnapshotProtection, source: ResticSnapshot
+    ) -> SnapshotProtection:
         excluded = list(protection.excluded)
         for path in source.excludes:
             excluded.extend([Path(path), await async_fs.resolve(Path(path))])
-        return SnapshotProtection.capture(protection.current, excluded, data_paths=protection.data_paths)
+        return SnapshotProtection.capture(
+            protection.current, excluded, data_paths=protection.data_paths
+        )
 
     async def revalidate_protection(self, protection: SnapshotProtection) -> None:
         protection.require_current(await self._current_ignores(protection.data_paths))
 
-    async def _current_ignores(self, data_paths: Sequence[Path] | None = None) -> list[Path]:
+    async def _current_ignores(
+        self, data_paths: Sequence[Path] | None = None
+    ) -> list[Path]:
         if data_paths is not None:
             ignored: list[Path] = []
             for data_path in data_paths:
-                ignored.extend(await resolve_server_ignores(data_path, get_config().snapshots.ignored_paths))
+                ignored.extend(
+                    await resolve_server_ignores(
+                        data_path, get_config().snapshots.ignored_paths
+                    )
+                )
             return ignored
         return await resolve_all_ignores(
             self._mc_manager, get_config().snapshots.ignored_paths
         )
 
     async def remove_absent_paths(
-        self, snapshot_id: str, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
+        self,
+        snapshot_id: str,
+        paths: Sequence[Path],
+        *,
+        protection: SnapshotProtection | None = None,
     ) -> list[Path]:
         """Restore recorded absence without deleting configured ignored descendants."""
         protection = protection or await self.protection(snapshot_id)
@@ -93,7 +114,11 @@ class SnapshotService:
         removed: list[Path] = []
 
         async def remove(path: Path) -> None:
-            if is_ignored(path, ignored) or is_ignored(await async_fs.resolve(path), ignored) or not await async_fs.lexists(path):
+            if (
+                is_ignored(path, ignored)
+                or is_ignored(await async_fs.resolve(path), ignored)
+                or not await async_fs.lexists(path)
+            ):
                 return
             if await aioos.path.islink(path) or not await aioos.path.isdir(path):
                 await aioos.remove(path)
@@ -115,7 +140,9 @@ class SnapshotService:
         await finalize(apply())
         return removed
 
-    async def absent_targets(self, snapshot_id: str, paths: Sequence[Path]) -> tuple[Path, ...]:
+    async def absent_targets(
+        self, snapshot_id: str, paths: Sequence[Path]
+    ) -> tuple[Path, ...]:
         by_parent: dict[Path, list[Path]] = {}
         for path in paths:
             by_parent.setdefault(path.parent, []).append(path)
@@ -126,7 +153,11 @@ class SnapshotService:
         return tuple(absent)
 
     async def create_snapshot(
-        self, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
+        self,
+        paths: Sequence[Path],
+        *,
+        protection: SnapshotProtection | None = None,
+        tags: Sequence[str] = (),
     ) -> ResticSnapshotWithSummary:
         """Snapshot the given absolute paths, excluding configured ignores.
 
@@ -137,15 +168,23 @@ class SnapshotService:
             protection = protection or await self.protection()
             await self.revalidate_protection(protection)
             protection.require_targets(paths)
-            return await self._client.backup(paths, backup_excludes(paths, protection.excluded))
+            return await self._client.backup(
+                paths, backup_excludes(paths, protection.excluded), tags=tags
+            )
 
     async def build_plan(
-        self, snapshot_id: str, targets: Sequence[Path], *, protection: SnapshotProtection | None = None,
+        self,
+        snapshot_id: str,
+        targets: Sequence[Path],
+        *,
+        protection: SnapshotProtection | None = None,
     ) -> RestorePlan:
         protection = protection or await self.protection(snapshot_id)
         await self.revalidate_protection(protection)
         protection.require_targets(targets)
-        return await build_restore_plan(self._client, snapshot_id, targets, protection.excluded)
+        return await build_restore_plan(
+            self._client, snapshot_id, targets, protection.excluded
+        )
 
     async def restore(
         self,
@@ -165,9 +204,14 @@ class SnapshotService:
             return
         with self.repository_use.retain((snapshot_id,)):
             plan = await self.build_plan(snapshot_id, targets, protection=protection)
-            async with aclosing(self._run_plan(
-                plan, target_for=lambda step: step.source_dir, delete=True, dry_run=dry_run
-            )) as events:
+            async with aclosing(
+                self._run_plan(
+                    plan,
+                    target_for=lambda step: step.source_dir,
+                    delete=True,
+                    dry_run=dry_run,
+                )
+            ) as events:
                 async for event in events:
                     yield event
 
@@ -205,12 +249,14 @@ class SnapshotService:
         """
         with self.repository_use.retain((snapshot_id,)):
             plan = await self.build_plan(snapshot_id, targets, protection=protection)
-            async with aclosing(self._run_plan(
-                plan,
-                target_for=lambda step: RestorePlan.stage_target(stage_root, step),
-                delete=False,
-                dry_run=False,
-            )) as events:
+            async with aclosing(
+                self._run_plan(
+                    plan,
+                    target_for=lambda step: RestorePlan.stage_target(stage_root, step),
+                    delete=False,
+                    dry_run=False,
+                )
+            ) as events:
                 async for event in events:
                     yield event
 
@@ -241,13 +287,15 @@ class SnapshotService:
             bytes_skipped=0,
         )
         for index, step in enumerate(plan.steps):
-            async with aclosing(self._restore_step(
-                plan.snapshot_id,
-                step,
-                target_dir=target_for(step),
-                delete=delete,
-                dry_run=dry_run,
-            )) as events:
+            async with aclosing(
+                self._restore_step(
+                    plan.snapshot_id,
+                    step,
+                    target_dir=target_for(step),
+                    delete=delete,
+                    dry_run=dry_run,
+                )
+            ) as events:
                 async for event in events:
                     if event.kind == "status":
                         if event.percent_done is not None:
@@ -293,9 +341,15 @@ class SnapshotService:
         )
 
     async def _restore_empty_step(
-        self, step: EmptyStep, *, dry_run: bool,
+        self,
+        step: EmptyStep,
+        *,
+        dry_run: bool,
     ) -> AsyncGenerator[ResticRestoreEvent]:
-        roots = [instance.get_data_path().parent for instance in await self._mc_manager.get_all_instances()]
+        roots = [
+            instance.get_data_path().parent
+            for instance in await self._mc_manager.get_all_instances()
+        ]
         servers_root = getattr(self._mc_manager, "servers_path", None)
         if isinstance(servers_root, Path):
             roots.append(servers_root)
@@ -344,9 +398,13 @@ class SnapshotService:
                 removed.append(path)
             return removed
 
-        removed = [path for path, _ in removals] if dry_run else await finalize(remove())
+        removed = (
+            [path for path, _ in removals] if dry_run else await finalize(remove())
+        )
         for path in removed:
-            yield ResticRestoreEvent(kind="file", action="deleted", item=str(path), size=0)
+            yield ResticRestoreEvent(
+                kind="file", action="deleted", item=str(path), size=0
+            )
         yield ResticRestoreEvent(kind="summary", files_deleted=len(removed))
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
@@ -390,8 +448,7 @@ class SnapshotService:
         for snapshot in all_snapshots:
             snap_paths, snap_excludes = await self._resolved_coverage_paths(snapshot)
             if all(
-                covers(target, snap_paths, snap_excludes)
-                for target in resolved_targets
+                covers(target, snap_paths, snap_excludes) for target in resolved_targets
             ):
                 matching.append(snapshot)
         matching.sort(key=lambda s: s.time, reverse=True)
@@ -451,13 +508,20 @@ class SnapshotService:
             for record in await journal.unsettled():
                 if own is not None and record.operation_id == own.operation_id:
                     continue
-                if not record.writers_stopped and (record.kind.startswith("snapshot_") or record.kind in {"world_restore", "cron_backup"} or any(ref.kind in {"safety_snapshot", "source_snapshot"} for ref in record.recovery_refs)):
-                    raise HTTPException(status_code=423, detail="仓库写入尚未确认结束，请先核对操作历史")
+                if not record.writers_stopped and (
+                    record.kind.startswith("snapshot_")
+                    or record.kind in {"world_restore", "cron_backup"}
+                    or any(
+                        ref.kind in {"safety_snapshot", "source_snapshot"}
+                        for ref in record.recovery_refs
+                    )
+                ):
+                    raise HTTPException(
+                        status_code=423, detail="仓库写入尚未确认结束，请先核对操作历史"
+                    )
 
 
-def _accumulate_summary(
-    total: ResticRestoreEvent, part: ResticRestoreEvent
-) -> None:
+def _accumulate_summary(total: ResticRestoreEvent, part: ResticRestoreEvent) -> None:
     for field in (
         "total_files",
         "files_restored",

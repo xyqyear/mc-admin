@@ -74,10 +74,10 @@ func emptyScopeRollback(ctx context.Context, t *engine.Scope) error {
 				}
 				return fixtures.CheckFile(ctx, s.client, s.id, "/plugins/ordinary.txt", "outside world restoration")
 			}
-			path := s.base + "/world-restore/restore"
-			var body any = request(backup.Snapshot.ID, selection)
+			path := "/api/snapshots/restorations"
+			var body any = s.restoreRequest(backup.Snapshot.ID, selection)
 			for index := range 3 {
-				complete, err := s.client.SSE(ctx, "POST", path, body, "complete")
+				complete, err := s.client.RunTaskResult(ctx, "POST", path, body)
 				if err != nil {
 					return err
 				}
@@ -86,7 +86,7 @@ func emptyScopeRollback(ctx context.Context, t *engine.Scope) error {
 					return fmt.Errorf("%s history operation %d omitted restoration ID", kind, index)
 				}
 				var history restoration
-				if err := s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+id, nil, &history, 200); err != nil {
+				if err := s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &history, 200); err != nil {
 					return err
 				}
 				if history.Status != "succeeded" || !history.SafetyExists || history.Rollback != (index > 0) {
@@ -95,7 +95,7 @@ func emptyScopeRollback(ctx context.Context, t *engine.Scope) error {
 				if err := check(index != 1); err != nil {
 					return err
 				}
-				path = s.base + "/world-restore/restorations/" + id + "/rollback"
+				path = "/api/snapshots/restorations/" + id + "/rollback"
 				body = nil
 			}
 			return nil

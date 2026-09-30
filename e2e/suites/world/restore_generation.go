@@ -34,7 +34,7 @@ func restorationGeneration(ctx context.Context, t *engine.Scope) error {
 	if err = s.seedRegion([2]string{"old incarnation safety zero", "old incarnation safety one"}); err != nil {
 		return err
 	}
-	complete, err := s.client.SSE(ctx, "POST", s.base+"/world-restore/restore", request(snapshot, selection), "complete")
+	complete, err := s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", s.restoreRequest(snapshot, selection))
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func restorationGeneration(ctx context.Context, t *engine.Scope) error {
 	if id == "" {
 		return fmt.Errorf("restore has no durable history ID")
 	}
-	if err = s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+id, nil, &original, 200); err != nil {
+	if err = s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &original, 200); err != nil {
 		return err
 	}
 	if original.Generation == nil || *original.Generation <= 0 || original.BindingIssue != nil || original.Status != "succeeded" || !original.SafetyExists {
@@ -67,20 +67,20 @@ func restorationGeneration(ctx context.Context, t *engine.Scope) error {
 			Total int           `json:"total"`
 			Rows  []restoration `json:"restorations"`
 		}
-		if err := s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations", nil, &history, 200); err != nil {
+		if err := s.client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+s.id, nil, &history, 200); err != nil {
 			return err
 		}
 		if history.Total != 1 || len(history.Rows) != 1 || history.Rows[0].ID != id {
 			return fmt.Errorf("same-name recreation hid old restoration history: %+v", history)
 		}
 		var old restoration
-		if err := s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+id, nil, &old, 200); err != nil {
+		if err := s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+id, nil, &old, 200); err != nil {
 			return err
 		}
 		if old.Generation == nil || *old.Generation != *original.Generation || old.Safety != original.Safety || !old.SafetyExists || old.Status != original.Status || old.BindingIssue == nil || *old.BindingIssue != "generation_changed" {
 			return fmt.Errorf("old history was rebound or modified during recreation: %+v", old)
 		}
-		if err := s.conflict(ctx, s.base+"/world-restore/restorations/"+id+"/rollback", nil, "restoration_identity_conflict"); err != nil {
+		if err := s.conflict(ctx, "/api/snapshots/restorations/"+id+"/rollback", nil, "restoration_identity_conflict"); err != nil {
 			return err
 		}
 		for x := range 2 {
@@ -104,13 +104,13 @@ func restorationGeneration(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	complete, err = s.client.SSE(ctx, "POST", s.base+"/world-restore/restore", request(newSnapshot, selection), "complete")
+	complete, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", s.restoreRequest(newSnapshot, selection))
 	if err != nil {
 		return err
 	}
 	newID, _ := complete["restoration_id"].(string)
 	var replacement restoration
-	if err = s.client.JSON(ctx, "GET", s.base+"/world-restore/restorations/"+newID, nil, &replacement, 200); err != nil {
+	if err = s.client.JSON(ctx, "GET", "/api/snapshots/restorations/"+newID, nil, &replacement, 200); err != nil {
 		return err
 	}
 	if replacement.Generation == nil || *replacement.Generation <= *original.Generation || replacement.BindingIssue != nil || replacement.Status != "succeeded" {

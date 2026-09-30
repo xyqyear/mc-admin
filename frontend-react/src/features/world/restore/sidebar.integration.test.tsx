@@ -30,16 +30,17 @@ it('retains the open history and rolls back its interrupted row when delayed map
   const rollbacks: string[] = []
   server.use(
     http.get('*/api/servers/alpha/map/status', async () => HttpResponse.json(await mapStatus.promise)),
-    http.get('*/api/servers/alpha/world-restore/restorations', () => HttpResponse.json({ total: 1, restorations: [{
+    http.get('*/api/snapshots/restorations', () => HttpResponse.json({ total: 1, restorations: [{
       id: 'interrupted-restore', server_id: 'alpha', server_generation: 1, binding_issue: null,
-      type: 'world', source_snapshot_id: 'source123456', safety_snapshot_id: 'safety123456',
+      scope: { kind: 'world', server_id: 'alpha', selection: { type: 'world' } }, rollback_available: true, source_snapshot_id: 'source123456', safety_snapshot_id: 'safety123456',
       source_snapshot_exists: true, safety_snapshot_exists: true, selection: { type: 'world' },
       status: 'interrupted', started_at: '2026-09-25T00:00:00Z', finished_at: '2026-09-25T00:01:00Z',
       is_rollback: false, initiated_by_user_id: 1, error_message: '恢复连接已中断',
     }] })),
-    http.post('*/api/servers/alpha/world-restore/restorations/:id/rollback', ({ params }) => {
+    http.get('*/api/tasks/rollback-task', () => HttpResponse.json({ task_id: 'rollback-task', status: 'completed', message: '安全快照回滚完成' })),
+    http.post('*/api/snapshots/restorations/:id/rollback', ({ params }) => {
       rollbacks.push(String(params.id))
-      return new HttpResponse(`data: ${JSON.stringify({ event_type: 'complete', restoration_id: 'rollback', message: '安全快照回滚完成' })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } })
+      return HttpResponse.json({ task_id: 'rollback-task', restoration_id: 'rollback', skipped_paths: [] }, { status: 202 })
     }),
   )
   const view = render(<TestProviders client={client}><RestoreSidebar /></TestProviders>)
@@ -59,7 +60,7 @@ it('retains the open history and rolls back its interrupted row when delayed map
     fireEvent.click(rollback)
     fireEvent.click(await screen.findByRole('button', { name: '开始回滚' }))
     await waitFor(() => expect(rollbacks).toEqual(['interrupted-restore']))
-    await within(history).findByRole('button', { name: '返回历史' })
+    await within(history).findByText('安全快照回滚完成')
     expect(screen.getByRole('dialog', { name: '恢复历史' })).toBe(history)
   } finally {
     mapStatus.resolve({ client_jar_present: true, palette_present: true, palette_current: true, version: '1.21.11' })

@@ -140,6 +140,8 @@ async def resolve_scope(
     *,
     root: Path,
     sessions: Callable[[], AbstractAsyncContextManager[AsyncSession]],
+    history_paths: Sequence[Path] | None = None,
+    allow_missing_dimension: bool = False,
 ) -> ResolvedScope:
     from ..world.selection import resolve_paths, resource_scopes
 
@@ -177,9 +179,15 @@ async def resolve_scope(
         targets = [reference.project_path]
     elif isinstance(scope, PathsScope):
         targets = [reference.data_path / value for value in scope.paths]
+    elif history_paths is not None:
+        targets = list(history_paths)
     else:
         targets = await resolve_paths(
-            reference.data_path, scope.selection, include_mcc=True, include_missing=True
+            reference.data_path,
+            scope.selection,
+            include_mcc=True,
+            include_missing=True,
+            allow_missing_dimension=allow_missing_dimension,
         )
     claim_paths = (
         await resource_scopes(reference.data_path, targets)

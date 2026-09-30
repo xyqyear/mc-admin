@@ -2,90 +2,25 @@ import asyncio
 import json
 import shlex
 import shutil
-from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.types import TaskStatus
-from app.db.metadata import Base
 from app.minecraft import MCServerStatus
-from app.operations.journal import OperationJournal
 from app.operations.journal_types import (
     OperationSpec,
     OperationState,
     ResourceReference,
 )
 from app.runtime_resources import current_runtime
-from app.servers.models import Server
-from app.snapshots.commands import SnapshotCommands
 from app.snapshots.queries import RestorationQueries
-from app.snapshots.restic import ResticClient
 from app.snapshots.restoration_models import Restoration, RestorationStatus
 from app.snapshots.scopes import GlobalScope, PathsScope
-from app.snapshots.service import SnapshotService
-from app.utils.exec import exec_command
 
 pytestmark = pytest.mark.binary("restic")
-
-
-@pytest.fixture
-async def case(tmp_path):
-    runtime = current_runtime()
-    root = runtime.settings.server_path
-    project = root / "survival"
-    data = project / "data"
-    data.mkdir(parents=True)
-    (project / "compose.yaml").write_text("services: {}\n")
-    (data / "server.properties").write_text("level-name=world\n")
-    class Instance:
-        status = MCServerStatus.EXISTS
-
-        def get_name(self):
-            return "survival"
-
-        def get_project_path(self):
-            return project
-
-        def get_data_path(self):
-            return data
-
-        async def get_status(self):
-            return self.status
-
-    instance = Instance()
-
-    class Manager:
-        servers_path = root
-
-        async def get_all_instances(self):
-            return [instance]
-
-        def get_instance(self, _):
-            return instance
-
-    config = SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[]))
-    runtime.resources.update(docker_mc_manager=Manager(), dynamic_configuration=config)
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    async with runtime.database.session_factory() as session:
-        session.add(Server(server_id="survival"))
-        await session.commit()
-    runtime.journal = OperationJournal(runtime.database.session_factory)
-    tasks = BackgroundTaskManager(runtime.journal)
-    runtime.resources["task_manager"] = tasks
-    client = ResticClient(repository_path=str(tmp_path / "repository"), password="command-test")
-    await exec_command(str(client.binary_path), "init", env=client.env)
-    snapshots = SnapshotService(client, Manager())
-    runtime.resources["snapshot_service"] = snapshots
-    commands = runtime.resource("snapshot_commands")
-    assert isinstance(commands, SnapshotCommands)
-    yield SimpleNamespace(commands=commands, snapshots=snapshots, data=data, tasks=tasks,
-                          config=config, journal=runtime.journal, instance=instance, client=client)
-    await tasks.shutdown()
 
 
 async def complete(case, accepted, *, success=True):
@@ -95,10 +30,12 @@ async def complete(case, accepted, *, success=True):
     assert result.success is success, result
     task = case.tasks.get_task(accepted["task_id"])
     assert task.status is (TaskStatus.COMPLETED if success else TaskStatus.FAILED), task
-    if "restoration_id" in accepted:
+    if accepted.get("restoration_id"):
         row = await case.commands.store.get(accepted["restoration_id"])
         assert row.operation_id == accepted["task_id"]
-        assert row.status is (RestorationStatus.SUCCEEDED if success else RestorationStatus.FAILED)
+        assert row.status is (
+            RestorationStatus.SUCCEEDED if success else RestorationStatus.FAILED
+        )
     return result.data
 
 
@@ -123,7 +60,9 @@ async def test_online_file_restore_and_repeated_rollback_replace_later_edits(cas
     assert target.read_text() == "edited after restore"
 
 
-async def test_missing_target_rollback_preserves_new_siblings_and_ignored_descendants(case):
+async def test_missing_target_rollback_preserves_new_siblings_and_ignored_descendants(
+    case,
+):
     target = case.data / "plugins" / "example"
     target.mkdir(parents=True)
     (target / "setting.yml").write_text("snapshot")
@@ -168,7 +107,9 @@ async def test_safety_persistence_failure_never_writes_target(case, monkeypatch)
         raise OSError("injected history storage failure")
 
     monkeypatch.setattr(case.commands.store, "save_safety", failed)
-    accepted = await case.commands.restore(PathsScope(server_id="survival", paths=("setting",)), source.id, 1)
+    accepted = await case.commands.restore(
+        PathsScope(server_id="survival", paths=("setting",)), source.id, 1
+    )
     await complete(case, accepted, success=False)
     assert target.read_text() == "must survive"
     record = await case.journal.get(accepted["task_id"])
@@ -176,8 +117,11 @@ async def test_safety_persistence_failure_never_writes_target(case, monkeypatch)
     assert any(ref.kind == "safety_snapshot" for ref in record.recovery_refs)
 
 
-async def test_queued_global_snapshot_protects_repository_and_server_until_cancelled(case, monkeypatch):
+async def test_queued_global_snapshot_protects_repository_and_server_until_cancelled(
+    case, monkeypatch
+):
     (case.data / "keep").write_text("retained")
+
     async def pause_start(_):
         await asyncio.Event().wait()
 
@@ -197,12 +141,15 @@ async def test_queued_global_snapshot_protects_repository_and_server_until_cance
     await case.snapshots.unlock()
 
 
-async def test_duplicate_restore_and_queued_cancel_have_one_terminal_history(case, monkeypatch):
+async def test_duplicate_restore_and_queued_cancel_have_one_terminal_history(
+    case, monkeypatch
+):
     target = case.data / "setting"
     target.write_text("snapshot")
     source = await case.snapshots.create_snapshot([target])
     target.write_text("present")
     scope = PathsScope(server_id="survival", paths=("setting",))
+
     async def pause_start(_):
         await asyncio.Event().wait()
 
@@ -249,7 +196,9 @@ async def test_original_protection_survives_current_rule_removal_and_rollback(ca
     assert (folder / "ignored").read_text() == "protected newer"
 
 
-async def test_cancel_after_history_acceptance_has_no_worker_or_live_write(case, monkeypatch):
+async def test_cancel_after_history_acceptance_has_no_worker_or_live_write(
+    case, monkeypatch
+):
     target = case.data / "setting"
     target.write_text("snapshot")
     source = await case.snapshots.create_snapshot([target])
@@ -263,7 +212,11 @@ async def test_cancel_after_history_acceptance_has_no_worker_or_live_write(case,
         await asyncio.Event().wait()
 
     monkeypatch.setattr(case.commands.store, "accept", pause)
-    request = asyncio.create_task(case.commands.restore(PathsScope(server_id="survival", paths=("setting",)), source.id, 1))
+    request = asyncio.create_task(
+        case.commands.restore(
+            PathsScope(server_id="survival", paths=("setting",)), source.id, 1
+        )
+    )
     await asyncio.wait_for(committed.wait(), 5)
     request.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -272,13 +225,17 @@ async def test_cancel_after_history_acceptance_has_no_worker_or_live_write(case,
         rows = list(await session.scalars(select(Restoration)))
     assert len(rows) == 1 and rows[0].status is RestorationStatus.CANCELLED
     assert case.tasks.get_all_tasks() == []
-    assert (await case.journal.get(rows[0].operation_id)).state is OperationState.CANCELLED
+    assert (
+        await case.journal.get(rows[0].operation_id)
+    ).state is OperationState.CANCELLED
     assert target.read_text() == "present"
     case.commands.require_deletable("survival")
     await case.snapshots.forget_id(source.id)
 
 
-async def test_failed_history_acceptance_has_no_worker_and_no_live_write(case, monkeypatch):
+async def test_failed_history_acceptance_has_no_worker_and_no_live_write(
+    case, monkeypatch
+):
     target = case.data / "setting"
     target.write_text("snapshot")
     source = await case.snapshots.create_snapshot([target])
@@ -289,7 +246,9 @@ async def test_failed_history_acceptance_has_no_worker_and_no_live_write(case, m
 
     monkeypatch.setattr(case.commands.store, "accept", failed)
     with pytest.raises(OSError):
-        await case.commands.restore(PathsScope(server_id="survival", paths=("setting",)), source.id, 1)
+        await case.commands.restore(
+            PathsScope(server_id="survival", paths=("setting",)), source.id, 1
+        )
     async with current_runtime().database.session_factory() as session:
         assert list(await session.scalars(select(Restoration))) == []
     assert case.tasks.get_all_tasks() == []
@@ -310,13 +269,20 @@ async def test_ignored_symlink_is_preserved_when_restoring_its_parent(case):
     (case.data / "cache-target" / "keep").write_text("protected live data")
     (folder / "cache").symlink_to(case.data / "cache-target", target_is_directory=True)
     (folder / "value").write_text("modified")
-    await complete(case, await case.commands.restore(PathsScope(server_id="survival", paths=("plugins",)), source.id, 1))
+    await complete(
+        case,
+        await case.commands.restore(
+            PathsScope(server_id="survival", paths=("plugins",)), source.id, 1
+        ),
+    )
     assert (folder / "value").read_text() == "original"
     assert (folder / "cache").is_symlink()
     assert (folder / "cache" / "keep").read_text() == "protected live data"
 
 
-async def test_cancel_real_restic_between_targets_retains_safe_rollback(case, tmp_path, monkeypatch):
+async def test_cancel_real_restic_between_targets_retains_safe_rollback(
+    case, tmp_path, monkeypatch
+):
     for name in ("a", "b"):
         (case.data / name).mkdir()
         (case.data / name / "value").write_text("source " + name)
@@ -330,16 +296,21 @@ async def test_cancel_real_restic_between_targets_retains_safe_rollback(case, tm
     wrapper.write_text(
         "#!/bin/sh\n" + shlex.quote(str(real)) + ' "$@"\nresult=$?\n'
         'if [ "$1" = "restore" ] && [ "$result" = "0" ]; then\n'
-        + "touch " + shlex.quote(str(marker)) + "\nsleep 300\nfi\nexit $result\n"
+        + "touch "
+        + shlex.quote(str(marker))
+        + "\nsleep 300\nfi\nexit $result\n"
     )
     wrapper.chmod(0o755)
     monkeypatch.setattr(case.client, "binary_path", wrapper)
-    accepted = await case.commands.restore(PathsScope(server_id="survival", paths=("a", "b")), source.id, 1)
+    accepted = await case.commands.restore(
+        PathsScope(server_id="survival", paths=("a", "b")), source.id, 1
+    )
 
     async def wait_for_write():
         from app.utils.async_fs import lexists
+
         while not await lexists(marker):
-            await asyncio.sleep(.02)
+            await asyncio.sleep(0.02)
 
     try:
         await asyncio.wait_for(wait_for_write(), 30)
@@ -364,9 +335,13 @@ async def test_history_survives_retention_without_permanently_pinning_safety(cas
     target.write_text("source")
     source = await case.snapshots.create_snapshot([target])
     target.write_text("before")
-    accepted = await case.commands.restore(PathsScope(server_id="survival", paths=("value",)), source.id, 1)
+    accepted = await case.commands.restore(
+        PathsScope(server_id="survival", paths=("value",)), source.id, 1
+    )
     result = await complete(case, accepted)
-    queries = RestorationQueries(current_runtime().database.session_factory, case.snapshots)
+    queries = RestorationQueries(
+        current_runtime().database.session_factory, case.snapshots
+    )
     row = await queries.get(accepted["restoration_id"])
     assert row.rollback_available and row.safety_snapshot_exists
     await case.snapshots.forget_id(source.id)
@@ -392,20 +367,29 @@ async def test_slow_repository_lookup_is_observable_after_acceptance(case, monke
         await asyncio.Event().wait()
 
     monkeypatch.setattr(case.snapshots, "get_snapshot", delayed_source)
-    accepted = await asyncio.wait_for(case.commands.restore(PathsScope(server_id="survival", paths=("value",)), source.id, 1), 5)
+    accepted = await asyncio.wait_for(
+        case.commands.restore(
+            PathsScope(server_id="survival", paths=("value",)), source.id, 1
+        ),
+        5,
+    )
     try:
         await asyncio.wait_for(entered.wait(), 5)
         task = case.tasks.get_task(accepted["task_id"])
         assert task.status is TaskStatus.RUNNING
         assert task.message == "正在检查源快照和保护范围"
         assert target.read_text() == "untouched while preparing"
-        assert (await case.commands.store.get(accepted["restoration_id"])).safety_snapshot_id is None
+        assert (
+            await case.commands.store.get(accepted["restoration_id"])
+        ).safety_snapshot_id is None
         with pytest.raises(HTTPException):
             await case.snapshots.forget_id(source.id)
     finally:
         await case.tasks.cancel(accepted["task_id"])
         await case.tasks.get_future(accepted["task_id"])
-    assert (await case.commands.store.get(accepted["restoration_id"])).status is RestorationStatus.CANCELLED
+    assert (
+        await case.commands.store.get(accepted["restoration_id"])
+    ).status is RestorationStatus.CANCELLED
     assert target.read_text() == "untouched while preparing"
 
 
@@ -420,7 +404,9 @@ async def test_global_restore_preserves_project_and_unregistered_content_scope(c
     await complete(case, accepted)
     assert (root / "shared.txt").read_text() == "shared original"
     assert (case.data / "value").read_text() == "server original"
-    queries = RestorationQueries(current_runtime().database.session_factory, case.snapshots)
+    queries = RestorationQueries(
+        current_runtime().database.session_factory, case.snapshots
+    )
     history = await queries.history("survival", 50, 0)
     assert history.total == 1
     assert history.restorations[0].id == accepted["restoration_id"]
@@ -430,28 +416,40 @@ async def test_global_restore_preserves_project_and_unregistered_content_scope(c
     assert (case.data / "value").read_text() == "server later"
 
 
-async def test_source_exclusion_rejection_remains_readable_after_rules_are_removed(case):
+async def test_source_exclusion_rejection_remains_readable_after_rules_are_removed(
+    case,
+):
     target = case.data / "ignored"
     target.write_text("protected")
     case.config.snapshots.ignored_paths = ["ignored"]
     source = await case.snapshots.create_snapshot([case.data])
     case.config.snapshots.ignored_paths = []
-    accepted = await case.commands.restore(PathsScope(server_id="survival", paths=("ignored",)), source.id, 1)
+    accepted = await case.commands.restore(
+        PathsScope(server_id="survival", paths=("ignored",)), source.id, 1
+    )
     await complete(case, accepted, success=False)
     assert "忽略" in case.tasks.get_task(accepted["task_id"]).error
     assert target.read_text() == "protected"
     assert len(await case.snapshots.list_snapshots()) == 1
-    assert (await case.commands.store.get(accepted["restoration_id"])).safety_snapshot_id is None
+    assert (
+        await case.commands.store.get(accepted["restoration_id"])
+    ).safety_snapshot_id is None
 
 
-async def test_unconfirmed_cron_repository_writer_blocks_deletion_after_memory_references_release(case):
+async def test_unconfirmed_cron_repository_writer_blocks_deletion_after_memory_references_release(
+    case,
+):
     target = case.data / "value"
     target.write_text("retained")
     source = await case.snapshots.create_snapshot([target])
-    operation = await case.journal.accept(OperationSpec("cron_backup", (ResourceReference("files"),)))
+    operation = await case.journal.accept(
+        OperationSpec("cron_backup", (ResourceReference("files"),))
+    )
     await case.journal.start(operation.operation_id)
     await case.journal.set_ownership_known(operation.operation_id, False)
-    await case.journal.finish(operation.operation_id, OperationState.INTERRUPTED, writers_stopped=False)
+    await case.journal.finish(
+        operation.operation_id, OperationState.INTERRUPTED, writers_stopped=False
+    )
     try:
         assert not case.snapshots.repository_use.active_snapshots
         with pytest.raises(HTTPException) as blocked:
@@ -459,6 +457,8 @@ async def test_unconfirmed_cron_repository_writer_blocks_deletion_after_memory_r
         assert blocked.value.status_code == 423
         assert [row.id for row in await case.snapshots.list_snapshots()] == [source.id]
     finally:
-        await case.journal.resolve(operation.operation_id, actor_id=1, writers_stopped=True)
+        await case.journal.resolve(
+            operation.operation_id, actor_id=1, writers_stopped=True
+        )
     await case.snapshots.forget_id(source.id)
     assert await case.snapshots.list_snapshots() == []

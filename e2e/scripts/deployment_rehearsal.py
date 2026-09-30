@@ -124,12 +124,17 @@ class Deployment:
             time.sleep(0.2)
         raise AssertionError("Candidate snapshot task did not finish")
 
-    def stream(self, path, data=None):
-        body = self.request("POST", path, data, raw=True)
-        events = [json.loads(line[5:].strip()) for line in body.decode().splitlines() if line.startswith("data:")]
-        if not events or events[-1].get("event_type") != "complete":
-            raise AssertionError("Finite restore did not complete")
-        return events[-1]
+    def task(self, path, data=None):
+        accepted = self.request("POST", path, data, expected=202)
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            task = self.request("GET", "/tasks/" + accepted["task_id"])
+            if task["status"] in {"completed", "failed", "cancelled"}:
+                if task["status"] != "completed":
+                    raise AssertionError("Candidate recovery task failed")
+                return task["result"]
+            time.sleep(0.2)
+        raise AssertionError("Candidate recovery task did not finish")
 
     def append(self, *lines):
         path = Path(self.fixture["server_path"]) / "data/logs/latest.log"
@@ -336,12 +341,12 @@ def run(args, fixture):
         report["steps"].append("same-schema historical image replacement retained new files, users, cron, journal and snapshots; world remained after-upgrade content")
         deployment.replace(args.candidate_image)
         check_retained(deployment, retained, upgraded=True)
-        base = "/servers/" + deployment.server + "/world-restore"
-        restored = deployment.stream(base + "/restore", {"source_snapshot_id": retained["snapshot"], "selection": {"type": "world"}})
+        base = "/snapshots/restorations"
+        restored = deployment.task(base, {"source_snapshot_id": retained["snapshot"], "scope": {"kind": "world", "server_id": deployment.server, "selection": {"type": "world"}}})
         assert deployment.content("/world/release-marker.txt") == "release world"
-        rolled = deployment.stream(base + "/restorations/" + restored["restoration_id"] + "/rollback")
+        rolled = deployment.task(base + "/" + restored["restoration_id"] + "/rollback")
         check_retained(deployment, retained, upgraded=True)
-        history = deployment.request("GET", base + "/restorations/" + rolled["restoration_id"])
+        history = deployment.request("GET", base + "/" + rolled["restoration_id"])
         assert history["status"] == "succeeded" and history["is_rollback"] and history["safety_snapshot_exists"]
         report["world_recovery"] = {"restoration_id": restored["restoration_id"], "rollback_id": rolled["restoration_id"], "new_nonworld_data_retained": True, "explicit_safety_snapshot": True}
         report["steps"].append("explicit world restore and its safety-snapshot rollback changed world bytes without rolling back application data")

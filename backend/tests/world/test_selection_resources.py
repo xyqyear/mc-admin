@@ -1,12 +1,13 @@
 import pytest
 
+from app.files.resources import path_claims
 from app.operations.coordinator import ResourceClaim, ResourceKind
 from app.servers.references import ServerRef
 from app.snapshots.restoration_models import RestorationType
 from app.snapshots.selection_models import RestorationSelection
 from app.world.events import SelectionResolutionError
 from app.world.finalization import invalidate_map_cache
-from app.world.restore import WorldRestoreOrchestrator
+from app.world.selection import resource_scopes
 
 
 async def test_internal_world_alias_and_mca_link_claim_their_actual_targets(tmp_path):
@@ -19,10 +20,22 @@ async def test_internal_world_alias_and_mca_link_claim_their_actual_targets(tmp_
     actual.write_bytes(b"live")
     (region / actual.name).symlink_to(actual)
     reference = ServerRef("srv1", 7, tmp_path, data.parent, data)
-    claims = await WorldRestoreOrchestrator._claims(reference, [data / "alias" / actual.name])
+    claims = await path_claims(
+        reference.project_path,
+        await resource_scopes(data, [data / "alias" / actual.name]),
+        server_id="srv1",
+    )
     for path in ("data/alias", "data/world/region", "data/shared/r.0.0.mca"):
-        assert any(claim.covers(ResourceClaim(ResourceKind.FILES, "srv1", path)) for claim in claims)
-    assert not any(claim.conflicts(ResourceClaim(ResourceKind.FILES, "srv1", "data/plugins/config.yml")) for claim in claims)
+        assert any(
+            claim.covers(ResourceClaim(ResourceKind.FILES, "srv1", path))
+            for claim in claims
+        )
+    assert not any(
+        claim.conflicts(
+            ResourceClaim(ResourceKind.FILES, "srv1", "data/plugins/config.yml")
+        )
+        for claim in claims
+    )
 
 
 @pytest.mark.parametrize("scope", ["world", "mca"])
@@ -42,18 +55,33 @@ async def test_world_selection_rejects_symlink_targets_outside_data(tmp_path, sc
         path.symlink_to(target)
     reference = ServerRef("srv1", 7, tmp_path, data.parent, data)
     with pytest.raises(SelectionResolutionError):
-        await WorldRestoreOrchestrator._claims(reference, [path])
+        await path_claims(
+            reference.project_path,
+            await resource_scopes(data, [path]),
+            server_id="srv1",
+        )
     assert target.read_bytes() == b"not owned"
 
 
 @pytest.mark.parametrize("scope", [RestorationType.WORLD, RestorationType.DIMENSION])
-async def test_interrupted_broad_restore_clears_tiles_before_file_events(tmp_path, scope):
+async def test_interrupted_broad_restore_clears_tiles_before_file_events(
+    tmp_path, scope
+):
     tiles = tmp_path / ".mcmap" / "tiles"
     for dimension in ("world/region", "world/DIM-1/region"):
         directory = tiles / dimension
         directory.mkdir(parents=True)
         (directory / "r.0.0.png").write_bytes(b"stale")
-    selection = RestorationSelection(type=scope, region_dir_relpath="world/region" if scope == RestorationType.DIMENSION else None)
-    await invalidate_map_cache(data_path=tmp_path, selection=selection, touched_items=[], uncertain=True)
+    selection = RestorationSelection(
+        type=scope,
+        region_dir_relpath="world/region"
+        if scope == RestorationType.DIMENSION
+        else None,
+    )
+    await invalidate_map_cache(
+        data_path=tmp_path, selection=selection, touched_items=[], uncertain=True
+    )
     assert not (tiles / "world/region/r.0.0.png").exists()
-    assert (tiles / "world/DIM-1/region/r.0.0.png").exists() == (scope == RestorationType.DIMENSION)
+    assert (tiles / "world/DIM-1/region/r.0.0.png").exists() == (
+        scope == RestorationType.DIMENSION
+    )

@@ -79,7 +79,7 @@ including when a caller supplies a populated staging destination.
 
 ## Event normalization
 
-Restore events arrive as NDJSON (`status` / `verbose_status` / `summary`). Restic reports restored/updated items relative to the restore subtree but deleted items as absolute on-disk paths; `ResticClient.restore` normalizes everything to absolute on-disk paths before yielding, so consumers (SSE streams, PNG-tile invalidation) see one path space. Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
+Restore events arrive as NDJSON (`status` / `verbose_status` / `summary`). Restic reports restored/updated items relative to the restore subtree but deleted items as absolute on-disk paths; `ResticClient.restore` normalizes everything to absolute on-disk paths before yielding, so consumers (task workers, previews, PNG-tile invalidation) see one path space. Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
 
 ## Subprocess pattern
 
@@ -108,7 +108,7 @@ speculative missing sidecars while requiring at least one existing target.
 Manual requests retain missing-target validation. Ignored-path, coverage and
 restore planning remain shared through `SnapshotService`.
 
-Manual creation uses `POST /snapshots {scope}`. File recovery uses
+Manual creation uses `POST /snapshots {scope}`. File and world recovery use
 `POST /snapshots/restorations {scope, source_snapshot_id}` and returns
 `202 {task_id, restoration_id, skipped_paths}`. The task worker waits for its
 resources, revalidates frozen identity/path/protection, creates and persists a
@@ -135,7 +135,7 @@ not overlap. Dry-run preview and reads do not acquire these leases. Running/busy
 and path checks repeat after acquisition. Invalid unrelated server.properties
 values do not prevent recovery: world-name lookup reads only level-name.
 
-Closing observation of a file recovery does not stop it. Explicit task cancellation
+Closing observation of a recovery does not stop it. Explicit task cancellation
 waits for owned processes and finite cleanup. A failed or cancelled restore touching
 world data clears the affected server's derived tiles even before the first Restic
 file event. Successful restoration invalidates reported terrain changes. Cache
@@ -149,7 +149,6 @@ and again while frozen/exclusive; completed history does not block repository
 retention. A missing safety snapshot leaves its history readable with an explicit
 unavailable reason. Ordinary file restoration remains available online.
 
-World request execution, map previews and cron backup applications still share the
-same low-level protection, planner and repository reference registry. Their current
+World execution uses the same commands and history as file recovery, with a protected mcmap chunk adapter. Map previews and cron backup applications share the low-level protection, planner and repository reference registry. Their current
 adapters are described in `world-restore.md`; common task migration is tracked by
 `openspec/changes/unify-snapshot-recovery/tasks.md`.

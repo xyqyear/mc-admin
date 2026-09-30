@@ -6,9 +6,10 @@ import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { readEventStream } from '@/shared/http/eventStream'
 import type { ApiError } from '@/shared/http/api'
-import { useRestorationStream } from '@/features/world/restore/useRestorationStream'
+import { useSnapshotOperation } from '@/features/backups/commands'
 import { useRestorePreview } from '@/features/world/restore/useRestorePreview'
-import type { RestorationSelection, RestorePreviewRequest } from '@/features/world/restore/contracts'
+import type { RestorationSelection } from '@/features/backups/contracts'
+import type { RestorePreviewRequest } from '@/features/world/restore/contracts'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -20,33 +21,28 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <TestProviders 
 const encoder = new TextEncoder()
 const event = (data: object) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
 
-it('latches the selected restore request and aborts its finite stream when the page unmounts', async () => {
+it('latches world selection and leaves the accepted task running when its observer unmounts', async () => {
   const bodies: unknown[] = []
-  let signal: AbortSignal | undefined
-  let writer!: ReadableStreamDefaultController<Uint8Array>
-  server.use(http.post('*/api/servers/alpha/world-restore/restore', async ({ request }) => {
-    bodies.push(await request.json()); signal = request.signal
-    return new HttpResponse(new ReadableStream<Uint8Array>({ start(controller) { writer = controller; controller.enqueue(event({ event_type: 'start', message: 'started' })) } }), { headers: { 'Content-Type': 'text/event-stream' } })
-  }))
-  const view = renderHook(() => useRestorationStream('alpha'), { wrapper })
+  let cancellations = 0
+  server.use(
+    http.get('*/api/snapshots/restorations', () => HttpResponse.json({ total: 0, restorations: [] })),
+    http.post('*/api/snapshots/restorations', async ({ request }) => {
+      bodies.push(await request.json())
+      return HttpResponse.json({ task_id: 'restore', skipped_paths: [] }, { status: 202 })
+    }),
+    http.get('*/api/tasks/restore', () => HttpResponse.json({ task_id: 'restore', status: 'running', message: '正在创建安全快照' })),
+    http.post('*/api/tasks/restore/cancel', () => { cancellations++; return HttpResponse.json({}) }),
+  )
   const selection: RestorationSelection = { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] }
-  act(() => view.result.current.start({ kind: 'restore', request: { source_snapshot_id: 'snapshot', selection } }))
-  await waitFor(() => expect(view.result.current.state.message).toBe('started'))
+  const view = renderHook(() => useSnapshotOperation({ kind: 'world', server_id: 'alpha', selection }), { wrapper })
+  await act(async () => { await view.result.current.start('snapshot') })
+  await waitFor(() => expect(view.result.current.state.message).toBe('正在创建安全快照'))
   selection.regions = [[9, 9]]
   view.rerender()
-  expect(bodies).toEqual([{ source_snapshot_id: 'snapshot', selection: { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] } }])
+  expect(bodies).toEqual([{ source_snapshot_id: 'snapshot', entry_point: 'world', scope: { kind: 'world', server_id: 'alpha', selection: { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] } } }])
+  expect(view.result.current.state.active).toBe(true)
   view.unmount()
-  await waitFor(() => expect(signal?.aborted).toBe(true))
-  try { writer.close() } catch { /* The abort may have already closed the response. */ }
-})
-
-it('turns an incomplete restoration stream into feedback instead of reporting success', async () => {
-  server.use(http.post('*/api/servers/alpha/world-restore/restore', () => new HttpResponse(event({ event_type: 'stage', percent: 20 }))))
-  const { result } = renderHook(() => useRestorationStream('alpha'), { wrapper })
-  act(() => result.current.start({ kind: 'restore', request: { source_snapshot_id: 'snapshot', selection: { type: 'world' } } }))
-  await waitFor(() => expect(result.current.state.error).toBe('连接中断'))
-  expect(result.current.state.done).toBe(false)
-  expect(result.current.state.active).toBe(false)
+  expect(cancellations).toBe(0)
 })
 
 it.each([401, 403, 409, 422, 500])('preserves structured HTTP %s errors from the finite transport', async status => {

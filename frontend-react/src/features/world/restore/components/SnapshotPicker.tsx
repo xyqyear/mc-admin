@@ -1,7 +1,7 @@
 import { Eye, RotateCcw } from 'lucide-react'
 import React, { useState } from 'react'
 import { toast } from 'sonner'
-import { useRestorationStream } from '@/features/world/restore/useRestorationStream'
+import { useSnapshotOperation } from '@/features/backups/commands'
 
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
@@ -13,8 +13,8 @@ import {
   SheetTitle,
 } from '@/shared/ui/sheet'
 import { Spinner } from '@/shared/ui/spinner'
-import type { RestorationSelection } from '@/features/world/restore/contracts'
-import { useEligibleSnapshots } from '@/features/world/restore/queries'
+import type { RestorationSelection } from '@/features/backups/contracts'
+import { useEligibleSnapshots } from '@/features/backups/queries'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 
 import {
@@ -49,13 +49,11 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   selection,
 }) => {
   const { confirm, confirmDialog } = useConfirm()
-  const eligibleQ = useEligibleSnapshots(serverId, open ? selection : null)
+  const scope = selection ? { kind: 'world' as const, server_id: serverId, selection } : null
+  const eligibleQ = useEligibleSnapshots(open ? scope : null)
+  const { state: restoreState, start, reset } = useSnapshotOperation(scope)
+  const restoreFor = restoreState.active || restoreState.done || !!restoreState.error
 
-  const { command, state: restoreState, start, reset } = useRestorationStream(serverId)
-  const restoreFor = command?.kind === 'restore' ? command.request.source_snapshot_id : null
-
-  // Captures the selection at click time so the modal's SSE body is stable
-  // even if the page selection changes underneath.
   const [previewReq, setPreviewReq] =
     useState<RestorePreviewRequest | null>(null)
 
@@ -67,7 +65,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
       confirmText: '开始恢复',
       variant: 'destructive',
       onConfirm: () => {
-        start({ kind: 'restore', request: { source_snapshot_id: snapshotId, selection } })
+        void start(snapshotId)
       },
     })
   }
@@ -89,7 +87,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
 
   return (
     <Sheet
-      open={open}
+      open={open || restoreState.active}
       onOpenChange={(o) => {
         if (!o && restoreState.active) return
         if (!o) {

@@ -163,7 +163,7 @@ async def test_partial_startup_closes_acquired_resources_and_releases_writer_gua
         if stage == "janitor":
             raise RuntimeError("failure at janitor")
     world.start_janitor = start_janitor
-    runtime.resources.update(database=database, config_manager=configuration, dns_manager=dns, cron_manager=cron, world_restore_orchestrator=world, chunk_prune_service=prune)
+    runtime.resources.update(database=database, config_manager=configuration, dns_manager=dns, cron_manager=cron, world_preview_service=world, chunk_prune_service=prune)
     monkeypatch.setattr("app.players.start_player_system", lambda: execute("players"))
     with pytest.raises(RuntimeError, match=f"failure at {stage}"):
         await runtime.start()
@@ -380,7 +380,7 @@ async def test_shutdown_preserves_artifacts_for_unconfirmed_writers_and_still_cl
             queue = AsyncMock()
             previews.attach_render_queue(preview.name, queue=queue, affected_keys=set())
             previews.start_janitor()
-            runtime.resources["world_restore_orchestrator"] = previews
+            runtime.resources["world_preview_service"] = previews
             upload = await init_archive_upload(runtime.settings.archive_path, ArchiveUploadInitRequest(filename="owned.zip", size=1))
             upload_path = runtime.resource("archive_upload_sessions")[upload.upload_id].temp_path
             database_close = AsyncMock(wraps=runtime.database.close)
@@ -428,7 +428,7 @@ async def test_optional_dns_failure_does_not_prevent_local_startup(tmp_path, mon
         tmp_path, f"optional-{failure}", database=database,
         hooks=RuntimeHooks(migrate=AsyncMock(), recover=AsyncMock()),
         config_manager=SimpleNamespace(initialize_all_configs=AsyncMock()),
-        dns_manager=dns, cron_manager=cron, world_restore_orchestrator=None,
+        dns_manager=dns, cron_manager=cron, world_preview_service=None,
         chunk_prune_service=SimpleNamespace(start=AsyncMock(), close=AsyncMock()),
     )
     players = AsyncMock()

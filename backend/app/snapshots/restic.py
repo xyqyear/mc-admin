@@ -31,6 +31,7 @@ def _snapshot_from_json(data: dict) -> ResticSnapshot:
         time=datetime.fromisoformat(data["time"]),
         paths=data["paths"],
         excludes=data.get("excludes") or [],
+        tags=data.get("tags") or [],
         hostname=data["hostname"],
         username=data["username"],
         program_version=data.get("program_version"),
@@ -39,9 +40,7 @@ def _snapshot_from_json(data: dict) -> ResticSnapshot:
     )
 
 
-def _parse_restore_event(
-    data: dict, target_dir: Path
-) -> ResticRestoreEvent | None:
+def _parse_restore_event(data: dict, target_dir: Path) -> ResticRestoreEvent | None:
     """Convert one decoded JSON line into a normalized ``ResticRestoreEvent``.
 
     Restic reports restored/updated/unchanged items relative to the restore
@@ -122,7 +121,11 @@ class ResticClient:
         return await exec_command(*full, env=self.env)
 
     async def backup(
-        self, paths: Sequence[Path], excludes: Sequence[str] = ()
+        self,
+        paths: Sequence[Path],
+        excludes: Sequence[str] = (),
+        *,
+        tags: Sequence[str] = (),
     ) -> ResticSnapshotWithSummary:
         """Capture the given absolute paths into one snapshot.
 
@@ -138,6 +141,8 @@ class ResticClient:
         args = ["backup", *(str(p) for p in paths)]
         for pattern in excludes:
             args.extend(["--exclude", pattern])
+        for tag in tags:
+            args.extend(["--tag", tag])
         args.append("--json")
         result = await self._run(*args)
 
@@ -161,12 +166,8 @@ class ResticClient:
         snapshot = await self.get_snapshot(snapshot_id)
 
         summary = ResticSnapshotSummary(
-            backup_start=datetime.fromisoformat(
-                summary_data["backup_start"]
-            ),
-            backup_end=datetime.fromisoformat(
-                summary_data["backup_end"]
-            ),
+            backup_start=datetime.fromisoformat(summary_data["backup_start"]),
+            backup_end=datetime.fromisoformat(summary_data["backup_end"]),
             files_new=summary_data.get("files_new"),
             files_changed=summary_data.get("files_changed"),
             files_unmodified=summary_data.get("files_unmodified"),
@@ -321,6 +322,7 @@ class ResticClient:
                     f"restic restore failed (exit {proc.returncode}): {stderr}"
                 )
         finally:
+
             async def cleanup() -> None:
                 if not drain_task.done():
                     drain_task.cancel()

@@ -37,6 +37,10 @@ class RestorationResponse(BaseModel):
     id: str
     operation_id: str | None
     server_id: str | None
+    server_generation: int | None
+    binding_issue: str | None
+    entry_point: str | None
+    initiated_by_user_id: int | None
     scope: SnapshotScope | None
     source_snapshot_id: str
     safety_snapshot_id: str | None

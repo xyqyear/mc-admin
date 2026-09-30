@@ -1,10 +1,14 @@
 """World subsystem: layout discovery, per-server locking, restore orchestration."""
 
-from ..runtime_resources import current_runtime
 from .dimension_labels import (
     dimension_path_for_dir,
     label_for_dimension_dir,
     label_for_dimension_path,
+)
+from .events import (
+    PreviewEvent,
+    RestoreError,
+    SelectionResolutionError,
 )
 from .layout import (
     DEFAULT_LEVEL_NAME,
@@ -24,19 +28,6 @@ from .locks import (
     ServerOperationLock,
     get_server_operation_lock,
 )
-from .restore import (
-    PreviewEvent,
-    RestoreError,
-    RestoreEvent,
-    SelectionResolutionError,
-    ServerNotStoppedError,
-    WorldRestoreOrchestrator,
-)
-
-
-def get_world_restore_orchestrator() -> WorldRestoreOrchestrator | None:
-    return current_runtime().resource('world_restore_orchestrator')
-
 
 __all__ = [
     "DEFAULT_LEVEL_NAME",
@@ -46,20 +37,16 @@ __all__ = [
     "LockHolder",
     "PreviewEvent",
     "RestoreError",
-    "RestoreEvent",
     "SelectionResolutionError",
-    "ServerNotStoppedError",
     "ServerOperationKind",
     "ServerOperationLock",
     "WorldLayoutDiscoveryError",
-    "WorldRestoreOrchestrator",
     "WorldRoot",
     "WorldRootPath",
     "dimension_path_for_dir",
     "discover_world_root_paths",
     "discover_world_roots",
-    'get_server_operation_lock',
-    'get_world_restore_orchestrator',
+    "get_server_operation_lock",
     "label_for_dimension_dir",
     "label_for_dimension_path",
     "resolve_dimension_folder",

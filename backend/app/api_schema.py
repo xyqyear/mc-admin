@@ -5,8 +5,6 @@ from fastapi import FastAPI
 PUBLIC_SCHEMA_NAMES = {
     "app__servers__api_models__ServerInfo": "app__routers__servers__misc__ServerInfo",
     "app__self_check__system_models__ServerInfo": "app__routers__system__ServerInfo",
-    "app__world__api_models__RestoreRequest": "app__routers__servers__world_restore__RestoreRequest",
-    "app__snapshots__api_models__RestoreRequest": "app__routers__snapshots__RestoreRequest",
 }
 
 

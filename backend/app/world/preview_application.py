@@ -30,8 +30,8 @@ from .scope_execution import RestoreScopeExecutor, _stage_destination
 from .selection import (
     _count_affected_regions,
     _find_dimension,
-    _group_chunks_by_region,
     _restore_dimension,
+    group_chunks_by_region,
     resolve_paths,
 )
 
@@ -149,7 +149,7 @@ class WorldPreviewApplication:
             )
         dim = _restore_dimension(_find_dimension(data_path, roots, selection.region_dir_relpath))
 
-        grouped = _group_chunks_by_region(selection.chunks)
+        grouped = group_chunks_by_region(selection.chunks)
         live_subdirs: dict[str, Path | None] = {
             "region": dim.region_dir,
             "entities": dim.entities_dir,
@@ -227,7 +227,7 @@ class WorldPreviewApplication:
 
         if selection.type is RestorationType.CHUNKS:
             source_root = session_dir / "preview"
-            grouped = _group_chunks_by_region(selection.chunks)
+            grouped = group_chunks_by_region(selection.chunks)
             affected_iter = list(grouped.keys())
         else:
             source_root = session_dir / "source"

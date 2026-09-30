@@ -4,7 +4,7 @@ import {
   chunksToFullyCoveredRegions,
   computeRegionCoverage,
 } from '@/features/world/map/coords'
-import type { RestorationSelection } from '@/features/world/restore/contracts'
+import type { RestorationSelection } from '@/features/backups/contracts'
 
 // `scope` lets callers pick a coarser grain than the current selection;
 // world scope spans every valid world root and carries no relpath.

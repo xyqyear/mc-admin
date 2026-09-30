@@ -156,3 +156,9 @@ func resumeResticBackup(ctx context.Context, t *engine.Scope) error {
 	_, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c", `from pathlib import Path; Path('/tmp/e2e-restic-pauser/resume-backup').touch()`)
 	return err
 }
+
+func resumeRestic(ctx context.Context, t *engine.Scope) error {
+	backend := fixtures.BackendOf(t.Env)
+	_, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c", resticPauseCleanup)
+	return err
+}

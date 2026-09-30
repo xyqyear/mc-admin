@@ -10,7 +10,7 @@ TanStack Query is the only backend-task state owner. `queries.ts` owns `taskQuer
 
 Task items render progress/message/result/error, allow explicit cancellation when a pending/running task is cancellable, and allow terminal records to be dismissed. The panel shows active tasks and terminal results from the last thirty minutes (records without an end time remain visible); clearing completed records sends the existing task API command.
 
-Manual snapshot creation and file restore/rollback, lifecycle, creation/synchronization, file/archive deletion, map initialization, manual self-check/DNS and upload hashing/publication return `202 {task_id}`. `commands.ts` exports `waitForTaskResult` for their initiating workflows: it observes task detail every second, updates Query cache, keeps waiting through read failures with a reconnect notice, and invokes terminal handlers only after a confirmed outcome. An AbortSignal detaches the observer; it does not cancel the task. Authentication expiry stops observation. Task acceptance and 100% progress alone never unblock a workflow.
+Manual snapshot creation and file/world restore/rollback, lifecycle, creation/synchronization, file/archive deletion, map initialization, manual self-check/DNS and upload hashing/publication return `202 {task_id}`. `commands.ts` exports `waitForTaskResult` for their initiating workflows: it observes task detail every second, updates Query cache, keeps waiting through read failures with a reconnect notice, and invokes terminal handlers only after a confirmed outcome. An AbortSignal detaches the observer; it does not cancel the task. Authentication expiry stops observation. Task acceptance and 100% progress alone never unblock a workflow.
 
 Server controls show the maintenance reason and a task link when available. Creation, map initialization, self-check, DNS and synchronization also discover active work when reopened. Map initialization retains its non-dismissible progress dialog; existing file/upload forms retain their original busy state and terminal behavior. Browser File objects are not persisted by the task center. `openTaskCenter` opens the background tab without giving feature components ownership of panel state.
 
@@ -18,7 +18,7 @@ Server controls show the maintenance reason and a task link when available. Crea
 
 `app/operations/OperationObserver.tsx` owns business-cache completion effects through feature resource registries for configuration, servers, files/archives, world, backups/history, health and DNS. Configuration, populate/compression/ownership presentation and world restore/prune views display outcomes without owning those effects. Closing independent-task dialogs does not cancel backend work. Dismissing generic task records does not destroy feature-owned prune preview metadata/projections. Task commands invalidate task and operation discovery; browser-owned partial uploads also invalidate their actual immediate writes.
 
-World restoration SSE remains request-owned and is cancelled when its view closes. File restoration uses independent tasks, preserves its non-dismissible progress dialog until terminal state, and resumes pending history after navigation or reload. It is distinct from independent background tasks even when both display progress.
+File and world restoration use independent tasks through the common backups controller. Their progress interfaces preserve original closing restrictions through status read failures and unlock only on a confirmed terminal state. History can resume observation of pending work.
 
 ## Client state
 
@@ -39,4 +39,4 @@ and parent rollback links. A confirmed rollback replaces later changes in the
 selected scope, first saving a new safety snapshot so that rollback is reversible.
 Excluded descendants remain untouched and receive a brief notice.
 
-`features/backups` owns explicit snapshot scopes, creation mutations, recovery task observation and reusable progress/history UI. File management imports only these public contracts, commands and UI entries. The backups operation-resource registry refreshes snapshots and history after all terminal outcomes, even if the initiating file page has unmounted.
+`features/backups` owns explicit snapshot scopes, creation mutations, recovery task observation and reusable progress/history UI. File management and world recovery import only these public contracts, commands and UI entries. The backups operation-resource registry refreshes snapshots and history after all terminal outcomes, even if the initiating file page has unmounted.

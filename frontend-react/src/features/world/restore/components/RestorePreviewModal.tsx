@@ -26,9 +26,7 @@ import {
   SERVER_MAP_MIN_ZOOM,
   SERVER_MAP_NATIVE_ZOOM,
 } from '@/features/world/map/mapConfig'
-import type {
-  RestorationSelection
-} from '@/features/world/restore/contracts'
+import type { RestorationSelection } from '@/features/backups/contracts'
 
 import { PreviewTileLayer } from '@/features/world/restore/components/PreviewTileLayer'
 

@@ -2,11 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { worldRestoreApi } from '@/features/world/restore/api'
+import { createSnapshot } from '@/features/backups/commands'
 import type { ApiError } from '@/shared/http/api'
-import type { RestorationSelection } from '@/features/world/restore/contracts'
+import type { RestorationSelection } from '@/features/backups/contracts'
 import { queryKeys } from '@/shared/http/api'
-
-// Request-owned restore controllers handle finite SSE; these commands return JSON.
 
 export const useWorldRestoreMutations = () => {
   const queryClient = useQueryClient()
@@ -14,7 +13,7 @@ export const useWorldRestoreMutations = () => {
   const useCreateWorldSnapshot = (serverId: string) =>
     useMutation({
       mutationFn: (selection: RestorationSelection) =>
-        worldRestoreApi.createSnapshot(serverId, selection),
+        createSnapshot(queryClient, { kind: 'world', server_id: serverId, selection }),
       onSuccess: (data) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`)
         queryClient.invalidateQueries({ queryKey: queryKeys.worldRestore.all })

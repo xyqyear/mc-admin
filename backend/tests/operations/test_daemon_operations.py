@@ -1,5 +1,4 @@
 import asyncio
-from contextlib import aclosing, asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -8,11 +7,13 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth.schemas import UserPublic
+from app.background_tasks.manager import BackgroundTaskManager
 from app.cron import crud
 from app.cron.jobs import restart
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
 from app.db.metadata import Base
+from app.dynamic_config.configs.world import WorldConfig
 from app.minecraft import MCServerStatus
 from app.operation_admission import get_server_write_admission
 from app.operations.context import current_execution
@@ -30,11 +31,14 @@ from app.operations.journal_types import (
 from app.operations.recovery import RecoveryService
 from app.servers.commands import ServerCommandResult, ServerCommands
 from app.servers.models import Server
+from app.snapshots.application import SnapshotMaintenanceConflict
+from app.snapshots.commands import SnapshotCommands
+from app.snapshots.protection import SnapshotProtection
 from app.snapshots.repository_use import RepositoryUse
 from app.snapshots.restoration_models import RestorationType
+from app.snapshots.scopes import WorldScope
 from app.snapshots.selection_models import RestorationSelection
 from app.world.locks import ServerOperationLock
-from app.world.restore import WorldRestoreOrchestrator
 from tests.support.runtime import set_runtime_resource
 
 
@@ -44,11 +48,17 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
-        session.add_all([Server(id=1, server_id="first"), Server(id=2, server_id="other")])
+        session.add_all(
+            [Server(id=1, server_id="first"), Server(id=2, server_id="other")]
+        )
         await session.commit()
         await crud.create_cronjob(
-            session, cronjob_id="scheduled-restart", identifier="restart_server",
-            name="重启", cron="0 0 * * *", params_json='{"server_id":"first"}',
+            session,
+            cronjob_id="scheduled-restart",
+            identifier="restart_server",
+            name="重启",
+            cron="0 0 * * *",
+            params_json='{"server_id":"first"}',
         )
     for server_id in ("first", "other"):
         project = runtime.settings.server_path / server_id
@@ -61,20 +71,32 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
     lock = ServerOperationLock(get_operation_coordinator())
     runtime.resources["server_operation_lock"] = lock
     instance = SimpleNamespace(
-        exists=AsyncMock(return_value=True), running=AsyncMock(return_value=True),
-        get_status=AsyncMock(return_value=MCServerStatus.CREATED), created=AsyncMock(return_value=True),
-        start=AsyncMock(), up=AsyncMock(), restart=AsyncMock(), stop=AsyncMock(), down=AsyncMock(),
+        exists=AsyncMock(return_value=True),
+        running=AsyncMock(return_value=True),
+        get_status=AsyncMock(return_value=MCServerStatus.CREATED),
+        created=AsyncMock(return_value=True),
+        start=AsyncMock(),
+        up=AsyncMock(),
+        restart=AsyncMock(),
+        stop=AsyncMock(),
+        down=AsyncMock(),
     )
     manager = Mock(get_instance=Mock(return_value=instance))
-    set_runtime_resource(monkeypatch, 'docker_mc_manager', manager)
+    set_runtime_resource(monkeypatch, "docker_mc_manager", manager)
     user = UserPublic(id=17, username="operator", created_at=datetime.now(UTC))
 
     async def manual(action):
         return await ServerCommands().execute("first", action, actor_id=user.id)
 
     context = SimpleNamespace(
-        runtime=runtime, journal=journal, recovery=recovery, lock=lock,
-        instance=instance, manager=manager, manual=manual, cron=CronManager(),
+        runtime=runtime,
+        journal=journal,
+        recovery=recovery,
+        lock=lock,
+        instance=instance,
+        manager=manager,
+        manual=manual,
+        cron=CronManager(),
     )
     try:
         yield context
@@ -83,12 +105,19 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
             await journal.resolve(record.operation_id, actor_id=0, writers_stopped=True)
 
 
-@pytest.mark.parametrize(("action", "phase", "intent"), [
-    ("up", "server_started", True), ("start", "server_started", True),
-    ("restart", "server_restarted", True), ("stop", "server_stopped", False),
-    ("down", "server_down", False),
-])
-async def test_lifecycle_command_preserves_durable_history(daemon_runtime, action, phase, intent):
+@pytest.mark.parametrize(
+    ("action", "phase", "intent"),
+    [
+        ("up", "server_started", True),
+        ("start", "server_started", True),
+        ("restart", "server_restarted", True),
+        ("stop", "server_stopped", False),
+        ("down", "server_down", False),
+    ],
+)
+async def test_lifecycle_command_preserves_durable_history(
+    daemon_runtime, action, phase, intent
+):
     env = daemon_runtime
 
     async def command():
@@ -103,20 +132,38 @@ async def test_lifecycle_command_preserves_durable_history(daemon_runtime, actio
     assert await env.manual(action) == ServerCommandResult()
     [record] = await env.journal.list()
     assert record.kind == f"server_{action}" and record.phase == phase
-    assert record.origin == "request" and record.actor_id == 17 and record.legacy_id is None
-    assert record.state is OperationState.SUCCEEDED and record.writers_stopped and record.ownership_known
+    assert (
+        record.origin == "request"
+        and record.actor_id == 17
+        and record.legacy_id is None
+    )
+    assert (
+        record.state is OperationState.SUCCEEDED
+        and record.writers_stopped
+        and record.ownership_known
+    )
     assert record.running_intent is intent
     assert record.resources == (ResourceReference("server", "first", 1),)
     get_server_write_admission().check("first")
 
 
 @pytest.mark.parametrize("action", ["stop", "down"])
-async def test_stop_and_down_remain_available_without_clearing_another_block(daemon_runtime, action):
+async def test_stop_and_down_remain_available_without_clearing_another_block(
+    daemon_runtime, action
+):
     env = daemon_runtime
-    await env.journal.accept(OperationSpec("server_restart", (ResourceReference("server", "first", 1),), operation_id="uncertain"))
+    await env.journal.accept(
+        OperationSpec(
+            "server_restart",
+            (ResourceReference("server", "first", 1),),
+            operation_id="uncertain",
+        )
+    )
     await env.journal.start("uncertain")
     await env.journal.set_ownership_known("uncertain", False)
-    await env.journal.finish("uncertain", OperationState.INTERRUPTED, writers_stopped=False)
+    await env.journal.finish(
+        "uncertain", OperationState.INTERRUPTED, writers_stopped=False
+    )
     await env.recovery.apply_blocks(get_server_write_admission())
     with pytest.raises(HTTPException) as blocked:
         await env.manual("start")
@@ -128,18 +175,26 @@ async def test_stop_and_down_remain_available_without_clearing_another_block(dae
         get_server_write_admission().check("first")
     assert still_blocked.value.status_code == 423
     get_server_write_admission().check("other")
-    current = [record for record in await env.journal.list() if record.kind == f"server_{action}"]
+    current = [
+        record
+        for record in await env.journal.list()
+        if record.kind == f"server_{action}"
+    ]
     assert len(current) == 1 and current[0].state is OperationState.SUCCEEDED
 
 
+@pytest.mark.binary("fd")
 @pytest.mark.parametrize("action", ["start", "up", "restart", "cron"])
-async def test_cancelled_cli_cannot_release_restore_before_daemon_block(daemon_runtime, monkeypatch, action):
+async def test_cancelled_cli_cannot_release_restore_before_daemon_block(
+    daemon_runtime, monkeypatch, action
+):
     env = daemon_runtime
-    command_entered, daemon_release, late_started, settling, settle_now, restore_waiting = [asyncio.Event() for _ in range(6)]
+    command_entered, daemon_release, late_started, settling, settle_now = [
+        asyncio.Event() for _ in range(5)
+    ]
     daemon_tasks = []
     operation_ids = []
     original_finish = env.journal.finish
-    original_acquire = ServerOperationLock.lease
 
     async def daemon_continues():
         await daemon_release.wait()
@@ -161,46 +216,62 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(daemon_r
             await settle_now.wait()
         return await original_finish(operation_id, state, **kwargs)
 
-    @asynccontextmanager
-    async def acquire(lock, server_ids, holder, **kwargs):
-        if holder.kind.value == "restore":
-            restore_waiting.set()
-        async with original_acquire(lock, server_ids, holder, **kwargs) as lease:
-            yield lease
-
     monkeypatch.setattr(env.journal, "finish", finish)
-    monkeypatch.setattr(ServerOperationLock, "lease", acquire)
-    getattr(env.instance, "restart" if action == "cron" else action).side_effect = cli_command
-    snapshots = Mock(create_snapshot=AsyncMock(), repository_use=RepositoryUse())
-    orchestrator = WorldRestoreOrchestrator(
-        snapshot_service=snapshots, docker_mc_manager=env.manager, server_operation_lock=env.lock,
-        session_factory=env.runtime.database.session_factory,
-        preview_base_dir=env.runtime.settings.server_path / "previews",
+    getattr(
+        env.instance, "restart" if action == "cron" else action
+    ).side_effect = cli_command
+    env.runtime.resources["dynamic_configuration"] = SimpleNamespace(
+        world=WorldConfig()
+    )
+    world = env.runtime.settings.server_path / "first" / "data" / "world"
+    region = world / "region"
+    region.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"level")
+    (region / "r.0.0.mca").write_bytes(bytes(8192))
+    snapshots = Mock(
+        create_snapshot=AsyncMock(),
+        repository_use=RepositoryUse(),
+        protection=AsyncMock(return_value=SnapshotProtection.capture([])),
+    )
+    commands = SnapshotCommands(
+        snapshots,
+        env.manager,
+        env.lock,
+        BackgroundTaskManager(env.journal),
+        env.runtime.database.session_factory,
+        env.runtime.settings.server_path,
     )
 
     async def restore():
-        async with aclosing(orchestrator.begin_restore(
-            "first", "source", RestorationSelection(type=RestorationType.WORLD), user_id=17,
-        )) as events:
-            await anext(events)
+        return await commands.restore(
+            WorldScope(
+                server_id="first",
+                selection=RestorationSelection(type=RestorationType.WORLD),
+            ),
+            "source",
+            17,
+        )
 
     if action == "cron":
         operation = env.cron._execute_cronjob_wrapper(
-            "scheduled-restart", "restart_server", restart.ServerRestartParams(server_id="first"),
+            "scheduled-restart",
+            "restart_server",
+            restart.ServerRestartParams(server_id="first"),
             restart.restart_server_cronjob,
         )
     else:
         operation = env.manual(action)
     worker = asyncio.create_task(operation)
-    restore_task = None
     try:
         await asyncio.wait_for(command_entered.wait(), 3)
-        restore_task = asyncio.create_task(restore())
-        await asyncio.wait_for(restore_waiting.wait(), 3)
+        with pytest.raises(SnapshotMaintenanceConflict, match="正在维护"):
+            await restore()
         worker.cancel()
         await asyncio.wait_for(settling.wait(), 3)
-        assert get_operation_coordinator().is_occupied(ResourceClaim(ResourceKind.MAINTENANCE, "first"))
-        assert not worker.done() and not restore_task.done()
+        assert get_operation_coordinator().is_occupied(
+            ResourceClaim(ResourceKind.MAINTENANCE, "first")
+        )
+        assert not worker.done()
         env.instance.get_status.assert_not_awaited()
         snapshots.create_snapshot.assert_not_awaited()
         get_server_write_admission().check("other")
@@ -208,7 +279,7 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(daemon_r
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(worker, 3)
         with pytest.raises(HTTPException) as blocked:
-            await asyncio.wait_for(restore_task, 3)
+            await restore()
         assert blocked.value.status_code == 423
         assert not late_started.is_set()
         daemon_release.set()
@@ -233,15 +304,15 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(daemon_r
         settle_now.set()
         daemon_release.set()
         tasks = [worker, *daemon_tasks]
-        if restore_task is not None:
-            tasks.append(restore_task)
         for task in tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def test_cancellation_before_dispatch_does_not_leave_false_unknown_writer(daemon_runtime, monkeypatch):
+async def test_cancellation_before_dispatch_does_not_leave_false_unknown_writer(
+    daemon_runtime, monkeypatch
+):
     env = daemon_runtime
     original = env.journal.set_ownership_known
 
@@ -256,11 +327,17 @@ async def test_cancellation_before_dispatch_does_not_leave_false_unknown_writer(
     env.instance.up.assert_not_awaited()
     [record] = await env.journal.list()
     assert record.state is OperationState.INTERRUPTED
-    assert record.writers_stopped and record.ownership_known and record.blocked_reason is None
+    assert (
+        record.writers_stopped
+        and record.ownership_known
+        and record.blocked_reason is None
+    )
     get_server_write_admission().check("first")
 
 
-async def test_cron_known_stopped_cancellation_keeps_cancelled_projection(daemon_runtime):
+async def test_cron_known_stopped_cancellation_keeps_cancelled_projection(
+    daemon_runtime,
+):
     env = daemon_runtime
     entered = asyncio.Event()
 
@@ -268,9 +345,14 @@ async def test_cron_known_stopped_cancellation_keeps_cancelled_projection(daemon
         entered.set()
         await asyncio.Event().wait()
 
-    worker = asyncio.create_task(env.cron._execute_cronjob_wrapper(
-        "scheduled-restart", "restart_server", restart.ServerRestartParams(server_id="first"), job,
-    ))
+    worker = asyncio.create_task(
+        env.cron._execute_cronjob_wrapper(
+            "scheduled-restart",
+            "restart_server",
+            restart.ServerRestartParams(server_id="first"),
+            job,
+        )
+    )
     await asyncio.wait_for(entered.wait(), 3)
     worker.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -283,11 +365,15 @@ async def test_cron_known_stopped_cancellation_keeps_cancelled_projection(daemon
     get_server_write_admission().check("first")
 
 
-async def test_stopped_scheduled_restart_records_skip_without_starting_server(daemon_runtime):
+async def test_stopped_scheduled_restart_records_skip_without_starting_server(
+    daemon_runtime,
+):
     env = daemon_runtime
     env.instance.running.return_value = False
     await env.cron._execute_cronjob_wrapper(
-        "scheduled-restart", "restart_server", restart.ServerRestartParams(server_id="first"),
+        "scheduled-restart",
+        "restart_server",
+        restart.ServerRestartParams(server_id="first"),
         restart.restart_server_cronjob,
     )
     env.instance.restart.assert_not_awaited()
@@ -298,6 +384,10 @@ async def test_stopped_scheduled_restart_records_skip_without_starting_server(da
     assert any("未在运行中" in message for message in history.messages)
     [operation] = await env.journal.list()
     assert operation.state is OperationState.SKIPPED
-    assert operation.ownership_known and operation.writers_stopped and not operation.data_changed
+    assert (
+        operation.ownership_known
+        and operation.writers_stopped
+        and not operation.data_changed
+    )
     assert operation.running_intent is None
     assert operation.legacy_id == history.execution_id

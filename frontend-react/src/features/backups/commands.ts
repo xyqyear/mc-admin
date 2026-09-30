@@ -1,5 +1,5 @@
 import type { ApiError } from '@/shared/http/api'
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
 import type { CreateSnapshotResponse, DeleteSnapshotResponse } from '@/features/backups/contracts';
 import { queryKeys } from "@/shared/http/api";
@@ -8,6 +8,10 @@ import { waitForTaskResult } from '@/features/tasks/commands';
 import type { SnapshotScope } from './contracts';
 
 export { useSnapshotOperation } from './useSnapshotOperation';
+
+export async function createSnapshot(client: QueryClient, scope: SnapshotScope) {
+  return waitForTaskResult<CreateSnapshotResponse>(client, await snapshotApi.createSnapshot(scope));
+}
 
 export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotScope {
   return paths?.length
@@ -20,7 +24,7 @@ export const useSnapshotMutations = () => {
 
   const useCreateGlobalSnapshot = () => {
     return useMutation({
-      mutationFn: async () => waitForTaskResult<CreateSnapshotResponse>(queryClient, await snapshotApi.createSnapshot({ kind: 'global' })),
+      mutationFn: () => createSnapshot(queryClient, { kind: 'global' }),
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
@@ -38,7 +42,7 @@ export const useSnapshotMutations = () => {
 
   const useCreateSnapshot = () => {
     return useMutation({
-      mutationFn: async (params: { server_id: string; paths?: string[] }) => waitForTaskResult<CreateSnapshotResponse>(queryClient, await snapshotApi.createSnapshot(fileSnapshotScope(params.server_id, params.paths))),
+      mutationFn: (params: { server_id: string; paths?: string[] }) => createSnapshot(queryClient, fileSnapshotScope(params.server_id, params.paths)),
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 

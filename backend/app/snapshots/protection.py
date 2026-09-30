@@ -35,7 +35,10 @@ class SnapshotProtection:
         return tuple(
             path
             for path in self.excluded
-            if any(path.is_relative_to(target) for target in paths)
+            if any(
+                path.is_relative_to(target) or target.is_relative_to(path)
+                for target in paths
+            )
         )
 
     def require_current(self, current: Sequence[Path]) -> None:

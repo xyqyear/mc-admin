@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from ..background_tasks import TaskProgress, TaskType
 from ..background_tasks.manager import BackgroundTaskManager
+from ..errors import PublicOperationError, public_error_message
 from ..files.resources import path_claims
 from ..minecraft import DockerMCManager
 from ..operation_admission import get_server_write_admission
@@ -30,14 +31,24 @@ from ..operations.execution import settle_before_release
 from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState, RecoveryReference
 from ..runtime_resources import current_runtime
+from ..servers.references import resolve_server_ref
 from ..utils import async_fs
 from ..world.artifacts import restore_stage
 from ..world.locks import LockHolder, ServerOperationKind, ServerOperationLock
+from ..world.scope_execution import RestoreScopeExecutor
+from ..world.selection import confined_history_path, resolve_paths
 from .coverage import covers
+from .evidence import absence_tags, snapshot_absence
 from .file_restore import FileRestoreAdapter
+from .models import ResticSnapshot
 from .protection import SnapshotProtection
-from .restoration_models import RestorationStatus
-from .restoration_store import RestorationStore, SessionFactory, restoration_status
+from .restoration_models import RestorationStatus, RestorationType
+from .restoration_store import (
+    RestorationStore,
+    SessionFactory,
+    require_restoration_owner,
+    restoration_status,
+)
 from .scopes import (
     GlobalScope,
     ResolvedScope,
@@ -57,6 +68,15 @@ class PreparedSnapshot:
     maintenance: tuple[str, ...]
     claims: tuple[ResourceClaim, ...]
     missing_parents: tuple[Path, ...]
+    history_paths: tuple[Path, ...] | None = None
+    from_history: bool = False
+    legacy_world: bool = False
+
+    @property
+    def paths(self) -> tuple[Path, ...]:
+        return tuple(
+            path for path in self.resolved.paths if self.protection.permits(path)
+        )
 
 
 class SnapshotCommands:
@@ -77,6 +97,7 @@ class SnapshotCommands:
         self._root = root
         self.store = RestorationStore(sessions)
         self._files = FileRestoreAdapter(manager, lock)
+        self._world = RestoreScopeExecutor(snapshots)
         self._active: dict[str, ResolvedScope] = {}
 
     def require_deletable(self, server_id: str) -> None:
@@ -99,16 +120,30 @@ class SnapshotCommands:
         *,
         restoring: bool = False,
         retained: Sequence[Path] = (),
+        history_paths: tuple[Path, ...] | None = None,
+        from_history: bool = False,
+        legacy_world: bool = False,
     ) -> PreparedSnapshot:
-        resolved = await resolve_scope(scope, root=self._root, sessions=self._sessions)
+        resolved = await resolve_scope(
+            scope,
+            root=self._root,
+            sessions=self._sessions,
+            history_paths=history_paths,
+            allow_missing_dimension=from_history,
+        )
         protection = await self.snapshots.protection(
             retained=retained,
             data_paths=[ref.data_path for ref in resolved.servers],
         )
-        protection.require_targets(resolved.paths)
+        protection.require_targets(
+            [path for path in resolved.paths if protection.permits(path)]
+            if isinstance(scope, WorldScope)
+            else resolved.paths
+        )
         maintenance = (
             tuple(ref.server_id for ref in resolved.servers)
-            if not restoring or isinstance(scope, (GlobalScope, ServerScope))
+            if not restoring
+            or isinstance(scope, (GlobalScope, ServerScope, WorldScope))
             else tuple(await self._files.maintenance_servers(resolved.paths))
         )
         claims = set(resolved.claims)
@@ -147,12 +182,19 @@ class SnapshotCommands:
             maintenance,
             tuple(sorted(claims)),
             tuple(sorted(missing_parents)),
+            history_paths,
+            from_history,
+            legacy_world,
         )
 
     async def _revalidate(self, prepared: PreparedSnapshot) -> None:
         await revalidate_targets()
         current = await resolve_scope(
-            prepared.resolved.scope, root=self._root, sessions=self._sessions
+            prepared.resolved.scope,
+            root=self._root,
+            sessions=self._sessions,
+            history_paths=prepared.history_paths,
+            allow_missing_dimension=prepared.from_history,
         )
         if current != prepared.resolved:
             raise HTTPException(
@@ -184,7 +226,9 @@ class SnapshotCommands:
                     status_code=400, detail="手动快照请选择整个世界或维度"
                 )
             for path in prepared.resolved.paths:
-                if not await async_fs.lexists(path):
+                if not isinstance(scope, WorldScope) and not await async_fs.lexists(
+                    path
+                ):
                     raise HTTPException(status_code=404, detail="快照目标不存在")
             self._retain(stack, task_id, prepared.resolved)
             submitted = await self._tasks.submit_durable(
@@ -203,6 +247,37 @@ class SnapshotCommands:
             submitted.awaitable.add_done_callback(lambda _: retained.close())
         return {"task_id": task_id, "skipped_paths": self._skipped(prepared)}
 
+    async def eligible(self, scope: SnapshotScope) -> list[ResticSnapshot]:
+        prepared = await self.prepare(scope)
+        paths = prepared.paths
+        if isinstance(scope, WorldScope):
+            paths = tuple(
+                path
+                for path in await resolve_paths(
+                    prepared.resolved.servers[0].data_path,
+                    scope.selection,
+                    include_mcc=False,
+                )
+                if prepared.protection.permits(path)
+            )
+        prepared.protection.require_targets(paths)
+        eligible = []
+        for source in await self.snapshots.list_snapshots():
+            protection = await self.snapshots.with_source_protection(
+                prepared.protection, source
+            )
+            allowed = [path for path in paths if protection.permits(path)]
+            absent = snapshot_absence(source)
+            if allowed and all(
+                any(path.is_relative_to(parent) for parent in absent)
+                or covers(
+                    path, [Path(value) for value in source.paths], protection.excluded
+                )
+                for path in allowed
+            ):
+                eligible.append(source)
+        return eligible
+
     async def _create(
         self, prepared: PreparedSnapshot, actor_id: int
     ) -> AsyncGenerator[TaskProgress]:
@@ -219,8 +294,11 @@ class SnapshotCommands:
             await self._revalidate(prepared)
             await record_phase("creating_snapshot")
             yield TaskProgress(message="正在读取文件并创建快照")
+            paths = [path for path in prepared.paths if await async_fs.lexists(path)]
+            prepared.protection.require_targets(paths)
+            missing = [path for path in prepared.paths if path not in paths]
             snapshot = await self.snapshots.create_snapshot(
-                prepared.resolved.paths, protection=prepared.protection
+                paths, protection=prepared.protection, tags=absence_tags(missing)
             )
             yield TaskProgress(
                 progress=100,
@@ -253,6 +331,8 @@ class SnapshotCommands:
             retained: list[Path] = []
             absent: tuple[Path, ...] = ()
             absent_parents: tuple[Path, ...] = ()
+            history_paths = None
+            legacy_world = False
             original = None
             if rollback_of_id is not None:
                 original = await self.store.get(rollback_of_id)
@@ -271,9 +351,46 @@ class SnapshotCommands:
                 absent_parents = tuple(
                     Path(path) for path in evidence.get("absent_parents", [])
                 )
-            prepared = await self.prepare(scope, restoring=True, retained=retained)
-            if isinstance(scope, WorldScope):
-                raise HTTPException(status_code=400, detail="请使用地图恢复入口")
+                if isinstance(scope, WorldScope):
+                    async with self._sessions() as session:
+                        ref = await resolve_server_ref(
+                            session, scope.server_id, servers_root=self._root
+                        )
+                    require_restoration_owner(original, ref)
+                    saved_paths = json.loads(original.scope_json or "{}").get("paths")
+                    if saved_paths is not None:
+                        history_paths = tuple(Path(path) for path in saved_paths)
+                    elif scope.selection.type is RestorationType.WORLD:
+                        roots = evidence.get("world_roots")
+                        legacy_world = roots is None
+                        history_paths = (
+                            (ref.data_path,)
+                            if legacy_world
+                            else tuple(
+                                [
+                                    await confined_history_path(ref.data_path, value)
+                                    for value in roots
+                                ]
+                            )
+                        )
+                    old_absent = evidence.get(
+                        "absent_directories", evidence.get("absent_sidecar_dirs", [])
+                    )
+                    absent_parents = tuple(
+                        set(absent_parents)
+                        | {
+                            await confined_history_path(ref.data_path, value)
+                            for value in old_absent
+                        }
+                    )
+            prepared = await self.prepare(
+                scope,
+                restoring=True,
+                retained=retained,
+                history_paths=history_paths,
+                from_history=original is not None,
+                legacy_world=legacy_world,
+            )
             if original is not None:
                 saved = json.loads(original.scope_json or "{}")
                 targets = json.loads(original.targets_json or "[]")
@@ -284,17 +401,27 @@ class SnapshotCommands:
                 if (
                     original.binding_issue
                     or targets != current
-                    or saved.get("paths")
-                    != [str(path) for path in prepared.resolved.paths]
+                    or (
+                        saved.get("paths") is not None
+                        and saved["paths"]
+                        != [str(path) for path in prepared.resolved.paths]
+                    )
                 ):
                     raise HTTPException(
                         status_code=409,
                         detail="恢复记录不属于当前路径或服务器实例，无法回滚",
                     )
-                for path in (*absent, *absent_parents):
+                targets = set(prepared.resolved.paths)
+                for path in absent:
                     if not any(
-                        path.is_relative_to(target) or target.is_relative_to(path)
-                        for target in prepared.resolved.paths
+                        parent in targets for parent in (path, *path.parents)
+                    ) or not path.is_relative_to(self._root):
+                        raise HTTPException(
+                            status_code=409, detail="恢复记录的缺失范围无效"
+                        )
+                for path in absent_parents:
+                    if not any(
+                        target.is_relative_to(path) for target in targets
                     ) or not path.is_relative_to(self._root):
                         raise HTTPException(
                             status_code=409, detail="恢复记录的缺失范围无效"
@@ -313,6 +440,8 @@ class SnapshotCommands:
                         )
                     )
                 prepared = replace(prepared, claims=tuple(sorted(claims)))
+            for reference in prepared.resolved.servers:
+                get_server_write_admission().check(reference.server_id)
             await self._files.check_available(list(prepared.maintenance))
             await get_operation_coordinator().check_available(prepared.claims)
             self._retain(stack, task_id, prepared.resolved)
@@ -341,13 +470,16 @@ class SnapshotCommands:
             submitted = await self._tasks.submit_durable(
                 TaskType.SNAPSHOT_RESTORE,
                 "回滚恢复" if rollback_of_id else "恢复快照",
-                self._restore(
-                    prepared,
-                    source_id,
+                self._record_errors(
                     restoration_id,
-                    actor_id,
-                    absent,
-                    absent_parents,
+                    self._restore(
+                        prepared,
+                        source_id,
+                        restoration_id,
+                        actor_id,
+                        absent,
+                        absent_parents,
+                    ),
                 ),
                 server_id=None if isinstance(scope, GlobalScope) else scope.server_id,
                 server_refs=prepared.resolved.servers,
@@ -400,6 +532,19 @@ class SnapshotCommands:
             rollback_of_id=row.id,
         )
 
+    async def _record_errors(
+        self,
+        restoration_id: str,
+        worker: AsyncGenerator[TaskProgress],
+    ) -> AsyncGenerator[TaskProgress]:
+        try:
+            async with aclosing(worker):
+                async for progress in worker:
+                    yield progress
+        except Exception as error:
+            await self.store.save_error(restoration_id, public_error_message(error))
+            raise
+
     async def _restore(
         self,
         prepared: PreparedSnapshot,
@@ -429,14 +574,120 @@ class SnapshotCommands:
             await self._files.check_stopped(list(prepared.maintenance))
             yield TaskProgress(message="正在检查源快照和保护范围")
             source = await self.snapshots.get_snapshot(source_id)
+            scope = prepared.resolved.scope
+            selection = scope.selection if isinstance(scope, WorldScope) else None
+            if prepared.legacy_world:
+                ref = prepared.resolved.servers[0]
+                roots = tuple(Path(path) for path in source.paths)
+                if not roots or any(
+                    path == ref.data_path or not path.is_relative_to(ref.data_path)
+                    for path in roots
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="安全快照中的世界范围不明确，请核对后手动恢复",
+                    )
+                narrowed = await self.prepare(
+                    scope,
+                    restoring=True,
+                    retained=prepared.protection.excluded,
+                    history_paths=roots,
+                    from_history=True,
+                )
+                prepared = replace(narrowed, claims=prepared.claims)
+                await self.store.save_scope(restoration_id, prepared.resolved)
             protection = await self.snapshots.with_source_protection(
                 prepared.protection, source
             )
-            protection.require_targets(prepared.resolved.paths)
+            documented_absence = snapshot_absence(source)
+            absent = tuple(
+                set(absent)
+                | {
+                    path
+                    for path in prepared.resolved.paths
+                    if any(path.is_relative_to(parent) for parent in documented_absence)
+                }
+            )
+            if selection:
+                source_paths = [Path(value) for value in source.paths]
+                covered = {
+                    path
+                    for path in prepared.paths
+                    if path.suffix != ".mcc"
+                    and (
+                        path in absent
+                        or any(path.is_relative_to(parent) for parent in absent_parents)
+                        or covers(path, source_paths, protection.excluded)
+                    )
+                }
+                if not covered:
+                    raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
+                uncovered = {
+                    path
+                    for path in prepared.paths
+                    if path.suffix != ".mcc" and path not in covered
+                }
+                uncovered_dirs = {
+                    path.parent for path in uncovered if path.suffix == ".mca"
+                }
+                covered_dirs = {
+                    path.parent for path in covered if path.suffix == ".mca"
+                }
+                uncovered_dirs -= covered_dirs
+                uncovered = {
+                    path for path in uncovered if path.parent not in uncovered_dirs
+                } | uncovered_dirs
+                for path in prepared.paths:
+                    if path.suffix == ".mcc":
+                        _, x, z, _ = path.name.split(".")
+                        region = path.with_name(f"r.{int(x) // 32}.{int(z) // 32}.mca")
+                        if region in uncovered:
+                            uncovered.add(path)
+                if uncovered:
+                    protection = SnapshotProtection.capture(
+                        protection.current,
+                        [*protection.excluded, *uncovered],
+                        data_paths=protection.data_paths,
+                    )
             prepared = replace(prepared, protection=protection)
-            for path in prepared.resolved.paths:
-                if path not in absent and not covers(
-                    path, [Path(value) for value in source.paths], protection.excluded
+            protection.require_targets(
+                prepared.paths if selection else prepared.resolved.paths
+            )
+            if selection and selection.type is RestorationType.CHUNKS:
+                from ..world.selection import group_chunks_by_region
+
+                permitted_chunks = False
+                for (rx, rz), chunks in group_chunks_by_region(
+                    selection.chunks
+                ).items():
+                    for path in prepared.paths:
+                        if (
+                            path.name == f"r.{rx}.{rz}.mca"
+                            and await self._world.allowed_chunks(
+                                prepared.resolved.servers[0].data_path,
+                                path,
+                                rx,
+                                rz,
+                                chunks,
+                                protection,
+                            )
+                        ):
+                            permitted_chunks = True
+                if not permitted_chunks:
+                    protection.require_targets([])
+            for path in prepared.paths:
+                if selection and path.suffix == ".mcc":
+                    continue
+                if (
+                    path not in absent
+                    and not any(
+                        path.is_relative_to(parent) for parent in absent_parents
+                    )
+                    and not covers(
+                        path,
+                        [Path(value) for value in source.paths],
+                        protection.excluded,
+                    )
                 ):
                     raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
             await self.store.save_protection(restoration_id, protection.to_json())
@@ -449,7 +700,7 @@ class SnapshotCommands:
             )
             await record_phase("safety_snapshot")
             present, missing = [], []
-            for path in prepared.resolved.paths:
+            for path in prepared.paths:
                 (present if await async_fs.lexists(path) else missing).append(path)
             if present:
                 safety = await self.snapshots.create_snapshot(
@@ -480,15 +731,16 @@ class SnapshotCommands:
                 absent = tuple(
                     set(absent)
                     | set(
-                        await self.snapshots.absent_targets(
-                            source_id, prepared.resolved.paths
-                        )
+                        await self.snapshots.absent_targets(source_id, prepared.paths)
                     )
                 )
                 touched: list[str] = []
                 restored = False
                 try:
-                    await record_phase("restoring_files", changed=True)
+                    await record_phase(
+                        "restoring_world" if selection else "restoring_files",
+                        changed=True,
+                    )
                     yield TaskProgress(
                         progress=0,
                         message="正在恢复所选文件",
@@ -497,30 +749,41 @@ class SnapshotCommands:
                             "safety_snapshot_id": safety.id,
                         },
                     )
-                    targets = [
-                        path for path in prepared.resolved.paths if path not in absent
-                    ]
-                    async with aclosing(
-                        self.snapshots.restore(
-                            source_id, targets, protection=prepared.protection
-                        )
-                    ) as events:
-                        async for event in events:
+                    if selection and selection.type is RestorationType.CHUNKS:
+                        async with aclosing(
+                            self._world.restore_chunks(
+                                data_path=prepared.resolved.servers[0].data_path,
+                                source_snapshot_id=source_id,
+                                selection=selection,
+                                allow_missing_dimension=prepared.from_history,
+                                protection=protection,
+                            )
+                        ) as events:
+                            async for event in events:
+                                yield event
+                        for path in absent:
                             if (
-                                event.kind == "file"
-                                and event.action in {"updated", "restored", "deleted"}
-                                and event.item
+                                path.suffix == ".mca"
+                                and protection.permits(path)
+                                and await aioos.path.isfile(path)
                             ):
-                                touched.append(event.item)
-                            elif event.kind == "status":
-                                yield TaskProgress(
-                                    progress=(event.percent_done or 0) * 100,
-                                    message="正在恢复所选文件",
-                                )
-                    removed = await self.snapshots.remove_absent_paths(
-                        source_id, absent, protection=prepared.protection
-                    )
-                    touched.extend(str(path) for path in removed)
+                                async with aiofiles.open(path, "rb") as stream:
+                                    empty = await stream.read(4096) == bytes(4096)
+                                if empty:
+                                    await finalize(aioos.remove(path))
+                    else:
+                        async with aclosing(
+                            self._files.apply(
+                                self.snapshots,
+                                source_id,
+                                prepared.paths,
+                                absent,
+                                protection,
+                                touched,
+                            )
+                        ) as progress:
+                            async for event in progress:
+                                yield event
                     for parent in sorted(
                         absent_parents, key=lambda path: len(path.parts), reverse=True
                     ):
@@ -532,12 +795,33 @@ class SnapshotCommands:
                                     raise
                     restored = True
                 finally:
-                    await finalize(
-                        self._files.invalidate(
-                            touched,
-                            prepared.resolved.servers,
-                            [] if restored else prepared.maintenance,
+                    try:
+                        await finalize(
+                            self._files.invalidate(
+                                touched,
+                                prepared.resolved.servers,
+                                [] if restored else prepared.maintenance,
+                                selection=selection,
+                            )
                         )
+                    except Exception as error:
+                        if restored:
+                            raise PublicOperationError(
+                                "数据已恢复，但地图缓存更新失败；请重新初始化地图"
+                            ) from error
+                        raise
+                if selection:
+                    from ..self_check.constants import (
+                        WORLD_RESTORED_TRIGGER,
+                        WORLD_ROLLED_BACK_TRIGGER,
+                    )
+                    from ..self_check.events import schedule_self_check_event
+
+                    schedule_self_check_event(
+                        WORLD_ROLLED_BACK_TRIGGER
+                        if prepared.from_history
+                        else WORLD_RESTORED_TRIGGER,
+                        actor_id,
                     )
                 yield TaskProgress(
                     progress=100,

@@ -6,7 +6,7 @@ RETIRED = {
     "app.models", "app.servers.configuration", "app.servers.rebuild",
     "app.players.tracking", "app.self_check.runner", "app.routers.servers.utils.server_list",
     "app.world.models", "app.world.schemas", "app.world.restoration_store", "app.world.recovery",
-    "app.snapshots.restore",
+    "app.snapshots.restore", "app.world.restore",
 }
 
 

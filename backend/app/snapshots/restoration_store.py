@@ -8,7 +8,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.snapshots.restoration_models import Restoration, RestorationStatus
-from app.snapshots.selection_models import RestorationSelection
 
 from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState
@@ -135,6 +134,26 @@ class RestorationStore:
 
         await finalize(write())
 
+    async def save_scope(self, restoration_id: str, resolved: ResolvedScope) -> None:
+        async def write() -> None:
+            async with self._sessions() as session:
+                await session.execute(
+                    update(Restoration)
+                    .where(Restoration.id == restoration_id)
+                    .values(
+                        scope_json=json.dumps(
+                            {
+                                "version": 1,
+                                "scope": resolved.scope.model_dump(mode="json"),
+                                "paths": [str(path) for path in resolved.paths],
+                            }
+                        )
+                    )
+                )
+                await session.commit()
+
+        await finalize(write())
+
     async def save_safety(
         self,
         restoration_id: str,
@@ -166,6 +185,7 @@ class RestorationStore:
         self, restoration_id: str, state: OperationState
     ) -> None:
         status = restoration_status(state)
+        row = await self.get(restoration_id)
         await self.finish(
             restoration_id,
             status,
@@ -174,66 +194,25 @@ class RestorationStore:
             else {
                 RestorationStatus.CANCELLED: "操作已取消，已写入的内容不会自动回滚",
                 RestorationStatus.INTERRUPTED: "操作已中断，请检查恢复记录和写入状态",
-            }.get(status, "操作未完成，请查看任务详情"),
+            }.get(
+                status,
+                row.error_message
+                if row and row.error_message
+                else "操作未完成，请查看任务详情",
+            ),
         )
 
-    async def insert(
-        self,
-        *,
-        restoration_id: str,
-        reference: ServerRef,
-        selection: RestorationSelection,
-        source_snapshot_id: str,
-        safety_snapshot_id: str | None,
-        is_rollback: bool,
-        user_id: int | None,
-        absent_dirs: list[str],
-        world_roots: list[str] | None = None,
-        rollback_of_id: str | None = None,
-        operation_id: str | None = None,
-    ) -> None:
-        async with self._sessions() as session:
-            session.add(
-                Restoration(
-                    id=restoration_id,
-                    server_id=reference.server_id,
-                    server_generation=reference.generation,
-                    scope_json=json.dumps(
-                        {
-                            "version": 1,
-                            "scope": {
-                                "kind": "world",
-                                "server_id": reference.server_id,
-                                "selection": selection.model_dump(mode="json"),
-                            },
-                        }
-                    ),
-                    targets_json=json.dumps(
-                        [
-                            {
-                                "server_id": reference.server_id,
-                                "generation": reference.generation,
-                            }
-                        ]
-                    ),
-                    entry_point="world",
-                    rollback_of_id=rollback_of_id,
-                    operation_id=operation_id,
-                    type=selection.type,
-                    source_snapshot_id=source_snapshot_id,
-                    safety_snapshot_id=safety_snapshot_id,
-                    selection_json=json.dumps(
-                        {
-                            **selection.model_dump(mode="json"),
-                            "absent_directories": absent_dirs,
-                            "world_roots": world_roots,
-                        }
-                    ),
-                    is_rollback=is_rollback,
-                    initiated_by_user_id=user_id,
+    async def save_error(self, restoration_id: str, message: str) -> None:
+        async def write() -> None:
+            async with self._sessions() as session:
+                await session.execute(
+                    update(Restoration)
+                    .where(Restoration.id == restoration_id)
+                    .values(error_message=message)
                 )
-            )
-            await session.commit()
+                await session.commit()
+
+        await finalize(write())
 
     async def finish(
         self, restoration_id: str, status: RestorationStatus, error_message: str | None
