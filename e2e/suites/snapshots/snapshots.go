@@ -48,7 +48,7 @@ func restore(ctx context.Context, t *engine.Scope) error {
 		} `json:"snapshot"`
 	}
 	if err = t.Step("real Restic snapshot is persisted and listed", func() error {
-		if err := client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": id, "paths": []string{"/restore"}}, &created, 200); err != nil {
+		if err := client.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"restore"}}}, &created); err != nil {
 			return err
 		}
 		if created.Snapshot.ID == "" {
@@ -93,13 +93,18 @@ func restore(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	return t.Step("streamed restore restores content, deletes extra files and protects ignored data", func() error {
-		event, err := client.SSE(ctx, "POST", "/api/snapshots/restore", request, "complete")
+	var restorationID string
+	if err = t.Step("background restore restores content, deletes extra files and protects ignored data", func() error {
+		event, err := client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"restore"}}, "source_snapshot_id": created.Snapshot.ID})
 		if err != nil {
 			return err
 		}
 		if event["safety_snapshot_id"] == nil || event["safety_snapshot_id"] == "" {
 			return fmt.Errorf("restore did not report a safety snapshot")
+		}
+		restorationID, _ = event["restoration_id"].(string)
+		if restorationID == "" {
+			return fmt.Errorf("restore did not retain its history ID")
 		}
 		if err = fixtures.CheckFile(ctx, client, id, "/restore/value.txt", "before"); err != nil {
 			return err
@@ -108,5 +113,53 @@ func restore(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		return client.JSON(ctx, "GET", "/api/servers/"+id+"/files/content?path=/restore/extra.txt", nil, nil, 404)
+	}); err != nil {
+		return err
+	}
+	return t.Step("history rollback replaces later edits and is itself reversible", func() error {
+		var history struct {
+			Total int `json:"total"`
+		}
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+id, nil, &history, 200); err != nil {
+			return err
+		}
+		if history.Total != 1 {
+			return fmt.Errorf("restore did not create exactly one history record")
+		}
+		var record struct {
+			ID        string `json:"id"`
+			Status    string `json:"status"`
+			Available bool   `json:"rollback_available"`
+		}
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations/"+restorationID, nil, &record, 200); err != nil {
+			return err
+		}
+		if record.ID != restorationID || record.Status != "succeeded" || !record.Available {
+			return fmt.Errorf("completed restore has inconsistent history")
+		}
+		if err := fixtures.WriteFile(ctx, client, id, "/restore/value.txt", "edited after restore"); err != nil {
+			return err
+		}
+		rollback, err := client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations/"+restorationID+"/rollback", nil)
+		if err != nil {
+			return err
+		}
+		if err = fixtures.CheckFile(ctx, client, id, "/restore/value.txt", "after"); err != nil {
+			return err
+		}
+		if err = fixtures.CheckFile(ctx, client, id, "/restore/extra.txt", "remove on restore"); err != nil {
+			return err
+		}
+		if err = fixtures.CheckFile(ctx, client, id, "/restore/keep.txt", "protected after"); err != nil {
+			return err
+		}
+		rollbackID, ok := rollback["restoration_id"].(string)
+		if !ok || rollbackID == restorationID {
+			return fmt.Errorf("rollback must create a distinct history record")
+		}
+		if err = client.RunTask(ctx, "POST", "/api/snapshots/restorations/"+rollbackID+"/rollback", nil, nil); err != nil {
+			return err
+		}
+		return fixtures.CheckFile(ctx, client, id, "/restore/value.txt", "edited after restore")
 	})
 }

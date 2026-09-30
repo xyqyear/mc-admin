@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -18,7 +18,11 @@ from .types import TaskProgress, TaskResult, TaskStatus, TaskType
 if TYPE_CHECKING:
     from ..operations.coordinator import ResourceClaim
     from ..operations.journal import OperationJournal
-    from ..operations.journal_types import OperationRecord, ResourceReference
+    from ..operations.journal_types import (
+        OperationRecord,
+        OperationState,
+        ResourceReference,
+    )
     from ..servers.references import ServerRef
 
 
@@ -59,6 +63,8 @@ class BackgroundTaskManager:
         resources: Sequence["ResourceReference"] | None = None,
         require_existing_targets: bool = True,
         exclusive_key: str | None = None,
+        on_accepted: Callable[[str], Awaitable[None]] | None = None,
+        on_finished: Callable[["OperationState"], Awaitable[None]] | None = None,
     ) -> SubmitResult:
         task_id = task_id or str(uuid4())
         if exclusive_key is not None:
@@ -78,6 +84,7 @@ class BackgroundTaskManager:
                 task_type, name, task_generator, server_id, cancellable, task_id,
                 actor_id=actor_id, configuration_version=configuration_version, claims=claims,
                 server_refs=server_refs, resources=resources, require_existing_targets=require_existing_targets,
+                on_accepted=on_accepted, on_finished=on_finished,
             )
         except BaseException:
             release()
@@ -94,8 +101,12 @@ class BackgroundTaskManager:
         server_refs: Sequence["ServerRef"] | None,
         resources: Sequence["ResourceReference"] | None,
         require_existing_targets: bool,
+        on_accepted: Callable[[str], Awaitable[None]] | None,
+        on_finished: Callable[["OperationState"], Awaitable[None]] | None,
     ) -> SubmitResult:
         if self.journal is None:
+            if on_accepted is not None or on_finished is not None:
+                raise RuntimeError("关联业务历史的任务需要持久化操作日志")
             return self.submit(task_type=task_type, name=name, task_generator=task_generator, server_id=server_id, cancellable=cancellable, task_id=task_id)
         from ..config import get_settings
         settings = get_settings()
@@ -176,17 +187,46 @@ class BackgroundTaskManager:
                         finally:
                             from ..operations.execution import settle_execution
 
-                            await settle_execution(execution, state)
+                            try:
+                                if on_finished is not None:
+                                    await on_finished(execution.outcome or state)
+                            except BaseException:
+                                state = OperationState.FAILED
+                                raise
+                            finally:
+                                await settle_execution(execution, state)
                     await finalize(cleanup())
 
+        async def cancelled_before_start() -> None:
+            try:
+                await task_generator.aclose()
+                if on_finished is not None:
+                    await on_finished(OperationState.CANCELLED)
+            except BaseException:
+                try:
+                    if on_finished is not None:
+                        await on_finished(OperationState.FAILED)
+                finally:
+                    await execution.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True)
+                raise
+
         try:
-            return self.submit(task_type, name, durable_generator(), server_id, cancellable, task_id)
+            if on_accepted is not None:
+                await on_accepted(record.operation_id)
+            return self.submit(task_type, name, durable_generator(), server_id, cancellable, task_id,
+                               on_cancelled_before_start=cancelled_before_start)
         except BaseException as failure:
+            rejected_state = OperationState.CANCELLED if isinstance(failure, (asyncio.CancelledError, GeneratorExit)) else OperationState.FAILED
+
             async def reject_submission() -> None:
                 try:
                     await task_generator.aclose()
                 finally:
-                    await execution.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True)
+                    try:
+                        if on_finished is not None:
+                            await on_finished(rejected_state)
+                    finally:
+                        await execution.journal.finish(record.operation_id, rejected_state, writers_stopped=True)
             try:
                 await finalize(reject_submission())
             except BaseException as cleanup_failure:
@@ -226,6 +266,8 @@ class BackgroundTaskManager:
         server_id: str | None = None,
         cancellable: bool = True,
         task_id: str | None = None,
+        *,
+        on_cancelled_before_start: Callable[[], Awaitable[None]] | None = None,
     ) -> SubmitResult:
         """
         Submit a background task.
@@ -289,6 +331,8 @@ class BackgroundTaskManager:
             error: str | None = None
             try:
                 if task.cancel_requested:
+                    if on_cancelled_before_start is not None:
+                        await finalize(on_cancelled_before_start())
                     if self.journal is not None:
                         from ..operations.journal_types import OperationState
 

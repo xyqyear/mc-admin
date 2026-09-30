@@ -10,9 +10,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.snapshots.restoration_models import Restoration, RestorationStatus
 from app.snapshots.selection_models import RestorationSelection
 
+from ..operations.finalization import finalize
+from ..operations.journal_types import OperationState
 from ..servers.references import ServerRef
+from .restoration_models import RestorationType
+from .scopes import GlobalScope, ResolvedScope, WorldScope
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
+
+
+def restoration_status(state: OperationState) -> RestorationStatus:
+    return {
+        OperationState.QUEUED: RestorationStatus.PENDING,
+        OperationState.RUNNING: RestorationStatus.RUNNING,
+        OperationState.CANCELLING: RestorationStatus.RUNNING,
+        OperationState.FINALIZING: RestorationStatus.RUNNING,
+        OperationState.SUCCEEDED: RestorationStatus.SUCCEEDED,
+        OperationState.CANCELLED: RestorationStatus.CANCELLED,
+        OperationState.INTERRUPTED: RestorationStatus.INTERRUPTED,
+    }.get(state, RestorationStatus.FAILED)
 
 
 def restoration_binding_issue(row: Restoration, generation: int | None) -> str | None:
@@ -47,6 +63,119 @@ class RestorationStore:
             return await session.scalar(
                 select(Restoration).where(Restoration.id == restoration_id)
             )
+
+    async def accept(
+        self,
+        *,
+        restoration_id: str,
+        operation_id: str,
+        resolved: ResolvedScope,
+        source_snapshot_id: str,
+        protection_json: str,
+        entry_point: str,
+        user_id: int,
+        rollback_of_id: str | None = None,
+    ) -> None:
+        scope = resolved.scope
+        single = None if isinstance(scope, GlobalScope) else resolved.servers[0]
+        kind = (
+            scope.selection.type
+            if isinstance(scope, WorldScope)
+            else RestorationType(scope.kind)
+        )
+
+        async def write() -> None:
+            async with self._sessions() as session:
+                session.add(
+                    Restoration(
+                        id=restoration_id,
+                        operation_id=operation_id,
+                        server_id=single.server_id if single else None,
+                        server_generation=single.generation if single else None,
+                        type=kind,
+                        source_snapshot_id=source_snapshot_id,
+                        scope_json=json.dumps(
+                            {
+                                "version": 1,
+                                "scope": scope.model_dump(mode="json"),
+                                "paths": [str(path) for path in resolved.paths],
+                            }
+                        ),
+                        targets_json=json.dumps(
+                            [
+                                {
+                                    "server_id": ref.server_id,
+                                    "generation": ref.generation,
+                                }
+                                for ref in resolved.servers
+                            ]
+                        ),
+                        protection_json=protection_json,
+                        selection_json="{}",
+                        entry_point=entry_point,
+                        initiated_by_user_id=user_id,
+                        status=RestorationStatus.PENDING,
+                        rollback_of_id=rollback_of_id,
+                        is_rollback=rollback_of_id is not None,
+                    )
+                )
+                await session.commit()
+
+        await finalize(write())
+
+    async def save_protection(self, restoration_id: str, protection_json: str) -> None:
+        async def write() -> None:
+            async with self._sessions() as session:
+                await session.execute(
+                    update(Restoration)
+                    .where(Restoration.id == restoration_id)
+                    .values(protection_json=protection_json)
+                )
+                await session.commit()
+
+        await finalize(write())
+
+    async def save_safety(
+        self,
+        restoration_id: str,
+        snapshot_id: str,
+        absent_paths: list[str],
+        absent_parents: list[str],
+    ) -> None:
+        async def write() -> None:
+            async with self._sessions() as session:
+                await session.execute(
+                    update(Restoration)
+                    .where(Restoration.id == restoration_id)
+                    .values(
+                        safety_snapshot_id=snapshot_id,
+                        selection_json=json.dumps(
+                            {
+                                "absent_paths": absent_paths,
+                                "absent_parents": absent_parents,
+                            }
+                        ),
+                        status=RestorationStatus.RUNNING,
+                    )
+                )
+                await session.commit()
+
+        await finalize(write())
+
+    async def finish_operation(
+        self, restoration_id: str, state: OperationState
+    ) -> None:
+        status = restoration_status(state)
+        await self.finish(
+            restoration_id,
+            status,
+            None
+            if status is RestorationStatus.SUCCEEDED
+            else {
+                RestorationStatus.CANCELLED: "操作已取消，已写入的内容不会自动回滚",
+                RestorationStatus.INTERRUPTED: "操作已中断，请检查恢复记录和写入状态",
+            }.get(status, "操作未完成，请查看任务详情"),
+        )
 
     async def insert(
         self,

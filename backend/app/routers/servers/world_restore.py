@@ -514,7 +514,7 @@ async def list_restorations(
         total = (
             await session.execute(
                 select(func.count(Restoration.id)).where(
-                    Restoration.server_id == server_id
+                    Restoration.server_id == server_id, Restoration.type.in_([RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS])
                 )
             )
         ).scalar_one()
@@ -522,7 +522,7 @@ async def list_restorations(
             (
                 await session.execute(
                     select(Restoration)
-                    .where(Restoration.server_id == server_id)
+                    .where(Restoration.server_id == server_id, Restoration.type.in_([RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS]))
                     .order_by(desc(Restoration.started_at))
                     .limit(limit)
                     .offset(offset)

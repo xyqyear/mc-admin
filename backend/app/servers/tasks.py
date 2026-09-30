@@ -12,6 +12,7 @@ from ..operation_admission import get_server_write_admission
 from ..operations.journal_types import ResourceReference
 from ..self_check.constants import SERVER_CREATED_TRIGGER
 from ..self_check.events import schedule_self_check_event
+from ..snapshots.commands import require_snapshot_tasks_finished
 from ..world.locks import ServerOperationKind, get_server_operation_lock
 from .commands import ServerAction, ServerCommands
 from .lifecycle import CreateServerSpec, create_server_full, remove_server_full
@@ -60,8 +61,8 @@ async def submit_lifecycle(server_id: str, action: str, actor_id: int) -> TaskAc
     if action in ("start", "up", "restart") and lock.is_locked(server_id):
         raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
     if action == "remove":
+        require_snapshot_tasks_finished(server_id)
         holder = lock.get_holder(server_id)
-        # Snapshot requests cannot be cancelled and drained by the task manager.
         if holder is not None and holder.kind in (ServerOperationKind.BACKUP, ServerOperationKind.RESTORE):
             raise HTTPException(status_code=423, detail="服务器正在维护，请等待操作完成")
         if await get_docker_mc_manager().get_instance(server_id).created():

@@ -1,4 +1,5 @@
 import { serversOperationResources } from '@/features/servers/operationResources'
+import { backupsOperationResources } from '@/features/backups/operationResources'
 import { healthOperationResources } from '@/features/health/operationResources'
 import { dnsOperationResources } from '@/features/dns/operationResources'
 import { useEffect, useRef } from 'react'
@@ -9,7 +10,7 @@ import { worldOperationResources } from '@/features/world/operationResources'
 import { configurationOperationResources } from '@/features/configuration/operationResources'
 import { isTerminalOperation, type Operation } from '@/shared/operations/contracts'
 
-const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources, serversOperationResources, healthOperationResources, dnsOperationResources]
+const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources, serversOperationResources, healthOperationResources, dnsOperationResources, backupsOperationResources]
 type ObservedOperation = Operation & { unavailable?: true }
 const isSettled = (operation: ObservedOperation) => operation.unavailable === true || isTerminalOperation(operation)
 

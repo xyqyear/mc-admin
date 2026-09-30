@@ -10,7 +10,7 @@ from app.db.metadata import Base
 from app.minecraft import MCServerStatus
 from app.routers.servers import operations
 from app.servers.models import Server
-from app.snapshots.restore import SnapshotRestoreService, SnapshotServerRunning
+from app.snapshots.file_restore import FileRestoreAdapter, SnapshotServerRunning
 from app.world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from app.world.maintenance import affected_servers
 from tests.support.runtime import set_runtime_resource
@@ -75,7 +75,7 @@ async def test_snapshot_targets_distinguish_online_files_and_worlds(manager, tmp
         "one",
         "two",
     ]
-    service = SnapshotRestoreService(Mock(), manager, ServerOperationLock())
+    service = FileRestoreAdapter(manager, ServerOperationLock())
     await service.check_available(
         await service.maintenance_servers([data / "server.properties"])
     )

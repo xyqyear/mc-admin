@@ -39,31 +39,25 @@ async def test_unexpected_task_failures_hide_credentials(error_type, caplog):
 
 
 @pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
-async def test_unexpected_snapshot_sse_failures_hide_credentials(error_type, monkeypatch, caplog, tmp_path):
+async def test_unexpected_snapshot_acceptance_failures_hide_credentials(error_type, monkeypatch, caplog):
     secret = "synthetic-snapshot-provider-password"
 
-    async def operation(*args):
-        yield {"event_type": "start", "message": "开始恢复"}
+    async def operation(*args, **kwargs):
         raise error_type(secret)
 
     service = SimpleNamespace(
-        maintenance_servers=AsyncMock(return_value=[]),
-        check_available=AsyncMock(),
         restore=operation,
     )
-    monkeypatch.setattr(snapshots, "_resolve_backup_paths", AsyncMock(return_value=[tmp_path]))
-    monkeypatch.setattr(snapshots, "_get_snapshot_service", lambda: object())
-    monkeypatch.setattr(snapshots, "SnapshotRestoreService", lambda *args: service)
+    monkeypatch.setattr(snapshots, "_commands", lambda: service)
     app = FastAPI()
     app.add_middleware(SafeErrorMiddleware)
     app.include_router(snapshots.router)
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
     with caplog.at_level(logging.DEBUG):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.post("/snapshots/restore", json={"snapshot_id": "synthetic", "server_id": "synthetic", "paths": ["/"]})
-    assert response.status_code == 200
-    events = [json.loads(line.removeprefix("data: ")) for line in response.text.splitlines() if line.startswith("data: ")]
-    assert events[-1] == {"event_type": "error", "message": "服务器内部错误，请稍后重试"}
+            response = await client.post("/snapshots/restorations", json={"source_snapshot_id": "0" * 64, "scope": {"kind": "paths", "server_id": "synthetic", "paths": ["."]}})
+    assert response.status_code == 500
+    assert response.json() == {"detail": "服务器内部错误，请稍后重试"}
     assert secret not in response.text + caplog.text
     assert error_type.__name__ in caplog.text
 

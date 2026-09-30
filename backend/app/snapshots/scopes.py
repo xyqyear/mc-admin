@@ -22,7 +22,6 @@ from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..servers.models import Server, ServerStatus
 from ..servers.references import ServerRef, resolve_server_ref
 from ..utils import async_fs
-from ..world.selection import resolve_paths, resource_scopes
 from .restoration_models import RestorationType
 from .selection_models import RestorationSelection
 
@@ -142,6 +141,8 @@ async def resolve_scope(
     root: Path,
     sessions: Callable[[], AbstractAsyncContextManager[AsyncSession]],
 ) -> ResolvedScope:
+    from ..world.selection import resolve_paths, resource_scopes
+
     async with sessions() as session:
         if isinstance(scope, GlobalScope):
             names = list(

@@ -28,7 +28,7 @@ func emptyScopeRollback(ctx context.Context, t *engine.Scope) error {
 			ID string `json:"id"`
 		} `json:"snapshot"`
 	}
-	if err = s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": s.id, "paths": []string{"/world"}}, &backup, 200); err != nil {
+	if err = s.client.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": s.id, "paths": []string{"world"}}}, &backup); err != nil {
 		return err
 	}
 	if backup.Snapshot.ID == "" {

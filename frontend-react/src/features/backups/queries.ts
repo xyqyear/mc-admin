@@ -3,6 +3,15 @@ import { getErrorStatus, shouldRetryQuery } from '@/shared/http/api';
 import { useQuery } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
+
+export function useRestorationHistory(serverId?: string, offset = 0, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.snapshots.history(serverId, offset),
+    queryFn: () => snapshotApi.history(serverId, offset),
+    enabled,
+    refetchInterval: query => query.state.data?.restorations.some(row => row.status === 'pending' || row.status === 'running') ? 2000 : false,
+  });
+}
 export const useSnapshotQueries = () => {
   const useGlobalSnapshots = (options?: Partial<Omit<ReturnType<typeof globalSnapshotsQueryOptions>, 'queryKey' | 'queryFn'>>) => {
     return useQuery({ ...globalSnapshotsQueryOptions(), ...options });

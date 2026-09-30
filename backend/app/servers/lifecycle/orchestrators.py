@@ -244,7 +244,10 @@ async def remove_server_full(
 
 
 async def _remove_server(db: AsyncSession, server_id: str) -> RemoveServerResult:
+    from ...snapshots.commands import require_snapshot_tasks_finished
+
     with get_server_write_admission().freeze(server_id) as permit:
+        require_snapshot_tasks_finished(server_id)
         instance = get_docker_mc_manager().get_instance(server_id)
         if await instance.created():
             raise HTTPException(
@@ -258,6 +261,7 @@ async def _remove_server(db: AsyncSession, server_id: str) -> RemoveServerResult
             raise HTTPException(status_code=409, detail="服务器容器仍然存在，请先下线后再删除")
 
         async with get_operation_coordinator().delete(server_id, permit):
+            require_snapshot_tasks_finished(server_id)
             return await finalize(_remove_drained_server(db, server_id, instance, cancelled_tasks))
 
 
@@ -329,8 +333,11 @@ async def _adopt_server_with_ports(
 async def deactivate_server_partial(
     db: AsyncSession, server_id: str
 ) -> RemoveServerResult:
+    from ...snapshots.commands import require_snapshot_tasks_finished
+
     async with operation_scope("server_deactivate", [server_id], require_exists=False):
         with get_server_write_admission().freeze(server_id):
+            require_snapshot_tasks_finished(server_id)
             cancelled_tasks = await cancel_and_wait_for_tasks(server_id)
             get_server_write_admission().require_drained(server_id)
             await revalidate_targets()

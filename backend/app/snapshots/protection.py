@@ -14,6 +14,7 @@ from .planner import TargetIgnoredError
 class SnapshotProtection:
     current: tuple[Path, ...]
     excluded: tuple[Path, ...]
+    data_paths: tuple[Path, ...] | None = None
 
     @property
     def version(self) -> str:
@@ -53,13 +54,22 @@ class SnapshotProtection:
                 "version": self.version,
                 "current": [str(path) for path in self.current],
                 "excluded": [str(path) for path in self.excluded],
+                "data_paths": [str(path) for path in self.data_paths]
+                if self.data_paths is not None
+                else None,
             }
         )
 
     @classmethod
     def capture(
-        cls, current: Sequence[Path], retained: Sequence[Path] = ()
+        cls,
+        current: Sequence[Path],
+        retained: Sequence[Path] = (),
+        *,
+        data_paths: Sequence[Path] | None = None,
     ) -> "SnapshotProtection":
         return cls(
-            tuple(sorted(set(current))), tuple(sorted(set(current) | set(retained)))
+            tuple(sorted(set(current))),
+            tuple(sorted(set(current) | set(retained))),
+            tuple(sorted(set(data_paths))) if data_paths is not None else None,
         )

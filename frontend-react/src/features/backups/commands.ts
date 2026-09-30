@@ -4,13 +4,23 @@ import { snapshotApi } from "@/features/backups/api";
 import type { CreateSnapshotResponse, DeleteSnapshotResponse } from '@/features/backups/contracts';
 import { queryKeys } from "@/shared/http/api";
 import { toast } from "sonner";
+import { waitForTaskResult } from '@/features/tasks/commands';
+import type { SnapshotScope } from './contracts';
+
+export { useSnapshotOperation } from './useSnapshotOperation';
+
+export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotScope {
+  return paths?.length
+    ? { kind: 'paths', server_id: serverId, paths: paths.map(path => path.replace(/^\/+/, '') || '.') }
+    : { kind: 'server', server_id: serverId };
+}
 
 export const useSnapshotMutations = () => {
   const queryClient = useQueryClient();
 
   const useCreateGlobalSnapshot = () => {
     return useMutation({
-      mutationFn: snapshotApi.createGlobalSnapshot,
+      mutationFn: async () => waitForTaskResult<CreateSnapshotResponse>(queryClient, await snapshotApi.createSnapshot({ kind: 'global' })),
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 
@@ -28,7 +38,7 @@ export const useSnapshotMutations = () => {
 
   const useCreateSnapshot = () => {
     return useMutation({
-      mutationFn: snapshotApi.createSnapshot,
+      mutationFn: async (params: { server_id: string; paths?: string[] }) => waitForTaskResult<CreateSnapshotResponse>(queryClient, await snapshotApi.createSnapshot(fileSnapshotScope(params.server_id, params.paths))),
       onSuccess: (data: CreateSnapshotResponse) => {
         toast.success(`快照创建成功: ${data.snapshot.short_id}`);
 

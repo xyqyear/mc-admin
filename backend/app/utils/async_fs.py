@@ -23,6 +23,10 @@ async def iterdir(path: Path) -> list[Path]:
     return await asyncio.to_thread(_iterdir_sync, path)
 
 
+async def lexists(path: Path) -> bool:
+    return await asyncio.to_thread(os.path.lexists, path)
+
+
 def _iterdir_sync(path: Path) -> list[Path]:
     return list(path.iterdir())
 

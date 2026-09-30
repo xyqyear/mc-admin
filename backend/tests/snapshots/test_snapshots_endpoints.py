@@ -3,7 +3,7 @@ import asyncio
 from app.config import ResticSettings
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource, patch_settings
-from tests.support.tasks import wait_task
+from tests.support.tasks import task_result, wait_task
 
 """
 End-to-end tests for snapshot API endpoints using real restic commands.
@@ -15,7 +15,6 @@ directories and repositories to avoid affecting real data, with MC server direct
 IMPORTANT: These tests require restic to be installed on the system.
 """
 
-import json
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -32,30 +31,29 @@ from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 
 
-def _parse_sse_events(response) -> list[dict]:
-    """Parse a Server-Sent Events response body into a list of event dicts."""
-    events: list[dict] = []
-    for block in response.text.split("\n\n"):
-        for line in block.splitlines():
-            if line.startswith("data:"):
-                events.append(json.loads(line[5:].strip()))
-                break
-    return events
+def _scope(server_id=None, paths=None):
+    if paths:
+        return {"kind": "paths", "server_id": server_id, "paths": [path.lstrip("/") or "." for path in paths]}
+    return {"kind": "server", "server_id": server_id} if server_id else {"kind": "global"}
 
 
-def _restore_safety_snapshot_id(response) -> str:
-    """Extract the safety_snapshot_id from a successful /snapshots/restore SSE
-    stream. Asserts the stream completed without an error event."""
-    events = _parse_sse_events(response)
-    types = [e.get("event_type") for e in events]
-    assert "error" not in types, f"restore failed: events={events}"
-    assert types[-1] == "complete", f"restore did not complete: events={events}"
-    safety = next(
-        (e.get("safety_snapshot_id") for e in events if e.get("safety_snapshot_id")),
-        None,
-    )
-    assert safety is not None, f"no safety_snapshot_id in events: {events}"
-    return safety
+def _restore_safety_snapshot_id(client, response) -> str:
+    return task_result(client, response)["safety_snapshot_id"]
+
+
+@pytest.fixture(autouse=True)
+async def registered_server(mock_instance):
+    from app.db.metadata import Base
+    from app.operations.journal import OperationJournal
+    from app.servers.models import Server
+
+    runtime = current_runtime()
+    async with runtime.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with runtime.database.session_factory() as session:
+        session.add(Server(server_id=mock_instance[0]))
+        await session.commit()
+    runtime.journal = OperationJournal(runtime.database.session_factory)
 
 
 # Helper function to check if restic is available
@@ -110,6 +108,7 @@ class MockMCInstance:
         """Create realistic MC server file and directory structure."""
         # Create base directories
         self.get_data_path().mkdir(parents=True, exist_ok=True)
+        (self.project_path / "compose.yaml").write_text("services: {}\n")
 
         # Create MC server configuration files
         (self.get_data_path() / "server.properties").write_text(
@@ -273,6 +272,7 @@ def mock_snapshot_dependencies_setup(
         # the await doesn't blow up on a bare MagicMock.
         mock_manager.get_all_instances = AsyncMock(return_value=[instance])
 
+        current_runtime().resources.pop("snapshot_commands", None)
         yield
 
 
@@ -352,16 +352,14 @@ class TestSnapshotEndpoints:
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
 
-            assert response.status_code == 200
-            data = response.json()
+            assert response.status_code == 202
+            data = task_result(client, response)
 
             # Verify response structure
-            assert "message" in data
             assert "snapshot" in data
-            assert "Snapshot created successfully" in data["message"]
 
             # Verify snapshot details
             snapshot = data["snapshot"]
@@ -392,10 +390,10 @@ class TestSnapshotEndpoints:
             create_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert create_response.status_code == 200
-            created_snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            created_snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             # List snapshots
             list_response = client.get(
@@ -428,10 +426,10 @@ class TestSnapshotEndpoints:
             create_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert create_response.status_code == 200
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             # Modify some files to create changes
             (instance.get_data_path() / "server.properties").write_text(
@@ -506,10 +504,10 @@ class TestSnapshotEndpoints:
             snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+            assert snapshot_response.status_code == 202
+            snapshot_id = task_result(client, snapshot_response)["snapshot"]["id"]
 
             # Modify files using files API
             modified_content = "# MODIFIED CONFIG\nserver-port=25566\nmax-players=10"
@@ -556,12 +554,12 @@ class TestSnapshotEndpoints:
 
             # Restore original snapshot (should automatically create a safety snapshot)
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             # Verify a new safety snapshot was created
             snapshots_after_restore = client.get(
@@ -602,10 +600,10 @@ class TestSnapshotEndpoints:
             full_snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert full_snapshot_response.status_code == 200
-            full_snapshot_id = full_snapshot_response.json()["snapshot"]["id"]
+            assert full_snapshot_response.status_code == 202
+            full_snapshot_id = task_result(client, full_snapshot_response)["snapshot"]["id"]
 
             # Modify a file to ensure the next snapshot will be different
             await asyncio.sleep(0.2)
@@ -617,10 +615,10 @@ class TestSnapshotEndpoints:
             modified_snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert modified_snapshot_response.status_code == 200
-            modified_snapshot_id = modified_snapshot_response.json()["snapshot"]["id"]
+            assert modified_snapshot_response.status_code == 202
+            modified_snapshot_id = task_result(client, modified_snapshot_response)["snapshot"]["id"]
 
             # Verify snapshots have different IDs
             assert full_snapshot_id != modified_snapshot_id
@@ -653,10 +651,10 @@ class TestSnapshotEndpoints:
             plugins_snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id, "paths": ["/plugins"]},
+                json={"scope": _scope(server_id=server_id, paths=["/plugins"])},
             )
-            assert plugins_snapshot_response.status_code == 200
-            plugins_snapshot_id = plugins_snapshot_response.json()["snapshot"]["id"]
+            assert plugins_snapshot_response.status_code == 202
+            plugins_snapshot_id = task_result(client, plugins_snapshot_response)["snapshot"]["id"]
 
             # List snapshots by plugins path - should only return snapshots containing plugins
             plugins_snapshots_response = client.get(
@@ -689,19 +687,18 @@ class TestSnapshotEndpoints:
         server_id, instance = mock_instance
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            # Test restore with invalid snapshot ID — SSE stream still returns
-            # 200 but ends with an error event (the safety snapshot succeeds,
-            # then the restore itself fails when restic rejects the bogus id).
             invalid_restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": "invalid-snapshot-id", "server_id": server_id},
+                json={"source_snapshot_id": "0" * 64, "scope": _scope(server_id=server_id)},
             )
-            assert invalid_restore_response.status_code == 200
-            events = _parse_sse_events(invalid_restore_response)
-            assert events[-1].get("event_type") == "error"
-            assert "invalid-snapshot-id" not in events[-1].get("message", "")
-            assert events[-1].get("message")
+            assert invalid_restore_response.status_code == 202
+            task = wait_task(client, invalid_restore_response, success=False)
+            assert task["error"] == "服务器内部错误，请稍后重试"
+            history = client.get("/snapshots/restorations", headers={"Authorization": "Bearer test_master_token"}).json()
+            assert history["total"] == 1
+            assert history["restorations"][0]["status"] == "failed"
+            assert history["restorations"][0]["safety_snapshot_id"] is None
 
             preview = client.post(
                 "/snapshots/restore/preview",
@@ -720,14 +717,14 @@ class TestSnapshotEndpoints:
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Test without authorization header
-            response = client.post("/snapshots", json={"server_id": server_id})
+            response = client.post("/snapshots", json={"scope": _scope(server_id=server_id)})
             assert response.status_code in [401, 422]
 
             # Test with invalid token
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer invalid_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
             assert response.status_code in [401, 422]
 
@@ -770,10 +767,10 @@ class TestSnapshotEndpoints:
             snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+            assert snapshot_response.status_code == 202
+            snapshot_id = task_result(client, snapshot_response)["snapshot"]["id"]
 
             # Simulate server modifications (corrupt configs, add unwanted files)
             corrupted_props = "# CORRUPTED\nserver-port=invalid\nmax-players=999999"
@@ -810,12 +807,12 @@ class TestSnapshotEndpoints:
 
             # Restore (will automatically create safety snapshot)
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             # Verify complete restoration using files API
             for file_path, expected_content in original_structure.items():
@@ -865,10 +862,10 @@ class TestSnapshotEndpoints:
             snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+            assert snapshot_response.status_code == 202
+            snapshot_id = task_result(client, snapshot_response)["snapshot"]["id"]
 
             # Modify files in both subdirectory (plugins) and root directory (data)
             # 1. Modify file in plugins subdirectory
@@ -945,16 +942,12 @@ modified=true
             # Restore ONLY the plugins subdirectory to the original snapshot
             # (will automatically create safety snapshot)
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={
-                    "snapshot_id": snapshot_id,
-                    "server_id": server_id,
-                    "paths": ["/plugins"],
-                },
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id, paths=["/plugins"])},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             # Verify plugins subdirectory was restored to original state
             plugins_restored_check = client.get(
@@ -1006,16 +999,14 @@ modified=true
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
 
-            assert response.status_code == 200
-            data = response.json()
+            assert response.status_code == 202
+            data = task_result(client, response)
 
             # Verify response structure
-            assert "message" in data
             assert "snapshot" in data
-            assert "Snapshot created successfully" in data["message"]
 
             # Verify snapshot details
             snapshot = data["snapshot"]
@@ -1040,10 +1031,10 @@ modified=true
             create_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert create_response.status_code == 200
-            created_snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            created_snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             # List snapshots
             list_response = client.get(
@@ -1078,10 +1069,10 @@ modified=true
             create_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert create_response.status_code == 200
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             # Modify some files to create changes
             (instance.get_data_path() / "server.properties").write_text(
@@ -1127,10 +1118,10 @@ modified=true
             snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+            assert snapshot_response.status_code == 202
+            snapshot_id = task_result(client, snapshot_response)["snapshot"]["id"]
 
             # Modify file
             modified_content = "# MODIFIED CONFIG\nserver-port=25566\nmax-players=10"
@@ -1144,12 +1135,12 @@ modified=true
 
             # Restore (will automatically create safety snapshot)
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             # Verify restoration
             restored_props_response = client.get(
@@ -1174,12 +1165,11 @@ modified=true
             response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert "Snapshot created successfully" in data["message"]
+            assert response.status_code == 202
+            task_result(client, response)
 
     @pytest.mark.asyncio
     async def test_delete_snapshot(
@@ -1193,10 +1183,10 @@ modified=true
             snapshot1_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot1_response.status_code == 200
-            snapshot1_id = snapshot1_response.json()["snapshot"]["id"]
+            assert snapshot1_response.status_code == 202
+            snapshot1_id = task_result(client, snapshot1_response)["snapshot"]["id"]
 
             # Modify a file to ensure the next snapshot will be different
             await asyncio.sleep(0.2)
@@ -1208,10 +1198,10 @@ modified=true
             snapshot2_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot2_response.status_code == 200
-            snapshot2_id = snapshot2_response.json()["snapshot"]["id"]
+            assert snapshot2_response.status_code == 202
+            snapshot2_id = task_result(client, snapshot2_response)["snapshot"]["id"]
 
             # Verify both snapshots exist
             list_response = client.get(
@@ -1260,13 +1250,10 @@ modified=true
             create_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={
-                    "server_id": server_id,
-                    "paths": ["/plugins", "/world"],
-                },
+                json={"scope": _scope(server_id=server_id, paths=["/plugins", "/world"])},
             )
-            assert create_response.status_code == 200
-            snapshot = create_response.json()["snapshot"]
+            assert create_response.status_code == 202
+            snapshot = task_result(client, create_response)["snapshot"]
             snapshot_id = snapshot["id"]
 
             data_path = instance.get_data_path()
@@ -1302,16 +1289,12 @@ modified=true
 
             # Restore both included roots in one call
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={
-                    "snapshot_id": snapshot_id,
-                    "server_id": server_id,
-                    "paths": ["/plugins", "/world"],
-                },
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id, paths=["/plugins", "/world"])},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             # Intruders inside both included roots are gone
             assert not (
@@ -1337,10 +1320,10 @@ modified=true
             snapshot_response = client.post(
                 "/snapshots",
                 headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": server_id},
+                json={"scope": _scope(server_id=server_id)},
             )
-            assert snapshot_response.status_code == 200
-            snapshot_id = snapshot_response.json()["snapshot"]["id"]
+            assert snapshot_response.status_code == 202
+            snapshot_id = task_result(client, snapshot_response)["snapshot"]["id"]
 
             # Try to delete without authorization
             delete_response = client.delete(f"/snapshots/{snapshot_id}")
@@ -1353,7 +1336,8 @@ class TestIgnoredPathsEndpoints:
 
     @pytest.fixture
     def client(self):
-        return TestClient(api_app)
+        with TestClient(api_app) as client:
+            yield client
 
     @pytest.fixture
     def temp_server_dir(self):
@@ -1398,10 +1382,10 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=[".mcmap", "cache"]
         ):
             response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            assert response.status_code == 200
-            excludes = response.json()["snapshot"]["excludes"]
+            assert response.status_code == 202
+            excludes = task_result(client, response)["snapshot"]["excludes"]
             assert sorted(excludes) == [
                 str((data_path / ".mcmap").resolve()),
                 str((data_path / "cache").resolve()),
@@ -1419,10 +1403,10 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=[".mcmap", "cache"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            assert create_response.status_code == 200
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             # Mutate: config corruption, extraneous file, ignored-path growth.
             properties = data_path / "server.properties"
@@ -1436,12 +1420,12 @@ class TestIgnoredPathsEndpoints:
             new_cache.write_bytes(b"downloaded-after-snapshot")
 
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers=self._auth(),
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
 
             assert properties.read_text() == original_properties
             assert not extraneous.exists()
@@ -1457,16 +1441,16 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=[".mcmap"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers=self._auth(),
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            safety_id = _restore_safety_snapshot_id(restore_response)
+            safety_id = _restore_safety_snapshot_id(client, restore_response)
 
             list_response = client.get("/snapshots", headers=self._auth())
             safety = next(
@@ -1488,9 +1472,9 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=[".mcmap"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             (data_path / ".mcmap" / "tiles" / "r.0.1.png").write_bytes(b"new-tile")
             (data_path / "extraneous.txt").write_text("x")
@@ -1517,7 +1501,7 @@ class TestIgnoredPathsEndpoints:
             response = client.post(
                 "/snapshots",
                 headers=self._auth(),
-                json={"server_id": server_id, "paths": ["/cache"]},
+                json={"scope": _scope(server_id=server_id, paths=["/cache"])},
             )
             assert response.status_code == 400
             assert "忽略" in response.json()["detail"]
@@ -1531,9 +1515,9 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=["cache"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             response = client.post(
                 "/snapshots/restore/preview",
@@ -1547,11 +1531,10 @@ class TestIgnoredPathsEndpoints:
             assert response.status_code == 400
             assert "忽略" in response.json()["detail"]
 
-    def test_restore_of_ignored_path_fails_in_stream(
+    def test_restore_of_ignored_path_is_rejected_before_acceptance(
         self, client, mock_instance, initialized_restic_repo
     ):
-        """The restore SSE flow fails at the safety-snapshot stage when the
-        target itself is ignored — before any disk mutation."""
+        """Ignored targets never create a task or modify live content."""
         server_id, instance = mock_instance
         data_path = instance.get_data_path()
 
@@ -1559,26 +1542,20 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=["cache"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             marker = data_path / "cache" / "mojang_1.20.4.jar"
             before = marker.read_bytes()
 
             response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers=self._auth(),
-                json={
-                    "snapshot_id": snapshot_id,
-                    "server_id": server_id,
-                    "paths": ["/cache"],
-                },
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id, paths=["/cache"])},
             )
-            assert response.status_code == 200
-            events = _parse_sse_events(response)
-            assert events[-1]["event_type"] == "error"
-            assert "忽略" in events[-1]["message"]
+            assert response.status_code == 400
+            assert "忽略" in response.json()["detail"]
             assert marker.read_bytes() == before
 
     def test_list_filter_excludes_snapshots_that_ignored_the_path(
@@ -1592,10 +1569,10 @@ class TestIgnoredPathsEndpoints:
             instance, initialized_restic_repo, ignored_paths=["cache"]
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            assert create_response.status_code == 200
-            snapshot_id = create_response.json()["snapshot"]["id"]
+            assert create_response.status_code == 202
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
 
             cache_filtered = client.get(
                 "/snapshots",
@@ -1631,11 +1608,11 @@ class TestIgnoredPathsEndpoints:
             ignored_paths=["<LEVEL_NAME>/session.lock"],
         ):
             create_response = client.post(
-                "/snapshots", headers=self._auth(), json={"server_id": server_id}
+                "/snapshots", headers=self._auth(), json={"scope": _scope(server_id=server_id)}
             )
-            assert create_response.status_code == 200
-            snapshot_id = create_response.json()["snapshot"]["id"]
-            assert create_response.json()["snapshot"]["excludes"] == [
+            assert create_response.status_code == 202
+            snapshot_id = task_result(client, create_response)["snapshot"]["id"]
+            assert task_result(client, create_response)["snapshot"]["excludes"] == [
                 str((data_path / "world" / "session.lock").resolve())
             ]
 
@@ -1643,12 +1620,12 @@ class TestIgnoredPathsEndpoints:
             lock.write_bytes(b"\xff" * 8)
 
             restore_response = client.post(
-                "/snapshots/restore",
+                "/snapshots/restorations",
                 headers=self._auth(),
-                json={"snapshot_id": snapshot_id, "server_id": server_id},
+                json={"source_snapshot_id": snapshot_id, "scope": _scope(server_id=server_id)},
             )
-            assert restore_response.status_code == 200
-            assert _restore_safety_snapshot_id(restore_response) is not None
+            assert restore_response.status_code == 202
+            assert _restore_safety_snapshot_id(client, restore_response) is not None
             assert lock.read_bytes() == b"\xff" * 8
 
 
@@ -1662,7 +1639,8 @@ class TestPathContainmentEndpoints:
 
     @pytest.fixture
     def client(self):
-        return TestClient(api_app)
+        with TestClient(api_app) as client:
+            yield client
 
     @pytest.fixture
     def temp_server_dir(self):
@@ -1707,7 +1685,7 @@ class TestPathContainmentEndpoints:
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             for endpoint, payload in [
-                ("/snapshots", {"server_id": server_id, "paths": [escape_path]}),
+                ("/snapshots", {"scope": _scope(server_id, [escape_path])}),
                 (
                     "/snapshots/restore/preview",
                     {
@@ -1717,19 +1695,18 @@ class TestPathContainmentEndpoints:
                     },
                 ),
                 (
-                    "/snapshots/restore",
+                    "/snapshots/restorations",
                     {
-                        "snapshot_id": "irrelevant",
-                        "server_id": server_id,
-                        "paths": [escape_path],
+                        "source_snapshot_id": "0" * 64,
+                        "scope": _scope(server_id, [escape_path]),
                     },
                 ),
             ]:
                 response = client.post(endpoint, headers=self._auth(), json=payload)
-                assert response.status_code == 400, (
+                assert response.status_code == (400 if endpoint.endswith("/preview") else 422), (
                     f"{endpoint} accepted escaping path {escape_path!r}"
                 )
-                assert "越界" in response.json()["detail"]
+                assert response.json()["detail"]
         assert (outside / "victim.txt").read_text() == "do not touch"
 
     def test_server_id_traversal_rejected(
@@ -1747,7 +1724,7 @@ class TestPathContainmentEndpoints:
                 response = client.post(
                     "/snapshots",
                     headers=self._auth(),
-                    json={"server_id": "../other"},
+                    json={"scope": _scope(server_id="../other")},
                 )
             assert response.status_code == 400
             assert response.json()["detail"] == "服务器名称必须是有效的单级目录名称"
@@ -1764,10 +1741,10 @@ class TestPathContainmentEndpoints:
             response = client.post(
                 "/snapshots",
                 headers=self._auth(),
-                json={"server_id": server_id, "paths": ["/escape_link"]},
+                json={"scope": _scope(server_id=server_id, paths=["/escape_link"])},
             )
             assert response.status_code == 400
-            assert "越界" in response.json()["detail"]
+            assert "目录" in response.json()["detail"]
 
     def test_symlink_inside_data_dir_allowed(
         self, client, mock_instance, initialized_restic_repo
@@ -1781,8 +1758,10 @@ class TestPathContainmentEndpoints:
             response = client.post(
                 "/snapshots",
                 headers=self._auth(),
-                json={"server_id": server_id, "paths": ["/world_alias"]},
+                json={"scope": _scope(server_id=server_id, paths=["/world_alias"])},
             )
-            assert response.status_code == 200
+            assert response.status_code == 202
+
+            task_result(client, response)
 
 pytestmark = [pytestmark, pytest.mark.binary('restic')]

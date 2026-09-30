@@ -25,7 +25,9 @@ app/snapshots/
 ├── restoration_store.py # history persistence and interruption reconciliation
 ├── recovery.py  # startup reconciliation of pending/running restoration history
 ├── service.py   # SnapshotService — owned Restic planning/execution
-└── restore.py   # SnapshotRestoreService — path restore maintenance, safety snapshot and finalization
+├── commands.py  # task acceptance, safety evidence, file restore and reversible rollback
+├── queries.py   # journal-backed history state and current rollback availability
+└── file_restore.py # stopped-world checks and derived-tile cleanup for file scopes
 ```
 
 `get_snapshot_service()` returns the active runtime’s actual `SnapshotService`, or `None` when Restic is not configured. The composition root creates its Restic adapter and injects its Minecraft manager. Routers, cron jobs, self-checks and world restoration use this owned service; application callers do not construct competing repository clients.
@@ -37,8 +39,7 @@ freezes expanded current exclusions together with source and retained-chain
 protection. Execution rechecks current exclusions and rejects configuration or
 `LEVEL_NAME` drift before invoking Restic.
 
-Repository readers can coexist. Backup and restore execution hold repository
-references until their subprocess cleanup finishes; ready map previews retain
+Repository readers can coexist. Manual tasks hold repository references from acceptance through queued work and subprocess cleanup; ready map previews retain
 their source through close/expiry and outstanding tile reads. Forget/prune and
 lock cleanup reject while those references exist. Completed history does not
 permanently prevent retention. References are bounded per runtime.
@@ -52,7 +53,7 @@ Semantics:
 - **Backup** passes each ignored path under a backup root as an absolute `--exclude`. Restic records these in the snapshot metadata (`excludes`).
 - **Restore** never overwrites *or deletes* ignored paths, even though restores run with `--delete`. The effective ignore set is the union of current config and the snapshot's recorded `excludes`, so snapshots taken under an older ignore config stay protected after config changes — in both directions.
 - **Coverage** (`find_snapshots_covering`, path-filtered listing, self-check freshness) is exclude-aware: a snapshot whose recorded excludes contain the queried path does not count as covering it, while an exclude strictly below the queried path doesn't disqualify the snapshot (`coverage.py`).
-- Snapshotting or restoring a target that itself lies under an ignored path raises `TargetIgnoredError` (HTTP 400 / SSE error).
+- Snapshotting or restoring a target that itself lies under an ignored path raises `TargetIgnoredError` (HTTP 400 before task acceptance).
 
 ## Restore planning
 
@@ -107,8 +108,23 @@ speculative missing sidecars while requiring at least one existing target.
 Manual requests retain missing-target validation. Ignored-path, coverage and
 restore planning remain shared through `SnapshotService`.
 
-The generic restore router resolves requests, maps preflight errors and encodes
-events. `SnapshotRestoreService` owns safety snapshot → restore → cache cleanup.
+Manual creation uses `POST /snapshots {scope}`. File recovery uses
+`POST /snapshots/restorations {scope, source_snapshot_id}` and returns
+`202 {task_id, restoration_id, skipped_paths}`. The task worker waits for its
+resources, revalidates frozen identity/path/protection, creates and persists a
+safety snapshot plus missing-path evidence, then applies the selected replacement.
+History acceptance occurs after the journal reserves the task and before its worker
+starts. Rejection, queued cancellation and failure before execution settle history.
+`GET /snapshots/restorations` and its detail route project journal state; rollback
+availability follows retained generations and actual repository references.
+
+`POST /snapshots/restorations/{id}/rollback` creates another recovery task and
+records its parent. It saves current contents first, including edits made since
+the original restore. Missing targets use an owned temporary absence marker when
+no live target exists; a rollback removes only allowed selected paths and empty
+ancestors that were absent, preserving protected descendants and later siblings.
+Source, current and retained-chain exclusions apply to safety creation and writes.
+
 Every restore owns its target file scope. Whole-server/data targets and paths
 intersecting known world roots additionally require stopped servers and maintenance
 ownership, the server's `MAP_CACHE` scope and the concrete
@@ -119,13 +135,21 @@ not overlap. Dry-run preview and reads do not acquire these leases. Running/busy
 and path checks repeat after acquisition. Invalid unrelated server.properties
 values do not prevent recovery: world-name lookup reads only level-name.
 
-Disconnecting a restore stream closes nested generators and waits for subprocess
-and cache cleanup before releasing ownership. A failed or interrupted world
-restore clears that server's derived tiles even when Restic stopped before its
-first per-file event; ordinary file restores invalidate only reported affected
-tiles. Unknown writers retain cache artifacts and mark the cache degraded instead
-of deleting files they may still be writing. Cache cleanup failures are recorded
-for recovery. See `world-restore.md` for selective world restoration history and
-missing-sidecar rollback metadata.
+Closing observation of a file recovery does not stop it. Explicit task cancellation
+waits for owned processes and finite cleanup. A failed or cancelled restore touching
+world data clears the affected server's derived tiles even before the first Restic
+file event. Successful restoration invalidates reported terrain changes. Cache
+cleanup uses captured server references, so restored project metadata cannot hide
+the affected cache. Unknown writers retain artifacts and mark cache degradation;
+cleanup errors remain failed operations with retained history and safety evidence.
 
-Both world and ordinary file restores hold deletion admission through response closure. Server-scoped requests reserve their server before path resolution; global restores block server deletion while active. This prevents a restore accepted before deletion from recreating a removed directory when its SSE generator starts. The gate does not require stopping the server for ordinary file restoration.
+Accepted manual tasks hold deletion admission and target references through task
+finalization. Server removal checks these references before cancelling other tasks
+and again while frozen/exclusive; completed history does not block repository
+retention. A missing safety snapshot leaves its history readable with an explicit
+unavailable reason. Ordinary file restoration remains available online.
+
+World request execution, map previews and cron backup applications still share the
+same low-level protection, planner and repository reference registry. Their current
+adapters are described in `world-restore.md`; common task migration is tracked by
+`openspec/changes/unify-snapshot-recovery/tasks.md`.

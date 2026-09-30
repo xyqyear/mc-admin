@@ -216,6 +216,7 @@ export const queryKeys = {
     global: () => [...queryKeys.snapshots.all, "global"] as const,
     repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
     locks: () => [...queryKeys.snapshots.all, "locks"] as const,
+    history: (serverId?: string, offset = 0) => [...queryKeys.snapshots.all, 'history', serverId, offset] as const,
     forPath: (serverId: string, path: string) =>
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },

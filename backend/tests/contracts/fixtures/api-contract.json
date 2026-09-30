@@ -1086,12 +1086,36 @@
       "path": "/api/snapshots/repository-usage"
     },
     {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/snapshots/restorations"
+    },
+    {
       "cookie_csrf": true,
       "declared_authorization": [
         "session_or_master"
       ],
       "method": "POST",
-      "path": "/api/snapshots/restore"
+      "path": "/api/snapshots/restorations"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/snapshots/restorations/{restoration_id}"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/snapshots/restorations/{restoration_id}/rollback"
     },
     {
       "cookie_csrf": true,
@@ -1620,6 +1644,8 @@
       "file_ownership_repair",
       "server_rebuild",
       "world_restore",
+      "snapshot_create",
+      "snapshot_restore",
       "chunk_prune_preview",
       "chunk_prune_apply"
     ]
@@ -2162,6 +2188,42 @@
           "title": "CreateServerRequest",
           "type": "object"
         },
+        "CreateSnapshotRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "scope": {
+              "discriminator": {
+                "mapping": {
+                  "global": "#/components/schemas/GlobalScope",
+                  "paths": "#/components/schemas/PathsScope",
+                  "server": "#/components/schemas/ServerScope",
+                  "world": "#/components/schemas/WorldScope"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/GlobalScope"
+                },
+                {
+                  "$ref": "#/components/schemas/ServerScope"
+                },
+                {
+                  "$ref": "#/components/schemas/PathsScope"
+                },
+                {
+                  "$ref": "#/components/schemas/WorldScope"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "title": "CreateSnapshotRequest",
+          "type": "object"
+        },
         "FileContent": {
           "properties": {
             "content": {
@@ -2233,6 +2295,19 @@
           "title": "FileListResponse",
           "type": "object"
         },
+        "GlobalScope": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "global",
+              "default": "global",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "title": "GlobalScope",
+          "type": "object"
+        },
         "HTTPValidationError": {
           "properties": {
             "detail": {
@@ -2246,25 +2321,20 @@
           "title": "HTTPValidationError",
           "type": "object"
         },
-        "ListRestorationsResponse": {
+        "ListSnapshotsResponse": {
           "properties": {
-            "restorations": {
+            "snapshots": {
               "items": {
-                "$ref": "#/components/schemas/RestorationResponse"
+                "$ref": "#/components/schemas/ResticSnapshot"
               },
-              "title": "Restorations",
+              "title": "Snapshots",
               "type": "array"
-            },
-            "total": {
-              "title": "Total",
-              "type": "integer"
             }
           },
           "required": [
-            "restorations",
-            "total"
+            "snapshots"
           ],
-          "title": "ListRestorationsResponse",
+          "title": "ListSnapshotsResponse",
           "type": "object"
         },
         "LoginResponse": {
@@ -2277,6 +2347,35 @@
             "user"
           ],
           "title": "LoginResponse",
+          "type": "object"
+        },
+        "PathsScope": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "paths",
+              "default": "paths",
+              "title": "Kind",
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Paths",
+              "type": "array"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "paths"
+          ],
+          "title": "PathsScope",
           "type": "object"
         },
         "RebuildResponse": {
@@ -2310,7 +2409,712 @@
           "title": "RestartScheduleRequest",
           "type": "object"
         },
-        "RestorationResponse": {
+        "ResticSnapshot": {
+          "properties": {
+            "excludes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Excludes",
+              "type": "array"
+            },
+            "hostname": {
+              "title": "Hostname",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Paths",
+              "type": "array"
+            },
+            "program_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Version"
+            },
+            "short_id": {
+              "title": "Short Id",
+              "type": "string"
+            },
+            "time": {
+              "format": "date-time",
+              "title": "Time",
+              "type": "string"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "time",
+            "paths",
+            "hostname",
+            "username",
+            "id",
+            "short_id"
+          ],
+          "title": "ResticSnapshot",
+          "type": "object"
+        },
+        "RestorationSelection": {
+          "description": "What is being snapshotted/restored. ``chunks`` holds absolute chunk coords.",
+          "properties": {
+            "chunks": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Chunks",
+              "type": "array"
+            },
+            "region_dir_relpath": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Region Dir Relpath"
+            },
+            "regions": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Regions",
+              "type": "array"
+            },
+            "type": {
+              "$ref": "#/components/schemas/RestorationType"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "RestorationSelection",
+          "type": "object"
+        },
+        "RestorationStatus": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "interrupted",
+            "cancelled"
+          ],
+          "title": "RestorationStatus",
+          "type": "string"
+        },
+        "RestorationType": {
+          "enum": [
+            "global",
+            "server",
+            "paths",
+            "world",
+            "dimension",
+            "regions",
+            "chunks"
+          ],
+          "title": "RestorationType",
+          "type": "string"
+        },
+        "ServerOperation": {
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "title": "ServerOperation",
+          "type": "object"
+        },
+        "ServerScope": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "server",
+              "default": "server",
+              "title": "Kind",
+              "type": "string"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id"
+          ],
+          "title": "ServerScope",
+          "type": "object"
+        },
+        "SnapshotTaskAccepted": {
+          "properties": {
+            "restoration_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restoration Id"
+            },
+            "skipped_paths": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Skipped Paths",
+              "type": "array"
+            },
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "SnapshotTaskAccepted",
+          "type": "object"
+        },
+        "SyncRequest": {
+          "properties": {
+            "dry_run": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            },
+            "force": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          },
+          "title": "SyncRequest",
+          "type": "object"
+        },
+        "TaskAccepted": {
+          "properties": {
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "TaskAccepted",
+          "type": "object"
+        },
+        "TaskStatus": {
+          "enum": [
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "TaskStatus",
+          "type": "string"
+        },
+        "TaskType": {
+          "enum": [
+            "server_start",
+            "server_up",
+            "server_restart",
+            "server_stop",
+            "server_down",
+            "server_remove",
+            "server_create",
+            "server_sync",
+            "file_delete",
+            "archive_delete",
+            "map_initialize",
+            "self_check",
+            "dns_update",
+            "archive_hash",
+            "archive_publish",
+            "archive_create",
+            "archive_extract",
+            "file_ownership_repair",
+            "server_rebuild",
+            "world_restore",
+            "snapshot_create",
+            "snapshot_restore",
+            "chunk_prune_preview",
+            "chunk_prune_apply"
+          ],
+          "title": "TaskType",
+          "type": "string"
+        },
+        "UserPublic": {
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "role": {
+              "$ref": "#/components/schemas/UserRole",
+              "default": "admin"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "username",
+            "id",
+            "created_at"
+          ],
+          "title": "UserPublic",
+          "type": "object"
+        },
+        "UserRole": {
+          "enum": [
+            "admin",
+            "owner"
+          ],
+          "title": "UserRole",
+          "type": "string"
+        },
+        "ValidationError": {
+          "properties": {
+            "ctx": {
+              "title": "Context",
+              "type": "object"
+            },
+            "input": {
+              "title": "Input"
+            },
+            "loc": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "title": "Location",
+              "type": "array"
+            },
+            "msg": {
+              "title": "Message",
+              "type": "string"
+            },
+            "type": {
+              "title": "Error Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "loc",
+            "msg",
+            "type"
+          ],
+          "title": "ValidationError",
+          "type": "object"
+        },
+        "WorldScope": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "world",
+              "default": "world",
+              "title": "Kind",
+              "type": "string"
+            },
+            "selection": {
+              "$ref": "#/components/schemas/RestorationSelection"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "selection"
+          ],
+          "title": "WorldScope",
+          "type": "object"
+        },
+        "app__routers__servers__misc__ServerInfo": {
+          "properties": {
+            "gamePort": {
+              "title": "Gameport",
+              "type": "integer"
+            },
+            "gameVersion": {
+              "title": "Gameversion",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "javaVersion": {
+              "title": "Javaversion",
+              "type": "integer"
+            },
+            "maxMemoryBytes": {
+              "title": "Maxmemorybytes",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rconPort": {
+              "title": "Rconport",
+              "type": "integer"
+            },
+            "serverType": {
+              "title": "Servertype",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "serverType",
+            "gameVersion",
+            "gamePort",
+            "maxMemoryBytes",
+            "rconPort",
+            "javaVersion"
+          ],
+          "title": "ServerInfo",
+          "type": "object"
+        },
+        "app__routers__servers__world_restore__RestoreRequest": {
+          "properties": {
+            "selection": {
+              "$ref": "#/components/schemas/RestorationSelection"
+            },
+            "source_snapshot_id": {
+              "title": "Source Snapshot Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source_snapshot_id",
+            "selection"
+          ],
+          "title": "RestoreRequest",
+          "type": "object"
+        },
+        "app__routers__snapshots__RestoreRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "entry_point": {
+              "default": "files",
+              "enum": [
+                "files",
+                "world",
+                "snapshots"
+              ],
+              "title": "Entry Point",
+              "type": "string"
+            },
+            "scope": {
+              "discriminator": {
+                "mapping": {
+                  "global": "#/components/schemas/GlobalScope",
+                  "paths": "#/components/schemas/PathsScope",
+                  "server": "#/components/schemas/ServerScope",
+                  "world": "#/components/schemas/WorldScope"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/GlobalScope"
+                },
+                {
+                  "$ref": "#/components/schemas/ServerScope"
+                },
+                {
+                  "$ref": "#/components/schemas/PathsScope"
+                },
+                {
+                  "$ref": "#/components/schemas/WorldScope"
+                }
+              ],
+              "title": "Scope"
+            },
+            "source_snapshot_id": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Source Snapshot Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "scope",
+            "source_snapshot_id"
+          ],
+          "title": "RestoreRequest",
+          "type": "object"
+        },
+        "app__snapshots__api_models__ListRestorationsResponse": {
+          "properties": {
+            "restorations": {
+              "items": {
+                "$ref": "#/components/schemas/app__snapshots__api_models__RestorationResponse"
+              },
+              "title": "Restorations",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "restorations",
+            "total"
+          ],
+          "title": "ListRestorationsResponse",
+          "type": "object"
+        },
+        "app__snapshots__api_models__RestorationResponse": {
+          "properties": {
+            "error_message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Message"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "is_rollback": {
+              "title": "Is Rollback",
+              "type": "boolean"
+            },
+            "operation_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation Id"
+            },
+            "rollback_available": {
+              "title": "Rollback Available",
+              "type": "boolean"
+            },
+            "rollback_of_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rollback Of Id"
+            },
+            "rollback_unavailable_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rollback Unavailable Reason"
+            },
+            "safety_snapshot_exists": {
+              "title": "Safety Snapshot Exists",
+              "type": "boolean"
+            },
+            "safety_snapshot_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Safety Snapshot Id"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "discriminator": {
+                    "mapping": {
+                      "global": "#/components/schemas/GlobalScope",
+                      "paths": "#/components/schemas/PathsScope",
+                      "server": "#/components/schemas/ServerScope",
+                      "world": "#/components/schemas/WorldScope"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/GlobalScope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ServerScope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PathsScope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorldScope"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            },
+            "server_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Id"
+            },
+            "source_snapshot_exists": {
+              "title": "Source Snapshot Exists",
+              "type": "boolean"
+            },
+            "source_snapshot_id": {
+              "title": "Source Snapshot Id",
+              "type": "string"
+            },
+            "started_at": {
+              "format": "date-time",
+              "title": "Started At",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/components/schemas/RestorationStatus"
+            }
+          },
+          "required": [
+            "id",
+            "operation_id",
+            "server_id",
+            "scope",
+            "source_snapshot_id",
+            "safety_snapshot_id",
+            "source_snapshot_exists",
+            "safety_snapshot_exists",
+            "rollback_available",
+            "rollback_unavailable_reason",
+            "rollback_of_id",
+            "is_rollback",
+            "started_at",
+            "finished_at",
+            "status",
+            "error_message"
+          ],
+          "title": "RestorationResponse",
+          "type": "object"
+        },
+        "app__world__api_models__ListRestorationsResponse": {
+          "properties": {
+            "restorations": {
+              "items": {
+                "$ref": "#/components/schemas/app__world__api_models__RestorationResponse"
+              },
+              "title": "Restorations",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "restorations",
+            "total"
+          ],
+          "title": "ListRestorationsResponse",
+          "type": "object"
+        },
+        "app__world__api_models__RestorationResponse": {
           "properties": {
             "binding_issue": {
               "anyOf": [
@@ -2435,311 +3239,6 @@
             "error_message"
           ],
           "title": "RestorationResponse",
-          "type": "object"
-        },
-        "RestorationSelection": {
-          "description": "What is being snapshotted/restored. ``chunks`` holds absolute chunk coords.",
-          "properties": {
-            "chunks": {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "title": "Chunks",
-              "type": "array"
-            },
-            "region_dir_relpath": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Region Dir Relpath"
-            },
-            "regions": {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "title": "Regions",
-              "type": "array"
-            },
-            "type": {
-              "$ref": "#/components/schemas/RestorationType"
-            }
-          },
-          "required": [
-            "type"
-          ],
-          "title": "RestorationSelection",
-          "type": "object"
-        },
-        "RestorationStatus": {
-          "enum": [
-            "pending",
-            "running",
-            "succeeded",
-            "failed",
-            "interrupted",
-            "cancelled"
-          ],
-          "title": "RestorationStatus",
-          "type": "string"
-        },
-        "RestorationType": {
-          "enum": [
-            "global",
-            "server",
-            "paths",
-            "world",
-            "dimension",
-            "regions",
-            "chunks"
-          ],
-          "title": "RestorationType",
-          "type": "string"
-        },
-        "ServerOperation": {
-          "properties": {
-            "action": {
-              "title": "Action",
-              "type": "string"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "title": "ServerOperation",
-          "type": "object"
-        },
-        "SyncRequest": {
-          "properties": {
-            "dry_run": {
-              "default": false,
-              "title": "Dry Run",
-              "type": "boolean"
-            },
-            "force": {
-              "default": false,
-              "title": "Force",
-              "type": "boolean"
-            }
-          },
-          "title": "SyncRequest",
-          "type": "object"
-        },
-        "TaskAccepted": {
-          "properties": {
-            "task_id": {
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "task_id"
-          ],
-          "title": "TaskAccepted",
-          "type": "object"
-        },
-        "TaskStatus": {
-          "enum": [
-            "pending",
-            "running",
-            "completed",
-            "failed",
-            "cancelled"
-          ],
-          "title": "TaskStatus",
-          "type": "string"
-        },
-        "TaskType": {
-          "enum": [
-            "server_start",
-            "server_up",
-            "server_restart",
-            "server_stop",
-            "server_down",
-            "server_remove",
-            "server_create",
-            "server_sync",
-            "file_delete",
-            "archive_delete",
-            "map_initialize",
-            "self_check",
-            "dns_update",
-            "archive_hash",
-            "archive_publish",
-            "archive_create",
-            "archive_extract",
-            "file_ownership_repair",
-            "server_rebuild",
-            "world_restore",
-            "chunk_prune_preview",
-            "chunk_prune_apply"
-          ],
-          "title": "TaskType",
-          "type": "string"
-        },
-        "UserPublic": {
-          "properties": {
-            "created_at": {
-              "format": "date-time",
-              "title": "Created At",
-              "type": "string"
-            },
-            "id": {
-              "title": "Id",
-              "type": "integer"
-            },
-            "role": {
-              "$ref": "#/components/schemas/UserRole",
-              "default": "admin"
-            },
-            "username": {
-              "title": "Username",
-              "type": "string"
-            }
-          },
-          "required": [
-            "username",
-            "id",
-            "created_at"
-          ],
-          "title": "UserPublic",
-          "type": "object"
-        },
-        "UserRole": {
-          "enum": [
-            "admin",
-            "owner"
-          ],
-          "title": "UserRole",
-          "type": "string"
-        },
-        "ValidationError": {
-          "properties": {
-            "ctx": {
-              "title": "Context",
-              "type": "object"
-            },
-            "input": {
-              "title": "Input"
-            },
-            "loc": {
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ]
-              },
-              "title": "Location",
-              "type": "array"
-            },
-            "msg": {
-              "title": "Message",
-              "type": "string"
-            },
-            "type": {
-              "title": "Error Type",
-              "type": "string"
-            }
-          },
-          "required": [
-            "loc",
-            "msg",
-            "type"
-          ],
-          "title": "ValidationError",
-          "type": "object"
-        },
-        "app__routers__servers__misc__ServerInfo": {
-          "properties": {
-            "gamePort": {
-              "title": "Gameport",
-              "type": "integer"
-            },
-            "gameVersion": {
-              "title": "Gameversion",
-              "type": "string"
-            },
-            "id": {
-              "title": "Id",
-              "type": "string"
-            },
-            "javaVersion": {
-              "title": "Javaversion",
-              "type": "integer"
-            },
-            "maxMemoryBytes": {
-              "title": "Maxmemorybytes",
-              "type": "integer"
-            },
-            "name": {
-              "title": "Name",
-              "type": "string"
-            },
-            "rconPort": {
-              "title": "Rconport",
-              "type": "integer"
-            },
-            "serverType": {
-              "title": "Servertype",
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "name",
-            "serverType",
-            "gameVersion",
-            "gamePort",
-            "maxMemoryBytes",
-            "rconPort",
-            "javaVersion"
-          ],
-          "title": "ServerInfo",
-          "type": "object"
-        },
-        "app__routers__servers__world_restore__RestoreRequest": {
-          "properties": {
-            "selection": {
-              "$ref": "#/components/schemas/RestorationSelection"
-            },
-            "source_snapshot_id": {
-              "title": "Source Snapshot Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "source_snapshot_id",
-            "selection"
-          ],
-          "title": "RestoreRequest",
           "type": "object"
         }
       }
@@ -4538,7 +5037,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/ListRestorationsResponse"
+                    "$ref": "#/components/schemas/app__world__api_models__ListRestorationsResponse"
                   }
                 }
               },
@@ -4617,6 +5116,471 @@
               "content": {
                 "application/json": {
                   "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots": {
+        "get": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "server_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Server Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "path",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Path"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ListSnapshotsResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSnapshotRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotTaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots/restorations": {
+        "get": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "server_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Server Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__snapshots__api_models__ListRestorationsResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__routers__snapshots__RestoreRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotTaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots/restorations/{restoration_id}": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "restoration_id",
+              "required": true,
+              "schema": {
+                "title": "Restoration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__snapshots__api_models__RestorationResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots/restorations/{restoration_id}/rollback": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "restoration_id",
+              "required": true,
+              "schema": {
+                "title": "Restoration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotTaskAccepted"
+                  }
                 }
               },
               "description": "Successful Response"

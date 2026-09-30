@@ -1,6 +1,6 @@
 import type { BackupRepositoryUsage } from "@/features/backups/contracts";
 import { api } from "@/shared/http/api";
-import type { Snapshot, CreateSnapshotResponse, ListSnapshotsResponse, DeleteSnapshotResponse, ListLocksResponse, UnlockResponse, RestorePreviewRequest, RestorePreviewResponse } from '@/features/backups/contracts';
+import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, DeleteSnapshotResponse, ListLocksResponse, UnlockResponse, RestorePreviewRequest, RestorePreviewResponse } from '@/features/backups/contracts';
 
 
 export const snapshotApi = {
@@ -17,11 +17,8 @@ export const snapshotApi = {
     return res.data.snapshots;
   },
 
-  createSnapshot: async (params?: {
-    server_id?: string;
-    paths?: string[];
-  }): Promise<CreateSnapshotResponse> => {
-    const res = await api.post<CreateSnapshotResponse>("/snapshots", params || {});
+  createSnapshot: async (scope: SnapshotScope): Promise<SnapshotTaskAccepted> => {
+    const res = await api.post<SnapshotTaskAccepted>("/snapshots", { scope });
     return res.data;
   },
 
@@ -30,8 +27,16 @@ export const snapshotApi = {
     return res.data;
   },
 
-  createGlobalSnapshot: async (): Promise<CreateSnapshotResponse> => {
-    return snapshotApi.createSnapshot();
+  restore: async (request: SnapshotRestoreRequest): Promise<SnapshotTaskAccepted> => {
+    return (await api.post<SnapshotTaskAccepted>('/snapshots/restorations', request)).data;
+  },
+
+  rollback: async (id: string): Promise<SnapshotTaskAccepted> => {
+    return (await api.post<SnapshotTaskAccepted>(`/snapshots/restorations/${id}/rollback`)).data;
+  },
+
+  history: async (serverId?: string, offset = 0): Promise<RestorationHistory> => {
+    return (await api.get<RestorationHistory>('/snapshots/restorations', { params: { server_id: serverId, offset, limit: 50 } })).data;
   },
 
   getBackupRepositoryUsage: async (): Promise<BackupRepositoryUsage> => {

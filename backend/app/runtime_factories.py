@@ -53,6 +53,16 @@ def create_resource(runtime: "Runtime", name: str) -> Any:
         case "task_manager":
             from .background_tasks.manager import BackgroundTaskManager
             return BackgroundTaskManager(runtime.journal)
+        case "snapshot_commands":
+            from .snapshots.commands import SnapshotCommands
+            snapshots = runtime.resource("snapshot_service")
+            if snapshots is None:
+                return None
+            return SnapshotCommands(
+                snapshots, runtime.resource("docker_mc_manager"),
+                runtime.resource("server_operation_lock"), runtime.resource("task_manager"),
+                runtime.database.session_factory, runtime.settings.server_path,
+            )
         case "world_restore_orchestrator":
             from .world.artifacts import artifact_root
             from .world.restore import WorldRestoreOrchestrator

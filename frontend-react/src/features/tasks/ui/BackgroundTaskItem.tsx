@@ -69,6 +69,8 @@ const taskTypeNames: Record<BackgroundTaskType, string> = {
   file_ownership_repair: '修复文件所有权',
   server_rebuild: '重建服务器',
   world_restore: '恢复世界',
+  snapshot_create: '创建快照',
+  snapshot_restore: '恢复快照',
   chunk_prune_preview: '区块清理预览',
   chunk_prune_apply: '区块清理删除',
 }

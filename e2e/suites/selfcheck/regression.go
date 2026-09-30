@@ -488,7 +488,7 @@ func repositoryHealth(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "PUT", "/api/config/modules/self_check", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
 			return err
 		}
-		if err := c.JSON(ctx, "POST", "/api/snapshots", map[string]string{"server_id": fixtures.ServerOf(t.Env).ID}, nil, 200); err != nil {
+		if err := c.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": fixtures.ServerOf(t.Env).ID}}, nil); err != nil {
 			return err
 		}
 		for _, check := range []string{"backup.restic_configured", "backup.restic_reachable", "backup.server_snapshot_coverage", "backup.server_snapshot_freshness", "storage.backup_repository_usage", "locks.python_restic_active", "locks.repo_restic_active"} {

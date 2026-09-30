@@ -21,7 +21,7 @@ import {
   RestorePreviewModal,
   type RestorePreviewRequest,
 } from '@/features/world/restore/components/RestorePreviewModal'
-import { RestoreProgressCard } from '@/shared/operations/components/RestoreProgressCard'
+import { RestoreProgressCard } from '@/features/backups/ui/RestoreProgressCard'
 
 interface SnapshotPickerProps {
   open: boolean

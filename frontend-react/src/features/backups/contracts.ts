@@ -29,8 +29,52 @@ export interface Snapshot {
 }
 
 export interface CreateSnapshotResponse {
-  message: string;
   snapshot: Snapshot;
+  skipped_paths: string[];
+}
+
+export type SnapshotScope =
+  | { kind: 'global' }
+  | { kind: 'server'; server_id: string }
+  | { kind: 'paths'; server_id: string; paths: string[] }
+
+export interface SnapshotTaskAccepted {
+  task_id: string
+  restoration_id?: string | null
+  skipped_paths: string[]
+}
+
+export interface RestoreProgressState {
+  active: boolean
+  percent: number
+  message: string
+  log: string[]
+  done: boolean
+  error: string | null
+}
+
+export interface Restoration {
+  id: string
+  operation_id: string | null
+  server_id: string | null
+  scope: SnapshotScope | null
+  source_snapshot_id: string
+  safety_snapshot_id: string | null
+  source_snapshot_exists: boolean
+  safety_snapshot_exists: boolean
+  rollback_available: boolean
+  rollback_unavailable_reason: string | null
+  rollback_of_id: string | null
+  is_rollback: boolean
+  started_at: string
+  finished_at: string | null
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
+  error_message: string | null
+}
+
+export interface RestorationHistory {
+  restorations: Restoration[]
+  total: number
 }
 
 export interface ListSnapshotsResponse {
@@ -38,24 +82,9 @@ export interface ListSnapshotsResponse {
 }
 
 export interface SnapshotRestoreRequest {
-  snapshot_id: string;
-  server_id?: string;
-  paths?: string[];
-}
-
-export type SnapshotRestoreEventType =
-  | 'start'
-  | 'safety_snapshot'
-  | 'restore'
-  | 'invalidate_cache'
-  | 'complete'
-  | 'error'
-
-export interface SnapshotRestoreEvent {
-  event_type: SnapshotRestoreEventType
-  message?: string
-  percent?: number
-  safety_snapshot_id?: string
+  source_snapshot_id: string
+  scope: SnapshotScope
+  entry_point?: 'files' | 'world' | 'snapshots'
 }
 
 export interface DeleteSnapshotResponse {

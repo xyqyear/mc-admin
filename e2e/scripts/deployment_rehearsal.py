@@ -112,6 +112,18 @@ class Deployment:
     def snapshot(self):
         return self.request("POST", "/snapshots", {"server_id": self.server, "paths": ["/world"]})["snapshot"]["id"]
 
+    def snapshot_task(self):
+        accepted = self.request("POST", "/snapshots", {"scope": {"kind": "paths", "server_id": self.server, "paths": ["world"]}}, expected=202)
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            task = self.request("GET", "/tasks/" + accepted["task_id"])
+            if task["status"] in {"completed", "failed", "cancelled"}:
+                if task["status"] != "completed":
+                    raise AssertionError("Candidate snapshot task failed")
+                return task["result"]["snapshot"]["id"]
+            time.sleep(0.2)
+        raise AssertionError("Candidate snapshot task did not finish")
+
     def stream(self, path, data=None):
         body = self.request("POST", path, data, raw=True)
         events = [json.loads(line[5:].strip()) for line in body.decode().splitlines() if line.startswith("data:")]
@@ -288,7 +300,7 @@ def run(args, fixture):
         deployment.request("POST", "/admin/users", {"username": "post-upgrade-user", "password": fixture["password"], "role": "admin"})
         deployment.request("POST", "/cron/", {"cronjob_id": "post-upgrade-plan", "identifier": "backup", "params": {"enable_forget": False}, "cron": "0 0 1 1 *", "name": "post-upgrade retained plan"})
         deployment.request("POST", "/cron/post-upgrade-plan/pause")
-        retained["new_snapshot"] = deployment.snapshot()
+        retained["new_snapshot"] = deployment.snapshot_task()
         operations = deployment.request("GET", "/operations?limit=100")
         rows = operations if isinstance(operations, list) else operations["operations"]
         retained["operation"] = rows[0]["operation_id"]

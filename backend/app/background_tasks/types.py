@@ -25,6 +25,8 @@ class TaskType(str, Enum):
     FILE_OWNERSHIP_REPAIR = "file_ownership_repair"
     SERVER_REBUILD = "server_rebuild"
     WORLD_RESTORE = "world_restore"
+    SNAPSHOT_CREATE = "snapshot_create"
+    SNAPSHOT_RESTORE = "snapshot_restore"
     CHUNK_PRUNE_PREVIEW = "chunk_prune_preview"
     CHUNK_PRUNE_APPLY = "chunk_prune_apply"
 

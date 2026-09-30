@@ -1,49 +1,46 @@
 """Global snapshot management endpoints using restic"""
 
-from collections.abc import AsyncGenerator
-from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 
-from aiofiles import os as aioos
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.schemas import UserPublic
 from app.snapshots.api_models import (
     BackupRepositoryUsage,
     CreateSnapshotRequest,
-    CreateSnapshotResponse,
     ListLocksResponse,
+    ListRestorationsResponse,
     ListSnapshotsResponse,
+    RestorationResponse,
     RestorePreviewAction,
     RestorePreviewRequest,
     RestorePreviewResponse,
     RestoreRequest,
+    SnapshotTaskAccepted,
     UnlockResponse,
 )
 
 from ..config import get_settings
 from ..cron import get_restart_scheduler
+from ..db.database import get_session_factory
 from ..dependencies import get_current_user
 from ..dynamic_config import get_config
-from ..errors import PublicOperationError, log_safe_error, public_error_message
 from ..logger import get_logger
 from ..minecraft import get_docker_mc_manager
-from ..operation_admission import get_server_write_admission
 from ..snapshots import (
     TargetIgnoredError,
     get_snapshot_service,
 )
-from ..snapshots.application import SnapshotApplication, resolve_backup_paths
-from ..snapshots.policy import check_backup_time_restriction
-from ..snapshots.restore import (
+from ..snapshots.application import resolve_backup_paths
+from ..snapshots.commands import get_snapshot_commands
+from ..snapshots.file_restore import (
     SnapshotMaintenanceConflict,
-    SnapshotRestoreService,
     SnapshotServerRunning,
 )
+from ..snapshots.policy import check_backup_time_restriction
+from ..snapshots.queries import RestorationQueries
 from ..system.resources import get_disk_info
-from ..utils.sse import sse_encode, sse_response
-from ..world.locks import get_server_operation_lock
 
 router = APIRouter(
     prefix="/snapshots",
@@ -75,36 +72,20 @@ async def _resolve_backup_paths(
 
 
 
-# Global snapshot endpoints
-@router.post("", response_model=CreateSnapshotResponse)
-async def create_global_snapshot(
-    request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
-):
-    """Create a snapshot covering one or more paths (or a server, or all servers)"""
-    logger = get_logger()
+def _commands():
+    commands = get_snapshot_commands()
+    if commands is None:
+        raise HTTPException(status_code=500, detail="尚未配置快照仓库")
+    return commands
+
+
+@router.post("", status_code=202, response_model=SnapshotTaskAccepted)
+async def create_global_snapshot(request: CreateSnapshotRequest, user: UserPublic = Depends(get_current_user)):
     await _check_backup_time_restriction()
-
-    backup_paths = await _resolve_backup_paths(request.server_id, request.paths)
-
-    for backup_path in backup_paths:
-        if not await aioos.path.exists(backup_path):
-            raise HTTPException(status_code=404, detail=f"Path not found: {backup_path}")
-
-    service = _get_snapshot_service()
     try:
-        snapshot = await SnapshotApplication(service, get_docker_mc_manager(), get_server_operation_lock()).backup(backup_paths, actor_id=_.id)
-    except SnapshotMaintenanceConflict as error:
-        raise HTTPException(status_code=423, detail=str(error)) from error
-    except TargetIgnoredError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    logger.info(
-        "Snapshot created: %s (server_id=%s)", snapshot.short_id, request.server_id
-    )
-    return CreateSnapshotResponse(
-        message=f"Snapshot created successfully for {len(backup_paths)} path(s)",
-        snapshot=snapshot,
-    )
+        return await _commands().create(request.scope, user.id)
+    except TargetIgnoredError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("", response_model=ListSnapshotsResponse)
@@ -155,53 +136,41 @@ async def preview_global_restore(
     return RestorePreviewResponse(actions=actions, preview_summary=summary)
 
 
-async def admit_snapshot_restore(
-    request: RestoreRequest, _: UserPublic = Depends(get_current_user)
-) -> AsyncGenerator[None]:
-    admission = (
-        get_server_write_admission().write([request.server_id])
-        if request.server_id else get_server_write_admission().write_global()
-    )
-    with admission:
-        yield
-
-
-@router.post("/restore", dependencies=[Depends(admit_snapshot_restore)])
-async def restore_global_snapshot(
-    request: RestoreRequest, user: UserPublic = Depends(get_current_user)
-):
-    target_paths = await _resolve_backup_paths(request.server_id, request.paths)
-    service = SnapshotRestoreService(
-        _get_snapshot_service(), get_docker_mc_manager(), get_server_operation_lock()
-    )
-    server_ids = await service.maintenance_servers(target_paths)
+@router.post("/restorations", status_code=202, response_model=SnapshotTaskAccepted)
+async def restore_snapshot(request: RestoreRequest, user: UserPublic = Depends(get_current_user)):
     try:
-        await service.check_available(server_ids)
-    except SnapshotMaintenanceConflict as exc:
-        raise HTTPException(status_code=423, detail=str(exc)) from exc
-    except SnapshotServerRunning as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return await _commands().restore(request.scope, request.source_snapshot_id, user.id, entry_point=request.entry_point)
+    except SnapshotMaintenanceConflict as error:
+        raise HTTPException(status_code=423, detail=str(error)) from error
+    except SnapshotServerRunning as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except TargetIgnoredError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
-    async def event_gen() -> AsyncGenerator[bytes]:
-        try:
-            completed = None
-            async with aclosing(service.restore(
-                request.snapshot_id, target_paths, server_ids, user.id
-            )) as events:
-                async for event in events:
-                    if event.get("event_type") == "complete":
-                        completed = event
-                    else:
-                        yield sse_encode(event)
-            if completed is not None:
-                yield sse_encode(completed)
-        except Exception as exc:  # noqa: BLE001 - stream failures need a safe terminal event
-            log_safe_error(exc, "Snapshot restore failed")
-            if isinstance(exc, (SnapshotMaintenanceConflict, SnapshotServerRunning, TargetIgnoredError)):
-                exc = PublicOperationError(str(exc))
-            yield sse_encode({"event_type": "error", "message": public_error_message(exc)})
 
-    return sse_response(event_gen())
+@router.get("/restorations", response_model=ListRestorationsResponse)
+async def list_restorations(
+    server_id: str | None = None, limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0), _: UserPublic = Depends(get_current_user),
+):
+    return await RestorationQueries(get_session_factory(), _get_snapshot_service()).history(server_id, limit, offset)
+
+
+@router.get("/restorations/{restoration_id}", response_model=RestorationResponse)
+async def get_restoration(restoration_id: str, _: UserPublic = Depends(get_current_user)):
+    return await RestorationQueries(get_session_factory(), _get_snapshot_service()).get(restoration_id)
+
+
+@router.post("/restorations/{restoration_id}/rollback", status_code=202, response_model=SnapshotTaskAccepted)
+async def rollback_restoration(restoration_id: str, user: UserPublic = Depends(get_current_user)):
+    try:
+        return await _commands().rollback(restoration_id, user.id)
+    except SnapshotMaintenanceConflict as error:
+        raise HTTPException(status_code=423, detail=str(error)) from error
+    except SnapshotServerRunning as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except TargetIgnoredError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.delete("/{snapshot_id}")

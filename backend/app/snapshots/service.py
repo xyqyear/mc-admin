@@ -15,10 +15,13 @@ from contextlib import aclosing
 from pathlib import Path
 
 import aiofiles.os as aioos
+from fastapi import HTTPException
 
 from ..dynamic_config import get_config
 from ..errors import PublicOperationError
+from ..operations.context import current_execution
 from ..operations.finalization import finalize
+from ..runtime_resources import current_runtime
 from ..utils import async_fs
 from .coverage import covers
 from .ignores import (
@@ -26,6 +29,7 @@ from .ignores import (
     backup_excludes,
     is_ignored,
     resolve_all_ignores,
+    resolve_server_ignores,
 )
 from .models import (
     ResticRestoreEvent,
@@ -52,46 +56,74 @@ class SnapshotService:
 
     async def protection(
         self, snapshot_id: str | None = None, *, retained: Sequence[Path] = (),
+        data_paths: Sequence[Path] | None = None,
     ) -> SnapshotProtection:
-        current = await self._current_ignores()
-        excluded = list(retained)
+        current = await self._current_ignores(data_paths)
+        protection = SnapshotProtection.capture(current, retained, data_paths=data_paths)
         if snapshot_id is not None:
-            snapshot = await self.get_snapshot(snapshot_id)
-            excluded.extend([await async_fs.resolve(Path(path)) for path in snapshot.excludes])
-        return SnapshotProtection.capture(current, excluded)
+            return await self.with_source_protection(protection, await self.get_snapshot(snapshot_id))
+        return protection
+
+    async def with_source_protection(self, protection: SnapshotProtection, source: ResticSnapshot) -> SnapshotProtection:
+        excluded = list(protection.excluded)
+        for path in source.excludes:
+            excluded.extend([Path(path), await async_fs.resolve(Path(path))])
+        return SnapshotProtection.capture(protection.current, excluded, data_paths=protection.data_paths)
 
     async def revalidate_protection(self, protection: SnapshotProtection) -> None:
-        protection.require_current(await self._current_ignores())
+        protection.require_current(await self._current_ignores(protection.data_paths))
 
-    async def _current_ignores(self) -> list[Path]:
+    async def _current_ignores(self, data_paths: Sequence[Path] | None = None) -> list[Path]:
+        if data_paths is not None:
+            ignored: list[Path] = []
+            for data_path in data_paths:
+                ignored.extend(await resolve_server_ignores(data_path, get_config().snapshots.ignored_paths))
+            return ignored
         return await resolve_all_ignores(
             self._mc_manager, get_config().snapshots.ignored_paths
         )
 
     async def remove_absent_paths(
         self, snapshot_id: str, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
-    ) -> None:
+    ) -> list[Path]:
         """Restore recorded absence without deleting configured ignored descendants."""
         protection = protection or await self.protection(snapshot_id)
         await self.revalidate_protection(protection)
         ignored = protection.excluded
+        removed: list[Path] = []
 
         async def remove(path: Path) -> None:
-            if is_ignored(path, ignored) or (not await aioos.path.exists(path) and not await aioos.path.islink(path)):
+            if is_ignored(path, ignored) or is_ignored(await async_fs.resolve(path), ignored) or not await async_fs.lexists(path):
                 return
             if await aioos.path.islink(path) or not await aioos.path.isdir(path):
                 await aioos.remove(path)
+                removed.append(path)
                 return
             for child in await async_fs.iterdir(path):
                 await remove(child)
             try:
                 await aioos.rmdir(path)
+                removed.append(path)
             except OSError as exc:
                 if exc.errno != errno.ENOTEMPTY:
                     raise
 
+        async def apply() -> None:
+            for path in paths:
+                await remove(path)
+
+        await finalize(apply())
+        return removed
+
+    async def absent_targets(self, snapshot_id: str, paths: Sequence[Path]) -> tuple[Path, ...]:
+        by_parent: dict[Path, list[Path]] = {}
         for path in paths:
-            await remove(path)
+            by_parent.setdefault(path.parent, []).append(path)
+        absent: list[Path] = []
+        for parent, targets in by_parent.items():
+            nodes = await self._client.ls(snapshot_id, parent)
+            absent.extend(path for path in targets if path not in nodes)
+        return tuple(absent)
 
     async def create_snapshot(
         self, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
@@ -129,6 +161,8 @@ class SnapshotService:
         steps, ``file`` events passed through, and one aggregated ``summary``
         at the end.
         """
+        if not targets:
+            return
         with self.repository_use.retain((snapshot_id,)):
             plan = await self.build_plan(snapshot_id, targets, protection=protection)
             async with aclosing(self._run_plan(
@@ -373,6 +407,7 @@ class SnapshotService:
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
         with self.repository_use.maintain():
+            await self._require_stopped_repository_writers()
             return await self._client.forget_id(snapshot_id, prune=prune)
 
     async def forget(
@@ -388,6 +423,7 @@ class SnapshotService:
         prune: bool = True,
     ) -> str:
         with self.repository_use.maintain():
+            await self._require_stopped_repository_writers()
             return await self._client.forget(
                 keep_last=keep_last,
                 keep_hourly=keep_hourly,
@@ -405,7 +441,18 @@ class SnapshotService:
 
     async def unlock(self) -> str:
         with self.repository_use.maintain():
+            await self._require_stopped_repository_writers()
             return await self._client.unlock()
+
+    async def _require_stopped_repository_writers(self) -> None:
+        journal = current_runtime().journal
+        if journal is not None:
+            own = current_execution()
+            for record in await journal.unsettled():
+                if own is not None and record.operation_id == own.operation_id:
+                    continue
+                if not record.writers_stopped and (record.kind.startswith("snapshot_") or record.kind in {"world_restore", "cron_backup"} or any(ref.kind in {"safety_snapshot", "source_snapshot"} for ref in record.recovery_refs)):
+                    raise HTTPException(status_code=423, detail="仓库写入尚未确认结束，请先核对操作历史")
 
 
 def _accumulate_summary(

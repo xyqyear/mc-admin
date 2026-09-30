@@ -42,7 +42,8 @@ from app.servers.lifecycle import (
 from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
 from app.snapshots.application import SnapshotApplication, SnapshotMaintenanceConflict
-from app.snapshots.restore import SnapshotRestoreService
+from app.snapshots.commands import SnapshotCommands
+from app.snapshots.scopes import PathsScope
 from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 from tests.support.runtime import set_runtime_resource
@@ -158,42 +159,42 @@ async def test_archive_delete_rejects_protected_scope_without_accepting_task(fil
     assert not (root / "busy.zip").exists()
 
 
+@pytest.mark.binary("restic")
 async def test_cancelled_world_file_restore_invalidates_cache_before_restic_file_events(file_application, monkeypatch):
     app = file_application
+    set_runtime_resource(monkeypatch, 'dynamic_configuration', SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[".mcmap"])))
     monkeypatch.setattr(app.instance, "get_status", AsyncMock(return_value=MCServerStatus.CREATED))
     cache = app.data / ".mcmap" / "tiles"
     cache.mkdir(parents=True)
     (cache / "old.png").write_bytes(b"stale")
     entered = asyncio.Event()
 
-    async def interrupted_restore(snapshot_id, paths):
+    async def interrupted_restore(snapshot_id, paths, **kwargs):
         (app.data / "world" / "level.dat").write_bytes(b"partly-restored")
         entered.set()
         await asyncio.Event().wait()
         yield None
 
-    snapshots = SnapshotService(ResticClient(str(app.runtime.scratch_dir / "unused-restic"), password="test"), app.manager)
-    monkeypatch.setattr(snapshots, "create_snapshot", AsyncMock(return_value=SimpleNamespace(id="safety", short_id="safety")))
+    client = ResticClient(str(app.runtime.scratch_dir / "restic"), password="test")
+    await exec_command(str(client.binary_path), "init", env=client.env)
+    snapshots = SnapshotService(client, app.manager)
+    snapshot = await snapshots.create_snapshot([app.data / "world"])
     monkeypatch.setattr(snapshots, "restore", interrupted_restore)
-    service = SnapshotRestoreService(snapshots, app.manager, get_server_operation_lock())
-
-    async def restore():
-        return [event async for event in service.restore("original", [app.data / "world"], ["first"], 0)]
-
-    request = asyncio.create_task(restore())
+    service = SnapshotCommands(snapshots, app.manager, get_server_operation_lock(), app.tasks, app.runtime.database.session_factory, app.runtime.settings.server_path)
+    accepted = await service.restore(PathsScope(server_id="first", paths=("world",)), snapshot.id, 0)
     try:
-        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.wait_for(entered.wait(), 10)
         assert get_operation_coordinator().is_occupied(ResourceClaim(ResourceKind.MAP_CACHE, "first"))
-        request.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await request
+        await app.tasks.cancel(accepted["task_id"])
+        result = await app.tasks.get_future(accepted["task_id"])
+        assert not result.success
     finally:
-        request.cancel()
-        await asyncio.gather(request, return_exceptions=True)
+        await app.tasks.cancel(accepted["task_id"])
+        await app.tasks.get_future(accepted["task_id"])
     assert not cache.exists()
     assert (app.data / "world" / "level.dat").read_bytes() == b"partly-restored"
     record = (await app.journal.list())[0]
-    assert record.state == OperationState.INTERRUPTED and record.writers_stopped
+    assert record.state == OperationState.CANCELLED and record.writers_stopped
     assert ResourceReference("cache", "first", 1) in record.resources
 
 
@@ -270,13 +271,12 @@ async def test_real_online_restore_reuses_file_lease_and_preserves_ignored_paths
     (data / "ignored").mkdir()
     (data / "ignored" / "retained.txt").write_text("retain")
     application = SnapshotApplication(snapshots, file_application.manager, get_server_operation_lock())
-    service = SnapshotRestoreService(snapshots, file_application.manager, get_server_operation_lock())
+    service = SnapshotCommands(snapshots, file_application.manager, get_server_operation_lock(), file_application.tasks, file_application.runtime.database.session_factory, file_application.runtime.settings.server_path)
     async with get_server_operation_lock().lease(["first"], holder(), claims=[ResourceClaim(ResourceKind.FILES, "first", "data/world")]):
         with pytest.raises(SnapshotMaintenanceConflict):
             await application.backup([data])
-        async with aclosing(service.restore(snapshot.id, [data / "plugin.conf"], [], 0)) as events:
-            result = [event async for event in events]
-        assert result[-1]["event_type"] == "complete"
+        accepted = await service.restore(PathsScope(server_id="first", paths=("plugin.conf",)), snapshot.id, 0)
+        assert (await file_application.tasks.get_future(accepted["task_id"])).success
         assert (data / "plugin.conf").read_text() == "plugin-original"
         assert (data / "ignored" / "retained.txt").read_text() == "retain"
         file_application.instance.get_status.assert_not_awaited()

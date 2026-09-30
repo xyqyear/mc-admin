@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/shared/ui/card'
 import { Progress } from '@/shared/ui/progress'
 import { Spinner } from '@/shared/ui/spinner'
 
-import type { RestoreProgressState } from '@/shared/operations/restoreProgress'
+import type { RestoreProgressState } from '@/features/backups/contracts'
 
 interface RestoreProgressCardProps {
   state: RestoreProgressState

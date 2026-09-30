@@ -84,8 +84,13 @@ func configurationCredentialLogs(ctx context.Context, t *engine.Scope) error {
 	if failure.Detail != "服务器内部错误，请稍后重试" {
 		return fmt.Errorf("unexpected request error did not use the safe public message")
 	}
-	if _, err = client.SSE(ctx, "POST", "/api/snapshots/restore", missingSnapshot, "complete"); err == nil || err.Error() != "SSE error: 服务器内部错误，请稍后重试" {
-		return fmt.Errorf("unexpected restore failure did not use the safe SSE error")
+	accepted, err := client.StartTask(ctx, "POST", "/api/snapshots/restorations", map[string]any{"source_snapshot_id": strings.Repeat("0", 64), "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"private.properties"}}})
+	if err != nil {
+		return err
+	}
+	failed, failureErr := client.Task(ctx, accepted.ID)
+	if failureErr == nil || failed.Status != "failed" || failed.Error != "服务器内部错误，请稍后重试" {
+		return fmt.Errorf("unexpected restore task failure did not use the safe public error")
 	}
 	container, err := backend.Docker.Run(ctx, "logs", backend.Name)
 	if err != nil {

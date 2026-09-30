@@ -1,4 +1,5 @@
-import { useRestoreRequest } from '@/shared/operations/useRestoreRequest'
+import { fileSnapshotScope, useSnapshotOperation } from '@/features/backups/commands'
+import { RestorationHistoryDialog } from '@/features/backups/ui/RestorationHistoryDialog'
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -47,8 +48,8 @@ import { formatUtils } from '@/features/servers/presentation'
 
 import {
   type RestoreProgressState
-} from '@/shared/operations/restoreProgress'
-import { RestoreProgressCard } from '@/shared/operations/components/RestoreProgressCard'
+} from '@/features/backups/contracts'
+import { RestoreProgressCard } from '@/features/backups/ui/RestoreProgressCard'
 
 interface SnapshotSelectionDialogProps {
   open: boolean
@@ -136,7 +137,7 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
           disabled={restoreLoading}
         >
           {restoreLoading && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-          回滚
+          恢复
         </Button>
       </div>
     ),
@@ -180,10 +181,10 @@ const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
       <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            选择要回滚的快照 - {isServerMode ? '整个服务器' : filePath}
+            选择要恢复的快照 - {isServerMode ? '整个服务器' : filePath}
           </DialogTitle>
           <DialogDescription>
-            以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要回滚的版本
+            以下是包含{isServerMode ? '整个服务器' : '该路径'}的所有快照，请选择要恢复的版本
           </DialogDescription>
         </DialogHeader>
 
@@ -245,7 +246,7 @@ const PreviewDialog: React.FC<PreviewDialogProps> = ({
     <DialogContent className="sm:max-w-200 max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>
-          预览{isServerMode ? '服务器' : ''}快照回滚 - {snapshotId}
+          预览{isServerMode ? '服务器' : ''}快照恢复 - {snapshotId}
         </DialogTitle>
       </DialogHeader>
 
@@ -326,7 +327,10 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const [previewData, setPreviewData] = useState<RestorePreviewAction[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<string | null>(null)
 
-  const { state: restoreState, start: startRestore, reset: resetRestore } = useRestoreRequest()
+  const actualPath = path || file?.path || '/'
+  const scope = useMemo(() => fileSnapshotScope(serverId, [actualPath]), [serverId, actualPath])
+  const { state: restoreState, start: startRestore, reset: resetRestore } = useSnapshotOperation(scope)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const { confirm, confirmDialog } = useConfirm()
 
@@ -336,7 +340,6 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
   const createSnapshotMutation = useCreateSnapshot()
   const previewRestoreMutation = usePreviewRestore()
 
-  const actualPath = path || file?.path || '/'
   const displayName = isServerMode ? '整个服务器' : (file?.name || '服务器')
 
   const {
@@ -347,9 +350,9 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
   React.useEffect(() => {
     if (restoreState.done) {
-      toast.success(`已成功回滚 ${displayName}`)
+      toast.success(`已成功恢复 ${displayName}`)
     } else if (restoreState.error) {
-      toast.error(`回滚失败: ${restoreState.error}`)
+      toast.error(`恢复失败: ${restoreState.error}`)
     }
   }, [restoreState.done, restoreState.error, displayName])
 
@@ -376,7 +379,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
 
   const handleSnapshotRestore = (snapshotId: string) => {
     setSelectedSnapshotId(snapshotId)
-    startRestore({ url: '/snapshots/restore', body: { snapshot_id: snapshotId, server_id: serverId, paths: [actualPath] } })
+    void startRestore(snapshotId)
   }
 
   const handleCloseAfterRestore = () => {
@@ -417,7 +420,7 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
                 variant="outline"
                 size={isServerMode ? 'default' : 'icon-sm'}
                 onClick={handleBackup}
-                disabled={createSnapshotMutation.isPending}
+                disabled={createSnapshotMutation.isPending || restoreState.active}
               />
             }
           >
@@ -439,18 +442,19 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
                 variant={isServerMode ? 'default' : 'outline'}
                 size={isServerMode ? 'default' : 'icon-sm'}
                 onClick={handleRollback}
+                disabled={restoreState.active}
               />
             }
           >
             <History className="h-4 w-4" />
-            {isServerMode && <span className="ml-1">快照回滚</span>}
+            {isServerMode && <span className="ml-1">快照恢复</span>}
           </TooltipTrigger>
-          <TooltipContent>回滚 {displayName}</TooltipContent>
+          <TooltipContent>恢复 {displayName}</TooltipContent>
         </Tooltip>
       </div>
 
       <SnapshotSelectionDialog
-        open={isSnapshotDialogOpen}
+        open={isSnapshotDialogOpen || restoreState.active}
         onCancel={() => {
           setIsSnapshotDialogOpen(false)
           resetRestore()
@@ -478,6 +482,8 @@ const FileSnapshotActions: React.FC<FileSnapshotActionsProps> = ({
         isServerMode={isServerMode}
       />
 
+      {isServerMode && <Button variant="outline" onClick={() => setHistoryOpen(true)}>恢复历史</Button>}
+      <RestorationHistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} scope={scope} />
       {confirmDialog}
     </>
   )

@@ -75,9 +75,7 @@ func (s *scenario) checkScopedFiles(ctx context.Context, uploadSession, fileSnap
 	if err = fixtures.WriteFile(ctx, s.client, s.id, "/e2e-online.txt", "unrelated ordinary file remains writable"); err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", "/api/snapshots/restore", map[string]any{
-		"server_id": s.id, "paths": []string{"/e2e-online.txt"}, "snapshot_id": fileSnapshot,
-	}, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": s.id, "paths": []string{"e2e-online.txt"}}, "source_snapshot_id": fileSnapshot}); err != nil {
 		return fmt.Errorf("unrelated ordinary file restore was blocked by world maintenance: %w", err)
 	}
 	return fixtures.CheckFile(ctx, s.client, s.id, "/e2e-online.txt", "before online restore")

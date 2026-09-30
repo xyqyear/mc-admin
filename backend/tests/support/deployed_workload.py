@@ -113,19 +113,16 @@ def backup_restore(client: Client, server_id: str, index: int) -> dict[str, Any]
     client.request("POST", files + "/create", data={"path": "/", "name": name, "type": "directory"}, metric="restore.prepare-directory")
     client.request("POST", files + "/create", data={"path": scope, "name": "value.txt", "type": "file"}, metric="restore.prepare-file")
     client.request("POST", content_path, data={"content": payload}, metric="restore.prepare-content")
-    snapshot = client.json("POST", "/snapshots", data={"server_id": server_id, "paths": [scope]}, metric="restore.backup")["snapshot"]
+    snapshot = client.task("/snapshots", data={"scope": {"kind": "paths", "server_id": server_id, "paths": [name]}}, metric="restore.backup")["snapshot"]
     assert snapshot["id"]
     client.request("POST", content_path, data={"content": "changed after backup"}, metric="restore.modify")
-    streamed, _ = client.request("POST", "/snapshots/restore", data={"server_id": server_id, "snapshot_id": snapshot["id"], "paths": [scope]}, metric="restore.apply")
-    events = stream_events(streamed)
-    assert events[-1]["event_type"] == "complete"
-    assert events[-1].get("safety_snapshot_id")
+    result = client.task("/snapshots/restorations", data={"scope": {"kind": "paths", "server_id": server_id, "paths": [name]}, "source_snapshot_id": snapshot["id"]}, metric="restore.apply")
+    assert result["safety_snapshot_id"]
     restored, _ = client.request("GET", files + "/download?" + urlencode({"path": path}), metric="restore.verify-download")
     assert restored == expected_bytes
     return {
         "bytes": len(restored), "sha256": hashlib.sha256(restored).hexdigest(),
-        "safety_snapshot": True, "terminal_event": events[-1]["event_type"],
-        "sse_event_types": sorted({event["event_type"] for event in events}),
+        "safety_snapshot": True, "terminal_status": "completed",
     }
 
 

@@ -76,33 +76,33 @@ func repository(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	for _, input := range []map[string]any{{"paths": []string{"/alpha"}}, {"server_id": id, "paths": []string{"/../../outside"}}, {"server_id": id, "paths": []string{"/world/protected.txt"}}} {
-		if err = client.JSON(ctx, "POST", "/api/snapshots", input, nil, 400); err != nil {
+	for index, input := range []map[string]any{map[string]any{"scope": map[string]any{"kind": "paths", "paths": []string{"alpha"}}}, map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"../../outside"}}}, map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"world/protected.txt"}}}} {
+		if err = client.JSON(ctx, "POST", "/api/snapshots", input, nil, []int{422, 422, 400}[index]); err != nil {
 			return err
 		}
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": id, "paths": []string{"/missing"}}, nil, 404); err != nil {
+	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"missing"}}}, nil, 404); err != nil {
 		return err
 	}
 	data := filepath.Join(t.Env.Dir, "servers", id, "data")
 	if err = os.Symlink(t.Env.Dir, filepath.Join(data, "escape")); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": id, "paths": []string{"/escape"}}, nil, 400); err != nil {
+	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"escape"}}}, nil, 400); err != nil {
 		return err
 	}
 	if err = os.Remove(filepath.Join(data, "escape")); err != nil {
 		return err
 	}
 	ids := []string{}
-	for _, input := range []map[string]any{{"server_id": id, "paths": []string{"/alpha", "/beta"}}, {"server_id": id}, {}} {
+	for _, input := range []map[string]any{map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"alpha", "beta"}}}, map[string]any{"scope": map[string]any{"kind": "server", "server_id": id}}, map[string]any{"scope": map[string]any{"kind": "global"}}} {
 		var response struct {
 			Snapshot struct {
 				ID    string   `json:"id"`
 				Paths []string `json:"paths"`
 			} `json:"snapshot"`
 		}
-		if err = client.JSON(ctx, "POST", "/api/snapshots", input, &response, 200); err != nil {
+		if err = client.RunTask(ctx, "POST", "/api/snapshots", input, &response); err != nil {
 			return err
 		}
 		if response.Snapshot.ID == "" || len(response.Snapshot.Paths) == 0 {
@@ -173,7 +173,7 @@ func timeRestriction(ctx context.Context, t *engine.Scope) error {
 	var rejected struct {
 		Detail string `json:"detail"`
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": id}, &rejected, 400); err != nil {
+	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": id}}, &rejected, 400); err != nil {
 		return err
 	}
 	if !strings.Contains(rejected.Detail, "备份时间") {
@@ -182,7 +182,7 @@ func timeRestriction(ctx context.Context, t *engine.Scope) error {
 	if err = updateConfig(ctx, client, func(config map[string]any) { config["time_restriction"].(map[string]any)["enabled"] = false }); err != nil {
 		return err
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": id}, nil, 200); err != nil {
+	if err = client.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": id}}, nil); err != nil {
 		return err
 	}
 	if err = client.JSON(ctx, "DELETE", "/api/cron/"+cron.ID, nil, nil, 200); err != nil {
@@ -247,5 +247,5 @@ func staleLock(ctx context.Context, t *engine.Scope) error {
 	if strings.TrimSpace(locks.Locks) != "" {
 		return fmt.Errorf("stale lock remained after unlock: %q", locks.Locks)
 	}
-	return client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"server_id": fixtures.ServerOf(t.Env).ID}, nil, 200)
+	return client.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": fixtures.ServerOf(t.Env).ID}}, nil)
 }

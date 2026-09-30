@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import PublicOperationError
 from .ignores import is_ignored, subtree_excludes
 from .models import NodeKind
 
@@ -28,7 +29,7 @@ class SnapshotTreeReader(Protocol):
     async def ls(self, snapshot_id: str, path: Path) -> dict[Path, NodeKind]: ...
 
 
-class TargetIgnoredError(ValueError):
+class TargetIgnoredError(PublicOperationError):
     """A restore target equals or lies under an ignored path."""
 
 

@@ -103,21 +103,21 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 			ID string `json:"id"`
 		} `json:"snapshot"`
 	}
-	fileTarget := map[string]any{"server_id": s.id, "paths": []string{"/e2e-online.txt"}}
-	if err = s.client.JSON(ctx, "POST", "/api/snapshots", fileTarget, &fileSnapshot, 200); err != nil {
+	fileTarget := map[string]any{"scope": map[string]any{"kind": "paths", "server_id": s.id, "paths": []string{"e2e-online.txt"}}}
+	if err = s.client.RunTask(ctx, "POST", "/api/snapshots", fileTarget, &fileSnapshot); err != nil {
 		return err
 	}
 	if err = s.client.JSON(ctx, "POST", s.base+"/files/content?path=/e2e-online.txt", map[string]any{"content": "changed online"}, nil, 200); err != nil {
 		return err
 	}
-	if _, err = s.client.SSE(ctx, "POST", "/api/snapshots/restore", map[string]any{"server_id": s.id, "paths": []string{"/e2e-online.txt"}, "snapshot_id": fileSnapshot.Snapshot.ID}, "complete"); err != nil {
+	if _, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": s.id, "paths": []string{"e2e-online.txt"}}, "source_snapshot_id": fileSnapshot.Snapshot.ID}); err != nil {
 		return fmt.Errorf("ordinary file restore must remain available online: %w", err)
 	}
 	online, err := s.download(ctx, "e2e-online.txt")
 	if err != nil || string(online) != "before online restore" {
 		return fmt.Errorf("online file restore did not restore contents: %q: %w", online, err)
 	}
-	if err = s.client.JSON(ctx, "POST", "/api/snapshots/restore", map[string]any{"server_id": s.id, "paths": []string{"/"}, "snapshot_id": fileSnapshot.Snapshot.ID}, nil, 409); err != nil {
+	if err = s.client.JSON(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": s.id, "paths": []string{"."}}, "source_snapshot_id": fileSnapshot.Snapshot.ID}, nil, 409); err != nil {
 		return err
 	}
 	if err = s.stop(ctx); err != nil {
@@ -188,7 +188,7 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 			if err := s.scheduledRestartSkips(ctx); err != nil {
 				return err
 			}
-			if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{}, nil, 423); err != nil {
+			if err := s.client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "global"}}, nil, 423); err != nil {
 				return err
 			}
 			if err := t.Step("scheduled backups persist skipped results during restore", func() error {

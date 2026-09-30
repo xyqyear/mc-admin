@@ -53,7 +53,7 @@ app/
 ├── players/               # owned identity/session service, producers, dynamic filters, chat, achievements and skins
 ├── log_monitor/           # latest.log parsing, watchfiles notifications and idle tail reconciliation
 ├── files/                 # confined CRUD/search/upload, canonical resource scopes, population and ownership
-├── snapshots/             # backup application with parent leases, Restic adapter and scoped restore planner
+├── snapshots/             # scoped task commands, restoration history, protection, Restic planning and adapters
 ├── cron/                  # desired plans, scheduler registration/reconciliation and durable execution history
 ├── self_check/            # owned service/dependencies, isolated checks, retained history and notification sinks
 ├── dns/                   # desired connectivity, partial observations, incremental provider/router adapters
@@ -88,7 +88,7 @@ Long-running operations are async generators yielding `TaskProgress(progress, me
 
 Cancellation directly interrupts the owned worker, closes nested generators, and waits for registered subprocesses and finite cleanup before publishing a terminal status. The durable journal remains authoritative after late cancellation or restart; interrupted work maps to existing failed task/cron states and is never replayed. Filesystem refusal may leave partial output behind. See `docs/background-tasks.md` and `docs/operations.md`.
 
-World restoration remains a request-owned SSE flow with durable restoration history. Stream closure records interruption, releasing maintenance after confirmed writer termination and required cleanup; uncertain writers retain recovery blocks, and rollback requires an existing safety snapshot and restoration record. See `docs/world-restore.md`.
+Manual snapshot creation and file restore/rollback return durable tasks. `snapshots/commands.py` owns accepted target/repository references, safety evidence before writes and terminal history hooks. `snapshots/queries.py` projects authoritative journal state and rollback availability. File recovery history is available under `/snapshots/restorations`; the synchronous file restore route is absent. World restoration remains a request-owned SSE flow with durable restoration history. Stream closure records interruption, releasing maintenance after confirmed writer termination and required cleanup; uncertain writers retain recovery blocks, and rollback requires an existing safety snapshot and restoration record. See `docs/world-restore.md`.
 
 ## Dynamic config
 
@@ -104,7 +104,7 @@ Use `app.servers.commands.ServerCommands` for manual or scheduled lifecycle comm
 
 Configuration preparation, versions, staged application and matching metadata belong to `app.configuration`; callers import its owning modules directly. Saves accept optional `expected_version`; conflicts preserve HTTP 409 or task `error_code="configuration_conflict"`. Application preserves the initial running intent and owns source persistence before completion. See `docs/configuration.md`.
 
-Restart scheduling belongs to `app.servers.restart_schedule`. Managed plans bind to retained server generation and purpose; display names never select ownership, and unresolved historical bindings remain visible without reassignment. See `docs/cron.md`. Lifecycle services do not import routers. Shared maintenance state is exposed by `/api/servers/{server_id}/maintenance`; startup/rebuild/cron restart share the mutex. Snapshot backup/restoration rejects deletion with HTTP 423 before accepting a task. Deletion freezes new writers, cancels and drains server tasks, and rejects remaining request-owned writes and map workers before touching metadata or files. Ordinary file restoration remains available while a server runs.
+Restart scheduling belongs to `app.servers.restart_schedule`. Managed plans bind to retained server generation and purpose; display names never select ownership, and unresolved historical bindings remain visible without reassignment. See `docs/cron.md`. Lifecycle services do not import routers. Shared maintenance state is exposed by `/api/servers/{server_id}/maintenance`; startup/rebuild/cron restart share the mutex. Accepted, queued and executing snapshot tasks reject deletion with HTTP 423 and a task ID, including global scopes. The check runs before cancellation of other work and inside deletion freeze/exclusion. Deletion freezes new writers, cancels and drains server tasks, and rejects remaining request-owned writes and map workers before touching metadata or files. Ordinary file restoration remains available while a server runs.
 
 Delayed operations capture `app.servers.references.ServerRef` and revalidate generation and confined paths when acquiring resources. Directory presence alone does not register a server. `app.operations.coordinator` reserves declared resources atomically and validates explicit parent lease reuse; deletion admission freezes separately from execution leases. Operation history is readable by authenticated users; resolving interrupted work requires OWNER authority and fresh ownership/consistency checks.
 

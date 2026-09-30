@@ -43,7 +43,11 @@ async def resolve_server_ignores(
             parts = tuple(
                 level_name if part == LEVEL_NAME_TOKEN else part for part in parts
             )
-        resolved.append(await async_fs.resolve(data_path.joinpath(*parts)))
+        lexical = data_path.joinpath(*parts)
+        canonical = await async_fs.resolve(lexical)
+        for path in (lexical, canonical):
+            if path not in resolved:
+                resolved.append(path)
     return resolved
 
 
