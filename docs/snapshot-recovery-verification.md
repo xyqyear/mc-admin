@@ -13,8 +13,9 @@
 | 世界执行与精确缓存清理 | `4f31e77` | [36694438860](https://github.com/xyqyear/mc-admin/actions/runs/36694438860) |
 | 共用预览、仓库维护与子进程取消 | `d57b44a75404908049e157026232dab8391a593b` | [36705471988](https://github.com/xyqyear/mc-admin/actions/runs/36705471988) |
 | 刷新观察、忽略反馈及删除/收尾保护 | `3015abcdfba1f806dd8eff613011056ae373eb6c` | [36711350144](https://github.com/xyqyear/mc-admin/actions/runs/36711350144)，通过 |
+| 最终结构、迁移演练脚本、文档及主规范 | `5c2fe8dcc44989ca9eec2fe1af8b09cc0119219a` | [36713825591](https://github.com/xyqyear/mc-admin/actions/runs/36713825591)，通过 |
 
-最终文档、演练脚本和失效查询键清理后的分支提交仍须运行完整 CI。旧提交绿灯不代表最新提交通过；最终提交与 Actions 链接以交付报告为准。
+最终实现提交为 `5c2fe8dcc44989ca9eec2fe1af8b09cc0119219a`，[资格证明](evidence/snapshot-recovery-qualification.json) 保存原始 candidate 标识和五类门槛结果。后续验收记录提交同样必须通过完整 CI；其最新 SHA 与 Actions 链接在交付报告中确认，不用上述实现提交的绿灯替代。
 
 ## 本地业务验证
 

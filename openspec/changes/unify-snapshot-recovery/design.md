@@ -1,6 +1,6 @@
 ## Context
 
-动机和范围见 [proposal.md](proposal.md)。本文件是待审核设计，不描述已经实现的能力。
+动机和范围见 [proposal.md](proposal.md)。本文件记录已审核的设计约束；实施与验证状态见 [tasks.md](tasks.md)，当前模块结构和交付证据见 [路线图](../../../docs/snapshot-recovery-roadmap.md)。
 
 当前代码已有可复用的基础，不需要重建任务调度和 Restic 封装：
 
