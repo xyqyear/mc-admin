@@ -111,7 +111,7 @@ owned token directories, recheck current sessions after asynchronous enumeration
 and retain unresolved recovery references. An old task/history record does not
 resume or re-authorize a preview after restart.
 
-The preview stream reports staging and chunk-merge progress only (`start`, `stage`, `merge_region`, `ready`, `error`). Tile rendering happens later through tile requests, not through the preview SSE. An error event records a failed operation outcome even when the generator handles the exception to preserve the SSE contract.
+The common preparation task reports staging and chunk-merge progress and returns ready session metadata only after preparation succeeds. Tile rendering happens later through tile requests. A failed or explicitly cancelled preparation waits for owned session cleanup before its terminal task status; disconnecting observation alone does not cancel preparation.
 
 Each lazy render owns a `world_preview_render` operation with the real server ID
 and generation. `PreviewRenderTarget` carries the separate session identity and
@@ -139,7 +139,7 @@ invalidated, but other deletion failures propagate and persist cache degradation
 The frontend application operation observer invalidates world-restore, map and
 affected file query keys after terminal outcomes, including partial failure.
 This works after leaving the initiating page. The map tile layer reloads the
-region manifest and uses MCA mtimes as cache-busting query params.
+region manifest and combines MCA mtimes with the newest relevant terminal operation revision in tile URLs. MCC-only and same-mtime changes therefore refresh browser images. Read-only backups and previews do not advance that revision.
 
 ## Cancellation and crash recovery
 
@@ -175,17 +175,17 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 - `GET /dimension-labels` — dynamic dimension label mapping consumed by the frontend display layer
 - `GET /claims` — FTB claims extracted from the primary world root via mcmap; returns `available=false` when no supported FTB data is detected
 - `GET /player-locations` — saved player positions extracted from the primary world root via mcmap, with dimension ids resolved to `region_dir_relpath` when possible
-- `POST /preview` (body: `{source_snapshot_id, selection}`) — SSE stream of `PreviewEvent` (`start` → `stage` → optional `merge_region` → `ready`, or `error`); returns `session_id` in the `ready` event
-- `POST /preview/{session_id}/heartbeat` — extends the TTL; 404 if the session is unknown
-- `DELETE /preview/{session_id}` — idempotent teardown
-- `GET /preview/{session_id}/tile/{rx}/{rz}.png` — preview tile (also heartbeats)
+
+Claims and player locations also have `/api/servers/{server_id}/claims` and `/player-locations` aliases. World execution and history have no separate routes.
 
 创建、筛选、恢复和回滚使用 `/api/snapshots` 公共接口，显式传入 `{kind: "world", server_id, selection}`：
 
 - `POST /snapshots`：世界或维度创建，202 任务受理。
+- `POST /snapshots/targets/check`：仅用当前规则检查目标，返回禁用原因或跳过提示，不访问 Restic。
 - `POST /snapshots/eligible`：筛选覆盖允许范围的快照，不要求不存在的推测 MCC 文件。
 - `POST /snapshots/restorations`：202 返回任务与历史 ID；停服/维护预检查仍返回 409/423。
-- `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史。
+- `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史，支持 `kind`、`status`、`entry_point` 筛选。
+- `GET /snapshots/restorations/active?server_id=…`：从数据库发现受理、排队、执行和收尾中的恢复，包含影响该服务器的全局任务。
 - `POST /snapshots/restorations/{id}/rollback`：新的恢复任务，保存当前状态并关联原记录。
 
-地图预览与文件预览共用 `/api/snapshots/previews`。区域副本保留被保护的在线附属文件；区块副本先复制在线 MCA 及其 MCC，再仅合并允许的选中区块，未选中和被忽略的外部区块保持原状。绑定与分页契约见 `snapshots.md`。准备期间的进度延长会话寿命，就绪后使用心跳和 TTL；停止观察不取消准备。
+地图预览与文件预览共用 `/api/snapshots/previews`：POST 受理准备任务，GET `/{id}` 读取就绪元数据，GET `/{id}/actions` 分页读取文件动作，POST `/{id}/heartbeat` 续期，DELETE `/{id}` 受理清理任务，GET `/{id}/tiles/{rx}/{rz}.png` 按需渲染地图。区域副本保留被保护的在线附属文件；区块副本先复制在线 MCA 及其 MCC，再仅合并允许的选中区块，未选中和被忽略的外部区块保持原状。绑定与分页契约见 `snapshots.md`。准备期间的进度延长会话寿命，就绪后使用心跳和 TTL；停止观察不取消准备。

@@ -28,7 +28,7 @@ The system SHALL report configuration task success only after required metadata 
 
 **破坏性世界维护独占相应服务器范围**
 
-系统必须（SHALL）在对世界进行破坏性维护期间阻止冲突修改和服务器启动，按受影响服务器范围协调定时备份，并保留普通文件在线恢复。该规则必须（SHALL）一致地适用于手动生命周期操作、定时操作、配置重建和服务器删除。
+系统必须（SHALL）在对世界进行破坏性维护期间阻止冲突修改和服务器启动，按受影响服务器范围协调定时备份，并保留普通文件在线恢复。该规则必须（SHALL）一致地适用于手动生命周期操作、定时操作、配置重建和服务器删除。已受理或运行中的快照创建、恢复和回滚必须（SHALL）阻止受影响服务器删除；可取消裁剪继续保留取消并等待写入停止后的删除行为。
 
 #### Scenario: Start during pruning
 **裁剪期间请求启动**
@@ -59,22 +59,31 @@ The system SHALL report configuration task success only after required metadata 
 - **THEN** 重启不会绕过占用规则，其执行记录为已跳过
 
 #### Scenario: 删除无法等待活动操作结束
-- **WHEN** 删除服务器时，无法在有界等待时间内使活动写入结束
+- **WHEN** 删除服务器时，无法在有界等待时间内使允许取消的活动写入结束
 - **THEN** 删除报告冲突，不删除服务器目录
 - **AND** 成功等待已有操作结束后到实际删除之间，新提交的并发操作无法进入
+
+#### Scenario: 快照任务已受理但尚未持有执行锁
+- **WHEN** 快照创建、恢复或回滚已经受理，用户删除其影响的服务器
+- **THEN** 删除报告冲突及任务原因，不自动取消该快照任务
+- **AND** 全局任务同样保护其影响的服务器，删除进入排他阶段时再次确认冲突
+
+#### Scenario: 可取消裁剪期间删除
+- **WHEN** 仅有允许取消的裁剪任务影响目标服务器，用户请求删除
+- **THEN** 系统停止该任务并确认写入结束后才删除服务器目录
 
 ### Requirement: Restore completion and cancellation are observable
 
 **恢复完成及取消的结果可观察**
 
-系统必须（SHALL）在恢复被取消、请求流断开或失败后结束可终止的执行，完成必要收尾，并使已有的恢复历史不再报告运行中。只有确认所属写入停止后，才可解除相应写入限制；无法确认时必须（SHALL）记录中断及原因并保留受影响范围的恢复阻断。选中的源世界数据必须（SHALL）在目标目录缺失时仍可恢复。
+恢复必须（SHALL）由独立任务持有执行。观察连接断开不得（SHALL NOT）取消已受理的任务。显式取消或失败后，系统必须（SHALL）结束可终止执行并完成必要收尾，使已有恢复历史不再报告运行中。只有确认所属写入停止后，才可解除相应写入限制；无法确认时必须（SHALL）记录中断及原因并保留受影响范围的恢复阻断。选中的源世界数据必须（SHALL）在目标目录缺失时仍可恢复。
 
 #### Scenario: Client disconnects during restore
 **恢复期间客户端断开**
 
-- **WHEN** 活动恢复流被关闭，且能够确认所属写入停止
-- **THEN** 执行及必要收尾结束后释放维护占用，已有恢复历史不再报告运行中
-- **AND** 若已经建立安全快照及恢复记录，保留其可用的回滚引用
+- **WHEN** 恢复期间客户端断开任务观察连接
+- **THEN** 执行继续，用户重新连接后能读取任务进度和结果
+- **AND** 安全快照及恢复记录仍保留可用的回滚引用
 
 #### Scenario: Missing entities or poi directory
 **缺少 entities 或 poi 目录**
@@ -83,9 +92,9 @@ The system SHALL report configuration task success only after required metadata 
 - **THEN** 恢复包含该数据，回滚仍可恢复到原先目录缺失的状态
 
 #### Scenario: 恢复断流后写入停止状态不明
-- **WHEN** 活动恢复流被关闭，但无法确认所属写入已停止
+- **WHEN** 用户断开观察后任务因显式取消或后端故障中断，且无法确认所属写入已停止
 - **THEN** 操作日志记录中断及原因，已有恢复历史不再报告运行中
-- **AND** 受影响范围内的冲突写入继续被阻止，完成恢复验证前不因流关闭而解除相应限制
+- **AND** 受影响范围内的冲突写入继续被阻止，完成恢复验证前不解除相应限制
 
 ### Requirement: Upload flows own their local activity and outputs
 The system SHALL keep each upload flow's checking, batching, pause/resume and cancellation coherent, retain serial batch behavior, and give independent compression tasks independent output files.
@@ -135,11 +144,16 @@ The system SHALL preserve increasing chat replay identifiers across cleanup and 
 - **THEN** the session ends no earlier than its join time and contributes nonnegative playtime
 
 ### Requirement: Finite progress flows terminate visibly
-The frontend SHALL leave its active state when a finite progress stream ends without its required terminal event.
+
+前端必须（SHALL）在依附请求的有限进度流缺少终态却结束时展示可恢复失败；独立任务的观察连接失败必须（SHALL）显示连接异常并继续观察，而不是推断执行失败或完成。
 
 #### Scenario: Premature progress EOF
-- **WHEN** map initialization or restore preview closes before completion
-- **THEN** the user sees a recoverable failure and can close or retry the flow
+- **WHEN** 仍依附请求执行的有限流在完成前关闭
+- **THEN** 用户看到可恢复失败，可以关闭或重试该流程
+
+#### Scenario: 快照预览任务观察失败
+- **WHEN** 快照预览任务的状态读取暂时失败
+- **THEN** 原有阻塞继续，界面重试观察，不自动再次提交预览或结束任务
 
 ### Requirement: E2E phase budgets reflect actual work
 The runner SHALL reserve capacity before starting the deployment deadline, let long streams use their operation deadline, and provide diagnostics and resource cleanup independent bounded budgets.

@@ -15,7 +15,7 @@ app/snapshots/
 ├── ignores.py   # ignore-path resolution (<LEVEL_NAME> expansion) and pattern translation
 ├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
-├── application.py # backup use case, confined request paths and declared file scope
+├── application.py # confined listing/cron path resolution and maintenance conflict type
 ├── policy.py    # manual backup time-window policy
 ├── scopes.py    # explicit global/project/data-path/world selection and resource claims
 ├── protection.py # frozen current/source/chain exclusions and execution revalidation
@@ -25,8 +25,14 @@ app/snapshots/
 ├── restoration_store.py # history persistence and interruption reconciliation
 ├── recovery.py  # startup reconciliation of pending/running restoration history
 ├── service.py   # SnapshotService — owned Restic planning/execution
-├── commands.py  # task acceptance, safety evidence, file restore and reversible rollback
-├── queries.py   # journal-backed history state and current rollback availability
+├── commands.py  # task acceptance, safety evidence, file/world recovery and rollback
+├── queries.py   # journal-backed active/history state and rollback availability
+├── preparation.py # target planning, scope checks and frozen restore evidence
+├── previews.py  # task preparation, binding checks, metadata and cleanup commands
+├── preview_sessions.py # bounded shared session lifetime and artifact references
+├── preview_actions.py # file action summaries and pagination
+├── preview_version.py # observed target versions for preview validation
+├── maintenance.py # task-owned deletion and stale-lock cleanup
 └── file_restore.py # stopped-world checks and derived-tile cleanup for file scopes
 ```
 
@@ -95,9 +101,9 @@ Request-supplied `server_id` and `paths` are joined into filesystem paths, so th
 
 ## Lock interaction
 
-`SnapshotApplication.backup` resolves affected servers and file paths, then
+`SnapshotCommands` resolves affected servers and file paths, then
 atomically acquires maintenance and `FILES` claims with kind BACKUP. Busy targets
-reject manual creation or skip scheduled backup. Whole-root backups declare the
+reject conflicting admission or wait within an accepted task; scheduled backups skip busy resources. Whole-root backups declare the
 global file root as well as captured generations. Servers can remain running;
 these leases coordinate application operations and do not freeze Minecraft writes.
 

@@ -48,12 +48,12 @@
 - [x] 6.3 覆盖已受理快照任务拒绝服务器删除、全局任务目标识别、删除排他阶段重检，以及可取消裁剪等待写入停止后删除，保留现有业务断言。
 - [x] 6.4 对安全快照前后、写入中、收尾中的显式取消和进程故障注入测试，核对任务、历史、实际内容、安全引用、资源占用和缓存结果；未知写入者保持恢复阻断。
 - [x] 6.5 增加浏览器业务流程：文件创建→恢复→历史回滚、地图恢复→回滚、忽略提示与禁用、刷新后继续观察；按数据结果断言，不只检查接口被调用。
-- [ ] 6.6 在 e2e/suites 与 e2e/docs/coverage.md 同步新契约覆盖，清除已移除接口的探测和 fixture；完整 CI 核对所有分片与审计而非只重跑局部失败。
+- [x] 6.6 在 e2e/suites 与 e2e/docs/coverage.md 同步新契约覆盖，清除已移除接口的探测和 fixture；完整 CI 核对所有分片与审计而非只重跑局部失败。
 
 ## 7. 完成文档、迁移演练与交付
 
-- [ ] 7.1 全局检索旧快照 SSE 路由、闲置控制器、重复世界恢复服务及失效 import；仅删除已有新行为覆盖的旧代码和测试，不保留未使用兼容层。
-- [ ] 7.2 按 design.md 演练旧数据库升级及配套回退，验证已有仓库不重建、旧历史可读、允许记录可回滚、歧义记录无法写入新实例。
-- [ ] 7.3 更新根/后端/前端/E2E CLAUDE.md 及 snapshots、world-restore、operations、database-migrations、task-center、world-restore-page、data-architecture 文档，使其描述实际最终结构。
+- [x] 7.1 全局检索旧快照 SSE 路由、闲置控制器、重复世界恢复服务及失效 import；仅删除已有新行为覆盖的旧代码和测试，不保留未使用兼容层。
+- [x] 7.2 按 design.md 演练旧数据库升级及配套回退，验证已有仓库不重建、旧历史可读、允许记录可回滚、歧义记录无法写入新实例。
+- [x] 7.3 更新根/后端/前端/E2E CLAUDE.md 及 snapshots、world-restore、operations、database-migrations、task-center、world-restore-page、data-architecture 文档，使其描述实际最终结构。
 - [ ] 7.4 执行相关本地测试、静态/类型/架构检查与 OpenSpec 严格校验；提交推送最终分支，最新 SHA 的 candidate/Go、static/frontend、全部 backend/API 分片及审计、browser、qualification 全部成功。
 - [ ] 7.5 记录最终 SHA、完整 Actions 链接和迁移限制，更新路线图并同步规范；按获授权的合并/归档流程完成交付，不用旧 SHA 绿灯替代最终验证。

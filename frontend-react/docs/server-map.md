@@ -55,7 +55,7 @@ Mode-switch math (chunk → region) runs through these so both modes always agre
 
 - **Cookie-backed image requests.** Tile URLs are normal same-origin `/api/...png` image URLs, so the browser sends the HttpOnly session cookie and can use its native image cache.
 - **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and returns a blank data URL for anything outside the set, skipping a round trip.
-- **Cache-stable URLs.** The layer appends the MCA mtime as `?mt=` for map tiles, so browser cache entries survive panning and zooming but bust when a region file changes.
+- **Cache-stable URLs.** The layer includes MCA mtime and the newest relevant server/global operation revision in tile URLs. Browser cache entries survive panning and zooming, while recovery refreshes them even when only an MCC changed or the restored MCA has the same mtime. Read-only previews and backups do not advance the revision.
 
 ## Tile caching
 

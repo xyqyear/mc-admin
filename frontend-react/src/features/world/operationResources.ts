@@ -35,8 +35,7 @@ export function worldOperationResources(operation: Operation): QueryKey[] {
     keys.push(queryKeys.map.status(id), queryKeys.map.regionsForServer(id),
       queryKeys.worldRestore.layout(id), queryKeys.worldRestore.dimensionLabels(id),
       queryKeys.worldRestore.playerLocations(id), queryKeys.ftbClaims.claims(id),
-      queryKeys.worldRestore.history(id), queryKeys.worldRestore.restorationsForServer(id),
-      queryKeys.worldRestore.eligibleForServer(id), queryKeys.serverMaintenance.detail(id))
+      queryKeys.serverMaintenance.detail(id))
   }
   return keys
 }

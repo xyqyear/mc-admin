@@ -115,7 +115,7 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 
 ## SSE consumer
 
-`shared/http/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. `shared/hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`; finite restore controllers clone the confirmed target. HTTP failures retain structured `ApiError.detail` and status. EOF before an explicit terminal event is a connection failure.
+`shared/http/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. `shared/hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`. Snapshot recovery instead observes independent tasks and clones the confirmed target before submission. HTTP failures retain structured `ApiError.detail` and status. EOF before an explicit terminal event is a connection failure.
 
 ## Monaco editor
 

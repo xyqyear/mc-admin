@@ -1,39 +1,100 @@
-# Task Center
+# Server File Management
 
-The globally mounted task center displays backend tasks and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, polling, commands, downloads and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel.
+Per-server file browser, editor, search, upload, and ownership-repair UI. Reached from a server's overview at `/server/{id}/files`. Exposes everything the user might want to do to the server's data directory short of opening a shell.
 
-## Backend task state
+## Layout
 
-`contracts.ts` contains the HTTP DTO and the camel-case view model; `api.ts` performs that explicit conversion. Backend statuses are lowercase `pending`, `running`, `completed`, `failed`, `cancelled`. Dynamic result objects remain feature-validated where a workflow consumes them.
+```
+┌────────────────────────────────────────────────┐
+│ FileBreadcrumb · FileToolbar                  │
+│ (upload/create/repair…)                       │
+├────────────────────────────────────────────────┤
+│ FileSearchBox (basic in-folder)                │
+├────────────────────────────────────────────────┤
+│                                                │
+│  FileTable (current directory)                 │
+│  └ row click → navigate into folder /          │
+│    open file in editor                         │
+│                                                │
+└────────────────────────────────────────────────┘
+```
 
-TanStack Query is the only backend-task state owner. `queries.ts` owns `taskQueryKeys`, list/active/detail requests and polling. Lists and the badge poll every second while active tasks exist, otherwise every ten seconds; task details poll every two seconds until terminal. The badge reads the active-task query directly. There is no background-task Zustand mirror.
+URL is the source of truth: `?path=<dir>&q=<query>&regex=<bool>`. Reload preserves location and search state.
 
-Task items render progress/message/result/error, allow explicit cancellation when a pending/running task is cancellable, and allow terminal records to be dismissed. The panel shows active tasks and terminal results from the last thirty minutes (records without an end time remain visible); clearing completed records sends the existing task API command.
+Game-port self-check remediation links to `/server/<encoded-server-id>/files?path=%2F&q=server.properties&regex=false`. `/` is the server data root. The search input and results follow URL changes, including browser back/forward; literal search keeps the dot from acting as a regex wildcard. Users open the file through the normal editor, which retains its Compose-override reminder. The route uses the existing session guard and server/file error handling.
 
-Manual snapshot creation and file restore/rollback, lifecycle, creation/synchronization, file/archive deletion, map initialization, manual self-check/DNS and upload hashing/publication return `202 {task_id}`. `commands.ts` exports `waitForTaskResult` for their initiating workflows: it observes task detail every second, updates Query cache, keeps waiting through read failures with a reconnect notice, and invokes terminal handlers only after a confirmed outcome. An AbortSignal detaches the observer; it does not cancel the task. Authentication expiry stops observation. Task acceptance and 100% progress alone never unblock a workflow.
+## Ownership repair
 
-Server controls show the maintenance reason and a task link when available. Creation, map initialization, self-check, DNS and synchronization also discover active work when reopened. Map initialization retains its non-dismissible progress dialog; existing file/upload forms retain their original busy state and terminal behavior. Browser File objects are not persisted by the task center. `openTaskCenter` opens the background tab without giving feature components ownership of panel state.
+`FileToolbar.tsx` exposes a confirmed "修复文件所有权" action at the top of the file manager. The mutation calls `POST /servers/{id}/files/ownership/restore`, receives a `task_id`, and `useFileBrowser` polls that task with `useTask(task_id)`. The backend task recursively sets every file in the server data directory to the UID/GID of that directory; the application operation observer invalidates the file-list cache after terminal outcomes, including partial failures. The task is also visible in the global task center.
 
-## Completion ownership
+## Single-file editing
 
-`app/operations/OperationObserver.tsx` owns business-cache completion effects through feature resource registries for configuration, servers, files/archives, world, backups/history, health and DNS. Configuration, populate/compression/ownership presentation and world restore/prune views display outcomes without owning those effects. Closing independent-task dialogs does not cancel backend work. Dismissing generic task records does not destroy feature-owned prune preview metadata/projections. Task commands invalidate task and operation discovery; browser-owned partial uploads also invalidate their actual immediate writes.
+`FileEditDialog.tsx` opens a Monaco editor populated by `GET /files/content`. Auto-detects the language from the extension via `features/files/languageDetection.ts`. **SNBT** (Minecraft NBT serialized as text) is registered as a custom Monaco language in `main.tsx`; editing one of these is the same as editing YAML/JSON, just with the right tokenizer.
 
-World restoration SSE remains request-owned and is cancelled when its view closes. File restoration uses independent tasks, preserves its non-dismissible progress dialog until terminal state, and resumes pending history after navigation or reload. It is distinct from independent background tasks even when both display progress.
+The dialog waits for successfully loaded content before enabling edits or save. An empty successful response is a valid baseline; users can intentionally save empty content. Failed initial reads show a retry action. A failed save keeps the dialog and authored draft, and a later background read does not overwrite those edits. Saving disables editing and dismissal until the write settles; the dialog closes on success. Ordinary online file editing uses the same flow.
 
-## Client state
+`FileDiffDialog.tsx` compares the latest loaded server content with the local draft, including changes to or from an empty file. The comparison does not enforce a server-side version check.
 
-- `panelStore.ts`: panel open state, active tab and drag position. Only the launcher position persists.
-- `downloadStore.ts`: browser download records and live AbortControllers. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
-- `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback.
+## Multi-file upload
 
-`ui/TaskCenterTrigger.tsx`, `TaskCenterPanel.tsx`, `BackgroundTaskList.tsx`, `BackgroundTaskItem.tsx`, `DownloadTaskList.tsx` and `DownloadTaskItem.tsx` present these states. The public `ui/index.ts` entry is used by the app shell.
+Folder drag-drop generates many files at once with potential conflicts. `MultiFileUploadDialog.tsx` displays `features/files/useMultiFileUpload.ts`, which owns the session-based flow:
+
+1. **Manifest** — frontend collects `{path, size}` for every dropped item, builds `FileUploadTree.tsx`.
+2. **Conflict check** — POST manifest → backend returns `session_id` + conflict list.
+3. **Conflict resolution** — `ConflictTree.tsx` displays conflicts; user picks an `OverwritePolicy` (`always_overwrite`, `never_overwrite`, or per-file decisions).
+4. **Policy submit** — POST to `/servers/{serverId}/files/upload/policy?session_id={id}&reusable={boolean}`.
+5. **Blob upload** — files posted; backend writes per the stored decisions.
+
+The flow fixes the file list when conflict checking starts and treats checking as busy. Its single batch-size constant decides both `reusable` and sequential batches of at most 1000 files; the raw API layer sends one batch. Closing, changing the target, or unmounting aborts the current request and ignores late callbacks. Cancellation preserves already-written files and invalidates the file listing; it does not roll back the batch.
+
+The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up.
+
+`shared/hooks/usePageDragUpload.ts` is the page-level drop-zone hook — collects dropped files and nested directory entries, then passes them to the dialog flow.
+
+## Deep search
+
+`FileDeepSearchDialog.tsx` runs against `POST /servers/{serverId}/files/search`:
+
+- Regex (toggle) or substring
+- Case sensitivity toggle
+- Subfolder recursion toggle
+- Min/max file size
+- Newer-than / older-than timestamps
+
+Results render as a tree (`FileSearchResultTree.tsx`) with `HighlightedFileName.tsx` showing the match against the query. Clicking a result navigates the main browser to that path.
+
+## Compression / decompression
+
+Compressing a folder is a long operation; both happen as background tasks.
+
+- `CompressionConfirmDialog.tsx` → `POST /api/archive/compress` returns a `task_id`
+- `useFileBrowser` watches the task via `useTask(task_id)` and supplies progress to `CompressionConfirmDialog.tsx`; `CompressionResultDialog.tsx` presents the finished archive
+
+The user can navigate away — the task center continues to track the task and toasts on completion.
+
+## Files
+
+- `pages/server/servers/ServerFiles.tsx` — route adapter; `features/files/FileBrowserScreen.tsx` — presentation
+- `features/files/components/FileBreadcrumb.tsx`, `FileTable.tsx`, `FileToolbar.tsx`, `FileSearchBox.tsx`, `FileSearchResultTree.tsx`, `HighlightedFileName.tsx`; shared `shared/components/DragDropOverlay.tsx`
+- `features/files/components/dialogs/MultiFileUploadDialog.tsx`, `FileUploadTree.tsx`, `ConflictTree.tsx`, `CreateDialog.tsx`, `RenameDialog.tsx`, `FileEditDialog.tsx`, `FileDiffDialog.tsx`, `FileDeepSearchDialog.tsx`, `CompressionConfirmDialog.tsx`, `CompressionResultDialog.tsx`
+- `features/files/api.ts`, `features/files/queries.ts`, `features/files/commands.ts`
+- `shared/hooks/usePageDragUpload.ts`
+- `features/files/languageDetection.ts`, `features/files/search.ts`
+
+## Feature controllers and completion
+
+`features/files/contracts.ts`, `api.ts`, `queries.ts` and `commands.ts` own the file protocol and server-state behavior. `useFileNavigation` preserves URL path/query/regex navigation and browser history. `useFileEditor` owns draft lifetime; `useFileBrowser` coordinates CRUD, confirmations, directory drag/drop and task presentation. The route and progress dialogs do not own independent task completion.
+
+`operationResources.ts` registers file/archive terminal effects with the app observer; `features/backups/operationResources.ts` owns snapshot/history refresh. Closing populate progress or leaving a compression/ownership view never cancels its backend task. File recovery uses an independent task through the common backups controller and retains its confirmed scope until a terminal result. Browser-owned upload cancellation preserves earlier writes and refreshes affected directories even after unmount.
+
+Real QueryClient/MSW tests exercise empty-file writes, a rejected online write with draft preservation, recursive regex/size/date filters, per-file overwrite policy, a reusable 1001-file upload cancelled during the second batch, and closing independent-task presentation.
 
 ## Snapshot recovery
 
 File controls submit explicit data-path scopes through `features/backups/commands`.
 Creation stays busy until the task finishes. Recovery uses the common progress card;
 HTTP acceptance does not unlock it, status read errors show reconnecting, and
-navigation only stops observation. Pending history restores observation on remount.
+navigation only stops observation. Database-only active restoration discovery resumes observation on remount.
 The server toolbar opens paginated recovery history, including safety availability
 and parent rollback links. A confirmed rollback replaces later changes in the
 selected scope, first saving a new safety snapshot so that rollback is reversible.

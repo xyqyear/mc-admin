@@ -15,6 +15,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
 class Deployment:
@@ -217,6 +218,58 @@ def archive(deployment, name, value):
     return digest
 
 
+def seed_legacy_restoration(deployment, snapshot_id):
+    deployment.content("/world/release-marker.txt", "before released restore")
+    base = "/servers/" + deployment.server + "/world-restore"
+    deployment.request("POST", base + "/restore", {
+        "source_snapshot_id": snapshot_id, "selection": {"type": "world"},
+    }, raw=True)
+    rows = deployment.request("GET", base + "/restorations")["restorations"]
+    record = next(row for row in rows if row["source_snapshot_id"] == snapshot_id)
+    assert record["status"] == "succeeded" and record["safety_snapshot_exists"]
+    assert deployment.content("/world/release-marker.txt") == "release world"
+    return {key: record[key] for key in (
+        "id", "selection", "source_snapshot_id", "safety_snapshot_id", "server_generation",
+    )}
+
+
+def seed_ambiguous_legacy_history(deployment, restoration_id):
+    if deployment.inspect()["State"]["Running"]:
+        raise RuntimeError("Historical fixture preparation requires a stopped application")
+    ambiguous_id = uuid4().hex
+    with closing(sqlite3.connect(deployment.root / "db.sqlite3")) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        row = dict(connection.execute("SELECT * FROM restoration WHERE id=?", (restoration_id,)).fetchone())
+        row.update(id=ambiguous_id, server_generation=None, binding_issue="generation_uncertain")
+        columns = ",".join('"' + name.replace('"', '""') + '"' for name in row)
+        connection.execute("INSERT INTO restoration (" + columns + ") VALUES (" + ",".join("?" for _ in row) + ")", tuple(row.values()))
+    return ambiguous_id
+
+
+def verify_legacy_recovery(deployment, legacy, ambiguous_id):
+    base = "/snapshots/restorations"
+    record = deployment.request("GET", base + "/" + legacy["id"])
+    for key in ("id", "source_snapshot_id", "safety_snapshot_id", "server_generation"):
+        assert record[key] == legacy[key], "Historical restoration identity changed: " + key
+    assert record["scope"]["selection"] == legacy["selection"]
+    assert record["rollback_available"] and record["safety_snapshot_exists"]
+    ambiguous = deployment.request("GET", base + "/" + ambiguous_id)
+    assert ambiguous["binding_issue"] == "generation_uncertain"
+    assert not ambiguous["rollback_available"] and ambiguous["rollback_unavailable_reason"]
+    deployment.request("POST", base + "/" + ambiguous_id + "/rollback", expected=409)
+    assert deployment.content("/world/release-marker.txt") == "release world"
+    rollback = deployment.task(base + "/" + legacy["id"] + "/rollback")
+    assert deployment.content("/world/release-marker.txt") == "before released restore"
+    undo = deployment.task(base + "/" + rollback["restoration_id"] + "/rollback")
+    assert deployment.content("/world/release-marker.txt") == "release world"
+    return {
+        "legacy_id": legacy["id"], "ambiguous_id": ambiguous_id,
+        "rollback_id": rollback["restoration_id"], "undo_id": undo["restoration_id"],
+        "legacy_identity_and_scope_retained": True, "ambiguous_write_rejected": True,
+        "rollback_and_undo_bytes_verified": True,
+    }
+
+
 @contextmanager
 def owned_checkpoints(deployment):
     directory = Path(tempfile.mkdtemp(prefix=".rehearsal-checkpoints-", dir=deployment.root))
@@ -289,8 +342,10 @@ def run(args, fixture):
     retained["schedule"] = deployment.request("POST", schedule_path, {"custom_cron": "0 0 1 1 *"})["cronjob_id"]
     deployment.request("POST", schedule_path + "/pause")
     retained["snapshot"] = deployment.snapshot()
+    retained["legacy_restoration"] = seed_legacy_restoration(deployment, retained["snapshot"])
     check_retained(deployment, retained)
     deployment.stop()
+    retained["ambiguous_restoration"] = seed_ambiguous_legacy_history(deployment, retained["legacy_restoration"]["id"])
     report["release_database"] = database_evidence(deployment.root)
     report["release_files"] = file_evidence(deployment.root)
     report["steps"].append("released application created real users, server, player histories, template, paused plan, files, archive and Restic snapshot")
@@ -300,6 +355,9 @@ def run(args, fixture):
         report["candidate_image"] = deployment.replace(args.candidate_image)
         report["candidate_application_sha256"] = deployment.application_source()
         check_retained(deployment, retained)
+        report["legacy_recovery"] = verify_legacy_recovery(deployment, retained["legacy_restoration"], retained["ambiguous_restoration"])
+        check_retained(deployment, retained)
+        report["steps"].append("released restoration IDs, selection, generation and safety references survived upgrade; ambiguous rollback was rejected; eligible rollback and rollback-of-rollback changed the expected bytes")
         deployment.content("/new-after-upgrade.txt", "must survive code rollback", create=True)
         deployment.content("/world/release-marker.txt", "after upgrade")
         deployment.request("POST", "/admin/users", {"username": "post-upgrade-user", "password": fixture["password"], "role": "admin"})

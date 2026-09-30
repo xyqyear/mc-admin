@@ -32,7 +32,7 @@ Supported database states:
 
 `app.db.base` defines the shared `Base` and timezone-aware column type.
 `app.db.metadata` explicitly registers tables owned by `auth`, `servers`,
-`templates`, `players`, `cron`, `dynamic_config`, `self_check`, `world` and
+`templates`, `players`, `cron`, `dynamic_config`, `self_check`, `snapshots` and
 `operations`. Alembic and complete test databases import this registration
 entrypoint; a feature importing its own table does not define another metadata
 registry. API models live with their owning features and are separate from

@@ -240,14 +240,11 @@ The frontend detail dialog displays them as “跳过” rather than “成功�
 Params: `BackupJobParams(server_id, path, forget retention fields,
 uptimekuma_url?)`.
 
-1. Resolve backup paths.
-2. Check `server_operation_lock` and skip rather than block if a conflicting
-   backup or restore lock is active. A global backup skips the entire run if any
-   affected server is busy. Skipped runs are not automatically retried.
-3. Call the public `SnapshotApplication.backup(...)` command with the acquired lease;
-   configured ignored paths are excluded automatically.
-4. Apply configured forget/prune retention.
-5. Push optional Uptime Kuma status.
+1. Resolve and validate the configured path, then construct a global, project or data-path scope.
+2. Call `SnapshotCommands.backup(scope)` under the existing cron execution. The common command applies protection and resource ownership without creating a nested task or restoration history.
+3. If any required maintenance/resource claim is busy, record `skipped` and its reason without automatic retry; a global backup skips the entire run.
+4. Apply configured forget/prune retention through the repository-use guard. If active references prevent retention, retain the created snapshot and explicitly record that cleanup was skipped.
+5. Push optional Uptime Kuma status, preserving the separate cron execution history.
 
 ### `restart_server` (`jobs/restart.py`)
 

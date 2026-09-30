@@ -289,14 +289,6 @@ export const queryKeys = {
       [...queryKeys.worldRestore.all, "dimension-labels", serverId] as const,
     playerLocations: (serverId: string) =>
       [...queryKeys.worldRestore.all, "player-locations", serverId] as const,
-    eligibleForServer: (serverId: string) => [...queryKeys.worldRestore.all, "eligible", serverId] as const,
-    restorationsForServer: (serverId: string) => [...queryKeys.worldRestore.all, "restoration", serverId] as const,
-    eligible: (serverId: string, selection: unknown) =>
-      [...queryKeys.worldRestore.all, "eligible", serverId, selection] as const,
-    history: (serverId: string) =>
-      [...queryKeys.worldRestore.all, "history", serverId] as const,
-    restoration: (serverId: string, id: string) =>
-      [...queryKeys.worldRestore.all, "restoration", serverId, id] as const,
   },
 
   ftbClaims: {

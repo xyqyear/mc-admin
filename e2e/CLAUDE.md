@@ -22,7 +22,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 
 - `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint.
 - `cmd/mc-admin-e2e/browser.go` — owned provider wrapper for real browser/deployment commands, private fixture metadata, child-process draining and durable cleanup.
-- `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery and explicit world rollback through actual APIs.
+- `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery, retained legacy-history rollback/undo, ambiguous-identity rejection and explicit world rollback through actual APIs. Bootstrap actual historical releases with their matching runner; current API bootstrap is not backward compatible.
 - `internal/engine/` — catalog, deterministic cost-balanced shard plans, resource-aware exclusive workers and JSON/JUnit lifecycle timings.
 - `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
 - `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.

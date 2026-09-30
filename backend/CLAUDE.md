@@ -133,7 +133,7 @@ Docker and Compose label values may contain equals signs. The shared label parse
 
 ## Public errors and logs
 
-`app/main.py` flattens validation errors into a string `detail`. Explicit HTTP exceptions preserve string or structured `detail` and headers. Unexpected HTTP failures return a generic Chinese 500; SQL parameter logging is disabled and parameters are hidden in SQL exceptions. `app.errors` owns safe failure messages/logging for HTTP, task and snapshot SSE boundaries. Only explicitly authored `PublicOperationError` messages are public; ordinary exceptions use the generic message. Preserve the existing string task/SSE fields when representing structured detail. Do not log raw credentials, exception values, request query strings or headers.
+`app/main.py` flattens validation errors into a string `detail`. Explicit HTTP exceptions preserve string or structured `detail` and headers. Unexpected HTTP failures return a generic Chinese 500; SQL parameter logging is disabled and parameters are hidden in SQL exceptions. `app.errors` owns safe failure messages/logging for HTTP, task and remaining request-stream boundaries. Only explicitly authored `PublicOperationError` messages are public; ordinary exceptions use the generic message. Preserve the existing string task/SSE fields when representing structured detail. Do not log raw credentials, exception values, request query strings or headers.
 
 ## Design background
 

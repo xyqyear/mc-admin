@@ -248,7 +248,7 @@ not modify server, player or snapshot data. Application rollback requires a
 version verified against the retained schema and ownership semantics; preserving
 an older API does not make arbitrary older application binaries safe to run.
 Managed schedule binding has an additional downgrade guard in `2026092502`;
-restoration history has its generation-preservation guard in `2026092503`.
+restoration history has its generation-preservation guard in `2026092503` and its unified-scope evidence guard in `2026093000`.
 
 ## Verification
 
@@ -258,9 +258,7 @@ terminal outcomes, capacity races, retention and bounded metadata.
 their worker has executed a statement, retains the cancellation traceback, and
 verifies writes through an independent connection. It also checks repeated
 cancellation during session closure and cancellation while waiting for the
-mutex. The API scenario `world.safety-snapshot-disconnect` closes the real SSE
-connection on its safety-snapshot event, verifies unrelated management writes,
-and restores the exact safety-snapshot bytes after a distinct later edit.
+mutex. The API scenario `world.safety-snapshot-disconnect` disconnects task observation after safety evidence and pauses the real Restic writer. Reconnection observes the same task/operation completing; unrelated management writes and a later byte-checked safety rollback verify retained recovery data. Explicit cancellation and process interruption have separate scenarios.
 `test_recovery.py` covers interruption without replay, ownership uncertainty,
 global and per-server blocks, generation reuse, actual cache confinement and
 configuration-source equality. `test_single_writer.py` exercises concurrent

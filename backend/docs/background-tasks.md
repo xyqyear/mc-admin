@@ -81,10 +81,7 @@ necessary staging cleanup finish while maintenance ownership is still held;
 partial application can therefore report failure with a visible recovery block.
 See [configuration](configuration.md) for phases and recovery evidence.
 
-World restore is a request-owned SSE flow with its own restoration history and
-operation journal record. It does not become a detached task. Completion events
-are emitted only after required cleanup and journal finalization; disconnects
-close owned writers and retain safety snapshot references.
+File and world recovery return a common task ID and restoration ID. Task acceptance retains target and repository references; safety evidence must be durable before writes. Disconnection only detaches observation. Explicit cancellation waits for owned writers, cache finalization and history settlement before publishing a terminal task result. Unknown writers retain recovery blocks. Active restoration discovery uses the database journal independently of repository availability; pages can resume observation after reload.
 
 Deleting or clearing completed task entries dismisses the current in-memory
 projection. It does not delete operation evidence; retained records can appear
