@@ -44,7 +44,7 @@ func (f *Factory) backend(ctx context.Context, env *environment.Environment) err
 	settings := []string{
 		"MASTER_TOKEN=" + b.Master, "JWT__SECRET_KEY=" + b.Password,
 		"SERVER_PATH=" + filepath.Join(env.Dir, "servers"), "DATABASE_URL=sqlite+aiosqlite:////data/db.sqlite3",
-		"LOGS_DIR=/data/logs", "ARCHIVE_PATH=/data/archives", "AUDIT__LOG_FILE=/data/logs/operations.log",
+		"LOGS_DIR=/data/logs", "ARCHIVE_PATH=archives", "AUDIT__LOG_FILE=/data/logs/operations.log",
 		"MC_ADMIN_CONFIG=/data/config.toml", "MC_ADMIN_ENV=/data/empty.env", "CGROUP_PATH=/cgroup",
 	}
 	for _, p := range environment.Get[*environment.Recipe](env, "recipe").Providers {

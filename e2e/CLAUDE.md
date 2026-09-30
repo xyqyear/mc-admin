@@ -30,7 +30,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `internal/api/wait.go` — `StartTask` validates 202 acceptance; `RunTask`/`RunTaskResult` wait for confirmed completion and decode the business result. Lifecycle, creation, synchronization, deletion, manual self-check/DNS, map initialization and upload hashing/publication use these task contracts.
 - `internal/evidence/` — structured evidence, secret redaction and bounded payloads.
 - `internal/coverage/` — deployed OpenAPI/WS operation observations, shard union and missing-case audits.
-- `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data.
+- `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data. The backend uses `ARCHIVE_PATH=archives` relative to `/data`, so archive journeys cover configuration path normalization.
 - `suites/<domain>/` — normal Go case functions, registered through `suites/catalog.go`.
 - `suites/costs.json` — embedded, versioned historical scheduling costs with source runs and measurement semantics; unknown cases use recipe/default costs and remain automatically discovered.
 - `suites/servers/` — configuration versions, legacy mode conversions, stopped intent, real Docker startup failure and recovery, managed schedule generations, and stopped SQLite migration inputs.

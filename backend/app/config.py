@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     server_path: Path
     logs_dir: Path = Field(default=Path("logs"))
     archive_path: Path = Field(default=Path("archives"))
+
+    @field_validator("static_path", "cgroup_path", "server_path", "logs_dir", "archive_path")
+    @classmethod
+    def resolve_directory(cls, value: Path) -> Path:
+        return value.resolve()
 
     @classmethod
     def settings_customise_sources(

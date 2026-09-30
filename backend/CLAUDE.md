@@ -38,7 +38,7 @@ app/
 ├── errors.py              # safe public errors and exception logging
 ├── operation_admission.py # deletion freeze and active writer accounting
 ├── operations/            # journal, resource leases, process ownership and recovery
-├── config.py              # TOML + env settings
+├── config.py              # TOML + env settings; directory roots resolved on load
 ├── api_schema.py          # stable public OpenAPI names across internal DTO ownership
 ├── dependencies.py        # DI for sessions, auth, role guards
 ├── audit.py               # operation audit middleware
@@ -97,6 +97,8 @@ Read runtime-tunable dynamic config at the point of behavior, not in long-lived 
 `create_app(settings=...)` or `create_app(runtime=...)` constructs independent application state. Typed accessors return actual owned resources created by `runtime_factories.py`. `current_runtime()` requires an explicit binding; no module registers a factory or creates an implicit default runtime. Service constructors capture their owning database, configuration view and adapters. Requests, streams and child work bind the owning runtime, and detached side work clears the parent operation context. Use `spawn_background` for application-owned side work, or register workers with a subsystem that is drained by `Runtime.close()`. Startup migrates and reconciles interrupted operations before producers and write admission. Shutdown stops producers and drains writers before clients, previews, database and log handlers. See `docs/runtime.md`.
 
 `BaseConfigSchema.validate_update()` validates authored values before persistence and cache publication. Keep save-time validation separate from legacy configuration loading so invalid historical values remain repairable through the UI.
+
+`Settings` resolves `static_path`, `cgroup_path`, `server_path`, `logs_dir` and `archive_path` to absolute paths when loaded, including defaults and symbolic links. Relative directories use the process working directory, not the configuration file's directory. Binary command names, database URLs and Restic repository addresses retain their own semantics.
 
 ## Server lifecycle imports
 
