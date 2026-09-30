@@ -38,3 +38,9 @@ The server toolbar opens paginated recovery history, including safety availabili
 and parent rollback links. A confirmed rollback replaces later changes in the
 selected scope, first saving a new safety snapshot so that rollback is reversible.
 Excluded descendants remain untouched and receive a brief notice.
+
+## Common snapshot controls
+
+`FileSnapshotRecovery`, mounted once per server file page, owns the selected path, creation/preview dialogs, restoration observation and history. Row and toolbar `FileSnapshotActions` only request an action and show lightweight ignore-rule feedback. Table pagination, removed rows or a page reload cannot create duplicate recovery dialogs or lose an accepted restore. The toolbar's `/` scope means the server data directory; server-project backups remain a distinct public scope.
+
+Ignored targets disable creation and restoration with a reason; a mixed parent shows a short skip notice. `SnapshotCreateDialog` remains blocked until its task actually ends and displays its current stage. Active restore discovery does not query Restic history. Unknown initial activity or a failed task read keeps writes blocked; navigation does not cancel backend work. History filters by scope, status and originating page and uses the common rollback command.

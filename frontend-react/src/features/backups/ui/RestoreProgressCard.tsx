@@ -4,6 +4,8 @@ import { CheckCircle2, XCircle } from 'lucide-react'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Progress } from '@/shared/ui/progress'
 import { Spinner } from '@/shared/ui/spinner'
+import { Button } from '@/shared/ui/button'
+import { openTaskCenter } from '@/features/tasks/commands'
 
 import type { RestoreProgressState } from '@/features/backups/contracts'
 
@@ -30,14 +32,15 @@ export const RestoreProgressCard: React.FC<RestoreProgressCardProps> = ({
           <div className="font-medium">
             {state.error ? '恢复失败' : state.done ? '恢复完成' : title}
           </div>
-          <div className="ml-auto text-sm text-muted-foreground tabular-nums">
+          {state.percent !== null && <div className="ml-auto text-sm text-muted-foreground tabular-nums">
             {Math.round(state.percent)}%
-          </div>
+          </div>}
         </div>
-        <Progress value={state.percent} />
+        {state.percent !== null && <Progress value={state.percent} />}
         <div className="text-sm text-muted-foreground">
           {state.error ?? state.message}
         </div>
+        {state.taskId && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
         {state.log.length > 0 && (
           <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/30 p-2 text-xs leading-relaxed">
             {state.log.join('\n')}

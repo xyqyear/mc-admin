@@ -213,24 +213,7 @@ class SnapshotPlanner:
         protection.require_targets(
             prepared.paths if selection else prepared.resolved.paths
         )
-        if selection and selection.type is RestorationType.CHUNKS:
-            permitted_chunks = False
-            for (rx, rz), chunks in group_chunks_by_region(selection.chunks).items():
-                for path in prepared.paths:
-                    if (
-                        path.name == f"r.{rx}.{rz}.mca"
-                        and await RestoreScopeExecutor.allowed_chunks(
-                            prepared.resolved.servers[0].data_path,
-                            path,
-                            rx,
-                            rz,
-                            chunks,
-                            protection,
-                        )
-                    ):
-                        permitted_chunks = True
-            if not permitted_chunks:
-                protection.require_targets([])
+        await self.require_permitted_chunks(prepared.resolved, protection)
         for path in prepared.paths:
             if selection and path.suffix == ".mcc":
                 continue
@@ -245,3 +228,28 @@ class SnapshotPlanner:
             ):
                 raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
         return prepared, absent
+
+    @staticmethod
+    async def require_permitted_chunks(
+        resolved: ResolvedScope, protection: SnapshotProtection
+    ) -> None:
+        scope = resolved.scope
+        if isinstance(scope, WorldScope) and scope.selection.type is RestorationType.CHUNKS:
+            selection = scope.selection
+            permitted_chunks = False
+            for (rx, rz), chunks in group_chunks_by_region(selection.chunks).items():
+                for path in resolved.paths:
+                    if (
+                        path.name == f"r.{rx}.{rz}.mca"
+                        and await RestoreScopeExecutor.allowed_chunks(
+                            resolved.servers[0].data_path,
+                            path,
+                            rx,
+                            rz,
+                            chunks,
+                            protection,
+                        )
+                    ):
+                        permitted_chunks = True
+            if not permitted_chunks:
+                protection.require_targets([])

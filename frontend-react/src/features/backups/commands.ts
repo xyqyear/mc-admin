@@ -1,16 +1,28 @@
 import type { ApiError } from '@/shared/http/api'
-import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
 import type { CreateSnapshotResponse, DeleteSnapshotResponse, UnlockResponse } from '@/features/backups/contracts';
 import { queryKeys } from "@/shared/http/api";
 import { toast } from "sonner";
 import { waitForTaskResult } from '@/features/tasks/commands';
 import type { SnapshotScope } from './contracts';
+import { useState } from 'react';
+import type { BackgroundTask } from '@/features/tasks/contracts';
 
 export { useSnapshotOperation } from './useSnapshotOperation';
 
-export async function createSnapshot(client: QueryClient, scope: SnapshotScope) {
-  return waitForTaskResult<CreateSnapshotResponse>(client, await snapshotApi.createSnapshot(scope));
+export function useCreateSnapshot() {
+  const client = useQueryClient();
+  const [task, setTask] = useState<BackgroundTask | null>(null);
+  const mutation = useMutation({
+    mutationFn: async (scope: SnapshotScope) => {
+      setTask(null);
+      return waitForTaskResult<CreateSnapshotResponse>(client, await snapshotApi.createSnapshot(scope), { onProgress: setTask });
+    },
+    onSuccess: data => { toast.success(`快照创建成功: ${data.snapshot.short_id}`) },
+    onError: (error: Error) => { toast.error(`快照创建失败: ${error.message}`) },
+  });
+  return { ...mutation, task };
 }
 
 export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotScope {
@@ -21,41 +33,6 @@ export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotS
 
 export const useSnapshotMutations = () => {
   const queryClient = useQueryClient();
-
-  const useCreateGlobalSnapshot = () => {
-    return useMutation({
-      mutationFn: () => createSnapshot(queryClient, { kind: 'global' }),
-      onSuccess: (data: CreateSnapshotResponse) => {
-        toast.success(`快照创建成功: ${data.snapshot.short_id}`);
-
-        // Snapshot creation also affects repository usage; invalidate the whole tree.
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.all,
-        });
-      },
-      onError: (error: ApiError) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`快照创建失败: ${errorDetail}`);
-      },
-    });
-  };
-
-  const useCreateSnapshot = () => {
-    return useMutation({
-      mutationFn: (params: { server_id: string; paths?: string[] }) => createSnapshot(queryClient, fileSnapshotScope(params.server_id, params.paths)),
-      onSuccess: (data: CreateSnapshotResponse) => {
-        toast.success(`快照创建成功: ${data.snapshot.short_id}`);
-
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.all,
-        });
-      },
-      onError: (error: ApiError) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`快照创建失败: ${errorDetail}`);
-      },
-    });
-  };
 
   const useDeleteSnapshot = () => {
     return useMutation({
@@ -90,8 +67,6 @@ export const useSnapshotMutations = () => {
   };
 
   return {
-    useCreateGlobalSnapshot,
-    useCreateSnapshot,
     useDeleteSnapshot,
     useUnlockRepository,
   };

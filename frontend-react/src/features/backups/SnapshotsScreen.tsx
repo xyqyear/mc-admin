@@ -1,3 +1,4 @@
+import { SnapshotCreationStatus } from './ui/SnapshotCreationStatus'
 import React, { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
@@ -44,7 +45,7 @@ import { RefreshButton } from '@/shared/components/RefreshButton'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import type { Snapshot } from '@/features/backups/contracts';
 import { useSnapshotQueries } from '@/features/backups/queries'
-import { useSnapshotMutations } from '@/features/backups/commands'
+import { useSnapshotMutations, useCreateSnapshot } from '@/features/backups/commands'
 import { formatDateTime } from '@/shared/utils/formatUtils'
 
 const columns: ColumnDef<Snapshot, any>[] = [
@@ -107,7 +108,7 @@ const columns: ColumnDef<Snapshot, any>[] = [
 
 const Snapshots: React.FC = () => {
   const { useGlobalSnapshots, useSnapshotLocks } = useSnapshotQueries()
-  const { useCreateGlobalSnapshot, useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations()
+  const { useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations()
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
@@ -137,7 +138,7 @@ const Snapshots: React.FC = () => {
   }
   const { refetch: refetchSnapshotLocks } = useSnapshotLocks(false)
 
-  const createSnapshotMutation = useCreateGlobalSnapshot()
+  const createSnapshotMutation = useCreateSnapshot()
   const deleteSnapshotMutation = useDeleteSnapshot()
   const unlockMutation = useUnlockRepository()
 
@@ -182,7 +183,7 @@ const Snapshots: React.FC = () => {
   })
 
   const handleCreateSnapshot = () => {
-    createSnapshotMutation.mutate()
+    createSnapshotMutation.mutate({ kind: 'global' })
   }
 
   const handleUnlockClick = async () => {
@@ -245,6 +246,7 @@ const Snapshots: React.FC = () => {
         }
       />
 
+      <SnapshotCreationStatus pending={createSnapshotMutation.isPending} task={createSnapshotMutation.task} />
       {isError && (
         <Alert variant="destructive">
           <AlertTitle>加载快照列表失败</AlertTitle>

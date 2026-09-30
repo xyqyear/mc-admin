@@ -3,21 +3,40 @@ import { getErrorStatus, shouldRetryQuery } from '@/shared/http/api';
 import { useQuery } from "@tanstack/react-query";
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
-import type { SnapshotScope } from './contracts';
+import type { RestorationFilters, SnapshotScope } from './contracts';
+
+export function useSnapshotTarget(scope: SnapshotScope | null) {
+  return useQuery({
+    queryKey: queryKeys.snapshots.target(scope),
+    queryFn: () => snapshotApi.checkTarget(scope!),
+    enabled: !!scope,
+    staleTime: 5000,
+  });
+}
+
+export function useActiveRestorations(serverId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.snapshots.active(serverId),
+    queryFn: () => snapshotApi.active(serverId),
+    enabled,
+    refetchInterval: 2000,
+    staleTime: 0,
+  });
+}
 
 export function useEligibleSnapshots(scope: SnapshotScope | null) {
   return useQuery({
-    queryKey: [...queryKeys.snapshots.all, 'eligible', scope],
+    queryKey: queryKeys.snapshots.eligible(scope),
     queryFn: () => snapshotApi.eligible(scope!),
     enabled: !!scope,
     staleTime: 5000,
   });
 }
 
-export function useRestorationHistory(serverId?: string, offset = 0, enabled = true) {
+export function useRestorationHistory(serverId?: string, offset = 0, enabled = true, filters: RestorationFilters = {}) {
   return useQuery({
-    queryKey: queryKeys.snapshots.history(serverId, offset),
-    queryFn: () => snapshotApi.history(serverId, offset),
+    queryKey: queryKeys.snapshots.history(serverId, offset, filters),
+    queryFn: () => snapshotApi.history(serverId, offset, filters),
     enabled,
     refetchInterval: query => query.state.data?.restorations.some(row => row.status === 'pending' || row.status === 'running') ? 2000 : false,
   });

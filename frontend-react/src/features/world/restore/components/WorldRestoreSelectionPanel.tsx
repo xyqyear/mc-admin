@@ -9,11 +9,12 @@ import {
 
 import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
-import { useConfirm } from '@/shared/hooks/useConfirm'
-import { useWorldRestoreMutations } from '@/features/world/restore/commands'
+import { useCreateSnapshot } from '@/features/backups/commands'
+import { useSnapshotTarget } from '@/features/backups/queries'
+import { SnapshotCreateDialog } from '@/features/backups/ui/SnapshotCreateDialog'
 import type { WorldRestoreSelectionMode } from '@/features/world/restore/selectionStore'
 import type { ChunkKey } from '@/features/world/map/contracts'
-import type { RestorationSelection } from '@/features/backups/contracts'
+import type { RestorationSelection, SnapshotScope } from '@/features/backups/contracts'
 
 import { buildSelection, computeSelectionStats } from '@/features/world/restore/components/selectionUtils'
 import { SnapshotPicker } from '@/features/world/restore/components/SnapshotPicker'
@@ -37,9 +38,8 @@ export const WorldRestoreSelectionPanel: React.FC<
   serverStopped,
 }) => {
   const stats = useMemo(() => computeSelectionStats(selection), [selection])
-  const { confirm, confirmDialog } = useConfirm()
-  const { useCreateWorldSnapshot } = useWorldRestoreMutations()
-  const createSnapshot = useCreateWorldSnapshot(serverId)
+  const [createRequest, setCreateRequest] = useState<{ scope: SnapshotScope; label: string } | null>(null)
+  const createSnapshot = useCreateSnapshot()
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -51,6 +51,14 @@ export const WorldRestoreSelectionPanel: React.FC<
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
+  const worldTarget = useSnapshotTarget({ kind: 'world', server_id: serverId, selection: { type: 'world' } })
+  const dimensionTarget = useSnapshotTarget(regionDirRelpath ? { kind: 'world', server_id: serverId, selection: { type: 'dimension', region_dir_relpath: regionDirRelpath } } : null)
+  const selectionTarget = useSnapshotTarget(isComplete && regionDirRelpath ? { kind: 'world', server_id: serverId,
+    selection: buildSelection({ scope: mode === 'region' ? 'regions' : 'chunks', regionDirRelpath, selection }) } : null)
+  const canWorld = worldTarget.data?.allowed === true && !worldTarget.isError
+  const canDimension = dimensionTarget.data?.allowed === true && !dimensionTarget.isError
+  const canSelection = selectionTarget.data?.allowed === true && !selectionTarget.isError
+
   const startCreate = (
     scope: 'world' | 'dimension',
     description: string,
@@ -60,15 +68,7 @@ export const WorldRestoreSelectionPanel: React.FC<
       regionDirRelpath,
       selection,
     })
-    confirm({
-      title: '创建快照',
-      description,
-      confirmText: '创建快照',
-      variant: 'default',
-      onConfirm: async () => {
-        await createSnapshot.mutateAsync(sel)
-      },
-    })
+    setCreateRequest({ scope: { kind: 'world', server_id: serverId, selection: sel }, label: description })
   }
 
   const openPicker = (scope: 'world' | 'dimension' | 'regions' | 'chunks') => {
@@ -90,11 +90,11 @@ export const WorldRestoreSelectionPanel: React.FC<
             variant="outline"
             size="sm"
             className="w-full justify-start"
-            disabled={!dimensionReady || createSnapshot.isPending}
+            disabled={!dimensionReady || !canDimension || createSnapshot.isPending}
             onClick={() =>
               startCreate(
                 'dimension',
-                `将为当前维度 ${regionDirRelpath ?? ''} 创建快照。`,
+                `当前维度 ${regionDirRelpath ?? ''}`,
               )
             }
           >
@@ -109,11 +109,11 @@ export const WorldRestoreSelectionPanel: React.FC<
             variant="outline"
             size="sm"
             className="w-full justify-start"
-            disabled={!layoutReady || createSnapshot.isPending}
+            disabled={!layoutReady || !canWorld || createSnapshot.isPending}
             onClick={() =>
               startCreate(
                 'world',
-                '将为该服务器的所有世界创建快照。',
+                '该服务器的所有世界',
               )
             }
           >
@@ -136,7 +136,7 @@ export const WorldRestoreSelectionPanel: React.FC<
           <Button
             size="sm"
             className="w-full justify-start"
-            disabled={!serverStopped || !isComplete}
+            disabled={!serverStopped || !isComplete || !canSelection}
             onClick={() => openPicker(mode === 'region' ? 'regions' : 'chunks')}
           >
             <RotateCcw className="mr-2 h-4 w-4" />
@@ -146,7 +146,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             size="sm"
             variant="outline"
             className="w-full justify-start"
-            disabled={!serverStopped || !dimensionReady}
+            disabled={!serverStopped || !dimensionReady || !canDimension}
             onClick={() => openPicker('dimension')}
           >
             <RotateCcw className="mr-2 h-4 w-4" />
@@ -156,7 +156,7 @@ export const WorldRestoreSelectionPanel: React.FC<
             size="sm"
             variant="outline"
             className="w-full justify-start"
-            disabled={!serverStopped || !layoutReady}
+            disabled={!serverStopped || !layoutReady || !canWorld}
             onClick={() => openPicker('world')}
           >
             <RotateCcw className="mr-2 h-4 w-4" />
@@ -164,6 +164,10 @@ export const WorldRestoreSelectionPanel: React.FC<
           </Button>
         </div>
 
+        {[...new Set([worldTarget, dimensionTarget, selectionTarget].flatMap(query =>
+          query.isError ? ['暂时无法检查忽略规则，请稍后重试'] : query.data?.reason ? [query.data.reason]
+            : query.data?.skipped_count ? ['所选范围包含忽略目录，创建与恢复会跳过这些内容。'] : []))].map(message =>
+          <p key={message} className="text-xs text-muted-foreground">{message}</p>)}
         <div className="border-t pt-3 space-y-2">
           <Button
             variant="ghost"
@@ -183,9 +187,10 @@ export const WorldRestoreSelectionPanel: React.FC<
           </div>
         </div>
       </div>
-      {confirmDialog}
+      <SnapshotCreateDialog request={createRequest} creation={createSnapshot} onClose={() => setCreateRequest(null)} />
       <SnapshotPicker
         open={pickerOpen}
+        hidden={historyOpen}
         onOpenChange={setPickerOpen}
         serverId={serverId}
         selection={pickerSelection}

@@ -216,7 +216,10 @@ export const queryKeys = {
     global: () => [...queryKeys.snapshots.all, "global"] as const,
     repositoryUsage: () => [...queryKeys.snapshots.all, "repository-usage"] as const,
     locks: () => [...queryKeys.snapshots.all, "locks"] as const,
-    history: (serverId?: string, offset = 0) => [...queryKeys.snapshots.all, 'history', serverId, offset] as const,
+    history: (serverId?: string, offset = 0, filters: object = {}) => [...queryKeys.snapshots.all, 'history', serverId, offset, filters] as const,
+    active: (serverId?: string) => [...queryKeys.snapshots.all, 'active', serverId] as const,
+    target: (scope: object | null) => [...queryKeys.snapshots.all, 'target', scope] as const,
+    eligible: (scope: object | null) => [...queryKeys.snapshots.all, 'eligible', scope] as const,
     forPath: (serverId: string, path: string) =>
       [...queryKeys.snapshots.all, "path", serverId, path] as const,
   },
@@ -270,6 +273,8 @@ export const queryKeys = {
   // mcmap init status + region manifest, consumed by the world-restore page.
   map: {
     all: ["map"] as const,
+    revisions: () => [...queryKeys.map.all, 'revision'] as const,
+    revision: (serverId?: string) => [...queryKeys.map.revisions(), serverId] as const,
     status: (serverId: string) => [...queryKeys.map.all, "status", serverId] as const,
     regionsForServer: (serverId: string) => [...queryKeys.map.all, "regions", serverId] as const,
     regions: (serverId: string, region: string) =>

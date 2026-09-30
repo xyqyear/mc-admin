@@ -140,6 +140,54 @@ async def test_preparing_preview_outlives_observer_and_explicit_cancel_cleans(ca
     assert not case.snapshots.repository_use.active_snapshots
 
 
+async def test_cancel_during_ready_preview_finalization_releases_result_before_terminal(
+    case, monkeypatch
+):
+    from app.snapshots import previews as preview_module
+
+    target, scope, source = await prepared(case)
+    previews = current_runtime().resource("snapshot_previews")
+    finalizing, release = asyncio.Event(), asyncio.Event()
+    original = preview_module.release_artifact
+
+    async def pause(kind, artifact_id):
+        finalizing.set()
+        await release.wait()
+        await original(kind, artifact_id)
+
+    monkeypatch.setattr(preview_module, "release_artifact", pause)
+    accepted = await previews.submit(scope, source, 1)
+    future = case.tasks.get_future(accepted["task_id"])
+    assert future is not None
+    cancelling = None
+    try:
+        await asyncio.wait_for(finalizing.wait(), 15)
+        task = case.tasks.get_task(accepted["task_id"])
+        assert task is not None and task.result is not None
+        preview_id = task.result["preview_id"]
+        directory = previews.manager.get_session_dir(preview_id)
+        assert directory is not None and directory.exists()
+        cancelling = asyncio.create_task(case.tasks.cancel(accepted["task_id"]))
+        await asyncio.sleep(0)
+        assert not future.done()
+        with pytest.raises(HTTPException):
+            await case.snapshots.forget_id(source)
+        release.set()
+        await cancelling
+        await asyncio.wait_for(asyncio.shield(future), 10)
+        assert task.status is TaskStatus.CANCELLED
+        with pytest.raises(HTTPException) as expired:
+            await previews.get(preview_id)
+        assert expired.value.status_code == 404
+        assert not directory.exists()
+        assert not case.snapshots.repository_use.active_snapshots
+        assert (target / "000.txt").read_text() == "live value 0"
+    finally:
+        release.set()
+        if cancelling is not None:
+            await cancelling
+
+
 @pytest.mark.parametrize("inside", [True, False])
 async def test_application_observed_writes_invalidate_only_the_selected_path(case, inside):
     from app.files.application import FileApplication

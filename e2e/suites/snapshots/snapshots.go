@@ -43,6 +43,37 @@ func restore(ctx context.Context, t *engine.Scope) error {
 	if err = client.JSON(ctx, "PUT", "/api/config/modules/snapshots", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
 		return err
 	}
+	if err = t.Step("target feedback refuses ignored paths and explains mixed scopes without creating history", func() error {
+		for _, target := range []struct {
+			path    string
+			allowed bool
+			skipped int
+		}{{"restore/keep.txt", false, 0}, {"restore", true, 1}} {
+			var feedback struct {
+				Allowed bool   `json:"allowed"`
+				Reason  string `json:"reason"`
+				Skipped int    `json:"skipped_count"`
+			}
+			if err := client.JSON(ctx, "POST", "/api/snapshots/targets/check", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{target.path}}}, &feedback, 200); err != nil {
+				return err
+			}
+			if feedback.Allowed != target.allowed || feedback.Skipped != target.skipped || (!target.allowed && feedback.Reason == "") {
+				return fmt.Errorf("unexpected target feedback for %s: %+v", target.path, feedback)
+			}
+		}
+		var history struct {
+			Total int `json:"total"`
+		}
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+id, nil, &history, 200); err != nil {
+			return err
+		}
+		if history.Total != 0 {
+			return fmt.Errorf("checking targets created restoration history")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	var created struct {
 		Snapshot struct {
 			ID string `json:"id"`
@@ -153,7 +184,7 @@ func restore(ctx context.Context, t *engine.Scope) error {
 
 	var restorationID string
 	if err = t.Step("background restore restores content, deletes extra files and protects ignored data", func() error {
-		event, err := client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"restore"}}, "source_snapshot_id": created.Snapshot.ID, "preview_id": previewID})
+		event, err := client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"restore"}}, "source_snapshot_id": created.Snapshot.ID, "preview_id": previewID, "entry_point": "files"})
 		if err != nil {
 			return err
 		}
@@ -185,19 +216,41 @@ func restore(ctx context.Context, t *engine.Scope) error {
 		var history struct {
 			Total int `json:"total"`
 		}
-		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+id, nil, &history, 200); err != nil {
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+id+"&kind=paths&status=succeeded&entry_point=files", nil, &history, 200); err != nil {
 			return err
 		}
 		if history.Total != 1 {
 			return fmt.Errorf("restore did not create exactly one history record")
 		}
+		var active struct {
+			Total int `json:"total"`
+		}
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations/active?server_id="+id+"&limit=1", nil, &active, 200); err != nil {
+			return err
+		}
+		if active.Total != 0 {
+			return fmt.Errorf("completed restoration remains active")
+		}
+		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations?server_id="+id+"&kind=world&status=failed", nil, &history, 200); err != nil {
+			return err
+		}
+		if history.Total != 0 {
+			return fmt.Errorf("restoration filters included an unrelated result")
+		}
 		var record struct {
 			ID        string `json:"id"`
 			Status    string `json:"status"`
 			Available bool   `json:"rollback_available"`
+			Targets   []struct {
+				ServerID   string `json:"server_id"`
+				Generation int    `json:"generation"`
+			} `json:"targets"`
 		}
 		if err := client.JSON(ctx, "GET", "/api/snapshots/restorations/"+restorationID, nil, &record, 200); err != nil {
 			return err
+		}
+		if len(record.Targets) != 1 || record.Targets[0].ServerID != id || record.Targets[0].Generation < 1 {
+			return fmt.Errorf("restoration lost its target generation")
 		}
 		if record.ID != restorationID || record.Status != "succeeded" || !record.Available {
 			return fmt.Errorf("completed restore has inconsistent history")

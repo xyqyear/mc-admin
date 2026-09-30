@@ -162,3 +162,11 @@ unavailable reason. Ordinary file restoration remains available online.
 带 `preview_id` 恢复时，受理和实际写入前都核对源 ID、规范化范围、服务器代次、当前保护规则和已观测目标版本。版本结合选中目标的文件元数据与相关路径的操作记录；普通在线文件不扫描整棵目录、不承诺外部程序的原子状态。范围外的文件写入不会使预览失效。直接恢复仍可用，安全快照始终捕获执行前的真实状态。
 
 `GET /api/snapshots/usage`、`GET /locks` 为普通读取。`DELETE /{snapshot_id}` 和 `POST /unlock` 返回任务；仓库独占占用从受理保留至所属进程及收尾结束，期间拒绝新的快照依赖。清锁只移除 Restic 判断已失效的锁，不能强制移除活跃锁。
+
+## Observation and target feedback
+
+`POST /snapshots/targets/check` checks current scope confinement and protection without running Restic or creating history. Fully ignored scopes are unavailable; mixed scopes report a bounded skip list and total. World chunk checks include protected MCC logical counterparts. This is advisory UI feedback: acceptance and execution repeat the authoritative checks, including source and rollback-chain protection.
+
+`GET /snapshots/restorations/active?server_id=...` reads only the journal and restoration tables. It includes queued, running, cancelling and finalizing work, including global restores targeting the selected server. Offset/limit pagination is bounded to 200 rows per request. History supports `kind`, `status`, `entry_point` and server filters before pagination, and projects all captured server generations. A failed history repository check does not prevent active task observation.
+
+Preview preparation records its session identity in the submitted worker context. Non-successful completion awaits session closure before publishing terminal task status, even if cancellation arrives after a ready result. Unknown writers still retain protected artifacts and block unsafe reuse.

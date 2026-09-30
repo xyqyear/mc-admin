@@ -23,7 +23,7 @@ it('latches world selection and leaves the accepted task running when its observ
   const bodies: unknown[] = []
   let cancellations = 0
   server.use(
-    http.get('*/api/snapshots/restorations', () => HttpResponse.json({ total: 0, restorations: [] })),
+    http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] })),
     http.post('*/api/snapshots/restorations', async ({ request }) => {
       bodies.push(await request.json())
       return HttpResponse.json({ task_id: 'restore', skipped_paths: [] }, { status: 202 })
@@ -33,6 +33,7 @@ it('latches world selection and leaves the accepted task running when its observ
   )
   const selection: RestorationSelection = { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] }
   const view = renderHook(() => useSnapshotOperation({ kind: 'world', server_id: 'alpha', selection }), { wrapper })
+  await waitFor(() => expect(view.result.current.busy).toBe(false))
   await act(async () => { await view.result.current.start('snapshot') })
   await waitFor(() => expect(view.result.current.state.message).toBe('正在创建安全快照'))
   selection.regions = [[9, 9]]

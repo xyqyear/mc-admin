@@ -11,6 +11,8 @@ import WorldRestoreSelectionPanel from '@/features/world/restore/components/Worl
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+const active = http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] }))
+const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
 
@@ -28,7 +30,7 @@ it('retains the open history and rolls back its interrupted row when delayed map
   const client = createTestClient()
   const mapStatus = deferred<MapStatus>()
   const rollbacks: string[] = []
-  server.use(
+  server.use(active, target,
     http.get('*/api/servers/alpha/map/status', async () => HttpResponse.json(await mapStatus.promise)),
     http.get('*/api/snapshots/restorations', () => HttpResponse.json({ total: 1, restorations: [{
       id: 'interrupted-restore', server_id: 'alpha', server_generation: 1, binding_issue: null,
@@ -49,7 +51,7 @@ it('retains the open history and rolls back its interrupted row when delayed map
     const history = await screen.findByRole('dialog', { name: '恢复历史' })
     await within(history).findByText('source12')
     expect(within(history).getByText('safety12')).toBeTruthy()
-    expect(within(history).getByText('已中断')).toBeTruthy()
+    expect(within(history).getByText('已中断', { selector: 'span' })).toBeTruthy()
     expect(screen.queryByRole('tab', { name: '玩家位置', hidden: true })).toBeNull()
 
     await act(async () => mapStatus.resolve({ client_jar_present: true, palette_present: true, palette_current: true, version: '1.21.11' }))

@@ -19,7 +19,7 @@ let client: ReturnType<typeof createTestClient>
 let operations: Operation[]
 let compose: string
 let reads: number
-const operation = (id: string, state = 'running'): Operation => ({ operation_id: id, kind: 'server_rebuild', state, legacy_id: id, failure_code: null, data_changed: false, resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }] })
+const operation = (id: string, state = 'running'): Operation => ({ operation_id: id, kind: 'server_rebuild', state, legacy_id: id, failure_code: null, data_changed: false, updated_at: '2026-09-30T00:00:00Z', ended_at: null, resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }] })
 beforeEach(() => {
   client = createTestClient(); operations = [operation('one')]; compose = 'old'; reads = 0
   server.use(

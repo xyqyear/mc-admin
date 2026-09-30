@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { api, AUTH_EXPIRED_EVENT, getErrorStatus, queryKeys } from '@/shared/http/api'
 import { filesOperationResources } from '@/features/files/operationResources'
-import { worldOperationResources } from '@/features/world/operationResources'
+import { worldOperationResources, updateMapRevision } from '@/features/world/operationResources'
 import { configurationOperationResources } from '@/features/configuration/operationResources'
 import { isTerminalOperation, type Operation } from '@/shared/operations/contracts'
 
@@ -64,6 +64,7 @@ export function OperationObserver({ sessionId }: { sessionId: string }) {
     for (const operation of data ?? []) {
       if (!isSettled(operation) || handled.current.has(operation.operation_id)) continue
       handled.current.add(operation.operation_id)
+      updateMapRevision(client, operation)
       for (const registration of resourceRegistrations) {
         for (const key of registration(operation)) keys.set(JSON.stringify(key), key)
       }

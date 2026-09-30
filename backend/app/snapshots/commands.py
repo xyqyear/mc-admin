@@ -1,5 +1,6 @@
 import errno
 import json
+import re
 import secrets
 from collections.abc import AsyncGenerator
 from contextlib import ExitStack, aclosing
@@ -35,11 +36,13 @@ from ..world.artifacts import restore_stage
 from ..world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from ..world.scope_execution import RestoreScopeExecutor
 from ..world.selection import confined_history_path, resolve_paths
+from .api_models import SnapshotTargetCheck
 from .application import SnapshotMaintenanceConflict
 from .coverage import covers
 from .evidence import absence_tags, snapshot_absence
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshot, ResticSnapshotWithSummary
+from .planner import TargetIgnoredError
 from .preparation import PreparedSnapshot, SnapshotPlanner
 from .preview_models import PreviewBinding
 from .previews import SnapshotPreviews, get_snapshot_previews
@@ -55,6 +58,7 @@ from .scopes import (
     ResolvedScope,
     SnapshotScope,
     WorldScope,
+    resolve_scope,
     scope_adapter,
 )
 from .service import SnapshotService
@@ -83,6 +87,42 @@ class SnapshotCommands:
         self._world = RestoreScopeExecutor(snapshots)
         self._planner = SnapshotPlanner(snapshots, self._files, sessions, root)
         self._active: dict[str, ResolvedScope] = {}
+
+    async def check_target(self, scope: SnapshotScope) -> SnapshotTargetCheck:
+        resolved = await resolve_scope(
+            scope, root=self._root, sessions=self._sessions, include_mcc=False
+        )
+        protection = await self.snapshots.protection(
+            data_paths=[ref.data_path for ref in resolved.servers]
+        )
+        try:
+            protection.require_targets(
+                [path for path in resolved.paths if protection.permits(path)]
+                if isinstance(scope, WorldScope) else resolved.paths
+            )
+            await self._planner.require_permitted_chunks(resolved, protection)
+        except TargetIgnoredError:
+            return SnapshotTargetCheck(
+                allowed=False, reason="此范围已被快照规则忽略，不能创建快照或恢复"
+            )
+        skipped = set(protection.skipped_under(resolved.paths))
+        if isinstance(scope, WorldScope):
+            selected_chunks = set(scope.selection.chunks)
+            selected_paths = set(resolved.paths)
+            for path in protection.excluded:
+                match = re.fullmatch(r"c\.(-?\d+)\.(-?\d+)\.mcc", path.name)
+                if match is None:
+                    continue
+                x, z = map(int, match.groups())
+                if selected_chunks and (x, z) not in selected_chunks:
+                    continue
+                if path.with_name(f"r.{x // 32}.{z // 32}.mca") in selected_paths:
+                    skipped.add(path)
+        return SnapshotTargetCheck(
+            allowed=True,
+            skipped_paths=[str(path) for path in sorted(skipped)[:100]],
+            skipped_count=len(skipped),
+        )
 
     def require_deletable(self, server_id: str) -> None:
         for task_id, resolved in self._active.items():

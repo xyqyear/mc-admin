@@ -115,7 +115,7 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 `features/world/restore/components/RestorationHistoryDrawer.tsx` composes `features/backups/ui/RestorationHistoryDialog`, with unified paginated recovery history and world preview actions. Per-row rollback is gated on:
 
-- `status ∈ {succeeded, failed, interrupted}`
+- terminal history with a recoverable safety reference (including failed, cancelled and interrupted outcomes)
 - `safety_snapshot_id` is set
 - `safety_snapshot_exists === true`
 - server stopped and no `binding_issue` (old or uncertain server-generation bindings remain visible with an explanation)
@@ -131,3 +131,11 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 ```
 
 Lazy-loaded in `App.tsx`. Sidebar entry: `Map` icon under each server's submenu.
+
+## Recovery observation and ignored targets
+
+`useSnapshotOperation` discovers active server/global recovery through the database-only active endpoint, independently of the current selection. Refreshing a map with no selection therefore still opens its existing progress drawer. Once discovered, the task ID stays latched until its own terminal result is observed; disappearing from the active list or a failed read never means completion. The history dialog owns progress while it is open, avoiding a second recovery drawer during rollback.
+
+The selection panel checks current ignore rules for world, dimension and selected-region/chunk scopes. Fully protected selections disable creation/restoration, while mixed scopes show one skip notice. Creation uses the common blocking `SnapshotCreateDialog`, which shows real task messages and available percentages. Restoration keeps its prior closing guard and offers a task-center entry.
+
+The application observer refreshes queries after terminal operations and advances a per-server/global tile URL revision when data changed. This forces visible browser tiles to refresh even for an MCC-only restore or unchanged MCA mtime; the backend still removes only the appropriate PNGs and preserves other cache assets.

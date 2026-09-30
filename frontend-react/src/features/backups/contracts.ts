@@ -54,7 +54,8 @@ export interface SnapshotTaskAccepted {
 
 export interface RestoreProgressState {
   active: boolean
-  percent: number
+  percent: number | null
+  taskId?: string
   message: string
   log: string[]
   done: boolean
@@ -66,6 +67,7 @@ export interface Restoration {
   operation_id: string | null
   server_id: string | null
   server_generation: number | null
+  targets: Array<{ server_id: string; generation: number | null }>
   binding_issue: string | null
   entry_point: string | null
   scope: SnapshotScope | null
@@ -86,6 +88,24 @@ export interface Restoration {
 export interface RestorationHistory {
   restorations: Restoration[]
   total: number
+}
+
+export interface RestorationFilters {
+  kind?: SnapshotScope['kind']
+  status?: Restoration['status']
+  entry_point?: 'files' | 'world' | 'snapshots' | 'history'
+}
+
+export interface ActiveRestorations {
+  restorations: Array<Pick<Restoration, 'id' | 'operation_id' | 'scope' | 'status'>>
+  total: number
+}
+
+export interface SnapshotTargetCheck {
+  allowed: boolean
+  reason: string | null
+  skipped_paths: string[]
+  skipped_count: number
 }
 
 export interface ListSnapshotsResponse {

@@ -3,6 +3,7 @@
 import secrets
 from collections.abc import AsyncGenerator
 from contextlib import ExitStack, aclosing
+from dataclasses import dataclass
 from pathlib import Path
 
 import aiofiles
@@ -20,6 +21,7 @@ from ..operations.coordinator import (
 )
 from ..operations.execution import settle_before_release
 from ..operations.finalization import finalize
+from ..operations.journal_types import OperationState
 from ..runtime_resources import current_runtime
 from ..world.artifacts import artifact_root, reap_restore_stages, release_artifact
 from ..world.locks import ServerOperationLock
@@ -34,6 +36,11 @@ from .preview_version import target_version
 from .restoration_store import SessionFactory
 from .scopes import GlobalScope, ResolvedScope, SnapshotScope, WorldScope
 from .service import SnapshotService
+
+
+@dataclass
+class PreviewPreparation:
+    preview_id: str | None = None
 
 
 class SnapshotPreviews:
@@ -87,6 +94,7 @@ class SnapshotPreviews:
 
     async def submit(self, scope: SnapshotScope, source_id: str, actor_id: int) -> dict:
         task_id = secrets.token_hex(16)
+        preparation = PreviewPreparation()
         with ExitStack() as stack:
             stack.enter_context(self._snapshots.repository_use.retain([source_id]))
             prepared = await self._planner.prepare(scope)
@@ -111,7 +119,7 @@ class SnapshotPreviews:
             submitted = await self._tasks.submit_durable(
                 TaskType.SNAPSHOT_PREVIEW,
                 "准备快照恢复预览",
-                self._prepare(prepared, source_id, claims),
+                self._prepare(prepared, source_id, claims, preparation),
                 actor_id=actor_id,
                 task_id=task_id,
                 server_id=None if isinstance(scope, GlobalScope) else scope.server_id,
@@ -119,16 +127,24 @@ class SnapshotPreviews:
                 claims=claims,
                 require_existing_targets=not isinstance(scope, GlobalScope),
                 exclusive_key=f"snapshot-preview:{'global' if isinstance(scope, GlobalScope) else scope.server_id}",
+                on_finished=lambda state: self._finish(preparation, state),
             )
             retained = stack.pop_all()
             submitted.awaitable.add_done_callback(lambda _: retained.close())
         return {"task_id": task_id}
+
+    async def _finish(
+        self, preparation: PreviewPreparation, state: OperationState
+    ) -> None:
+        if state is not OperationState.SUCCEEDED and preparation.preview_id:
+            await self.manager.end_and_wait(preparation.preview_id)
 
     async def _prepare(
         self,
         prepared: PreparedSnapshot,
         source_id: str,
         claims: tuple[ResourceClaim, ...],
+        preparation: PreviewPreparation,
     ) -> AsyncGenerator[TaskProgress]:
         yield TaskProgress(message="正在检查预览范围和源快照")
         async with get_operation_coordinator().acquire(claims), settle_before_release():
@@ -155,6 +171,7 @@ class SnapshotPreviews:
                 source_snapshot_id=source_id,
             )
             preview_id, ready = directory.name, False
+            preparation.preview_id = preview_id
             try:
                 async with self.manager.use(preview_id) as session:
                     await record_phase("preparing_preview")

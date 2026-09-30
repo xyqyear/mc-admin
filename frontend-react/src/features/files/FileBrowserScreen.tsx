@@ -1,4 +1,5 @@
 import React from 'react'
+import { FileSnapshotRecovery } from './components/FileSnapshotRecovery'
 import { Folder, Search } from 'lucide-react'
 import { useParams } from 'react-router'
 
@@ -51,7 +52,6 @@ const ServerFiles: React.FC = () => {
     handleCompressServer,
     handleReplaceServerFiles,
     handleRestoreOwnership,
-    refetch,
     handleNavigateToPath,
     searchBoxRef,
     inputSearchTerm,
@@ -133,7 +133,7 @@ const ServerFiles: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <FileSnapshotRecovery key={id} serverId={id || ''}><div className="space-y-4">
       <DragDropOverlay
         isDragging={isDragging}
         isScanning={isScanning}
@@ -168,7 +168,6 @@ const ServerFiles: React.FC = () => {
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
             onRestoreOwnership={handleRestoreOwnership}
-            onRefreshSnapshot={refetch}
           />
         }
       />
@@ -343,7 +342,7 @@ const ServerFiles: React.FC = () => {
       />
 
       {confirmDialog}
-    </div>
+    </div></FileSnapshotRecovery>
   )
 }
 

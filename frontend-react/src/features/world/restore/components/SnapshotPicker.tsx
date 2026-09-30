@@ -25,6 +25,7 @@ import { RestoreProgressCard } from '@/features/backups/ui/RestoreProgressCard'
 
 interface SnapshotPickerProps {
   open: boolean
+  hidden?: boolean
   onOpenChange: (open: boolean) => void
   serverId: string
   selection: RestorationSelection | null
@@ -44,6 +45,7 @@ function formatTime(iso: string): string {
 
 export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   open,
+  hidden = false,
   onOpenChange,
   serverId,
   selection,
@@ -51,7 +53,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
   const { confirm, confirmDialog } = useConfirm()
   const scope = selection ? { kind: 'world' as const, server_id: serverId, selection } : null
   const eligibleQ = useEligibleSnapshots(open ? scope : null)
-  const { state: restoreState, start, reset } = useSnapshotOperation(scope)
+  const { state: restoreState, busy, observationMessage, start, reset } = useSnapshotOperation(scope, { serverId, resumeAny: true })
   const restoreFor = restoreState.active || restoreState.done || !!restoreState.error
 
   const [previewReq, setPreviewReq] =
@@ -88,7 +90,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
 
   return (
     <Sheet
-      open={open || restoreState.active}
+      open={!hidden && (open || restoreFor)}
       onOpenChange={(o) => {
         if (!o && restoreState.active) return
         if (!o) {
@@ -118,6 +120,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
             </>
           ) : (
             <>
+              {observationMessage && <p role="status">{observationMessage}</p>}
               {eligibleQ.isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <Spinner />
@@ -161,6 +164,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                         selection.type !== 'dimension' && (
                           <Button
                             variant="outline"
+                            disabled={busy}
                             size="sm"
                             onClick={() =>
                               setPreviewReq({
@@ -175,6 +179,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                         )}
                       <Button
                         size="sm"
+                        disabled={busy}
                         onClick={() => handleRowRestore(s.id, s.short_id)}
                       >
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />

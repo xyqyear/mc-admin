@@ -142,6 +142,7 @@ async def resolve_scope(
     sessions: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     history_paths: Sequence[Path] | None = None,
     allow_missing_dimension: bool = False,
+    include_mcc: bool = True,
 ) -> ResolvedScope:
     from ..world.selection import resolve_paths, resource_scopes
 
@@ -185,7 +186,7 @@ async def resolve_scope(
         targets = await resolve_paths(
             reference.data_path,
             scope.selection,
-            include_mcc=True,
+            include_mcc=include_mcc,
             include_missing=True,
             allow_missing_dimension=allow_missing_dimension,
         )

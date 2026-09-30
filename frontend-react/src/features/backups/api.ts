@@ -1,9 +1,23 @@
 import type { BackupRepositoryUsage } from "@/features/backups/contracts";
 import { api } from "@/shared/http/api";
 import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, ListLocksResponse, SnapshotPreviewRequest, SnapshotPreviewResult, SnapshotPreviewActions } from '@/features/backups/contracts';
+import type { ActiveRestorations, RestorationFilters, SnapshotTargetCheck } from './contracts';
 
 
 export const snapshotApi = {
+  checkTarget: async (scope: SnapshotScope) =>
+    (await api.post<SnapshotTargetCheck>('/snapshots/targets/check', { scope })).data,
+  active: async (serverId?: string): Promise<ActiveRestorations> => {
+    const restorations: ActiveRestorations['restorations'] = [];
+    let page: ActiveRestorations;
+    do {
+      page = (await api.get<ActiveRestorations>('/snapshots/restorations/active', {
+        params: { server_id: serverId, offset: restorations.length, limit: 200 },
+      })).data;
+      restorations.push(...page.restorations);
+    } while (page.restorations.length && restorations.length < page.total);
+    return { restorations, total: restorations.length };
+  },
   eligible: async (scope: SnapshotScope) => (await api.post<ListSnapshotsResponse>('/snapshots/eligible', { scope })).data,
   getAllSnapshots: async (params?: {
     server_id?: string;
@@ -40,8 +54,8 @@ export const snapshotApi = {
     return (await api.post<SnapshotTaskAccepted>(`/snapshots/restorations/${id}/rollback`)).data;
   },
 
-  history: async (serverId?: string, offset = 0): Promise<RestorationHistory> => {
-    return (await api.get<RestorationHistory>('/snapshots/restorations', { params: { server_id: serverId, offset, limit: 50 } })).data;
+  history: async (serverId?: string, offset = 0, filters: RestorationFilters = {}): Promise<RestorationHistory> => {
+    return (await api.get<RestorationHistory>('/snapshots/restorations', { params: { server_id: serverId, offset, limit: 50, ...filters } })).data;
   },
 
   getBackupRepositoryUsage: async (): Promise<BackupRepositoryUsage> => {

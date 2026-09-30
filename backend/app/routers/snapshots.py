@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParameter
@@ -9,6 +10,7 @@ from fastapi.responses import Response
 
 from app.auth.schemas import UserPublic
 from app.snapshots.api_models import (
+    ActiveRestorationsResponse,
     BackupRepositoryUsage,
     CreateSnapshotRequest,
     ListLocksResponse,
@@ -16,6 +18,7 @@ from app.snapshots.api_models import (
     ListSnapshotsResponse,
     RestorationResponse,
     RestoreRequest,
+    SnapshotTargetCheck,
     SnapshotTaskAccepted,
 )
 
@@ -41,6 +44,7 @@ from ..snapshots.policy import check_backup_time_restriction
 from ..snapshots.preview_models import PreviewActions, PreviewRequest, PreviewResult
 from ..snapshots.previews import get_snapshot_previews
 from ..snapshots.queries import RestorationQueries
+from ..snapshots.restoration_models import RestorationStatus
 from ..system.resources import get_disk_info
 
 router = APIRouter(
@@ -124,6 +128,13 @@ async def eligible_snapshots(
         )
     except TargetIgnoredError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/targets/check", response_model=SnapshotTargetCheck)
+async def check_snapshot_target(
+    request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
+):
+    return await _commands().check_target(request.scope)
 
 
 def _previews():
@@ -216,13 +227,26 @@ async def restore_snapshot(
 @router.get("/restorations", response_model=ListRestorationsResponse)
 async def list_restorations(
     server_id: str | None = None,
+    kind: Literal["global", "server", "paths", "world"] | None = None,
+    status: RestorationStatus | None = None,
+    entry_point: Literal["files", "world", "snapshots", "history"] | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: UserPublic = Depends(get_current_user),
 ):
     return await RestorationQueries(
         get_session_factory(), _get_snapshot_service()
-    ).history(server_id, limit, offset)
+    ).history(server_id, limit, offset, kind=kind, status=status, entry_point=entry_point)
+
+
+@router.get("/restorations/active", response_model=ActiveRestorationsResponse)
+async def active_restorations(
+    server_id: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: UserPublic = Depends(get_current_user),
+):
+    return await RestorationQueries(get_session_factory()).active(server_id, limit, offset)
 
 
 @router.get("/restorations/{restoration_id}", response_model=RestorationResponse)

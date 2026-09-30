@@ -28,6 +28,7 @@ import {
   type LatLngPair,
 } from '@/features/world/map/mapConfig'
 import { ServerMapTileLayer } from '@/features/world/map/ServerMapTileLayer'
+import { useMapRevision } from './revision'
 
 const REGION_OVERLAY_THRESHOLD = 5_000
 
@@ -88,6 +89,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   initialView,
   onViewChange,
 }) => {
+  const revision = useMapRevision(serverId)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const tileLayerRef = useRef<ServerMapTileLayer | null>(null)
@@ -330,6 +332,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       tileLayerRef.current = null
     }
     const layer = new ServerMapTileLayer({
+      revision,
       serverId,
       regionPath,
       regions,
@@ -345,7 +348,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     })
     layer.addTo(map)
     tileLayerRef.current = layer
-  }, [serverId, regionPath, regions, tileBounds])
+  }, [serverId, regionPath, regions, tileBounds, revision])
 
   useEffect(() => {
     const map = mapRef.current

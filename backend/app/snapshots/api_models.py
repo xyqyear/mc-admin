@@ -28,6 +28,30 @@ class SnapshotTaskAccepted(BaseModel):
     skipped_paths: list[str] = []
 
 
+class SnapshotTargetCheck(BaseModel):
+    allowed: bool
+    reason: str | None = None
+    skipped_paths: list[str] = []
+    skipped_count: int = 0
+
+
+class RestorationTarget(BaseModel):
+    server_id: str
+    generation: int | None
+
+
+class ActiveRestoration(BaseModel):
+    id: str
+    operation_id: str
+    scope: SnapshotScope | None
+    status: RestorationStatus
+
+
+class ActiveRestorationsResponse(BaseModel):
+    restorations: list[ActiveRestoration]
+    total: int
+
+
 class RestorationResponse(BaseModel):
     id: str
     operation_id: str | None
@@ -37,6 +61,7 @@ class RestorationResponse(BaseModel):
     entry_point: str | None
     initiated_by_user_id: int | None
     scope: SnapshotScope | None
+    targets: list[RestorationTarget]
     source_snapshot_id: str
     safety_snapshot_id: str | None
     source_snapshot_exists: bool

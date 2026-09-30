@@ -5,6 +5,7 @@ import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
 import { interruptRestoreAfterSafetySnapshot } from './streamFault'
 import { withCleanup } from './cleanup'
+import { holdSnapshotBackup } from './snapshotWorker'
 
 test.describe('owned administration journeys', () => {
   const journeys: Array<{ name: string; run: (fixtures: { page: Page; context: BrowserContext; api: OwnedApi; owned: OwnedEnvironment }) => Promise<void> }> = []
@@ -96,6 +97,72 @@ test.describe('owned administration journeys', () => {
       await page.unrouteAll({ behavior: 'wait' })
       await api.deleteFile(filename)
     }
+  })
+
+  journey('file snapshots preview, resume after reload and roll back while ignored paths stay disabled', async ({ page, api, owned }) => {
+    const filename = 'browser-recovery.txt'
+    const ignored = 'browser-ignored'
+    const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
+    await api.json(api.server('/files/create'), 'POST', { path: '/', name: filename, type: 'file' })
+    await api.json(api.server('/files/create'), 'POST', { path: '/', name: ignored, type: 'directory' })
+    await api.json(api.server('/files/create'), 'POST', { path: '/' + ignored, name: 'keep.txt', type: 'file' })
+    await api.writeFile(filename, 'file snapshot bytes\n')
+    await api.writeFile(ignored + '/keep.txt', 'protected bytes\n')
+    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), ignored] } })
+    let worker: ReturnType<typeof holdSnapshotBackup> | undefined
+    await withCleanup(async () => {
+      await page.goto(`/server/${owned.server_id}/files?q=browser-`)
+      await expect(page.getByRole('button', { name: `为 ${ignored} 创建快照`, exact: true })).toBeDisabled()
+      await expect(page.getByRole('button', { name: `恢复 ${ignored}`, exact: true })).toBeDisabled()
+      await expect(page.getByText('所选范围包含忽略目录，创建与恢复会跳过这些内容', { exact: true })).toBeVisible()
+      const createdResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/snapshots')
+      await page.getByRole('button', { name: `为 ${filename} 创建快照`, exact: true }).click()
+      await page.getByRole('dialog', { name: '确认创建快照' }).getByRole('button', { name: '创建快照', exact: true }).click()
+      const accepted = await (await createdResponse).json() as { task_id: string }
+      const result = (await api.task(accepted.task_id)).result as { snapshot: { id: string; short_id: string } }
+      await expect(page.getByRole('dialog', { name: '确认创建快照' })).toBeHidden()
+      await api.writeFile(filename, 'before file restore\n')
+      await page.getByRole('button', { name: `恢复 ${filename}`, exact: true }).click()
+      const picker = page.getByRole('dialog', { name: new RegExp('选择要恢复的快照') })
+      const snapshotRow = picker.getByRole('row').filter({ hasText: result.snapshot.short_id })
+      await snapshotRow.getByRole('button', { name: '预览', exact: true }).click()
+      const preview = page.getByRole('dialog', { name: '恢复预览' })
+      await expect(preview.getByText('更新', { exact: true })).toBeVisible()
+      expect((await api.file(filename)).content).toBe('before file restore\n')
+      worker = holdSnapshotBackup(owned)
+      await preview.getByRole('button', { name: '按此预览恢复', exact: true }).click()
+      await worker.ready
+      await page.reload()
+      const resumed = page.getByRole('dialog', { name: new RegExp('选择要恢复的快照') })
+      await expect(resumed).toHaveCount(1)
+      await expect(resumed.getByText('正在创建恢复前的安全快照', { exact: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(resumed).toBeVisible()
+      expect((await api.file(filename)).content).toBe('before file restore\n')
+      await worker.release()
+      await expect(resumed.getByText('恢复完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
+      expect((await api.file(filename)).content).toBe('file snapshot bytes\n')
+      expect(await readFile(path.join(owned.server_path, 'data', filename), 'utf8')).toBe('file snapshot bytes\n')
+      await resumed.getByRole('button', { name: '关闭', exact: true }).click()
+      await api.writeFile(filename, 'later file edit\n')
+      await page.getByRole('button', { name: '恢复历史', exact: true }).click()
+      const history = page.getByRole('dialog', { name: '恢复历史' })
+      await history.getByLabel('筛选恢复范围').selectOption('paths')
+      await history.getByLabel('筛选恢复入口').selectOption('files')
+      const row = history.locator('div.rounded-md.border.p-3').filter({ hasText: result.snapshot.id.slice(0, 8) })
+      await expect(row).toHaveCount(1)
+      await row.getByRole('button', { name: '回滚', exact: true }).click()
+      await page.getByRole('button', { name: '开始回滚', exact: true }).click()
+      await expect(history.getByText('恢复完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
+      expect((await api.file(filename)).content).toBe('before file restore\n')
+      expect(await readFile(path.join(owned.server_path, 'data', filename), 'utf8')).toBe('before file restore\n')
+      expect((await api.file(ignored + '/keep.txt')).content).toBe('protected bytes\n')
+    },
+    { label: 'snapshot worker', run: async () => { await worker?.release() } },
+    { label: 'snapshot rules', run: async () => { await api.json('/api/config/modules/snapshots', 'PUT', config) } },
+    { label: 'file recovery marker', run: () => api.deleteFile(filename) },
+    { label: 'ignored recovery directory', run: () => api.deleteFile(ignored) },
+    )
   })
 
   journey('Compose rejects a stale confirmed version, compares the draft, and completes after leaving the page', async ({ page, api, owned }) => {
@@ -223,6 +290,7 @@ test.describe('owned administration journeys', () => {
     const snapshot = (await api.task(created.task_id)).result as { snapshot: { id: string; short_id: string } }
     await api.writeFile(marker, 'before-interruption\n')
     const proxy = await interruptRestoreAfterSafetySnapshot(owned.base_url)
+    const worker = holdSnapshotBackup(owned)
     let releaseMapStatus!: () => void
     const mapStatusReleased = new Promise<void>(resolve => { releaseMapStatus = resolve })
     let mapStatusHeld = false
@@ -232,6 +300,13 @@ test.describe('owned administration journeys', () => {
       const row = page.getByText(snapshot.snapshot.short_id, { exact: true }).locator('../..')
       await row.getByRole('button', { name: '恢复', exact: true }).click()
       await page.getByRole('button', { name: '开始恢复', exact: true }).click()
+      await worker.ready
+      await page.reload()
+      await expect(page.getByRole('dialog', { name: '选择快照恢复' })).toBeVisible()
+      await expect(page.getByRole('dialog', { name: '选择快照恢复' }).getByText('正在创建恢复前的安全快照', { exact: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog', { name: '选择快照恢复' })).toBeVisible()
+      await worker.release()
       await proxy.interrupted
       await expect(page.getByText('暂时无法获取任务状态，正在重新连接', { exact: true }).first()).toBeVisible()
       await page.keyboard.press('Escape')
@@ -275,6 +350,7 @@ test.describe('owned administration journeys', () => {
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('before-interruption\n')
     },
     { label: 'map status route', run: async () => { releaseMapStatus(); await page.unrouteAll({ behavior: 'wait' }) } },
+    { label: 'snapshot worker', run: worker.release },
     { label: 'restore proxy', run: proxy.close },
     { label: 'restore marker', run: () => api.deleteFile(marker) },
     )

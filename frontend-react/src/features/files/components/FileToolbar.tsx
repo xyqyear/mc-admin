@@ -30,7 +30,6 @@ interface FileToolbarProps {
   onCompressServer: () => void
   onReplaceServerFiles: () => void
   onRestoreOwnership: () => void
-  onRefreshSnapshot?: () => void
 }
 
 const FileToolbar: React.FC<FileToolbarProps> = ({
@@ -50,7 +49,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   onCompressServer,
   onReplaceServerFiles,
   onRestoreOwnership,
-  onRefreshSnapshot
 }) => {
   return (
     <>
@@ -67,7 +65,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
             serverId={serverId}
             path="/"
             isServerMode={true}
-            onRefresh={onRefreshSnapshot}
           />
           <Button
             variant="outline"
