@@ -37,9 +37,10 @@ from .planner import (
     EmptyStep,
     RestorePlan,
     RestoreStep,
-    TargetIgnoredError,
     build_restore_plan,
 )
+from .protection import SnapshotProtection
+from .repository_use import RepositoryUse
 from .restic import ResticClient
 
 
@@ -47,17 +48,33 @@ class SnapshotService:
     def __init__(self, client: ResticClient, mc_manager: InstanceProvider):
         self._client = client
         self._mc_manager = mc_manager
+        self.repository_use = RepositoryUse()
+
+    async def protection(
+        self, snapshot_id: str | None = None, *, retained: Sequence[Path] = (),
+    ) -> SnapshotProtection:
+        current = await self._current_ignores()
+        excluded = list(retained)
+        if snapshot_id is not None:
+            snapshot = await self.get_snapshot(snapshot_id)
+            excluded.extend([await async_fs.resolve(Path(path)) for path in snapshot.excludes])
+        return SnapshotProtection.capture(current, excluded)
+
+    async def revalidate_protection(self, protection: SnapshotProtection) -> None:
+        protection.require_current(await self._current_ignores())
 
     async def _current_ignores(self) -> list[Path]:
         return await resolve_all_ignores(
             self._mc_manager, get_config().snapshots.ignored_paths
         )
 
-    async def remove_absent_paths(self, snapshot_id: str, paths: Sequence[Path]) -> None:
+    async def remove_absent_paths(
+        self, snapshot_id: str, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
+    ) -> None:
         """Restore recorded absence without deleting configured ignored descendants."""
-        ignored = await self._current_ignores()
-        snapshot = await self.get_snapshot(snapshot_id)
-        ignored.extend([await async_fs.resolve(Path(path)) for path in snapshot.excludes])
+        protection = protection or await self.protection(snapshot_id)
+        await self.revalidate_protection(protection)
+        ignored = protection.excluded
 
         async def remove(path: Path) -> None:
             if is_ignored(path, ignored) or (not await aioos.path.exists(path) and not await aioos.path.islink(path)):
@@ -77,29 +94,26 @@ class SnapshotService:
             await remove(path)
 
     async def create_snapshot(
-        self, paths: Sequence[Path]
+        self, paths: Sequence[Path], *, protection: SnapshotProtection | None = None,
     ) -> ResticSnapshotWithSummary:
         """Snapshot the given absolute paths, excluding configured ignores.
 
         Raises ``TargetIgnoredError`` when a requested path itself lies
         under an ignored path — such a snapshot would be empty by definition.
         """
-        ignored = await self._current_ignores()
-        for path in paths:
-            if is_ignored(path, ignored):
-                raise TargetIgnoredError(
-                    f"路径在忽略列表中，无法创建快照: {path}"
-                )
-        return await self._client.backup(paths, backup_excludes(paths, ignored))
+        with self.repository_use.retain():
+            protection = protection or await self.protection()
+            await self.revalidate_protection(protection)
+            protection.require_targets(paths)
+            return await self._client.backup(paths, backup_excludes(paths, protection.excluded))
 
     async def build_plan(
-        self, snapshot_id: str, targets: Sequence[Path]
+        self, snapshot_id: str, targets: Sequence[Path], *, protection: SnapshotProtection | None = None,
     ) -> RestorePlan:
-        snapshot = await self._client.get_snapshot(snapshot_id)
-        ignored = await self._current_ignores()
-        for exclude in snapshot.excludes:
-            ignored.append(await async_fs.resolve(Path(exclude)))
-        return await build_restore_plan(self._client, snapshot_id, targets, ignored)
+        protection = protection or await self.protection(snapshot_id)
+        await self.revalidate_protection(protection)
+        protection.require_targets(targets)
+        return await build_restore_plan(self._client, snapshot_id, targets, protection.excluded)
 
     async def restore(
         self,
@@ -107,6 +121,7 @@ class SnapshotService:
         targets: Sequence[Path],
         *,
         dry_run: bool = False,
+        protection: SnapshotProtection | None = None,
     ) -> AsyncGenerator[ResticRestoreEvent]:
         """In-place restore with ``--delete``, ignored paths protected.
 
@@ -114,12 +129,13 @@ class SnapshotService:
         steps, ``file`` events passed through, and one aggregated ``summary``
         at the end.
         """
-        plan = await self.build_plan(snapshot_id, targets)
-        async with aclosing(self._run_plan(
-            plan, target_for=lambda step: step.source_dir, delete=True, dry_run=dry_run
-        )) as events:
-            async for event in events:
-                yield event
+        with self.repository_use.retain((snapshot_id,)):
+            plan = await self.build_plan(snapshot_id, targets, protection=protection)
+            async with aclosing(self._run_plan(
+                plan, target_for=lambda step: step.source_dir, delete=True, dry_run=dry_run
+            )) as events:
+                async for event in events:
+                    yield event
 
     async def preview(
         self, snapshot_id: str, targets: Sequence[Path]
@@ -145,21 +161,24 @@ class SnapshotService:
         snapshot_id: str,
         targets: Sequence[Path],
         stage_root: Path,
+        *,
+        protection: SnapshotProtection | None = None,
     ) -> AsyncGenerator[ResticRestoreEvent]:
         """Restore targets under ``stage_root``, mirroring absolute paths.
 
         No ``--delete``: staging directories start empty. Use
         ``stage_destination`` to locate staged files afterwards.
         """
-        plan = await self.build_plan(snapshot_id, targets)
-        async with aclosing(self._run_plan(
-            plan,
-            target_for=lambda step: RestorePlan.stage_target(stage_root, step),
-            delete=False,
-            dry_run=False,
-        )) as events:
-            async for event in events:
-                yield event
+        with self.repository_use.retain((snapshot_id,)):
+            plan = await self.build_plan(snapshot_id, targets, protection=protection)
+            async with aclosing(self._run_plan(
+                plan,
+                target_for=lambda step: RestorePlan.stage_target(stage_root, step),
+                delete=False,
+                dry_run=False,
+            )) as events:
+                async for event in events:
+                    yield event
 
     @staticmethod
     def stage_destination(stage_root: Path, live_path: Path) -> Path:
@@ -353,7 +372,8 @@ class SnapshotService:
         return paths, excludes
 
     async def forget_id(self, snapshot_id: str, prune: bool = True) -> str:
-        return await self._client.forget_id(snapshot_id, prune=prune)
+        with self.repository_use.maintain():
+            return await self._client.forget_id(snapshot_id, prune=prune)
 
     async def forget(
         self,
@@ -367,23 +387,25 @@ class SnapshotService:
         keep_within: str | None = None,
         prune: bool = True,
     ) -> str:
-        return await self._client.forget(
-            keep_last=keep_last,
-            keep_hourly=keep_hourly,
-            keep_daily=keep_daily,
-            keep_weekly=keep_weekly,
-            keep_monthly=keep_monthly,
-            keep_yearly=keep_yearly,
-            keep_tag=keep_tag,
-            keep_within=keep_within,
-            prune=prune,
-        )
+        with self.repository_use.maintain():
+            return await self._client.forget(
+                keep_last=keep_last,
+                keep_hourly=keep_hourly,
+                keep_daily=keep_daily,
+                keep_weekly=keep_weekly,
+                keep_monthly=keep_monthly,
+                keep_yearly=keep_yearly,
+                keep_tag=keep_tag,
+                keep_within=keep_within,
+                prune=prune,
+            )
 
     async def list_locks(self) -> str:
         return await self._client.list_locks()
 
     async def unlock(self) -> str:
-        return await self._client.unlock()
+        with self.repository_use.maintain():
+            return await self._client.unlock()
 
 
 def _accumulate_summary(

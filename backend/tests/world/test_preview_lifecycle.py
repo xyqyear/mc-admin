@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.dynamic_config import get_config
 from app.dynamic_config.configs.snapshots import WorldRestoreConfig
@@ -21,6 +22,25 @@ from app.world.preview import (
 from tests.support.runtime import set_runtime_resource
 
 default_region_bytes = WorldRestoreConfig().preview_avg_region_bytes
+
+
+async def test_ready_preview_keeps_source_until_expiry_and_active_readers_finish(manager):
+    directory = await manager.create_session("srv1", source_snapshot_id="source")
+    from app.world.artifacts import release_artifact
+
+    await release_artifact("world_preview", directory.name)
+    repository = manager._repository_use
+    with pytest.raises(HTTPException), repository.maintain():
+        pass
+    async with manager.use(directory.name):
+        manager._sessions[directory.name].last_seen -= timedelta(hours=1)
+        assert await manager.reap_stale() == [directory.name]
+        with pytest.raises(HTTPException), repository.maintain():
+            pass
+        assert directory.exists()
+    assert not directory.exists()
+    with repository.maintain():
+        assert not repository.active_snapshots
 
 
 async def test_concurrent_creates_keep_only_latest_session(manager):
@@ -111,10 +131,10 @@ async def test_preview_sse_failure_records_failed_outcome_and_removes_artifact(m
         OperationState,
         ResourceReference,
     )
+    from app.snapshots.restoration_models import RestorationType
+    from app.snapshots.selection_models import RestorationSelection
     from app.world import preview_application
-    from app.world.models import RestorationType
     from app.world.preview_application import WorldPreviewApplication
-    from app.world.schemas import RestorationSelection
     from app.world.scope_execution import RestoreScopeExecutor
 
     async with isolated_runtime.database.engine.begin() as connection:

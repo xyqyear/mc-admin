@@ -13,8 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.metadata import Base
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.recovery import mark_running_restorations_interrupted
+from app.snapshots.recovery import mark_running_restorations_interrupted
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
 
 
 @pytest_asyncio.fixture
@@ -32,7 +36,8 @@ async def session_factory():
 
 
 @pytest.mark.asyncio
-async def test_running_rows_become_interrupted(session_factory):
+@pytest.mark.parametrize("status", [RestorationStatus.PENDING, RestorationStatus.RUNNING])
+async def test_unfinished_rows_become_interrupted(session_factory, status):
     started = datetime.now(UTC) - timedelta(minutes=10)
     async with session_factory() as session:
         session.add(
@@ -45,7 +50,7 @@ async def test_running_rows_become_interrupted(session_factory):
                 selection_json='{"type":"world"}',
                 is_rollback=False,
                 started_at=started,
-                status=RestorationStatus.RUNNING,
+                status=status,
             )
         )
         session.add(
@@ -65,7 +70,7 @@ async def test_running_rows_become_interrupted(session_factory):
         await session.commit()
 
     with patch(
-        "app.world.recovery.get_async_session", session_factory
+        "app.snapshots.recovery.get_async_session", session_factory
     ):
         flipped = await mark_running_restorations_interrupted()
 
@@ -96,7 +101,7 @@ async def test_running_rows_become_interrupted(session_factory):
 @pytest.mark.asyncio
 async def test_no_running_rows_returns_zero(session_factory):
     with patch(
-        "app.world.recovery.get_async_session", session_factory
+        "app.snapshots.recovery.get_async_session", session_factory
     ):
         flipped = await mark_running_restorations_interrupted()
     assert flipped == 0

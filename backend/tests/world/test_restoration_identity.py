@@ -12,10 +12,14 @@ from app.minecraft import DockerMCManager
 from app.servers.models import Server, ServerStatus
 from app.servers.references import resolve_server_ref
 from app.snapshots import SnapshotService
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
+from app.snapshots.restoration_store import RestorationStore, restoration_binding_issue
+from app.snapshots.selection_models import RestorationSelection
 from app.world import ServerOperationLock, WorldRestoreOrchestrator
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.restoration_store import RestorationStore, restoration_binding_issue
-from app.world.schemas import RestorationSelection
 
 
 @pytest.fixture
@@ -36,6 +40,9 @@ async def identity_case(tmp_path):
         await session.commit()
         reference = await resolve_server_ref(session, "survival", servers_root=root)
     snapshots = Mock(spec=SnapshotService)
+    from app.snapshots.repository_use import RepositoryUse
+
+    snapshots.repository_use = RepositoryUse()
     docker = Mock(spec=DockerMCManager)
     orchestrator = WorldRestoreOrchestrator(
         snapshot_service=cast(SnapshotService, snapshots),

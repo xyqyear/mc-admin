@@ -33,6 +33,12 @@ from app.main import api_app
 from app.minecraft import MCServerStatus
 from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
+from app.snapshots.selection_models import RestorationSelection
 from app.utils.exec import exec_command
 from app.world import (
     ServerOperationKind,
@@ -40,8 +46,6 @@ from app.world import (
     WorldRestoreOrchestrator,
 )
 from app.world.locks import LockHolder
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.schemas import RestorationSelection
 from tests.support.runtime import patch_runtime_resource
 
 

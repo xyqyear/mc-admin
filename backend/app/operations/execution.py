@@ -221,7 +221,7 @@ async def confirm_runtime_writers_stopped(record: OperationRecord) -> bool:
 async def recover_runtime(runtime: "Runtime") -> None:
     from ..background_tasks import get_task_manager
     from ..cron.crud import interrupt_running_executions
-    from ..world.recovery import mark_running_restorations_interrupted
+    from ..snapshots.recovery import mark_running_restorations_interrupted
     from .recovery import RecoveryService
 
     journal = OperationJournal(runtime.database.session_factory)

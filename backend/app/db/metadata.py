@@ -16,11 +16,11 @@ from app.self_check.models import (
     SelfCheckRun,  # noqa: F401
 )
 from app.servers.models import Server  # noqa: F401
+from app.snapshots.restoration_models import Restoration  # noqa: F401
 from app.templates.tables import (
     DefaultVariableConfig,  # noqa: F401
     ServerTemplate,  # noqa: F401
 )
-from app.world.models import Restoration  # noqa: F401
 
 from ..operations.models import OperationJournalEntry  # noqa: F401
 from .base import Base

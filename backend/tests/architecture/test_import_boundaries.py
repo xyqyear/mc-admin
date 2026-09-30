@@ -5,6 +5,7 @@ APP = Path(__file__).resolve().parents[2] / "app"
 RETIRED = {
     "app.models", "app.servers.configuration", "app.servers.rebuild",
     "app.players.tracking", "app.self_check.runner", "app.routers.servers.utils.server_list",
+    "app.world.models", "app.world.schemas", "app.world.restoration_store", "app.world.recovery",
 }
 
 
@@ -66,7 +67,7 @@ def test_import_rules_reject_actual_boundary_regressions():
         "from ..db.metadata import Base",
     ]
     assert all(import_violations("app.operations.execution", source) for source in invalid)
-    assert import_violations("app.operations.execution", "from ..world.recovery import mark_running_restorations_interrupted") == []
+    assert import_violations("app.operations.execution", "from ..snapshots.recovery import mark_running_restorations_interrupted") == []
     assert import_violations("app.main", "from .routers import cron") == []
 
 

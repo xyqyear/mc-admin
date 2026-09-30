@@ -22,6 +22,12 @@ from app.dynamic_config import get_config
 from app.minecraft import MCServerStatus
 from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
+from app.snapshots.selection_models import RestorationSelection
 from app.utils.exec import exec_command
 from app.world import (
     LockHolder,
@@ -30,8 +36,6 @@ from app.world import (
     ServerOperationLock,
     WorldRestoreOrchestrator,
 )
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.schemas import RestorationSelection
 
 
 def _restic_available() -> bool:
@@ -640,6 +644,7 @@ async def test_rollback_uses_safety_as_source(
     rollback_row = await _read_restoration(session_factory, rollback_rid)
     assert rollback_row is not None
     assert rollback_row.is_rollback is True
+    assert rollback_row.rollback_of_id == rid
     original_row = await _read_restoration(session_factory, rid)
     assert original_row is not None
     assert rollback_row.source_snapshot_id == original_row.safety_snapshot_id

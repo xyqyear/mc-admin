@@ -1,7 +1,7 @@
 """Application flow for restoring file paths and server snapshots."""
 
 from collections.abc import AsyncGenerator, Sequence
-from contextlib import aclosing
+from contextlib import AsyncExitStack, aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -86,17 +86,20 @@ class SnapshotRestoreService:
         claims = (*files, *(ResourceClaim(ResourceKind.MAP_CACHE, server_id) for server_id in server_ids))
         with get_server_write_admission().write(affected):
             async with (
+                AsyncExitStack() as repository_references,
                 operation_scope("snapshot_restore", affected, actor_id=user_id, claims=claims),
                 self._lock.lease(server_ids, holder, claims=claims, policy=ConflictPolicy.SKIP) as lease,
                 settle_before_release(),
             ):
                 if lease is None:
                     raise SnapshotMaintenanceConflict("服务器正在维护")
+                repository_references.enter_context(self._snapshots.repository_use.retain([snapshot_id]))
                 require_same_claims(files, await files_with_cache())
                 await self._check_stopped(server_ids)
                 yield {"event_type": "start", "message": f"正在恢复快照 {snapshot_id[:8]}"}
                 yield {"event_type": "safety_snapshot", "message": "正在创建安全快照"}
                 safety = await SnapshotApplication(self._snapshots, self._manager, self._lock).backup(paths, actor_id=user_id, parent=lease)
+                repository_references.enter_context(self._snapshots.repository_use.retain([safety.id]))
                 await retain_recovery_reference("safety_snapshot", safety.id)
                 yield {
                     "event_type": "safety_snapshot",

@@ -4,14 +4,18 @@ import asyncio
 import json
 import secrets
 from collections.abc import AsyncGenerator
-from contextlib import aclosing
+from contextlib import AsyncExitStack, aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 
 from anyio import CancelScope
 
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
+from app.snapshots.selection_models import RestorationSelection
 
 from ..config import get_settings
 from ..errors import log_safe_error, public_error_message
@@ -22,6 +26,11 @@ from ..operations.execution import operation_scope, settle_before_release
 from ..operations.finalization import finalize
 from ..servers.references import ServerRef, resolve_server_ref, revalidate_server_ref
 from ..snapshots import ResticSnapshot, ResticSnapshotWithSummary, SnapshotService
+from ..snapshots.restoration_store import (
+    RestorationStore,
+    SessionFactory,
+    require_restoration_owner,
+)
 from .artifacts import artifact_root, reap_restore_stages
 from .events import (
     PreviewEvent,
@@ -34,11 +43,6 @@ from .finalization import invalidate_map_cache
 from .locks import LockHolder, ServerOperationKind, ServerOperationLock
 from .preview import PreviewSessionManager
 from .preview_application import WorldPreviewApplication
-from .restoration_store import (
-    RestorationStore,
-    SessionFactory,
-    require_restoration_owner,
-)
 from .scope_execution import RestoreScopeExecutor, safety_backup_paths
 from .selection import (
     _selection_label,
@@ -71,6 +75,7 @@ class WorldRestoreOrchestrator:
         self._executor = RestoreScopeExecutor(snapshot_service)
         self._preview_manager = PreviewSessionManager(
             preview_base_dir if preview_base_dir is not None else artifact_root("restore"),
+            snapshot_service.repository_use,
         )
         self._previews = WorldPreviewApplication(snapshot_service, self._executor, self._preview_manager)
 
@@ -87,6 +92,8 @@ class WorldRestoreOrchestrator:
             await revalidate_server_ref(session, reference)
 
     async def require_rollback_owner(self, restoration: Restoration) -> None:
+        if restoration.server_id is None:
+            raise RestoreError("该记录不属于单服务器世界恢复")
         require_restoration_owner(restoration, await self._reference(restoration.server_id))
 
     @staticmethod
@@ -121,6 +128,7 @@ class WorldRestoreOrchestrator:
         absent_source_dirs: list[str] | None = None,
         reference: ServerRef | None = None,
         world_roots: list[str] | None = None,
+        rollback_of_id: str | None = None,
     ) -> AsyncGenerator[RestoreEvent]:
         """Acquire RESTORE lock, take a safety snapshot, persist a row, and run the scope flow."""
         reference = reference or await self._reference(server_id)
@@ -148,11 +156,13 @@ class WorldRestoreOrchestrator:
         from ..operations.journal_types import OperationState
 
         async with (
+            AsyncExitStack() as repository_references,
             operation_scope("world_restore", [server_id], actor_id=user_id, legacy_id=restoration_id, claims=claims) as operation,
             self._lock.lease([server_id], holder, claims=claims) as lease,
             settle_before_release(),
         ):
             assert lease is not None
+            repository_references.enter_context(self._snapshots.repository_use.retain([source_snapshot_id]))
             await self._revalidate(reference)
             await self._ensure_server_stopped(server_id)
             current_paths = await resolve_paths(reference.data_path, selection, include_mcc=True, include_missing=True,
@@ -181,6 +191,7 @@ class WorldRestoreOrchestrator:
             async with safety_backup_paths(reference.data_path, paths, selection, absent_dirs) as backup_paths:
                 safety = await self._backups.backup(backup_paths, actor_id=user_id, parent=lease)
             safety_snapshot_id = safety.id
+            repository_references.enter_context(self._snapshots.repository_use.retain([safety_snapshot_id]))
             await retain_recovery_reference("safety_snapshot", safety_snapshot_id)
             await retain_recovery_reference("restoration", restoration_id)
             touched_items: list[str] = []
@@ -194,6 +205,8 @@ class WorldRestoreOrchestrator:
                         source_snapshot_id=source_snapshot_id,
                         safety_snapshot_id=safety_snapshot_id,
                         is_rollback=is_rollback,
+                        rollback_of_id=rollback_of_id,
+                        operation_id=operation.operation_id if operation is not None else None,
                         user_id=user_id,
                         absent_dirs=absent_dirs,
                         world_roots=[path.relative_to(reference.data_path).as_posix() for path in paths] if selection.type is RestorationType.WORLD else None,
@@ -263,7 +276,7 @@ class WorldRestoreOrchestrator:
 
     async def rollback(self, restoration_id: str, user_id: int | None) -> AsyncGenerator[RestoreEvent]:
         row = await self._store.get(restoration_id)
-        if row is None:
+        if row is None or row.server_id is None:
             raise RestoreError(f"恢复记录不存在: {restoration_id}")
         reference = await self._reference(row.server_id)
         require_restoration_owner(row, reference)
@@ -289,6 +302,7 @@ class WorldRestoreOrchestrator:
             selection=selection, user_id=user_id, is_rollback=True, reference=reference,
             absent_source_dirs=recorded.get("absent_directories", recorded.get("absent_sidecar_dirs", [])),
             world_roots=roots,
+            rollback_of_id=row.id,
         )) as events:
             async for event in events:
                 yield event

@@ -4,7 +4,7 @@ Selective rollback of Minecraft world data at four granularities — chunk, regi
 
 `restore.py` owns application orchestration. `selection.py` plans confined paths
 and resource scopes; `scope_execution.py` performs scope-specific Restic/mcmap
-work; `restoration_store.py` owns short history transactions; `finalization.py`
+work; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
 invalidates caches; `preview_application.py` builds previews using the
 reference-counted manager in `preview.py`. `artifacts.py` ties feature scratch
 directories to operation recovery evidence. Adapters do not discover the

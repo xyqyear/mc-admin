@@ -30,10 +30,11 @@ from app.operations.journal_types import (
 from app.operations.recovery import RecoveryService
 from app.servers.commands import ServerCommandResult, ServerCommands
 from app.servers.models import Server
+from app.snapshots.repository_use import RepositoryUse
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 from app.world.locks import ServerOperationLock
-from app.world.models import RestorationType
 from app.world.restore import WorldRestoreOrchestrator
-from app.world.schemas import RestorationSelection
 from tests.support.runtime import set_runtime_resource
 
 
@@ -170,7 +171,7 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(daemon_r
     monkeypatch.setattr(env.journal, "finish", finish)
     monkeypatch.setattr(ServerOperationLock, "lease", acquire)
     getattr(env.instance, "restart" if action == "cron" else action).side_effect = cli_command
-    snapshots = Mock(create_snapshot=AsyncMock())
+    snapshots = Mock(create_snapshot=AsyncMock(), repository_use=RepositoryUse())
     orchestrator = WorldRestoreOrchestrator(
         snapshot_service=snapshots, docker_mc_manager=env.manager, server_operation_lock=env.lock,
         session_factory=env.runtime.database.session_factory,

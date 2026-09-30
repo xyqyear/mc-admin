@@ -4,8 +4,8 @@ from pathlib import Path
 
 import aiofiles.os as aioos
 
-from app.world.models import RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 
 from ..utils import async_fs
 from .events import SelectionResolutionError

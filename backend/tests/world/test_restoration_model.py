@@ -10,8 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.metadata import Base
-from app.world.models import Restoration, RestorationStatus, RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import (
+    Restoration,
+    RestorationStatus,
+    RestorationType,
+)
+from app.snapshots.selection_models import RestorationSelection
 
 
 @pytest.fixture

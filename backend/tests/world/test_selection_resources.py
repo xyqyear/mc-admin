@@ -2,11 +2,11 @@ import pytest
 
 from app.operations.coordinator import ResourceClaim, ResourceKind
 from app.servers.references import ServerRef
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 from app.world.events import SelectionResolutionError
 from app.world.finalization import invalidate_map_cache
-from app.world.models import RestorationType
 from app.world.restore import WorldRestoreOrchestrator
-from app.world.schemas import RestorationSelection
 
 
 async def test_internal_world_alias_and_mca_link_claim_their_actual_targets(tmp_path):

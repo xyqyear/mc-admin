@@ -6,15 +6,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.servers.references import ServerRef
+from app.snapshots.restoration_models import Restoration, RestorationType
+from app.snapshots.selection_models import RestorationSelection
 from app.world.events import RestoreEvent, SelectionResolutionError
-from app.world.models import Restoration, RestorationType
 from app.world.restore import WorldRestoreOrchestrator
-from app.world.schemas import RestorationSelection
 from app.world.scope_execution import RestoreScopeExecutor, safety_backup_paths
 from app.world.selection import absent_directories, resolve_paths
 
 
-@pytest.mark.parametrize("scope", list(RestorationType))
+@pytest.mark.parametrize("scope", [RestorationType.WORLD, RestorationType.DIMENSION, RestorationType.REGIONS, RestorationType.CHUNKS])
 @pytest.mark.parametrize("failure", ["error", "cancel"])
 async def test_empty_backup_evidence_is_scoped_and_cleaned_on_failure(tmp_path, scope, failure):
     data = tmp_path / "data"

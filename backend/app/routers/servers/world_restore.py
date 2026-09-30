@@ -8,6 +8,8 @@ from sqlalchemy import desc, func, select
 
 from app.auth.schemas import UserPublic
 from app.servers.models import Server, ServerStatus
+from app.snapshots.restoration_models import Restoration, RestorationType
+from app.snapshots.selection_models import RestorationSelection
 from app.world.api_models import (
     CreateSnapshotResponse,
     DimensionInfoResponse,
@@ -21,8 +23,6 @@ from app.world.api_models import (
     WorldLayoutResponse,
     WorldRootResponse,
 )
-from app.world.models import Restoration, RestorationType
-from app.world.schemas import RestorationSelection
 
 from ... import world as world_subsystem
 from ...db.database import get_async_session
@@ -44,6 +44,7 @@ from ...player_locations import (
 from ...self_check.constants import WORLD_RESTORED_TRIGGER, WORLD_ROLLED_BACK_TRIGGER
 from ...self_check.events import schedule_self_check_event
 from ...snapshots import get_snapshot_service
+from ...snapshots.restoration_store import restoration_binding_issue
 from ...utils.sse import sse_encode, sse_response
 from ...world import (
     SelectionResolutionError,
@@ -54,7 +55,6 @@ from ...world import (
     discover_world_roots,
 )
 from ...world.preview import PreviewDiskGuardError, PreviewSessionNotFoundError
-from ...world.restoration_store import restoration_binding_issue
 from .admission import admit_server_write
 
 router = APIRouter(
@@ -121,6 +121,8 @@ async def _existing_snapshot_ids() -> set[str] | None:
 def _restoration_to_response(
     row: Restoration, existing_ids: set[str] | None, generation: int | None
 ) -> RestorationResponse:
+    if row.server_id is None:
+        raise HTTPException(status_code=404, detail="该记录不属于单服务器世界恢复")
     def _exists(snap_id: str | None) -> bool:
         if snap_id is None:
             return False

@@ -17,11 +17,31 @@ app/snapshots/
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
 ├── application.py # backup use case, confined request paths and declared file scope
 ├── policy.py    # manual backup time-window policy
+├── scopes.py    # explicit global/project/data-path/world selection and resource claims
+├── protection.py # frozen current/source/chain exclusions and execution revalidation
+├── repository_use.py # active repository readers and exclusive destructive maintenance
+├── restoration_models.py # retained restoration evidence, including server generations
+├── selection_models.py # world selection contracts shared by snapshot adapters
+├── restoration_store.py # history persistence and interruption reconciliation
+├── recovery.py  # startup reconciliation of pending/running restoration history
 ├── service.py   # SnapshotService — owned Restic planning/execution
 └── restore.py   # SnapshotRestoreService — path restore maintenance, safety snapshot and finalization
 ```
 
 `get_snapshot_service()` returns the active runtime’s actual `SnapshotService`, or `None` when Restic is not configured. The composition root creates its Restic adapter and injects its Minecraft manager. Routers, cron jobs, self-checks and world restoration use this owned service; application callers do not construct competing repository clients.
+
+The explicit scope contract distinguishes the servers root, an entire server
+project, paths relative to `data`, and world selections. It collapses duplicate
+targets while retaining lexical and canonical file claims. `SnapshotProtection`
+freezes expanded current exclusions together with source and retained-chain
+protection. Execution rechecks current exclusions and rejects configuration or
+`LEVEL_NAME` drift before invoking Restic.
+
+Repository readers can coexist. Backup and restore execution hold repository
+references until their subprocess cleanup finishes; ready map previews retain
+their source through close/expiry and outstanding tile reads. Forget/prune and
+lock cleanup reject while those references exist. Completed history does not
+permanently prevent retention. References are bounded per runtime.
 
 ## Ignored paths
 

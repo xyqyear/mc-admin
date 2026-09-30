@@ -8,8 +8,8 @@ from typing import Any
 import aiofiles
 import aiofiles.os as aioos
 
-from app.world.models import RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 
 from ..files.utils import makedirs_with_ownership
 from ..mcmap import runner as mcmap_runner

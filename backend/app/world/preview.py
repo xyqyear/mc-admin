@@ -11,7 +11,7 @@ import asyncio
 import logging
 import secrets
 from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractContextManager, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import aiofiles.os as aioos
 
 from ..dynamic_config import get_config
+from ..snapshots.repository_use import RepositoryUse
 from ..utils import async_fs
 from .artifacts import (
     protected_artifacts,
@@ -61,6 +62,7 @@ class _Session:
     references: int = 0
     closing: bool = False
     server_generation: int | None = None
+    snapshot_reference: AbstractContextManager[None] | None = None
 
 
 @dataclass
@@ -98,8 +100,9 @@ def _utcnow() -> datetime:
 class PreviewSessionManager:
     """Manage ``/tmp`` preview session dirs, heartbeats, and the janitor loop."""
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, repository_use: RepositoryUse | None = None) -> None:
         self.base_dir = base_dir
+        self._repository_use = repository_use or RepositoryUse()
         self._sessions: dict[str, _Session] = {}
         self._server_to_session: dict[str, str] = {}
         self._janitor_task: asyncio.Task | None = None
@@ -108,7 +111,8 @@ class PreviewSessionManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_session(
-        self, server_id: str, *, affected_regions: int = 0, server_generation: int | None = None
+        self, server_id: str, *, affected_regions: int = 0, server_generation: int | None = None,
+        source_snapshot_id: str | None = None,
     ) -> Path:
         """Tear down any prior session for ``server_id`` and create a fresh dir.
 
@@ -140,6 +144,10 @@ class PreviewSessionManager:
             )
             self._server_to_session[server_id] = session_id
             try:
+                if source_snapshot_id is not None:
+                    reference = self._repository_use.retain([source_snapshot_id])
+                    reference.__enter__()
+                    self._sessions[session_id].snapshot_reference = reference
                 await retain_artifact("world_preview", session_id)
                 await finalize(aioos.makedirs(session_dir, exist_ok=False))
             except BaseException:
@@ -177,6 +185,9 @@ class PreviewSessionManager:
             return
         await async_fs.rmtree(sess.base_dir, ignore_errors=True)
         self._sessions.pop(sess.session_id, None)
+        if sess.snapshot_reference is not None:
+            sess.snapshot_reference.__exit__(None, None, None)
+            sess.snapshot_reference = None
 
     @asynccontextmanager
     async def use(self, session_id: str) -> AsyncGenerator[_Session]:

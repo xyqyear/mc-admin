@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from app.config import get_settings
 from app.snapshots import ResticClient, SnapshotService, TargetIgnoredError
@@ -113,6 +114,38 @@ async def _drain(gen):
 
 
 class TestCreateSnapshot:
+    async def test_frozen_level_name_is_rechecked_before_backup(self, service, client, server):
+        data = server.get_data_path()
+        with ignored_paths(["<LEVEL_NAME>/region"]):
+            protection = await service.protection()
+            (data / "server.properties").write_text("level-name=another_world\n")
+            with pytest.raises(HTTPException) as error:
+                await service.create_snapshot([data], protection=protection)
+        assert error.value.status_code == 409
+        assert await client.list_snapshots() == []
+
+    async def test_safety_snapshot_retains_source_and_chain_protection(self, service, client, server):
+        data = server.get_data_path()
+        with ignored_paths(["logs"]):
+            source = await service.create_snapshot([data])
+        with ignored_paths([".mcmap"]):
+            protection = await service.protection(source.id, retained=[data / "my_world" / "region"])
+            safety = await service.create_snapshot([data], protection=protection)
+            (data / "logs" / "latest.log").write_text("retain current logs")
+            terrain = data / "my_world" / "region" / "r.0.0.mca"
+            terrain.write_bytes(b"retain current terrain")
+            level = data / "my_world" / "level.dat"
+            level.write_bytes(b"changed")
+            await _drain(service.restore(source.id, [data], protection=protection))
+        assert level.read_bytes() == b"level"
+        assert terrain.read_bytes() == b"retain current terrain"
+        assert (data / "logs" / "latest.log").read_text() == "retain current logs"
+        assert sorted(safety.excludes) == sorted(str(path) for path in protection.excluded)
+        nodes = await client.ls(safety.id, data)
+        assert data / "logs" not in nodes
+        assert data / ".mcmap" not in nodes
+        assert data / "my_world" in nodes
+
     async def test_ignored_paths_excluded_from_backup(self, service, client, server):
         data = server.get_data_path()
         with ignored_paths([".mcmap", "logs"]):

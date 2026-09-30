@@ -46,6 +46,14 @@ func previewLifecycle(ctx context.Context, t *engine.Scope) error {
 		return fmt.Errorf("preview returned no session")
 	}
 	path := s.base + "/world-restore/preview/" + session
+	for _, operation := range []struct{ method, path string }{
+		{"DELETE", "/api/snapshots/" + snapshot},
+		{"POST", "/api/snapshots/unlock"},
+	} {
+		if err = s.client.JSON(ctx, operation.method, operation.path, nil, nil, 423); err != nil {
+			return err
+		}
+	}
 	if err = s.client.JSON(ctx, "POST", path+"/heartbeat", nil, nil, 204); err != nil {
 		return err
 	}
@@ -143,5 +151,8 @@ print(paths[0])`, expiringID)
 	}); err != nil {
 		return err
 	}
-	return s.client.JSON(ctx, "POST", s.base+"/world-restore/preview/"+expiringID+"/heartbeat", nil, nil, 404)
+	if err = s.client.JSON(ctx, "POST", s.base+"/world-restore/preview/"+expiringID+"/heartbeat", nil, nil, 404); err != nil {
+		return err
+	}
+	return s.client.JSON(ctx, "DELETE", "/api/snapshots/"+snapshot, nil, nil, 200)
 }

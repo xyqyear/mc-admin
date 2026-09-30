@@ -6,8 +6,8 @@ from pathlib import Path
 import aiofiles
 import aiofiles.os as aioos
 
-from app.world.models import RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 
 from ..dynamic_config import get_config as get_dynamic_config
 from ..errors import log_safe_error, public_error_message
@@ -64,7 +64,8 @@ class WorldPreviewApplication:
 
         affected_regions = _count_affected_regions(selection)
         session_dir = await self._preview_manager.create_session(
-            server_id, affected_regions=affected_regions, server_generation=server_generation
+            server_id, affected_regions=affected_regions, server_generation=server_generation,
+            source_snapshot_id=source_snapshot_id,
         )
         session_id = session_dir.name
 

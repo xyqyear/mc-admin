@@ -4,8 +4,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.snapshots import ResticSnapshot, ResticSnapshotWithSummary
-from app.world.models import RestorationStatus, RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import RestorationStatus, RestorationType
+from app.snapshots.selection_models import RestorationSelection
 
 
 class DimensionInfoResponse(BaseModel):

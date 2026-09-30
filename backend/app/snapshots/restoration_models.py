@@ -9,8 +9,9 @@ from app.db.base import Base, TZDatetime
 
 
 class RestorationType(str, Enum):
-    """Granularity of a world-restoration operation."""
-
+    GLOBAL = "global"
+    SERVER = "server"
+    PATHS = "paths"
     WORLD = "world"
     DIMENSION = "dimension"
     REGIONS = "regions"
@@ -18,22 +19,34 @@ class RestorationType(str, Enum):
 
 
 class RestorationStatus(str, Enum):
+    PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     INTERRUPTED = "interrupted"
+    CANCELLED = "cancelled"
 
 
 class Restoration(Base):
-    """Restoration history. Rollbacks are flat rows distinguished by ``is_rollback``."""
-
     __tablename__ = "restoration"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    server_id: Mapped[str] = mapped_column(String(100), index=True)
+    server_id: Mapped[str | None] = mapped_column(
+        String(100), index=True, nullable=True
+    )
     type: Mapped[RestorationType] = mapped_column(SQLAlchemyEnum(RestorationType))
     server_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
     binding_issue: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    scope_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    targets_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    protection_json: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    operation_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, unique=True, index=True
+    )
+    rollback_of_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )
+    entry_point: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source_snapshot_id: Mapped[str] = mapped_column(String(64))
     safety_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     selection_json: Mapped[str] = mapped_column(TEXT)

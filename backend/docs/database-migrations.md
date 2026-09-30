@@ -262,7 +262,7 @@ application build or a separately reviewed database recovery.
 
 ## Restoration history bindings
 
-Revision `2026092503` follows `2026092502` and is the current migration head.
+Revision `2026092503` follows `2026092502`.
 It adds nullable `Restoration.server_generation` and `binding_issue`. Every
 existing restoration ID, status, snapshot reference and selection JSON remains
 unchanged. Backfill binds a row only when its recorded interval belongs to one
@@ -281,3 +281,24 @@ Downgrade below `2026092503` refuses to remove identity fields while restoration
 rows exist. An empty restoration table can downgrade. Use a schema-compatible
 application build for an installation with retained history; deleting recovery
 history is not a rollback procedure.
+
+## Unified restoration evidence
+
+Revision `2026093000` is the current migration head. The physical `restoration`
+table keeps its IDs and all historical evidence. Its model, selection contracts,
+store and startup reconciliation belong to `app.snapshots`. Nullable versioned
+scope, target generations, protection rules, operation ID, entry point and rollback
+parent fields support common recovery commands. A global record can have no
+single `server_id`; `targets_json` holds its explicit identities.
+
+Existing world rows receive a version 1 scope and their already recorded target
+generation. Migration never guesses operation IDs, rollback parents or missing
+generations. Original selection JSON, absence markers, binding issues, timestamps
+and snapshot references remain unchanged. Startup interrupts pending and running
+records without replaying writes. Migration tests seed the previous revision,
+verify retained data through both SQLite and the application store, compare
+fresh metadata, and check operation ID uniqueness.
+
+Downgrade below `2026093000` refuses while any restoration history remains. Use a
+schema-compatible application build or a separately reviewed database recovery;
+do not discard safety evidence to force an older application to start.

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.world.models import RestorationType
-from app.world.schemas import RestorationSelection
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 
 from ..mcmap.cache import ServerMapCache
 from ..utils import async_fs

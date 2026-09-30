@@ -1,0 +1,17 @@
+{
+  "revision": "2026092503",
+  "servers": [
+    {"id": 10, "server_id": "survival", "status": "REMOVED", "created_at": "2026-01-01T00:00:00", "updated_at": "2026-03-01T00:00:00"},
+    {"id": 20, "server_id": "survival", "status": "ACTIVE", "created_at": "2026-04-01T00:00:00", "updated_at": "2026-04-01T00:00:00"}
+  ],
+  "restorations": [
+    {"id": "old-world", "generation": 10, "status": "SUCCEEDED", "selection": {"type": "world", "world_roots": ["world", "world_nether"], "absent_directories": ["world/poi"]}},
+    {"id": "current-dimension", "generation": 20, "status": "SUCCEEDED", "selection": {"type": "dimension", "region_dir_relpath": "world/region", "absent_sidecar_dirs": ["world/entities"]}},
+    {"id": "failed-regions", "generation": 20, "status": "FAILED", "selection": {"type": "regions", "region_dir_relpath": "world/region", "regions": [[-1, 2]], "absent_directories": []}},
+    {"id": "interrupted-chunks", "generation": 20, "status": "INTERRUPTED", "selection": {"type": "chunks", "region_dir_relpath": "world/region", "chunks": [[-1, 64]], "absent_directories": ["world/poi"]}},
+    {"id": "running", "generation": 20, "status": "RUNNING", "selection": {"type": "world", "world_roots": ["world"]}},
+    {"id": "uncertain", "generation": null, "binding_issue": "generation_uncertain", "status": "FAILED", "selection": {"type": "world", "world_roots": ["world"]}},
+    {"id": "missing-safety", "generation": 20, "status": "FAILED", "safety_snapshot_id": null, "selection": {"type": "world"}},
+    {"id": "rollback", "generation": 20, "status": "SUCCEEDED", "is_rollback": true, "selection": {"type": "world", "world_roots": ["world"]}}
+  ]
+}

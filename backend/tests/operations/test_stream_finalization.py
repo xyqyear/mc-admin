@@ -9,9 +9,9 @@ import pytest
 from app.auth.models import UserRole
 from app.auth.schemas import UserPublic
 from app.routers.servers import world_restore
-from app.world.models import RestorationType
+from app.snapshots.restoration_models import RestorationType
+from app.snapshots.selection_models import RestorationSelection
 from app.world.restore import RestoreEvent
-from app.world.schemas import RestorationSelection
 
 
 @pytest.mark.parametrize("event_type", ["complete", "error"])
