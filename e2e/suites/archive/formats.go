@@ -22,7 +22,7 @@ func formats(ctx context.Context, t *engine.Scope) error {
 	id := fixtures.ServerOf(t.Env).ID
 	var tarBytes bytes.Buffer
 	writer := tar.NewWriter(&tarBytes)
-	for _, file := range []struct{ name, content string }{{"wrapped/server.properties", "server-port=25565\n"}, {"wrapped/nested.txt", "wrapped tar content"}} {
+	for _, file := range []struct{ name, content string }{{"wrapped/server.properties", "server-port=25565\n"}, {"wrapped/nested.txt", "wrapped tar content"}, {"wrapped/.new-config", "hidden new content"}} {
 		if err = writer.WriteHeader(&tar.Header{Name: file.name, Mode: 0644, Size: int64(len(file.content))}); err != nil {
 			return err
 		}
@@ -39,6 +39,9 @@ func formats(ctx context.Context, t *engine.Scope) error {
 	if err = fixtures.CreateFile(ctx, c, id, "/replaced.txt", "old content"); err != nil {
 		return err
 	}
+	if err = fixtures.CreateFile(ctx, c, id, "/.old-config", "hidden old content"); err != nil {
+		return err
+	}
 	var task struct {
 		ID string `json:"task_id"`
 	}
@@ -52,6 +55,15 @@ func formats(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	if err = c.JSON(ctx, "GET", "/api/servers/"+id+"/files/content?path=/replaced.txt", nil, nil, 404); err != nil {
+		return err
+	}
+	if err = c.JSON(ctx, "GET", "/api/servers/"+id+"/files/content?path=/.old-config", nil, nil, 404); err != nil {
+		return err
+	}
+	if err = fixtures.CheckFile(ctx, c, id, "/.new-config", "hidden new content"); err != nil {
+		return err
+	}
+	if err = c.JSON(ctx, "GET", "/api/archive/download?path=/wrapped.tar", nil, nil, 404); err != nil {
 		return err
 	}
 	var invalidZip bytes.Buffer
@@ -100,6 +112,19 @@ func formats(ctx context.Context, t *engine.Scope) error {
 		}
 		if err = fixtures.CheckFile(ctx, c, id, "/nested.txt", "wrapped tar content"); err != nil {
 			return err
+		}
+		if err = fixtures.CheckFile(ctx, c, id, "/.new-config", "hidden new content"); err != nil {
+			return err
+		}
+		response, err := c.Do(ctx, "GET", "/api/archive/download?path=/"+bad.name, nil, nil)
+		if err != nil {
+			return err
+		}
+		if err = c.Expect(response, 200); err != nil {
+			return err
+		}
+		if !bytes.Equal(response.Body, bad.data) {
+			return fmt.Errorf("failed population changed source archive %s", bad.name)
 		}
 	}
 	if err = c.JSON(ctx, "POST", "/api/servers/"+id+"/populate", map[string]string{"archive_filename": "../config.toml"}, nil, 400); err != nil {

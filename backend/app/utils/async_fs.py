@@ -8,6 +8,8 @@ otherwise stall the event loop.
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import errno
 import io
 import os
 import shutil
@@ -86,6 +88,24 @@ def _copytree_sync(src, dst, dirs_exist_ok: bool):
 
 async def move(src: Path | str, dst: Path | str) -> Path | str:
     return await finalize(asyncio.to_thread(shutil.move, src, dst))
+
+
+async def exchange(left: Path, right: Path) -> None:
+    """Atomically swap two existing paths on the same Linux filesystem."""
+    await finalize(asyncio.to_thread(_exchange_sync, left, right))
+
+
+def _exchange_sync(left: Path, right: Path) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    number = {"x86_64": 316, "aarch64": 276}.get(os.uname().machine)
+    if number is None:
+        raise OSError(errno.ENOSYS, "Atomic path exchange is unavailable on this architecture")
+    # Alpine's musl lacks the renameat2 wrapper; AT_FDCWD = -100, RENAME_EXCHANGE = 2.
+    libc.syscall.restype = ctypes.c_long
+    if libc.syscall(ctypes.c_long(number), ctypes.c_int(-100), ctypes.c_char_p(os.fsencode(left)),
+                    ctypes.c_int(-100), ctypes.c_char_p(os.fsencode(right)), ctypes.c_uint(2)) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
 
 
 async def disk_usage(path: Path | str) -> shutil._ntuple_diskusage:

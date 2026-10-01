@@ -38,9 +38,15 @@ Ownership repair reserves the complete data tree until the owned `chown` process
 and cleanup finish. Population atomically reserves maintenance, the data tree,
 its unique stage and its input archive. Its worker rechecks paths and the
 stopped/created status before extraction, excluding concurrent startup. Successful
-population retains archive-consumption behavior. Failure may leave partial data;
-only its owned stage is cleaned, after writers are confirmed stopped. Unknown
-writers retain the stage and recovery evidence.
+population consumes the source archive after cleanup. Extraction and ownership
+preparation finish in the stage before publication. Linux `renameat2` exchanges
+the complete data directory with the prepared directory atomically; a missing
+data directory uses rename. Both paths must share a filesystem supporting the
+operation. Failure before publication preserves the original data and archive;
+interruption across publication leaves either the old or complete new tree.
+The exchanged old tree is cleaned with the owned stage after writers stop.
+Cleanup failures report that the server files have already been replaced.
+Unknown writers retain the stage and recovery evidence.
 
 ## Why a session-based upload flow
 

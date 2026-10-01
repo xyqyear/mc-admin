@@ -6,6 +6,18 @@ Keep normal server administration operations coherent from preparation through o
 
 ## Requirements
 
+### Requirement: 服务器填充完整替换数据
+
+系统必须（SHALL）在独立暂存目录完成解压与准备，再原子发布完整数据树。发布失败必须（SHALL）保留原服务器数据及源归档；不支持同盘原子交换时不得（SHALL NOT）退化为先删除原数据再逐项移动。成功发布后清理失败必须（SHALL）明确报告数据已替换。
+
+#### Scenario: 发布目录失败
+- **WHEN** 目录交换因权限、文件系统限制或空间不足失败
+- **THEN** 任务失败，原数据与源归档保持不变
+
+#### Scenario: 完整替换已有服务器
+- **WHEN** 填充任务成功
+- **THEN** 新数据和隐藏文件完整可用，旧树中的多余文件被移除，源归档按既有约定消费
+
 ### Requirement: Configuration preview and application agree
 The system SHALL use the server's retained template snapshot for ordinary parameter preview and saving, and SHALL preserve explicit source-template upgrades and direct/template conversion.
 

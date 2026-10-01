@@ -4,10 +4,8 @@ import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from pathlib import Path
-from typing import Literal
 
 from aiofiles import os as aioos
-from pydantic import BaseModel
 
 from ..background_tasks.types import TaskProgress
 from ..config import get_settings
@@ -16,21 +14,6 @@ from ..files.utils import get_uid_gid
 from ..operations.finalization import finalize
 from . import async_fs
 from .exec import exec_command, exec_command_stream
-
-
-class DecompressionStepResult(BaseModel):
-    step: Literal[
-        "archiveFileCheck",
-        "serverPropertiesCheck",
-        "decompress",
-        "chown",
-        "findPath",
-        "mv",
-        "remove",
-    ]
-    success: bool
-    message: str
-
 
 STEP_PROGRESS = {
     "archiveFileCheck": (0, 5),
@@ -48,7 +31,7 @@ STEP_NAMES = {
     "decompress": "解压文件",
     "chown": "设置权限",
     "findPath": "查找服务器目录",
-    "mv": "移动文件",
+    "mv": "替换服务器文件",
     "remove": "清理临时文件",
 }
 
@@ -198,54 +181,30 @@ async def extract_minecraft_server(
         raise PublicOperationError("解压后找不到server.properties文件")
 
     server_properties_path = Path(find_output.strip())
-    server_dir = server_properties_path.parent
-
-    if await aioos.path.exists(target_path):
-        for item in await aioos.listdir(target_path):
-            item_path = Path(target_path) / item
-            if await aioos.path.isdir(str(item_path)):
-                await finalize(async_fs.rmtree(item_path))
-            else:
-                await aioos.remove(str(item_path))
+    server_dir = await async_fs.resolve_inside(Path(temp_dir), server_properties_path.parent)
 
     yield step_progress("mv")
     try:
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        await exec_command(
-            "find",
-            str(server_dir),
-            "-mindepth",
-            "1",
-            "-maxdepth",
-            "1",
-            "-exec",
-            "mv",
-            "{}",
-            target_path,
-            ";",
-        )
-    except (OSError, RuntimeError) as e:
-        log_safe_error(e, "Unable to move extracted server data")
-        error_msg = str(e)
-        if "Permission denied" in error_msg:
-            raise PublicOperationError("无权限移动文件到目标目录")
-        elif "No space left on device" in error_msg:
-            raise PublicOperationError("磁盘空间不足")
+        if await aioos.path.exists(target_path):
+            await async_fs.exchange(server_dir, Path(target_path))
         else:
-            raise PublicOperationError("移动服务器文件时发生错误")
+            await aioos.makedirs(Path(target_path).parent, exist_ok=True)
+            await finalize(aioos.rename(server_dir, target_path))
+    except OSError as error:
+        log_safe_error(error, "Unable to publish extracted server data")
+        raise PublicOperationError("无法原子替换服务器文件，原数据保持不变；请检查目录权限及文件系统是否支持同盘目录交换") from error
 
     yield step_progress("remove")
     try:
+        if await aioos.path.exists(temp_dir):
+            await async_fs.rmtree(Path(temp_dir))
         await aioos.remove(archive_path)
-
-        await finalize(async_fs.rmtree(Path(temp_dir)))
     except (OSError, RuntimeError) as e:
         log_safe_error(e, "Unable to remove archive staging files")
         error_msg = str(e)
         if "Permission denied" in error_msg:
-            raise PublicOperationError("无权限删除临时文件")
+            raise PublicOperationError("服务器文件已替换，但无权限清理临时文件或源压缩包")
         else:
-            raise PublicOperationError("清理临时文件时发生错误")
+            raise PublicOperationError("服务器文件已替换，但清理临时文件或源压缩包失败")
 
     yield TaskProgress(progress=100, message="服务器填充完成", result={"success": True})

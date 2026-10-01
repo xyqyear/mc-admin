@@ -11,6 +11,7 @@ Tests cover:
 - Real-time progress tracking
 """
 
+import errno
 import os
 import pwd
 import shutil
@@ -27,12 +28,71 @@ from aiofiles import os as aioos
 
 from app.background_tasks import TaskStatus, get_task_manager
 from app.background_tasks.types import TaskProgress, TaskType
+from app.errors import PublicOperationError
+from app.utils import async_fs
 from app.utils.decompression import (
     extract_archive_stream,
     extract_minecraft_server,
 )
 
 pytestmark = [pytest.mark.binary('7z')]
+
+
+@pytest.mark.parametrize("code", [errno.ENOSPC, errno.EACCES, errno.EXDEV])
+async def test_failed_publication_preserves_existing_world_and_source(temp_dir, mock_settings, monkeypatch, code):
+    archive = temp_dir / "replacement.zip"
+    create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new"})
+    target = temp_dir / "data"
+    (target / "world").mkdir(parents=True)
+    (target / "world" / "old.dat").write_bytes(b"retained world")
+    (target / ".settings").write_bytes(b"retained settings")
+
+    async def refuse_exchange(*_):
+        raise OSError(code, os.strerror(code))
+
+    monkeypatch.setattr(async_fs, "exchange", refuse_exchange)
+    with pytest.raises(PublicOperationError, match="原数据保持不变"):
+        async for _ in extract_minecraft_server(str(archive), str(target)):
+            pass
+    assert (target / "world" / "old.dat").read_bytes() == b"retained world"
+    assert (target / ".settings").read_bytes() == b"retained settings"
+    assert not (target / "world" / "new.dat").exists()
+    assert archive.exists()
+
+
+async def test_publication_replaces_the_complete_tree_including_hidden_files(temp_dir, mock_settings):
+    archive = temp_dir / "replacement.zip"
+    create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new", ".settings": "new settings"})
+    target = temp_dir / "data"
+    (target / "world").mkdir(parents=True)
+    (target / "world" / "old.dat").write_bytes(b"old")
+    (target / ".old-settings").write_bytes(b"old")
+    events = [event async for event in extract_minecraft_server(str(archive), str(target))]
+    assert events[-1].result == {"success": True}
+    assert (target / "world" / "new.dat").read_text() == "new"
+    assert (target / ".settings").read_text() == "new settings"
+    assert not (target / "world" / "old.dat").exists()
+    assert not (target / ".old-settings").exists()
+    assert not archive.exists()
+
+
+async def test_cleanup_failure_reports_published_data_and_retains_source(temp_dir, mock_settings, monkeypatch):
+    archive = temp_dir / "replacement.zip"
+    create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new"})
+    target = temp_dir / "data"
+    target.mkdir()
+    (target / "old.dat").write_bytes(b"old")
+
+    async def refuse_cleanup(*_):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(async_fs, "rmtree", refuse_cleanup)
+    with pytest.raises(PublicOperationError, match="服务器文件已替换"):
+        async for _ in extract_minecraft_server(str(archive), str(target)):
+            pass
+    assert (target / "world" / "new.dat").read_text() == "new"
+    assert not (target / "old.dat").exists()
+    assert archive.exists()
 
 
 def check_7z_available():
