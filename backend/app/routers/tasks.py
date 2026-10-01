@@ -40,9 +40,9 @@ async def get_tasks(
 @router.get("/{task_id}", response_model=BackgroundTaskResponse)
 async def get_task(task_id: str):
     """Get a single task by ID."""
-    task = get_task_manager().get_task(task_id)
+    task = await get_task_manager().get_task_detail(task_id)
     if not task:
-        raise HTTPException(404, "Task not found")
+        raise HTTPException(404, "任务记录已过期或不存在")
     return BackgroundTaskResponse.from_task(task)
 
 

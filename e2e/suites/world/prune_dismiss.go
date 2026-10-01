@@ -120,8 +120,12 @@ func pruneDismissActive(ctx context.Context, t *engine.Scope) error {
 		if err := s.client.JSON(ctx, "DELETE", "/api/tasks/"+preview.ID, nil, nil, 200); err != nil {
 			return err
 		}
-		if err := s.client.JSON(ctx, "GET", "/api/tasks/"+preview.ID, nil, nil, 404); err != nil {
+		dismissed, err := s.client.Task(ctx, preview.ID)
+		if err != nil {
 			return err
+		}
+		if len(dismissed.Result) == 0 {
+			return fmt.Errorf("dismissed preview lost its result")
 		}
 		retained, err := activePruneClaims(ctx, t)
 		if err != nil {

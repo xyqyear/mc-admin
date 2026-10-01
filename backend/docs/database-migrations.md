@@ -284,7 +284,7 @@ history is not a rollback procedure.
 
 ## Unified restoration evidence
 
-Revision `2026093000` is the current migration head. The physical `restoration`
+Revision `2026093000` follows `2026092503`. The physical `restoration`
 table keeps its IDs and all historical evidence. Its model, selection contracts,
 store and startup reconciliation belong to `app.snapshots`. Nullable versioned
 scope, target generations, protection rules, operation ID, entry point and rollback
@@ -302,3 +302,12 @@ fresh metadata, and check operation ID uniqueness.
 Downgrade below `2026093000` refuses while any restoration history remains. Use a
 schema-compatible application build or a separately reviewed database recovery;
 do not discard safety evidence to force an older application to start.
+
+## Retained task results
+
+Revision `2026100100` is the current migration head. It adds nullable
+`operation_journal.task_result_json` without changing existing operation history.
+Legacy rows have no payload; new task results survive list dismissal and backend
+restart for the journal retention period. The ORM defers this column so list and
+recovery queries do not load large results. Downgrade removes the payload column
+and its contents while preserving operation metadata and recovery evidence.

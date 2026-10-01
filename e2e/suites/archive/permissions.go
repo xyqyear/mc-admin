@@ -175,8 +175,12 @@ func taskPermissions(ctx context.Context, t *engine.Scope) error {
 			if err = client.JSON(ctx, "DELETE", "/api/tasks/"+active, nil, nil, 200); err != nil {
 				return err
 			}
-			if err = client.JSON(ctx, "GET", "/api/tasks/"+active, nil, nil, 404); err != nil {
+			var dismissed api.Task
+			if err = client.JSON(ctx, "GET", "/api/tasks/"+active, nil, &dismissed, 200); err != nil {
 				return err
+			}
+			if dismissed.Status != "cancelled" {
+				return fmt.Errorf("dismissed cancellation lost its terminal outcome: %+v", dismissed)
 			}
 			var cleared struct {
 				Count int `json:"cleared"`

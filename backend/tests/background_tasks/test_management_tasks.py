@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from httpx2 import ASGITransport, AsyncClient
 
 from app.background_tasks import TaskProgress, TaskType, get_task_manager
+from app.background_tasks.manager import BackgroundTaskManager
 from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager, MCInstance
@@ -22,6 +23,31 @@ from app.servers.tasks import submit_creation, submit_lifecycle
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 from tests.fixtures.test_utils import create_mc_server_compose_yaml
 from tests.support.runtime import set_runtime_resource
+
+
+@pytest.mark.parametrize("dismiss", ["single", "all"])
+async def test_completed_result_survives_dismissal_and_restart(management, dismiss):
+    env = management
+    expected = {"snapshot": {"short_id": "retained-backup"}, "skipped_paths": []}
+
+    async def complete():
+        yield TaskProgress(progress=100, message="快照已完成", result=expected)
+
+    accepted = await env.tasks.submit_durable(TaskType.SNAPSHOT_CREATE, "创建快照", complete())
+    assert (await accepted.awaitable).success
+    if dismiss == "single":
+        assert env.tasks.remove_task(accepted.task_id)
+    else:
+        assert env.tasks.clear_completed() == 1
+    assert env.tasks.get_all_tasks() == []
+    detail = await env.tasks.get_task_detail(accepted.task_id)
+    assert detail is not None and detail.status.value == "completed" and detail.result == expected
+    assert env.tasks.get_all_tasks() == []
+    restored = BackgroundTaskManager(env.journal)
+    restored.restore_history(await env.journal.list(origin="task"))
+    detail = await restored.get_task_detail(accepted.task_id)
+    assert detail is not None and detail.status.value == "completed" and detail.result == expected
+    assert await restored.get_task_detail("missing") is None
 
 
 @pytest.fixture

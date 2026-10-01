@@ -22,6 +22,7 @@ class OperationJournalEntry(Base):
     legacy_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     running_intent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     configuration_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    task_result_json: Mapped[str | None] = mapped_column(TEXT, nullable=True, deferred=True)
     resources_json: Mapped[str] = mapped_column(TEXT)
     state: Mapped[str] = mapped_column(String(16))
     phase: Mapped[str] = mapped_column(String(64))

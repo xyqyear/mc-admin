@@ -6,6 +6,18 @@
 
 ## Requirements
 
+### Requirement: 任务结果在清理和重启后可读取
+
+系统必须（SHALL）在发布任务结果前持久化其业务结果，并在操作日志保留期内提供详情查询。任务列表清理不得（SHALL NOT）移除观察者需要的终态和结果。历史迁移前没有保存的结果允许为空。
+
+#### Scenario: 已完成任务被清理
+- **WHEN** 用户清理已完成任务，而另一个界面尚未读取其终态
+- **THEN** 列表中移除该任务，详情仍能返回其终态和业务结果
+
+#### Scenario: 完成后重启应用
+- **WHEN** 已持久化结果的任务完成后应用重启
+- **THEN** 详情提供同一任务的终态和完整结果，不重复执行该任务
+
 ### Requirement: Consequential operation outcomes survive backend interruption
 
 **重要操作的结果在后端中断后仍然保留**

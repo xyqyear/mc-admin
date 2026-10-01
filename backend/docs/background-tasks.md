@@ -22,8 +22,9 @@ result = await task_manager.submit_durable(
 ```
 
 `SubmitResult` contains the task ID, current task model and a
-`Future[TaskResult]`. Progress and feature-specific results stay in memory;
-bounded acceptance, phase, outcome and recovery evidence belong to the journal.
+`Future[TaskResult]`. Progress stays in memory. Feature-specific result payloads
+are saved in the journal before being published; acceptance, phase, outcome and
+recovery evidence remain separate from the payload.
 A captured `ServerRef` binds delayed work to a registered server generation and
 confined paths. Acquiring an operation lease revalidates that identity before
 execution. Detached work does not inherit its parent's operation ownership.
@@ -63,8 +64,9 @@ The public task statuses remain `pending`, `running`, `completed`, `failed` and
 `cancelled`. Startup reconciles interrupted operations before admitting writes,
 then projects task journal records into the existing task center. Interrupted
 work appears as failed with an interruption message and is never replayed.
-Historical progress and result payloads are not reconstructed. The detailed
-operation API retains the internal state, phase and recovery references.
+Historical progress is not reconstructed. Task details read retained result
+payloads on demand after restart; older records without a saved payload return
+null. The detailed operation API retains the internal state, phase and recovery references.
 
 Task detail and summary include optional `error_code` alongside the existing
 string `error`. A configuration version conflict discovered after acceptance
@@ -84,8 +86,9 @@ See [configuration](configuration.md) for phases and recovery evidence.
 File and world recovery return a common task ID and restoration ID. Task acceptance retains target and repository references; safety evidence must be durable before writes. Disconnection only detaches observation. Explicit cancellation waits for owned writers, cache finalization and history settlement before publishing a terminal task result. Unknown writers retain recovery blocks. Active restoration discovery uses the database journal independently of repository availability; pages can resume observation after reload.
 
 Deleting or clearing completed task entries dismisses the current in-memory
-projection. It does not delete operation evidence; retained records can appear
-again after restart. Journal retention is bounded and never evicts unresolved
+projection. Detail reads remain available to observers through the journal and
+do not reinsert dismissed entries into the list. Retained records can appear
+again after restart. Journal retention bounds the result lifetime and never evicts unresolved
 recovery material merely to admit another task.
 
 The frontend's application-level operation observer uses terminal journal
@@ -98,7 +101,8 @@ the editor page does not suppress this synchronization or cancel a detached task
 
 Every `/api/tasks` route requires a current user; cookie mutations also require
 CSRF. Both admin and owner users can access task history. Lists omit `result`;
-`GET /api/tasks/{id}` provides current detail. Cancellation uses
+`GET /api/tasks/{id}` provides current or retained detail, returning 404 when the
+record is absent or has expired. Cancellation uses
 `POST /api/tasks/{id}/cancel`; single and bulk `DELETE` dismiss terminal entries.
 
 `manager.py` owns submission, workers, cancellation and projection;

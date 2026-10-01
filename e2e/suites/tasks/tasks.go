@@ -74,8 +74,11 @@ func history(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "DELETE", "/api/tasks/"+started.ID, nil, nil, 200); err != nil {
 		return err
 	}
-	if err = c.JSON(ctx, "GET", "/api/tasks/"+started.ID, nil, nil, 404); err != nil {
+	if err = c.JSON(ctx, "GET", "/api/tasks/"+started.ID, nil, &failed, 200); err != nil {
 		return err
+	}
+	if failed.Status != "failed" || failed.Error == "" {
+		return fmt.Errorf("dismissing a failed task lost its terminal outcome")
 	}
 	if err = c.JSON(ctx, "POST", "/api/servers/"+id+"/files/ownership/restore", nil, &started, 200); err != nil {
 		return err
@@ -97,6 +100,12 @@ func history(ctx context.Context, t *engine.Scope) error {
 	}
 	if listed.Total != 0 {
 		return fmt.Errorf("task history not empty after clear")
+	}
+	if _, err = c.Task(ctx, started.ID); err != nil {
+		return fmt.Errorf("cleared task cannot be observed: %w", err)
+	}
+	if err = c.JSON(ctx, "GET", "/api/tasks/missing", nil, nil, 404); err != nil {
+		return err
 	}
 	if err = c.JSON(ctx, "DELETE", "/api/tasks/missing", nil, nil, 400); err != nil {
 		return err

@@ -430,6 +430,21 @@ class OperationJournal:
             row = await session.get(OperationJournalEntry, operation_id)
             return _record(row) if row is not None else None
 
+    @_complete_write
+    async def save_task_result(self, operation_id: str, result: dict[str, Any]) -> None:
+        payload = json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        async with self._write() as session:
+            row = await self._row(session, operation_id)
+            row.task_result_json = payload
+
+    @_complete_read
+    async def get_task_result(self, operation_id: str) -> dict[str, Any] | None:
+        async with self.session_factory() as session:
+            payload = await session.scalar(select(OperationJournalEntry.task_result_json).where(
+                OperationJournalEntry.operation_id == operation_id,
+            ))
+            return json.loads(payload) if payload is not None else None
+
     @_complete_read
     async def list(
         self, *, limit: int = 100, offset: int = 0, origin: str | None = None,

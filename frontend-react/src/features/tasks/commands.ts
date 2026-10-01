@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { queryKeys, AUTH_EXPIRED_EVENT } from '@/shared/http/api'
+import { queryKeys, AUTH_EXPIRED_EVENT, getErrorStatus } from '@/shared/http/api'
 import type { BackgroundTask, TaskAccepted } from './contracts'
 import { useTaskCenterStore } from './panelStore'
 import { taskApi } from '@/features/tasks/api'
@@ -24,7 +24,8 @@ export async function waitForTaskResult<T>(
       let task: BackgroundTask | undefined
       try {
         task = await taskApi.getTask(accepted.task_id)
-      } catch {
+      } catch (error) {
+        if (getErrorStatus(error) === 404) throw new Error('任务记录已过期或不存在，请刷新相关页面确认操作结果', { cause: error })
         if (!controller.signal.aborted) toast.warning('暂时无法获取任务状态，正在重新连接', { id: warningId, duration: Infinity })
       }
       if (controller.signal.aborted || options.signal?.aborted) throw new DOMException('已停止观察任务', 'AbortError')

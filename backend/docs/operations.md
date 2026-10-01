@@ -100,6 +100,9 @@ Metadata has additional per-record bounds: 64 resource references, 32 recovery
 references, 32 owned processes, and 64 KiB per JSON collection. A global operation
 should describe its global scope rather than enumerate an unbounded server list.
 Bounded metadata cannot be used as a transport for arbitrary task payloads.
+Feature results use the separate nullable `task_result_json` column. Task workers
+save it before exposing results; the ORM defers it for metadata, list and recovery
+reads. Only task details load it, including for dismissed or restarted tasks.
 Old terminal rows are removed; underlying snapshots, backup repositories and
 restored data are never deleted by journal retention.
 

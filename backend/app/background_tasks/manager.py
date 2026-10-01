@@ -168,6 +168,8 @@ class BackgroundTaskManager:
                     await execution.journal.start(record.operation_id)
                     await revalidate_targets()
                     async for progress in task_generator:
+                        if progress.result is not None:
+                            await execution.journal.save_task_result(record.operation_id, progress.result)
                         yield progress
                     state = execution.outcome or OperationState.SUCCEEDED
                 except (asyncio.CancelledError, GeneratorExit):
@@ -234,29 +236,45 @@ class BackgroundTaskManager:
             raise
 
     def restore_history(self, records: Sequence["OperationRecord"]) -> None:
+        for record in records:
+            if task := self._task_from_record(record):
+                self._tasks[task.task_id] = task
+
+    @staticmethod
+    def _task_from_record(record: "OperationRecord") -> BackgroundTask | None:
         from ..operations.journal_types import OperationState
 
-        for record in records:
-            if record.origin != "task" or not record.legacy_id:
-                continue
-            try:
-                task_type = TaskType(record.kind)
-            except ValueError:
-                continue
-            state = {
-                OperationState.SUCCEEDED: TaskStatus.COMPLETED,
-                OperationState.CANCELLED: TaskStatus.CANCELLED,
-            }.get(record.state, TaskStatus.FAILED)
-            interrupted = record.state is OperationState.INTERRUPTED
-            message = "应用重启前的操作已中断，请查看操作历史" if interrupted else "操作记录已恢复"
-            self._tasks[record.legacy_id] = BackgroundTask(
-                task_id=record.legacy_id, task_type=task_type, name=record.name,
-                server_id=next((resource.server_id for resource in record.resources if resource.server_id), None),
-                status=state, message=message, created_at=record.created_at,
-                ended_at=record.ended_at, error=message if state is TaskStatus.FAILED else None,
-                error_code=record.failure_code,
-                cancellable=False,
-            )
+        if record.origin != "task" or not record.legacy_id:
+            return None
+        try:
+            task_type = TaskType(record.kind)
+        except ValueError:
+            return None
+        state = {
+            OperationState.SUCCEEDED: TaskStatus.COMPLETED,
+            OperationState.CANCELLED: TaskStatus.CANCELLED,
+        }.get(record.state, TaskStatus.FAILED)
+        message = "应用重启前的操作已中断，请查看操作历史" if record.state is OperationState.INTERRUPTED else "操作记录已恢复"
+        return BackgroundTask(
+            task_id=record.legacy_id, task_type=task_type, name=record.name,
+            server_id=next((resource.server_id for resource in record.resources if resource.server_id), None),
+            status=state, message=message, created_at=record.created_at,
+            ended_at=record.ended_at, error=message if state is TaskStatus.FAILED else None,
+            error_code=record.failure_code, cancellable=False,
+        )
+
+    async def get_task_detail(self, task_id: str) -> BackgroundTask | None:
+        task = self.get_task(task_id)
+        if self.journal is None:
+            return task
+        if task is None:
+            record = await self.journal.get(task_id)
+            if record is not None:
+                task = self._task_from_record(record)
+        if task is not None and task.result is None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+            result = await self.journal.get_task_result(task_id)
+            return task.model_copy(update={"result": result})
+        return task
 
     def submit(
         self,

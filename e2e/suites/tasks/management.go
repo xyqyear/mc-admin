@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"mc-admin/e2e/internal/engine"
@@ -47,6 +48,19 @@ func management(ctx context.Context, t *engine.Scope) error {
 	}
 	if operation.Kind != "file_delete" || operation.Origin != "task" || operation.State != "succeeded" {
 		return fmt.Errorf("task lacks successful durable operation: %+v", operation)
+	}
+	if err = owner.JSON(ctx, "DELETE", "/api/tasks/"+accepted.ID, nil, nil, 200); err != nil {
+		return err
+	}
+	if err = fixtures.BackendOf(t.Env).Restart(ctx); err != nil {
+		return err
+	}
+	retained, err := observer.Task(ctx, accepted.ID)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(retained.Result, task.Result) {
+		return fmt.Errorf("dismissal and backend restart changed task result: %+v", retained)
 	}
 	if err = owner.RunTask(ctx, "POST", base+"/operations", map[string]string{"action": "down"}, nil); err != nil {
 		return err

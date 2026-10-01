@@ -167,6 +167,10 @@ The system SHALL preserve increasing chat replay identifiers across cleanup and 
 - **WHEN** 快照预览任务的状态读取暂时失败
 - **THEN** 原有阻塞继续，界面重试观察，不自动再次提交预览或结束任务
 
+#### Scenario: 任务记录已过期或不存在
+- **WHEN** 详情查询明确返回 404
+- **THEN** 界面结束观察，提示刷新业务页面确认实际结果，不宣称任务已成功或无限重试
+
 ### Requirement: E2E phase budgets reflect actual work
 The runner SHALL reserve capacity before starting the deployment deadline, let long streams use their operation deadline, and provide diagnostics and resource cleanup independent bounded budgets.
 
