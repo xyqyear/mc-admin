@@ -19,6 +19,8 @@ System jobs display a `System` badge. The UI hides pause/resume/cancel controls 
 
 Toggling between modes parses/serializes — you can paste a raw expression, switch to visual, and the dropdowns reflect the parsed values when the expression fits one of the recognized shapes.
 
+Preset buttons only change the expression; submitting the enclosing form requires its explicit submit action.
+
 The weekday field follows conventional crontab numbering: `0` and `7` are Sunday,
 `1` is Monday, and `6` is Saturday. Numeric lists, ranges, and steps use that
 ordering. The backend preserves the submitted expression and normalizes only the
@@ -54,7 +56,7 @@ The execution table polls every few seconds while the modal is open so an in-fli
 
 ## Restart-schedule integration
 
-Per-server restart schedules are configured separately (`ServerRestartScheduleCard.tsx` on the server overview), but they create entries in the same `CronJob` table. The schedule UI uses `restartSchedule.detail(serverId)` query; the backend's `RestartScheduler` picks restart minutes that don't collide with the server's backup minute, so the user doesn't have to think about conflict avoidance.
+The server overview's `ServerRestartScheduleCard.tsx` creates a generation-bound managed schedule through `POST /servers/{id}/restart-schedule` after confirmation. The backend assigns its daily restart time. A failed read is displayed separately from a missing schedule and disables creation. The card refreshes after creation; its manage action opens `/cron?job=<id>` with that job's detail dialog visible. The schedule UI uses `restartSchedule.detail(serverId)`; independent cron creation remains separate from managed server plans.
 
 ## Files
 

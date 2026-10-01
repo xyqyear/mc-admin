@@ -197,6 +197,7 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
           <div className="grid grid-cols-3 gap-2">
             {presets.map((preset, index) => (
               <button
+                type="button"
                 key={index}
                 className="text-left p-2 text-sm border rounded hover:bg-accent hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => handlePresetSelect(preset.cron)}

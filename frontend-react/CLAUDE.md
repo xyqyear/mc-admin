@@ -44,6 +44,8 @@ HTTP consumers use the normalized `ApiError` (`Error.message`, `status`, `code`,
 
 `shared/hooks/useEditorDraft.ts` owns local text/JSON drafts for other resource editors. Remote updates replace pristine content, preserve authored changes, and never establish an empty draft from a failed initial read. Explicit reload resets the draft after a successful read. See `docs/data-architecture.md` for editor and integration-test boundaries.
 
+Server creation keys its template draft by template ID; schema/port refetches preserve authored values. The restart card creates managed server schedules through the server endpoint and opens their exact cron details with `/cron?job=<id>`. Task observers can read journal-retained outcomes after list dismissal or restart; missing/expired details end observation with an explicit message. Archive selection uses file paths as stable row identities.
+
 When to bypass the query layer: one-off flow-local requests that should not be globally cached (e.g. modal-only preview/check calls), or stream/progress operations.
 
 `features/archives/uploads/` owns archive pause/resume and verification. `features/files/useMultiFileUpload.ts` owns ordinary-file conflict checking, overwrite policy and sequential batches. Dialogs render flow state; raw API functions each issue one request.

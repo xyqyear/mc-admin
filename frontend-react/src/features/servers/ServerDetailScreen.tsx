@@ -157,8 +157,10 @@ const ServerDetail: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4">
         <ServerRestartScheduleCard
+          serverId={id}
           restartSchedule={restartSchedule}
           isLoading={restartScheduleQuery?.isLoading}
+          error={restartScheduleQuery.error}
         />
         <ServerDiskUsageCard
           diskUsageBytes={diskUsage?.diskUsageBytes}

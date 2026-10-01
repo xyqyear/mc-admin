@@ -89,10 +89,7 @@ const ArchiveManagement: React.FC = () => {
   }
 
   const selectedPaths = useMemo(() => {
-    return Object.keys(rowSelection)
-      .filter(key => rowSelection[key])
-      .map(idx => archiveFiles[Number(idx)]?.path)
-      .filter(Boolean) as string[]
+    return archiveFiles.filter(file => rowSelection[file.path]).map(file => file.path)
   }, [rowSelection, archiveFiles])
 
   const handleBulkDelete = () => {
@@ -129,12 +126,14 @@ const ArchiveManagement: React.FC = () => {
       id: 'select',
       header: ({ table }) => (
         <Checkbox
+          aria-label="选择当前页全部文件"
           checked={table.getIsAllPageRowsSelected()}
           onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
         />
       ),
       cell: ({ row }) => (
         <Checkbox
+          aria-label={`选择 ${row.original.name}`}
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
         />

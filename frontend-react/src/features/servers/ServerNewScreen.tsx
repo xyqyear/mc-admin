@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -27,6 +27,7 @@ import { useServerMutations } from '@/features/servers/commands'
 import { useTemplateSchema, useAvailablePorts } from '@/features/templates/queries'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
+import { useEditorDraft } from '@/shared/hooks/useEditorDraft'
 
 type CreationMode = 'traditional' | 'template'
 
@@ -38,7 +39,6 @@ const ServerNew: React.FC = () => {
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
-  const [templateFormData, setTemplateFormData] = useState<Record<string, unknown>>({})
 
   const [serverName, setServerName] = useState('')
   const [serverNameError, setServerNameError] = useState('')
@@ -60,7 +60,7 @@ const ServerNew: React.FC = () => {
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
 
-  useEffect(() => {
+  const templateDefaults = useMemo(() => {
     if (templateSchema?.json_schema) {
       const schema = templateSchema.json_schema as RJSFSchema
       const defaults: Record<string, unknown> = {}
@@ -78,9 +78,12 @@ const ServerNew: React.FC = () => {
         defaults.rcon_port = availablePorts.suggested_rcon_port
       }
 
-      setTemplateFormData(defaults)
+      return defaults
     }
   }, [templateSchema, availablePorts])
+  const templateDraft = useEditorDraft(selectedTemplateId === null ? null : String(selectedTemplateId), templateDefaults)
+  const templateFormData = templateDraft.draft ?? {}
+  const setTemplateFormData = templateDraft.setDraft
 
   const handleArchiveSelect = (filename: string) => {
     setSelectedArchiveFile(filename)

@@ -9,22 +9,30 @@ import { Spinner } from '@/shared/ui/spinner'
 import CronExpressionDisplay from '@/features/schedules/ui/CronExpressionDisplay'
 import type { RestartScheduleResponse } from '@/features/servers/contracts';
 import { CronJobStatusTag } from '@/features/schedules/ui/index'
+import { useServerMutations } from '@/features/servers/commands'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 
 interface ServerRestartScheduleCardProps {
+  serverId: string
   restartSchedule: RestartScheduleResponse | null | undefined
   isLoading?: boolean
+  error?: Error | null
   className?: string
 }
 
 export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps> = ({
+  serverId,
   restartSchedule,
   isLoading = false,
+  error,
   className
 }) => {
   const navigate = useNavigate()
+  const createSchedule = useServerMutations().useCreateOrUpdateRestartSchedule()
+  const { confirm, confirmDialog } = useConfirm()
 
   const handleNavigateToCronManagement = () => {
-    navigate('/cron', { state: { highlightJobId: restartSchedule?.cronjob_id } })
+    navigate(`/cron?job=${encodeURIComponent(restartSchedule!.cronjob_id)}`)
   }
 
   if (isLoading) {
@@ -59,18 +67,24 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Alert>
-            <AlertTitle>未配置重启计划</AlertTitle>
+          <Alert variant={error ? 'destructive' : 'default'}>
+            <AlertTitle>{error ? '无法读取重启计划' : '未配置重启计划'}</AlertTitle>
             <AlertDescription>
               <div className="flex items-center justify-between">
-                <span>此服务器尚未配置自动重启计划</span>
-                <Button size="sm" variant="outline" onClick={handleNavigateToCronManagement}>
+                <span>{error?.message ?? '此服务器尚未配置自动重启计划'}</span>
+                <Button size="sm" variant="outline" disabled={!!error || createSchedule.isPending} onClick={() => confirm({
+                  title: '配置自动重启',
+                  description: `为服务器“${serverId}”分配每日重启时间。创建后可在定时任务中调整时间或暂停计划。`,
+                  confirmText: '创建重启计划',
+                  onConfirm: async () => { await createSchedule.mutateAsync({ serverId }) },
+                })}>
                   配置计划
                 </Button>
               </div>
             </AlertDescription>
           </Alert>
         </CardContent>
+        {confirmDialog}
       </Card>
     )
   }

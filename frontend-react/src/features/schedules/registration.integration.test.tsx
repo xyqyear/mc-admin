@@ -8,6 +8,7 @@ import { useServerQueries } from '@/features/servers/queries'
 import type { CronJob } from '@/features/schedules/contracts'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
+import { Route, Routes } from 'react-router'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -30,7 +31,8 @@ beforeEach(() => {
 afterEach(() => { client.clear(); server.resetHandlers() })
 function ScheduleCard() {
   const { useRestartSchedule } = useServerQueries()
-  return <ServerRestartScheduleCard restartSchedule={useRestartSchedule('alpha').data} />
+  const schedule = useRestartSchedule('alpha')
+  return <ServerRestartScheduleCard serverId="alpha" restartSchedule={schedule.data} isLoading={schedule.isLoading} error={schedule.error} />
 }
 
 it('keeps an active failed schedule visible, retries registration, and refreshes the server card', async () => {
@@ -54,4 +56,30 @@ it('keeps old responses readable without claiming a registration failure', async
   await screen.findByText('已启用')
   expect(screen.queryByText('注册失败，暂未调度')).toBeNull()
   await screen.findByText('下次执行:')
+})
+
+it('creates a managed server restart schedule and opens its details from the card', async () => {
+  let created = false
+  server.use(
+    http.get('*/api/servers/alpha/restart-schedule', () => HttpResponse.json(created ? { ...job, server_id: 'alpha', scheduled_time: '00:00' } : null)),
+    http.post('*/api/servers/alpha/restart-schedule', () => {
+      created = true
+      return HttpResponse.json({ ...job, server_id: 'alpha', scheduled_time: '00:00' })
+    }),
+    http.get('*/api/cron/restart-alpha', () => HttpResponse.json(job)),
+    http.get('*/api/cron/restart-alpha/executions', () => HttpResponse.json([])),
+  )
+  render(<TestProviders client={client} route="/servers/alpha"><Routes>
+    <Route path="/servers/alpha" element={<ScheduleCard />} />
+    <Route path="/cron" element={<CronManagementScreen />} />
+  </Routes></TestProviders>)
+  await screen.findByText('未配置重启计划')
+  fireEvent.click(screen.getByRole('button', { name: '配置计划' }))
+  expect(created).toBe(false)
+  fireEvent.click(await screen.findByRole('button', { name: '创建重启计划' }))
+  await screen.findByText('00:00')
+  expect(created).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: '管理' }))
+  await screen.findByRole('dialog')
+  await screen.findByText('restart-alpha')
 })

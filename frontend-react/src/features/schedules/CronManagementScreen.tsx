@@ -1,5 +1,6 @@
 import { CronRegistrationStatus } from '@/features/schedules/ui/CronRegistrationStatus'
 import React, { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import {
   Clock,
@@ -34,11 +35,12 @@ import { useConfirm } from '@/shared/hooks/useConfirm'
 import type { CronJob } from '@/features/schedules/contracts';
 
 const CronManagement: React.FC = () => {
+  const [searchParams] = useSearchParams()
   const { confirm, confirmDialog } = useConfirm()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(!!searchParams.get('job'))
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(searchParams.get('job'))
   const [filters, setFilters] = useState<{
     identifier?: string
     status: string[]

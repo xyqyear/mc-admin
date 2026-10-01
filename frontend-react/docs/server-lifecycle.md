@@ -25,6 +25,10 @@ When the backend changes any of these, update this file in the same commit.
 
 ## Components
 
+`ServerNewScreen.tsx` uses the shared editor draft keyed by selected template ID.
+Schema defaults and available ports initialize untouched forms; refetches preserve
+authored values. Selecting another template initializes a new draft.
+
 - `src/features/servers/ui/SyncWithFilesystemDialog.tsx` — preview / apply UI, force-mode escalation, OWNER role-gated trigger.
 
 ## Cache invalidation
