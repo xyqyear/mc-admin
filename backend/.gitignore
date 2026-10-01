@@ -10,3 +10,4 @@ cov.xml
 .coverage
 archives/
 mc-router/
+*.writer.lock
