@@ -646,6 +646,17 @@ export const versionUpdates: VersionUpdate[] = [
       '修复地图加载期间已打开的快照和恢复历史面板意外关闭的问题',
     ],
   },
+  {
+    version: '6.0.0-beta.3',
+    date: '2026-10-01',
+    title: 'DNS 与路径配置修复',
+    description: '修复相对目录配置和华为云 DNS 记录同步问题，提高服务器连接配置的可靠性。',
+    fixes: [
+      '修复使用默认或相对目录配置时，归档上传、下载和文件访问可能定位错误的问题 #174',
+      '修复华为云域名或解析记录较多时，同步遗漏后续记录的问题',
+      '修复 DNS 地址在 CNAME 与 A/AAAA 之间切换时因记录冲突导致同步失败的问题',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
