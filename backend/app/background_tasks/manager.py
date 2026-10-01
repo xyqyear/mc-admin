@@ -251,10 +251,16 @@ class BackgroundTaskManager:
         except ValueError:
             return None
         state = {
+            OperationState.QUEUED: TaskStatus.PENDING,
+            OperationState.RUNNING: TaskStatus.RUNNING,
+            OperationState.CANCELLING: TaskStatus.RUNNING,
+            OperationState.FINALIZING: TaskStatus.RUNNING,
             OperationState.SUCCEEDED: TaskStatus.COMPLETED,
             OperationState.CANCELLED: TaskStatus.CANCELLED,
         }.get(record.state, TaskStatus.FAILED)
         message = "应用重启前的操作已中断，请查看操作历史" if record.state is OperationState.INTERRUPTED else "操作记录已恢复"
+        if state in (TaskStatus.PENDING, TaskStatus.RUNNING):
+            message = "任务已受理，等待执行完成"
         return BackgroundTask(
             task_id=record.legacy_id, task_type=task_type, name=record.name,
             server_id=next((resource.server_id for resource in record.resources if resource.server_id), None),

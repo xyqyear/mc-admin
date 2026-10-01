@@ -50,6 +50,23 @@ async def test_completed_result_survives_dismissal_and_restart(management, dismi
     assert await restored.get_task_detail("missing") is None
 
 
+async def test_observing_durable_acceptance_does_not_report_a_false_failure(management):
+    env = management
+
+    async def observe_acceptance(task_id):
+        detail = await env.tasks.get_task_detail(task_id)
+        assert detail is not None and detail.status.value == "pending"
+        assert detail.error is None and detail.result is None
+
+    async def complete():
+        yield TaskProgress(progress=100, result={"success": True})
+
+    accepted = await env.tasks.submit_durable(
+        TaskType.SNAPSHOT_CREATE, "创建快照", complete(), on_accepted=observe_acceptance,
+    )
+    assert (await accepted.awaitable).success
+
+
 @pytest.fixture
 async def management(isolated_runtime, monkeypatch):
     runtime = isolated_runtime
