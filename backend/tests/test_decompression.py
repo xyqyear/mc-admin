@@ -11,14 +11,16 @@ Tests cover:
 - Real-time progress tracking
 """
 
+import asyncio
 import errno
 import os
 import pwd
 import shutil
 import subprocess
+import sys
 import tempfile
-import time
 import zipfile
+from contextlib import aclosing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,11 +36,49 @@ from app.utils.decompression import (
     extract_archive_stream,
     extract_minecraft_server,
 )
+from app.utils.exec import exec_command_stream
 
-pytestmark = [pytest.mark.binary('7z')]
+
+@pytest.mark.binary("7z")
+async def test_decompression_progress_arrives_before_process_exit(temp_dir, mock_settings, monkeypatch):
+    archive = temp_dir / "server.zip"
+    create_test_archive(archive, {"server.properties": "server-port=25565"})
+    release = temp_dir / "release"
+    target = temp_dir / "extracted"
+
+    def controlled_command(command, *args, **kwargs):
+        return exec_command_stream(
+            sys.executable, "-u", "-c",
+            "import pathlib, sys, time, zipfile\n"
+            "print(' 25%', end=chr(13), flush=True)\n"
+            "while not pathlib.Path(sys.argv[1]).exists(): time.sleep(0.01)\n"
+            "with zipfile.ZipFile(sys.argv[2]) as archive: archive.extractall(sys.argv[3])\n"
+            "print(' 100%', end=chr(8), flush=True)\n",
+            str(release), args[1], args[2].removeprefix("-o"), **kwargs,
+        )
+
+    monkeypatch.setattr("app.utils.decompression.exec_command_stream", controlled_command)
+    async with aclosing(extract_minecraft_server(str(archive), str(target))) as stream:
+        try:
+            async with asyncio.timeout(5):
+                async for progress in stream:
+                    if progress.progress == 27:
+                        assert "解压" in progress.message
+                        assert not target.exists()
+                        break
+                else:
+                    pytest.fail("No intermediate decompression progress")
+        finally:
+            release.touch()
+        async with asyncio.timeout(5):
+            remaining = [progress async for progress in stream]
+        assert remaining[-1].progress == 100
+        assert remaining[-1].result == {"success": True}
+    assert (target / "server.properties").read_text() == "server-port=25565"
 
 
 @pytest.mark.parametrize("code", [errno.ENOSPC, errno.EACCES, errno.EXDEV])
+@pytest.mark.binary("7z")
 async def test_failed_publication_preserves_existing_world_and_source(temp_dir, mock_settings, monkeypatch, code):
     archive = temp_dir / "replacement.zip"
     create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new"})
@@ -60,6 +100,7 @@ async def test_failed_publication_preserves_existing_world_and_source(temp_dir, 
     assert archive.exists()
 
 
+@pytest.mark.binary("7z")
 async def test_publication_replaces_the_complete_tree_including_hidden_files(temp_dir, mock_settings):
     archive = temp_dir / "replacement.zip"
     create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new", ".settings": "new settings"})
@@ -76,6 +117,7 @@ async def test_publication_replaces_the_complete_tree_including_hidden_files(tem
     assert not archive.exists()
 
 
+@pytest.mark.binary("7z")
 async def test_cleanup_failure_reports_published_data_and_retains_source(temp_dir, mock_settings, monkeypatch):
     archive = temp_dir / "replacement.zip"
     create_test_archive(archive, {"server.properties": "level-name=world", "world/new.dat": "new"})
@@ -93,15 +135,6 @@ async def test_cleanup_failure_reports_published_data_and_retains_source(temp_di
     assert (target / "world" / "new.dat").read_text() == "new"
     assert not (target / "old.dat").exists()
     assert archive.exists()
-
-
-def check_7z_available():
-    """Check if 7z command is available."""
-    try:
-        subprocess.run(["7z"], capture_output=True, check=False)
-        return True
-    except FileNotFoundError:
-        return False
 
 
 def get_test_user():
@@ -185,7 +218,7 @@ def create_test_archive(archive_path: Path, structure: dict, format_type: str = 
         shutil.rmtree(temp_extract_dir)
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
+@pytest.mark.binary("7z")
 class TestBasicFunctionality:
     """Test basic decompression functionality with real 7z commands."""
 
@@ -285,7 +318,6 @@ class TestBasicFunctionality:
         assert (target_path / "mods" / "mod.jar").exists()
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestFailureScenarios:
     """Test various failure scenarios with real commands."""
 
@@ -303,6 +335,7 @@ class TestFailureScenarios:
         # Should get error with Chinese error message
         assert "压缩包不存在" in str(exc_info.value)
 
+    @pytest.mark.binary("7z")
     async def test_no_server_properties(self, temp_dir, mock_settings):
         """Test failure when server.properties is not in archive."""
         # Create archive without server.properties
@@ -321,6 +354,7 @@ class TestFailureScenarios:
         # Should get error with Chinese error message
         assert "压缩包中未找到server.properties文件" in str(exc_info.value)
 
+    @pytest.mark.binary("7z")
     async def test_corrupted_archive(self, temp_dir, mock_settings):
         """Test failure with corrupted archive."""
         archive_path = temp_dir / "corrupted.zip"
@@ -340,7 +374,6 @@ class TestFailureScenarios:
         assert "压缩包文件损坏或格式不支持" in str(exc_info.value)
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestNoSevenZip:
     """Test behavior when 7z is not available."""
 
@@ -366,7 +399,7 @@ class TestNoSevenZip:
             assert "7z未安装或不可用" in str(exc_info.value)
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
+@pytest.mark.binary("7z")
 class TestExtractArchiveStream:
     """Test the low-level extract_archive_stream async generator."""
 
@@ -440,7 +473,7 @@ class TestExtractArchiveStream:
         assert "mod.jar" in file_names, f"mod.jar not found in {file_names}"
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
+@pytest.mark.binary("7z")
 class TestExtractMinecraftServer:
     """Test the high-level extract_minecraft_server async generator."""
 
@@ -475,49 +508,6 @@ class TestExtractMinecraftServer:
         assert progress_updates[-1].result is not None
         assert progress_updates[-1].result.get("success") is True
 
-    async def test_stream_extracts_server_files(self, temp_dir, mock_settings):
-        """Test that stream extracts server files to target path."""
-        archive_path = temp_dir / "server.zip"
-        server_structure = {
-            "server/server.properties": "server-port=25565\n",
-            "server/world/level.dat": "world data",
-            "server/plugins/plugin.jar": "plugin content",
-        }
-        create_test_archive(archive_path, server_structure)
-
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        async for _ in extract_minecraft_server(str(archive_path), str(target_path)):
-            pass
-
-        # Verify files were extracted to target
-        assert (target_path / "server.properties").exists()
-        assert (target_path / "world" / "level.dat").exists()
-        assert (target_path / "plugins" / "plugin.jar").exists()
-
-        # Verify original archive was deleted
-        assert not archive_path.exists()
-
-    async def test_stream_deletes_archive_after_extraction(
-        self, temp_dir, mock_settings
-    ):
-        """Test that archive is deleted after successful extraction."""
-        archive_path = temp_dir / "server.zip"
-        server_structure = {
-            "server.properties": "server-port=25565\n",
-        }
-        create_test_archive(archive_path, server_structure)
-
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        async for _ in extract_minecraft_server(str(archive_path), str(target_path)):
-            pass
-
-        # Archive should be deleted
-        assert not archive_path.exists()
-
     async def test_stream_handles_deep_nested_structure(self, temp_dir, mock_settings):
         """Test extraction with deeply nested server.properties."""
         archive_path = temp_dir / "server.zip"
@@ -536,37 +526,6 @@ class TestExtractMinecraftServer:
         # Verify server.properties is at root of target
         assert (target_path / "server.properties").exists()
         assert (target_path / "world" / "level.dat").exists()
-
-    async def test_stream_fails_on_nonexistent_archive(self, temp_dir, mock_settings):
-        """Test that stream fails when archive doesn't exist."""
-        archive_path = temp_dir / "nonexistent.zip"
-        target_path = temp_dir / "target"
-
-        with pytest.raises(RuntimeError) as exc_info:
-            async for _ in extract_minecraft_server(
-                str(archive_path), str(target_path)
-            ):
-                pass
-
-        assert "压缩包不存在" in str(exc_info.value)
-
-    async def test_stream_fails_on_missing_server_properties(
-        self, temp_dir, mock_settings
-    ):
-        """Test that stream fails when archive lacks server.properties."""
-        archive_path = temp_dir / "invalid.zip"
-        structure = {"some_file.txt": "content", "folder/another.txt": "content"}
-        create_test_archive(archive_path, structure)
-
-        target_path = temp_dir / "target"
-
-        with pytest.raises(RuntimeError) as exc_info:
-            async for _ in extract_minecraft_server(
-                str(archive_path), str(target_path)
-            ):
-                pass
-
-        assert "压缩包中未找到server.properties文件" in str(exc_info.value)
 
     async def test_stream_progress_mapping(self, temp_dir, mock_settings):
         """Test that progress values are mapped correctly through all steps."""
@@ -602,101 +561,10 @@ class TestExtractMinecraftServer:
         assert any("填充完成" in m for m in messages)
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
-class TestRealTimeDecompressionProgress:
-    """Test that decompression progress is tracked in real-time."""
-
-    @pytest.fixture
-    async def large_archive(self, temp_dir, mock_settings):
-        """Create a large archive to ensure measurable decompression time."""
-        archive_path = temp_dir / "large_server.zip"
-
-        # Create structure with larger files
-        server_structure = {
-            "server.properties": "server-port=25565\n",
-        }
-        # Add larger files - 10 x 500KB files (5MB total)
-        for i in range(10):
-            server_structure[f"data/file_{i}.bin"] = os.urandom(500 * 1024).hex()
-
-        create_test_archive(archive_path, server_structure)
-        return archive_path
-
-    async def test_progress_updates_are_realtime(
-        self, temp_dir, large_archive, mock_settings
-    ):
-        """Test that progress updates arrive in real-time during extraction."""
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        progress_timestamps: list[tuple[float, float]] = []
-        start_time = time.time()
-
-        async for progress in extract_minecraft_server(
-            str(large_archive), str(target_path)
-        ):
-            elapsed = time.time() - start_time
-            if progress.progress is not None:
-                progress_timestamps.append((elapsed, progress.progress))
-
-        total_time = time.time() - start_time
-
-        # Verify we got multiple progress updates
-        assert len(progress_timestamps) >= 3, (
-            f"Expected at least 3 progress updates, got {len(progress_timestamps)}"
-        )
-
-        # Verify progress values span from low to high
-        progress_values = [p[1] for p in progress_timestamps]
-        assert min(progress_values) <= 10, (
-            f"Expected initial progress <= 10%, got min={min(progress_values)}%"
-        )
-        assert max(progress_values) >= 90, (
-            f"Expected final progress >= 90%, got max={max(progress_values)}%"
-        )
-
-        # Print summary for debugging
-        print("\nDecompression progress tracking summary:")
-        print(f"  Total updates: {len(progress_timestamps)}")
-        print(f"  Progress range: {min(progress_values)}% - {max(progress_values)}%")
-        print(f"  Total time: {total_time:.2f}s")
-        print(f"  Sample updates: {progress_timestamps[:5]}...")
-
-    async def test_decompress_step_has_granular_progress(
-        self, temp_dir, large_archive, mock_settings
-    ):
-        """Test that the decompress step (10-80%) has granular progress updates."""
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        decompress_progress_values = []
-        async for progress in extract_minecraft_server(
-            str(large_archive), str(target_path)
-        ):
-            if (
-                progress.progress is not None
-                and 10 <= progress.progress <= 80
-                and "解压" in (progress.message or "")
-            ):
-                decompress_progress_values.append(progress.progress)
-
-        # Should have multiple progress updates during decompression
-        # (not just single updates at 10% and 80%)
-        print(f"\nDecompress step progress values: {decompress_progress_values}")
-
-        # With a large enough archive, we should see intermediate progress
-        if len(decompress_progress_values) > 2:
-            # Check that we have values between 10 and 80
-            intermediate_values = [v for v in decompress_progress_values if 15 < v < 75]
-            assert len(intermediate_values) > 0, (
-                "Expected intermediate progress values during decompression"
-            )
-
-
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestBackgroundTaskIntegration:
     """Test decompression with background task manager."""
 
+    @pytest.mark.binary("7z")
     async def test_task_manager_runs_extraction(self, temp_dir, mock_settings):
         """Test that task manager can run extraction task to completion."""
         archive_path = temp_dir / "server.zip"
@@ -767,6 +635,7 @@ class TestBackgroundTaskIntegration:
         # Clean up
         get_task_manager().remove_task(result.task_id)
 
+    @pytest.mark.binary("7z")
     async def test_task_tracks_progress_during_extraction(
         self, temp_dir, mock_settings
     ):

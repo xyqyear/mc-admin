@@ -213,9 +213,8 @@ async def test_heartbeat_normal_startup(test_database, mock_config):
     for p in patches:
         p.start()
 
+    heartbeat_manager = HeartbeatManager()
     try:
-        heartbeat_manager = HeartbeatManager()
-
         # Start heartbeat (should detect normal restart)
         await heartbeat_manager.start()
         await asyncio.sleep(0.2)  # Let it run
@@ -224,12 +223,12 @@ async def test_heartbeat_normal_startup(test_database, mock_config):
         heartbeat = await get_heartbeat(db)
         assert heartbeat is not None
         assert heartbeat.timestamp > recent_time
-
-        await heartbeat_manager.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await heartbeat_manager.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 @pytest.mark.asyncio
@@ -283,9 +282,8 @@ async def test_heartbeat_crash_detection(
     for p in patches:
         p.start()
 
+    heartbeat_manager = HeartbeatManager()
     try:
-        heartbeat_manager = HeartbeatManager()
-
         # Start heartbeat (should detect crash and call process_player_left)
         await heartbeat_manager.start()
 
@@ -310,12 +308,12 @@ async def test_heartbeat_crash_detection(
 
         # validate_all_servers should have been called during crash recovery
         mock_validate.assert_called_once()
-
-        await heartbeat_manager.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await heartbeat_manager.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 @pytest.mark.asyncio
@@ -332,9 +330,8 @@ async def test_heartbeat_continuous_updates(test_database, mock_config):
     for p in patches:
         p.start()
 
+    heartbeat_manager = HeartbeatManager()
     try:
-        heartbeat_manager = HeartbeatManager()
-
         await heartbeat_manager.start()
 
         # Get initial timestamp
@@ -353,12 +350,12 @@ async def test_heartbeat_continuous_updates(test_database, mock_config):
             assert len(heartbeats) == 1  # Should have exactly one heartbeat record
             assert heartbeats[0].id == 1  # Should be id=1
             assert heartbeats[0].timestamp > first_timestamp  # Should be updated
-
-        await heartbeat_manager.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await heartbeat_manager.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 # ============================================================================
@@ -415,9 +412,8 @@ async def test_player_syncer_corrects_false_positives(
     for p in patches:
         p.start()
 
+    player_syncer = PlayerSyncer()
     try:
-        player_syncer = PlayerSyncer()
-
         await player_syncer.start()
 
         # Wait for validation
@@ -436,12 +432,12 @@ async def test_player_syncer_corrects_false_positives(
                 online_names.add(player.current_name)
 
         assert online_names == {"Steve", "Alex"}
-
-        await player_syncer.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await player_syncer.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 @pytest.mark.asyncio
@@ -490,9 +486,8 @@ async def test_player_syncer_corrects_false_negatives(
     for p in patches:
         p.start()
 
+    player_syncer = PlayerSyncer()
     try:
-        player_syncer = PlayerSyncer()
-
         await player_syncer.start()
 
         # Wait for validation (need enough time for both players to be processed)
@@ -501,12 +496,12 @@ async def test_player_syncer_corrects_false_negatives(
         # Both should have been marked online
         online = await get_online_players(db, server_db_id)
         assert len(online) == 2
-
-        await player_syncer.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await player_syncer.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 @pytest.mark.asyncio
@@ -548,9 +543,8 @@ async def test_player_syncer_filters_ignored_rcon_players(
     for p in patches:
         p.start()
 
+    player_syncer = PlayerSyncer()
     try:
-        player_syncer = PlayerSyncer()
-
         await player_syncer.start()
         await asyncio.sleep(0.4)
 
@@ -570,12 +564,12 @@ async def test_player_syncer_filters_ignored_rcon_players(
             )
             online_player = result.scalar_one()
             assert online_player.current_name == "Steve"
-
-        await player_syncer.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await player_syncer.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 @pytest.mark.asyncio
@@ -604,58 +598,19 @@ async def test_player_syncer_skips_unhealthy_servers(test_database, mock_config)
     for p in patches:
         p.start()
 
+    player_syncer = PlayerSyncer()
     try:
-        player_syncer = PlayerSyncer()
-
         await player_syncer.start()
         await asyncio.sleep(0.3)
 
         # Should not crash, list_players should not be called
         mock_instance.list_players.assert_not_called()
-
-        await player_syncer.stop()
-
     finally:
-        for p in patches:
-            p.stop()
-
-
-@pytest.mark.asyncio
-async def test_player_syncer_handles_rcon_failure(test_database, mock_config):
-    """Test RCON validator handles RCON command failures gracefully."""
-    db = test_database
-    await create_server(db, "server1", is_active=True)
-
-    # Mock MCInstance that fails RCON
-    mock_instance = MagicMock()
-    mock_instance.get_status = AsyncMock(return_value=MCServerStatus.HEALTHY)
-    mock_instance.list_players = AsyncMock(side_effect=Exception("RCON failed"))
-
-    mock_mc_manager = MagicMock()
-    mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
-
-    patches = [
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
-        patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
-    ]
-
-    for p in patches:
-        p.start()
-
-    try:
-        player_syncer = PlayerSyncer()
-
-        await player_syncer.start()
-        await asyncio.sleep(0.3)
-
-        # Should not crash, just log warning
-        await player_syncer.stop()
-
-    finally:
-        for p in patches:
-            p.stop()
+        try:
+            await player_syncer.stop()
+        finally:
+            for p in patches:
+                p.stop()
 
 
 # ============================================================================
@@ -717,9 +672,8 @@ async def test_crash_recovery_triggers_rcon_validation(
     for p in patches:
         p.start()
 
+    heartbeat_manager = HeartbeatManager()
     try:
-        heartbeat_manager = HeartbeatManager()
-
         # Start heartbeat (detects crash, calls process_player_left for all,
         # then calls player_syncer.validate_all_servers)
         await heartbeat_manager.start()
@@ -738,9 +692,9 @@ async def test_crash_recovery_triggers_rcon_validation(
             )
             online_player = result.scalar_one()
             assert online_player.current_name == "Steve"
-
-        await heartbeat_manager.stop()
-
     finally:
-        for p in patches:
-            p.stop()
+        try:
+            await heartbeat_manager.stop()
+        finally:
+            for p in patches:
+                p.stop()

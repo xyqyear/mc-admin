@@ -12,8 +12,6 @@ from fastapi import HTTPException
 
 from app.files import (
     CreateFileRequest,
-    FileItem,
-    FileListResponse,
     RenameFileRequest,
     create_file_or_directory,
     delete_file_or_directory,
@@ -337,45 +335,6 @@ class TestCommonFileOperations:
 
         assert exc_info.value.status_code == 409
         assert "already exists" in exc_info.value.detail
-
-    def test_file_item_model(self):
-        """Test FileItem model."""
-        item = FileItem(
-            name="test.txt",
-            type="file",
-            size=1024,
-            modified_at=1640995200.0,  # 2022-01-01 00:00:00 UTC
-            path="/test.txt",
-        )
-
-        assert item.name == "test.txt"
-        assert item.type == "file"
-        assert item.size == 1024
-        assert item.path == "/test.txt"
-
-    def test_file_list_response_model(self):
-        """Test FileListResponse model."""
-        items = [
-            FileItem(
-                name="file1.txt",
-                type="file",
-                size=100,
-                modified_at=1640995200.0,
-                path="/file1.txt",
-            ),
-            FileItem(
-                name="dir1",
-                type="directory",
-                size=0,
-                modified_at=1640995200.0,
-                path="/dir1",
-            ),
-        ]
-        response = FileListResponse(items=items, current_path="/")
-
-        assert len(response.items) == 2
-        assert response.current_path == "/"
-
 
 if __name__ == "__main__":
     pytest.main([__file__])

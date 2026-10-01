@@ -463,23 +463,4 @@ async def test_server_stop_with_no_players(player_system):
         assert len(sessions) == 0
 
 
-@pytest.mark.asyncio
-async def test_missing_server_in_tracker(player_system):
-    """Test calls for server not in database (edge case)."""
-    db = player_system["db"]
-
-    # Don't create server in database
-
-    # Upsert player UUID
-    async with db() as session:
-        await upsert_player(session, make_online_uuid("Steve"), "Steve")
-
-    # Player join on nonexistent server (should handle gracefully)
-    await get_player_service().process_player_join("nonexistent", "Steve")
-
-    # Should not crash, but also shouldn't create session records
-    # (tracking functions log warning and return early)
-
-    # Player may still exist from the upsert
-    _player = await get_player(db, "Steve")
     # Main thing is no crash

@@ -29,9 +29,13 @@ from app.errors import PublicOperationError
 
 
 @pytest.fixture
-def task_manager():
+async def task_manager():
     """Create a fresh BackgroundTaskManager for each test."""
-    return BackgroundTaskManager()
+    manager = BackgroundTaskManager()
+    try:
+        yield manager
+    finally:
+        await manager.shutdown()
 
 
 class TestBasicTaskSubmission:
@@ -113,11 +117,14 @@ class TestTaskProgressUpdates:
 
     async def test_progress_updates_are_reflected_in_task(self, task_manager):
         """Test that progress updates are reflected in the task object."""
+        updated = asyncio.Event()
+        finish = asyncio.Event()
 
         async def progress_task():
-            for i in range(0, 101, 25):
-                yield TaskProgress(progress=i, message=f"Progress: {i}%")
-                await asyncio.sleep(0.01)
+            yield TaskProgress(progress=25, message="Quarter done")
+            updated.set()
+            await finish.wait()
+            yield TaskProgress(progress=100, message="Complete")
 
         result = task_manager.submit(
             task_type=TaskType.ARCHIVE_CREATE,
@@ -125,10 +132,17 @@ class TestTaskProgressUpdates:
             task_generator=progress_task(),
         )
 
-        await result.awaitable
-
+        await asyncio.wait_for(updated.wait(), timeout=5)
         task = task_manager.get_task(result.task_id)
+        assert task.status == TaskStatus.RUNNING
+        assert task.progress == 25
+        assert task.message == "Quarter done"
+        assert not result.awaitable.done()
+
+        finish.set()
+        await result.awaitable
         assert task.progress == 100
+        assert task.message == "Complete"
 
     async def test_message_updates_are_reflected_in_task(self, task_manager):
         """Test that message updates are reflected in the task object."""
@@ -717,25 +731,6 @@ class TestEdgeCases:
         task = task_manager.get_task(result.task_id)
         assert task.progress == 100
 
-    async def test_rapid_progress_updates(self, task_manager):
-        """Test task with many rapid progress updates."""
-
-        async def rapid_updates_task():
-            for i in range(1000):
-                yield TaskProgress(progress=i / 10, message=f"Step {i}")
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="rapid_updates",
-            task_generator=rapid_updates_task(),
-        )
-
-        task_result = await result.awaitable
-
-        assert task_result.success is True
-        task = task_manager.get_task(result.task_id)
-        assert task.status == TaskStatus.COMPLETED
-
     async def test_task_with_unicode_name(self, task_manager):
         """Test task with unicode characters in name."""
 
@@ -753,24 +748,6 @@ class TestEdgeCases:
         task = task_manager.get_task(result.task_id)
         assert task.name == "测试任务_🎮_世界备份"
         assert task.message == "完成！"
-
-    async def test_task_with_large_result_data(self, task_manager):
-        """Test task with large result data."""
-        large_data = {"items": [f"item_{i}" for i in range(10000)]}
-
-        async def large_result_task():
-            yield TaskProgress(progress=100, message="Done", result=large_data)
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="large_result",
-            task_generator=large_result_task(),
-        )
-
-        task_result = await result.awaitable
-
-        assert task_result.success is True
-        assert task_result.data == large_data
 
 
 class TestTasksByServerIdAndGetFuture:

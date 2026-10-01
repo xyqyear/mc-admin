@@ -47,7 +47,7 @@ it.each(['succeeded', 'failed', 'cancelled'])('refreshes same-mtime tiles after 
   view.rerender(<Shell visible={false} />)
   operations = [operation('restore', state, '2026-09-30T01:01:00Z')]
   await poll()
-  expect(client.getQueryState(queryKeys.snapshots.history('alpha'))?.isInvalidated).toBe(true)
+  await waitFor(() => expect(client.getQueryState(queryKeys.snapshots.history('alpha'))?.isInvalidated).toBe(true))
   view.rerender(<Shell />)
   await waitFor(() => expect(src('alpha')).not.toBe(before))
   expect(new URL(src('alpha')).searchParams.get('mt')).toBe('100')

@@ -5,8 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import ResticSettings
-from app.snapshots import ResticClient, ResticRestoreEvent, ResticSnapshot
+from app.snapshots import ResticClient, ResticSnapshot
 
 
 class TestResticClientConstruction:
@@ -122,22 +121,3 @@ class TestModels:
             short_id="i" * 8,
         )
         assert snapshot.excludes == ["/srv/x/data/.mcmap"]
-
-    def test_restore_event_model(self):
-        event = ResticRestoreEvent(
-            kind="file", action="updated", item="/test/file.txt", size=1024
-        )
-        assert event.kind == "file"
-        assert event.action == "updated"
-        assert event.item == "/test/file.txt"
-        assert event.size == 1024
-
-
-class TestConfigurationIntegration:
-    def test_restic_settings_validation(self):
-        settings = ResticSettings(
-            repository_path="/backup/repo", password="strong-password"
-        )
-
-        assert settings.repository_path == "/backup/repo"
-        assert settings.password == "strong-password"

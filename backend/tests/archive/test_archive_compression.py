@@ -2,7 +2,9 @@ from tests.support.runtime import patch_settings
 
 """Archive compression tests, including the background-task pipeline."""
 import asyncio
+import sys
 import tempfile
+from contextlib import aclosing
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,9 +19,8 @@ from app.utils.compression import (
     create_server_archive_stream,
     generate_archive_filename,
 )
+from app.utils.exec import exec_command_stream
 from tests.support.runtime import patch_runtime_resource
-
-pytestmark = [pytest.mark.binary('7z')]
 
 
 class TestFilenameGeneration:
@@ -98,12 +99,8 @@ class TestCreateServerArchiveStream:
         return archive_path
 
     @pytest.mark.asyncio
+    @pytest.mark.binary("7z")
     async def test_stream_yields_progress_updates(self, mock_instance, archive_dir):
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
@@ -121,12 +118,8 @@ class TestCreateServerArchiveStream:
             assert "filename" in progress_updates[-1].result
 
     @pytest.mark.asyncio
+    @pytest.mark.binary("7z")
     async def test_stream_creates_archive_file(self, mock_instance, archive_dir):
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
@@ -141,12 +134,8 @@ class TestCreateServerArchiveStream:
             assert result["size"] > 0
 
     @pytest.mark.asyncio
+    @pytest.mark.binary("7z")
     async def test_stream_with_relative_path(self, mock_instance, archive_dir):
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
@@ -161,12 +150,10 @@ class TestCreateServerArchiveStream:
             assert "plugins" in result["filename"]
 
     @pytest.mark.asyncio
+    @pytest.mark.binary("7z")
     async def test_same_instant_compressions_keep_independent_results(self, mock_instance, archive_dir):
-        import shutil
         from datetime import UTC, datetime
 
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
         results = []
         original = b""
         with (
@@ -216,6 +203,41 @@ class TestCreateServerArchiveStream:
             with pytest.raises(RuntimeError):
                 async for _ in create_server_archive_stream(mock_instance):
                     pass
+
+    async def test_progress_arrives_before_process_exit(
+        self, mock_instance, archive_dir, monkeypatch
+    ):
+        release = archive_dir / "release"
+        archive = archive_dir / "server.7z"
+
+        def controlled_command(*args, **kwargs):
+            return exec_command_stream(
+                sys.executable, "-u", "-c",
+                "import pathlib, sys, time\n"
+                "print(' 25%', end=chr(13), flush=True)\n"
+                "while not pathlib.Path(sys.argv[1]).exists(): time.sleep(0.01)\n"
+                "pathlib.Path(sys.argv[2]).write_bytes(b'archive')\n"
+                "print(' 100%', end=chr(8), flush=True)\n",
+                str(release), str(archive), **kwargs,
+            )
+
+        monkeypatch.setattr("app.utils.compression.exec_command_stream", controlled_command)
+        with patch_settings() as settings:
+            settings.archive_path = archive_dir
+            async with aclosing(create_server_archive_stream(mock_instance, output_path=archive)) as stream:
+                try:
+                    async with asyncio.timeout(5):
+                        assert (await anext(stream)).progress == 0
+                        progress = await anext(stream)
+                        assert progress.progress == 25
+                        assert progress.message == "Compressing: 25%"
+                        assert not archive.exists()
+                finally:
+                    release.touch()
+                async with asyncio.timeout(5):
+                    remaining = [progress async for progress in stream]
+                assert remaining[-1].progress == 100
+                assert remaining[-1].result == {"filename": "server.7z", "size": 7}
 
 
 class TestArchiveCompressionEndpoint:
@@ -359,6 +381,7 @@ class TestArchiveCompressionEndpoint:
         assert response.status_code == 422
 
 
+@pytest.mark.binary("7z")
 class TestBackgroundTaskIntegration:
     @pytest.fixture
     def temp_dir(self):
@@ -390,11 +413,6 @@ class TestBackgroundTaskIntegration:
 
     @pytest.mark.asyncio
     async def test_task_manager_runs_compression(self, mock_instance, archive_dir):
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
@@ -421,11 +439,6 @@ class TestBackgroundTaskIntegration:
 
     @pytest.mark.asyncio
     async def test_task_cancellation(self, mock_instance, archive_dir):
-        import shutil
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
 
@@ -457,96 +470,6 @@ class TestBackgroundTaskIntegration:
                 assert task.status == TaskStatus.COMPLETED
 
             get_task_manager().remove_task(result.task_id)
-
-
-class TestRealTimeProgressTracking:
-    """Verifies 7z progress streams in real-time, not buffered to the end."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
-            yield Path(temp_dir)
-
-    @pytest.fixture
-    def mock_instance_large(self, temp_dir):
-        """Sized large enough to produce multiple progress updates during compression."""
-        server_path = temp_dir / "servers" / "test_server"
-        server_path.mkdir(parents=True)
-        data_dir = server_path / "data"
-        data_dir.mkdir()
-
-        import os
-
-        for i in range(30):
-            (data_dir / f"file_{i}.bin").write_bytes(os.urandom(1024 * 1024))
-
-        instance = MagicMock()
-        instance.get_name.return_value = "test_server"
-        instance.get_project_path.return_value = server_path
-        instance.get_data_path.return_value = data_dir
-
-        return instance
-
-    @pytest.fixture
-    def archive_dir(self, temp_dir):
-        archive_path = temp_dir / "archives"
-        archive_path.mkdir()
-        return archive_path
-
-    @pytest.mark.asyncio
-    async def test_progress_updates_are_realtime(
-        self, mock_instance_large, archive_dir
-    ):
-        """Progress updates should be spread over compression time, not arrive in a burst at the end."""
-        import shutil
-        import time
-
-        if not shutil.which("7z"):
-            pytest.skip("7z command not available")
-
-        with patch_settings() as mock_settings:
-            mock_settings.archive_path = archive_dir
-
-            progress_timestamps: list[tuple[float, float]] = []
-            start_time = time.time()
-
-            async for progress in create_server_archive_stream(mock_instance_large):
-                elapsed = time.time() - start_time
-                if progress.progress is not None:
-                    progress_timestamps.append((elapsed, progress.progress))
-
-            total_time = time.time() - start_time
-
-            assert len(progress_timestamps) >= 3, (
-                f"Expected at least 3 progress updates, got {len(progress_timestamps)}"
-            )
-
-            progress_values = [p[1] for p in progress_timestamps]
-            assert min(progress_values) <= 10, (
-                f"Expected initial progress <= 10%, got min={min(progress_values)}%"
-            )
-            assert max(progress_values) >= 90, (
-                f"Expected final progress >= 90%, got max={max(progress_values)}%"
-            )
-
-            first_update_time = progress_timestamps[0][0]
-            last_update_time = progress_timestamps[-1][0]
-            time_spread = last_update_time - first_update_time
-
-            # Only enforce spread when compression actually took time.
-            if total_time > 1.0:
-                assert time_spread > total_time * 0.3, (
-                    f"Progress updates not spread over time: "
-                    f"spread={time_spread:.2f}s, total={total_time:.2f}s"
-                )
-
-            print("\nProgress tracking summary:")
-            print(f"  Total updates: {len(progress_timestamps)}")
-            print(
-                f"  Progress range: {min(progress_values)}% - {max(progress_values)}%"
-            )
-            print(f"  Time spread: {time_spread:.2f}s / {total_time:.2f}s total")
-            print(f"  Sample updates: {progress_timestamps[:5]}...")
 
 
 if __name__ == "__main__":

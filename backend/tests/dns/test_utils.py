@@ -1,7 +1,7 @@
 """DNS utility tests."""
 
 from app.dns import AddRecordT, ReturnRecordT
-from app.dns.utils import RecordDiff, RecordKey, diff_dns_records
+from app.dns.utils import RecordKey, diff_dns_records
 
 
 def test_record_key():
@@ -14,13 +14,6 @@ def test_record_key():
 
     key3 = RecordKey("test.example.com", "AAAA")
     assert key != key3
-
-
-def test_record_diff():
-    diff = RecordDiff(records_to_add=[], records_to_remove=[], records_to_update=[])
-    assert diff.records_to_add == []
-    assert diff.records_to_remove == []
-    assert diff.records_to_update == []
 
 
 def test_diff_dns_records_no_changes():
@@ -98,6 +91,8 @@ def test_diff_dns_records_update_value_only():
 
     diff = diff_dns_records(old_records, new_records)
 
+    assert diff.records_to_add == []
+    assert diff.records_to_remove == []
     assert len(diff.records_to_update) == 1
     updated = diff.records_to_update[0]
     assert updated.value == "5.6.7.8"

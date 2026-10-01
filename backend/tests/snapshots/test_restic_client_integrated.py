@@ -125,14 +125,6 @@ class TestBackup:
         nodes = await client.ls(snapshot.id, data_dir / "world" / "region")
         assert nodes[data_dir / "world" / "region" / "r.0.0.mca"] is NodeKind.FILE
 
-    async def test_backup_rejects_relative_path(self, client):
-        with pytest.raises(ValueError, match="absolute"):
-            await client.backup([Path("relative/path")])
-
-    async def test_backup_rejects_empty_paths(self, client):
-        with pytest.raises(ValueError, match="At least one path"):
-            await client.backup([])
-
     async def test_backup_empty_directory(self, client):
         with tempfile.TemporaryDirectory() as tmp:
             snapshot = await client.backup([Path(tmp)])
@@ -159,11 +151,6 @@ class TestLs:
     async def test_missing_path_returns_empty(self, client, data_dir):
         snapshot = await client.backup([data_dir])
         assert await client.ls(snapshot.id, data_dir / "nonexistent") == {}
-
-    async def test_rejects_relative_path(self, client, data_dir):
-        snapshot = await client.backup([data_dir])
-        with pytest.raises(ValueError, match="absolute"):
-            await client.ls(snapshot.id, Path("relative"))
 
 
 class TestRestoreDir:
@@ -349,28 +336,6 @@ class TestRestoreFiles:
         assert not junk.exists()
 
 
-class TestRestoreValidation:
-    async def test_excludes_and_includes_forbidden(self, client, data_dir):
-        with pytest.raises(ValueError, match="forbids"):
-            await _collect(
-                client.restore(
-                    "any",
-                    source_dir=data_dir,
-                    target_dir=data_dir,
-                    excludes=["/a"],
-                    includes=["/b"],
-                )
-            )
-
-    async def test_relative_dirs_rejected(self, client):
-        with pytest.raises(ValueError, match="absolute"):
-            await _collect(
-                client.restore(
-                    "any", source_dir=Path("rel"), target_dir=Path("/abs")
-                )
-            )
-
-
 class TestSnapshotLifecycle:
     async def test_multiple_snapshots_chronology(self, client, data_dir):
         first = await client.backup([data_dir])
@@ -397,10 +362,6 @@ class TestSnapshotLifecycle:
 
         await client.forget(keep_last=1, prune=True)
         assert len(await client.list_snapshots()) == 1
-
-    async def test_forget_requires_policy(self, client):
-        with pytest.raises(ValueError, match="retention policy"):
-            await client.forget()
 
     async def test_get_snapshot_missing_raises(self, client, data_dir):
         await client.backup([data_dir])

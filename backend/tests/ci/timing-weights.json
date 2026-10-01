@@ -37,7 +37,6 @@
     "tests/cron/test_system_cronjobs.py": 0.198865,
     "tests/cron/test_weekdays.py": 6.782857,
     "tests/dns/test_api.py": 0.243973,
-    "tests/dns/test_dns_basic_functionality.py": 0.0292,
     "tests/dns/test_dns_client_diff.py": 0.048477,
     "tests/dns/test_dns_manager_diff.py": 1.485106,
     "tests/dns/test_dnspod.py": 6.132782,

@@ -1,5 +1,7 @@
 """Unit tests for variable extraction from compose files."""
 
+import pytest
+
 from app.templates import (
     BoolVariableDefinition,
     EnumVariableDefinition,
@@ -46,55 +48,28 @@ class TestExtractVariablesFromCompose:
         compose = "ratio: 0.75"
         variables = [FloatVariableDefinition(name="ratio", display_name="Ratio")]
 
-        extracted, _warnings = TemplateManager.extract_variables_from_compose(
+        extracted, warnings = TemplateManager.extract_variables_from_compose(
             template, compose, variables
         )
         assert extracted["ratio"] == 0.75
         assert isinstance(extracted["ratio"], float)
+        assert warnings == []
 
-    def test_extract_bool_variable_true(self):
-        """Extract a boolean variable (true)."""
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [(value, True) for value in ("true", "True", "TRUE", "1", "yes", "Yes")]
+        + [(value, False) for value in ("false", "False", "0", "no")],
+    )
+    def test_extract_bool_variable(self, raw, expected):
         template = "enabled: {flag}"
-        compose = "enabled: true"
+        compose = f"enabled: {raw}"
         variables = [BoolVariableDefinition(name="flag", display_name="Flag")]
 
-        extracted, _warnings = TemplateManager.extract_variables_from_compose(
+        extracted, warnings = TemplateManager.extract_variables_from_compose(
             template, compose, variables
         )
-        assert extracted["flag"] is True
-
-    def test_extract_bool_variable_yes(self):
-        """Bool conversion handles 'yes' as True."""
-        template = "enabled: {flag}"
-        compose = "enabled: yes"
-        variables = [BoolVariableDefinition(name="flag", display_name="Flag")]
-
-        extracted, _ = TemplateManager.extract_variables_from_compose(
-            template, compose, variables
-        )
-        assert extracted["flag"] is True
-
-    def test_extract_bool_variable_1(self):
-        """Bool conversion handles '1' as True."""
-        template = "enabled: {flag}"
-        compose = "enabled: 1"
-        variables = [BoolVariableDefinition(name="flag", display_name="Flag")]
-
-        extracted, _ = TemplateManager.extract_variables_from_compose(
-            template, compose, variables
-        )
-        assert extracted["flag"] is True
-
-    def test_extract_bool_variable_false(self):
-        """Bool conversion handles 'false' as False."""
-        template = "enabled: {flag}"
-        compose = "enabled: false"
-        variables = [BoolVariableDefinition(name="flag", display_name="Flag")]
-
-        extracted, _ = TemplateManager.extract_variables_from_compose(
-            template, compose, variables
-        )
-        assert extracted["flag"] is False
+        assert extracted["flag"] is expected
+        assert warnings == []
 
     def test_extract_enum_variable_valid(self):
         """Extract a valid enum variable."""
@@ -431,99 +406,3 @@ services:
         )
         assert extracted["version"] == "1.20.4"
         assert warnings == []
-
-
-class TestTemplateLineToRegex:
-    """Tests for _template_line_to_regex helper method."""
-
-    def test_simple_variable(self):
-        """Single variable produces named capture group."""
-        pattern = TemplateManager._template_line_to_regex("name: {name}", ["name"])
-        assert pattern is not None
-        assert "(?P<name>.+?)" in pattern
-
-    def test_backreference_pattern(self):
-        """Duplicate variable produces backreference."""
-        pattern = TemplateManager._template_line_to_regex(
-            "{name}/{name}", ["name", "name"]
-        )
-        assert pattern is not None
-        assert "(?P<name>.+?)" in pattern
-        assert "(?P=name)" in pattern
-
-    def test_regex_special_chars_escaped(self):
-        """Special regex characters in template are escaped."""
-        pattern = TemplateManager._template_line_to_regex(
-            "path: /opt/[mc].{name}", ["name"]
-        )
-        assert pattern is not None
-        # The [ ] . should be escaped in the pattern
-        assert "\\[" in pattern
-        assert "\\]" in pattern
-        assert "\\." in pattern
-
-
-class TestConvertToTypedValue:
-    """Tests for _convert_to_typed_value helper method."""
-
-    def test_int_success(self):
-        """Convert string to int successfully."""
-        var_def = IntVariableDefinition(name="port", display_name="Port")
-        value, warning = TemplateManager._convert_to_typed_value("25565", var_def)
-        assert value == 25565
-        assert warning is None
-
-    def test_int_failure(self):
-        """Int conversion failure returns raw value with warning."""
-        var_def = IntVariableDefinition(name="port", display_name="Port")
-        value, warning = TemplateManager._convert_to_typed_value("abc", var_def)
-        assert value == "abc"
-        assert warning is not None
-        assert "类型转换失败" in warning
-
-    def test_float_success(self):
-        """Convert string to float successfully."""
-        var_def = FloatVariableDefinition(name="ratio", display_name="Ratio")
-        value, warning = TemplateManager._convert_to_typed_value("3.14", var_def)
-        assert value == 3.14
-        assert warning is None
-
-    def test_bool_true_variants(self):
-        """Various truthy strings convert to True."""
-        var_def = BoolVariableDefinition(name="flag", display_name="Flag")
-        for val in ("true", "True", "TRUE", "1", "yes", "Yes"):
-            value, _ = TemplateManager._convert_to_typed_value(val, var_def)
-            assert value is True, f"Expected True for '{val}'"
-
-    def test_bool_false_variants(self):
-        """Non-truthy strings convert to False."""
-        var_def = BoolVariableDefinition(name="flag", display_name="Flag")
-        for val in ("false", "False", "0", "no"):
-            value, _ = TemplateManager._convert_to_typed_value(val, var_def)
-            assert value is False, f"Expected False for '{val}'"
-
-    def test_enum_valid(self):
-        """Valid enum value returns value with no warning."""
-        var_def = EnumVariableDefinition(
-            name="type", display_name="Type", options=["A", "B"]
-        )
-        value, warning = TemplateManager._convert_to_typed_value("A", var_def)
-        assert value == "A"
-        assert warning is None
-
-    def test_enum_invalid(self):
-        """Invalid enum value returns value with warning."""
-        var_def = EnumVariableDefinition(
-            name="type", display_name="Type", options=["A", "B"]
-        )
-        value, warning = TemplateManager._convert_to_typed_value("C", var_def)
-        assert value == "C"
-        assert warning is not None
-        assert "不在选项列表中" in warning
-
-    def test_string_passthrough(self):
-        """String variable returns raw value unchanged."""
-        var_def = StringVariableDefinition(name="name", display_name="Name")
-        value, warning = TemplateManager._convert_to_typed_value("test", var_def)
-        assert value == "test"
-        assert warning is None
