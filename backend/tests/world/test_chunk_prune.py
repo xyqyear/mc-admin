@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -22,7 +22,7 @@ from app.mcmap.events import (
 )
 from app.minecraft import MCServerStatus
 from app.routers.servers import chunk_prune as chunk_prune_router
-from app.world.locks import ServerOperationLock
+from app.world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from tests.support.runtime import set_runtime_resource
 
 
@@ -434,7 +434,13 @@ async def test_apply_closes_worker_and_invalidates_before_releasing_lock(tmp_pat
             assert lock.is_locked("srv1")
             closed = True
 
-    invalidation = AsyncMock()
+    invalidation_entered, release_invalidation = asyncio.Event(), asyncio.Event()
+
+    async def invalidate(*args, **kwargs):
+        invalidation_entered.set()
+        await release_invalidation.wait()
+
+    invalidation = AsyncMock(side_effect=invalidate)
     from app.servers.references import ServerRef
 
     reference = ServerRef("srv1", 1, tmp_path.parent.parent, tmp_path.parent, tmp_path)
@@ -450,7 +456,17 @@ async def test_apply_closes_worker_and_invalidates_before_releasing_lock(tmp_pat
     monkeypatch.setattr("app.chunk_prune.service.png_invalidate.delete_pngs", invalidation)
     events = service._run_apply_task(metadata)
     await anext(events)
-    await events.aclose()
+    close_task = asyncio.create_task(events.aclose())
+    try:
+        await asyncio.wait_for(invalidation_entered.wait(), 5)
+        assert lock.is_locked("srv1")
+        holder = LockHolder(ServerOperationKind.RESTORE, datetime.now(UTC), None, "restore")
+        async with lock.try_acquire("srv1", holder) as acquired:
+            assert not acquired
+        assert not close_task.done()
+    finally:
+        release_invalidation.set()
+        await asyncio.wait_for(close_task, 5)
     assert closed
     invalidation.assert_awaited_once()
     assert not lock.is_locked("srv1")

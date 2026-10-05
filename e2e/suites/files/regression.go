@@ -46,6 +46,8 @@ func directories(ctx context.Context, t *engine.Scope) error {
 		{map[string]any{"regex": "\\.txt$", "max_size": 2}, 1},
 		{map[string]any{"regex": "comma,name"}, 1},
 		{map[string]any{"regex": "\\.txt$", "newer_than": "2000-01-01T00:00:00Z", "older_than": "2100-01-01T00:00:00Z"}, 4},
+		{map[string]any{"regex": "\\.txt$", "newer_than": "2100-01-01T00:00:00Z"}, 0},
+		{map[string]any{"regex": "\\.txt$", "older_than": "2000-01-01T00:00:00Z"}, 0},
 	} {
 		var result struct {
 			Count int `json:"total_count"`

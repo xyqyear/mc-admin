@@ -4,6 +4,7 @@ import pytest
 
 from app.dns.dns import AddRecordT
 from app.dns.huawei import HuaweiDNSClient
+from app.dns.types import ReturnRecordT
 
 
 class MockZoneInfo:
@@ -196,11 +197,28 @@ async def test_huawei_client_update_records(mock_huawei_client):
 
     from unittest.mock import AsyncMock
 
-    client.list_records = AsyncMock(return_value=[])
+    client.list_records = AsyncMock(return_value=[
+        ReturnRecordT(sub_domain="test", value="1.1.1.1", record_id="address-id", record_type="A", ttl=120),
+        ReturnRecordT(sub_domain="srv", value="0 5 25565 target.example.com", record_id="srv-id", record_type="SRV", ttl=60),
+    ])
 
     await client.update_records(target_records)
 
-    assert mock_instance.create_record_set.call_count >= 1
+    updates = mock_instance.batch_update_record_set_with_line.call_args_list
+    assert len(updates) == 2
+    actual = {}
+    for call in updates:
+        request = call.args[0]
+        assert request.zone_id == "zone123"
+        assert len(request.body.recordsets) == 1
+        record = request.body.recordsets[0]
+        actual[record.id] = (record.records, record.ttl)
+    assert actual == {
+        "address-id": (["2.2.2.2"], 600),
+        "srv-id": (["0 5 25566 target.example.com"], 300),
+    }
+    mock_instance.create_record_set.assert_not_called()
+    mock_instance.batch_delete_record_set_with_line.assert_not_called()
 
 
 @pytest.mark.asyncio

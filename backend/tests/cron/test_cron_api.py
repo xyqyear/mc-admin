@@ -3,13 +3,17 @@ from tests.support.runtime import patch_settings
 
 """Cron job management REST API tests via TestClient."""
 
+import asyncio
+import json
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.cron.models import CronJobExecution, ExecutionStatus
 from app.db.metadata import Base
 from app.main import app
 
@@ -322,7 +326,7 @@ class TestCronJobAPI:
 
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert data == []
 
     def test_get_cronjob_executions_with_limit(
         self, test_db, client, authenticated_headers
@@ -337,16 +341,55 @@ class TestCronJobAPI:
         create_response = client.post(
             "/api/cron/", json=cronjob_data, headers=authenticated_headers
         )
+        assert create_response.status_code == 200
         cronjob_id = create_response.json()["cronjob_id"]
 
+        async def seed_executions():
+            async with test_db() as session:
+                session.add_all([
+                    CronJobExecution(
+                        cronjob_id=cronjob_id, execution_id="middle",
+                        started_at=datetime(2024, 1, 2, 12, tzinfo=UTC),
+                        ended_at=datetime(2024, 1, 2, 12, 0, 2, tzinfo=UTC),
+                        duration_ms=2000, status=ExecutionStatus.FAILED,
+                        messages_json=json.dumps(["middle failed"]),
+                    ),
+                    CronJobExecution(
+                        cronjob_id=cronjob_id, execution_id="newest",
+                        started_at=datetime(2024, 1, 3, 12, tzinfo=UTC),
+                        ended_at=datetime(2024, 1, 3, 12, 0, 3, tzinfo=UTC),
+                        duration_ms=3000, status=ExecutionStatus.COMPLETED,
+                        messages_json=json.dumps(["newest completed"]),
+                    ),
+                    CronJobExecution(
+                        cronjob_id=cronjob_id, execution_id="oldest",
+                        started_at=datetime(2024, 1, 1, 12, tzinfo=UTC),
+                        ended_at=datetime(2024, 1, 1, 12, 0, 1, tzinfo=UTC),
+                        duration_ms=1000, status=ExecutionStatus.COMPLETED,
+                        messages_json=json.dumps(["oldest completed"]),
+                    ),
+                ])
+                await session.commit()
+
+        asyncio.get_event_loop().run_until_complete(seed_executions())
         response = client.get(
-            f"/api/cron/{cronjob_id}/executions?limit=10", headers=authenticated_headers
+            f"/api/cron/{cronjob_id}/executions?limit=2", headers=authenticated_headers
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) <= 10
+        assert data == [
+            {
+                "execution_id": "newest", "started_at": "2024-01-03T12:00:00Z",
+                "ended_at": "2024-01-03T12:00:03Z", "duration_ms": 3000,
+                "status": "completed", "messages": ["newest completed"],
+            },
+            {
+                "execution_id": "middle", "started_at": "2024-01-02T12:00:00Z",
+                "ended_at": "2024-01-02T12:00:02Z", "duration_ms": 2000,
+                "status": "failed", "messages": ["middle failed"],
+            },
+        ]
 
     def test_api_error_handling(self, test_db, client, authenticated_headers):
         nonexistent_cronjob_id = "nonexistent_cronjob_id"

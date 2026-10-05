@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.database import get_db
@@ -196,7 +197,7 @@ class TestConvertToDirectMode:
         )
         return template
 
-    def test_convert_to_direct_success(self, test_client):
+    def test_convert_to_direct_success(self, test_client, isolated_runtime):
         """Convert a template-based server to direct mode."""
         import asyncio
 
@@ -208,6 +209,19 @@ class TestConvertToDirectMode:
         )
         assert response.status_code == 200
         assert response.json()["success"] is True
+
+        async def persisted_fields():
+            async with self.db() as session:
+                result = await session.execute(select(
+                    Server.template_id,
+                    Server.template_snapshot_json,
+                    Server.variable_values_json,
+                ).where(Server.server_id == "test-server"))
+                return tuple(result.one())
+
+        assert asyncio.get_event_loop().run_until_complete(persisted_fields()) == (None, None, None)
+        compose = isolated_runtime.settings.server_path / "test-server" / "docker-compose.yml"
+        assert compose.read_bytes() == RENDERED_YAML.encode()
 
     def test_convert_already_direct_mode(self, test_client):
         """Converting a server already in direct mode returns 400."""
@@ -231,25 +245,6 @@ class TestConvertToDirectMode:
             headers=auth_headers(),
         )
         assert response.status_code == 404
-
-    def test_convert_clears_template_fields(self, test_client):
-        """Verify template fields are cleared after conversion."""
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(self._setup_template_server())
-
-        test_client.post(
-            "/api/servers/test-server/convert-to-direct",
-            headers=auth_headers(),
-        )
-
-        # Verify fields are cleared by trying to convert again (should get 400)
-        response = test_client.post(
-            "/api/servers/test-server/convert-to-direct",
-            headers=auth_headers(),
-        )
-        assert response.status_code == 400
-
 
 # ============================================================
 # Extract Variables

@@ -153,12 +153,6 @@ def test_mc_compose_file_validation_edge_cases():
     with pytest.raises(ValueError, match="Invalid container name in compose file"):
         MCComposeFile(compose_obj)
 
-    # 测试容器名不以mc-开头
-    test_data["services"]["mc"]["container_name"] = "wrong-name"
-    compose_obj = ComposeFile.from_dict(test_data)
-    with pytest.raises(ValueError, match="Container name must start with 'mc-'"):
-        MCComposeFile(compose_obj)
-
     # 测试镜像为None
     test_data["services"]["mc"]["container_name"] = "mc-test"
     test_data["services"]["mc"]["image"] = None
@@ -218,53 +212,6 @@ def test_mc_compose_file_volumes_none():
     assert mc_compose.mc_service.volumes == []
 
 
-def test_mc_compose_file_port_errors():
-    """测试端口访问时的错误情况"""
-    # 创建一个缺少游戏端口的配置来测试错误情况
-    no_game_port_data: dict[str, Any] = {
-        "services": {
-            "mc": {
-                "image": "itzg/minecraft-server:java21-alpine",
-                "container_name": "mc-testserver",
-                "environment": {"VERSION": "1.20.4"},
-                "ports": ["25575:25575"],  # 只有RCON端口，没有游戏端口
-                "volumes": ["./data:/data"],
-                "stdin_open": True,
-                "tty": True,
-                "restart": "unless-stopped",
-            }
-        }
-    }
-
-    # 测试缺少游戏端口的情况
-    with pytest.raises(
-        ValueError, match="Could not find game port \\(25565\\) in compose file"
-    ):
-        compose_obj = ComposeFile.from_dict(no_game_port_data)
-        MCComposeFile(compose_obj)
-
-    # 创建一个缺少RCON端口的配置来测试错误情况
-    no_rcon_port_data: dict[str, Any] = {
-        "services": {
-            "mc": {
-                "image": "itzg/minecraft-server:java21-alpine",
-                "container_name": "mc-testserver",
-                "environment": {"VERSION": "1.20.4"},
-                "ports": ["25565:25565"],  # 只有游戏端口，没有RCON端口
-                "volumes": ["./data:/data"],
-                "stdin_open": True,
-                "tty": True,
-                "restart": "unless-stopped",
-            }
-        }
-    }
-
-    # 测试缺少RCON端口的情况
-    with pytest.raises(
-        ValueError, match="Could not find rcon port \\(25575\\) in compose file"
-    ):
-        compose_obj = ComposeFile.from_dict(no_rcon_port_data)
-        MCComposeFile(compose_obj)
 
 
 def test_mc_compose_file_default_ports():

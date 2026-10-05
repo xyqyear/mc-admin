@@ -362,14 +362,3 @@ class TestEdgeCases:
 
         # Should parse as UUID event, not any other type
         assert isinstance(event, PlayerUuidDiscoveredEvent)
-
-    def test_whitespace_handling(self, parser):
-        """Test handling of lines with extra whitespace."""
-        log_line = "   [12:34:56] [Server thread/INFO]: TestPlayer[/127.0.0.1:12345] logged in with entity id 1 at (0, 0, 0)   "
-
-        # Parser should handle this (line should be stripped before parsing in real usage)
-        # This test documents current behavior
-        event = parser.parse_line("test_server", log_line.strip())
-
-        if event:
-            assert isinstance(event, PlayerJoinedEvent)

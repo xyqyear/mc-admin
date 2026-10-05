@@ -176,14 +176,24 @@ async def test_end_session_is_idempotent_and_removes_dir(manager):
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_updates_last_seen(manager):
+async def test_heartbeat_updates_last_seen(manager, monkeypatch):
+    initial = datetime(2026, 1, 1, tzinfo=UTC)
+    now = initial
+    monkeypatch.setattr(manager, "_now", lambda: now)
     session_dir = await manager.create_session("srv1")
     sid = session_dir.name
-    initial = manager._sessions[sid].last_seen
-    # Force an artificially old last_seen, then heartbeat.
-    manager._sessions[sid].last_seen = initial - timedelta(seconds=30)
+    now = initial + timedelta(seconds=30)
     manager.heartbeat(sid)
-    assert manager._sessions[sid].last_seen > initial - timedelta(seconds=30)
+    assert manager._sessions[sid].last_seen == now
+    now = initial + timedelta(seconds=65)
+    assert await manager.reap_stale() == []
+    assert session_dir.is_dir()
+    assert manager.get_active_for_server("srv1") == sid
+    now = initial + timedelta(seconds=91)
+    assert await manager.reap_stale() == [sid]
+    assert not session_dir.exists()
+    assert sid not in manager._sessions
+    assert manager.get_active_for_server("srv1") is None
 
 
 def test_heartbeat_unknown_session_raises(manager):

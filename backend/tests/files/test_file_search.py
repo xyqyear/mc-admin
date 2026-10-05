@@ -2,8 +2,9 @@
 Test file search functionality.
 """
 
+import os
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -97,21 +98,23 @@ class TestFileSearch:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            # Create test files
-            (temp_path / "file1.txt").write_text("content1")
-            (temp_path / "file2.txt").write_text("content2")
+            old_file = temp_path / "old.txt"
+            new_file = temp_path / "new.txt"
+            old_file.write_text("old content")
+            new_file.write_text("new content")
+            old_time = datetime(2024, 1, 1, tzinfo=UTC).timestamp()
+            new_time = datetime(2024, 1, 3, tzinfo=UTC).timestamp()
+            os.utime(old_file, (old_time, old_time))
+            os.utime(new_file, (new_time, new_time))
+            cutoff = datetime(2024, 1, 2, tzinfo=UTC)
 
-            # Test newer_than filter (should find all files as they're just created)
-            yesterday = datetime.now(UTC).astimezone().replace(tzinfo=None) - timedelta(days=1)
-            search_request = FileSearchRequest(regex=r".*\.txt$", newer_than=yesterday)
+            search_request = FileSearchRequest(regex=r".*\.txt$", newer_than=cutoff)
             results = await search_files(temp_path, search_request)
-            assert len(results) == 2
+            assert [result.name for result in results] == ["new.txt"]
 
-            # Test older_than filter (should find no files as they're just created)
-            tomorrow = datetime.now(UTC).astimezone().replace(tzinfo=None) + timedelta(days=1)
-            search_request = FileSearchRequest(regex=r".*\.txt$", older_than=tomorrow)
+            search_request = FileSearchRequest(regex=r".*\.txt$", older_than=cutoff)
             results = await search_files(temp_path, search_request)
-            assert len(results) == 2  # All files should be older than tomorrow
+            assert [result.name for result in results] == ["old.txt"]
 
     async def test_search_files_directories(self):
         """Test searching for directories"""

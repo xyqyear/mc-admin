@@ -34,7 +34,8 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `suites/<domain>/` — normal Go case functions, registered through `suites/catalog.go`.
 - `suites/costs.json` — embedded, versioned historical scheduling costs with source runs and measurement semantics; unknown cases use recipe/default costs and remain automatically discovered.
 - `suites/servers/` — configuration versions, legacy mode conversions, stopped intent, real Docker startup failure and recovery, managed schedule generations, and stopped SQLite migration inputs.
-- `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes.
+- `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes. Repeated explicit-ID submissions retain one stored job with the requested name/cron updates.
+- `suites/files/` — real fd filtering and file mutations through public APIs; upper and lower date filters each exclude results independently.
 - `suites/dns/` — incremental reconciliation through the real SDK and pinned MC Router, owned TLS service-edge faults, unknown/empty observations and cross-service failure isolation. Test hosts/CA changes stay inside the owned backend container. The `connectivity-v1` recipe leases host ports for local backend/router access and actual Minecraft traffic; Huawei cases verify cloud records and public DNS resolution and persist non-secret cloud recovery manifests. See `suites/dns/README.md` for `cleanup-dns`.
 - `suites/operations/` — startup handling of interrupted task/cron histories, scoped recovery permissions and cache degradation; local SQLite inputs are prepared only while the owned deployment is stopped.
 - `suites/tasks/` — task acceptance, cross-session observation, retained outcomes after dismissal/restart, list filtering and cleanup.

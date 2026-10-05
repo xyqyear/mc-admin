@@ -277,7 +277,12 @@ class TestMultiFileUploadAPI:
             assert response.status_code == 200
             data = response.json()
             assert "Upload completed" in data["message"]
-            assert "results" in data
+            assert data["results"] == {
+                "test1.txt": {"status": "success", "reason": None},
+                "test2.txt": {"status": "success", "reason": None},
+            }
+            assert (temp_dir / "test1.txt").read_bytes() == b"content1"
+            assert (temp_dir / "test2.txt").read_bytes() == b"content2"
 
     def test_upload_multiple_files_invalid_session(
         self, test_client, mock_auth_headers, server_id

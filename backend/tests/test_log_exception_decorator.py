@@ -233,66 +233,8 @@ class TestPrefixFormatting:
         assert "StaticPrefix:" in caplog.text
         assert "[42]" not in caplog.text  # Should not try to format
 
-    @pytest.mark.asyncio
-    async def test_missing_parameter_in_prefix(self, caplog):
-        """Test prefix with non-existent parameter shows warning."""
-
-        @log_exception("MissingParam[{nonexistent}]")
-        def test_missing(actual_param: str):
-            raise ValueError("Test error")
-
-        result = test_missing("test_value")
-
-        # Should return None instead of raising
-        assert result is None
-
-        # Should have warning about failed formatting
-        assert "Failed to format prefix" in caplog.text
-        assert "nonexistent" in caplog.text
-        # Should fallback to original prefix
-        assert "MissingParam[{nonexistent}]:" in caplog.text
 
 
-class TestBindingFailures:
-    """Test handling of parameter binding failures."""
-
-    @pytest.mark.asyncio
-    async def test_too_many_arguments_warning(self, caplog):
-        """Test warning when too many arguments are provided."""
-
-        @log_exception("TooManyArgs")
-        def test_func(param1: str):
-            raise ValueError("Test error")
-
-        # The decorator catches the TypeError and returns None
-        result = test_func("first", "second", "third")  # type: ignore
-
-        # Should return None instead of raising
-        assert result is None
-
-        # Should have binding failure warning
-        assert "Failed to bind arguments" in caplog.text
-        assert "test_func" in caplog.text
-        # Should fallback to args= format
-        assert "args=" in caplog.text
-
-    @pytest.mark.asyncio
-    async def test_binding_failure_shows_function_name(self, caplog):
-        """Test binding failure warning shows function name."""
-
-        @log_exception("BindTest")
-        def complex_func(required: str, optional: int = 10):
-            raise ValueError("Test error")
-
-        # The decorator catches the TypeError and returns None
-        result = complex_func(1, 2, 3)  # type: ignore
-
-        # Should return None instead of raising
-        assert result is None
-
-        # Warning should mention function name
-        assert "complex_func" in caplog.text
-        assert "Failed to bind arguments" in caplog.text
 
 
 class TestTypePreservation:
@@ -373,7 +315,7 @@ class TestStackLevel:
     async def test_binding_warning_shows_caller_location(self, caplog):
         """Test binding failure warning shows caller location."""
 
-        @log_exception()
+        @log_exception("BindTest")
         def func_with_binding_issue(param: str):
             raise ValueError("Test error")
 
@@ -385,6 +327,10 @@ class TestStackLevel:
 
         # Warning should show this test function location
         assert "test_binding_warning_shows_caller_location" in caplog.text
+        assert "Failed to bind arguments" in caplog.text
+        assert "func_with_binding_issue" in caplog.text
+        assert "args=(1, 2, 3)" in caplog.text
+        assert "BindTest:" in caplog.text
 
     @pytest.mark.asyncio
     async def test_prefix_format_warning_shows_caller_location(self, caplog):
@@ -405,6 +351,9 @@ class TestStackLevel:
         warning_lines = [line for line in caplog.text.split("\n") if "WARNING" in line]
         assert len(warning_lines) > 0
         assert "test_log_exception_decorator.py" in warning_lines[0]
+        assert "Failed to format prefix" in caplog.text
+        assert "missing" in caplog.text
+        assert "Prefix[{missing}]:" in caplog.text
 
 
 class TestEdgeCases:

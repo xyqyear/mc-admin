@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+EXPECTED_GATES = {"candidate", "static", "backend", "api", "browser", "dns"}
+
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location("candidate", ROOT / "scripts/release/candidate.py")
 assert spec is not None and spec.loader is not None
@@ -33,11 +35,11 @@ def make_candidate(directory: Path):
     return candidate.capture(directory, {"revision": "a" * 40, "dirty": False, "fingerprint": "sha256:" + "b" * 64})
 
 
-@pytest.mark.parametrize("gate", sorted(candidate.REQUIRED_GATES))
+@pytest.mark.parametrize("gate", sorted(EXPECTED_GATES))
 @pytest.mark.parametrize("status", ["failure", "cancelled", "skipped", "", None])
 def test_any_unsuccessful_required_gate_prevents_registry_execution(tmp_path, monkeypatch, gate, status):
     metadata = make_candidate(tmp_path)
-    receipt = {"candidate": metadata, "gates": dict.fromkeys(candidate.REQUIRED_GATES, "success")}
+    receipt = {"candidate": metadata, "gates": dict.fromkeys(EXPECTED_GATES, "success")}
     receipt["gates"][gate] = status
     path = tmp_path / "receipt.json"
     path.write_text(json.dumps(receipt))
@@ -51,7 +53,7 @@ def test_any_unsuccessful_required_gate_prevents_registry_execution(tmp_path, mo
 
 def test_missing_gate_or_different_source_artifact_cannot_be_qualified(tmp_path):
     metadata = make_candidate(tmp_path)
-    needs = {name: {"result": "success"} for name in candidate.REQUIRED_GATES}
+    needs = {name: {"result": "success"} for name in EXPECTED_GATES}
     candidate.qualify(metadata, needs, revision="a" * 40)
     with pytest.raises(ValueError, match="source"):
         candidate.qualify(metadata, needs, revision="c" * 40)
@@ -82,7 +84,7 @@ def test_missing_gate_or_different_source_artifact_cannot_be_qualified(tmp_path)
     ]:
         source = {**metadata, "source": {**metadata["source"], "dirty": dirty}}
         (tmp_path / "candidate.json").write_text(json.dumps(source))
-        receipt_path.write_text(json.dumps({"candidate": source, "gates": dict.fromkeys(candidate.REQUIRED_GATES, "success")}))
+        receipt_path.write_text(json.dumps({"candidate": source, "gates": dict.fromkeys(EXPECTED_GATES, "success")}))
         registry_calls.unlink(missing_ok=True)
         destination = "127.0.0.1:5000/owned:test" if insecure else "registry.example.invalid/owned:test"
         arguments = [sys.executable, str(ROOT / "scripts/release/candidate.py"), "promote", "--directory", str(tmp_path), "--receipt", str(receipt_path), "--destination", destination]
@@ -108,10 +110,11 @@ def test_missing_gate_or_different_source_artifact_cannot_be_qualified(tmp_path)
 def test_release_workflow_cannot_bypass_jobs_or_rebuild_the_published_image():
     workflow = yaml.safe_load((ROOT / ".github/workflows/docker-image.yml").read_text())
     jobs = workflow["jobs"]
-    assert set(jobs["qualification"]["needs"]) == candidate.REQUIRED_GATES
+    assert candidate.REQUIRED_GATES == EXPECTED_GATES
+    assert set(jobs["qualification"]["needs"]) == EXPECTED_GATES
     assert set(jobs["promote"]["needs"]) == {"candidate", "qualification"}
     assert "success()" in jobs["promote"]["if"]
-    for job in candidate.REQUIRED_GATES:
+    for job in EXPECTED_GATES:
         assert jobs[job]["with"]["source_sha"] == "${{ github.sha }}"
     for job in ("api", "browser", "dns"):
         assert jobs[job]["with"]["candidate_artifact"] == "${{ needs.candidate.outputs.artifact }}"

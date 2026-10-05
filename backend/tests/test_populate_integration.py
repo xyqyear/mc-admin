@@ -9,10 +9,10 @@ Tests handle the background task architecture:
 """
 import asyncio
 import random
-import subprocess
 import tempfile
 import time
 import zipfile
+from contextlib import aclosing
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,8 +29,6 @@ from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource, patch_settings
 from tests.support.tasks import task_result
 
-pytestmark = [pytest.mark.binary('7z')]
-
 
 @pytest.fixture(autouse=True)
 def uncreated_containers():
@@ -39,15 +37,6 @@ def uncreated_containers():
         AsyncMock(return_value=False),
     ):
         yield
-
-
-def check_7z_available():
-    """Check if 7z command is available."""
-    try:
-        subprocess.run(["7z"], capture_output=True, check=False)
-        return True
-    except FileNotFoundError:
-        return False
 
 
 def create_test_minecraft_archive(archive_path: Path) -> None:
@@ -152,7 +141,6 @@ async def wait_for_task_completion_async(
     raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestPopulateServerIntegration:
     """Integration tests for populate server endpoint."""
 
@@ -163,6 +151,7 @@ class TestPopulateServerIntegration:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
+    @pytest.mark.binary("7z")
     @pytest.mark.asyncio
     async def test_full_populate_server_flow(
         self, async_client, mock_settings_and_auth
@@ -439,6 +428,7 @@ services:
             assert response.status_code == 409
             assert "必须处于 'exists' 或 'created' 状态" in response.json()["detail"]
 
+    @pytest.mark.binary("7z")
     @pytest.mark.asyncio
     async def test_populate_with_invalid_archive(
         self, async_client, mock_settings_and_auth
@@ -503,15 +493,15 @@ services:
     def test_unauthorized_access(self, client, mock_settings_and_auth):
         """Test populate endpoint without authentication."""
         _ = mock_settings_and_auth
-        response = client.post(
-            "/api/servers/test_server/populate", json={"archive_filename": "test.zip"}
-        )
+        with patch.object(current_runtime().resource("task_manager"), "submit_durable", new_callable=AsyncMock) as submit:
+            response = client.post(
+                "/api/servers/test_server/populate", json={"archive_filename": "test.zip"}
+            )
 
-        # Should return 401 or 422 for missing authentication
-        assert response.status_code in [401, 422]
+        assert response.status_code == 401
+        submit.assert_not_called()
 
 
-@pytest.mark.skipif(not check_7z_available(), reason="7z command not available")
 class TestPopulateProgressTracking:
     """Test progress tracking during server population."""
 
@@ -522,12 +512,15 @@ class TestPopulateProgressTracking:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
+    @pytest.mark.binary("7z")
     @pytest.mark.asyncio
     async def test_progress_updates_during_populate(
-        self, async_client, mock_settings_and_auth
+        self, async_client, mock_settings_and_auth, monkeypatch
     ):
         """Test that task progress updates are tracked during populate."""
-        _server_path, archive_path = mock_settings_and_auth
+        from app.files import population
+
+        server_path, archive_path = mock_settings_and_auth
         server_id = f"test_server_{random.randint(1000, 9999)}"
         archive_filename = f"progress_test_{random.randint(1000, 9999)}.zip"
 
@@ -563,54 +556,46 @@ services:
         archive_file_path = archive_path / archive_filename
         create_test_minecraft_archive(archive_file_path)
 
-        # Start populate
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        original_extract = population.extract_minecraft_server
+
+        async def gated_extract(*args, **kwargs):
+            async with aclosing(original_extract(*args, **kwargs)) as events:
+                async for event in events:
+                    yield event
+                    if event.message == "验证server.properties...":
+                        entered.set()
+                        await release.wait()
+
+        monkeypatch.setattr(population, "extract_minecraft_server", gated_extract)
         response = await async_client.post(
             f"/api/servers/{server_id}/populate",
             headers={"Authorization": "Bearer test_master_token"},
             json={"archive_filename": archive_filename},
         )
-
         assert response.status_code == 200
         task_id = response.json()["task_id"]
-
-        # Poll for progress updates
-        progress_values = []
-        messages = []
-        start_time = time.time()
-        timeout = 30.0
-
-        while time.time() - start_time < timeout:
+        try:
+            async with asyncio.timeout(5):
+                await entered.wait()
             task_response = await async_client.get(
                 f"/api/tasks/{task_id}",
                 headers={"Authorization": "Bearer test_master_token"},
             )
             assert task_response.status_code == 200
-
             task_data = task_response.json()
-            progress = task_data.get("progress")
-            message = task_data.get("message")
-
-            if progress is not None and progress not in progress_values:
-                progress_values.append(progress)
-            if message and message not in messages:
-                messages.append(message)
-
-            if task_data["status"] in ["completed", "failed", "cancelled"]:
-                break
-
-            await asyncio.sleep(0.3)
-
-        # Verify progress tracking
-        assert len(progress_values) >= 1, "Expected at least one progress update"
-        assert 100 in progress_values, "Expected final progress of 100%"
-
-        # Verify we got expected step messages
-        assert any("填充完成" in m for m in messages), (
-            f"Expected completion message, got: {messages}"
-        )
-
-        print(f"\nProgress tracking: {progress_values}")
-        print(f"Messages: {messages}")
+            assert task_data["status"] == "running"
+            assert task_data["progress"] == 5
+            assert task_data["message"] == "验证server.properties..."
+            assert task_data["result"] is None
+        finally:
+            release.set()
+            completed = await wait_for_task_completion_async(async_client, task_id)
+        assert completed["status"] == "completed", completed
+        assert completed["progress"] == 100
+        assert "填充完成" in completed["message"]
+        assert (server_path / server_id / "data/world/level.dat").read_bytes() == b"fake_world_data_here"
 
 
 class TestPopulateEndpointIsolated:

@@ -30,11 +30,20 @@ it('keeps startup unavailable during local apply and server maintenance', () => 
 })
 
 it('restores blocking and displays the active task reason after a page remount', () => {
+  const buttons = (status: 'EXISTS' | 'HEALTHY') => <MemoryRouter><ServerOperationButtons serverId="server" serverName="服务器" status={status} /></MemoryRouter>
   Object.assign(maintenance, { active: true, task_id: 'startup', description: '正在准备镜像和容器' })
-  const view = render(<MemoryRouter><ServerOperationButtons serverId="server" serverName="服务器" status="EXISTS" /></MemoryRouter>)
+  const view = render(buttons('EXISTS'))
   expect(screen.getByText('正在准备镜像和容器')).toBeTruthy()
   expect(screen.getByRole('button', { name: '查看任务' })).toBeTruthy()
   for (const name of ['启动', '停止', '重启', '下线']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
-  view.unmount()
   Object.assign(maintenance, { active: false, task_id: undefined, description: undefined })
+  view.rerender(buttons('HEALTHY'))
+  for (const name of ['停止', '重启', '下线']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(false)
+  Object.assign(maintenance, { active: true, task_id: 'startup', description: '正在准备镜像和容器' })
+  view.rerender(buttons('HEALTHY'))
+  for (const name of ['停止', '重启', '下线']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
+  Object.assign(maintenance, { active: false, task_id: undefined, description: undefined })
+  view.rerender(buttons('HEALTHY'))
+  for (const name of ['停止', '重启', '下线']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(false)
+  view.unmount()
 })

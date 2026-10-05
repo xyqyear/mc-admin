@@ -17,28 +17,20 @@ let client: ReturnType<typeof createTestClient>
 beforeEach(() => { client = createTestClient() })
 afterEach(() => { client.clear(); server.resetHandlers() })
 
-it('uses one profile cache when the map is disabled and another observer changes the name', async () => {
-  client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), profile('旧名字'))
-  const { result } = renderHook(() => usePlayerMapProfiles([uuid], false), { wrapper: ({ children }) => <TestProviders client={client}>{children}</TestProviders> })
-  expect(result.current.profilesByUuid.get(uuid)?.current_name).toBe('旧名字')
-  act(() => { client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), profile('新名字')) })
-  await waitFor(() => expect(result.current.profilesByUuid.get(uuid)?.current_name).toBe('新名字'))
-})
-
 it('preserves map layers on unrelated renders while observing profile and UUID changes', async () => {
   client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), profile('旧名字'))
   const { result, rerender } = renderHook(({ uuids }) => usePlayerMapProfiles(uuids, false), {
     initialProps: { uuids: [uuid] },
     wrapper: ({ children }) => <TestProviders client={client}>{children}</TestProviders>,
   })
+  expect(result.current.profilesByUuid.get(uuid)?.current_name).toBe('旧名字')
   const initialProfiles = result.current.profilesByUuid
-  rerender({ uuids: [uuid.toUpperCase(), uuid] })
-  expect(result.current.profilesByUuid).toBe(initialProfiles)
-
   act(() => { client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), profile('新名字')) })
   await waitFor(() => expect(result.current.profilesByUuid.get(uuid)?.current_name).toBe('新名字'))
   const updatedProfiles = result.current.profilesByUuid
   expect(updatedProfiles).not.toBe(initialProfiles)
+  rerender({ uuids: [uuid.toUpperCase(), uuid] })
+  expect(result.current.profilesByUuid).toBe(updatedProfiles)
   rerender({ uuids: [uuid] })
   expect(result.current.profilesByUuid).toBe(updatedProfiles)
 

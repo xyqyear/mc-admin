@@ -28,30 +28,6 @@ class TestUnionFieldValidation:
         schema = ValidOptionalConfig.model_json_schema()
         assert "optional_field" in schema["properties"]
 
-    def test_valid_optional_union_with_union_syntax(self):
-        """Test valid optional field using Union syntax - should pass."""
-
-        class ValidOptionalUnionConfig(BaseConfigSchema):
-            optional_field: str | None = Field(
-                default=None, description="Optional string"
-            )
-
-        # Should not raise an exception
-        schema = ValidOptionalUnionConfig.model_json_schema()
-        assert "optional_field" in schema["properties"]
-
-    def test_valid_optional_union_with_pipe_syntax(self):
-        """Test valid optional field using pipe syntax - should pass."""
-
-        class ValidOptionalPipeConfig(BaseConfigSchema):
-            optional_field: str | None = Field(
-                default=None, description="Optional string"
-            )
-
-        # Should not raise an exception
-        schema = ValidOptionalPipeConfig.model_json_schema()
-        assert "optional_field" in schema["properties"]
-
     def test_valid_non_base_config_union(self):
         """Test valid Union of non-BaseConfigSchema types - should pass."""
 
@@ -62,19 +38,6 @@ class TestUnionFieldValidation:
 
         # Should not raise an exception
         schema = ValidNonBaseUnionConfig.model_json_schema()
-        properties = schema["properties"]
-        assert "anyOf" in properties["mixed_field"]
-
-    def test_valid_non_base_config_union_with_pipe(self):
-        """Test valid Union using pipe syntax with non-BaseConfigSchema types - should pass."""
-
-        class ValidNonBasePipeUnionConfig(BaseConfigSchema):
-            mixed_field: str | int | bool = Field(
-                default="test", description="Mixed types"
-            )
-
-        # Should not raise an exception
-        schema = ValidNonBasePipeUnionConfig.model_json_schema()
         properties = schema["properties"]
         assert "anyOf" in properties["mixed_field"]
 
@@ -106,33 +69,6 @@ class TestUnionFieldValidation:
         assert "discriminator" in properties["config_union"]
         assert properties["config_union"]["discriminator"]["propertyName"] == "type"
 
-    def test_valid_all_base_config_union_with_pipe_syntax(self):
-        """Test valid Union using pipe syntax with BaseConfigSchema types - should pass."""
-
-        class ConfigC(BaseConfigSchema):
-            type: Annotated[
-                Literal["config_c"], Field(description="Type discriminator")
-            ] = "config_c"
-            field_c: Annotated[str, Field(description="Field C")] = "c"
-
-        class ConfigD(BaseConfigSchema):
-            type: Annotated[
-                Literal["config_d"], Field(description="Type discriminator")
-            ] = "config_d"
-            field_d: Annotated[bool, Field(description="Field D")] = True
-
-        class ValidAllBasePipeUnionConfig(BaseConfigSchema):
-            config_union: Annotated[
-                ConfigC | ConfigD,
-                Field(description="Config union", discriminator="type"),
-            ] = ConfigC()
-
-        # Should not raise an exception
-        schema = ValidAllBasePipeUnionConfig.model_json_schema()
-        properties = schema["properties"]
-        assert "oneOf" in properties["config_union"]
-        assert "discriminator" in properties["config_union"]
-
     def test_invalid_mixed_union_base_and_non_base(self):
         """Test invalid Union mixing BaseConfigSchema and non-BaseConfigSchema types - should pass (no longer invalid)."""
 
@@ -151,29 +87,6 @@ class TestUnionFieldValidation:
 
         # Should not raise an exception
         schema = ValidMixedUnionConfig.model_json_schema()
-        properties = schema["properties"]
-        assert "anyOf" in properties["mixed_union"]
-        # Mixed unions don't get discriminators
-        assert "discriminator" not in properties["mixed_union"]
-
-    def test_invalid_mixed_union_with_pipe_syntax(self):
-        """Test mixed Union using pipe syntax - should pass (no longer invalid)."""
-
-        class ConfigF(BaseConfigSchema):
-            type: Annotated[
-                Literal["config_f"], Field(description="Type discriminator")
-            ] = "config_f"
-            field_f: Annotated[str, Field(description="Field F")] = "f"
-
-        # Mixed unions are now allowed - they just don't get discriminators
-        class ValidMixedPipeUnionConfig(BaseConfigSchema):
-            mixed_union: Annotated[
-                ConfigF | str | int,
-                Field(description="Mixed pipe union without discriminator"),
-            ] = "test"
-
-        # Should not raise an exception
-        schema = ValidMixedPipeUnionConfig.model_json_schema()
         properties = schema["properties"]
         assert "anyOf" in properties["mixed_union"]
         # Mixed unions don't get discriminators
@@ -281,34 +194,6 @@ class TestUnionFieldValidation:
         # Should not raise an exception - single type unions are skipped
         schema = SingleTypeUnionConfig.model_json_schema()
         assert "single_union" in schema["properties"]
-
-    def test_validation_with_types_union_type(self):
-        """Test validation works with types.UnionType (Python 3.10+ union syntax) - should pass."""
-
-        class ConfigH(BaseConfigSchema):
-            type: Annotated[
-                Literal["config_h"], Field(description="Type discriminator")
-            ] = "config_h"
-            field_h: Annotated[str, Field(description="Field H")] = "h"
-
-        class ConfigI(BaseConfigSchema):
-            type: Annotated[
-                Literal["config_i"], Field(description="Type discriminator")
-            ] = "config_i"
-            field_i: Annotated[int, Field(description="Field I")] = 1
-
-        # This creates a types.UnionType in Python 3.10+
-        class ValidTypesUnionConfig(BaseConfigSchema):
-            types_union: Annotated[
-                ConfigH | ConfigI,
-                Field(description="Types union", discriminator="type"),
-            ] = ConfigH()
-
-        # Should not raise an exception
-        schema = ValidTypesUnionConfig.model_json_schema()
-        properties = schema["properties"]
-        assert "oneOf" in properties["types_union"]
-        assert "discriminator" in properties["types_union"]
 
     def test_complex_nested_union_validation(self):
         """Test complex nested Union scenarios - should pass."""

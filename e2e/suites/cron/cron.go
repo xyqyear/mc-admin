@@ -86,6 +86,14 @@ func configuration(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "POST", "/api/cron/", request("e2e-calendar", "0 0 * * 0", "0"), nil, 200); err != nil {
 		return err
 	}
+	if err = c.JSON(ctx, "POST", "/api/cron/", map[string]any{"identifier": "self_check", "params": map[string]string{"scope": "global"}, "cron": "0 * * * *"}, nil, 409); err != nil {
+		return err
+	}
+	updated := request("e2e-calendar", "0 1 * * 0", "0")
+	updated["name"] = "E2E updated scheduled backup"
+	if err = c.JSON(ctx, "POST", "/api/cron/", updated, nil, 200); err != nil {
+		return err
+	}
 	var inventory []job
 	if err = c.JSON(ctx, "GET", "/api/cron/?identifier=backup", nil, &inventory, 200); err != nil {
 		return err
@@ -93,11 +101,8 @@ func configuration(ctx context.Context, t *engine.Scope) error {
 	if len(inventory) != 1 || inventory[0].ID != "e2e-calendar" {
 		return fmt.Errorf("explicit-ID upsert duplicated the cron job")
 	}
-	if err = c.JSON(ctx, "POST", "/api/cron/", map[string]any{"identifier": "self_check", "params": map[string]string{"scope": "global"}, "cron": "0 * * * *"}, nil, 409); err != nil {
-		return err
-	}
-	if err = c.JSON(ctx, "POST", "/api/cron/", request("e2e-calendar", "0 0 * * 0", "0"), nil, 200); err != nil {
-		return err
+	if inventory[0].Name != "E2E updated scheduled backup" || inventory[0].Cron != "0 1 * * 0" {
+		return fmt.Errorf("explicit-ID upsert did not update the stored name and cron")
 	}
 	if err = t.Step("numeric and named weekdays use conventional crontab numbering", func() error {
 		for _, test := range []struct {

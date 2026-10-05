@@ -5,7 +5,6 @@ Tests for the DNS API router
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from app.auth.models import UserRole
@@ -194,42 +193,6 @@ async def test_get_dns_enabled_false(client, mock_admin_user):
         assert result.enabled is False
 
 
-@pytest.mark.asyncio
-async def test_dns_update_response_model():
-    """Test DNSUpdateResponse model"""
-    from app.dns.api_models import DNSUpdateResponse
-
-    # Test successful response
-    response = DNSUpdateResponse(success=True, message="DNS updated successfully")
-    assert response.success is True
-    assert response.message == "DNS updated successfully"
-
-    # Test error response
-    response = DNSUpdateResponse(success=False, message="Update failed")
-    assert response.success is False
-    assert response.message == "Update failed"
-
-
-def test_dns_router_authentication_required():
-    """Test that DNS endpoints require authentication"""
-    # This test would need more complex setup to properly test authentication
-    # For now, we verify that the endpoints are decorated with auth requirements
-    from app.routers.dns import router
-
-    # Find the update endpoint
-    update_route = None
-    for route in router.routes:
-        if isinstance(route, APIRoute) and "/update" in route.path:
-            update_route = route
-            break
-
-    assert update_route is not None
-    # The route should have dependencies (authentication)
-    assert hasattr(update_route, "dependant")
-    # This is a basic check - more detailed auth testing would require
-    # integration tests with the full FastAPI dependency system
-
-
 def test_get_dns_records_success(client):
     """Test DNS records endpoint success"""
     with (
@@ -416,6 +379,22 @@ def test_disabled_dns_reads_return_503_without_initialization(client, path):
 
 def test_dns_endpoints_authentication_required(client):
     """Test that new DNS endpoints require authentication"""
+    from unittest.mock import patch
+
+    from app.background_tasks import get_task_manager
+
+    tasks = get_task_manager()
+    before = [task.model_dump(mode="json") for task in tasks.get_all_tasks()]
+    with (
+        patch_accessor("app.routers.dns.get_config") as config,
+        patch("app.routers.dns.submit_update", new_callable=AsyncMock) as submit,
+    ):
+        config.dns.enabled = True
+        response = client.post("/api/dns/update")
+        assert response.status_code == 401
+        submit.assert_not_awaited()
+    assert [task.model_dump(mode="json") for task in tasks.get_all_tasks()] == before
+
     # Test DNS records endpoint
     response = client.get("/api/dns/records")
     assert response.status_code == 401

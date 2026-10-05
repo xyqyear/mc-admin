@@ -146,6 +146,7 @@ class TestFileOperations:
             assert "server.properties" in file_names_set
             assert "bukkit.yml" in file_names_set
             assert "readme.txt" in file_names_set
+            assert "binary.jar" in file_names_set
 
             # Check directory names
             dir_names = [d["name"] for d in directories]
@@ -186,26 +187,6 @@ class TestFileOperations:
             assert response.status_code == 200
             data = response.json()
             assert data["items"] == []
-
-    def test_file_listing(self, client, mock_instance):
-        """Test basic file listing functionality."""
-        server_id, instance = mock_instance
-
-        with mock_file_operations_setup(instance):
-            response = client.get(
-                f"/servers/{server_id}/files",
-                headers={"Authorization": "Bearer test_master_token"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            items = {item["name"]: item for item in data["items"]}
-
-            # Check that files are properly listed
-            assert "server.properties" in items
-            assert "bukkit.yml" in items
-            assert "readme.txt" in items
-            assert "binary.jar" in items
 
     def test_get_file_content(self, client, mock_instance):
         """Test getting file content."""

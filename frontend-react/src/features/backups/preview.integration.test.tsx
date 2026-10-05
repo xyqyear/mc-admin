@@ -40,15 +40,21 @@ it('keeps accepted preparation active through progress and disconnection without
 })
 
 it('waits for the cancelled terminal task before ending preparation', async () => {
+  let cancelAccepted = false
   let cancelled = false
   server.use(
     http.post('*/api/snapshots/previews', () => HttpResponse.json({ task_id: 'preview' }, { status: 202 })),
-    http.get('*/api/tasks/preview', () => HttpResponse.json({ task_id: 'preview', status: cancelled ? 'cancelled' : 'running', message: cancelled ? '预览准备已停止' : '正在准备' })),
-    http.post('*/api/tasks/preview/cancel', () => { cancelled = true; return HttpResponse.json({}) }),
+    http.get('*/api/tasks/preview', () => HttpResponse.json({ task_id: 'preview', status: cancelled ? 'cancelled' : 'running', message: cancelled ? '预览准备已停止' : cancelAccepted ? '正在停止预览准备' : '正在准备' })),
+    http.post('*/api/tasks/preview/cancel', () => { cancelAccepted = true; return HttpResponse.json({}) }),
   )
   const view = renderHook(() => useSnapshotPreview(request), { wrapper })
   await waitFor(() => expect(view.result.current.taskId).toBe('preview'))
   await act(async () => { await view.result.current.cancel() })
+  await waitFor(() => expect(view.result.current.message).toBe('正在停止预览准备'), { timeout: 3000 })
+  expect(view.result.current.active).toBe(true)
+  expect(view.result.current.error).toBeNull()
+  expect(view.result.current.result).toBeNull()
+  cancelled = true
   await waitFor(() => expect(view.result.current.active).toBe(false), { timeout: 3000 })
   expect(view.result.current.error).toBe('预览准备已停止')
   expect(view.result.current.result).toBeNull()

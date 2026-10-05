@@ -253,47 +253,23 @@ class TestBasicFunctionality:
     async def test_different_folder_structures(self, temp_dir, mock_settings):
         """Test extraction with different folder structures."""
         test_cases = [
-            # Case 1: server.properties in root
-            {
-                "server.properties": "server-port=25565\n",
-                "world/level.dat": "world data",
-            },
-            # Case 2: server.properties in nested folder
-            {
-                "minecraft_server/data/server.properties": "server-port=25565\n",
-                "minecraft_server/data/world/level.dat": "world data",
-            },
-            # Case 3: server.properties in deeply nested structure
-            {
-                "some/deep/folder/structure/server.properties": "server-port=25565\n",
-                "some/deep/folder/structure/plugins/plugin.jar": "plugin",
-            },
+            ({"server.properties": "server-port=25565\n", "world/level.dat": "world data"},
+             {"server.properties": b"server-port=25565\n", "world/level.dat": b"world data"}),
+            ({"minecraft_server/data/server.properties": "server-port=25565\n", "minecraft_server/data/world/level.dat": "world data"},
+             {"server.properties": b"server-port=25565\n", "world/level.dat": b"world data"}),
+            ({"some/deep/folder/structure/server.properties": "server-port=25565\n", "some/deep/folder/structure/plugins/plugin.jar": "plugin"},
+             {"server.properties": b"server-port=25565\n", "plugins/plugin.jar": b"plugin"}),
         ]
 
-        for i, structure in enumerate(test_cases):
+        for i, (structure, expected_files) in enumerate(test_cases):
             archive_path = temp_dir / f"test_case_{i}.zip"
             create_test_archive(archive_path, structure)
-
             target_path = temp_dir / f"extracted_{i}"
             await aioos.makedirs(target_path, exist_ok=True)
-
-            # Function should complete without raising an exception
-            async for _ in extract_minecraft_server(
-                str(archive_path), str(target_path)
-            ):
+            async for _ in extract_minecraft_server(str(archive_path), str(target_path)):
                 pass
-
-            # Verify server.properties was moved to target
-            assert (target_path / "server.properties").exists()
-
-            # Verify other files at same level as server.properties were also moved
-            for file_path in structure:
-                if not file_path.endswith("server.properties"):
-                    relative_path = Path(file_path).relative_to(
-                        Path(file_path).parent.parent if "/" in file_path else Path(".")
-                    )
-                    if "/" not in str(relative_path):  # File at same level
-                        assert (target_path / relative_path.name).exists()
+            for relative_path, contents in expected_files.items():
+                assert (target_path / relative_path).read_bytes() == contents
 
     async def test_7z_format_archive(self, temp_dir, mock_settings):
         """Test extraction with 7z format archive."""
@@ -564,15 +540,15 @@ class TestExtractMinecraftServer:
 class TestBackgroundTaskIntegration:
     """Test decompression with background task manager."""
 
+    @pytest.mark.parametrize("archive_contents", [
+        pytest.param({"server/server.properties": "server-port=25565\n", "server/world/level.dat": "world data"}, id="nested"),
+        pytest.param({"server.properties": "server-port=25565\n", "world/level.dat": "world data" * 1000}, id="root"),
+    ])
     @pytest.mark.binary("7z")
-    async def test_task_manager_runs_extraction(self, temp_dir, mock_settings):
+    async def test_task_manager_runs_extraction(self, temp_dir, mock_settings, archive_contents):
         """Test that task manager can run extraction task to completion."""
         archive_path = temp_dir / "server.zip"
-        server_structure = {
-            "server/server.properties": "server-port=25565\n",
-            "server/world/level.dat": "world data",
-        }
-        create_test_archive(archive_path, server_structure)
+        create_test_archive(archive_path, archive_contents)
 
         target_path = temp_dir / "extracted"
         await aioos.makedirs(target_path, exist_ok=True)
@@ -599,9 +575,10 @@ class TestBackgroundTaskIntegration:
         assert task is not None
         assert task.status == TaskStatus.COMPLETED
         assert task.progress == 100
-
-        # Verify files were extracted
-        assert (target_path / "server.properties").exists()
+        assert "填充完成" in task.message
+        assert (target_path / "server.properties").read_bytes() == b"server-port=25565\n"
+        expected_world = b"world data" * (1000 if "server.properties" in archive_contents else 1)
+        assert (target_path / "world/level.dat").read_bytes() == expected_world
 
         # Clean up
         get_task_manager().remove_task(result.task_id)
@@ -631,42 +608,6 @@ class TestBackgroundTaskIntegration:
         task = get_task_manager().get_task(result.task_id)
         assert task is not None
         assert task.status == TaskStatus.FAILED
-
-        # Clean up
-        get_task_manager().remove_task(result.task_id)
-
-    @pytest.mark.binary("7z")
-    async def test_task_tracks_progress_during_extraction(
-        self, temp_dir, mock_settings
-    ):
-        """Test that task progress is updated during extraction."""
-        archive_path = temp_dir / "server.zip"
-        server_structure = {
-            "server.properties": "server-port=25565\n",
-            "world/level.dat": "world data" * 1000,
-        }
-        create_test_archive(archive_path, server_structure)
-
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        result = get_task_manager().submit(
-            task_type=TaskType.ARCHIVE_EXTRACT,
-            name="test_extract_progress",
-            task_generator=extract_minecraft_server(
-                str(archive_path), str(target_path)
-            ),
-            server_id="test_server",
-            cancellable=False,
-        )
-
-        await result.awaitable
-
-        # Verify final task state
-        task = get_task_manager().get_task(result.task_id)
-        assert task is not None
-        assert task.progress == 100
-        assert "填充完成" in task.message
 
         # Clean up
         get_task_manager().remove_task(result.task_id)

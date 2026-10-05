@@ -188,6 +188,9 @@ class TestCreateServerArchiveStream:
 
     @pytest.mark.asyncio
     async def test_stream_cleans_up_on_error(self, mock_instance, archive_dir):
+        retained = archive_dir / "existing.7z"
+        retained.write_bytes(b"existing archive")
+        partial = None
         with (
             patch_settings() as mock_settings,
             patch("app.utils.compression.exec_command_stream") as mock_exec,
@@ -195,14 +198,19 @@ class TestCreateServerArchiveStream:
             mock_settings.archive_path = archive_dir
 
             async def failing_generator(*args, **kwargs):
+                nonlocal partial
+                partial = Path(args[4])
+                partial.write_bytes(b"partial archive")
                 yield "0%"
                 raise RuntimeError("Compression failed")
 
-            mock_exec.return_value = failing_generator()
+            mock_exec.side_effect = failing_generator
 
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="^Compression failed$"):
                 async for _ in create_server_archive_stream(mock_instance):
                     pass
+        assert partial is not None and not partial.exists()
+        assert retained.read_bytes() == b"existing archive"
 
     async def test_progress_arrives_before_process_exit(
         self, mock_instance, archive_dir, monkeypatch
@@ -381,7 +389,6 @@ class TestArchiveCompressionEndpoint:
         assert response.status_code == 422
 
 
-@pytest.mark.binary("7z")
 class TestBackgroundTaskIntegration:
     @pytest.fixture
     def temp_dir(self):
@@ -412,6 +419,7 @@ class TestBackgroundTaskIntegration:
         return archive_path
 
     @pytest.mark.asyncio
+    @pytest.mark.binary("7z")
     async def test_task_manager_runs_compression(self, mock_instance, archive_dir):
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
@@ -438,16 +446,39 @@ class TestBackgroundTaskIntegration:
             get_task_manager().remove_task(result.task_id)
 
     @pytest.mark.asyncio
-    async def test_task_cancellation(self, mock_instance, archive_dir):
+    async def test_task_cancellation(self, mock_instance, archive_dir, monkeypatch):
+        from app.utils import exec as exec_module
+
+        release = archive_dir / "release"
+        partial: Path | None = None
+        children: list[asyncio.subprocess.Process] = []
+        spawn = exec_module.spawn_process
+        stop = exec_module.stop_process
+
+        async def capture_process(*args, **kwargs):
+            child = await spawn(*args, **kwargs)
+            children.append(child)
+            return child
+
+        def controlled_command(*args, **kwargs):
+            nonlocal partial
+            partial = Path(args[4])
+            return exec_command_stream(
+                sys.executable, "-u", "-c",
+                "import pathlib, sys, time\n"
+                "pathlib.Path(sys.argv[1]).write_bytes(b'partial archive')\n"
+                "print(' 25%', end=chr(13), flush=True)\n"
+                "while not pathlib.Path(sys.argv[2]).exists(): time.sleep(0.01)\n"
+                "pathlib.Path(sys.argv[1]).write_bytes(b'complete archive')\n",
+                str(partial), str(release), **kwargs,
+            )
+
+        monkeypatch.setattr(exec_module, "spawn_process", capture_process)
+        monkeypatch.setattr("app.utils.compression.exec_command_stream", controlled_command)
         with patch_settings() as mock_settings:
             mock_settings.archive_path = archive_dir
-
-            # Pad with large files so compression has measurable runtime to cancel into.
-            data_dir = mock_instance.get_data_path()
-            for i in range(50):
-                (data_dir / f"large_file_{i}.bin").write_bytes(b"\x00" * 1024 * 1024)
-
-            result = get_task_manager().submit(
+            manager = get_task_manager()
+            result = manager.submit(
                 task_type=TaskType.ARCHIVE_CREATE,
                 name="test_server",
                 task_generator=create_server_archive_stream(mock_instance),
@@ -455,21 +486,48 @@ class TestBackgroundTaskIntegration:
                 cancellable=True,
             )
 
-            await asyncio.sleep(0.5)
-            cancelled = await get_task_manager().cancel(result.task_id)
+            try:
+                task = manager.get_task(result.task_id)
+                assert task is not None
+                async with asyncio.timeout(5):
+                    while task.progress != 25:
+                        await asyncio.sleep(0.01)
+                assert task.status is TaskStatus.RUNNING
+                assert len(children) == 1
+                child = children[0]
+                child_path = Path(f"/proc/{child.pid}")
+                assert child.returncode is None and child_path.exists()
+                assert partial is not None
+                owned_archive = partial
+                assert owned_archive.read_bytes() == b"partial archive"
+                settled: list[tuple[int | None, bool, bool]] = []
 
-            task_result = await result.awaitable
+                def observe_completion(_):
+                    settled.append((child.returncode, child_path.exists(), owned_archive.exists()))
 
-            task = get_task_manager().get_task(result.task_id)
-            assert task is not None
-            if cancelled:
+                result.awaitable.add_done_callback(observe_completion)
+                assert await manager.cancel(result.task_id)
+                task_result = await asyncio.wait_for(asyncio.shield(result.awaitable), 5)
+                assert len(settled) == 1
+                assert settled[0][0] is not None
+                assert settled[0][1:] == (False, False)
                 assert task.status == TaskStatus.CANCELLED
                 assert not task_result.success
-                assert list(archive_dir.iterdir()) == []
-            else:
-                assert task.status == TaskStatus.COMPLETED
-
-            get_task_manager().remove_task(result.task_id)
+            finally:
+                release.touch()
+                try:
+                    await manager.cancel(result.task_id)
+                    await asyncio.wait_for(asyncio.shield(result.awaitable), 5)
+                finally:
+                    try:
+                        for child in children:
+                            try:
+                                await asyncio.wait_for(child.wait(), 5)
+                            except TimeoutError:
+                                await stop(child, grace=1)
+                                raise
+                    finally:
+                        manager.remove_task(result.task_id)
 
 
 if __name__ == "__main__":

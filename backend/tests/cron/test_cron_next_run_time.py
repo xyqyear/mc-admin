@@ -1,10 +1,5 @@
-from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_settings
-
-"""Cross-checks the get_next_run_time endpoint with an in-test cron parser."""
-
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,93 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db.metadata import Base
 from app.main import app
+from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_settings
 
 from .test_cron_manager import test_cron_registry
-
-
-def parse_cron_expression(cron_expr: str, second: str | None = None):
-    """Parse a 5-field cron expression into a fields dict."""
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
-        raise ValueError("Cron expression must have exactly 5 fields")
-
-    return {
-        "second": second or "0",
-        "minute": parts[0],
-        "hour": parts[1],
-        "day": parts[2],
-        "month": parts[3],
-        "day_of_week": parts[4],
-    }
-
-
-def calculate_next_run_time(
-    cron_fields: dict, current_time: datetime | None = None
-) -> datetime:
-    """Simplified next-run calculation for daily/hourly/per-minute fields."""
-    if current_time is None:
-        current_time = datetime.now(UTC)
-
-    minute = (
-        int(cron_fields["minute"])
-        if cron_fields["minute"] != "*"
-        else current_time.minute
-    )
-    hour = int(cron_fields["hour"]) if cron_fields["hour"] != "*" else current_time.hour
-    second = int(cron_fields["second"]) if cron_fields["second"] != "*" else 0
-
-    if cron_fields["minute"] != "*" and cron_fields["hour"] != "*":
-        next_run = current_time.replace(
-            hour=hour, minute=minute, second=second, microsecond=0
-        )
-
-        if next_run <= current_time:
-            next_run += timedelta(days=1)
-
-        return next_run
-
-    elif cron_fields["minute"] != "*" and cron_fields["hour"] == "*":
-        next_run = current_time.replace(minute=minute, second=second, microsecond=0)
-
-        if next_run <= current_time:
-            next_run += timedelta(hours=1)
-
-        return next_run
-
-    elif cron_fields["minute"] == "*" and cron_fields["hour"] == "*":
-        next_run = current_time.replace(second=second, microsecond=0)
-        next_run += timedelta(minutes=1)
-        return next_run
-
-    else:
-        return current_time + timedelta(minutes=1)
-
-
-def validate_next_run_time(
-    cron_expr: str,
-    second: str | None,
-    actual_next_run: datetime,
-    tolerance_seconds: int = 3600,
-) -> bool:
-    actual_next_run_utc = actual_next_run.astimezone(UTC)
-    cron_fields = parse_cron_expression(cron_expr, second)
-    expected_next_run = calculate_next_run_time(cron_fields)
-    time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
-    return time_diff <= tolerance_seconds
-
-
-def validate_next_run_time_with_current_time(
-    cron_expr: str,
-    second: str | None,
-    actual_next_run: datetime,
-    current_time: datetime,
-    tolerance_seconds: int = 3600,
-) -> bool:
-    actual_next_run_utc = actual_next_run.astimezone(UTC)
-    cron_fields = parse_cron_expression(cron_expr, second)
-    expected_next_run = calculate_next_run_time(cron_fields, current_time)
-    time_diff = abs((actual_next_run_utc - expected_next_run).total_seconds())
-    return time_diff <= tolerance_seconds
 
 
 @pytest.fixture(scope="function")
@@ -387,77 +299,3 @@ class TestCronJobNextRunTime:
         response = client.get("/api/cron/some_job/next-run-time")
 
         assert response.status_code in [401, 403, 422]
-
-
-class TestCronExpressionValidation:
-    def test_parse_cron_expression_valid(self):
-        fields = parse_cron_expression("0 12 * * *")
-        assert fields["minute"] == "0"
-        assert fields["hour"] == "12"
-        assert fields["day"] == "*"
-        assert fields["month"] == "*"
-        assert fields["day_of_week"] == "*"
-        assert fields["second"] == "0"
-
-        fields = parse_cron_expression("30 * * * *", "15")
-        assert fields["second"] == "15"
-        assert fields["minute"] == "30"
-
-    def test_parse_cron_expression_invalid(self):
-        with pytest.raises(ValueError, match="must have exactly 5 fields"):
-            parse_cron_expression("0 12 * *")
-
-        with pytest.raises(ValueError, match="must have exactly 5 fields"):
-            parse_cron_expression("0 12 * * * *")
-
-    def test_calculate_next_run_time_daily(self):
-        current_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
-        cron_fields = parse_cron_expression("0 12 * * *")
-
-        next_run = calculate_next_run_time(cron_fields, current_time)
-
-        assert next_run.hour == 12
-        assert next_run.minute == 0
-        assert next_run.day == 1
-
-        current_time = datetime(2024, 1, 1, 14, 0, 0, tzinfo=UTC)
-        next_run = calculate_next_run_time(cron_fields, current_time)
-
-        assert next_run.hour == 12
-        assert next_run.minute == 0
-        assert next_run.day == 2
-
-    def test_calculate_next_run_time_hourly(self):
-        current_time = datetime(2024, 1, 1, 10, 20, 0, tzinfo=UTC)
-        cron_fields = parse_cron_expression("30 * * * *")
-
-        next_run = calculate_next_run_time(cron_fields, current_time)
-
-        assert next_run.hour == 10
-        assert next_run.minute == 30
-
-        current_time = datetime(2024, 1, 1, 10, 40, 0, tzinfo=UTC)
-        next_run = calculate_next_run_time(cron_fields, current_time)
-
-        assert next_run.hour == 11
-        assert next_run.minute == 30
-
-    def test_validate_next_run_time_function(self):
-        current_time = datetime.now(UTC)
-
-        cron_fields = parse_cron_expression("0 12 * * *", None)
-        expected_next_run = calculate_next_run_time(cron_fields, current_time)
-
-        assert validate_next_run_time_with_current_time(
-            "0 12 * * *", None, expected_next_run, current_time, tolerance_seconds=60
-        )
-
-        actual_time = expected_next_run + timedelta(seconds=30)
-        assert validate_next_run_time_with_current_time(
-            "0 12 * * *", None, actual_time, current_time, tolerance_seconds=60
-        )
-
-        actual_time = expected_next_run + timedelta(hours=2)
-        assert not validate_next_run_time_with_current_time(
-            "0 12 * * *", None, actual_time, current_time, tolerance_seconds=60
-        )

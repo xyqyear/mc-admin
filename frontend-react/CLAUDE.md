@@ -24,7 +24,7 @@ Production builds split hashed output into `assets/vendor`, `assets/workers`, `a
 
 The Static Checks push workflow runs lint, typecheck, operation-flow tests and bundling as separate steps. Vitest uploads JSON results with individual test durations. Docker uses `pnpm build:bundle` to produce assets; TypeScript diagnostics are reported by the independent static workflow.
 
-Query integration tests wait for observer-driven cache or UI effects with `waitFor`; awaiting a query refetch alone does not establish that React effects have run.
+Query integration tests wait for observer-driven cache or UI effects with `waitFor`; awaiting a query refetch alone does not establish that React effects have run. Preview cancellation tests observe a running task after cancellation acceptance before its terminal state. Profile-cache tests assert the initial cached name and cache update before rerendering.
 
 React Router 7 is used in declarative mode; import router APIs from `react-router`.
 

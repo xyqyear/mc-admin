@@ -2,6 +2,7 @@
 Tests for the WebSocket console endpoint with docker-py integration.
 Tests real-time console functionality with mocked dependencies.
 """
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -48,6 +49,7 @@ class MockDockerAPIClient:
         )
         self._socket = MockSocket()
         self.resize_calls: list[tuple[str, int, int]] = []
+        self.close_calls = 0
 
     def logs(self, container_id, stdout=True, stderr=True, tail=1000):
         """Mock logs method."""
@@ -64,7 +66,7 @@ class MockDockerAPIClient:
         self.resize_calls.append((container_id, height, width))
 
     def close(self):
-        """Mock close method."""
+        self.close_calls += 1
 
 
 class MockSocket:
@@ -72,9 +74,13 @@ class MockSocket:
 
     def __init__(self):
         self._sock = MockRawSocket()
+        self.close_calls = 0
+        self.reader_finished_before_close = False
 
     def close(self):
-        pass
+        self.close_calls += 1
+        task = self._sock.read_task
+        self.reader_finished_before_close = task is not None and task.done()
 
 
 class MockRawSocket:
@@ -84,6 +90,7 @@ class MockRawSocket:
         self._blocking = True
         self._closed = False
         self._sent_data: list[bytes] = []
+        self.read_task: asyncio.Task | None = None
 
     def setblocking(self, blocking):
         self._blocking = blocking
@@ -94,11 +101,13 @@ class MockRawSocket:
 
 
 async def mock_socket_read_loop(self):
-    """Mock socket read loop that does nothing (prevents blocking)."""
-    import asyncio
+    self._socket._sock.read_task = asyncio.current_task()
+    await asyncio.Future()
 
-    while not self._closed:
-        await asyncio.sleep(0.1)
+
+def wait_for_processed_messages(websocket):
+    websocket.send_json({"type": "barrier"})
+    assert websocket.receive_json() == {"type": "info", "message": "未知消息类型: barrier"}
 
 
 @pytest.fixture
@@ -277,33 +286,22 @@ class TestWebSocketConsole:
                 assert "type" in response["message"]
 
     def test_websocket_empty_input(self, client, mock_instance):
-        """Test handling of empty input data."""
         server_id, instance = mock_instance
-
         with (
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
+            patch_runtime_resource("docker_mc_manager") as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
-            patch(
-                "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
-                mock_socket_read_loop,
-            ),
+            patch("app.websocket.console.ConsoleWebSocketHandler._socket_read_loop", mock_socket_read_loop),
+            patch.object(asyncio.SelectorEventLoop, "sock_sendall", new_callable=AsyncMock) as send_input,
         ):
             mock_manager.get_instance.return_value = instance
-
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
-
             with client.websocket_connect(console_url(server_id)) as websocket:
-                # Receive initial logs
-                initial_data = websocket.receive_json()
-                assert initial_data["type"] in ["log", "info"]
+                assert websocket.receive_json()["type"] == "log"
+                websocket.send_json({"type": "input", "data": ""})
+                wait_for_processed_messages(websocket)
+                send_input.assert_not_awaited()
 
-                # Send empty input - should be silently ignored
-                empty_input = {"type": "input", "data": ""}
-                websocket.send_json(empty_input)
-
-                # Connection should remain stable (no error response expected)
-                # The test passes if no exception is raised
 
     def test_websocket_no_session(self, client, mock_instance):
         """Test WebSocket connection without authentication cookie."""
@@ -326,89 +324,71 @@ class TestWebSocketConsole:
             websocket.receive_json()
 
     def test_websocket_connection_lifecycle(self, client, mock_instance):
-        """Test the complete WebSocket connection lifecycle."""
         server_id, instance = mock_instance
-
         with (
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
+            patch_runtime_resource("docker_mc_manager") as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
-            patch(
-                "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
-                mock_socket_read_loop,
-            ),
+            patch("app.websocket.console.ConsoleWebSocketHandler._socket_read_loop", mock_socket_read_loop),
+            patch.object(asyncio.SelectorEventLoop, "sock_sendall", new_callable=AsyncMock) as send_input,
         ):
             mock_manager.get_instance.return_value = instance
-
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
-
             with client.websocket_connect(console_url(server_id)) as websocket:
-                # 1. Receive initial logs first
-                initial_data = websocket.receive_json()
-                assert initial_data["type"] in ["log", "info"]
-
-                # 2. Send raw input (new format)
+                assert websocket.receive_json()["type"] == "log"
                 websocket.send_json({"type": "input", "data": "list\n"})
+                wait_for_processed_messages(websocket)
+                send_input.assert_awaited_once_with(mock_docker_client._socket._sock, b"list\n")
+                reader = mock_docker_client._socket._sock.read_task
+                assert reader is not None and not reader.done()
 
-                # 3. Connection should close cleanly when exiting context manager
+            assert reader.done()
+            assert mock_docker_client._socket.reader_finished_before_close
+            assert mock_docker_client._socket.close_calls == 1
+            assert mock_docker_client.close_calls == 1
+
 
     def test_websocket_resize_message(self, client, mock_instance):
-        """Test handling of resize messages."""
         server_id, instance = mock_instance
-
         with (
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
+            patch_runtime_resource("docker_mc_manager") as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
-            patch(
-                "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
-                mock_socket_read_loop,
-            ),
+            patch("app.websocket.console.ConsoleWebSocketHandler._socket_read_loop", mock_socket_read_loop),
         ):
             mock_manager.get_instance.return_value = instance
-
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
-
             with client.websocket_connect(console_url(server_id)) as websocket:
-                # Receive initial logs
-                initial_data = websocket.receive_json()
-                assert initial_data["type"] in ["log", "info"]
-
-                # Send resize message
+                assert websocket.receive_json()["type"] == "log"
                 websocket.send_json({"type": "resize", "width": 120, "height": 40})
+                wait_for_processed_messages(websocket)
+                assert mock_docker_client.resize_calls == [
+                    ("test_container_123", 25, 81),
+                    ("test_container_123", 24, 80),
+                    ("test_container_123", 40, 120),
+                ]
 
-                # Connection should remain stable
-                # The test passes if no exception is raised
 
     def test_websocket_resize_invalid_dimensions(self, client, mock_instance):
-        """Test handling of resize messages with invalid dimensions."""
         server_id, instance = mock_instance
-
         with (
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
+            patch_runtime_resource("docker_mc_manager") as mock_manager,
             patch("docker.APIClient") as mock_docker_client_class,
-            patch(
-                "app.websocket.console.ConsoleWebSocketHandler._socket_read_loop",
-                mock_socket_read_loop,
-            ),
+            patch("app.websocket.console.ConsoleWebSocketHandler._socket_read_loop", mock_socket_read_loop),
         ):
             mock_manager.get_instance.return_value = instance
-
             mock_docker_client = MockDockerAPIClient()
             mock_docker_client_class.return_value = mock_docker_client
-
             with client.websocket_connect(console_url(server_id)) as websocket:
-                # Receive initial logs
-                initial_data = websocket.receive_json()
-                assert initial_data["type"] in ["log", "info"]
-
-                # Send resize with invalid dimensions (negative)
+                assert websocket.receive_json()["type"] == "log"
                 websocket.send_json({"type": "resize", "width": -1, "height": -1})
-
-                # Send resize with wrong type
                 websocket.send_json({"type": "resize", "width": "abc", "height": "def"})
+                wait_for_processed_messages(websocket)
+                assert mock_docker_client.resize_calls == [
+                    ("test_container_123", 25, 81),
+                    ("test_container_123", 24, 80),
+                ]
 
-                # Connection should remain stable (invalid resize should be ignored)
 
     def test_websocket_unknown_message_type(self, client, mock_instance):
         """Test handling of unknown message types."""

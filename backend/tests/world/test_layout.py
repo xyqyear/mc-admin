@@ -193,9 +193,14 @@ async def test_custom_level_name():
         _touch(world / "level.dat")
         _touch(world / "region" / "r.0.0.mca")
 
+        secondary = data_path / "aaa"
+        _touch(secondary / "level.dat")
+        _touch(secondary / "region" / "r.0.0.mca")
+
         roots = await discover_world_roots(data_path)
-        assert len(roots) == 1
-        assert roots[0].name == "survival"
+        assert [root.name for root in roots] == ["survival", "aaa"]
+        assert _by_dimension_path(roots[0])["."].region_dir == world / "region"
+        assert _by_dimension_path(roots[1])["."].region_dir == secondary / "region"
 
 
 @pytest.mark.asyncio
