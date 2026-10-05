@@ -38,10 +38,10 @@ Every execution SHALL use one immutable plan and historical snapshot for its fam
 - **THEN** the aggregate audit rejects it
 
 ### Requirement: Integrated protected DNS qualification
-API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggregate qualification. Complete qualification SHALL require every current Huawei scenario and verified owned cloud cleanup. Ordinary untrusted validation SHALL NOT receive cloud credentials or select protected cloud scenarios.
+API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggregate qualification. Complete qualification SHALL independently require every current ordinary regression and Huawei scenario and verified owned cloud cleanup. Provider dependency metadata SHALL bind required private configuration, protected authorization and recovery to trusted runners. Ordinary untrusted validation SHALL NOT receive cloud credentials or select protected cloud scenarios.
 
-#### Scenario: Complete qualification omits the cloud partition
-- **WHEN** the complete qualification context requires Huawei scenarios but their partition is absent, skipped or failed
+#### Scenario: Complete qualification omits a required Huawei case
+- **WHEN** the complete qualification context requires a current Huawei scenario but its assigned execution is absent, skipped or failed
 - **THEN** the API aggregate gate fails
 
 #### Scenario: A pull request executes ordinary regression
@@ -51,6 +51,21 @@ API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggreg
 #### Scenario: Docker cleanup succeeds but cloud records remain
 - **WHEN** owned local containers are removed while a selected Huawei scope lacks verified cloud cleanup
 - **THEN** API qualification fails and retains the non-secret recovery evidence
+
+### Requirement: Unified global API scheduling
+The API planner SHALL globally allocate every selected atomic group for a profile into one immutable plan and one job matrix. It SHALL retain Fresh/reusable group boundaries, permit ordinary and Huawei groups in the same shard, and use at most 16 shards and eight concurrent jobs with two workers and one Minecraft slot per runner. Provider requirements SHALL supply dependency metadata and credential/recovery bindings without imposing separate shard allocation or provider-specific concurrency limits. DNSPod and Mojang SHALL remain explicitly selected profiles.
+
+#### Scenario: Ordinary and Huawei work share capacity
+- **WHEN** a qualification plan selects ordinary and Huawei groups
+- **THEN** the planner may place them together using the same cost and resource model while retaining each atomic group and exact-once coverage
+
+#### Scenario: A trusted shard has a Huawei dependency
+- **WHEN** an assigned shard contains ordinary groups and a Huawei group
+- **THEN** its trusted runner receives the required protected provider configuration and executes all assigned groups under the same worker and Minecraft limits, with verified owned cloud recovery
+
+#### Scenario: Placement changes but timing semantics stay compatible
+- **WHEN** previously audited api-lifecycle-v2 individual/group costs and the fixture/resource compatibility fingerprint match the current profile
+- **THEN** the global planner reuses those costs, including reusable-group lifecycle floors, without reusing historical assignments or candidate receipts
 
 ### Requirement: Durable timing evidence after audited execution
 The system SHALL retain per-case execution timings, fixture costs, outcomes and source identity, and publish reusable timing history only after the family's full audit succeeds. Each following run SHALL freeze the selected historical source before shard execution.

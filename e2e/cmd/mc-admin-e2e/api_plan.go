@@ -107,6 +107,32 @@ func restoredCosts(path, profile, compatibility string) (engine.CostProfile, jso
 	source, err := json.Marshal(map[string]json.RawMessage{"source": envelope.Source, "artifact": envelope.Artifact})
 	return costs, source, err
 }
+
+type apiMatrixEntry struct {
+	Shard       int      `json:"shard"`
+	Count       int      `json:"count"`
+	Providers   []string `json:"providers"`
+	Environment string   `json:"environment"`
+}
+
+func apiMatrix(plan engine.RunPlan) ([]apiMatrixEntry, error) {
+	entries := make([]apiMatrixEntry, 0, len(plan.Shards))
+	for _, shard := range plan.Shards {
+		entry := apiMatrixEntry{Shard: shard.Index, Count: len(plan.Shards), Providers: append([]string{}, shard.Providers...)}
+		for _, provider := range shard.Providers {
+			switch provider {
+			case "huawei":
+				entry.Environment = "dns-e2e"
+			case "dnspod":
+			default:
+				return nil, fmt.Errorf("no protected environment mapping for external provider %q", provider)
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 func ciPlan(args []string) int {
 	flags := flag.NewFlagSet("ci-plan", flag.ContinueOnError)
 	var plan engine.RunPlan
@@ -143,6 +169,10 @@ func ciPlan(args []string) int {
 	if err == nil {
 		plan, err = engine.BuildRunPlan(currentCatalog(), plan)
 	}
+	var matrix []apiMatrixEntry
+	if err == nil {
+		matrix, err = apiMatrix(plan)
+	}
 	if err == nil {
 		err = evidence.WriteJSON(output, plan)
 	}
@@ -150,24 +180,14 @@ func ciPlan(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	ordinary, huawei := []map[string]int{}, []map[string]int{}
-	for _, shard := range plan.Shards {
-		row := map[string]int{"shard": shard.Index, "count": len(plan.Shards)}
-		if shard.Capability == "huawei" {
-			huawei = append(huawei, row)
-		} else {
-			ordinary = append(ordinary, row)
-		}
-	}
 	if githubOutput != "" {
 		file, err := os.OpenFile(githubOutput, os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
-		normalJSON, _ := json.Marshal(map[string]any{"include": ordinary})
-		cloudJSON, _ := json.Marshal(map[string]any{"include": huawei})
-		_, err = fmt.Fprintf(file, "ordinary=%s\nhuawei=%s\ncloud=%t\nprofile=%s\n", normalJSON, cloudJSON, len(huawei) > 0, plan.Profile)
+		matrixJSON, _ := json.Marshal(map[string]any{"include": matrix})
+		_, err = fmt.Fprintf(file, "matrix=%s\nprofile=%s\n", matrixJSON, plan.Profile)
 		closeErr := file.Close()
 		if err != nil || closeErr != nil {
 			fmt.Fprintln(os.Stderr, err, closeErr)

@@ -13,7 +13,7 @@ import (
 
 type Shard struct {
 	Index            int      `json:"index"`
-	Capability       string   `json:"capability"`
+	Providers        []string `json:"providers"`
 	EstimatedSeconds float64  `json:"estimated_seconds"`
 	Cases            []string `json:"cases"`
 }
@@ -98,19 +98,15 @@ func BuildRunPlan(catalog []Case, input RunPlan) (RunPlan, error) {
 	p.Workers = base.Scheduling.Workers
 	p.MinecraftSlots = base.Scheduling.MinecraftSlots
 	p.Catalog = base.Catalog
-	partitions := map[string][]weightedUnit{}
+	var units []weightedUnit
 	if p.Costs.ShardOverheadSeconds >= p.BudgetSeconds {
 		p.Oversized = append(p.Oversized, OversizedGroup{"fixed-overhead", p.Costs.ShardOverheadSeconds, "fixed execution cleanup overhead exceeds target; extra shards cannot satisfy it"})
 	}
 	for _, group := range base.Groups {
-		capability := group.Cases[0].Capability
-		if capability == "" {
-			capability = "ordinary"
-		}
 		unit := weightedUnit{key: group.Key, slots: group.Cases[0].Recipe.MinecraftSlots, seconds: p.Costs.groupEstimate(group)}
 		for _, test := range group.Cases {
-			if test.Capability != group.Cases[0].Capability {
-				return p, fmt.Errorf("reuse group mixes execution capabilities")
+			if test.Capability != "" {
+				unit.providers = append(unit.providers, test.Capability)
 			}
 			unit.ids = append(unit.ids, test.ID)
 		}
@@ -120,42 +116,34 @@ func BuildRunPlan(catalog []Case, input RunPlan) (RunPlan, error) {
 		if unit.seconds > p.BudgetSeconds || (p.Costs.ShardOverheadSeconds < p.BudgetSeconds && unit.seconds+p.Costs.ShardOverheadSeconds > p.BudgetSeconds) {
 			p.Oversized = append(p.Oversized, OversizedGroup{unit.key, unit.seconds + p.Costs.ShardOverheadSeconds, "indivisible lifecycle group plus fixed runner overhead exceeds execution target"})
 		}
-		partitions[capability] = append(partitions[capability], unit)
+		units = append(units, unit)
 	}
-	var capabilities []string
-	for capability := range partitions {
-		capabilities = append(capabilities, capability)
-	}
-	sort.Strings(capabilities)
-	if len(capabilities) > p.MaxShards {
-		return p, fmt.Errorf("maximum shards cannot separate required execution capabilities")
-	}
-	remaining := p.MaxShards
-	assigned := map[string]int{}
-	for i, capability := range capabilities {
-		bins, err := allocateUnits(partitions[capability], p.Workers, p.MinecraftSlots, max(1, p.BudgetSeconds-p.Costs.ShardOverheadSeconds), remaining-(len(capabilities)-i-1))
-		if p.Costs.ShardOverheadSeconds >= p.BudgetSeconds {
-			bins = [][]weightedUnit{partitions[capability]}
-			err = nil
-		}
+	var bins [][]weightedUnit
+	if p.Costs.ShardOverheadSeconds >= p.BudgetSeconds {
+		bins = [][]weightedUnit{units}
+	} else {
+		bins, err = allocateUnits(units, p.Workers, p.MinecraftSlots, p.BudgetSeconds-p.Costs.ShardOverheadSeconds, p.MaxShards)
 		if err != nil {
 			return p, err
 		}
-		remaining -= len(bins)
-		for _, bin := range bins {
-			shard := Shard{Index: len(p.Shards) + 1, Capability: capability, EstimatedSeconds: p.Costs.ShardOverheadSeconds + predictUnits(bin, p.Workers, p.MinecraftSlots), Cases: []string{}}
-			if shard.EstimatedSeconds > p.BudgetSeconds && len(bin) > 1 && p.Costs.ShardOverheadSeconds < p.BudgetSeconds {
-				p.Oversized = append(p.Oversized, OversizedGroup{fmt.Sprintf("shard:%d", shard.Index), shard.EstimatedSeconds, "shard_limit: maximum shard count retains all indivisible lifecycle groups"})
-			}
-			for _, unit := range bin {
-				for _, id := range unit.ids {
-					shard.Cases = append(shard.Cases, id)
-					assigned[id] = shard.Index
-				}
-			}
-			sort.Strings(shard.Cases)
-			p.Shards = append(p.Shards, shard)
+	}
+	assigned := map[string]int{}
+	for _, bin := range bins {
+		shard := Shard{Index: len(p.Shards) + 1, Providers: []string{}, EstimatedSeconds: p.Costs.ShardOverheadSeconds + predictUnits(bin, p.Workers, p.MinecraftSlots), Cases: []string{}}
+		if shard.EstimatedSeconds > p.BudgetSeconds && len(bin) > 1 && p.Costs.ShardOverheadSeconds < p.BudgetSeconds {
+			p.Oversized = append(p.Oversized, OversizedGroup{fmt.Sprintf("shard:%d", shard.Index), shard.EstimatedSeconds, "shard_limit: maximum shard count retains all indivisible lifecycle groups"})
 		}
+		for _, unit := range bin {
+			shard.Providers = append(shard.Providers, unit.providers...)
+			for _, id := range unit.ids {
+				shard.Cases = append(shard.Cases, id)
+				assigned[id] = shard.Index
+			}
+		}
+		sort.Strings(shard.Providers)
+		shard.Providers = slices.Compact(shard.Providers)
+		sort.Strings(shard.Cases)
+		p.Shards = append(p.Shards, shard)
 	}
 	for i := range p.Catalog {
 		p.Catalog[i].Shard = assigned[p.Catalog[i].ID]
@@ -245,10 +233,11 @@ func (p RunPlan) Execution(catalog []Case, index int, requiredProfile string) (P
 }
 
 type weightedUnit struct {
-	key     string
-	seconds float64
-	slots   int
-	ids     []string
+	key       string
+	seconds   float64
+	slots     int
+	ids       []string
+	providers []string
 }
 
 func predictUnits(units []weightedUnit, workers, slots int) float64 {
@@ -327,7 +316,7 @@ func allocateUnits(units []weightedUnit, workers, slots int, budget float64, max
 		minimum++
 	}
 	if maximum < 1 {
-		return nil, fmt.Errorf("maximum shards cannot separate execution capabilities")
+		return nil, fmt.Errorf("maximum shard count must be positive")
 	}
 	if maximum < minimum {
 		bins := make([][]weightedUnit, maximum)

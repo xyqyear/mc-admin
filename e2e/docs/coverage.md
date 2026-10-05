@@ -120,7 +120,7 @@
 | 华为 DNS 到 Minecraft | `dns.huawei-minecraft-connectivity` | 通过独立 SDK 和权威 DNS 核对华为云记录，从 SRV/A 应答取得端口与地址，经真实 mc-router 验证 Minecraft MOTD；包含首次递归解析、启动修复、创建/删除/同步自动触发、监听端口变化和停止服务器后保留记录。 |
 | Mojang 真实访问，需要显式选择 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
 
-华为云资格验证使用 GitHub Environment 中配置的独立测试 zone，由统一 API 工作流的受保护 `dns-e2e` 分片执行，并纳入同一不可变计划和发布门禁。普通分片与华为分片共享应用候选、目录和审计要求，凭据仅注入受保护云执行/回收步骤；仓库只保留示例域名和配置指南。DNSPod 仍需显式提供其凭据。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
+华为云资格验证使用 GitHub Environment 中配置的独立测试 zone，纳入统一 API 不可变计划、全局 matrix 和发布门禁。当前 `qualification` 要求全部 85 个常规/华为用例；普通与华为 atomic group 可以同片，整片 provider 依赖绑定受保护 `dns-e2e` 授权、所需私有配置和回收步骤，可信混合 runner 可持有该依赖所需凭据。普通 PR 选择 83 个常规用例且不接收云凭据；仓库只保留示例域名和配置指南。DNSPod 仍需显式提供其凭据。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
 
 选择供应商前，应阅读[DNS 配置、资源归属与清理约定](../suites/dns/README.md)。缺少所选供应商配置时，用例明确失败并给出可执行的错误提示，不会被标记为跳过或通过。Mojang 真实访问用例要求外部请求实际成功，仅收到“资料未解析”的响应不能通过。外部用例的实际运行结果见[验证记录](verification.md)。
 
@@ -138,11 +138,11 @@ DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服
 
 请将路径替换为实际运行目录。分片必须使用相同应用镜像、筛选后的用例目录和分片总数，并具有不同的运行 ID 与分片序号。独立筛选的领域运行、冒烟与回归集、不同镜像的结果，不能合并成同一次完整验证。收集器会拒绝不兼容的 Schema、用例目录或镜像证据，以及重复或未列入计划的用例结果。
 
-完整 CI 使用 `ci-plan` 从当前目录生成不可变计划，再由 `ci-audit` 按独立指定的 profile 重建必需用例并审计实际结果。规划只让历史耗时影响估算和位置，不允许历史裁剪当前目录；每片验证同一 source/image/runner、历史来源、成本指纹、seed、复用策略和资源配置。计划自动选择最多 16 片，普通最多八个 CI job 并发，受保护云 job 最多一个；每个运行器两个 worker、一个 Minecraft slot。300 秒软目标包含环境初始化、用例及清理，不含 checkout、依赖、OCI 加载和单独记录的 preflight/image pull 准备；不可拆组、固定开销和分片上限的超预算情况保留在计划中，不缩短业务超时。
+完整 CI 使用 `ci-plan` 从当前目录生成不可变全局计划，再由 `ci-audit` 按独立指定的 profile 重建必需用例并审计实际结果。规划只让历史耗时影响估算和位置，不允许历史裁剪当前目录；每片验证同一 source/image/runner、历史来源、成本指纹、seed、复用策略、资源配置和 provider 依赖。每个 profile 的全部 atomic group 共同分配，普通与华为组可以同片；一个 matrix 最多 16 片、八个 CI job 并发，每个运行器两个 worker、一个 Minecraft slot。provider 依赖用于凭据与回收绑定。300 秒软目标包含环境初始化、用例及清理，不含 checkout、依赖、OCI 加载和单独记录的 preflight/image pull 准备；不可拆组、固定开销和分片上限的超预算情况保留在计划中，不缩短业务超时。
 
 资格审计要求每个当前用例恰好执行并通过一次、全部计划分片存在、跟踪证据完整、应用候选一致，以及所有独占本地/云资源已验证回收。华为云 scope 还必须匹配初始 case receipt 的供应商、run、environment 和资源归属；普通 Docker 清理不能替代云端清理。即使普通分片全通过，遗漏、跳过或清理失败的华为分片仍不能满足 `qualification`。通用 `coverage` 报告不能替代该资格审计。
 
-只有分片成功且最终覆盖与清理审计通过，CI 才发布 `timing-history-api/history.json`。后续从同分支、再从 main 恢复兼容的成功审计历史，一次冻结其 run/attempt/SHA/branch/artifact 来源；无历史、新增用例或无效历史使用正数回退。历史包含 setup/case/cleanup 阶段成本、复用组成员与保守生命周期下界、最终清理和无条件 recovery 固定开销。删除承担 setup/teardown 的成员不能消除复用组成本；`--no-reuse` 按单用例拆组并使用独立历史 profile。历史保留 90 天，历史验证记录仍描述各自当时的运行。
+只有分片成功且最终覆盖与清理审计通过，CI 才发布 `timing-history-api/history.json`。后续从同分支、再从 main 恢复兼容的成功审计历史，一次冻结其 run/attempt/SHA/branch/artifact 来源；无历史、新增用例或无效历史使用正数回退。历史包含 setup/case/cleanup 阶段成本、复用组成员与保守生命周期下界、最终清理和无条件 recovery 固定开销；全局 matrix 分配保持 `api-lifecycle-v2` 测量语义与兼容指纹，已有匹配成本可复用。删除承担 setup/teardown 的成员不能消除复用组成本；`--no-reuse` 按单用例拆组并使用独立历史 profile。历史保留 90 天，历史验证记录仍描述各自当时的运行。
 
 每个环境从 `/api/openapi.json` 保存挂载后的 API Schema。收集器统一处理服务路径前缀，按“请求方法 + 路由”枚举操作，并补充 OpenAPI 未列出的三个 WebSocket：`/api/auth/code`、`/api/events`、`/api/servers/{server_id}/console`。
 

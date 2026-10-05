@@ -8,6 +8,7 @@ Static historical weights and fixed shard counts do not follow the measured cost
 - Derive backend, API and browser shard counts and assignments from a 300-second execution budget, including fixture setup and cleanup.
 - Keep oversized indivisible units valid, report the reason the target cannot be met, and bound shard creation and concurrency.
 - Include Huawei scenarios in the API E2E qualification plan, protected execution and aggregate gate; remove the independent DNS workflow and gate.
+- Allocate every selected API atomic group globally into one matrix with at most 16 shards and eight concurrent jobs, retaining two workers and one Minecraft slot per runner. Ordinary and Huawei groups may share a shard; provider dependencies bind required credentials and recovery to trusted runners.
 - Audit exact-once current test coverage, immutable plan identity, successful results, candidate identity and owned cleanup before qualifying or learning costs.
 
 Application APIs, schemas, persistence and deployment behavior do not change. Five minutes is a planning target, not a test timeout. This change does not introduce assertion retries, shared mutable cross-run fixtures, or local full-suite execution.
@@ -24,4 +25,4 @@ None. Existing application and external qualification contracts remain in force.
 
 ## Impact
 
-CI workflows, Python test support and CI scripts, Go E2E planning and reports, browser selection and reports, release gate validation, related tests, agent instructions and CI/component design documents. Protected Huawei credentials and recovery remain scoped to cloud execution. No new application runtime dependency or database migration is required.
+CI workflows, Python test support and CI scripts, Go E2E planning and reports, browser selection and reports, release gate validation, related tests, agent instructions and CI/component design documents. Provider credentials and recovery bind to declared shard dependencies in trusted execution; ordinary PR regression receives no cloud credentials. API lifecycle measurement version 2, individual costs, reusable-group floors and the compatibility fingerprint remain reusable. No new application runtime dependency or database migration is required.

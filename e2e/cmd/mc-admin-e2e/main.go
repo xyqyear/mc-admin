@@ -130,7 +130,7 @@ func mainCode(args []string) int {
 			} else {
 				plan, err = frozen.Execution(suites.Catalog(factory.Recipes()), selection.ShardIndex, requiredProfile)
 				noReuse = frozen.NoReuse
-				if err == nil && frozen.Shards[selection.ShardIndex-1].Capability != "ordinary" && settings.ExternalConfig == "" {
+				if err == nil && len(frozen.Shards[selection.ShardIndex-1].Providers) > 0 && settings.ExternalConfig == "" {
 					err = fmt.Errorf("selected external capability requires private configuration")
 				}
 			}

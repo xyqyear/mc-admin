@@ -80,9 +80,7 @@ jobs:
     if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.candidate_artifact != '')) }}
     runs-on: ubuntu-latest
     outputs:
-      ordinary: ${{ steps.plan.outputs.ordinary }}
-      huawei: ${{ steps.plan.outputs.huawei }}
-      cloud: ${{ steps.plan.outputs.cloud }}
+      matrix: ${{ steps.plan.outputs.matrix }}
       profile: ${{ steps.plan.outputs.profile }}
       history_profile: ${{ steps.plan.outputs.history_profile }}
       compatibility: ${{ steps.plan.outputs.compatibility }}
@@ -123,7 +121,7 @@ jobs:
         path: api-planning/
         retention-days: 90
         if-no-files-found: error
-  regression:
+  api:
     name: API cases (shard ${{ matrix.shard }}/${{ matrix.count }})
     needs:
     - build
@@ -134,13 +132,15 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 8
-      matrix: ${{ fromJSON(needs.plan.outputs.ordinary) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    environment:
+      name: ${{ matrix.environment }}
     env:
       E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
       E2E_RUN_ID: api-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       E2E_SHARD: ${{ matrix.shard }}/${{ matrix.count }}
       E2E_PROFILE: ${{ needs.plan.outputs.profile }}
-      E2E_CAPABILITY: ${{ inputs.selection == 'dnspod' && 'dnspod' || 'ordinary' }}
+      E2E_PROVIDERS: ${{ toJSON(matrix.providers) }}
     steps:
     - uses: actions/checkout@v6
       with:
@@ -168,94 +168,22 @@ jobs:
         echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
     - name: Execute planned cases and recover owned scopes
       env:
-        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
+        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && contains(matrix.providers, 'dnspod') && secrets.E2E_EXTERNAL_CONFIG || '' }}
+        HUAWEICLOUD_AK: ${{ contains(matrix.providers, 'huawei') && secrets.HUAWEICLOUD_AK || '' }}
+        HUAWEICLOUD_SK: ${{ contains(matrix.providers, 'huawei') && secrets.HUAWEICLOUD_SK || '' }}
+        HUAWEICLOUD_DNS_ZONE: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_ZONE || '' }}
+        HUAWEICLOUD_DNS_PARENT: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_PARENT || '' }}
+        HUAWEICLOUD_DNS_REGION: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_REGION || '' }}
       run: bash scripts/ci/api_shard.sh run
     - name: Recover after success, failure or cancellation
       if: ${{ always() && env.E2E_IMAGE != '' }}
       env:
-        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
-      run: bash scripts/ci/api_shard.sh recover
-    - name: Verify API image, outcomes and cleanup against the candidate
-      run: |
-        uv run --no-project python scripts/release/candidate.py evidence \
-          --directory e2e-artifacts --revision "$SOURCE_SHA" \
-          --runtime-kind api --run-directory "$E2E_DIRECTORY/$E2E_RUN_ID" \
-          --output "$E2E_DIRECTORY/$E2E_RUN_ID/candidate-evidence.json"
-    - name: Upload reports and redacted diagnostics
-      if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: api-results-${{ matrix.shard }}
-        overwrite: true
-        retention-days: 30
-        if-no-files-found: error
-        path: |
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/recovery.json
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/candidate-evidence.json
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
-          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cloud/
-  huawei:
-    name: Protected API cases (shard ${{ matrix.shard }}/${{ matrix.count }})
-    needs:
-    - build
-    - plan
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.cloud == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix: ${{ fromJSON(needs.plan.outputs.huawei) }}
-    env:
-      E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
-      E2E_RUN_ID: api-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
-      E2E_SHARD: ${{ matrix.shard }}/${{ matrix.count }}
-      E2E_PROFILE: ${{ needs.plan.outputs.profile }}
-      E2E_CAPABILITY: huawei
-      HUAWEICLOUD_DNS_ZONE: ${{ vars.HUAWEICLOUD_DNS_ZONE }}
-      HUAWEICLOUD_DNS_PARENT: ${{ vars.HUAWEICLOUD_DNS_PARENT }}
-      HUAWEICLOUD_DNS_REGION: ${{ vars.HUAWEICLOUD_DNS_REGION }}
-    environment: dns-e2e
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ inputs.source_sha || github.sha }}
-    - uses: actions/setup-python@v6
-      with:
-        python-version: '3.13'
-    - uses: astral-sh/setup-uv@v8.1.0
-    - name: Install OCI transfer tool
-      run: sudo apt-get update && sudo apt-get install -y skopeo
-    - name: Download runtime inputs
-      uses: actions/download-artifact@v8
-      with:
-        name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
-        path: e2e-artifacts
-    - uses: actions/download-artifact@v8
-      with:
-        name: api-plan
-        path: api-planning
-    - name: Prepare runtime inputs
-      run: |
-        chmod +x e2e-artifacts/mc-admin-e2e
-        uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
-        uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"
-        echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
-    - name: Execute planned cases and recover owned scopes
-      env:
-        HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
-        HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
-      run: bash scripts/ci/api_shard.sh run
-    - name: Recover after success, failure or cancellation
-      if: ${{ always() && env.E2E_IMAGE != '' }}
-      env:
-        HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
-        HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
+        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && contains(matrix.providers, 'dnspod') && secrets.E2E_EXTERNAL_CONFIG || '' }}
+        HUAWEICLOUD_AK: ${{ contains(matrix.providers, 'huawei') && secrets.HUAWEICLOUD_AK || '' }}
+        HUAWEICLOUD_SK: ${{ contains(matrix.providers, 'huawei') && secrets.HUAWEICLOUD_SK || '' }}
+        HUAWEICLOUD_DNS_ZONE: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_ZONE || '' }}
+        HUAWEICLOUD_DNS_PARENT: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_PARENT || '' }}
+        HUAWEICLOUD_DNS_REGION: ${{ contains(matrix.providers, 'huawei') && vars.HUAWEICLOUD_DNS_REGION || '' }}
       run: bash scripts/ci/api_shard.sh recover
     - name: Verify API image, outcomes and cleanup against the candidate
       run: |
@@ -287,8 +215,7 @@ jobs:
     needs:
     - build
     - plan
-    - regression
-    - huawei
+    - api
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -316,15 +243,13 @@ jobs:
         merge-multiple: false
     - name: Audit independently required catalog, identity and cloud cleanup
       env:
-        EXECUTION_RESULT: ${{ needs.regression.result }}
-        CLOUD_RESULT: ${{ needs.huawei.result }}
+        EXECUTION_RESULT: ${{ needs.api.result }}
       run: |
         chmod +x e2e-artifacts/mc-admin-e2e
         uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
         profile="$REQUESTED_PROFILE"
         if [ "$QUALIFICATION" = true ]; then profile=qualification; fi
         test "$EXECUTION_RESULT" = success
-        if [ "$profile" = qualification ]; then test "$CLOUD_RESULT" = success; else test "$CLOUD_RESULT" = skipped; fi
         image=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')
         audit_args=()
         if [ "$NO_REUSE" = true ]; then audit_args+=(--no-reuse); fi

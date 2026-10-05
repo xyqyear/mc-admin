@@ -8,7 +8,7 @@ Backend, API and browser planners target 300 seconds of execution per shard, inc
 
 Backend runners execute pytest sequentially without worker processes sharing Docker fixtures. Planning retains whole files and shared-fixture groups, assigns longest-cost units first and derives capabilities from selected tests. Actual setup/call/teardown costs are aggregated from current node identities; unseen tests receive positive fallback estimates. Exact node-ID and execution-phase audits remain mandatory before combined coverage and timing publication.
 
-API planning retains Fresh cases and reusable recipe groups, accounting for serial group duration, worker capacity and Minecraft occupancy. Ordinary and protected cloud execution have declared capacities and share one qualification plan. Capacity and ownership remain held through teardown; seed changes execution priority. See [API execution contracts](../e2e/docs/architecture.md).
+API planning globally allocates every atomic group selected by a profile into one immutable plan and one matrix. Fresh cases and reusable recipe groups remain intact; ordinary and Huawei groups may share a shard. The matrix permits at most 16 shards and eight concurrent jobs, with two workers and one Minecraft slot per runner. Provider requirements supply dependency metadata and credential/recovery bindings. Qualification currently requires 85 cases including every Huawei scenario; ordinary PR regression selects 83 cases without cloud credentials, and DNSPod/Mojang remain explicit profiles. Capacity and ownership remain held through teardown; seed changes execution priority. See [API execution contracts](../e2e/docs/architecture.md).
 
 Browser planning uses explicit stable case identities and verified isolation boundaries. Every shard gets an independent owned application/world and one Playwright worker. Each estimate includes repeated wrapper setup and cleanup plus case execution; the wrapper and Playwright reports are audited together. See [browser execution](../frontend-react/docs/browser-tests.md).
 
@@ -22,6 +22,8 @@ Standalone ordinary push/PR runs use component-specific concurrency groups and c
 
 Planning freezes the restored snapshot and its identity before generating the current immutable plan. Every shard executes that plan; independent shards never each choose a different latest history. History affects costs and placement only. The current collected catalog and execution policy independently determine completeness and required protected scenarios.
 
+API history retains api-lifecycle-v2 individual costs, reusable-group membership/floors and fixed cleanup/recovery overhead. Global matrix placement preserves that measurement and compatibility fingerprint, so matching prior audited costs remain reusable. Historical assignments and candidate receipts are never reused.
+
 Each family publishes `timing-history-<family>` only after its complete successful coverage, outcomes, candidate/cleanup audit. History artifacts retain `history.json` for 90 days; raw failed reports remain diagnostic and cannot replace successful costs. New and changed inventories remain fully selected, with unseen identities receiving fallback estimates. Read-only Actions permissions allow cross-run retrieval without repository writes or automatic weight commits.
 
 ## Evidence
@@ -33,8 +35,7 @@ Each family publishes `timing-history-<family>` only after its complete successf
 | `backend-test-reports` | Audited shard evidence and centrally combined coverage reports |
 | `frontend-test-results` | Vitest JSON with individual test outcomes and durations |
 | `go-test-results` | Race-enabled Go test JSON events, including per-test and package elapsed times |
-| `api-results-N` | API plan, lifecycle timings, outcomes and explicit redacted diagnostics |
-| Protected API shard reports | Actual DNS/Minecraft observations, candidate identity and verified non-secret cloud recovery manifests |
+| `api-results-N` | API plan, provider dependencies, lifecycle timings, outcomes, candidate identity and redacted diagnostics; cloud-dependent shards retain DNS/Minecraft observations and verified non-secret recovery manifests |
 | `browser-results-*` | Assigned Playwright identities, durations, outcomes, wrapper timings and owned application evidence |
 | `timing-history-backend`, `timing-history-api`, `timing-history-browser` | Successfully audited reusable costs with execution compatibility and source identity |
 
@@ -62,7 +63,7 @@ Wait silently for this command to exit. Do not read its log or progress, send pr
 gh run view <run-id> --json headSha,status,conclusion,jobs,url
 ```
 
-Require the exact latest commit and successful candidate, static, all backend shards and their audit, all ordinary/protected API shards and their audit, all browser shards and their audit, and final qualification. On failure, inspect failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. Old successful runs or incomplete gates do not qualify it.
+Require the exact latest commit and successful candidate, static, all backend shards and their audit, all API shards covering the required ordinary/Huawei cases and their audit, all browser shards and their audit, and final qualification. On failure, inspect failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. Old successful runs or incomplete gates do not qualify it.
 
 The reference qualification is [36148282102](https://github.com/xyqyear/mc-admin/actions/runs/36148282102), source `45a47640dedb60948b82418d5c1f989377e91af4`: 56:14 overall including publication, 55:18 from workflow creation through qualification, 55:01 backend gate, 2,183 passing backend cases, 81 API cases and six browser journeys. Test counts may grow with infrastructure regression coverage; the collected catalog, rather than those historical counts, determines completeness. Compare test steps and whole gates separately, and report changed runner availability or preparation costs alongside the results. The [measured balancing results](ci-balancing-results.md) record the complete successful implementation qualification and its remaining bottlenecks.
 
@@ -70,6 +71,6 @@ The timing-feedback qualification is [37330476033](https://github.com/xyqyear/mc
 
 ## Huawei cloud qualification
 
-Huawei scenarios execute within `e2e-tests.yml` on trusted main/scheduled/manual qualification and release calls. The protected cloud partition retains the `dns-e2e` Environment with `HUAWEICLOUD_AK` and `HUAWEICLOUD_SK`; deployment refs remain restricted to main, release tags and explicitly authorized qualification branches. Ordinary regression and untrusted PR jobs receive no cloud credentials. Complete API qualification independently requires every current Huawei case, successful results and exact cloud scope cleanup; missing credentials, cancelled/missing execution or residual records fail its aggregate gate.
+Huawei scenarios execute within the unified `e2e-tests.yml` matrix on trusted main/scheduled/manual qualification and release calls. Shard provider dependencies bind the protected `dns-e2e` Environment with `HUAWEICLOUD_AK` and `HUAWEICLOUD_SK`; deployment refs remain restricted to main, release tags and explicitly authorized qualification branches. A trusted mixed runner holds its required provider configuration while executing all assigned ordinary and Huawei groups. Ordinary PR regression selects no cloud dependencies and receives no cloud credentials. Complete API qualification independently requires every current Huawei case, successful results and exact cloud scope cleanup; missing credentials, cancelled/missing execution or residual records fail its aggregate gate.
 
 Environment variables `HUAWEICLOUD_DNS_ZONE`, optional `HUAWEICLOUD_DNS_PARENT` and `HUAWEICLOUD_DNS_REGION` configure the dedicated namespace without committing account domains. Restrict the IAM identity to its test zone ID; each environment gets a separate descendant. EXIT and unconditional recovery stop owned writers and reclaim cloud records using validated non-secret manifests after success, failure or cancellation. Local Docker cleanup does not replace cloud verification. Explicit manual selection can disable reuse. See [DNS qualification and recovery](../e2e/suites/dns/README.md).

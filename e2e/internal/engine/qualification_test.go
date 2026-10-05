@@ -108,6 +108,7 @@ func TestImmutableQualificationRejectsReducedOrChangedCatalog(t *testing.T) {
 	cases := []Case{a, b, c}
 	input := timedInput()
 	input.Profile = "qualification"
+	input.MaxShards = 1
 	plan, err := BuildRunPlan(cases, input)
 	if err != nil {
 		t.Fatal(err)
@@ -115,8 +116,8 @@ func TestImmutableQualificationRejectsReducedOrChangedCatalog(t *testing.T) {
 	if err = plan.Validate(cases, "qualification"); err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Shards) != 2 {
-		t.Fatal("ordinary and protected capabilities were mixed")
+	if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
+		t.Fatal("mixed dependencies forced separate shards or lost their provider union")
 	}
 	reduced, err := BuildRunPlan([]Case{a, b}, input)
 	if err != nil {
@@ -167,15 +168,113 @@ func TestReusableHistoryRetainsFixtureFloorAfterRemovingSetupMember(t *testing.T
 func TestAutomaticPlanIncludesFixedLifecycleOverhead(t *testing.T) {
 	first := timedCase("case.one", Fresh)
 	second := testCase("case.two", first.Recipe, Fresh)
-	second.Tags = []string{"regression"}
+	second.Tags = []string{"external"}
+	second.Capability = "huawei"
 	cases := []Case{first, second}
+	for _, overhead := range []float64{20, 320} {
+		input := timedInput()
+		input.Profile = "qualification"
+		input.Costs.ShardOverheadSeconds = overhead
+		plan, err := BuildRunPlan(cases, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(plan.Shards) != 1 || plan.Shards[0].EstimatedSeconds != overhead+30 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
+			t.Fatal("fixed setup/final cleanup overhead was omitted or provider dependencies divided one global bin")
+		}
+		if overhead < input.BudgetSeconds && len(plan.Oversized) != 0 || overhead >= input.BudgetSeconds && (len(plan.Oversized) != 1 || plan.Oversized[0].Key != "fixed-overhead") {
+			t.Fatal("fixed overhead did not retain its soft budget boundary")
+		}
+	}
+}
+
+func TestAutomaticPlanBalancesCloudAndOrdinaryUnitsTogether(t *testing.T) {
+	recipe := testRecipe()
+	recipe.MinecraftSlots = 1
+	var cases []Case
 	input := timedInput()
-	input.Costs.ShardOverheadSeconds = 320
+	input.Profile = "qualification"
+	input.Costs.Cases = map[string]float64{}
+	for _, id := range []string{"case.normal-a", "case.normal-b", "case.cloud-a", "case.cloud-b"} {
+		test := testCase(id, recipe, Fresh)
+		test.Tags = []string{"regression"}
+		seconds := 180.0
+		if id == "case.cloud-a" || id == "case.cloud-b" {
+			test.Capability = "huawei"
+			test.Tags = []string{"external"}
+			seconds = 120
+		}
+		cases = append(cases, test)
+		input.Costs.Cases[id] = seconds
+	}
 	plan, err := BuildRunPlan(cases, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Shards) != 1 || plan.Shards[0].EstimatedSeconds != 350 || len(plan.Oversized) != 1 || plan.Oversized[0].Key != "fixed-overhead" {
-		t.Fatal("fixed setup/final cleanup overhead was omitted or endlessly split")
+	if len(plan.Shards) != 2 || len(plan.Catalog) != 4 {
+		t.Fatal("provider partitioning prevented a globally balanced two-shard plan")
+	}
+	for _, shard := range plan.Shards {
+		if shard.EstimatedSeconds != 300 || len(shard.Cases) != 2 || !slices.Equal(shard.Providers, []string{"huawei"}) {
+			t.Fatal("Minecraft work did not pair ordinary and cloud units within the budget")
+		}
+	}
+}
+
+func TestAutomaticPlanKeepsMixedFreshAndReusableGroupsAtOneShard(t *testing.T) {
+	recipe := testRecipe()
+	a, b := testCase("case.normal-a", recipe, ObserveReuse), testCase("case.normal-b", recipe, CleanReuse)
+	c, d := testCase("case.cloud-a", recipe, Fresh), testCase("case.cloud-b", recipe, Fresh)
+	a.Tags, b.Tags = []string{"regression"}, []string{"regression"}
+	c.Capability, d.Capability = "huawei", "huawei"
+	c.Tags, d.Tags = []string{"external"}, []string{"external"}
+	cases := []Case{a, b, c, d}
+	input := timedInput()
+	input.Profile = "qualification"
+	input.MaxShards = 1
+	plan, err := BuildRunPlan(cases, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Shards) != 1 || len(plan.Shards[0].Cases) != 4 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
+		t.Fatal("one shard lost mixed units or duplicated the shared provider dependency")
+	}
+	execution, err := plan.Execution(cases, 1, "qualification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(execution.Groups) != 3 || len(execution.Order) != 4 {
+		t.Fatal("Fresh or reusable atomic boundaries changed when providers mixed")
+	}
+	for _, group := range execution.Groups {
+		if group.Key == "recipe:base" && (len(group.Cases) != 2 || group.Cases[0].Capability != "" || group.Cases[1].Capability != "") {
+			t.Fatal("reusable group was divided or absorbed a Fresh case")
+		}
+	}
+}
+
+func TestImmutableQualificationRejectsChangedProviderUnion(t *testing.T) {
+	ordinary, cloud := timedCase("case.normal", Fresh), timedCase("case.cloud", Fresh)
+	cloud.Recipe = ordinary.Recipe
+	cloud.Capability, cloud.Tags = "huawei", []string{"external"}
+	cases := []Case{ordinary, cloud}
+	input := timedInput()
+	input.Profile = "qualification"
+	for _, providers := range [][]string{{}, {"huawei", "huawei"}, {"dnspod", "huawei"}} {
+		plan, err := BuildRunPlan(cases, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan.Shards[0].Providers = providers
+		if plan.Validate(cases, "qualification") == nil {
+			t.Fatal("provider metadata changed without invalidating immutable digest")
+		}
+		plan.Digest, err = plan.identity()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Validate(cases, "qualification") == nil {
+			t.Fatal("rehashed provider metadata differs from current case dependencies")
+		}
 	}
 }

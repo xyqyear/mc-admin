@@ -5,10 +5,7 @@ runner=./e2e-artifacts/mc-admin-e2e
 run_directory="$E2E_DIRECTORY/$E2E_RUN_ID"
 config_file=$(mktemp "$RUNNER_TEMP/api-external.XXXXXX")
 make_config() {
-  case "$E2E_CAPABILITY" in
-    huawei) uv run --no-project python scripts/ci/dns_config.py "$config_file" ;;
-    dnspod) printf '%s' "$E2E_EXTERNAL_CONFIG" > "$config_file" ;;
-  esac
+  uv run --no-project python scripts/ci/dns_config.py "$config_file"
 }
 recover_owned() {
   recovery_started=$(date +%s%N)
@@ -43,7 +40,7 @@ recover() {
 trap recover EXIT
 make_config
 external_args=()
-if [ "$E2E_CAPABILITY" != ordinary ]; then external_args+=(--external-config "$config_file"); fi
+if [ -s "$config_file" ]; then external_args+=(--external-config "$config_file"); fi
 "$runner" run --backend-image "$E2E_IMAGE" --output "$E2E_DIRECTORY" --run-id "$E2E_RUN_ID" \
   --execution-plan api-planning/plan.json --profile "$E2E_PROFILE" --revision "$SOURCE_SHA" \
   --shard "$E2E_SHARD" --workers 2 --mc-slots 1 "${external_args[@]}"

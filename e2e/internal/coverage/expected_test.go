@@ -21,7 +21,10 @@ func expectedFixture(t *testing.T) (engine.RunPlan, []engine.Case, []string) {
 	cloud.ID = "case.cloud"
 	cloud.Tags = []string{"external"}
 	cloud.Capability = "huawei"
-	catalog := []engine.Case{ordinary, cloud}
+	secondCloud := cloud
+	secondCloud.ID = "case.cloud-second"
+	catalog := []engine.Case{ordinary, cloud, secondCloud}
+	environments := map[string]string{"case.normal": "abcdef012345", "case.cloud": "012345abcdef", "case.cloud-second": "abcd1234abcd"}
 	expected, err := engine.BuildRunPlan(catalog, engine.RunPlan{Profile: "qualification", Revision: "current", Image: "sha256:image", RunnerSHA256: "runner", Workers: 2, MinecraftSlots: 1, BudgetSeconds: 300, MaxShards: 16, Costs: engine.CostProfile{Version: 1, DefaultSeconds: 30}})
 	if err != nil {
 		t.Fatal(err)
@@ -32,13 +35,12 @@ func expectedFixture(t *testing.T) (engine.RunPlan, []engine.Case, []string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		envID := "012345abcdef"
-		if shard.Capability == "ordinary" {
-			envID = "abcdef012345"
-		}
-		report := engine.Report{RunID: "run-" + envID, Image: expected.Image, Plan: plan, PreparationSeconds: 3, CleanupSeconds: 2}
+		report := engine.Report{RunID: "run-mixed-qualification", Image: expected.Image, Plan: plan, PreparationSeconds: 3, CleanupSeconds: 2}
+		var owned []*platform.EnvironmentRecord
 		for _, id := range plan.Order {
+			envID := environments[id]
 			report.Results = append(report.Results, engine.Result{ID: id, Suite: "test", Environment: envID, Status: "passed", Timings: engine.Timings{SetupSeconds: 5, AssertionSeconds: 7, CaseCleanupSeconds: 4, TeardownSeconds: 2, ReservationSeconds: 500, SchedulerQueueSeconds: 600}})
+			owned = append(owned, &platform.EnvironmentRecord{ID: envID, Cleaned: true})
 		}
 		dir := runFixture(t, t.TempDir(), report.RunID, report, schemaFixture, map[string]string{})
 		write := func(name string, value any) {
@@ -51,17 +53,21 @@ func expectedFixture(t *testing.T) (engine.RunPlan, []engine.Case, []string) {
 				t.Fatal(err)
 			}
 		}
-		write("manifest.json", platform.Manifest{Version: 1, RunID: report.RunID, Image: expected.Image, Environments: []*platform.EnvironmentRecord{{ID: envID, Cleaned: true}}})
+		write("manifest.json", platform.Manifest{Version: 1, RunID: report.RunID, Image: expected.Image, Environments: owned})
 		write("recovery.json", map[string]any{"seconds": 1})
-		if shard.Capability == "huawei" {
-			if err = os.Mkdir(filepath.Join(dir, "cloud"), 0700); err != nil {
+		for _, result := range report.Results {
+			if result.ID == ordinary.ID {
+				continue
+			}
+			if err = os.MkdirAll(filepath.Join(dir, "cloud"), 0700); err != nil {
 				t.Fatal(err)
 			}
+			envID := result.Environment
 			scope := map[string]any{"version": 1, "provider": "huawei", "environment": envID, "run_id": report.RunID, "domain": "test.invalid", "scope": "run-" + envID, "helper": "mca-dns-helper-" + envID, "armed": true, "cleaned": true}
 			write("cloud/"+envID+".json", scope)
 			initial, _ := json.Marshal(map[string]any{"kind": "external_dns_scope", "data": scope})
 			cleanup, _ := json.Marshal(map[string]any{"kind": "external_dns_cleanup", "data": map[string]any{"manifest": scope}})
-			if err = os.WriteFile(filepath.Join(dir, "cases", "case.cloud.jsonl"), append(append(initial, byte(10)), append(cleanup, byte(10))...), 0600); err != nil {
+			if err = os.WriteFile(filepath.Join(dir, "cases", result.ID+".jsonl"), append(append(initial, byte(10)), append(cleanup, byte(10))...), 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -78,7 +84,10 @@ func TestExpectedAuditRequiresExactCloudCleanupAndLifecycleEvidence(t *testing.T
 	if costs.Cases["case.cloud"] != 18 || costs.ShardOverheadSeconds != 3 {
 		t.Fatalf("queue counted or fixture/cloud cleanup omitted: %+v", costs)
 	}
-	if _, err = AuditExpected(dirs[:1], expected, catalog, "qualification"); err == nil {
+	if len(expected.Shards) != 1 || len(costs.Cases) != 3 {
+		t.Fatal("mixed shard did not qualify all ordinary and independently owned cloud cases")
+	}
+	if _, err = AuditExpected(dirs[:len(dirs)-1], expected, catalog, "qualification"); err == nil {
 		t.Fatal("missing cloud shard qualified")
 	}
 	for _, mutation := range []string{"missing", "unclean", "wrong-environment", "wrong-domain", "wrong-scope", "extra"} {
@@ -119,7 +128,7 @@ func TestExpectedAuditRequiresExactCloudCleanupAndLifecycleEvidence(t *testing.T
 	}
 }
 func TestExpectedAuditRejectsChangedPlanAndFailedRecovery(t *testing.T) {
-	for _, mutation := range []string{"digest", "duplicate-case", "cleanup", "recovery"} {
+	for _, mutation := range []string{"digest", "duplicate-case", "reused-cloud-environment", "missing-cloud-case", "cleanup", "recovery"} {
 		t.Run(mutation, func(t *testing.T) {
 			expected, catalog, dirs := expectedFixture(t)
 			path := filepath.Join(dirs[0], "results.json")
@@ -138,8 +147,19 @@ func TestExpectedAuditRejectsChangedPlanAndFailedRecovery(t *testing.T) {
 				_ = json.Unmarshal(data, &report)
 				if mutation == "digest" {
 					report.Plan.Digest = "other"
-				} else {
+				} else if mutation == "duplicate-case" {
 					report.Results = append(report.Results, report.Results[0])
+				} else {
+					for i, result := range report.Results {
+						if result.ID == "case.cloud-second" {
+							if mutation == "reused-cloud-environment" {
+								report.Results[i].Environment = "012345abcdef"
+							} else {
+								report.Results = append(report.Results[:i], report.Results[i+1:]...)
+							}
+							break
+						}
+					}
 				}
 				data, _ = json.Marshal(report)
 				_ = os.WriteFile(path, data, 0600)

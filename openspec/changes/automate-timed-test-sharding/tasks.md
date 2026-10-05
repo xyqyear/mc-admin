@@ -28,3 +28,10 @@
 - [x] 5.2 Independently review cross-family history, coverage, DNS authorization and oversized-budget behavior; fix findings.
 - [x] 5.3 Commit and push the implementation; run complete non-publishing qualification for the latest SHA and wait through one persistent command.
 - [x] 5.4 Confirm all required gates, exact coverage and cleanup succeed and report the exact commit and Actions evidence.
+
+## 6. Unified API matrix refinement
+
+- [x] 6.1 Allocate all selected API atomic groups globally into one immutable matrix, allowing ordinary and Huawei groups in the same shard; retain at most 16 shards, eight concurrent jobs, two workers and one Minecraft slot per runner.
+- [x] 6.2 Bind provider dependency metadata to protected credentials and unconditional recovery in the unified workflow; preserve independently required qualification, credential-free PR regression, explicit DNSPod/Mojang selection and exact cloud cleanup; update workflow contracts.
+- [x] 6.3 Run directly affected planner/matrix/credential/recovery tests and required static checks, then independently review the unified execution and unchanged version-2 historical costs, reusable-group floors and compatibility fingerprint.
+- [ ] 6.4 Run complete non-publishing qualification for the latest pushed SHA, wait silently through one persistent command, and confirm every required gate, exact coverage and owned cleanup succeeds.
