@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -9,6 +8,11 @@ spec = importlib.util.spec_from_file_location("browser_shards", Path(__file__).r
 assert spec is not None and spec.loader is not None
 browser = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(browser)
+
+release_spec = importlib.util.spec_from_file_location("candidate", Path(__file__).resolve().parents[3] / "scripts/release/candidate.py")
+assert release_spec is not None and release_spec.loader is not None
+release_candidate = importlib.util.module_from_spec(release_spec)
+release_spec.loader.exec_module(release_candidate)
 
 
 def case(title, groups=()):
@@ -127,10 +131,11 @@ def reports(tmp_path, value):
         report = {"schema_version": 1, "shard": shard["index"], "plan_sha256": value["plan_sha256"], "history_sha256": value["history_sha256"], "source_sha": value["source_sha"], "status": "passed", "selected": shard["cases"], "results": [{"id": case_id, "status": "passed", "retry": 0, "seconds": 11} for case_id in shard["cases"]]}
         fixture = {"success": True, "recipe": "world", "image_id": value["image_id"], "run_id": f"run-{shard['index']}", "timings": {"setup_seconds": 12, "command_seconds": len(shard["cases"]) * 11 + 2, "cleanup_seconds": 3}}
         manifest = {"image": value["image_id"], "run_id": fixture["run_id"], "environments": [{"id": "owned", "cleaned": True}]}
-        evidence = {"source": candidate()["source"], "config_digest": value["image_id"], "oci_manifest_digest": candidate()["oci_manifest_digest"], "run_id": fixture["run_id"], "owned_cleanup_complete": True, "kind": "browser"}
         for name, payload in (("shard-report.json", report), ("fixture-result.json", fixture), ("manifest.json", manifest)):
             (directory / name).write_text(json.dumps(payload))
-        evidence["report_sha256"] = hashlib.sha256((directory / "fixture-result.json").read_bytes()).hexdigest()
+        playwright_report = directory / "playwright-results.json"
+        playwright_report.write_text(json.dumps({"stats": {"expected": len(shard["cases"]), "unexpected": 0, "flaky": 0, "skipped": 0}}))
+        evidence = release_candidate.runtime_evidence(candidate(), directory, "browser", playwright_report)
         (directory / "candidate-evidence.json").write_text(json.dumps(evidence))
         directories.append(directory)
     return directories
@@ -145,7 +150,7 @@ def test_browser_audit_extracts_only_complete_successful_case_and_fixture_costs(
     assert costs == {"schema_version": 1, "cases": {first["id"]: 11, second["id"]: 11}, "setup_seconds": 12, "cleanup_seconds": 3, "command_overhead_seconds": 2}
 
 
-@pytest.mark.parametrize("fault", ["missing_case", "duplicate_case", "unexpected_case", "failed", "skipped", "retry", "history", "plan", "candidate", "cleanup", "missing_shard"])
+@pytest.mark.parametrize("fault", ["missing_case", "duplicate_case", "unexpected_case", "failed", "skipped", "retry", "history", "plan", "candidate", "cleanup", "missing_shard", "fixture_report", "unprefixed_hash"])
 def test_browser_audit_rejects_partial_or_inconsistent_success(tmp_path, fault):
     first, second = case("first"), case("second")
     document = inventory(first, second)
@@ -173,6 +178,14 @@ def test_browser_audit_rejects_partial_or_inconsistent_success(tmp_path, fault):
         manifest = json.loads((directory / "manifest.json").read_text())
         manifest["environments"][0]["cleaned"] = False
         (directory / "manifest.json").write_text(json.dumps(manifest))
+    elif fault == "fixture_report":
+        fixture = json.loads((directory / "fixture-result.json").read_text())
+        fixture["timings"]["setup_seconds"] += 1
+        (directory / "fixture-result.json").write_text(json.dumps(fixture))
+    elif fault == "unprefixed_hash":
+        evidence = json.loads((directory / "candidate-evidence.json").read_text())
+        evidence["report_sha256"] = evidence["report_sha256"].removeprefix("sha256:")
+        (directory / "candidate-evidence.json").write_text(json.dumps(evidence))
     else:
         directories = []
     (directory / "shard-report.json").write_text(json.dumps(report))

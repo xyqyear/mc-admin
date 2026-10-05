@@ -186,7 +186,7 @@ def audit(value: dict[str, Any], document: dict[str, Any], directories: list[Pat
         run_ids.add(fixture["run_id"])
         if manifest.get("image") != value["image_id"] or not manifest.get("environments") or any(row.get("cleaned") is not True for row in manifest["environments"]):
             raise ValueError("Browser owned cleanup is incomplete")
-        if evidence.get("source") != candidate["source"] or evidence.get("config_digest") != value["image_id"] or evidence.get("oci_manifest_digest") != candidate["oci_manifest_digest"] or evidence.get("report_sha256") != hashlib.sha256((directory / "fixture-result.json").read_bytes()).hexdigest() or evidence.get("owned_cleanup_complete") is not True or evidence.get("kind") != "browser":
+        if evidence.get("source") != candidate["source"] or evidence.get("config_digest") != value["image_id"] or evidence.get("oci_manifest_digest") != candidate["oci_manifest_digest"] or evidence.get("report_sha256") != "sha256:" + hashlib.sha256((directory / "fixture-result.json").read_bytes()).hexdigest() or evidence.get("owned_cleanup_complete") is not True or evidence.get("kind") != "browser":
             raise ValueError("Browser candidate evidence is inconsistent")
         phases = fixture["timings"]
         setup.append(seconds(phases["setup_seconds"]))
