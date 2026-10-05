@@ -51,7 +51,7 @@ Frontend dev server proxies `/api` to `http://localhost:5678` (see `vite.config.
 - 本地只运行改动直接相关、以及受影响调用路径的定向测试，通过明确的测试文件、节点、包或用例筛选限定范围。禁止在本地运行完整项目或任一组件的全量测试，也禁止通过逐目录、分片或多个 subagent 累计执行来变相跑全量。全量测试结果以 GitHub Actions 为准。必要的 lint、类型检查和构建检查仍按各组件要求执行；纯文档变更不运行本地测试。
 - 每次项目变更优先在独立分支开发。完成本地定向验证后，必须 commit 并 push 到 GitHub，再对最新提交运行完整 CI；本地通过或部分远端检查通过不能视为完成。
 - 完整验证使用 `Qualify and Publish Application`（`.github/workflows/docker-image.yml`）手动触发，指定开发分支并设置 `publish=false`。必须核对同一提交 SHA 的 candidate/Go、static/frontend、全部 backend 分片及覆盖审计、全部 API E2E 分片（含 Huawei DNS）及覆盖与清理审计、全部 browser 分片及覆盖审计和最终 qualification 均成功。普通 push 自动检查不能替代缺失的完整验证。
-- 触发完整 CI 后，确认对应最新提交 SHA 的 run ID，由主 agent 启动一次持久等待命令 `gh run watch <run-id> --exit-status --interval 60 --compact`，等待该 run 结束。等待期间主 agent 和所有 subagent 均不得通过 `gh run view`、`gh run list`、`gh api` 或其他 GitHub 接口重复轮询同一 run 或 job；进度更新只使用已有等待命令的输出。命令中断或连接失败不代表 CI 已结束或通过。
+- 触发完整 CI 后，确认对应最新提交 SHA 的 run ID，由主 agent 启动一次持久等待命令 `gh run watch <run-id> --exit-status --interval 60 --compact > <log-path> 2>&1`，将输出保存到日志并静默等待命令退出。等待期间不读取日志或进度、不发送进度更新、不开展其他工作；主 agent 和所有 subagent 均不得通过 `gh run view`、`gh run list`、`gh api` 或其他 GitHub 接口重复轮询同一 run 或 job。执行工具分段返回时，只继续等待同一命令；命令退出后才统一读取结果和日志。用户新消息可以中断等待，命令中断或连接失败不代表 CI 已结束或通过。
 - 等待结束后统一核对一次提交 SHA、最终结论、全部必需检查及覆盖审计；失败时再读取失败步骤日志，查明原因、定向验证修复、提交、推送并重新完整验证最新提交。不得用旧提交的绿灯、仅重跑局部用例、跳过失败检查或降低业务断言冒充通过。报告需附提交 SHA 和 GitHub Actions 链接；远端完整验证尚未通过时，明确说明尚未通过，不宣称交付完成。
 - 每次新增或修改功能，都要按业务行为新增、调整或删除对应测试。测试从用户场景、输入输出、数据副作用、权限、失败与恢复边界验证需求；不得机械复刻实现、只验证内部调用顺序，或照抄生产算法计算预期值。删除旧测试必须有行为已移除、契约已替换或有效覆盖已合并的依据，不能只为让 CI 变绿。
 - 功能由同步/流式接口迁移到后台任务时，所有测试调用方和 fixture 都要等待真实任务终态，再验证业务结果；同时覆盖受理不等于完成、重复提交、断线观察、取消/关闭及资源清理。保留独立的业务不变量断言。

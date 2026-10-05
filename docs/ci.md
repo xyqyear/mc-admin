@@ -53,10 +53,10 @@ Use the existing `Qualify and Publish Application` workflow's manual dispatch on
 Bind the dispatched run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
 
 ```bash
-gh run watch <run-id> --exit-status --interval 60 --compact
+gh run watch <run-id> --exit-status --interval 60 --compact > <log-path> 2>&1
 ```
 
-Use only this existing command's output for progress updates. Neither the primary agent nor any subagent may repeatedly poll the same run or job through `gh run view`, `gh run list`, `gh api` or other GitHub interfaces while waiting. The CLI refreshes internally every 60 seconds; a command interruption or connection failure is not a workflow conclusion. After the command finishes, inspect the final result once:
+Wait silently for this command to exit. Do not read its log or progress, send progress updates or continue other work during the wait. Neither the primary agent nor any subagent may repeatedly poll the same run or job through `gh run view`, `gh run list`, `gh api` or other GitHub interfaces. If the execution tool yields before completion, continue waiting for the same process. The CLI refreshes internally every 60 seconds; a user message may interrupt the wait, and a command interruption or connection failure is not a workflow conclusion. After the command finishes, read its log and inspect the final result once:
 
 ```bash
 gh run view <run-id> --json headSha,status,conclusion,jobs,url
