@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"mc-admin/e2e/internal/engine"
@@ -28,13 +27,6 @@ type cloudManifest struct {
 	Armed       bool      `json:"armed"`
 	Cleaned     bool      `json:"cleaned"`
 	Helper      string    `json:"helper"`
-}
-
-func (m cloudManifest) validate(config providerConfig) error {
-	if m.Version != 1 || (m.Provider != "huawei" && m.Provider != "dnspod") || !regexp.MustCompile(`^[a-f0-9]{12}$`).MatchString(m.Environment) || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{7,47}$`).MatchString(m.RunID) || m.Domain != config.Domain || m.Scope != config.scope(m.Environment) || m.Helper != "mca-dns-helper-"+m.Environment {
-		return fmt.Errorf("cloud ownership manifest does not match the explicitly authorized provider/domain/scope")
-	}
-	return nil
 }
 
 func cloudCommand(ctx context.Context, docker platform.Docker, image, directory, runID, envID, operation string) (output string, err error) {
@@ -84,9 +76,6 @@ func prepareCloud(ctx context.Context, t *engine.Scope, provider string) (provid
 	if err = os.WriteFile(filepath.Join(t.Env.Dir, "dns-cleanup.py"), []byte(cleanupScript), 0600); err != nil {
 		return config, scope, err
 	}
-	if _, err = cloudCommand(ctx, journal.Docker, options.Image, t.Env.Dir, manifest.RunID, manifest.Environment, "check"); err != nil {
-		return config, scope, fmt.Errorf("external DNS read access and empty-scope preflight: %w", err)
-	}
 	manifest.Armed = true
 	if err = evidence.WriteJSON(manifestPath, manifest); err != nil {
 		return config, scope, err
@@ -135,12 +124,10 @@ func RecoverCloud(ctx context.Context, docker platform.Docker, image, externalCo
 	if err != nil {
 		return err
 	}
-	if err = manifest.validate(config); err != nil {
-		return err
-	}
 	if !manifest.Armed || manifest.Cleaned {
 		return nil
 	}
+	config.Domain = manifest.Domain
 	containers, err := docker.Run(ctx, "ps", "-q", "--filter", "label="+platform.RunLabel+"="+manifest.RunID, "--filter", "label="+platform.EnvLabel+"="+manifest.Environment)
 	if err != nil {
 		return err

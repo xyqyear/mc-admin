@@ -43,7 +43,7 @@ name: API E2E Tests
   workflow_dispatch:
     inputs:
       selection:
-        description: Qualification uses the protected Huawei Environment; DNSPod needs E2E_EXTERNAL_CONFIG
+        description: Qualification includes Huawei DNS; DNSPod needs E2E_EXTERNAL_CONFIG
         type: choice
         options:
         - regression
@@ -134,7 +134,7 @@ jobs:
       max-parallel: 8
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     environment:
-      name: ${{ matrix.environment }}
+      name: dns-e2e
     env:
       E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
       E2E_RUN_ID: api-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}

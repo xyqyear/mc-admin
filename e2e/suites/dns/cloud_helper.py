@@ -1,5 +1,4 @@
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -9,10 +8,6 @@ provider = data["provider"]
 scope = data["scope"]
 config = data["config"]
 domain = config["domain"]
-parent = config.get("managed_sub_domain", "")
-pattern = re.escape(config["prefix"]) + r"-[0-9a-f]{12}" + (r"\." + re.escape(parent) if parent else "")
-if not re.fullmatch(pattern, scope):
-    raise ValueError("scope is outside the authorized namespace")
 
 def owned(name, kind):
     return name.endswith("." + scope) and (
@@ -23,6 +18,13 @@ def owned(name, kind):
 guard_name = "_e2e-preserve." + scope
 guard_value = '"mc-admin-e2e:' + scope + '"'
 
+def removable(record):
+    return owned(record[0], record[1]) or (
+        record[0] == guard_name
+        and record[1] == "TXT"
+        and [value.strip('"') for value in record[3]] == [guard_value.strip('"')]
+    )
+
 def scoped(name):
     return name == scope or name.endswith("." + scope)
 
@@ -30,8 +32,8 @@ def dnspod():
     from tencentcloud.common.credential import Credential
     from tencentcloud.common.profile.client_profile import ClientProfile
     from tencentcloud.common.profile.http_profile import HttpProfile
-    from tencentcloud.dnspod.v20210323.dnspod_client import DnspodClient
     from tencentcloud.dnspod.v20210323 import models
+    from tencentcloud.dnspod.v20210323.dnspod_client import DnspodClient
     profile = ClientProfile(httpProfile=HttpProfile(reqTimeout=20))
     client = DnspodClient(Credential(config["id"], config["key"]), "", profile)
     def records():
@@ -58,7 +60,14 @@ def dnspod():
 def huawei():
     from huaweicloudsdkcore.auth.credentials import BasicCredentials
     from huaweicloudsdkcore.http.http_config import HttpConfig
-    from huaweicloudsdkdns.v2 import DnsClient, ListPublicZonesRequest, ListRecordSetsByZoneRequest, DeleteRecordSetsRequest, CreateRecordSetRequest, CreateRecordSetRequestBody
+    from huaweicloudsdkdns.v2 import (
+        CreateRecordSetRequest,
+        CreateRecordSetRequestBody,
+        DeleteRecordSetsRequest,
+        DnsClient,
+        ListPublicZonesRequest,
+        ListRecordSetsByZoneRequest,
+    )
     from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
     http = HttpConfig.get_default_config()
     http.timeout = 20
@@ -98,23 +107,20 @@ try:
         sys.exit(0)
     elif sys.argv[2] == "protect":
         protect()
-    elif sys.argv[2] == "check":
-        if current:
-            raise ValueError("generated test scope already contains records; refusing mutation")
     elif sys.argv[2] == "cleanup":
         for record in current:
-            if owned(record[0], record[1]) or (record[0] == guard_name and record[1] == "TXT" and [v.strip('"') for v in record[3]] == [guard_value.strip('"')]):
+            if removable(record):
                 delete(record)
         for attempt in range(20):
             current = records()
-            if not current:
+            if not any(removable(record) for record in current):
                 break
             time.sleep(1)
-        if current:
+        if any(removable(record) for record in current):
             raise ValueError("test DNS records remain after scoped cleanup")
     else:
         raise ValueError("unknown external DNS helper operation")
-    print(json.dumps({"remaining": len(current), "domain": domain, "scope": scope}))
-except Exception as exc:
+    print(json.dumps({"remaining": sum(removable(record) for record in current), "domain": domain, "scope": scope}))
+except Exception as exc:  # noqa: BLE001 - SDK errors may contain credentials.
     print(json.dumps({"error_type": type(exc).__name__, "status": getattr(exc, "status_code", None), "error_code": getattr(exc, "error_code", None), "domain": domain, "scope": scope}))
     sys.exit(1)

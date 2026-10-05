@@ -32,24 +32,28 @@ Selected Huawei qualification SHALL require successful deployed application task
 - **WHEN** either provider read fails
 - **THEN** qualification cannot report success from an empty decoded difference and the failing branch preserves existing connectivity
 
-### Requirement: Bounded cloud ownership and recovery
-Cloud scenarios SHALL authorize a fixed parent namespace and allocate a unique descendant per environment. They SHALL preserve unrelated records, register recovery before writes, retain non-secret ownership evidence outside disposable runtime directories and verify cleanup independently of application health.
+### Requirement: Recorded cloud resources and recovery
+Cloud scenarios SHALL derive relative record names from the common environment ID and an optional configured parent. They SHALL preserve unrelated records, register recovery before writes, retain non-secret domain and scope evidence outside disposable runtime directories and verify cleanup independently of application health. Recovery SHALL use the recorded domain and scope with currently supplied provider credentials.
 
-#### Scenario: Scope collision
-- **WHEN** a proposed environment scope already contains records
-- **THEN** setup refuses to modify or delete those records
+#### Scenario: Concurrent environments
+- **WHEN** multiple environments reconcile against the same configured zone
+- **THEN** their record names use their respective common environment IDs and reconciliation targets remain separate
 
 #### Scenario: Failed or interrupted run
 - **WHEN** normal cleanup fails or the runner terminates unexpectedly
 - **THEN** an explicit recovery operation can reclaim only recorded owned scopes using separately supplied credentials, and the original failure remains visible
 
-### Requirement: Trusted candidate qualification
-Cloud credentials SHALL be available only to trusted cloud jobs. Ordinary regression SHALL remain runnable without credentials. Release qualification SHALL require successful Huawei checks against the same candidate revision and image and SHALL reject missing, skipped or failed cloud evidence.
+#### Scenario: Configuration changes before recovery
+- **WHEN** provider credentials or the configured default domain change after records are created
+- **THEN** recovery uses the manifest's original domain and scope with the currently supplied provider credentials and verifies removal of managed records while preserving unrelated records
+
+### Requirement: Candidate qualification
+Provider steps SHALL receive the configuration required by their selected scenarios. The `dns-e2e` configuration store SHALL have no environment protection or branch authorization gate. Ordinary regression SHALL remain runnable without credentials. Release qualification SHALL require successful Huawei checks against the same candidate revision and image and SHALL reject missing, skipped or failed cloud evidence.
 
 #### Scenario: Missing cloud credentials
-- **WHEN** a trusted Huawei job is selected without its configuration
+- **WHEN** a Huawei job is selected without its configuration
 - **THEN** it fails before cloud writes rather than skipping qualification
 
-#### Scenario: Untrusted pull request
-- **WHEN** an untrusted contribution runs ordinary regression
-- **THEN** it receives no cloud credential and does not execute cloud mutations
+#### Scenario: Ordinary pull request regression
+- **WHEN** a pull request runs the ordinary regression profile
+- **THEN** its test steps are not passed cloud credentials and do not execute cloud mutations

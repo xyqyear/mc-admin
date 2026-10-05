@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "e2e/suites/dns/cloud_helper.py"
-SCOPE = "run-012345abcdef.e2e-test-mc"
+SCOPE = "012345abcdef.e2e-test-mc"
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def cloud_helper(tmp_path, monkeypatch):
     builder.build.return_value = client
     monkeypatch.setattr(sdk.DnsClient, "new_builder", lambda: builder)
     monkeypatch.setattr("time.sleep", lambda _: None)
-    config = {"provider": "huawei", "scope": SCOPE, "config": {"domain": "example.com", "prefix": "run", "managed_sub_domain": "e2e-test-mc", "ak": "test-ak", "sk": "test-sk", "region": "cn-north-4", "ttl": 600}}
+    config = {"provider": "huawei", "scope": SCOPE, "config": {"domain": "example.com", "ak": "test-ak", "sk": "test-sk", "region": "cn-north-4", "ttl": 600}}
     path = tmp_path / "config.json"
 
     def invoke(operation, scope=SCOPE):
@@ -44,30 +44,32 @@ def page(*records):
     return SimpleNamespace(recordsets=list(records))
 
 
-def test_collision_refuses_unmanaged_records_without_writes(cloud_helper):
+def test_preservation_fixture_can_be_created_beside_unmanaged_records(cloud_helper):
     client, invoke = cloud_helper
     client.list_record_sets_by_zone.return_value = page(record("manual." + SCOPE, "TXT"))
-    with pytest.raises(SystemExit) as error:
-        invoke("check")
-    assert error.value.code == 1
-    client.create_record_set.assert_not_called()
+    invoke("protect")
+    created = client.create_record_set.call_args.args[0].body
+    assert created.name == "_e2e-preserve." + SCOPE + ".example.com."
+    assert created.records == ['"mc-admin-e2e:' + SCOPE + '"']
     client.delete_record_sets.assert_not_called()
 
 
-@pytest.mark.parametrize("scope", ["e2e-test-mc", SCOPE + ".attacker", "run-012345abcdef.e2e-test-mc-other"])
-def test_invalid_scope_cannot_reach_provider(cloud_helper, scope):
+@pytest.mark.parametrize("scope", ["custom-parent", "another.environment", "manual.custom_parent"])
+def test_cleanup_uses_recorded_names_without_namespace_authorization(cloud_helper, scope):
     client, invoke = cloud_helper
-    with pytest.raises(ValueError, match="namespace"):
-        invoke("cleanup", scope)
-    client.list_public_zones.assert_not_called()
+    owned = record("*.primary." + scope)
+    client.list_record_sets_by_zone.side_effect = [page(owned), page()]
+    invoke("cleanup", scope)
+    assert client.delete_record_sets.call_args.args[0].recordset_id == owned.id
 
 
 def test_cleanup_deletes_only_owned_records_and_is_repeatable(cloud_helper):
     client, invoke = cloud_helper
     owned = record("*.primary." + SCOPE)
     guard = record("_e2e-preserve." + SCOPE, "TXT", '"mc-admin-e2e:' + SCOPE + '"')
+    unrelated = record("manual." + SCOPE, "TXT", '"independent"')
     neighbor = record("*.primary." + SCOPE + "-other")
-    client.list_record_sets_by_zone.side_effect = [page(owned, guard, neighbor), page(neighbor), page(neighbor), page(neighbor)]
+    client.list_record_sets_by_zone.side_effect = [page(owned, guard, unrelated, neighbor), page(unrelated, neighbor), page(unrelated, neighbor), page(unrelated, neighbor)]
     invoke("cleanup")
     invoke("cleanup")
     assert {call.args[0].recordset_id for call in client.delete_record_sets.call_args_list} == {owned.id, guard.id}
@@ -101,11 +103,32 @@ def test_provider_failure_retains_status_without_exposing_message(cloud_helper, 
     assert "private-provider-secret" not in str(output)
 
 
-def test_cleanup_preserves_and_reports_unowned_residual_records(cloud_helper):
+def test_cleanup_preserves_unowned_residual_records_without_failing(cloud_helper, capsys):
     client, invoke = cloud_helper
     client.list_record_sets_by_zone.return_value = page(record("manual." + SCOPE, "TXT"))
+    invoke("cleanup")
+    output = json.loads(capsys.readouterr().out)
+    assert output["remaining"] == 0
+    assert output["scope"] == SCOPE
+    client.delete_record_sets.assert_not_called()
+
+
+def test_cleanup_fails_when_owned_records_remain(cloud_helper):
+    client, invoke = cloud_helper
+    client.list_record_sets_by_zone.return_value = page(record("*.primary." + SCOPE))
     with pytest.raises(SystemExit) as error:
         invoke("cleanup")
+    assert error.value.code == 1
+    client.delete_record_sets.assert_called_once()
+
+
+@pytest.mark.parametrize("guard_value", [None, '"changed"'])
+def test_inspection_requires_unmanaged_preservation_fixture(cloud_helper, guard_value):
+    client, invoke = cloud_helper
+    guard = () if guard_value is None else (record("_e2e-preserve." + SCOPE, "TXT", guard_value),)
+    client.list_record_sets_by_zone.return_value = page(record("*.primary." + SCOPE), *guard)
+    with pytest.raises(SystemExit) as error:
+        invoke("inspect")
     assert error.value.code == 1
     client.delete_record_sets.assert_not_called()
 

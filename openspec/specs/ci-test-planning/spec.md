@@ -39,16 +39,16 @@ Every execution SHALL use one immutable plan and historical snapshot for its fam
 - **WHEN** shard evidence does not match the family's shared plan identity
 - **THEN** the aggregate audit rejects it
 
-### Requirement: Integrated protected DNS qualification
-API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggregate qualification. Complete qualification SHALL independently require every current ordinary regression and Huawei scenario and verified owned cloud cleanup. Provider dependency metadata SHALL bind required private configuration, protected authorization and recovery to trusted runners. Ordinary untrusted validation SHALL NOT receive cloud credentials or select protected cloud scenarios.
+### Requirement: Integrated DNS qualification
+API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggregate qualification. Complete qualification SHALL independently require every current ordinary regression and Huawei scenario and verified owned cloud cleanup. Provider dependency metadata SHALL select required private configuration and recovery steps. Every API shard SHALL use `dns-e2e` as an unrestricted configuration store with no environment protection or branch authorization gate, and provider steps SHALL receive credentials only when required. Ordinary regression SHALL NOT receive cloud credentials or select cloud scenarios.
 
 #### Scenario: Complete qualification omits a required Huawei case
 - **WHEN** the complete qualification context requires a current Huawei scenario but its assigned execution is absent, skipped or failed
 - **THEN** the API aggregate gate fails
 
 #### Scenario: A pull request executes ordinary regression
-- **WHEN** an untrusted pull request runs API regression
-- **THEN** its plan excludes protected cloud scenarios and its jobs receive no Huawei credentials
+- **WHEN** a pull request runs the ordinary API regression profile
+- **THEN** its plan excludes cloud scenarios and its test steps are not passed Huawei credentials
 
 #### Scenario: Docker cleanup succeeds but cloud records remain
 - **WHEN** owned local containers are removed while a selected Huawei scope lacks verified cloud cleanup
@@ -61,9 +61,9 @@ The API planner SHALL globally allocate every selected atomic group for a profil
 - **WHEN** a qualification plan selects ordinary and Huawei groups
 - **THEN** the planner may place them together using the same cost and resource model while retaining each atomic group and exact-once coverage
 
-#### Scenario: A trusted shard has a Huawei dependency
+#### Scenario: A shard has a Huawei dependency
 - **WHEN** an assigned shard contains ordinary groups and a Huawei group
-- **THEN** its trusted runner receives the required protected provider configuration and executes all assigned groups under the same worker and Minecraft limits, with verified owned cloud recovery
+- **THEN** its provider steps receive the required configuration and it executes all assigned groups under the same worker and Minecraft limits, with verified owned cloud recovery
 
 #### Scenario: Placement changes but timing semantics stay compatible
 - **WHEN** previously audited api-lifecycle-v2 individual/group costs and the fixture/resource compatibility fingerprint match the current profile

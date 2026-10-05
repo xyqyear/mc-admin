@@ -115,16 +115,16 @@
 | DNS 禁用与配置校验 | `dns.disabled-and-validation` | 覆盖全部五个 DNS 路由，验证禁用时的状态与更新行为、匿名访问拒绝、非法供应商和地址配置；不访问云服务。 |
 | DNS 受控网络边界与降级 | `dns.owned-edge-reconciliation` | 完整部署通过原始 DNSPod SDK 请求独占 HTTPS 协议服务，并使用真实固定镜像 MC Router；确认无变化零写入、单条路由 upsert、两侧 unknown 独立保留与部分更新、单目标失败后只补缺失记录、空期望和禁用保留实际状态。DNS 降级时服务器同步主操作成功，完整自检保留 warning/evidence 且其它检查继续，HTTP/自检结果/app.log/容器日志不泄漏合成上游错误。CA、hosts 与端口仅属于测试容器，不访问云账号。此用例验证网络协议边界，不替代真实供应商资格验证。 |
 | DNSPod，需要显式选择 | `dns.dnspod-reconciliation` | 使用真实供应商及测试独占的 mc-router；独立 SDK 核对每条记录的唯一性、值和 TTL；验证启用状态、无修改的差异预览、A/AAAA/SRV 创建、幂等性、配置重载、路由偏差、地址与端口变化、CNAME 转换、部分删除及启用状态下的 DNS 自检；热禁用后生命周期触发不修改云端记录。 |
-| 华为 DNS，可信云验证 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证记录增改删、CNAME 替换、独立 SDK 读取和权威 DNS 应答；非托管 TXT 保护记录必须保留；持久清单和独立回收程序验证云端清理。 |
+| 华为 DNS，真实云验证 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证记录增改删、CNAME 替换、独立 SDK 读取和权威 DNS 应答；非托管 TXT 保护记录必须保留；持久清单和独立回收程序验证云端清理。 |
 | Minecraft 实际转发 | `dns.router-minecraft-traffic` | 普通回归不需要云凭据；使用真实 Minecraft 和 mc-router，通过唯一 MOTD 验证目的服务器、未知主机名拒绝、DNS 降级时路由修复。 |
 | 华为 DNS 到 Minecraft | `dns.huawei-minecraft-connectivity` | 通过独立 SDK 和权威 DNS 核对华为云记录，从 SRV/A 应答取得端口与地址，经真实 mc-router 验证 Minecraft MOTD；包含首次递归解析、启动修复、创建/删除/同步自动触发、监听端口变化和停止服务器后保留记录。 |
 | Mojang 真实访问，需要显式选择 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
 
-华为云资格验证使用 GitHub Environment 中配置的独立测试 zone，纳入统一 API 不可变计划、全局 matrix 和发布门禁。当前 `qualification` 要求全部 85 个常规/华为用例；普通与华为 atomic group 可以同片，整片 provider 依赖绑定受保护 `dns-e2e` 授权、所需私有配置和回收步骤，可信混合 runner 可持有该依赖所需凭据。普通 PR 选择 83 个常规用例且不接收云凭据；仓库只保留示例域名和配置指南。DNSPod 仍需显式提供其凭据。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
+华为云资格验证使用 GitHub Environment 中配置的现有公共 zone，纳入统一 API 不可变计划、全局 matrix 和发布门禁。当前 `qualification` 要求全部 85 个常规/华为用例；普通与华为 atomic group 可以同片。所有 API 分片使用无分支限制或保护规则的 `dns-e2e` 配置存储，provider 依赖选择所需私有配置和回收步骤，仅相应步骤接收凭据。普通 PR 选择 83 个常规用例且不接收云凭据；仓库只保留示例域名和配置指南。DNSPod 仍需显式提供其凭据。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
 
 选择供应商前，应阅读[DNS 配置、资源归属与清理约定](../suites/dns/README.md)。缺少所选供应商配置时，用例明确失败并给出可执行的错误提示，不会被标记为跳过或通过。Mojang 真实访问用例要求外部请求实际成功，仅收到“资料未解析”的响应不能通过。外部用例的实际运行结果见[验证记录](verification.md)。
 
-DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服务器；另外的 connectivity 用例启动真实 Minecraft，验证配置域名经过代理到服务器的实际连接。DNS 验收同时要求华为云 API 记录正确、权威解析及首次递归查询成功；测试地址为运行器的回环地址，因此不验证互联网入口、防火墙或 NAT。地址或服务器集合为空时，当前管理器跳过同步；因此部分删除场景保留一个目标地址，最终云端清理由独立供应商 SDK 执行，范围严格限制在生成的命名空间内。SIGKILL 后应先回收本地写入者，再使用 `cloud/` 下无凭据的持久清单和 `cleanup-dns` 回收云记录；本地 Docker 回收不代表云端回收成功。
+DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服务器；另外的 connectivity 用例启动真实 Minecraft，验证配置域名经过代理到服务器的实际连接。DNS 验收同时要求华为云 API 记录正确、权威解析及首次递归查询成功；测试地址为运行器的回环地址，因此不验证互联网入口、防火墙或 NAT。各环境使用通用环境 ID 与可选相对父域组合为记录名称，避免并发同步互相覆盖。地址或服务器集合为空时，当前管理器跳过同步；因此部分删除场景保留一个目标地址，最终云端清理由独立供应商 SDK 按持久清单中的域名和范围执行，删除托管记录及测试创建的 TXT 记录，保留无关记录。SIGKILL 后应先回收本地写入者，再使用 `cloud/` 下无凭据的持久清单、当前凭据和 `cleanup-dns` 回收云记录；本地 Docker 回收不代表云端回收成功。
 
 ## 从真实运行结果生成接口覆盖记录
 

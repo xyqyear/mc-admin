@@ -259,7 +259,7 @@ func mainCode(args []string) int {
 func cleanupDNS(args []string) int {
 	flags := flag.NewFlagSet("cleanup-dns", flag.ContinueOnError)
 	manifest := flags.String("manifest", "", "non-secret cloud ownership manifest")
-	config := flags.String("external-config", "", "private provider configuration authorizing this scope")
+	config := flags.String("external-config", "", "private provider configuration with current credentials")
 	image := flags.String("backend-image", "", "application image providing vendor SDKs")
 	socket := flags.String("docker-socket", "/var/run/docker.sock", "local Docker socket")
 	timeout := flags.Duration("timeout", 3*time.Minute, "cloud recovery deadline")

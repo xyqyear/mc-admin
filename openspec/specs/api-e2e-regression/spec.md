@@ -42,7 +42,7 @@ External-provider scenarios SHALL declare their required credentials and disposa
 
 #### Scenario: Reclaim test DNS records
 - **WHEN** a provider scenario completes or fails after creating records
-- **THEN** it attempts to remove only records in its unique authorized test namespace and preserves any cleanup failure
+- **THEN** it attempts to remove managed records and its test TXT fixture using the domain and scope recorded for its common environment ID, preserves unrelated records and reports any cleanup failure
 
 ### Requirement: Independent reproducible scenarios
 Regression scenarios SHALL retain owned mutable state, bounded execution, failure evidence and cleanup, and SHALL remain runnable individually and without environment reuse.

@@ -109,28 +109,17 @@ func restoredCosts(path, profile, compatibility string) (engine.CostProfile, jso
 }
 
 type apiMatrixEntry struct {
-	Shard       int      `json:"shard"`
-	Count       int      `json:"count"`
-	Providers   []string `json:"providers"`
-	Environment string   `json:"environment"`
+	Shard     int      `json:"shard"`
+	Count     int      `json:"count"`
+	Providers []string `json:"providers"`
 }
 
-func apiMatrix(plan engine.RunPlan) ([]apiMatrixEntry, error) {
+func apiMatrix(plan engine.RunPlan) []apiMatrixEntry {
 	entries := make([]apiMatrixEntry, 0, len(plan.Shards))
 	for _, shard := range plan.Shards {
-		entry := apiMatrixEntry{Shard: shard.Index, Count: len(plan.Shards), Providers: append([]string{}, shard.Providers...)}
-		for _, provider := range shard.Providers {
-			switch provider {
-			case "huawei":
-				entry.Environment = "dns-e2e"
-			case "dnspod":
-			default:
-				return nil, fmt.Errorf("no protected environment mapping for external provider %q", provider)
-			}
-		}
-		entries = append(entries, entry)
+		entries = append(entries, apiMatrixEntry{Shard: shard.Index, Count: len(plan.Shards), Providers: append([]string{}, shard.Providers...)})
 	}
-	return entries, nil
+	return entries
 }
 
 func ciPlan(args []string) int {
@@ -171,7 +160,7 @@ func ciPlan(args []string) int {
 	}
 	var matrix []apiMatrixEntry
 	if err == nil {
-		matrix, err = apiMatrix(plan)
+		matrix = apiMatrix(plan)
 	}
 	if err == nil {
 		err = evidence.WriteJSON(output, plan)

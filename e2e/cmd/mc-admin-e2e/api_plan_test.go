@@ -89,7 +89,7 @@ func TestAPIQualificationPlanRequiresCurrentHuaweiCases(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan.Validate(currentCatalog(), "regression") == nil {
-		t.Fatal("protected cloud plan accepted in ordinary PR context")
+		t.Fatal("cloud qualification plan accepted in ordinary regression context")
 	}
 	shard := plan.Shards[0].Index
 	privateConfig := filepath.Join(t.TempDir(), "external.json")
@@ -136,6 +136,12 @@ func TestAPIPlanEmitsOneCompleteDependencyMatrix(t *testing.T) {
 			if err = json.Unmarshal([]byte(strings.TrimPrefix(lines[0], "matrix=")), &matrix); err != nil {
 				t.Fatal(err)
 			}
+			var fields struct {
+				Include []map[string]json.RawMessage `json:"include"`
+			}
+			if err = json.Unmarshal([]byte(strings.TrimPrefix(lines[0], "matrix=")), &fields); err != nil {
+				t.Fatal(err)
+			}
 			seen := map[string]bool{}
 			if len(matrix.Include) != len(plan.Shards) {
 				t.Fatal("matrix omits immutable plan shards")
@@ -155,12 +161,8 @@ func TestAPIPlanEmitsOneCompleteDependencyMatrix(t *testing.T) {
 				if !slices.Equal(row.Providers, providers) {
 					t.Fatal("provider union differs from the cases actually assigned to this shard")
 				}
-				wantEnvironment := ""
-				if slices.Contains(providers, "huawei") {
-					wantEnvironment = "dns-e2e"
-				}
-				if row.Environment != wantEnvironment {
-					t.Fatal("protected environment differs from the shard's actual dependencies")
+				if _, exists := fields.Include[i]["environment"]; exists {
+					t.Fatal("matrix emits an environment authorization binding")
 				}
 				for _, id := range plan.Shards[i].Cases {
 					if seen[id] {
@@ -176,26 +178,18 @@ func TestAPIPlanEmitsOneCompleteDependencyMatrix(t *testing.T) {
 	}
 }
 
-func TestAPIMatrixMapsProviderDependenciesWithoutPartitioning(t *testing.T) {
-	for _, row := range []struct {
-		providers   []string
-		environment string
-	}{
-		{[]string{}, ""},
-		{[]string{"dnspod"}, ""},
-		{[]string{"huawei"}, "dns-e2e"},
-		{[]string{"dnspod", "huawei"}, "dns-e2e"},
+func TestAPIMatrixPreservesProviderDependenciesWithoutPartitioning(t *testing.T) {
+	for _, providers := range [][]string{
+		{},
+		{"dnspod"},
+		{"huawei"},
+		{"dnspod", "huawei"},
+		{"huawei", "other-provider"},
 	} {
-		matrix, err := apiMatrix(engine.RunPlan{Shards: []engine.Shard{{Index: 1, Providers: row.providers}}})
-		if err != nil {
-			t.Fatal(err)
+		matrix := apiMatrix(engine.RunPlan{Shards: []engine.Shard{{Index: 1, Providers: providers}}})
+		if len(matrix) != 1 || matrix[0].Shard != 1 || matrix[0].Count != 1 || matrix[0].Providers == nil || !slices.Equal(matrix[0].Providers, providers) {
+			t.Fatal("resource dependencies created separate matrices or lost provider metadata")
 		}
-		if len(matrix) != 1 || matrix[0].Shard != 1 || matrix[0].Count != 1 || matrix[0].Environment != row.environment || !slices.Equal(matrix[0].Providers, row.providers) {
-			t.Fatal("resource dependencies created separate matrices or changed authorization mapping")
-		}
-	}
-	if _, err := apiMatrix(engine.RunPlan{Shards: []engine.Shard{{Index: 1, Providers: []string{"huawei", "unmapped"}}}}); err == nil {
-		t.Fatal("unknown provider received an implicit environment mapping")
 	}
 }
 
@@ -210,7 +204,7 @@ func TestAPIMixedShardRequiresPrivateConfigurationBeforeRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
-		t.Fatal("mixed one-shard qualification lost its protected dependency")
+		t.Fatal("mixed one-shard qualification lost its provider dependency")
 	}
 	if code := mainCode([]string{"plan", "--execution-plan", path, "--profile", "qualification", "--revision", revision, "--backend-image", "sha256:image", "--shard", "1/1"}); code != 2 {
 		t.Fatal("mixed external dependency was not rejected before Docker access")

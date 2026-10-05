@@ -65,7 +65,6 @@ func AuditExpected(runDirs []string, expected engine.RunPlan, catalog []engine.C
 			}
 			clean[env.ID] = true
 		}
-		expectedCloud := map[string]cloudScope{}
 		resultIDs := map[string]bool{}
 		assigned := map[string]engine.Entry{}
 		for _, entry := range expected.Catalog {
@@ -101,39 +100,17 @@ func AuditExpected(runDirs []string, expected engine.RunPlan, catalog []engine.C
 			group.Members = append(group.Members, result.ID)
 			costs.Groups[key] = group
 			if entry.Capability == "huawei" || entry.Capability == "dnspod" {
-				if _, duplicate := expectedCloud[result.Environment]; duplicate {
-					return costs, fmt.Errorf("cloud cases must own distinct Fresh environments")
+				var cleanup cloudCleanup
+				if err = readJSON(filepath.Join(dir, "cloud", result.Environment+".json"), &cleanup); err != nil {
+					return costs, err
 				}
-				receipt, receiptErr := cloudReceipt(dir, result.ID)
-				if receiptErr != nil {
-					return costs, receiptErr
+				if cleanup.Version != 1 || cleanup.Provider != entry.Capability || cleanup.RunID != report.RunID || cleanup.Environment != result.Environment || !cleanup.Armed || !cleanup.Cleaned {
+					return costs, fmt.Errorf("external cleanup is incomplete or differs from its case/environment")
 				}
-				if receipt.Provider != entry.Capability || receipt.RunID != report.RunID || receipt.Environment != result.Environment {
-					return costs, fmt.Errorf("initial cloud receipt differs from its assigned case/environment")
-				}
-				expectedCloud[result.Environment] = receipt
 			}
 		}
 		if len(resultIDs) != len(assigned) {
 			return costs, fmt.Errorf("API shard omits assigned cases")
-		}
-		paths, err := filepath.Glob(filepath.Join(dir, "cloud", "*.json"))
-		if err != nil {
-			return costs, err
-		}
-		if len(paths) != len(expectedCloud) {
-			return costs, fmt.Errorf("missing or unexpected cloud ownership manifests")
-		}
-		for _, path := range paths {
-			var scope cloudScope
-			if err = readJSON(path, &scope); err != nil {
-				return costs, err
-			}
-			receipt, exists := expectedCloud[scope.Environment]
-			if !exists || scope.binding() != receipt.binding() || scope.Version != 1 || scope.RunID != report.RunID || !scope.Armed || !scope.Cleaned || scope.Domain == "" || scope.Scope == "" || scope.Helper != "mca-dns-helper-"+scope.Environment || filepath.Base(path) != scope.Environment+".json" {
-				return costs, fmt.Errorf("cloud scope cleanup does not match its expected case/environment")
-			}
-			delete(expectedCloud, scope.Environment)
 		}
 	}
 	if len(costs.Cases) != len(expected.Catalog) {

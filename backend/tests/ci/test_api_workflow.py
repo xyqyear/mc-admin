@@ -20,7 +20,8 @@ def test_api_cases_share_one_matrix_with_dependency_scoped_credentials():
     jobs = workflow["jobs"]
     assert [name for name, job in jobs.items() if "strategy" in job] == ["api"]
     job = jobs["api"]
-    assert job["environment"]["name"] == "${{ matrix.environment }}"
+    assert job["environment"]["name"] == "dns-e2e"
+    assert "matrix.environment" not in json.dumps(job)
     assert job["strategy"]["fail-fast"] is False
     assert job["strategy"]["max-parallel"] == 8
     assert "fromJSON(needs.plan.outputs.matrix)" in job["strategy"]["matrix"]
@@ -65,6 +66,7 @@ def test_external_configuration_uses_private_environment_values(tmp_path, monkey
     config = json.loads(path.read_text())["dns"]["huawei"]
     assert config["domain"] == "e2e.example.com"
     assert config["ak"] == "private-ak" and config["sk"] == "private-sk"
+    assert "prefix" not in config
     assert path.stat().st_mode & 0o777 == 0o600
     for key in values.keys() - {"HUAWEICLOUD_DNS_PARENT"}:
         monkeypatch.delenv(key)
@@ -76,7 +78,7 @@ def test_external_configuration_uses_private_environment_values(tmp_path, monkey
 
 def test_private_configuration_contains_only_required_providers(tmp_path, monkeypatch):
     write_config = runpy.run_path(str(ROOT / "scripts/ci/dns_config.py"))["write_config"]
-    dnspod = {"domain": "e2e.example.com", "prefix": "run", "id": "private-id", "key": "private-key"}
+    dnspod = {"domain": "e2e.example.com", "id": "private-id", "key": "private-key"}
     monkeypatch.setenv("E2E_EXTERNAL_CONFIG", json.dumps({"dns": {"dnspod": dnspod, "huawei": {"ak": "unused"}}}))
     path = tmp_path / "external.json"
     write_config(path, ["dnspod"])

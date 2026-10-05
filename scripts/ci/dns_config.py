@@ -15,11 +15,10 @@ def write_config(path: Path, providers: list[str]) -> None:
         required = ("HUAWEICLOUD_AK", "HUAWEICLOUD_SK", "HUAWEICLOUD_DNS_ZONE")
         missing = [name for name in required if not os.environ.get(name)]
         if missing:
-            raise ValueError("dns-e2e requires configuration: " + ", ".join(missing))
+            raise ValueError("Huawei DNS requires configuration: " + ", ".join(missing))
         dns["huawei"] = {
             "domain": os.environ["HUAWEICLOUD_DNS_ZONE"],
             "managed_sub_domain": os.environ.get("HUAWEICLOUD_DNS_PARENT", ""),
-            "prefix": "run",
             "region": os.environ.get("HUAWEICLOUD_DNS_REGION") or "cn-north-4",
             "ttl": 600,
             "ak": os.environ["HUAWEICLOUD_AK"],
@@ -31,8 +30,8 @@ def write_config(path: Path, providers: list[str]) -> None:
             dnspod = config["dns"]["dnspod"]
         except (ValueError, KeyError, TypeError):
             raise ValueError("DNSPod requires E2E_EXTERNAL_CONFIG containing dns.dnspod") from None
-        if not isinstance(dnspod, dict) or any(not dnspod.get(key) for key in ("domain", "prefix", "id", "key")):
-            raise ValueError("dns.dnspod requires domain, prefix, id and key")
+        if not isinstance(dnspod, dict) or any(not dnspod.get(key) for key in ("domain", "id", "key")):
+            raise ValueError("dns.dnspod requires domain, id and key")
         dns["dnspod"] = dnspod
     with open(path, "w", opener=lambda name, flags: os.open(name, flags, 0o600)) as stream:
         if dns:
