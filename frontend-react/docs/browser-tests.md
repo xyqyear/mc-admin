@@ -2,7 +2,7 @@
 
 `browser/` drives the built application in Chromium through real routes, Monaco, dialogs, HTTP, WebSockets and Leaflet. No business hook or QueryClient is replaced. `playwright.config.ts` uses one worker, no retries, and retains screenshots/traces for failed tests. The Go runner owns deployment, credentials, resource leases and cleanup; tests cannot attach to an arbitrary application.
 
-Install Node 24 dependencies with `pnpm install --frozen-lockfile`, then `pnpm exec playwright install --with-deps chromium`. Run from this directory against the Docker config ID loaded from the release candidate OCI artifact:
+Install Node 24 dependencies with `pnpm install --frozen-lockfile`, then `pnpm exec playwright install --with-deps chromium`. Local checks select only journeys directly related to the change and journeys affected through shared dependencies, with an explicit spec file and title filter. Complete project, component and browser test suites belong to GitHub Actions; do not reconstruct them locally through directory batches or subagents. Run from the frontend directory against the Docker config ID loaded from the release candidate OCI artifact:
 
 ```bash
 BROWSER_OUTPUT_DIR=/tmp/browser-report \
@@ -10,12 +10,15 @@ BROWSER_OUTPUT_DIR=/tmp/browser-report \
   --backend-image sha256:CANDIDATE_CONFIG_ID \
   --minecraft-image itzg/minecraft-server:java25-e2e-local-vanilla-1.21.11-64bb6d763bed \
   --output /tmp/browser-runs --run-id e2e-browser-unique \
-  -- pnpm test:browser
+  -- pnpm exec playwright test browser/journeys.spec.ts \
+  --grep 'lifecycle acceptance stays blocked until task status confirms completion$'
 ```
+
+This example selects the lifecycle acceptance journey; choose the explicit related titles for the actual change. Unfiltered `pnpm test:browser` is the CI entry point for complete browser qualification. The complete GitHub Actions gates must pass for the latest commit SHA under `../AGENTS.md` and the [repository rules](../../AGENTS.md).
 
 The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owned URL, credentials, server path and image/environment/manifest identities. Tests validate its local URL, directory ownership and private permissions. Never publish the runtime directory or private fixture. Publish the runner's redacted report/cleanup evidence and the Playwright results/report/artifacts; traces belong to short-lived test credentials and should still have restricted retention.
 
-Six workflows cover file read/save failure with exact-byte retry and deliberately empty saves; real Compose version conflicts and background completion after navigation; session retry/logout and actual console commands after reconnection; disconnected world-task observation with retained blocking, successful backend completion and a later edit that rollback must overwrite from the safety snapshot; and server-enforced prune expiry with unchanged region hashes. Transport faults occur in Playwright routing or an owned HTTP proxy. Version changes, task states, restore history and expiry remain real backend decisions. Each case sets its required lifecycle state and restores it in fixture teardown; file/configuration edits have explicit cleanup. Failure does not skip later cases. `BROWSER_REVERSE_ORDER=1` reverses the six workflows to verify their independence in a second fresh deployment.
+Browser journeys cover file read/save failure with exact-byte retry and deliberately empty saves; real Compose version conflicts and background completion after navigation; session retry/logout and actual console commands after reconnection; disconnected world-task observation with retained blocking, successful backend completion and a later edit that rollback must overwrite from the safety snapshot; and server-enforced prune expiry with unchanged region hashes. Transport faults occur in Playwright routing or an owned HTTP proxy. Version changes, task states, restore history and expiry remain real backend decisions. Each case sets its required lifecycle state and restores it in fixture teardown; file/configuration edits have explicit cleanup. Failure does not skip later cases. `BROWSER_REVERSE_ORDER=1` reverses journey registration to verify independence in a second fresh deployment; local runs retain their explicit related-case selection.
 
 The restore journey holds the real map-status request until the completed history row is visible, then releases it and verifies that the same open drawer still offers rollback after the map tabs appear. No map or history response is fabricated. A Query/MSW integration test also drives this transition through the real selection panel, history dialog and rollback task.
 
@@ -25,7 +28,7 @@ The restore journey and lifecycle fixture use `browser/cleanup.ts` to attempt ev
 
 ## Comparable observations
 
-`pnpm test:browser --grep @observations` records identical overview/detail/map windows on both the original source build and current candidate. The `00-observations.spec.ts` file runs before modifying workflows, so its first map view starts with the fresh owned environment's cache. It observes overview polling for 15 seconds, server detail for 5 seconds after navigation, first map display, reload of the same view, and a further 15-second idle window. Attachments contain endpoint counts, statuses, failures, durations and response-body byte counts, without headers, bodies or query strings. Actual region coordinates/hashes, viewport, browser, client provenance and image IDs accompany the observations.
+When request/cache observations are directly related to the change, use the owned wrapper with `pnpm exec playwright test browser/00-observations.spec.ts --grep @observations`. It records identical overview/detail/map windows on both the original source build and current candidate. In a complete CI browser run, `00-observations.spec.ts` runs before modifying workflows, so its first map view starts with the fresh owned environment's cache. It observes overview polling for 15 seconds, server detail for 5 seconds after navigation, first map display, reload of the same view, and a further 15-second idle window. Attachments contain endpoint counts, statuses, failures, durations and response-body byte counts, without headers, bodies or query strings. Actual region coordinates/hashes, viewport, browser, client provenance and image IDs accompany the observations.
 
 Run the original source image and candidate in separate owned deployments using the same Chromium, world recipe, visible dimension/view and client cache. Worlds do not have a fixed seed, so geometry and bytes can differ; this is an observed request comparison, not a controlled rendering benchmark. Preserve each run, including failures, rather than retrying business operations inside a case. Compare only successful observation results:
 

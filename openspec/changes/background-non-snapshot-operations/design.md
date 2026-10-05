@@ -74,7 +74,7 @@ Tie the hash task to the upload ID and immutable completed temporary file. Keep 
 
 Retain the journal as the authoritative bounded record; do not introduce a second task table or persistent raw-event log. Existing task result payloads remain runtime projections and feature-owned histories remain the detail source. Expose interruption honestly when detailed transient results cannot be reconstructed. Keep result links safe and bounded.
 
-Update root/backend/frontend `CLAUDE.md` only when implementation actually changes the structure. Then update background tasks, operations, servers, map, archive-upload, self-check, task-center and feature data-flow documentation, plus E2E coverage. The future snapshot requirement record is explicitly prospective and must not be copied into current-state documentation as implemented behavior.
+Update root/backend/frontend `AGENTS.md` only when implementation actually changes the structure. Then update background tasks, operations, servers, map, archive-upload, self-check, task-center and feature data-flow documentation, plus E2E coverage. The future snapshot requirement record is explicitly prospective and must not be copied into current-state documentation as implemented behavior.
 
 ## Risks / Trade-offs
 

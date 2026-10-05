@@ -40,4 +40,4 @@
 - [x] 6.2 Add browser journeys for startup before container creation, visible reason/task access, retained blocking and close guards, task-driven progress, permitted navigation/refresh and terminal state synchronization; use owned fixtures and preserve existing snapshot/rollback journeys.
 - [x] 6.3 Run focused backend task/operation/lifecycle/file/map/self-check/upload tests plus snapshot compatibility coverage; run `uv run pyright`, `uv run ruff check .` and architecture checks.
 - [x] 6.4 Run frontend lint, typecheck, architecture/operation integration tests and bundle build, then the affected deployed API/browser suites; record outcomes and any environment limitations without weakening assertions.
-- [x] 6.5 Update current-state root/backend/frontend CLAUDE.md, affected feature/task documentation and E2E coverage; verify the prospective snapshot roadmap remains separate and every in-scope operation is accounted for.
+- [x] 6.5 Update current-state root/backend/frontend AGENTS.md, affected feature/task documentation and E2E coverage; verify the prospective snapshot roadmap remains separate and every in-scope operation is accounted for.

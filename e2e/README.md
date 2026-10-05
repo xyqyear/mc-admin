@@ -6,6 +6,8 @@ See [architecture and extension contracts](docs/architecture.md), the [backend f
 
 The [defect review](docs/defect-review.md) distinguishes confirmed defects, deliberate operation policies, fixture mistakes and remaining qualification limits.
 
+Local validation selects only cases directly related to a change and cases affected through shared dependencies. Complete project, component and browser test suites must run in GitHub Actions, never locally or through directory batches or subagents that reconstruct a full run. Full validation requires the complete qualification for the latest commit SHA; see [repository rules](../AGENTS.md) and [E2E rules](AGENTS.md). Existing static-diagnostic and build requirements still apply.
+
 ## Build and run
 
 From the repository root:
@@ -14,8 +16,11 @@ From the repository root:
 docker build -t mc-admin:e2e .
 cd e2e
 make build
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e
+./bin/mc-admin-e2e run --backend-image mc-admin:e2e \
+  --tag regression --case '^files\.directories-search-and-errors$'
 ```
+
+The selected case is an example for related file-search changes. Replace it with explicit related case IDs for other changes, including cases affected through shared dependencies.
 
 Building the runner requires the Go version in `go.mod`; `make` is optional:
 
@@ -38,8 +43,11 @@ The runner provisions users, configuration and test data itself. Do not point it
 ```bash
 ./bin/mc-admin-e2e browser --backend-image mc-admin:e2e \
   --output .runs --run-id browser-local-example -- \
-  pnpm --dir ../frontend-react test:browser
+  pnpm --dir ../frontend-react exec playwright test browser/journeys.spec.ts \
+  --grep 'lifecycle acceptance stays blocked until task status confirms completion$'
 ```
+
+This example selects one lifecycle journey. Local browser validation must specify a related spec file and title filter; unfiltered `test:browser` is reserved for CI's complete browser gate.
 
 `browser` provisions the same providers as API cases, invokes one command, then drains its owned process group and cleans the environment on success, failure or cancellation. It keeps the capacity reservation until cleanup ends. The default recipe is `world`; `--recipe base|server|backup|world` selects a smaller fixture for scripts. Each invocation creates a fresh application. Multiple browser cases inside that invocation share application state and must restore their own changes; the wrapper does not reset data between cases.
 
@@ -52,25 +60,23 @@ See [disposable deployment and rollback rehearsal](docs/deployment-rehearsal.md)
 ```bash
 ./bin/mc-admin-e2e list
 ./bin/mc-admin-e2e list --tag regression
-./bin/mc-admin-e2e plan --shard 1/3 --seed 42
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --suite minecraft
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --case '^snapshots\.'
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --no-reuse --seed 42
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag mojang
+./bin/mc-admin-e2e plan --tag regression --case '^files\.directories-search-and-errors$' --seed 42
+./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --case '^files\.directories-search-and-errors$'
+./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --case '^files\.directories-search-and-errors$' --no-reuse --seed 42
 ```
 
-`--tag smoke` is the local default; `--tag regression` includes smoke and all ordinary regression cases. `--tag ''` selects all cases including external providers and therefore requires their configuration. Suite, tag and case regex filters intersect. A selection matching no scenarios is an error. An empty individual shard is valid when the overall selection is nonempty. Use `--tag regression --suite world` for a regression-only suite; the default smoke tag otherwise narrows selection.
+The CLI defaults to `--tag smoke`; that implementation default is not a local validation recommendation. `--tag regression` includes smoke and all ordinary regression cases. `--tag ''` selects all tags, including external providers, before applying the other filters; selected external cases require their configuration. Suite, tag and case regex filters intersect. Local runs require `--case` anchored to explicit related IDs, such as `^(case-one|case-two)$`, plus an appropriate explicit tag. A broad suite, tag or case-prefix filter is not sufficient for local validation. A selection matching no scenarios is an error. An empty individual shard is valid when the overall selection is nonempty. CI can use `--tag regression --suite world` for a regression-only suite; the default smoke tag otherwise narrows selection.
 
-External Mojang scenarios use `--tag mojang`. DNSPod/Huawei scenarios use `--tag dns` and require `--external-config /private/path/external.json`; select one with `--case '^dns\.dnspod-'` or `--case '^dns\.huawei-'`. See [DNS qualification](suites/dns/README.md) for the private configuration schema, owned test-domain scope and cloud cleanup contract. Missing configuration or unavailable dependencies fail explicitly.
+External Mojang scenarios use `--tag mojang`. DNSPod/Huawei scenarios use `--tag dns` and require `--external-config /private/path/external.json`. Provider qualification can select `--case '^dns\.dnspod-'` or `--case '^dns\.huawei-'` in CI; local checks must select explicit related IDs within that provider. See [DNS qualification](suites/dns/README.md) for the private configuration schema, owned test-domain scope and cloud cleanup contract. Missing configuration or unavailable dependencies fail explicitly.
 
 For concurrent CI processes, use the same executable, selection, shard count, worker/Minecraft limits and seed, and a different shard index and run ID for each process:
 
 ```bash
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --shard 1/2 --run-id e2e-local-one
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --shard 2/2 --run-id e2e-local-two
+./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --shard 1/2 --run-id e2e-ci-one
+./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --shard 2/2 --run-id e2e-ci-two
 ```
 
-Run these commands in separate terminals or jobs. On a shared Docker host, runners under the same OS user must share `--port-directory` (default `/tmp/mc-admin-e2e-ports`). Port locks coordinate cooperating runners; they do not reserve ports against unrelated host processes. A setup-only retry handles a detected port conflict. Tests never retry a failed business operation automatically.
+These complete-regression examples run in separate CI jobs, not local terminals. On a shared Docker host, runners under the same OS user must share `--port-directory` (default `/tmp/mc-admin-e2e-ports`). Port locks coordinate cooperating runners; they do not reserve ports against unrelated host processes. A setup-only retry handles a detected port conflict. Tests never retry a failed business operation automatically.
 
 `--workers` bounds live environments, while `--mc-slots` separately bounds Minecraft environments. Both limits are per runner and participate in cost-balanced shard planning. Fresh cases and compatible recipe groups remain atomic. Historical costs are compiled into the executable; new cases use recipe/default costs and are discovered automatically. The dispatcher skips temporarily blocked groups so ordinary work can continue while another group occupies Minecraft capacity. `--seed` changes execution priority without changing shard membership; `--no-reuse` creates a new environment for every selected case without changing selection or shard assignment.
 
@@ -93,7 +99,7 @@ runtime/<id>/              temporary deployment files; removed by cleanup
 active.lock                exclusive execution/recovery lock
 ```
 
-Case `seconds` includes all execution lifecycle phases after dispatch, including final reusable-group teardown. `timings` separates reservation, setup, scenario execution, compensation, verification, diagnostics and teardown. Scheduler queue time and its overlapping Minecraft-capacity wait are recorded separately on the first case of each group; they are excluded from case execution seconds. `Scope.Step` durations cover only explicitly declared steps. See [timing semantics and historical calibration](docs/architecture.md#timing-evidence-and-calibration) before aggregating these overlapping measurements. Framework checks can emit Go test JSON with `make test TEST_FLAGS=-json` while preserving race detection.
+Case `seconds` includes all execution lifecycle phases after dispatch, including final reusable-group teardown. `timings` separates reservation, setup, scenario execution, compensation, verification, diagnostics and teardown. Scheduler queue time and its overlapping Minecraft-capacity wait are recorded separately on the first case of each group; they are excluded from case execution seconds. `Scope.Step` durations cover only explicitly declared steps. See [timing semantics and historical calibration](docs/architecture.md#timing-evidence-and-calibration) before aggregating these overlapping measurements. CI framework checks emit Go test JSON with `make test TEST_FLAGS=-json` while preserving race detection; targeted local `go test` commands can add `-json` without broadening their package or `-run` selection.
 
 HTTP bodies and errors are redacted; large/binary bodies are represented by size and digest. Container inspect evidence uses a restricted structure that excludes environment variables. Add newly introduced secret values to the redactor before issuing requests. CI uploads the report/evidence paths explicitly and never uploads `runtime/`, which contains real test credentials and mutable data.
 
@@ -101,7 +107,7 @@ Audit one run or the union of all shards from the same executable, immutable app
 
 ```bash
 ./bin/mc-admin-e2e coverage --require-complete --output coverage \
-  .runs/e2e-local-one .runs/e2e-local-two
+  .runs/e2e-ci-one .runs/e2e-ci-two
 ```
 
 `coverage.json` and `coverage.md` distinguish successful operation observations, expected rejections, observations from failed cases and unobserved operations. Fixture traffic is excluded. `--require-complete` requires every selected case and shard to pass with trace evidence; it does not impose a 100% route threshold or claim that visiting an endpoint proves the full feature. Missing/duplicate cases and incompatible image/schema/catalog, cost fingerprint, capacity configuration or seed remain visible failures.
@@ -119,15 +125,27 @@ Use the original canonical directory on the original Docker host. Cleanup refuse
 ## Development and CI
 
 ```bash
-gofmt -w cmd internal suites
-make check
+gofmt -w internal/engine/engine_test.go
+go vet ./internal/engine
+go test -race -vet=off -count=1 -run '^TestShardPartitionIsCompleteAndStable$' ./internal/engine
 make build
 ```
 
-`make lint` checks Go formatting and runs `go vet`. `make test` runs race-enabled framework tests with implicit vet disabled; `make check` runs both targets. The scenarios are compiled into the executable and run with `mc-admin-e2e run`; framework tests verify infrastructure and domain fixture behavior.
+The named file, package and test are examples for related engine changes. Format changed Go files and run vet on explicitly affected packages. Select related framework test names with `-run`, retaining `-race` and `-count=1`; `-vet=off` requires the separate vet check. The scenarios are compiled into the executable and run with `mc-admin-e2e run`; framework tests verify infrastructure and domain fixture behavior.
+
+CI runs the full framework suite:
+
+```bash
+make lint
+make test
+make test TEST_FLAGS=-json
+make check
+```
+
+`make lint` checks Go formatting and runs `go vet`; this static check is also permitted locally. `make test` tests all packages with race detection, implicit vet disabled and uncached results; `make check` runs both targets. `make test` and `make check` are not local validation commands, even when extra test flags are supplied, because the Makefile always selects `./...`.
 
 [Static Checks](../.github/workflows/static-checks.yml) runs independently on every push: frontend lint and TypeScript checks, backend Ruff and Pyright, and Go formatting/vet. The Docker build bundles frontend assets without invoking the separate TypeScript check.
 
 [The candidate workflow](../.github/workflows/candidate.yml) runs framework race tests and builds one application OCI archive and executable. [The E2E workflow](../.github/workflows/e2e-tests.yml) verifies that artifact and distributes the same image and executable to three independent regression shards. Each shard runs cleanup and uploads diagnostics even when testing fails; a final job audits the complete case/shard union and publishes operation observations. Browser qualification consumes the same artifact. Release promotion preserves its OCI manifest digest; see [release qualification](../docs/release.md). Manual API dispatch can disable reuse or select smoke, Mojang or DNSPod. DNSPod reads `E2E_EXTERNAL_CONFIG` only for that explicit selection. The dedicated `dns-tests.yml` workflow runs Huawei DNS/Minecraft qualification using the `dns-e2e` Environment AK/SK, verifies cloud cleanup and is required for release qualification. New scenarios participate through the catalog without directory-specific CI matrix edits.
 
-New backend features and bug fixes that change observable behavior require an API E2E scenario or an extension to an existing scenario in the same change. Update the coverage inventory, choose explicit isolation, and verify both the normal run and `--no-reuse` for affected cases. Existing pytest tests continue to cover focused internals and broad boundary conditions.
+New backend features and bug fixes that change observable behavior require an API E2E scenario or an extension to an existing scenario in the same change. Update the coverage inventory, choose explicit isolation, and verify both the normal run and `--no-reuse` for explicitly selected affected cases. Existing pytest tests continue to cover focused internals and broad boundary conditions; local runs select related nodes, while CI owns the complete inventory.

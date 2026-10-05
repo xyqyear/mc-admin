@@ -2,28 +2,35 @@
 
 Run commands from `backend/` with `uv`. Install the locked development environment with `uv sync --locked --all-groups`.
 
+## Local targeted validation
+
+Run only the files, nodes, or small directories directly related to the change. The examples below are alternatives for the affected behavior, not a checklist. Do not run a repository-wide or component-wide test suite locally, or accumulate one by splitting directories, looping shards, or delegating slices to other agents. Complete collection and execution belong to GitHub Actions on the latest committed SHA; the CI examples below are not local entrypoints.
+
+```bash
+# File-operation changes: select the relevant test file.
+uv run pytest tests/files/test_file_operations.py --require-capabilities
+
+# Execution-history changes: select one exact test node.
+uv run pytest tests/cron/test_cron_api.py::TestCronJobAPI::test_get_cronjob_executions_with_limit --require-capabilities
+
+# Narrow the related directory to execution-history cases.
+uv run pytest tests/cron/ -k get_cronjob_executions --require-capabilities
+
+# Archive logic that does not invoke a real binary.
+uv run pytest tests/archive/test_archive_compression.py -m 'not binary'
+
+# Explicitly enable a related owned Docker integration node.
+uv run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker --run-docker --require-capabilities
+
+uv run pyright
+uv run ruff check .
+```
+
 ## Isolation and capabilities
 
 `tests/conftest.py` configures an owned temporary application root before importing application modules. The pytest session explicitly owns the runtime used during collection; every test then binds a fresh `Runtime`. Each test owns its SQLite, log, server and archive directories as well as its manager state and caches. Static fixtures, test configuration files and archive upload scratch files remain in the session-owned root. Inherited JWT, audit, and Restic connection settings are removed. Explicit `create_app(runtime=...)` apps retain their own runtime. Fixture teardown awaits runtime closure; tests must still join independently constructed managers and resources outside the runtime. See `runtime.md` for application construction and lifecycle verification.
 
 Replace external adapters through `tests.support.runtime.set_runtime_resource` or `patch_runtime_resource`, which restore the individual resource on the current test's runtime. Patching a removed module-level singleton cannot isolate an application. Multiple feature getters for one resource intentionally return the same object. Use `patch_settings` to change fields on the actual owned settings object while preserving its other valid configuration and restoring fields afterward. Database and adapter fixtures normally have function scope so their overrides bind to the runtime that executes the test.
-
-```bash
-# Run all tests that do not require Docker or external services.
-uv run pytest tests
-
-# Require installed local binaries instead of skipping their tests.
-uv run pytest tests --require-capabilities
-
-# Select tests without declared local binary dependencies.
-uv run pytest tests -m 'not binary'
-
-# Explicitly enable owned Docker integration tests.
-uv run pytest tests --run-docker --require-capabilities
-
-uv run pyright
-uv run ruff check .
-```
 
 Capabilities are declarations, not naming conventions:
 
@@ -42,32 +49,34 @@ Docker fixtures generate a random owner identifier and container names. They ask
 
 `tests/testing/test_isolation.py` verifies default paths, CLI/SDK guards, owner mismatch refusal, cleanup continuation, and a subprocess run of the ordinary instance tests with a fake Docker executable. Its fault-injection subprocesses replace the snapshot restriction with an always-allow function and disable audit matching. Both regression suites must return a failing exit status. Snapshot window cases assert both sides of each configured time boundary; audit cases assert decisions and emitted files instead of printing mismatches.
 
-## CI collection
+## CI full collection and shards
 
 `.github/workflows/backend-tests.yml` collects the entire suite and plans four independent shards from the selected test identities. Each complete test file is an allocation unit. Files that share a fixture boundary can declare `pytestmark = pytest.mark.shard_group("boundary-name")`; all files carrying that label stay together, including their unmarked tests. Overlapping labels join transitively. Module fixtures therefore stay within their file, and session fixtures must own independent per-runner state unless their users declare a shared boundary. Common isolated session fixtures do not force unrelated tests into one shard.
 
-`tests/ci/timing-weights.json` records historical file costs and their source. Its initial weights are approximate result-output intervals from successful release run 36148282102, not precise assertion durations. The planner sorts atomic groups by descending cost and places each in the lightest shard, using stable file names and shard indexes to break ties. Unknown files receive a positive 15-second default and enter the plan automatically. Deleted files' history has no effect. History affects placement only; the complete current collection and explicit capability policy determine selection. If fewer than four atomic groups are selected locally, the planner emits only nonempty shards.
+`tests/ci/timing-weights.json` records historical file costs and their source. Its initial weights are approximate result-output intervals from successful release run 36148282102, not precise assertion durations. The planner sorts atomic groups by descending cost and places each in the lightest shard, using stable file names and shard indexes to break ties. Unknown files receive a positive 15-second default and enter the plan automatically. Deleted files' history has no effect. History affects placement only; the complete current collection and explicit capability policy determine selection. If fewer than four atomic groups are selected, the planner emits only nonempty shards.
 
-The plan binds the complete inventory, selected node IDs, capability declarations, fixture labels and selection policy with a canonical SHA-256 digest. Each shard declares the union of its required tools; CI installs Dockerfile-pinned binaries with checksum verification and requires their presence. At execution, pytest recollects the inventory and applies the same Docker/external, marker and keyword policy before validating and selecting its planned assignment. `--test-group` remains available locally for first-level directories and the top-level `root` group, but cannot combine with a plan.
+The plan binds the complete inventory, selected node IDs, capability declarations, fixture labels and selection policy with a canonical SHA-256 digest. Each shard declares the union of its required tools; CI installs Dockerfile-pinned binaries with checksum verification and requires their presence. At execution, pytest recollects the inventory and applies the same Docker/external, marker and keyword policy before validating and selecting its planned assignment. `--test-group` remains available locally for first-level directories and the top-level `root` group, but cannot combine with a plan. It must stay within the directly relevant local scope and must not be used to accumulate a full suite.
 
 Inventory, immutable plan, executed collection, JUnit and exact phase timings are separate artifacts. `--timing-report` records every setup/call/teardown outcome and duration, including setup, assertion and teardown failures. Session completion runs after runtime cleanup; a failure there leaves the report incomplete. JSON is atomically published at session finish, including normal failing or interrupted sessions. An uncatchable process termination can leave no report, which fails the audit. Reports contain node IDs and timing/outcome metadata, without captured output or traceback contents.
 
 The final audit verifies plan identity, complete metadata, each shard's exact assignment, duplicate-free node-ID union and execution evidence bound to its collection manifest. Every selected node must have exactly one successful setup, call and teardown; failed, skipped, xfailed, incomplete or missing evidence fails qualification. JUnit and timing reports do not replace test assertions or the independent matrix success gate. External-service tests remain excluded until a CI environment explicitly opts in. Coverage stays enabled in each shard; raw coverage data is combined once for reports.
 
+The following commands describe CI runner steps only. Actions executes all four matrix assignments and audits their union; a local shard run or local shard loop does not provide complete qualification.
+
 ```bash
+# CI discovery runner.
 uv run pytest tests --collect-only --run-docker -o addopts= -q \
   --collection-manifest /tmp/mc-admin-inventory.json
 uv run --no-project python tests/support/collection.py plan /tmp/mc-admin-inventory.json \
   --weights tests/ci/timing-weights.json --shards 4 --output /tmp/mc-admin-plan.json
+# Each CI matrix runner executes its assigned shard; shard 1 is shown.
 uv run pytest tests --run-docker --require-capabilities \
   --test-plan /tmp/mc-admin-plan.json --test-shard 1 \
   --collection-manifest /tmp/manifests/shard-1.json \
   --timing-report /tmp/timings/timing-1.json --junitxml /tmp/junit/shard-1.xml
-# Supply all executed shard manifests and timing reports.
+# CI audit runner receives all four executed manifests and timing reports.
 uv run --no-project python tests/support/collection.py audit /tmp/mc-admin-inventory.json \
   /tmp/manifests/shard-*.json --plan /tmp/mc-admin-plan.json --timings /tmp/timings/timing-*.json
-
-uv run pytest tests --test-group contracts
 ```
 
 JUnit reports include per-case totals; the phase JSON supplies the separate setup/call/teardown measurements needed to review future weights. Fixture setup and teardown remain charged to the cases where pytest executes them, so whole-file or shared-boundary costs should be aggregated before balancing. Concurrent shard durations cannot be summed into a workflow wall-clock duration. Collection, coverage reporting and runner preparation remain separate costs.

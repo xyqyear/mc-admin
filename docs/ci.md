@@ -33,7 +33,23 @@ Historical backend log intervals and API costs that subtract estimated resource 
 
 ## Validation
 
+Follow the repository's [delivery and test requirements](../AGENTS.md#交付与测试要求). Local execution is limited to tests for changed behavior and affected call paths, selected by explicit files, node IDs, packages or case filters. Never run the full project or a component's full test suite locally, including through accumulated directory, shard or subagent runs. Required lint, type checks and build checks remain in place. Documentation-only changes need no local tests.
+
 Use the existing `Qualify and Publish Application` workflow's manual dispatch on the implementation branch with `publish=false`. It executes candidate, static, backend, API, browser and Huawei DNS gates without changing registry tags. Confirm the source SHA, complete successful gates, backend exact-once audit, API union audit and owned cleanup before comparing elapsed times. For E2E engine changes, also run the API workflow with reuse disabled to check isolation.
+
+Bind the dispatched run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
+
+```bash
+gh run watch <run-id> --exit-status --interval 60 --compact
+```
+
+Use only this existing command's output for progress updates. Neither the primary agent nor any subagent may repeatedly poll the same run or job through `gh run view`, `gh run list`, `gh api` or other GitHub interfaces while waiting. The CLI refreshes internally every 60 seconds; a command interruption or connection failure is not a workflow conclusion. After the command finishes, inspect the final result once:
+
+```bash
+gh run view <run-id> --json headSha,status,conclusion,jobs,url
+```
+
+Require the exact latest commit and successful candidate, static, all backend shards and their audit, all API shards and their audit, browser, Huawei DNS and final qualification. On failure, inspect the failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. Old successful runs or incomplete gates do not qualify it.
 
 The reference qualification is [36148282102](https://github.com/xyqyear/mc-admin/actions/runs/36148282102), source `45a47640dedb60948b82418d5c1f989377e91af4`: 56:14 overall including publication, 55:18 from workflow creation through qualification, 55:01 backend gate, 2,183 passing backend cases, 81 API cases and six browser journeys. Test counts may grow with infrastructure regression coverage; the collected catalog, rather than those historical counts, determines completeness. Compare test steps and whole gates separately, and report changed runner availability or preparation costs alongside the results. The [measured balancing results](ci-balancing-results.md) record the complete successful implementation qualification and its remaining bottlenecks.
 
