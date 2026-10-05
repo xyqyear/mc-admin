@@ -32,6 +32,8 @@ Cleanup mutations call `DELETE /api/players/cleanup/{kind}` and invalidate the e
 
 The drawer drives 4–5 of these in parallel when opened; React Query dedupes identical keys so navigating between tabs doesn't refetch already-loaded data.
 
+Shared `formatDuration` in `shared/utils/formatUtils.ts` displays accumulated playtime in days and hours once it reaches a day. The online-players card uses its hours-only policy, so an ongoing 25-hour session remains `25小时 0分钟`. Detail rows without a duration retain their `-` placeholder.
+
 ## UUID formatting
 
 Mojang returns hex without dashes (`8667ba71b85a4004af54457a9734eed7`); our backend stores the same shape. The frontend's `formatUUID` helper (`shared/utils/formatUtils.ts`) renders it as `8667ba71-b85a-4004-af54-457a9734eed7` for display and back to compact for API calls.

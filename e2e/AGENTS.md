@@ -1,6 +1,6 @@
 # MC Admin API E2E
 
-Independent Go module and Linux executable; scenarios exercise the real application image through HTTP, SSE and WebSocket with actual SQLite, Docker/Minecraft and Restic. See `README.md` for commands, `docs/architecture.md` for lifecycle/extension contracts, `docs/coverage.md` for feature families and gaps, and `docs/defect-review.md` for defect evidence and policy boundaries.
+Independent Go module and Linux executable; scenarios exercise the real application image through HTTP, SSE and WebSocket with actual SQLite, Docker/Minecraft and Restic. See `README.md` for commands, `docs/architecture.md` for lifecycle/extension contracts, `docs/coverage.md` for feature families and gaps, and `../docs/release.md` for qualification requirements.
 
 ## Commands
 
@@ -34,6 +34,7 @@ Build the application image from the repository root with `docker build -t mc-ad
 - `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint; `api_plan.go` freezes current-profile plans and audits independently required qualification.
 - `cmd/mc-admin-e2e/browser.go` — owned provider wrapper for real browser/deployment commands, private fixture metadata, child-process draining and durable cleanup.
 - `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery, retained legacy-history rollback/undo, ambiguous-identity rejection and explicit world rollback through actual APIs. Bootstrap actual historical releases with their matching runner; current API bootstrap is not backward compatible.
+- `scripts/test_deployment_rehearsal.py` — temporary-filesystem tests for checkpoint retention on unconfirmed writer shutdown and nonrecursive copying before cleanup; the static-checks backend job runs this specific unittest script.
 - `internal/engine/` — unified catalog, immutable automatic shard plans, lifecycle cost profiles, resource-aware exclusive workers and JSON/JUnit timings.
 - `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
 - `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.

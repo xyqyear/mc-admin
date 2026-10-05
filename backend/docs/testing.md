@@ -127,37 +127,13 @@ uv run python tests/support/release_fixture.py
 uv run pytest tests/contracts/test_release_upgrade.py
 ```
 
-## Workload observations
-
-`tests/support/workload_baseline.py` creates only owned temporary resources and measures three samples of four workloads. The current application runs inside an explicitly owned runtime, which closes before its temporary directory is removed. The `--app-ref` adapter also supports the original released global-resource entry point inside a separate process and temporary source archive. Both paths exercise in-process HTTP and adapters without starting application lifespan or background producers.
-
-| Workload | Behavior asserted |
-| --- | --- |
-| Upload, SHA256, and publish | 4 MiB in four chunks, ten HTTP requests, stale in-progress offset returns 409, a completed retry returns 200, HEAD offset, SSE completion/hash, publication only after verification, exact final bytes |
-| File search | 256 files in 16 directories, one MiB total, exact result count and byte count through real fd |
-| Restic backup and restore | Repository initialization, four-MiB backup, streamed restore, exact restored bytes and hash |
-| mcmap chunk adapter | Real removal command against a synthetic empty 8 KiB region, typed events and preserved region content |
-
-```bash
-# Reproduce the pre-change application in a temporary Git archive.
-uv run python -m tests.support.workload_baseline \
-  --app-ref 9cf6f77b258a7ccf4507c51cb686a45f8f74d823 \
-  --output /tmp/workload-before.json
-# Measure the current application with the same workload.
-uv run python -m tests.support.workload_baseline --output /tmp/workload-after.json
-```
-
-`workload-head.json` and `workload-current.json` record the initial observations, binary versions, individual durations, medians, behavior counters, and process-wide peak RSS. Their behavior counters match exactly. The local tools were fd 10.3.0, Restic 0.18.0, and mcmap 0.8.4; CI uses the Dockerfile pins (fd 10.4.2, Restic 0.18.1, mcmap 0.8.4). These local runs therefore do not replace the pinned candidate-image checks.
-
-Timings use an in-process ASGI client on a shared development host, with warm imports and possible competing tests. They are reproducible workload definitions and observations, not controlled performance estimates or CI thresholds. RSS is for the whole Python process, and the mcmap case checks an empty-region protocol rather than map rendering throughput. Rendering, browser polling/request counts and candidate-image latency have separate deployed observations in [workload measurements](workload-measurements.md) and [browser verification](../../frontend-react/docs/browser-tests.md); the native baseline alone cannot establish them.
-
 ## Release qualification and capability audit
 
 The collected inventory includes each test's capability and fixture-boundary declarations plus the explicit Docker, external-service, marker-expression and keyword selection policy. CI derives its matrix from the selected identities, so externally qualified tests remain deliberately excluded unless opted in. Every shard reports the same complete inventory and metadata, the same selection policy, and only its planned identities. The audit rejects omissions, duplicates, extra identities, changed declarations and policy drift.
 
-Four independent backend runners execute their tests sequentially; no pytest worker parallelism is enabled. Docker tests require both their marker and `--run-docker`, while ordinary tests retain the subprocess/SDK guard even in a Docker-enabled suite. A completed collection manifest is not evidence that execution passed: the audit checks phase outcomes and the workflow independently requires the test matrix result to be successful.
+Each independent backend shard executes its tests sequentially; no pytest worker parallelism is enabled. Docker tests require both their marker and `--run-docker`, while ordinary tests retain the subprocess/SDK guard even in a Docker-enabled suite. A completed collection manifest is not evidence that execution passed: the audit checks phase outcomes and the workflow independently requires the test matrix result to be successful.
 
-`tests/ci` contains executable collection and release-gate regression checks and is discovered like every other test group. The publication graph, immutable OCI archive, distinction between manifest/config digests and local validation commands are documented in [release qualification](../../docs/release.md). Current representative measurements and their limitations are recorded in [workload measurements](workload-measurements.md).
+`tests/ci` contains executable collection and release-gate regression checks and is discovered like every other test group. The publication graph, immutable OCI archive, distinction between manifest/config digests and local validation commands are documented in [release qualification](../../docs/release.md).
 
 ## Unified world recovery regression ownership
 

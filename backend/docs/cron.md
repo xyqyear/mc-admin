@@ -279,9 +279,8 @@ this monitor heartbeat is separate from the persisted `skipped` execution result
 
 ## Files
 
-- `manager.py` — `CronManager`
+- `manager.py` — `CronManager` and typed `get_cron_manager()` accessor for the active runtime
 - `registry.py` — `CronRegistry`, `register_func`, optional decorator helper
-- `instance.py` — typed `get_cron_manager()` accessor for the active runtime
 - `restart_scheduler.py` — restart-minute selection
 - `weekdays.py` — conventional-crontab weekday normalization for APScheduler 3
 - `types.py` — `ExecutionContext`, registration/config/record types

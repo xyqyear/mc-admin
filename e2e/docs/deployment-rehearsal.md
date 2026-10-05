@@ -27,9 +27,9 @@ The current fixture uses v6.0.0-beta.1, whose schema head is `2026092503`, and t
 
 The public result contains image identities, actual application-source hashes, retained IDs, schema versions, hashed data evidence and the distinct outcomes. Checkpoint contents stay inside private owned runtime storage; copying explicitly excludes this checkpoint directory. They are removed only after their owning application stops. If stopping cannot be confirmed, the script retains them for the wrapper's container-first cleanup or later journal recovery. The wrapper then cleans recorded containers, networks and runtime data. Qualification records must identify the script hash and actual result paths, and distinguish fixture failures from product failures.
 
-The checkpoint ownership tests use temporary files and no deployment:
+The checkpoint ownership tests use temporary files and no deployment. The static-checks backend job runs this specific script:
 
 ```bash
 uv run --project backend python -W error::ResourceWarning -m unittest discover \
-  -s e2e/scripts -p 'test_*.py'
+  -s e2e/scripts -p test_deployment_rehearsal.py -v
 ```

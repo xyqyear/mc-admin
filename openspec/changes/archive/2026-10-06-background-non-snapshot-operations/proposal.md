@@ -11,7 +11,7 @@ Starting a server can hold maintenance ownership while Docker prepares images an
 - Separate task completion from Minecraft readiness. Expose actual execution stages; show indeterminate progress when no measurable percentage is available.
 - Preserve authentication, confirmations, generation-bound targets, scope locks, deletion draining, cleanup ordering and restart recovery. Define explicit cancellation capabilities rather than suggesting that cancelling a task reverses its effects.
 - **BREAKING:** replace covered synchronous/SSE execution endpoints with task acceptance and task-status reads. Update frontend and API test callers together; delete unused endpoints and response/stream adapters instead of keeping compatibility layers.
-- Record the subsequent unified snapshot/recovery work in `docs/snapshot-recovery-roadmap.md`; do not implement it in this change.
+- Record the subsequent unified snapshot/recovery work in `docs/snapshot-recovery.md`; do not implement it in this change.
 
 Non-goals: snapshot creation, restore, restore preview, rollback, snapshot deletion/retention/repository maintenance; replacing Restic or the task manager; backgrounding routine reads, RCON interaction, browser transfer bytes or small metadata edits; changing Minecraft running intent; automatic retries of interrupted mutations; publishing a release.
 

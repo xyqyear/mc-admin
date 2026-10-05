@@ -2,9 +2,7 @@
 
 Standalone Go executable for testing an actual MC Admin deployment through HTTP, SSE and WebSocket APIs. Each environment runs the repository's application image with a private SQLite database, configuration, credentials and files. Scenarios that need Minecraft or Restic use the real dependencies. Application Python modules are never imported by the runner.
 
-See [architecture and extension contracts](docs/architecture.md), the [backend feature coverage inventory](docs/coverage.md), and the [qualification results](docs/verification.md). One catalog contains ordinary smoke/regression and real external-provider scenarios. Complete qualification independently requires ordinary regression and every current Huawei scenario.
-
-The [defect review](docs/defect-review.md) distinguishes confirmed defects, deliberate operation policies, fixture mistakes and remaining qualification limits.
+See [architecture and extension contracts](docs/architecture.md), the [backend feature coverage inventory](docs/coverage.md), and the [release qualification requirements](../docs/release.md). One catalog contains ordinary smoke/regression and real external-provider scenarios. Complete qualification independently requires ordinary regression and every current Huawei scenario.
 
 Local validation selects only cases directly related to a change and cases affected through shared dependencies. Complete project, component and browser test suites must run in GitHub Actions, never locally or through directory batches or subagents that reconstruct a full run. Full validation requires the complete qualification for the latest commit SHA; see [repository rules](../AGENTS.md) and [E2E rules](AGENTS.md). Existing static-diagnostic and build requirements still apply.
 

@@ -11,7 +11,7 @@ roll back a specific player's base after grief reports.
 GET /servers/{id}/world-restore/claims
    └─► extract_claims_for_server(data_path)
          ├─ discover_world_root_paths(data_path)           # no dimension scan
-         ├─ runner.extract_ftb_claims(world_root, ...)     # mcmap subprocess
+         ├─ mcmap.runner.extract_ftb_claims(world_root, ...)     # mcmap subprocess
          ├─ parse mcmap result.data as a Pydantic payload
          ├─ shape_response(payload, root, data_path)
          │    ├─ resolve each FTB dim folder to a region relpath
@@ -101,15 +101,12 @@ an empty label.
 
 ## Subprocess ownership
 
-Mirrors `app.mcmap.runner`: when the backend runs as root, `--chown UID:GID`
-is appended so any temp files mcmap writes get chowned back to the data dir's
-owner. `extract-ftb-claims` writes output to stdout (no temp files) by
-default, so the chown is currently a no-op — kept for parity in case mcmap
-gains intermediate spill files in a later version.
-
-The runner is an `@asynccontextmanager` that guarantees `terminate()` on
-exit (SIGTERM with 2 s grace, then SIGKILL), identical to the live-map
-runner.
+`app.mcmap.runner.extract_ftb_claims` uses the common mcmap process boundary.
+When the backend runs as root, `--chown UID:GID` derives from the server data
+directory. The owned process starts behind the execution gate, streams typed
+NDJSON and drains bounded stderr. Context exit and cancellation wait for
+termination (SIGTERM with 2 s grace, then SIGKILL) and pipe cleanup before
+returning.
 
 ## Module layout
 
@@ -117,7 +114,6 @@ runner.
 app/ftb_claims/
 ├── __init__.py    # public API: extract_claims_for_server, models, errors
 ├── models.py      # Pydantic response shapes
-├── runner.py      # @asynccontextmanager extract_ftb_claims
 ├── extract.py     # spawn -> parse -> resolve dims -> flood-fill -> shape
 └── cluster.py     # pure 4-connectivity flood-fill, centroid, bbox, regions
 ```

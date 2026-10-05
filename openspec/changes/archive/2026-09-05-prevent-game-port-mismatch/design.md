@@ -4,11 +4,11 @@ See [proposal.md](proposal.md) for motivation and scope. This design spans templ
 
 Current integration points:
 
-- [Minecraft management](../../../backend/docs/minecraft.md): `MCComposeFile` identifies the game mapping by target `25565`. `get_game_port()` returns its published host port, so it is not the comparison value for the diagnostic. The constructor is also used on read paths and during port-conflict scanning.
-- [Templates](../../../backend/docs/templates.md): `TemplateManager.validate_template()` checks variable-definition consistency, not Minecraft configuration. Template save endpoints validate the effective stored/submitted template before writing. `create_server_full()` is the common boundary for new direct and template-based servers. Existing servers retain immutable template snapshots.
-- [Self-check](../../../backend/docs/self-check.md): catalog definitions, per-check configuration toggles, result persistence, single-check reruns, existing event triggers, and failure isolation already exist. `SelfCheckContext.active_servers()` includes stopped active records. A new check must be added coherently to constants, labels, definitions, and configuration mappings.
-- [Dashboard](../../../frontend-react/docs/self-check.md): `SelfCheck.tsx` renders remediation as plain text, with evidence and server IDs available in each finding. History and current-state views share the finding renderer.
-- [File management](../../../frontend-react/docs/file-management.md): `ServerFiles.tsx` already reads `path`, `q`, and `regex` from the URL and synchronizes both displayed search results and search input. The file editor already displays a Compose-override reminder for `server.properties`.
+- [Minecraft management](../../../../backend/docs/minecraft.md): `MCComposeFile` identifies the game mapping by target `25565`. `get_game_port()` returns its published host port, so it is not the comparison value for the diagnostic. The constructor is also used on read paths and during port-conflict scanning.
+- [Templates](../../../../backend/docs/templates.md): `TemplateManager.validate_template()` checks variable-definition consistency, not Minecraft configuration. Template save endpoints validate the effective stored/submitted template before writing. `create_server_full()` is the common boundary for new direct and template-based servers. Existing servers retain immutable template snapshots.
+- [Self-check](../../../../backend/docs/self-check.md): catalog definitions, per-check configuration toggles, result persistence, single-check reruns, existing event triggers, and failure isolation already exist. `SelfCheckContext.active_servers()` includes stopped active records. A new check must be added coherently to constants, labels, definitions, and configuration mappings.
+- [Dashboard](../../../../frontend-react/docs/self-check.md): `SelfCheck.tsx` renders remediation as plain text, with evidence and server IDs available in each finding. History and current-state views share the finding renderer.
+- [File management](../../../../frontend-react/docs/file-management.md): `ServerFiles.tsx` already reads `path`, `q`, and `regex` from the URL and synchronizes both displayed search results and search input. The file editor already displays a Compose-override reminder for `server.properties`.
 
 ## Goals / Non-Goals
 

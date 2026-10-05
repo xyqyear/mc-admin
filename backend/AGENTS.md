@@ -60,7 +60,7 @@ app/
 ├── files/                 # confined CRUD/search/upload, canonical resource scopes, population and ownership
 ├── snapshots/             # scoped task commands, restoration history, protection, Restic planning and adapters
 ├── cron/                  # desired plans, scheduler registration/reconciliation and durable execution history
-├── self_check/            # owned service/dependencies, isolated checks, retained history and notification sinks
+├── self_check/            # owned service/dependencies, isolated checks, retained history
 ├── dns/                   # desired connectivity, partial observations, incremental provider/router adapters
 ├── templates/             # server template system (typed variables)
 ├── dynamic_config/        # schema-versioned runtime config
@@ -147,8 +147,7 @@ Docker and Compose label values may contain equals signs. The shared label parse
 Long-form, current-state design docs live under `backend/docs/`:
 
 - `docs/administration-contracts.md` — user journeys, wire/deployment contracts and regression owners
-- `docs/testing.md` — isolated fixtures, capability inventory, migration/API fixtures and workloads
-- `docs/workload-measurements.md` — fixed-binary and deployed HTTP comparisons, content/request checks and measured process ownership overhead
+- `docs/testing.md` — isolated fixtures, capability inventory, migration/API fixtures
 - `docs/servers.md` — DB-driven server discovery, bundled lifecycle orchestrators, filesystem↔DB sync endpoint
 - `docs/database-migrations.md` — Alembic startup gate, supported DB states, revision IDs
 - `docs/minecraft.md` — Docker Compose lifecycle, `MCInstance`, compose validation, cgroup v2 monitoring

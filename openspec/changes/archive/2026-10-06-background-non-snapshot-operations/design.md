@@ -1,6 +1,6 @@
 ## Context
 
-See `proposal.md` for the motivation and `docs/snapshot-recovery-roadmap.md` for the separate next round. Relevant current design is documented in `backend/docs/background-tasks.md`, `backend/docs/operations.md`, `backend/docs/servers.md`, `backend/docs/archive-upload.md` and `frontend-react/docs/task-center.md`.
+See `proposal.md` for the motivation and `docs/snapshot-recovery.md` for the separate next round. Relevant current design is documented in `backend/docs/background-tasks.md`, `backend/docs/operations.md`, `backend/docs/servers.md`, `backend/docs/archive-upload.md` and `frontend-react/docs/task-center.md`.
 
 `BackgroundTaskManager.submit_durable` already owns workers, task progress and durable outcome projection. `OperationObserver` already refreshes configuration/files/world views across navigation. Server commands are still awaited by the request; maintenance becomes visible before Docker supplies a container state. Map initialization, manual self-check streaming and archive hashing also have request-owned execution. Recursive deletion and creation/synchronization can spend significant time in filesystem, draining or external-service work.
 

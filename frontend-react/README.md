@@ -1,112 +1,24 @@
-# MC Admin Frontend (React)
+# MC Admin 前端
 
-A React-based frontend application for MC Admin, built with Ant Design and Tailwind CSS.
+使用 React 19、TypeScript、Vite 8、TanStack Query 和基于 Base UI 的 shadcn 组件。应用管理 Minecraft 服务器、文件、快照恢复、地图、玩家和定时任务。
 
-## Features
+需要 Node.js 24 和 pnpm；后端开发服务默认监听 `http://localhost:5678`。
 
-- **Modern React**: Built with React 18, TypeScript, and Vite
-- **Ant Design**: Professional UI components
-- **Tailwind CSS**: Utility-first CSS framework for custom styling
-- **State Management**: Zustand for simple and scalable state management
-- **API Integration**: Axios for HTTP requests with React Query for data fetching
-- **Routing**: React Router for client-side navigation
-- **Authentication**: JWT-based authentication with persistent storage
-
-## Tech Stack
-
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite
-- **UI Library**: Ant Design 5
-- **CSS Framework**: Tailwind CSS
-- **State Management**: Zustand
-- **Data Fetching**: TanStack React Query + Axios
-- **Routing**: React Router Dom
-- **Code Quality**: ESLint + TypeScript strict mode
-
-## Project Structure
-
-```
-src/
-├── components/          # Reusable UI components
-│   ├── layout/         # Layout components (Header, Sidebar)
-│   └── overview/       # Overview page specific components
-├── hooks/              # Custom React hooks for API calls
-├── pages/              # Page components
-│   └── server/         # Server management pages
-├── stores/             # Zustand store definitions
-├── types/              # TypeScript type definitions
-├── utils/              # Utility functions (API config, etc.)
-├── App.tsx             # Main application component
-├── main.tsx            # Application entry point
-└── index.css           # Global styles
-```
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18 or higher
-- npm or yarn
-
-### Installation
-
-1. Install dependencies:
 ```bash
-npm install
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-### Development
+开发页面位于 `http://localhost:3000`，Vite 将 `/api` 的 HTTP 和 WebSocket 请求代理到后端。生产构建由根目录 Dockerfile 打包，后端提供静态页面。
 
-Start the development server:
 ```bash
-npm run dev
+pnpm lint
+pnpm typecheck
+pnpm build:bundle
 ```
 
-The application will be available at `http://localhost:3000`.
+`src/app/` 组合路由布局、概览和全局操作观察；`src/features/` 拥有各业务的数据契约、查询、命令及界面；`src/shared/` 提供通用传输、UI、编辑器和工具；`src/pages/` 是服务器路由适配层；`browser/` 用真实部署环境验证浏览器流程。
 
-### Building
+密码和动态码登录均由后端建立 HttpOnly Cookie 会话，写请求携带 CSRF 令牌；客户端读取当前会话作为路由守卫依据。
 
-Build for production:
-```bash
-npm run build
-```
-
-### Preview
-
-Preview the production build:
-```bash
-npm run preview
-```
-
-## API Integration
-
-The application communicates with the MC Admin backend API. Make sure the backend is running on the configured port (default: 5678).
-
-## Authentication
-
-The app supports two login methods:
-1. **Password Login**: Traditional username/password authentication
-2. **Code Login**: WebSocket-based dynamic code authentication
-
-Authentication state is persisted in localStorage and automatically restored on app reload.
-
-## Available Routes
-
-- `/` - Home page
-- `/login` - Authentication page
-- `/overview` - Server overview with metrics and server list
-- `/backups` - Backup management
-- `/server/new` - Create new server
-- `/server/:id` - Server details
-- `/server/:id/players` - Player management
-- `/server/:id/files` - File management
-- `/server/:id/whitelist` - Whitelist management
-- `/server/:id/compose` - Server configuration
-- `/server/:id/archive` - Server archive/download
-
-## Contributing
-
-1. Follow the existing code style
-2. Use TypeScript for all new code
-3. Add proper type definitions
-4. Test your changes thoroughly
+开发约束和定向验证方式见 [AGENTS.md](AGENTS.md)，业务边界见 [数据架构](docs/data-architecture.md)，浏览器环境与观测方法见 [浏览器验证](docs/browser-tests.md)。本地仅运行与改动直接相关的测试文件或用例，完整验证由 GitHub Actions 执行。

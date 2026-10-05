@@ -1,9 +1,9 @@
 # Background tasks
 
 The runtime owns a `BackgroundTaskManager` and a durable operation journal.
-任务覆盖服务器启停/下线/删除/创建/登记同步、文件和压缩包删除、地图初始化、手动自检、手动 DNS/router 更新、上传 SHA256 和发布，以及压缩、填充、重建、所有权修复和区块清理。功能模块拥有 worker；路由只做鉴权、准备和提交。快照、恢复、回滚及其预览保持原有执行方式。
+任务覆盖服务器启停/下线/删除/创建/登记同步、文件和压缩包删除、地图初始化、手动自检、手动 DNS/router 更新、上传 SHA256 和发布，以及压缩、填充、重建、所有权修复和区块清理。功能模块拥有 worker；路由只做鉴权、准备和提交。手动快照、恢复、回滚及其预览由 `app.snapshots` 提交统一持久任务，持有目标与仓库引用；恢复与回滚在修改目标前保存安全快照和恢复记录。
 
-本轮迁移的执行入口返回 HTTP 202 和 `{task_id}`。查询 `/tasks/{id}` 获取阶段、进度、结果和错误；任务摘要不包含详细结果。已废弃的自检和 SHA256 SSE 执行接口不存在。`submit_durable` 在返回之前提交 journal，`submit` 是 manager 内部的执行登记入口，也用于无 journal 的隔离单元测试。接口清单与 UI 约束见 [非快照操作](non-snapshot-operations.md)。
+执行入口返回 HTTP 202 和 `{task_id}`。查询 `/tasks/{id}` 获取阶段、进度、结果和错误；任务摘要不包含详细结果。已废弃的自检和 SHA256 SSE 执行接口不存在。`submit_durable` 在返回之前提交 journal，`submit` 是 manager 内部的执行登记入口，也用于无 journal 的隔离单元测试。接口清单与 UI 约束见 [非快照操作](non-snapshot-operations.md)。
 
 ```python
 async def my_operation() -> AsyncGenerator[TaskProgress]:

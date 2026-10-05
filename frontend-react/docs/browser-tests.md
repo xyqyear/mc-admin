@@ -51,20 +51,6 @@ node scripts/compare-browser-observations.mjs \
 
 The comparison requires a matching browser, viewport and ordered measurement windows. It includes before/after context and raw endpoint summaries, then computes deltas; it does not manufacture a baseline or enforce an arbitrary performance threshold. Map windows include navigation, readiness checks and a fixed three-second settling period, so their total durations are not rendering-only timings. Navigation cancellations and incomplete requests remain visible, and stable idle windows should be assessed separately from page transitions.
 
-## Recorded source-to-candidate observation
-
-[Sanitized observation evidence](evidence/phase7-browser-comparison.json) compares the actual `9cf6f77` source image (`df8b8bdc…42dc`) with candidate 4 (`479e7c02…4d8d`). Both ran Chromium 153.0.8010.12 at 1440×1000 with four visible world regions and the verified official 1.21.11 client. The evidence contains complete image IDs, region hashes, endpoint/status/byte summaries and source report locations; it excludes request bodies, cookies, credentials and query strings.
-
-| Window | Original requests | Candidate requests | Original / candidate failed requests |
-| --- | ---: | ---: | ---: |
-| Overview, 15 seconds | 17 | 20 | 0 / 0 |
-| Server detail after overview, 5 seconds | 22 | 13 | 0 / 0 |
-| First map view | 21 | 24 | 0 / 1 |
-| Same map view after reload | 21 | 24 | 0 / 1 |
-| Map idle, 15 seconds | 20 | 21 | 0 / 0 |
-
-The application-wide operation observer adds journal polling; the two candidate map navigation windows each contain one `/api/operations` request that ended without a response during navigation. These cancellations remain counted as failures, rather than being removed from the comparison. Both stable 15-second windows have zero failed requests. The detail window observes fewer requests with shared query caching, but this single sample is not a statistical estimate. World seeds and region hashes differ between deployments, so neither PNG byte changes nor rendering durations are attributed solely to application code.
-
 Lifecycle acceptance has a dedicated journey: actual Docker startup returns 202; delaying delivery of real task-detail responses keeps the original controls blocked, exposes the reason/task-center link, and releases controls only after confirmed completion. The transport gate never fabricates task or server state.
 
 The file recovery journey creates a snapshot from the actual UI, checks preview bytes, restores after a reload, and rolls back through filtered history. Ignored directories remain disabled and protected. File and map reload cases temporarily stop the next Restic backup worker only inside their owned application container, using a verified PID handle; they release it after checking resumed progress and close guards. The helper resumes automatically on input closure or its bounded timeout, and declared cleanup awaits its exit. These cases retain real task and filesystem results rather than synthesizing a running response.

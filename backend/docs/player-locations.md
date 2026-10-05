@@ -30,12 +30,13 @@ The location response includes:
 
 ## Extraction
 
-`player_locations.runner.extract_players()` wraps the mcmap subprocess in the
+`mcmap.runner.extract_players()` wraps the mcmap subprocess in the
 same `MCMapProcess` NDJSON reader used by the map and FTB claims pipelines. The
 reader validates `result.data` with command-specific Pydantic payload models
 before extraction code builds API response objects. When running as root, it
 passes `--chown <uid>:<gid>` derived from the server data directory so generated
-or touched files keep host ownership.
+or touched files keep host ownership. The common execution gate owns the process;
+context exit and cancellation settle the writer and its pipes before returning.
 
 `extract_player_locations_for_server(data_path, world_root)` uses the primary
 world root, matching the FTB claims overlay. Dimension folders are resolved by

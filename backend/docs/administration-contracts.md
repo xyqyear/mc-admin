@@ -44,10 +44,8 @@ are checked through the real API and owned filesystem. These cases complement
 the broader deployed API suites and do not replace them.
 
 `../../frontend-react/browser/00-observations.spec.ts` records overview polling,
-navigation and cold/warm map requests. Fixed-binary and deployed upload/backup
-comparisons are documented in `workload-measurements.md`. Counts are diagnostic;
-correct final content, explicit failure feedback and retained recovery options
-remain the acceptance criteria.
+navigation and cold/warm map requests. Correct final content, explicit failure
+feedback and retained recovery options remain the acceptance criteria.
 
 ## Persistent and deployment contracts
 

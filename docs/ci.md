@@ -1,4 +1,4 @@
-# CI scheduling and timing evidence
+# CI scheduling and verification
 
 The release qualification graph builds one immutable candidate while static checks and backend tests run independently. API and browser shards consume the same candidate. Complete API qualification includes Huawei DNS/Minecraft scenarios and verified cloud recovery. See [release qualification](release.md) for source and image identity checks.
 
@@ -64,10 +64,6 @@ gh run view <run-id> --json headSha,status,conclusion,jobs,url
 ```
 
 Require the exact latest commit and successful candidate, static, all backend shards and their audit, all API shards covering the required ordinary/Huawei cases and their audit, all browser shards and their audit, and final qualification. On failure, inspect failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. Old successful runs or incomplete gates do not qualify it.
-
-The reference qualification is [36148282102](https://github.com/xyqyear/mc-admin/actions/runs/36148282102), source `45a47640dedb60948b82418d5c1f989377e91af4`: 56:14 overall including publication, 55:18 from workflow creation through qualification, 55:01 backend gate, 2,183 passing backend cases, 81 API cases and six browser journeys. Test counts may grow with infrastructure regression coverage; the collected catalog, rather than those historical counts, determines completeness. Compare test steps and whole gates separately, and report changed runner availability or preparation costs alongside the results. The [measured balancing results](ci-balancing-results.md) record the complete successful implementation qualification and its remaining bottlenecks.
-
-The unified-matrix qualification is [37337615626](https://github.com/xyqyear/mc-admin/actions/runs/37337615626), source `af7ebfd34fd3dd74cce38de80491aa6f8daca9a4`. Candidate, static, nine backend shards and their audit, five API shards and their audit, two browser shards and their audit, and final qualification all passed without publication. Audited evidence contains 2,417 backend nodes, 85 passing API cases with all 159 deployed operations observed, and eight browser cases. The API plan froze compatible history from run `37332724209`; its Huawei Minecraft case shared shard 3 with seven ordinary cases, and its reconciliation case shared shard 5 with thirteen ordinary cases. Provider dependencies selected protected authorization for those two mixed runners; all owned local/cloud cleanup passed. The same source also passed [credential-free regression with reuse disabled](https://github.com/xyqyear/mc-admin/actions/runs/37337623874): 83 cases in four ordinary shards with complete coverage and cleanup. Indivisible backend files retain explicit soft-target exceptions.
 
 ## Huawei cloud qualification
 

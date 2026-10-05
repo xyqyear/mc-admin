@@ -49,6 +49,8 @@ HTTP consumers use the normalized `ApiError` (`Error.message`, `status`, `code`,
 
 `features/configuration/` owns the existing-server Compose/template-parameter/conversion workflow: typed API contracts, query options, version-required commands, baseline/draft/remote edit sessions, conflict comparisons, and UI. `pages/server/servers/ServerCompose.tsx` is its route adapter. Global template CRUD and default variables belong to `features/templates/`.
 
+`shared/utils/formatUtils.ts` owns byte-size and duration display helpers; callers retain their zero-value, precision, unit-range and day/hour policies. Server creation and restart request DTOs belong to `features/servers/contracts.ts`; lifecycle results and filesystem-sync DTOs belong to `lifecycleContracts.ts`.
+
 `shared/hooks/useEditorDraft.ts` owns local text/JSON drafts for other resource editors. Remote updates replace pristine content, preserve authored changes, and never establish an empty draft from a failed initial read. Explicit reload resets the draft after a successful read. See `docs/data-architecture.md` for editor and integration-test boundaries.
 
 Server creation keys its template draft by template ID; schema/port refetches preserve authored values. The restart card creates managed server schedules through the server endpoint and opens their exact cron details with `/cron?job=<id>`. Task observers can read journal-retained outcomes after list dismissal or restart; missing/expired details end observation with an explicit message. Archive selection uses file paths as stable row identities.
@@ -124,7 +126,7 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 
 ## SSE consumer
 
-`shared/http/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. `shared/hooks/useEventStream.ts` wraps it for state-driven component use (`useEventStream<TEvent>({ enabled, url, method, body, onEvent, onClose, onError, onResponse })`). Body fingerprinting uses `JSON.stringify`. Snapshot recovery instead observes independent tasks and clones the confirmed target before submission. HTTP failures retain structured `ApiError.detail` and status. EOF before an explicit terminal event is a connection failure.
+`shared/http/eventStream.ts` is the canonical authenticated SSE reader: fetch + `AbortController` + `\n\n` block parser, same-origin cookies, and CSRF header injection for unsafe methods. Snapshot recovery instead observes independent tasks and clones the confirmed target before submission. HTTP failures retain structured `ApiError.detail` and status. EOF before an explicit terminal event is a connection failure.
 
 ## Monaco editor
 

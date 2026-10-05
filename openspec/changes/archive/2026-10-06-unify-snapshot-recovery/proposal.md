@@ -2,7 +2,7 @@
 
 第一轮非快照后台任务改造已完成。快照系统仍有两条恢复链路：文件管理器走路径恢复，地图走世界恢复；它们的历史、回滚入口、预览和断线处理不同。此次将用户面对的创建、恢复、回滚和进度统一起来，同时保留普通文件与世界数据真正不同的执行规则。
 
-本提案承接 [`docs/snapshot-recovery-roadmap.md`](../../../../docs/snapshot-recovery-roadmap.md)，当前只提交计划，供审核后实施。
+本提案记录统一快照与恢复的范围和约束；当前系统行为见 [`docs/snapshot-recovery.md`](../../../../docs/snapshot-recovery.md)。
 
 ## What Changes
 

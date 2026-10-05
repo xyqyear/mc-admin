@@ -1,11 +1,11 @@
 # Server Lifecycle (create / remove / sync)
 
-Server creation and removal each issue exactly **one** request to the backend; the orchestrators on the other side handle compose write, DB row, restart schedule, log monitor, and DNS update atomically. The filesystem↔DB sync feature is owner-only and lives in a dedicated dialog.
+Server creation, removal and filesystem↔DB sync submit feature-owned background tasks. Commands keep their mutations pending through confirmed task completion, including recoverable status-read failures. The filesystem↔DB sync feature is owner-only and lives in a dedicated dialog.
 
 ## Hooks
 
-- `useCreateServer` — posts `{ yaml_content | template_id + variable_values, restart_schedule? }` to `POST /servers/{id}` and returns `CreateServerResult`. Populate (archive extraction) stays a separate follow-up call because it runs as a background task.
-- `useServerOperation({ action: "remove" })` — posts to `POST /servers/{id}/operations`; the `"remove"` action returns `RemoveServerResult` and the mutation surfaces the count of cancelled restart cronjobs in the success toast.
+- `useCreateServer` — posts `{ yaml_content | template_id + variable_values, restart_schedule? }` to `POST /servers/{id}` and waits for the accepted task to return `CreateServerResult`. Populate (archive extraction) stays a separate follow-up call because it runs as a background task.
+- `useServerOperation({ action: "remove" })` — posts to `POST /servers/{id}/operations`; the `"remove"` task returns `RemoveServerResult` and the mutation surfaces the count of cancelled restart cronjobs in the success toast.
 - `useSyncServers` — drives `SyncWithFilesystemDialog`. Calls `POST /servers/sync` with `{ dry_run: true }` for the preview, then `{ dry_run: false }` to apply. A 409 from the empty-filesystem guard enables a "强制应用" button that retries with `{ force: true }`.
 
 ## OWNER gating
@@ -14,14 +14,9 @@ The sync trigger in `Overview.tsx` is rendered only when `useCurrentUser().role 
 
 ## Types
 
-All shapes live in `src/features/servers/lifecycleContracts.ts` and mirror the backend Pydantic models in `app.servers.lifecycle.types`:
+`src/features/servers/contracts.ts` owns `CreateServerRequest` and its optional `RestartScheduleRequest`. API transport and creation commands use this single request shape.
 
-- `CreateServerRequest` / `CreateServerResult`
-- `RemoveServerResult`
-- `SyncRequest` / `SyncResult` (with per-row `Adoption`, `Deactivation` entries)
-- `RestartScheduleRequest` (bundled into `CreateServerRequest`)
-
-When the backend changes any of these, update this file in the same commit.
+`src/features/servers/lifecycleContracts.ts` owns `CreateServerResult`, `RemoveServerResult`, `SyncRequest` and `SyncResult`, including adoption/removal results, dry-run preview entries and per-entry errors. These contracts mirror the corresponding backend lifecycle DTOs.
 
 ## Components
 

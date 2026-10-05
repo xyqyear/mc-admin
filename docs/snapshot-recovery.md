@@ -1,6 +1,6 @@
 # 快照与恢复系统
 
-文件管理器、地图和快照管理页共用创建、预览、恢复、回滚及仓库维护流程。已完成的实现与验证保存在归档 [任务清单](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/tasks.md)；[行为规范](../openspec/specs/snapshot-recovery/spec.md) 是后续改动的验收依据。设计取舍与测试矩阵保存在归档 [详细设计](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/design.md)。
+文件管理器、地图和快照管理页共用创建、预览、恢复、回滚及仓库维护流程。实施范围保存在归档 [任务清单](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/tasks.md)；[行为规范](../openspec/specs/snapshot-recovery/spec.md) 是后续改动的验收依据。设计取舍与测试矩阵保存在归档 [详细设计](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/design.md)。
 
 ## 用户可见的行为
 
@@ -55,4 +55,4 @@
 
 前后端必须同时部署；被替换的同步/SSE 快照执行接口已删除。真实发布版 `v6.0.0-beta.1` 的升级与配套回退使用 [隔离部署演练](../e2e/docs/deployment-rehearsal.md)。升级后的 schema 不支持直接运行旧发布版；有恢复历史时也拒绝数据库降级。完整检查点灾备只恢复检查点时刻，不合并其后的修改，后续数据必须另行保留。
 
-[交付证据](snapshot-recovery-verification.md) 记录提交、完整 Actions 与实际迁移演练。每次变更均须本地验证、commit/push，并对最新 SHA 运行完整 qualification；部分检查或旧 SHA 的通过不能代替最终验收。分支合并、发布及 OpenSpec 归档分别按用户授权执行。
+每次变更均须按[交付与测试要求](../AGENTS.md#交付与测试要求)完成本地定向验证、commit/push，并对最新 SHA 运行完整 qualification；部分检查或旧 SHA 的通过不能代替最终验收。分支合并、发布及 OpenSpec 归档分别按用户授权执行。

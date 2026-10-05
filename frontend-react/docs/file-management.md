@@ -29,7 +29,7 @@ Game-port self-check remediation links to `/server/<encoded-server-id>/files?pat
 
 ## Single-file editing
 
-`FileEditDialog.tsx` opens a Monaco editor populated by `GET /files/content`. Auto-detects the language from the extension via `features/files/languageDetection.ts`. **SNBT** (Minecraft NBT serialized as text) is registered as a custom Monaco language in `main.tsx`; editing one of these is the same as editing YAML/JSON, just with the right tokenizer.
+`FileEditDialog.tsx` opens a Monaco editor populated by `GET /files/content`. Auto-detects the language from the extension via `features/files/editingConfig.ts`. **SNBT** (Minecraft NBT serialized as text) is registered as a custom Monaco language in `main.tsx`; editing one of these is the same as editing YAML/JSON, just with the right tokenizer.
 
 The dialog waits for successfully loaded content before enabling edits or save. An empty successful response is a valid baseline; users can intentionally save empty content. Failed initial reads show a retry action. A failed save keeps the dialog and authored draft, and a later background read does not overwrite those edits. Saving disables editing and dismissal until the write settles; the dialog closes on success. Ordinary online file editing uses the same flow.
 
@@ -47,7 +47,7 @@ Folder drag-drop generates many files at once with potential conflicts. `MultiFi
 
 The flow fixes the file list when conflict checking starts and treats checking as busy. Its single batch-size constant decides both `reusable` and sequential batches of at most 1000 files; the raw API layer sends one batch. Closing, changing the target, or unmounting aborts the current request and ignores late callbacks. Cancellation preserves already-written files and invalidates the file listing; it does not roll back the batch.
 
-The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up.
+The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up. File trees and upload progress use the shared byte formatter with `0 B` and one decimal place; the search tree supports TB, while table/download defaults retain their separate zero label and precision.
 
 `shared/hooks/usePageDragUpload.ts` is the page-level drop-zone hook — collects dropped files and nested directory entries, then passes them to the dialog flow.
 
@@ -79,7 +79,7 @@ The user can navigate away — the task center continues to track the task and t
 - `features/files/components/dialogs/MultiFileUploadDialog.tsx`, `FileUploadTree.tsx`, `ConflictTree.tsx`, `CreateDialog.tsx`, `RenameDialog.tsx`, `FileEditDialog.tsx`, `FileDiffDialog.tsx`, `FileDeepSearchDialog.tsx`, `CompressionConfirmDialog.tsx`, `CompressionResultDialog.tsx`
 - `features/files/api.ts`, `features/files/queries.ts`, `features/files/commands.ts`
 - `shared/hooks/usePageDragUpload.ts`
-- `features/files/languageDetection.ts`, `features/files/search.ts`
+- `features/files/editingConfig.ts`, `features/files/search.ts`
 
 ## Feature controllers and completion
 

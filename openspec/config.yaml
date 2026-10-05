@@ -9,8 +9,9 @@ context: |
   backend/docs/ and frontend-react/docs/ files describe current technical design,
   invariants, and lifecycle ordering; reference them instead of duplicating them.
 
-  OpenSpec specs describe observable behavior, not implementation structure. Code,
-  specs, technical docs, and comments are English. User-facing application text is Chinese.
+  OpenSpec specs describe observable behavior, not implementation structure. Code
+  identifiers and comments are English. Specs and technical docs follow the language
+  of their existing documents, Chinese or English. User-facing application text is Chinese.
 
 rules:
   proposal:

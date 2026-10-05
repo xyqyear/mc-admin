@@ -23,12 +23,7 @@ self.MonacoEnvironment = {
 
 ## Compose schema validation
 
-monaco-yaml is configured with two schemas:
-
-- The Docker Compose JSON Schema for general syntax
-- A docker-minecraft-server hint schema (`public/static/mc-server-compose-schema.json`) that adds completions for `itzg/minecraft-server` env vars (`VERSION`, `EULA`, `MEMORY`, `TYPE`, etc.)
-
-Both are loaded as `fileMatch: ['*.yaml', '*.yml']`. The hints schema is project-specific; updating it is how new env vars become discoverable in the editor.
+`ComposeYamlEditor` configures monaco-yaml to load `/static/mc-server-compose-schema.json`. This self-contained schema validates the Minecraft Compose structure and adds completions for `itzg/minecraft-server` environment variables (`VERSION`, `EULA`, `MEMORY`, `TYPE`, etc.). Its internal references do not load a separate Compose schema. The configured file matches include Compose filenames and YAML extensions. Updating this schema makes new environment variables discoverable in the editor.
 
 ## SNBT language
 
@@ -37,7 +32,7 @@ Both are loaded as `fileMatch: ['*.yaml', '*.yml']`. The hints schema is project
 - `snbtLanguageDefinition` — Monarch tokenizer rules covering numbers, strings, identifiers, brackets, the `1L` / `1.0f` numeric suffixes
 - `snbtLanguageConfiguration` — bracket pairs, comment rules, surrounding-pair config
 
-Registered once in `main.tsx` via `monaco.languages.register({ id: 'snbt' })` + `setMonarchTokensProvider`. `features/files/languageDetection.ts` returns `'snbt'` for `.dat` / `.snbt` extensions, which `FileEditModal` passes to Monaco.
+Registered once in `main.tsx` via `monaco.languages.register({ id: 'snbt' })` + `setMonarchTokensProvider`. `features/files/editingConfig.ts` selects `snbt` for `.snbt` files. `useFileEditor` passes that language and its options to `FileEditDialog`.
 
 ## Diff viewer
 
@@ -54,5 +49,5 @@ The compose-diff use cases (template change preview, file conflict resolution, m
 - `src/main.tsx` — worker registration + SNBT language registration
 - `src/yaml.worker.js` — custom YAML worker (monaco-yaml)
 - `src/shared/editors/snbtLanguage.ts` — SNBT language definition
-- `src/features/files/languageDetection.ts` — extension → Monaco language id mapping
+- `src/features/files/editingConfig.ts` — extension → Monaco language id mapping
 - `public/static/mc-server-compose-schema.json` — docker-minecraft-server compose hints

@@ -25,18 +25,17 @@ Built-in checks are grouped by operational category under
 and error isolation; category modules own the actual check implementations and
 their `CheckDefinition` metadata.
 
-The runtime constructs the service with an actual database session factory,
-notification bus and `SelfCheckDependencies`. The context receives the owning
+The runtime constructs the service with an actual database session factory and
+`SelfCheckDependencies`. The context receives the owning
 settings, current configuration view, Minecraft manager, snapshot adapter,
 connectivity service, log monitor and operation locks. Each run reads current
 configuration, while the dependencies and retained history stay with their
 installation even if a different runtime is bound by the caller. The run lock
 belongs to the service instance.
 
-Adapter and notification errors use safe public messages and diagnostics that
-exclude exception values. A failed check preserves its finding and allows
-subsequent checks to execute. Notification sinks fail independently; their
-failure does not discard persisted findings or prevent delivery to other sinks.
+Adapter errors use safe public messages and diagnostics that exclude exception
+values. A failed check preserves its finding and allows subsequent checks to
+execute.
 
 The current health state is derived from retained runs instead of stored in a
 separate state table. The latest full run is the baseline, and the latest
@@ -157,27 +156,20 @@ event triggers run as part of this check.
 
 - `GET /api/self-check/catalog` — configured catalog with enabled flags
 - `GET /api/self-check/status` — catalog, current health state, and recent run summaries
-- `POST /api/self-check/run` — manual run, returns the full run result
-- `POST /api/self-check/checks/{check_id}/run` — single-check rerun
+- `POST /api/self-check/run` — manual run, returns HTTP 202 with a task ID
+- `POST /api/self-check/checks/{check_id}/run` — single-check rerun, returns HTTP 202 with a task ID
 - `GET /api/self-check/runs` — paginated retained run history
 - `GET /api/self-check/runs/{id}` — retained run detail with findings
-
-## Notifications
-
-`SelfCheckNotificationBus` is a no-op extension point for future push
-integrations. Sinks implement `publish(result)`. Sink failures are logged and do
-not affect the self-check result.
 
 ## Files
 
 - `constants.py` — check IDs and trigger names
 - `types.py` — run, finding, catalog, event, and history response models
-- `service.py` — owned catalog, validation, check isolation, event streaming, persistence and notifications
+- `service.py` — owned catalog, validation, check isolation, event streaming and persistence
 - `checks/base.py` — shared check context, definition, and finding helpers
 - `checks/<category>.py` — built-in check implementations grouped by catalog category
 - `jar_metadata.py` — jar metadata ID extraction for Mod/plugin detection
 - `crud.py` — retained-run persistence and current-state derivation
 - `job.py` — cron entry point and params schema
 - `events.py` — event-triggered scheduling helper
-- `notifications.py` — future push notification bus
 - `routers/self_check.py` — HTTP API
