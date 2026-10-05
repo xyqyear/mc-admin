@@ -1,51 +1,16 @@
 """Test playtime calculation including ongoing sessions."""
 
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.players.crud.query.player_query import (
     get_all_players_summary,
     get_player_detail_by_uuid,
 )
 from app.players.models import Player, PlayerSession
 from app.servers.models import Server
-
-
-async def create_test_db():
-    """Create a temporary test database and return session."""
-    # Create temporary database file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        temp_db_path = Path(temp_db.name)
-
-    # Create async engine for test database
-    database_url = f"sqlite+aiosqlite:///{temp_db_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Create session factory
-    async_session = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    # Create session
-    session = async_session()
-
-    return session, engine, temp_db_path
-
-
-async def cleanup_test_db(session, engine, temp_db_path):
-    """Cleanup test database."""
-    await session.close()
-    await engine.dispose()
-    temp_db_path.unlink(missing_ok=True)
+from tests.players.helpers import cleanup_test_db, create_test_db
 
 
 @pytest.mark.asyncio

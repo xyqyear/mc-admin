@@ -238,3 +238,36 @@ def test_release_tag_and_destination_policy_runs_before_promotion(tmp_path):
                 assert result.returncode != 0
                 assert "release tag policy" in result.stderr
                 assert not calls.exists()
+
+
+@pytest.mark.parametrize("test_exit", [0, 29])
+def test_static_gate_runs_checkpoint_tests_and_preserves_failure(tmp_path, test_exit):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/static-checks.yml").read_text())
+    job = workflow["jobs"]["backend-pyright"]
+    directory = ROOT / job["defaults"]["run"]["working-directory"]
+    step = next(step for step in job["steps"] if "test_deployment_rehearsal.py" in step.get("run", ""))
+    assert "if" not in step and not step.get("continue-on-error", False)
+    invocation = tmp_path / "invocation.json"
+    adapter = tmp_path / "uv"
+    adapter.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['CHECKPOINT_INVOCATION']).write_text(json.dumps(sys.argv[1:]))\n"
+        "sys.exit(int(os.environ['CHECKPOINT_TEST_EXIT']))\n"
+    )
+    adapter.chmod(0o700)
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step["run"]],
+        cwd=directory,
+        env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
+             "CHECKPOINT_INVOCATION": str(invocation), "CHECKPOINT_TEST_EXIT": str(test_exit)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == test_exit
+    arguments = json.loads(invocation.read_text())
+    assert arguments[0:2] == ["run", "python"]
+    assert arguments[arguments.index("-m") + 1] == "unittest" and "discover" in arguments
+    source = (directory / arguments[arguments.index("-s") + 1]).resolve()
+    pattern = arguments[arguments.index("-p") + 1]
+    assert list(source.glob(pattern)) == [ROOT / "e2e/scripts/test_deployment_rehearsal.py"]

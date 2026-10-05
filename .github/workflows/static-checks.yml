@@ -92,6 +92,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-groups
 
+      - name: Test deployment checkpoint ownership
+        run: uv run python -W error::ResourceWarning -m unittest discover -s ../e2e/scripts -p test_deployment_rehearsal.py -v
+
       - name: Run pyright
         run: uv run pyright
 

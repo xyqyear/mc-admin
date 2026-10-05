@@ -1,56 +1,16 @@
 """Cron job persistence and recovery across simulated restarts."""
 import asyncio
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
 from app.db.database import get_async_session
-from app.db.metadata import Base
-from tests.support.runtime import patch_runtime_resource
 
 from .test_cron_manager import TestCronManager, test_cron_registry
 from .test_cronjobs import SampleCronJobParams
 
-
-@pytest.fixture(autouse=True)
-async def setup_test_db():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
-        TEST_DB_PATH = tmp_file.name
-
-    test_db_url = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
-    TEST_ENGINE = create_async_engine(test_db_url, echo=False)
-    TEST_SESSION_MAKER = async_sessionmaker(
-        bind=TEST_ENGINE,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    async with TEST_ENGINE.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    with (
-        patch_runtime_resource('session_factory', TEST_SESSION_MAKER),
-        patch_runtime_resource('database_engine', TEST_ENGINE),
-        patch("app.cron.manager.get_async_session") as mock_get_session,
-    ):
-        def get_test_session():
-            return TEST_SESSION_MAKER()
-
-        mock_get_session.side_effect = get_test_session
-
-        yield
-
-    if TEST_ENGINE:
-        await TEST_ENGINE.dispose()
-    if TEST_DB_PATH and Path(TEST_DB_PATH).exists():
-        Path(TEST_DB_PATH).unlink()
+pytestmark = pytest.mark.usefixtures("setup_test_db")
 
 
 class TestCronJobPersistence:

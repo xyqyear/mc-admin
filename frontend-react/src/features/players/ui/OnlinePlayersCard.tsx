@@ -1,3 +1,4 @@
+import { formatDuration } from '@/shared/utils/formatUtils';
 import React from 'react';
 import { User, Clock } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card';
@@ -10,16 +11,6 @@ interface OnlinePlayersCardProps {
   isHealthy: boolean;
   className?: string;
 }
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`;
-  }
-  return `${minutes}分钟`;
-};
 
 export const OnlinePlayersCard: React.FC<OnlinePlayersCardProps> = ({
   serverId,
@@ -66,7 +57,7 @@ export const OnlinePlayersCard: React.FC<OnlinePlayersCardProps> = ({
                     title={`加入时间: ${new Date(player.joined_at).toLocaleString('zh-CN')}`}
                   >
                     <Clock className="h-3 w-3" />
-                    <span>{formatDuration(player.session_duration_seconds)}</span>
+                    <span>{formatDuration(player.session_duration_seconds, false)}</span>
                   </div>
                 </div>
 

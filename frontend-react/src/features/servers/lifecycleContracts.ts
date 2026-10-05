@@ -1,19 +1,3 @@
-/**
- * Shared types for the server lifecycle module.
- * Mirrors the Pydantic models in app/servers/lifecycle/types.py.
- */
-
-export interface RestartScheduleRequest {
-  custom_cron?: string | null;
-}
-
-export interface CreateServerRequest {
-  yaml_content?: string;
-  template_id?: number;
-  variable_values?: Record<string, unknown>;
-  restart_schedule?: RestartScheduleRequest | null;
-}
-
 export interface CreateServerResult {
   server_id: string;
   game_port: number;

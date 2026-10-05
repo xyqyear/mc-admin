@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { RestartScheduleRequest } from '@/features/servers/contracts';
 import { waitForTaskResult } from '@/features/tasks/commands';
 import { taskApi } from '@/features/tasks/api';
 import type { ApiError } from '@/shared/http/api';
@@ -7,7 +8,6 @@ import { taskQueryKeys } from "@/features/tasks/queries";
 import type {
   CreateServerResult,
   RemoveServerResult,
-  RestartScheduleRequest,
   SyncRequest,
   SyncResult,
 } from "@/features/servers/lifecycleContracts";

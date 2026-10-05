@@ -77,7 +77,7 @@ export interface ServerOperationRequest {
   action: string;
 }
 
-export interface RestartScheduleRequestBody {
+export interface RestartScheduleRequest {
   custom_cron?: string | null;
 }
 
@@ -85,7 +85,7 @@ export interface CreateServerRequest {
   yaml_content?: string;
   template_id?: number;
   variable_values?: Record<string, unknown>;
-  restart_schedule?: RestartScheduleRequestBody | null;
+  restart_schedule?: RestartScheduleRequest | null;
 }
 
 export interface PopulateServerRequest {

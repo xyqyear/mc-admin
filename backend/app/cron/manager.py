@@ -21,6 +21,7 @@ from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..operations.execution import operation_scope
 from ..operations.finalization import finalize
 from ..operations.journal_types import TERMINAL_STATES, OperationState
+from ..runtime_resources import current_runtime
 from . import crud
 from .bindings import (
     RESTART_PURPOSE,
@@ -668,3 +669,6 @@ class CronManager:
                         cron,
                         second,
                     )
+
+def get_cron_manager() -> CronManager:
+    return current_runtime().resource('cron_manager')

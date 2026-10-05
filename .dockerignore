@@ -36,4 +36,3 @@ backend/mc-router
 backend/notebooks
 
 frontend-react/.agents
-frontend-react/skills-lock.json

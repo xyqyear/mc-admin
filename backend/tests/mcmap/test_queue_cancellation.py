@@ -3,13 +3,14 @@ import asyncio
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
 from app.mcmap.types import MCMapError
+from tests.support.mcmap import mcmap_config
 from tests.support.runtime import patch_runtime_resource
 
 
@@ -35,14 +36,6 @@ class HangingProc:
 
     async def terminate(self):
         self.terminated.set()
-
-
-def _mcmap_cfg(batch_size=4, thread_count=2):
-    cfg = Mock()
-    cfg.batch_size = batch_size
-    cfg.thread_count = thread_count
-    cfg.request_timeout_seconds = 30
-    return cfg
 
 
 @pytest.fixture
@@ -88,7 +81,7 @@ async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
 
         c1 = asyncio.create_task(queue.request(0, 0))
         c2 = asyncio.create_task(queue.request(0, 0))
@@ -126,7 +119,7 @@ async def test_last_consumer_cancel_terminates_running_subprocess(
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
 
         c = asyncio.create_task(queue.request(0, 0))
         await started.wait()
@@ -160,7 +153,7 @@ async def test_pre_batch_cancellation_skips_render(queue_with_cache):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
 
         c = asyncio.create_task(queue.request(0, 0))
         # Cancel before the worker even runs
@@ -221,7 +214,7 @@ async def test_mid_batch_partial_cancellation_keeps_others_alive(queue_with_cach
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg(batch_size=4)
+        config_mock.mcmap = mcmap_config(batch_size=4)
 
         a = asyncio.create_task(queue.request(0, 0))
         b = asyncio.create_task(queue.request(1, 0))

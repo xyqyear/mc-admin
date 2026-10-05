@@ -10,5 +10,3 @@ from tests.support.runtime import set_runtime_resource
 def world_runtime_config(monkeypatch):
     runtime_config = SimpleNamespace(world=WorldConfig())
     set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)

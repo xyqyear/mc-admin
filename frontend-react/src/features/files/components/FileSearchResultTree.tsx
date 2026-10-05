@@ -1,3 +1,4 @@
+import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState, useMemo, useEffect } from 'react'
 import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
 
@@ -21,14 +22,6 @@ interface FileSearchResultTreeProps {
   searchResults: SearchFileItem[]
   currentRegex: string
   onSelect: (selectedKeys: React.Key[]) => void
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
 const searchResultToFileItem = (result: SearchFileItem): FileItem => ({
@@ -140,7 +133,7 @@ const TreeNodeRow: React.FC<{
         <HighlightedFileName name={node.name} matchResult={node.matchResult} />
         {node.isLeaf && node.size != null && (
           <span className="text-xs text-muted-foreground ml-1">
-            ({formatFileSize(node.size)})
+            ({formatFileSize(node.size, { decimals: 1, zeroValue: "0 B", terabytes: true })})
           </span>
         )}
       </div>

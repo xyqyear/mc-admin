@@ -1,6 +1,5 @@
 import asyncio
 import os
-import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -11,7 +10,9 @@ import pytest
 from app.mcmap import runner
 from app.mcmap.events import (
     MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER,
+    MCMAP_FTB_CLAIMS_EVENT_ADAPTER,
     MCMAP_GEN_PALETTE_EVENT_ADAPTER,
+    MCMAP_PLAYERS_EVENT_ADAPTER,
     MCMAP_PRUNE_EVENT_ADAPTER,
     MCMAP_RENDER_EVENT_ADAPTER,
     MCMapChunksPrunedEvent,
@@ -22,15 +23,7 @@ from app.mcmap.events import (
     MCMapRegionPrunedEvent,
     MCMapRenderRegionEvent,
 )
-
-
-def _write_fake_mcmap(content: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_mcmap_")
-    os.close(fd)
-    p = Path(path)
-    p.write_text(content)
-    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return p
+from tests.support.mcmap import write_fake_mcmap
 
 
 @pytest.fixture
@@ -40,7 +33,7 @@ def fake_owned_dir():
 
 
 async def test_render_parses_ndjson_events(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"region","x":0,"z":0,"status":"rendered","output":"/x.png"}\'\n'
         'echo \'{"type":"region","x":1,"z":0,"status":"missing"}\'\n'
@@ -70,7 +63,7 @@ async def test_render_parses_ndjson_events(fake_owned_dir):
 
 
 async def test_runner_rejects_malformed_lines(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         "echo 'not json'\n"
         'echo \'{"type":"result"}\'\n'
@@ -89,7 +82,7 @@ async def test_runner_rejects_malformed_lines(fake_owned_dir):
 
 
 async def test_runner_terminate_is_idempotent(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         # Sleep so we can terminate it mid-run
         "sleep 30\n"
@@ -111,7 +104,7 @@ async def test_runner_terminate_is_idempotent(fake_owned_dir):
 async def test_runner_terminates_on_context_exit_even_if_caller_breaks(
     fake_owned_dir,
 ):
-    fake = _write_fake_mcmap("#!/bin/sh\nsleep 30\n")
+    fake = write_fake_mcmap("#!/bin/sh\nsleep 30\n")
     with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         async with runner.render(
             palette=Path("/tmp/p.json"),
@@ -126,7 +119,7 @@ async def test_runner_terminates_on_context_exit_even_if_caller_breaks(
 
 
 async def test_download_client_args_passed_through(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","version":"1.21.4","target":"/tmp/client.jar","bytes":123,"sha1":"abc","move_method":"rename"}\'\n'
@@ -150,7 +143,7 @@ async def test_download_client_args_passed_through(fake_owned_dir):
 
 
 async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
@@ -176,7 +169,7 @@ async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
 
 
 async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
@@ -198,7 +191,7 @@ async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
 
 
 async def test_prune_inhabited_passes_mode_threshold_and_claims(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","mode":"chunks","dry_run":true,"region_dirs":1,"regions_scanned":0,"chunks_scanned":0,"chunks_selected":0,"regions_selected":0}\'\n'
@@ -294,3 +287,56 @@ async def test_concurrent_termination_reaps_one_owned_process_and_stderr_reader(
             assert process.returncode is not None
             assert process._stderr_task is not None and process._stderr_task.done()
             assert not (Path("/proc") / str(process._proc.pid)).exists()
+
+@pytest.mark.parametrize(
+    "command,adapter,result",
+    [
+        (
+            "extract_ftb_claims",
+            MCMAP_FTB_CLAIMS_EVENT_ADAPTER,
+            '{"type":"result","detected_format":"snbt","teams":0,"claims":0,"dimensions":0,"data":{"mcmap_extract_ftb_claims_version":1,"detected_format":"snbt","world_dir":"/tmp/world","dimensions":[],"teams":[]}}',
+        ),
+        (
+            "extract_players",
+            MCMAP_PLAYERS_EVENT_ADAPTER,
+            '{"type":"result","players":0,"skipped":0,"dimensions":0,"data":{"mcmap_extract_players_version":1,"world_dir":"/tmp/world","dimensions":[],"players":[],"skipped":[]}}',
+        ),
+    ],
+)
+async def test_extraction_cancellation_reaps_live_process(tmp_path, monkeypatch, command, adapter, result):
+    fake = tmp_path / "owned-extraction"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import time\n"
+        f"print({result!r}, flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    fake.chmod(0o700)
+    monkeypatch.setattr(runner.get_settings(), "mcmap_binary_path", fake)
+    started = asyncio.Event()
+    processes = []
+
+    async def consume():
+        async with getattr(runner, command)(tmp_path / "world", owned_by=tmp_path) as process:
+            processes.append(process)
+            async for event in process.events(adapter):
+                assert event.type == "result"
+                started.set()
+
+    worker = asyncio.create_task(consume())
+    try:
+        async with asyncio.timeout(5):
+            await started.wait()
+            process = processes[0]
+            assert process.returncode is None
+            assert os.getpgid(process._proc.pid) == process._proc.pid
+            worker.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await worker
+        assert process.returncode is not None
+        assert process._stderr_task is not None and process._stderr_task.done()
+        assert not (Path("/proc") / str(process._proc.pid)).exists()
+    finally:
+        if not worker.done():
+            worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)

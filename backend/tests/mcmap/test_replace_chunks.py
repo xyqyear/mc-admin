@@ -5,8 +5,6 @@ A separate end-to-end byte-level test against real mcmap is out of scope: Phase 
 covers chunk merge with a real binary via the orchestrator integration tests.
 """
 
-import os
-import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -15,15 +13,7 @@ import pytest
 
 from app.mcmap import runner
 from app.mcmap.events import MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER
-
-
-def _write_fake_mcmap(content: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_mcmap_")
-    os.close(fd)
-    p = Path(path)
-    p.write_text(content)
-    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return p
+from tests.support.mcmap import write_fake_mcmap
 
 
 @pytest.fixture
@@ -33,7 +23,7 @@ def fake_owned_dir():
 
 
 async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"chunk_replaced","x":4,"z":15,"source_kind":"external"}\'\n'
@@ -76,7 +66,7 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
 
 
 async def test_replace_chunks_single_chunk(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"chunk_replaced","x":0,"z":0,"source_kind":"empty"}\'\n'
@@ -108,7 +98,7 @@ async def test_replace_chunks_single_chunk(fake_owned_dir):
 
 
 async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"error","message":"chunk (32,0) out of range"}\'\n'
         "exit 1\n"

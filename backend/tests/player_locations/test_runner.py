@@ -1,22 +1,12 @@
-import os
-import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from app.mcmap import runner
 from app.mcmap.events import MCMAP_PLAYERS_EVENT_ADAPTER
-from app.player_locations import runner
-
-
-def _write_fake_mcmap(content: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_players_mcmap_")
-    os.close(fd)
-    p = Path(path)
-    p.write_text(content)
-    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return p
+from tests.support.mcmap import write_fake_mcmap
 
 
 @pytest.fixture
@@ -26,7 +16,7 @@ def fake_owned_dir():
 
 
 async def test_extract_players_yields_result_event(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"result","players":0,"skipped":0,"dimensions":0,"data":{"mcmap_extract_players_version":1,"world_dir":"/tmp/world","dimensions":[],"players":[],"skipped":[]}}\'\n'
     )
@@ -43,7 +33,7 @@ async def test_extract_players_yields_result_event(fake_owned_dir):
 
 
 async def test_extract_players_passes_world_arg(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","players":0,"skipped":0,"dimensions":0,"data":{"mcmap_extract_players_version":1,"world_dir":"/tmp/world","dimensions":[],"players":[],"skipped":[]}}\'\n'

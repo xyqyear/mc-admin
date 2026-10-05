@@ -11,6 +11,7 @@ from ..mcmap.events import (
     MCMapProtocolError,
     MCMapSkippedPlayerFile,
 )
+from ..mcmap.runner import extract_players
 from ..world.layout import (
     WorldRootPath,
     discover_world_root_paths,
@@ -23,7 +24,6 @@ from .models import (
     PlayerLocationSkippedFile,
     PlayerLocationsResponse,
 )
-from .runner import extract_players
 
 
 class PlayerLocationExtractError(Exception):

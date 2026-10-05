@@ -6,7 +6,7 @@ import { archiveApi } from '@/features/archives/api';
 import type { ArchiveSHA256Event, VerifyArchiveUploadResponse } from '@/features/archives/contracts';
 import { queryKeys } from '@/shared/http/api'
 import { waitForTaskResult } from '@/features/tasks/commands'
-import { formatUtils } from '@/features/servers/presentation'
+import { formatBytes } from '@/shared/utils/formatUtils'
 
 type UploadPhase =
   | 'idle'
@@ -277,7 +277,7 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
         const initialOffset = current.offset
         const reportProgress = () => {
           const seconds = Math.max((Date.now() - started) / 1000, 0.001)
-          update({ progress: Math.round(current.offset * 100 / file.size), speed: `${formatUtils.formatBytes((current.offset - initialOffset) / seconds)}/s`, detailText: `${formatUtils.formatBytes(current.offset)} / ${formatUtils.formatBytes(file.size)}` })
+          update({ progress: Math.round(current.offset * 100 / file.size), speed: `${formatBytes((current.offset - initialOffset) / seconds)}/s`, detailText: `${formatBytes(current.offset)} / ${formatBytes(file.size)}` })
         }
         reportProgress()
         while (current.offset < file.size) {

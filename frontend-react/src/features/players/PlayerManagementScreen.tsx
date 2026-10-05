@@ -33,22 +33,7 @@ import { MCAvatar } from '@/features/players/ui/MCAvatar';
 import { useAllPlayers } from '@/features/players/queries';
 import { useServerQueries } from '@/features/servers/queries';
 import type { PlayerCleanupKind, PlayerSummary } from '@/features/players/contracts';
-import { formatUUID } from '@/shared/utils/formatUtils';
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return `${days}天 ${remainingHours}小时`;
-  }
-  if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`;
-  }
-  return `${minutes}分钟`;
-};
+import { formatDuration, formatUUID } from '@/shared/utils/formatUtils';
 
 const columns: ColumnDef<PlayerSummary, any>[] = [
   {

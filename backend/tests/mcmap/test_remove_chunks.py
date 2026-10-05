@@ -1,7 +1,5 @@
 """Tests for runner.remove_chunks — argv shape, NDJSON parsing, error handling."""
 
-import os
-import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -10,15 +8,7 @@ import pytest
 
 from app.mcmap import runner
 from app.mcmap.events import MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER
-
-
-def _write_fake_mcmap(content: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_mcmap_")
-    os.close(fd)
-    p = Path(path)
-    p.write_text(content)
-    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return p
+from tests.support.mcmap import write_fake_mcmap
 
 
 @pytest.fixture
@@ -28,7 +18,7 @@ def fake_owned_dir():
 
 
 async def test_remove_chunks_argv_shape_and_events(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"chunk_removed","x":4,"z":15}\'\n'
@@ -66,7 +56,7 @@ async def test_remove_chunks_argv_shape_and_events(fake_owned_dir):
 
 
 async def test_remove_chunks_error_event(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"error","message":"target missing"}\'\n'
         "exit 1\n"

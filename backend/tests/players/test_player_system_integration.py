@@ -6,17 +6,12 @@ Only mocks: skin_fetcher, mojang_api, and uses isolated test databases.
 """
 
 import asyncio
-import tempfile
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.players import get_player_service
 from app.players.crud import upsert_player
 from app.players.models import (
@@ -25,40 +20,12 @@ from app.players.models import (
     PlayerChatMessage,
     PlayerSession,
 )
-from app.players.skin_fetcher import SkinFetcher
 from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
 
 # ============================================================================
 # Fixtures
 # ============================================================================
-
-
-@pytest.fixture
-async def test_database():
-    """Create isolated test database for each test."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    db_url = f"sqlite+aiosqlite:///{db_path}"
-    engine = create_async_engine(db_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async_session_maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    @asynccontextmanager
-    async def get_session():
-        async with async_session_maker() as session:
-            yield session
-
-    yield get_session
-
-    await engine.dispose()
-    Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
@@ -81,28 +48,6 @@ def mock_mojang_api():
         return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)
-
-
-@pytest.fixture
-async def player_system(test_database, mock_skin_fetcher, mock_mojang_api):
-    """Initialize player system with mocked external dependencies."""
-
-    patches = [
-        patch.object(get_player_service(), "session_factory", test_database),
-        patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
-        patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
-    ]
-
-    for p in patches:
-        p.start()
-
-    try:
-        yield {
-            "db": test_database,
-        }
-    finally:
-        for p in patches:
-            p.stop()
 
 
 # ============================================================================

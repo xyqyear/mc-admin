@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,9 @@ import (
 	"mc-admin/e2e/internal/fixtures"
 	"mc-admin/e2e/internal/platform"
 )
+
+//go:embed cloud_helper.py
+var cleanupScript string
 
 type cloudManifest struct {
 	Version     int       `json:"version"`

@@ -1,22 +1,12 @@
-import os
-import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from app.ftb_claims import runner
+from app.mcmap import runner
 from app.mcmap.events import MCMAP_FTB_CLAIMS_EVENT_ADAPTER
-
-
-def _write_fake_mcmap(content: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_ftb_mcmap_")
-    os.close(fd)
-    p = Path(path)
-    p.write_text(content)
-    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return p
+from tests.support.mcmap import write_fake_mcmap
 
 
 @pytest.fixture
@@ -26,7 +16,7 @@ def fake_owned_dir():
 
 
 async def test_extract_yields_result_event(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"result","detected_format":"snbt","teams":0,"claims":0,"dimensions":0,"data":{"mcmap_extract_ftb_claims_version":1,"detected_format":"snbt","world_dir":"/tmp/world","dimensions":[],"teams":[]}}\'\n'
     )
@@ -44,7 +34,7 @@ async def test_extract_yields_result_event(fake_owned_dir):
 
 
 async def test_extract_reads_large_result_event(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/usr/bin/env python3\n"
         "import json\n"
         "payload = {\n"
@@ -85,7 +75,7 @@ async def test_extract_reads_large_result_event(fake_owned_dir):
 
 
 async def test_extract_yields_error_event(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo \'{"type":"error","message":"could not detect FTB claim format in world directory"}\'\n'
     )
@@ -101,7 +91,7 @@ async def test_extract_yields_error_event(fake_owned_dir):
 
 
 async def test_extract_passes_world_arg(fake_owned_dir):
-    fake = _write_fake_mcmap(
+    fake = write_fake_mcmap(
         "#!/bin/sh\n"
         'echo "$@" > "$0.args"\n'
         'echo \'{"type":"result","detected_format":"snbt","teams":0,"claims":0,"dimensions":0,"data":{"mcmap_extract_ftb_claims_version":1,"detected_format":"snbt","world_dir":"/tmp/world","dimensions":[],"teams":[]}}\'\n'

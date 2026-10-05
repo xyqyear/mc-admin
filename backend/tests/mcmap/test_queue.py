@@ -3,12 +3,13 @@ import asyncio
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
+from tests.support.mcmap import mcmap_config
 from tests.support.runtime import patch_runtime_resource
 
 
@@ -63,14 +64,6 @@ def _patched_runner(events_per_call):
     return fake_render, calls
 
 
-def _mcmap_cfg(batch_size=4, thread_count=2):
-    cfg = Mock()
-    cfg.batch_size = batch_size
-    cfg.thread_count = thread_count
-    cfg.request_timeout_seconds = 30
-    return cfg
-
-
 @pytest.fixture
 def cache_and_queue():
     with tempfile.TemporaryDirectory() as d:
@@ -94,7 +87,7 @@ async def test_request_resolves_with_png_path(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
         png = await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
         assert png == cache.png_path("world/region", 0, 0)
         # Render was called once with one MCA
@@ -111,7 +104,7 @@ async def test_duplicate_requests_coalesce_to_single_render(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
         results = await asyncio.wait_for(
             asyncio.gather(queue.request(0, 0), queue.request(0, 0)),
             timeout=2.0,
@@ -138,7 +131,7 @@ async def test_batched_requests_in_single_render(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg(batch_size=8)
+        config_mock.mcmap = mcmap_config(batch_size=8)
         results = await asyncio.wait_for(
             asyncio.gather(
                 queue.request(0, 0),
@@ -161,7 +154,7 @@ async def test_missing_status_raises_filenotfound(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
         with pytest.raises(FileNotFoundError):
             await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
@@ -177,7 +170,7 @@ async def test_error_status_raises_render_error(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg()
+        config_mock.mcmap = mcmap_config()
         with pytest.raises(MCMapError):
             await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
@@ -195,7 +188,7 @@ async def test_missing_event_for_requested_region_raises(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg(batch_size=4)
+        config_mock.mcmap = mcmap_config(batch_size=4)
         # Ask for two; only one event will arrive
         results = await asyncio.wait_for(
             asyncio.gather(
@@ -222,10 +215,10 @@ async def test_worker_reads_mcmap_config_for_each_batch(cache_and_queue):
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = _mcmap_cfg(batch_size=1, thread_count=2)
+        config_mock.mcmap = mcmap_config(batch_size=1, thread_count=2)
         first = await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
-        config_mock.mcmap = _mcmap_cfg(batch_size=1, thread_count=7)
+        config_mock.mcmap = mcmap_config(batch_size=1, thread_count=7)
         second = await asyncio.wait_for(queue.request(1, 0), timeout=2.0)
 
         assert first == cache.png_path("world/region", 0, 0)

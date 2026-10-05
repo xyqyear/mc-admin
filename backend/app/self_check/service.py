@@ -13,7 +13,6 @@ from .checks import CHECK_DEFINITIONS
 from .checks.base import CheckDefinition, SelfCheckContext, SelfCheckDependencies
 from .checks.base import finding as _finding
 from .checks.base import skipped as _skipped
-from .notifications import SelfCheckNotificationBus
 from .types import (
     SelfCheckCatalogItem,
     SelfCheckFindingResult,
@@ -26,12 +25,11 @@ from .types import (
 class SelfCheckService:
     def __init__(
         self, *, session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
-        dependencies: SelfCheckDependencies, notifications: SelfCheckNotificationBus,
+        dependencies: SelfCheckDependencies,
         definitions: Mapping[str, CheckDefinition] | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.dependencies = dependencies
-        self.notifications = notifications
         self.definitions = dict(CHECK_DEFINITIONS if definitions is None else definitions)
         self.check_ids = tuple(self.definitions)
         self._run_lock = asyncio.Lock()
@@ -182,7 +180,6 @@ class SelfCheckService:
                 )
                 await crud.prune_runs(session, keep_days=retention_keep_days)
 
-            await self.notifications.publish(result)
             yield SelfCheckRunEvent(
                 type="completed",
                 run_id=run_id,

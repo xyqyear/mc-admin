@@ -183,10 +183,6 @@ def create_resource(runtime: "Runtime", name: str) -> Any:
                 settings=runtime.settings,
                 session_factory=runtime.database.session_factory,
             )
-        case "self_check_notifications":
-            from .self_check.notifications import SelfCheckNotificationBus
-
-            return SelfCheckNotificationBus()
         case "self_check_dependencies":
             from .self_check.checks.base import SelfCheckDependencies
 
@@ -205,7 +201,6 @@ def create_resource(runtime: "Runtime", name: str) -> Any:
             return SelfCheckService(
                 session_factory=runtime.database.session_factory,
                 dependencies=runtime.resource("self_check_dependencies"),
-                notifications=runtime.resource("self_check_notifications"),
             )
         case "archive_upload_sessions" | "file_upload_sessions" | "process_cache":
             return {}

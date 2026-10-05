@@ -4,7 +4,6 @@ version = "0"
 description = ""
 authors = [{ name = "xyqyear", email = "xyqyear@gmail.com" }]
 requires-python = ">=3.13,<4"
-readme = "README.md"
 
 dependencies = [
     "fastapi~=0.136.0",
@@ -13,7 +12,6 @@ dependencies = [
     "sqlalchemy>=2.0.44,<3",
     "aiosqlite~=0.22.0",
     "python-multipart==0.0.31",
-    "pip>=26.1.2,<27",
     "uvicorn[standard]~=0.49.0",
     "joserfc>=1.4.0,<2",
     "psutil>=7.1.1,<8",
@@ -34,8 +32,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.0.1,<8",
-    "ipywidgets>=8.1.7,<9",
     "pytest~=9.0.2",
     "coverage>=7.11.0,<8",
     "setuptools>=82.0.1,<83",

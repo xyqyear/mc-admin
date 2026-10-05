@@ -18,18 +18,9 @@ async def test_health_run_keeps_dependencies_and_history_owned_and_isolates_fail
         if index == 0:
             settings.fd_binary_path = tmp_path / "missing-owned-fd"
         runtimes.append(Runtime(settings))
-    delivered = []
 
     async def failing_check(context):
         raise RuntimeError(secret)
-
-    class BrokenSink:
-        async def publish(self, result):
-            raise RuntimeError(secret)
-
-    class RecordingSink:
-        async def publish(self, result):
-            delivered.append(result)
 
     try:
         for runtime in runtimes:
@@ -44,8 +35,6 @@ async def test_health_run_keeps_dependencies_and_history_owned_and_isolates_fail
             binary: CHECK_DEFINITIONS[binary],
         }
         service.check_ids = tuple(service.definitions)
-        service.notifications.register(BrokenSink())
-        service.notifications.register(RecordingSink())
         with runtimes[1].bind():
             events = [event async for event in service.iter_self_check_events(trigger="manual", requested_by_user_id=73)]
             result = events[-1].result
@@ -56,7 +45,6 @@ async def test_health_run_keeps_dependencies_and_history_owned_and_isolates_fail
             assert [finding.status for finding in result.findings] == ["failed", "warning"]
             assert result.findings[0].evidence == {"error": INTERNAL_ERROR_MESSAGE}
             assert str(tmp_path / "missing-owned-fd") in result.findings[1].model_dump_json()
-            assert delivered == [result]
             assert secret not in result.model_dump_json()
             assert secret not in caplog.text
             for index, runtime in enumerate(runtimes):

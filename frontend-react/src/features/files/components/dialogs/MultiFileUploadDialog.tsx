@@ -1,3 +1,4 @@
+import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState } from 'react'
 import { AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
 
@@ -29,14 +30,6 @@ interface MultiFileUploadDialogProps {
   serverId: string
   basePath: string
   initialFiles?: File[]
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
 const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
@@ -102,7 +95,7 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">总大小</div>
-                        <div className="text-2xl font-semibold">{formatFileSize(totalSize)}</div>
+                        <div className="text-2xl font-semibold">{formatFileSize(totalSize, { decimals: 1, zeroValue: "0 B" })}</div>
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">目标路径</div>
@@ -208,9 +201,9 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
                   <div>
                     <div className="text-sm text-muted-foreground">传输大小</div>
                     <div className="text-2xl font-semibold">
-                      {formatFileSize(uploadState.uploadProgress?.uploadedSize || 0)}
+                      {formatFileSize(uploadState.uploadProgress?.uploadedSize || 0, { decimals: 1, zeroValue: "0 B" })}
                       <span className="text-sm font-normal text-muted-foreground ml-1">
-                        / {formatFileSize(uploadState.uploadProgress?.totalSize || 0)}
+                        / {formatFileSize(uploadState.uploadProgress?.totalSize || 0, { decimals: 1, zeroValue: "0 B" })}
                       </span>
                     </div>
                   </div>

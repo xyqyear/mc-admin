@@ -10,13 +10,14 @@ import pytest
 
 from app.auth.schemas import UserPublic
 from app.config import get_settings
+from app.mcmap import runner
 from app.player_locations import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
     normalize_uuid,
-    runner,
 )
 from app.routers.servers import world_restore
+from tests.support.mcmap import build_minimal_world
 from tests.support.runtime import patch_runtime_resource
 
 pytestmark = [pytest.mark.binary('fd')]
@@ -63,22 +64,11 @@ def _write_fake_mcmap_error(message: str) -> Path:
     return p
 
 
-def _build_minimal_world(data_path: Path) -> None:
-    (data_path / "server.properties").write_text("level-name=world\n")
-    world = data_path / "world"
-    (world / "region").mkdir(parents=True)
-    (world / "region" / "r.0.0.mca").write_bytes(b"")
-    (world / "level.dat").write_bytes(b"")
-    nether = world / "DIM-1"
-    (nether / "region").mkdir(parents=True)
-    (nether / "region" / "r.0.0.mca").write_bytes(b"")
-
-
 @pytest.fixture
 def world_data_path():
     with tempfile.TemporaryDirectory(prefix="players_extract_") as d:
         data_path = Path(d)
-        _build_minimal_world(data_path)
+        build_minimal_world(data_path)
         yield data_path
 
 

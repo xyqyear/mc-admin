@@ -14,5 +14,3 @@ def world_runtime_config(monkeypatch):
         snapshots=SimpleNamespace(world_restore=WorldRestoreConfig()),
     )
     set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)

@@ -130,6 +130,22 @@ async def _run(args: list[str], owned_by: Path) -> AsyncGenerator[MCMapProcess]:
 
 
 @asynccontextmanager
+async def extract_ftb_claims(
+    world_dir: Path, *, owned_by: Path
+) -> AsyncGenerator[MCMapProcess]:
+    async with _run(["extract-ftb-claims", "--world", str(world_dir)], owned_by) as proc:
+        yield proc
+
+
+@asynccontextmanager
+async def extract_players(
+    world_dir: Path, *, owned_by: Path
+) -> AsyncGenerator[MCMapProcess]:
+    async with _run(["extract-players", "--world", str(world_dir)], owned_by) as proc:
+        yield proc
+
+
+@asynccontextmanager
 async def download_client(
     version: str, target: Path, *, owned_by: Path
 ) -> AsyncGenerator[MCMapProcess]:

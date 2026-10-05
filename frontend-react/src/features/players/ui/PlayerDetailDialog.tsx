@@ -41,28 +41,13 @@ import { usePlayerMutations } from '@/features/players/commands';
 import LoadingSpinner from '@/shared/layout/LoadingSpinner';
 import { MCAvatar } from '@/features/players/ui/MCAvatar';
 import { ServerNameTag } from '@/features/servers/ui/ServerNameTag';
-import { formatUUID } from '@/shared/utils/formatUtils';
+import { formatDuration, formatUUID } from '@/shared/utils/formatUtils';
 
 interface PlayerDetailDialogProps {
   uuid: string | null;
   open: boolean;
   onClose: () => void;
 }
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return `${days}天 ${remainingHours}小时`;
-  }
-  if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`;
-  }
-  return `${minutes}分钟`;
-};
 
 function PlayerTabTable<TData>({
   columns,

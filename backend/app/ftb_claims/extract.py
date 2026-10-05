@@ -11,6 +11,7 @@ from ..mcmap.events import (
     MCMapFtbTeam,
     MCMapProtocolError,
 )
+from ..mcmap.runner import extract_ftb_claims
 from ..world.layout import (
     WorldRootPath,
     discover_world_root_paths,
@@ -24,7 +25,6 @@ from .models import (
     ClusterEntry,
     TeamEntry,
 )
-from .runner import extract_ftb_claims
 
 NO_FTB_DATA_MESSAGE_SUBSTRING = "could not detect FTB claim format"
 
