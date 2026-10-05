@@ -30,6 +30,12 @@ func mainCode(args []string) int {
 	if len(args) == 0 {
 		args = []string{"run"}
 	}
+	if args[0] == "ci-plan" {
+		return ciPlan(args[1:])
+	}
+	if args[0] == "ci-audit" {
+		return ciAudit(args[1:])
+	}
 	if args[0] == "browser" {
 		return browser(args[1:])
 	}
@@ -52,6 +58,7 @@ func mainCode(args []string) int {
 	var selection engine.Selection
 	var workers int
 	var output, runID, socket, shard string
+	var executionPlan, requiredProfile, revision string
 	var noReuse bool
 	var setupTimeout, cleanupTimeout, totalTimeout time.Duration
 	flags.StringVar(&settings.Image, "backend-image", "", "application image built from the revision under test (required for run)")
@@ -70,6 +77,9 @@ func mainCode(args []string) int {
 	flags.StringVar(&runID, "run-id", "", "unique run ID; defaults to a random ID")
 	flags.StringVar(&socket, "docker-socket", "/var/run/docker.sock", "local Docker Unix socket")
 	flags.BoolVar(&noReuse, "no-reuse", false, "create a fresh environment for every case")
+	flags.StringVar(&executionPlan, "execution-plan", "", "immutable CI plan distributed by the planning job")
+	flags.StringVar(&requiredProfile, "profile", "regression", "independently required execution profile")
+	flags.StringVar(&revision, "revision", "", "candidate source SHA for immutable execution")
 	flags.DurationVar(&setupTimeout, "setup-timeout", 8*time.Minute, "per-environment provisioning deadline")
 	flags.DurationVar(&cleanupTimeout, "cleanup-timeout", 2*time.Minute, "independent deadline for each cleanup, verification and diagnostic phase")
 	flags.DurationVar(&totalTimeout, "timeout", 30*time.Minute, "overall execution deadline")
@@ -107,8 +117,25 @@ func mainCode(args []string) int {
 	}
 	selection.Workers = workers
 	selection.MinecraftSlots = settings.MinecraftSlots
+	selection.NoReuse = noReuse
 	factory := fixtures.NewFactory(settings, nil, &evidence.Redactor{})
 	plan, err := engine.BuildPlan(suites.Catalog(factory.Recipes()), selection)
+	var frozen engine.RunPlan
+	if executionPlan != "" {
+		frozen, err = loadRunPlan(executionPlan)
+		if err == nil {
+			runner, hashErr := runnerDigest()
+			if hashErr != nil || frozen.Revision != revision || frozen.Image != settings.Image || frozen.RunnerSHA256 != runner || frozen.Workers != workers || frozen.MinecraftSlots != settings.MinecraftSlots || selection.ShardCount != len(frozen.Shards) {
+				err = fmt.Errorf("execution differs from immutable candidate plan")
+			} else {
+				plan, err = frozen.Execution(suites.Catalog(factory.Recipes()), selection.ShardIndex, requiredProfile)
+				noReuse = frozen.NoReuse
+				if err == nil && frozen.Shards[selection.ShardIndex-1].Capability != "ordinary" && settings.ExternalConfig == "" {
+					err = fmt.Errorf("selected external capability requires private configuration")
+				}
+			}
+		}
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
@@ -157,6 +184,7 @@ func mainCode(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
+	prepareStarted := time.Now()
 	prepareCtx, prepareCancel := context.WithTimeout(ctx, 10*time.Minute)
 	err = docker.Preflight(prepareCtx)
 	if err == nil {
@@ -177,6 +205,7 @@ func mainCode(args []string) int {
 		}
 	}
 	prepareCancel()
+	report.PreparationSeconds = time.Since(prepareStarted).Seconds()
 	if err != nil {
 		report.Errors = append(report.Errors, err.Error())
 		for _, group := range plan.Groups {
@@ -188,6 +217,9 @@ func mainCode(args []string) int {
 		settings.Image = report.Image
 		factory = fixtures.NewFactory(settings, journal, redactor)
 		plan, err = engine.BuildPlan(suites.Catalog(factory.Recipes()), selection)
+		if executionPlan != "" {
+			plan, err = frozen.Execution(suites.Catalog(factory.Recipes()), selection.ShardIndex, requiredProfile)
+		}
 		if err != nil {
 			report.Errors = append(report.Errors, err.Error())
 		} else {
@@ -195,11 +227,13 @@ func mainCode(args []string) int {
 			report.Results = engine.Run(ctx, plan, factory, engine.Options{Workers: workers, MinecraftSlots: settings.MinecraftSlots, NoReuse: noReuse, SetupTimeout: setupTimeout, CleanupTimeout: cleanupTimeout, Directory: dir, Redactor: redactor, Progress: func(message string) { progressMu.Lock(); defer progressMu.Unlock(); fmt.Println(message) }})
 		}
 	}
+	cleanupStarted := time.Now()
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	if err = journal.Cleanup(cleanupCtx); err != nil {
 		report.Errors = append(report.Errors, redactor.Text(err.Error()))
 	}
 	cleanupCancel()
+	report.CleanupSeconds = time.Since(cleanupStarted).Seconds()
 	if err = ctx.Err(); err != nil {
 		report.Errors = append(report.Errors, err.Error())
 	}

@@ -10,10 +10,10 @@ from tests.support.collection import digest
 
 
 class TimingRecorder:
-    def __init__(self, output: Path, manifest: Callable[[pytest.Session], dict[str, Any]]) -> None:
+    def __init__(self, output: Path, manifest: Callable[[pytest.Session], dict[str, Any]], *, started: float | None = None) -> None:
         self.output = output
         self.manifest = manifest
-        self.started = time.perf_counter()
+        self.started = time.perf_counter() if started is None else started
         self.phases: list[dict[str, Any]] = []
         self.collection_errors: list[str] = []
 

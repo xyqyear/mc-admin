@@ -31,19 +31,19 @@ Build the application image from the repository root with `docker build -t mc-ad
 
 ## Module map
 
-- `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint.
+- `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint; `api_plan.go` freezes current-profile plans and audits independently required qualification.
 - `cmd/mc-admin-e2e/browser.go` — owned provider wrapper for real browser/deployment commands, private fixture metadata, child-process draining and durable cleanup.
 - `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery, retained legacy-history rollback/undo, ambiguous-identity rejection and explicit world rollback through actual APIs. Bootstrap actual historical releases with their matching runner; current API bootstrap is not backward compatible.
-- `internal/engine/` — catalog, deterministic cost-balanced shard plans, resource-aware exclusive workers and JSON/JUnit lifecycle timings.
+- `internal/engine/` — unified catalog, immutable automatic shard plans, lifecycle cost profiles, resource-aware exclusive workers and JSON/JUnit timings.
 - `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
 - `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.
 - `internal/api/` — sessions/CSRF, HTTP, bounded waits, tasks, SSE and WebSocket.
 - `internal/api/wait.go` — `StartTask` validates 202 acceptance; `RunTask`/`RunTaskResult` wait for confirmed completion and decode the business result. Lifecycle, creation, synchronization, deletion, manual self-check/DNS, map initialization and upload hashing/publication use these task contracts.
 - `internal/evidence/` — structured evidence, secret redaction and bounded payloads.
-- `internal/coverage/` — deployed OpenAPI/WS operation observations, shard union and missing-case audits.
+- `internal/coverage/` — deployed OpenAPI/WS observations, exact current-catalog/shard audits and candidate-bound local/cloud cleanup evidence.
 - `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data. The backend uses `ARCHIVE_PATH=archives` relative to `/data`, so archive journeys cover configuration path normalization.
 - `suites/<domain>/` — normal Go case functions, registered through `suites/catalog.go`.
-- `suites/costs.json` — embedded, versioned historical scheduling costs with source runs and measurement semantics; unknown cases use recipe/default costs and remain automatically discovered.
+- `suites/costs.json` — committed positive scheduling fallback with source runs and measurement semantics. CI restores compatible audited lifecycle history once; unknown cases use recipe/default costs and remain automatically discovered.
 - `suites/servers/` — configuration versions, legacy mode conversions, stopped intent, real Docker startup failure and recovery, managed schedule generations, and stopped SQLite migration inputs.
 - `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes. Repeated explicit-ID submissions retain one stored job with the requested name/cron updates.
 - `suites/files/` — real fd filtering and file mutations through public APIs; upper and lower date filters each exclude results independently.
@@ -62,7 +62,9 @@ Build the application image from the repository root with `docker build -t mc-ad
 - Propagate context through all I/O and polling. Require terminal task/SSE results and assert resulting state/content. Never retry a failed business scenario into success or silently skip missing real dependencies.
 - Reserve environment capacity before starting the deployment deadline; retain it through teardown. Give each diagnostic and cleanup phase its own budget. SSE bodies use their operation context without the ordinary HTTP client timeout.
 - Failed or expired environment teardown leaves ownership unresolved: retain its capacity, cancel new allocations and drain active groups with independent cleanup contexts. Pending cases must still have failed results. Diagnostic failure alone does not retain capacity after successful teardown.
-- Keep Fresh case and reusable recipe groups atomic when balancing worker/Minecraft costs. Seed changes execution priority only. All shards must share selection, cost fingerprint, worker/slot limits and seed; coverage rejects inconsistent plans.
+- Keep Fresh cases and reusable recipe groups atomic when balancing worker/Minecraft costs. `--no-reuse` creates one atomic group per case and uses a separate history profile. Retain the historical reusable-group lifecycle floor when members disappear so setup/teardown costs do not disappear with their recorded case. Seed changes execution priority only.
+- CI freezes the current catalog, source/image/runner identities, historical source, cost fingerprint, worker/slot limits and seed in one immutable plan. It targets 300 seconds of fixture initialization, case work and cleanup with at most 16 shards, eight ordinary jobs and one protected cloud job concurrent; each runner has two workers and one Minecraft slot. Preparation preflight/image pulls are reported separately and excluded. Oversized groups or fixed overhead remain explicit soft-budget limits, never shorter business deadlines.
+- `qualification` independently requires every current ordinary regression and Huawei case. The API workflow runs Huawei shards through `dns-e2e`; ordinary PR regression receives no cloud secrets. Exact-once expected coverage, successful outcomes, candidate identity and all owned local/cloud cleanup must pass before publishing reusable timing history. Restoration selects a comparable successful audited source from the same branch, then main; new history cannot trim the current catalog.
 - Read scheduler queue/resource wait separately from case execution and lifecycle phases. Queue times are attributed once to the first case in a group; final group teardown belongs to its last case. Historical baseline costs remove reservation delay approximately and are not pure assertion times.
 - Permission scenarios verify rejected requests preserve real task/resource state as well as checking status codes. Credential-log scenarios require successful audited business operations and inspect both audit and ordinary application logs.
 - Register cleanup when allocating a resource, including partial setup. Journal Docker objects before creating them; keep run/environment ownership labels. Never prune the daemon or delete by an unvalidated prefix.

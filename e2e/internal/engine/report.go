@@ -12,15 +12,17 @@ import (
 )
 
 type Report struct {
-	RunID            string    `json:"run_id"`
-	Image            string    `json:"image"`
-	MinecraftImage   string    `json:"minecraft_image"`
-	MinecraftVersion string    `json:"minecraft_version"`
-	NoReuse          bool      `json:"no_reuse"`
-	Started          time.Time `json:"started"`
-	Plan             Plan      `json:"plan"`
-	Results          []Result  `json:"results"`
-	Errors           []string  `json:"errors,omitempty"`
+	PreparationSeconds float64   `json:"preparation_seconds"`
+	CleanupSeconds     float64   `json:"cleanup_seconds"`
+	RunID              string    `json:"run_id"`
+	Image              string    `json:"image"`
+	MinecraftImage     string    `json:"minecraft_image"`
+	MinecraftVersion   string    `json:"minecraft_version"`
+	NoReuse            bool      `json:"no_reuse"`
+	Started            time.Time `json:"started"`
+	Plan               Plan      `json:"plan"`
+	Results            []Result  `json:"results"`
+	Errors             []string  `json:"errors,omitempty"`
 }
 
 func (r Report) Failed() bool {

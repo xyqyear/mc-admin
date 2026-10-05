@@ -21,6 +21,9 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.collect.outputs.matrix }}
     defaults:
@@ -38,11 +41,26 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
       - run: uv sync --locked --all-groups
+      - name: Restore comparable audited timing history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .test-manifests
+          timing_context=$(uv run --no-project python ../scripts/ci/timing_history.py fingerprint \
+            --file uv.lock --file ../Dockerfile --file tests/conftest.py --file tests/support/environment.py \
+            --setting measurement=backend-phase-v2 --setting coverage=true --setting python=3.13 \
+            --setting runner=ubuntu-latest --setting docker=true --setting external=false)
+          echo "$timing_context" > .test-manifests/compatibility.txt
+          uv run --no-project python ../scripts/ci/timing_history.py restore \
+            --component backend --profile default --compatibility "$timing_context" \
+            --output .test-manifests/history.json
       - name: Collect the complete test inventory
         id: collect
         run: |
           uv run pytest tests --collect-only --run-docker -q -o addopts= --collection-manifest .test-manifests/expected.json
-          matrix=$(uv run --no-project python tests/support/collection.py plan .test-manifests/expected.json --weights tests/ci/timing-weights.json --shards 4 --output .test-manifests/plan.json)
+          matrix=$(uv run --no-project python tests/support/collection.py plan .test-manifests/expected.json \
+            --weights tests/ci/timing-weights.json --history .test-manifests/history.json \
+            --target-seconds 300 --max-shards 32 --output .test-manifests/plan.json)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
@@ -51,17 +69,19 @@ jobs:
           path: |
             backend/.test-manifests/expected.json
             backend/.test-manifests/plan.json
+            backend/.test-manifests/history.json
+            backend/.test-manifests/compatibility.txt
           include-hidden-files: true
           if-no-files-found: error
 
   pytest:
-    name: pytest (shard ${{ matrix.test_shard }}/4)
+    name: pytest (shard ${{ matrix.test_shard }}/${{ matrix.shard_count }})
     needs: discover
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     defaults:
       run:
@@ -221,9 +241,16 @@ jobs:
             .test-reports/manifests/shard-*.json --plan .test-manifests/plan.json \
             --timings .test-reports/timings/timing-*.json
 
+      - name: Require successful execution as well as complete collection
+        env:
+          EXECUTION_RESULT: ${{ needs.pytest.result }}
+        run: test "$EXECUTION_RESULT" = success
+
       - name: Combine coverage and publish one report
         run: |
-          uv run --no-project python ../scripts/ci/backend_timing.py .test-reports/timings/timing-*.json --output .test-reports
+          uv run --no-project python ../scripts/ci/backend_timing.py .test-reports/timings/timing-*.json \
+            --output .test-reports --inventory .test-manifests/expected.json \
+            --manifests .test-reports/manifests/shard-*.json --plan .test-manifests/plan.json
           cat .test-reports/timing-summary.md >> "$GITHUB_STEP_SUMMARY"
           uv run coverage combine --keep .test-reports/coverage
           {
@@ -244,7 +271,17 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      - name: Require successful execution as well as complete collection
+      - name: Publish audited costs for subsequent comparable runs
         env:
-          EXECUTION_RESULT: ${{ needs.pytest.result }}
-        run: test "$EXECUTION_RESULT" = success
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          uv run --no-project python ../scripts/ci/timing_history.py publish \
+            --component backend --profile default --compatibility "$(cat .test-manifests/compatibility.txt)" \
+            --costs .test-reports/weights.json --output .test-reports/history/history.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: timing-history-backend
+          path: backend/.test-reports/history/history.json
+          retention-days: 90
+          overwrite: true
+          if-no-files-found: error

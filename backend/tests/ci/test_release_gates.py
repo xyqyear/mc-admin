@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-EXPECTED_GATES = {"candidate", "static", "backend", "api", "browser", "dns"}
+EXPECTED_GATES = {"candidate", "static", "backend", "api", "browser"}
 
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location("candidate", ROOT / "scripts/release/candidate.py")
@@ -116,15 +116,17 @@ def test_release_workflow_cannot_bypass_jobs_or_rebuild_the_published_image():
     assert "success()" in jobs["promote"]["if"]
     for job in EXPECTED_GATES:
         assert jobs[job]["with"]["source_sha"] == "${{ github.sha }}"
-    for job in ("api", "browser", "dns"):
+    for job in ("api", "browser"):
         assert jobs[job]["with"]["candidate_artifact"] == "${{ needs.candidate.outputs.artifact }}"
+    assert jobs["api"]["with"]["qualification"] is True
+    assert jobs["api"]["secrets"] == "inherit"
     steps = jobs["promote"]["steps"]
     assert not any("build-push-action" in step.get("uses", "") for step in steps)
     promotion = next(step["run"] for step in steps if "candidate.py promote" in step.get("run", ""))
     command = promotion.split("candidate.py promote", 1)[1].split('cat promotion.json', 1)[0]
     assert '--revision "${{ github.sha }}"' in command
     assert all("docker build" not in step.get("run", "") for step in steps)
-    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
     assert jobs["promote"]["permissions"]["packages"] == "write"
     assert workflow[True]["push"]["tags"] == ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
     metadata = next(step for step in steps if step.get("id") == "meta")

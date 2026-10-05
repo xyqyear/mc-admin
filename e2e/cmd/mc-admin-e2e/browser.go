@@ -36,6 +36,18 @@ type browserFixture struct {
 	ManifestPath     string `json:"manifest_path"`
 }
 
+type browserTimings struct {
+	SetupSeconds   float64 `json:"setup_seconds"`
+	CommandSeconds float64 `json:"command_seconds"`
+	CleanupSeconds float64 `json:"cleanup_seconds"`
+}
+
+func measureBrowserPhase(seconds *float64, action func() error) error {
+	started := time.Now()
+	defer func() { *seconds += time.Since(started).Seconds() }()
+	return environment.Protect(action)
+}
+
 func browser(args []string) int {
 	flags := flag.NewFlagSet("browser", flag.ContinueOnError)
 	var options fixtures.Options
@@ -88,6 +100,9 @@ func browser(args []string) int {
 	var env *environment.Environment
 	var release func()
 	started := time.Now().UTC()
+	var timings browserTimings
+	setupStarted := time.Now()
+	setupFinished := false
 	execute := func() error {
 		setup, cancelSetup := context.WithTimeout(ctx, setupTimeout)
 		defer cancelSetup()
@@ -129,9 +144,15 @@ func browser(args []string) int {
 			return err
 		}
 		env.Recorder.Event("browser_fixture_ready", map[string]any{"image": image, "server": access.ServerID, "recipe": recipe.ID})
-		return runBrowserCommand(ctx, flags.Args(), privatePath)
+		timings.SetupSeconds = time.Since(setupStarted).Seconds()
+		setupFinished = true
+		return measureBrowserPhase(&timings.CommandSeconds, func() error { return runBrowserCommand(ctx, flags.Args(), privatePath) })
 	}
 	actionErr := environment.Protect(execute)
+	if !setupFinished {
+		timings.SetupSeconds = time.Since(setupStarted).Seconds()
+	}
+	cleanupStarted := time.Now()
 	cleanup, cancelCleanup := context.WithTimeout(context.Background(), cleanupTimeout)
 	if env != nil {
 		if actionErr != nil {
@@ -144,7 +165,8 @@ func browser(args []string) int {
 	if release != nil {
 		release()
 	}
-	result := map[string]any{"run_id": runID, "image_id": journal.Manifest.Image, "recipe": recipeName, "started_at": started, "finished_at": time.Now().UTC(), "success": actionErr == nil}
+	timings.CleanupSeconds = time.Since(cleanupStarted).Seconds()
+	result := map[string]any{"run_id": runID, "image_id": journal.Manifest.Image, "recipe": recipeName, "started_at": started, "finished_at": time.Now().UTC(), "timings": timings, "success": actionErr == nil}
 	if actionErr != nil {
 		result["error"] = redactor.Text(actionErr.Error())
 	}

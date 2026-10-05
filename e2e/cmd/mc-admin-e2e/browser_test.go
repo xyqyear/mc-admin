@@ -62,3 +62,16 @@ func TestBrowserCommandCancellationTerminatesOwnedGroup(t *testing.T) {
 		t.Fatal("cancelled subprocess cleanup was not bounded")
 	}
 }
+
+func TestBrowserPhaseRecordsTimeAndPreservesFailure(t *testing.T) {
+	failure := errors.New("phase failed")
+	var seconds float64
+	err := measureBrowserPhase(&seconds, func() error { return failure })
+	if !errors.Is(err, failure) || seconds <= 0 {
+		t.Fatalf("phase failure or measured duration lost: %v, %f", err, seconds)
+	}
+	err = measureBrowserPhase(&seconds, func() error { panic("interrupted phase") })
+	if err == nil || seconds <= 0 {
+		t.Fatal("panicking phase did not preserve failure and timing")
+	}
+}

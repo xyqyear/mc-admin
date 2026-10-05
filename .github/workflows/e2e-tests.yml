@@ -1,6 +1,5 @@
 name: API E2E Tests
-
-on:
+'on':
   workflow_call:
     inputs:
       source_sha:
@@ -9,196 +8,349 @@ on:
       candidate_artifact:
         required: true
         type: string
+      qualification:
+        type: boolean
+        default: false
+    secrets:
+      E2E_EXTERNAL_CONFIG:
+        required: false
+      HUAWEICLOUD_AK:
+        required: false
+      HUAWEICLOUD_SK:
+        required: false
   push:
-    branches: ["**"]
+    branches:
+    - '**'
     paths:
-      - backend/**
-      - frontend-react/**
-      - e2e/**
-      - Dockerfile
-      - .dockerignore
-      - .github/**
-      - scripts/release/**
+    - backend/**
+    - frontend-react/**
+    - e2e/**
+    - Dockerfile
+    - .dockerignore
+    - .github/**
+    - scripts/release/**
+    - scripts/ci/**
   pull_request:
     paths:
-      - backend/**
-      - frontend-react/**
-      - e2e/**
-      - Dockerfile
-      - .dockerignore
-      - .github/**
-      - scripts/release/**
+    - backend/**
+    - frontend-react/**
+    - e2e/**
+    - Dockerfile
+    - .dockerignore
+    - .github/**
+    - scripts/release/**
+    - scripts/ci/**
   workflow_dispatch:
     inputs:
       selection:
-        description: Regression or explicit external qualification (DNS needs E2E_EXTERNAL_CONFIG)
+        description: Qualification uses the protected Huawei Environment; DNSPod needs E2E_EXTERNAL_CONFIG
         type: choice
-        options: [regression, smoke, mojang, dnspod]
+        options:
+        - regression
+        - qualification
+        - smoke
+        - mojang
+        - dnspod
         default: regression
       no_reuse:
         description: Create a fresh environment for every case
         type: boolean
         default: false
-
+  schedule:
+  - cron: 23 19 * * *
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: api-tests-${{ (inputs.source_sha != '' || github.event_name == 'workflow_dispatch') && github.run_id || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ inputs.source_sha == '' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
-
+  group: api-tests-${{ (inputs.source_sha != '' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.ref == 'refs/heads/main') && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ inputs.source_sha == '' && github.ref != 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+env:
+  SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+  REQUESTED_PROFILE: ${{ inputs.selection || 'regression' }}
+  QUALIFICATION: ${{ inputs.qualification || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+  NO_REUSE: ${{ inputs.no_reuse || false }}
 jobs:
   build:
     if: ${{ inputs.candidate_artifact == '' }}
     uses: ./.github/workflows/candidate.yml
     with:
       source_sha: ${{ inputs.source_sha || github.sha }}
-
-  regression:
-    name: API regression (shard ${{ matrix.shard }}/3)
+  plan:
     needs: build
     if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.candidate_artifact != '')) }}
+    runs-on: ubuntu-latest
+    outputs:
+      ordinary: ${{ steps.plan.outputs.ordinary }}
+      huawei: ${{ steps.plan.outputs.huawei }}
+      cloud: ${{ steps.plan.outputs.cloud }}
+      profile: ${{ steps.plan.outputs.profile }}
+      history_profile: ${{ steps.plan.outputs.history_profile }}
+      compatibility: ${{ steps.plan.outputs.compatibility }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - uses: astral-sh/setup-uv@v8.1.0
+    - uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
+        path: e2e-artifacts
+    - name: Freeze historical source and immutable current API plan
+      id: plan
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        chmod +x e2e-artifacts/mc-admin-e2e
+        uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
+        profile="$REQUESTED_PROFILE"
+        if [ "$QUALIFICATION" = true ]; then profile=qualification; fi
+        history_profile="$profile"
+        reuse_args=()
+        if [ "$NO_REUSE" = true ]; then history_profile="$profile-no-reuse"; reuse_args+=(--no-reuse); fi
+        compatibility=$(uv run --no-project python scripts/ci/timing_history.py fingerprint --file e2e/go.sum --file Dockerfile --setting measurement=api-lifecycle-v2 --setting "reuse=$NO_REUSE" --setting workers=2 --setting mc-slots=1 --setting fixtures=backend-v1,server-v1,world-v1,connectivity-v1)
+        mkdir -p api-planning
+        uv run --no-project python scripts/ci/timing_history.py restore --component api --profile "$history_profile" --compatibility "$compatibility" --output api-planning/history.json
+        image=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')
+        ./e2e-artifacts/mc-admin-e2e ci-plan --profile "$profile" --revision "$SOURCE_SHA" --backend-image "$image" --history api-planning/history.json --compatibility "$compatibility" --seed "${{ github.run_id }}" --workers 2 --mc-slots 1 --budget-seconds 300 --max-shards 16 --output api-planning/plan.json --github-output "$GITHUB_OUTPUT" "${reuse_args[@]}"
+        echo "history_profile=$history_profile" >> "$GITHUB_OUTPUT"
+        echo "compatibility=$compatibility" >> "$GITHUB_OUTPUT"
+    - uses: actions/upload-artifact@v7
+      with:
+        name: api-plan
+        path: api-planning/
+        retention-days: 90
+        if-no-files-found: error
+  regression:
+    name: API cases (shard ${{ matrix.shard }}/${{ matrix.count }})
+    needs:
+    - build
+    - plan
+    if: ${{ always() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.ordinary) }}
     env:
       E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
-      E2E_RUN_ID: e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
-      E2E_SHARD: ${{ matrix.shard }}/3
-      E2E_SEED: ${{ github.run_id }}
-      E2E_NO_REUSE: ${{ inputs.no_reuse || false }}
-      E2E_SELECTION: ${{ inputs.selection || 'regression' }}
+      E2E_RUN_ID: api-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+      E2E_SHARD: ${{ matrix.shard }}/${{ matrix.count }}
+      E2E_PROFILE: ${{ needs.plan.outputs.profile }}
+      E2E_CAPABILITY: ${{ inputs.selection == 'dnspod' && 'dnspod' || 'ordinary' }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.source_sha || github.sha }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v8.1.0
-      - name: Install OCI transfer tool
-        run: sudo apt-get update && sudo apt-get install -y skopeo
-      - name: Download runtime inputs
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
-          path: e2e-artifacts
-
-      - name: Prepare runtime inputs
-        run: |
-          chmod +x e2e-artifacts/mc-admin-e2e
-          uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "${{ inputs.source_sha || github.sha }}"
-          uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"
-          echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
-
-      - name: Run real API scenarios
-        env:
-          E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
-        run: |
-          umask 077
-          selection_args=(--tag "$E2E_SELECTION")
-          if [ "$E2E_SELECTION" = dnspod ]; then
-            config_file=$(mktemp "$RUNNER_TEMP/e2e-external.XXXXXX")
-            trap 'rm -f "$config_file"' EXIT
-            printf '%s' "$E2E_EXTERNAL_CONFIG" > "$config_file"
-            selection_args=(--tag dns --case "^dns\.$E2E_SELECTION-" --external-config "$config_file")
-          fi
-          reuse_args=()
-          if [ "$E2E_NO_REUSE" = true ]; then
-            reuse_args+=(--no-reuse)
-          fi
-          ./e2e-artifacts/mc-admin-e2e run \
-            --backend-image "$E2E_IMAGE" \
-            --output "$E2E_DIRECTORY" \
-            --run-id "$E2E_RUN_ID" \
-            --shard "$E2E_SHARD" \
-            --seed "$E2E_SEED" \
-            --workers 2 --mc-slots 1 \
-            "${selection_args[@]}" \
-            "${reuse_args[@]}"
-
-      - name: Recover owned resources
-        if: always()
-        run: |
-          if [ -f "$E2E_DIRECTORY/$E2E_RUN_ID/manifest.json" ]; then
-            ./e2e-artifacts/mc-admin-e2e cleanup --run-dir "$E2E_DIRECTORY/$E2E_RUN_ID"
-          fi
-
-      - name: Verify API image, outcomes and cleanup against the candidate
-        run: |
-          uv run --no-project python scripts/release/candidate.py evidence \
-            --directory e2e-artifacts --revision "${{ inputs.source_sha || github.sha }}" \
-            --runtime-kind api --run-directory "$E2E_DIRECTORY/$E2E_RUN_ID" \
-            --output "$E2E_DIRECTORY/$E2E_RUN_ID/candidate-evidence.json"
-      - name: Upload reports and redacted diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-results-${{ matrix.shard }}
-          overwrite: true
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/candidate-evidence.json
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
-            ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
-
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - uses: astral-sh/setup-uv@v8.1.0
+    - name: Install OCI transfer tool
+      run: sudo apt-get update && sudo apt-get install -y skopeo
+    - name: Download runtime inputs
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
+        path: e2e-artifacts
+    - uses: actions/download-artifact@v8
+      with:
+        name: api-plan
+        path: api-planning
+    - name: Prepare runtime inputs
+      run: |
+        chmod +x e2e-artifacts/mc-admin-e2e
+        uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
+        uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"
+        echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
+    - name: Execute planned cases and recover owned scopes
+      env:
+        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
+      run: bash scripts/ci/api_shard.sh run
+    - name: Recover after success, failure or cancellation
+      if: ${{ always() && env.E2E_IMAGE != '' }}
+      env:
+        E2E_EXTERNAL_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.selection == 'dnspod' && secrets.E2E_EXTERNAL_CONFIG || '' }}
+      run: bash scripts/ci/api_shard.sh recover
+    - name: Verify API image, outcomes and cleanup against the candidate
+      run: |
+        uv run --no-project python scripts/release/candidate.py evidence \
+          --directory e2e-artifacts --revision "$SOURCE_SHA" \
+          --runtime-kind api --run-directory "$E2E_DIRECTORY/$E2E_RUN_ID" \
+          --output "$E2E_DIRECTORY/$E2E_RUN_ID/candidate-evidence.json"
+    - name: Upload reports and redacted diagnostics
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: api-results-${{ matrix.shard }}
+        overwrite: true
+        retention-days: 30
+        if-no-files-found: error
+        path: |
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/recovery.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/candidate-evidence.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cloud/
+  huawei:
+    name: Protected API cases (shard ${{ matrix.shard }}/${{ matrix.count }})
+    needs:
+    - build
+    - plan
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.cloud == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.plan.outputs.huawei) }}
+    env:
+      E2E_DIRECTORY: ${{ github.workspace }}/.e2e-runs
+      E2E_RUN_ID: api-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+      E2E_SHARD: ${{ matrix.shard }}/${{ matrix.count }}
+      E2E_PROFILE: ${{ needs.plan.outputs.profile }}
+      E2E_CAPABILITY: huawei
+      HUAWEICLOUD_DNS_ZONE: ${{ vars.HUAWEICLOUD_DNS_ZONE }}
+      HUAWEICLOUD_DNS_PARENT: ${{ vars.HUAWEICLOUD_DNS_PARENT }}
+      HUAWEICLOUD_DNS_REGION: ${{ vars.HUAWEICLOUD_DNS_REGION }}
+    environment: dns-e2e
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - uses: astral-sh/setup-uv@v8.1.0
+    - name: Install OCI transfer tool
+      run: sudo apt-get update && sudo apt-get install -y skopeo
+    - name: Download runtime inputs
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
+        path: e2e-artifacts
+    - uses: actions/download-artifact@v8
+      with:
+        name: api-plan
+        path: api-planning
+    - name: Prepare runtime inputs
+      run: |
+        chmod +x e2e-artifacts/mc-admin-e2e
+        uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
+        uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"
+        echo "E2E_IMAGE=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
+    - name: Execute planned cases and recover owned scopes
+      env:
+        HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
+        HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
+      run: bash scripts/ci/api_shard.sh run
+    - name: Recover after success, failure or cancellation
+      if: ${{ always() && env.E2E_IMAGE != '' }}
+      env:
+        HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
+        HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
+      run: bash scripts/ci/api_shard.sh recover
+    - name: Verify API image, outcomes and cleanup against the candidate
+      run: |
+        uv run --no-project python scripts/release/candidate.py evidence \
+          --directory e2e-artifacts --revision "$SOURCE_SHA" \
+          --runtime-kind api --run-directory "$E2E_DIRECTORY/$E2E_RUN_ID" \
+          --output "$E2E_DIRECTORY/$E2E_RUN_ID/candidate-evidence.json"
+    - name: Upload reports and redacted diagnostics
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: api-results-${{ matrix.shard }}
+        overwrite: true
+        retention-days: 30
+        if-no-files-found: error
+        path: |
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/plan.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/results.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/junit.xml
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/recovery.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/manifest.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/candidate-evidence.json
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cases/
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/environments/
+          ${{ env.E2E_DIRECTORY }}/${{ env.E2E_RUN_ID }}/cloud/
   coverage:
     name: Audit complete case and shard coverage
-    if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.candidate_artifact != '')) }}
-    needs: [build, regression]
+    if: ${{ always() && needs.plan.result == 'success' }}
+    needs:
+    - build
+    - plan
+    - regression
+    - huawei
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download executable
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
-          path: e2e-artifacts
-
-      - name: Download separate shard reports
-        uses: actions/download-artifact@v8
-        with:
-          pattern: e2e-results-*
-          path: shard-reports
-          merge-multiple: false
-
-      - name: Check coverage union and publish summary
-        env:
-          E2E_SELECTION: ${{ inputs.selection || 'regression' }}
-        run: |
-          chmod +x e2e-artifacts/mc-admin-e2e
-          coverage_args=(--require-complete)
-          if [ "$E2E_SELECTION" = regression ]; then
-            coverage_args+=(--require-observed)
-          fi
-          ./e2e-artifacts/mc-admin-e2e coverage "${coverage_args[@]}" --output coverage shard-reports/e2e-results-*
-
-      - name: Add API observations to job summary
-        if: always()
-        run: |
-          if [ -f coverage/coverage.md ]; then
-            cat coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload coverage audit
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-coverage
-          overwrite: true
-          path: coverage/
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Require all API shards to have succeeded
-        env:
-          EXECUTION_RESULT: ${{ needs.regression.result }}
-        run: test "$EXECUTION_RESULT" = success
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - uses: astral-sh/setup-uv@v8.1.0
+    - name: Download executable
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.candidate_artifact || needs.build.outputs.artifact }}
+        path: e2e-artifacts
+    - uses: actions/download-artifact@v8
+      with:
+        name: api-plan
+        path: api-planning
+    - name: Download separate shard reports
+      uses: actions/download-artifact@v8
+      with:
+        pattern: api-results-*
+        path: shard-reports
+        merge-multiple: false
+    - name: Audit independently required catalog, identity and cloud cleanup
+      env:
+        EXECUTION_RESULT: ${{ needs.regression.result }}
+        CLOUD_RESULT: ${{ needs.huawei.result }}
+      run: |
+        chmod +x e2e-artifacts/mc-admin-e2e
+        uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
+        profile="$REQUESTED_PROFILE"
+        if [ "$QUALIFICATION" = true ]; then profile=qualification; fi
+        test "$EXECUTION_RESULT" = success
+        if [ "$profile" = qualification ]; then test "$CLOUD_RESULT" = success; else test "$CLOUD_RESULT" = skipped; fi
+        image=$(python -c 'import json; print(json.load(open("e2e-artifacts/candidate.json"))["config_digest"])')
+        audit_args=()
+        if [ "$NO_REUSE" = true ]; then audit_args+=(--no-reuse); fi
+        if [ "$profile" = regression ] || [ "$profile" = qualification ]; then audit_args+=(--require-observed); fi
+        ./e2e-artifacts/mc-admin-e2e ci-audit --plan api-planning/plan.json --profile "$profile" --revision "$SOURCE_SHA" --backend-image "$image" --output coverage "${audit_args[@]}" shard-reports/api-results-*
+    - name: Publish audited API lifecycle history
+      run: |
+        uv run --no-project python scripts/ci/timing_history.py publish --component api --profile "${{ needs.plan.outputs.history_profile }}" --compatibility "${{ needs.plan.outputs.compatibility }}" --costs coverage/costs.json --output coverage/history.json
+    - uses: actions/upload-artifact@v7
+      with:
+        name: timing-history-api
+        path: coverage/history.json
+        retention-days: 90
+        if-no-files-found: error
+    - name: Add API observations to job summary
+      if: always()
+      run: |
+        if [ -f coverage/coverage.md ]; then
+          cat coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+    - name: Upload coverage audit
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: e2e-coverage
+        overwrite: true
+        path: coverage/
+        retention-days: 7
+        if-no-files-found: error

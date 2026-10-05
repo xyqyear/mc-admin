@@ -9,12 +9,19 @@ import (
 )
 
 type CostProfile struct {
-	Version        int                `json:"version"`
-	Sources        []string           `json:"sources"`
-	Measurement    string             `json:"measurement"`
-	DefaultSeconds float64            `json:"default_seconds"`
-	Recipes        map[string]float64 `json:"recipes"`
-	Cases          map[string]float64 `json:"cases"`
+	Groups               map[string]GroupCost `json:"groups,omitempty"`
+	ShardOverheadSeconds float64              `json:"shard_overhead_seconds,omitempty"`
+	Version              int                  `json:"version"`
+	Sources              []string             `json:"sources"`
+	Measurement          string               `json:"measurement"`
+	DefaultSeconds       float64              `json:"default_seconds"`
+	Recipes              map[string]float64   `json:"recipes"`
+	Cases                map[string]float64   `json:"cases"`
+}
+
+type GroupCost struct {
+	Seconds float64  `json:"seconds"`
+	Members []string `json:"members"`
 }
 
 type Scheduling struct {
@@ -24,10 +31,15 @@ type Scheduling struct {
 	MinecraftSlots int    `json:"minecraft_slots"`
 }
 
+func (p CostProfile) Validate() error { return p.validate() }
+
 func (p CostProfile) validate() error {
 	valid := func(value float64) bool { return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0) }
 	if p.Version != 1 || !valid(p.DefaultSeconds) {
 		return fmt.Errorf("cost profile requires version 1 and a positive finite default")
+	}
+	if p.ShardOverheadSeconds < 0 || math.IsNaN(p.ShardOverheadSeconds) || math.IsInf(p.ShardOverheadSeconds, 0) {
+		return fmt.Errorf("invalid fixed shard lifecycle overhead")
 	}
 	for _, costs := range []map[string]float64{p.Recipes, p.Cases} {
 		for key, value := range costs {
@@ -36,7 +48,36 @@ func (p CostProfile) validate() error {
 			}
 		}
 	}
+	for key, group := range p.Groups {
+		if key == "" || !valid(group.Seconds) || len(group.Members) == 0 {
+			return fmt.Errorf("invalid historical group lifecycle cost")
+		}
+		members := map[string]bool{}
+		for _, id := range group.Members {
+			if id == "" || members[id] {
+				return fmt.Errorf("invalid historical group membership")
+			}
+			members[id] = true
+		}
+	}
 	return nil
+}
+
+func (p CostProfile) groupEstimate(group Group) float64 {
+	historical, exists := p.Groups[group.Key]
+	known, added := 0.0, 0.0
+	members := map[string]bool{}
+	for _, id := range historical.Members {
+		members[id] = true
+	}
+	for _, test := range group.Cases {
+		if !exists || members[test.ID] {
+			known += p.estimate(test)
+		} else {
+			added += p.estimate(test)
+		}
+	}
+	return max(known, historical.Seconds) + added
 }
 
 func (p CostProfile) estimate(test Case) float64 {

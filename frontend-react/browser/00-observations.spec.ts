@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-test('overview polling and cold/warm map requests @observations', async ({ page, api, owned, observation }) => {
+test('overview polling and cold/warm map requests @observations', { annotation: { type: 'shard_isolation', description: 'independent' } }, async ({ page, api, owned, observation }) => {
   await api.stopped()
   await api.initializeMap()
   const regions = await api.json<Array<[number, number, number]>>(api.server('/map/regions?region=world%2Fregion'))

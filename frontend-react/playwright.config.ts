@@ -8,6 +8,7 @@ const fixture = fixturePath ? JSON.parse(readFileSync(fixturePath, 'utf8')) : un
 
 export default defineConfig({
   testDir: './browser',
+  testIgnore: '**/shardReporter.test.mjs',
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -16,6 +17,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   outputDir: path.join(output, 'artifacts'),
   reporter: [
+    ['./browser/shardReporter.ts'],
     ['list'],
     ['json', { outputFile: path.join(output, 'results.json') }],
     ['html', { outputFolder: path.join(output, 'report'), open: 'never' }],

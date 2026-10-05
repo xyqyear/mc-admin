@@ -97,6 +97,7 @@ func collect(runDirs []string) (Summary, error) {
 	shardCount := 0
 	var canonicalScheduling engine.Scheduling
 	var canonicalSeed uint64
+	var canonicalDigest string
 	shards := map[int]bool{}
 	runs := map[string]bool{}
 	caseSources := map[string]string{}
@@ -129,7 +130,8 @@ func collect(runDirs []string) (Summary, error) {
 			shardCount = report.Plan.ShardCount
 			canonicalScheduling = report.Plan.Scheduling
 			canonicalSeed = report.Plan.Seed
-		} else if shardCount != report.Plan.ShardCount || canonicalScheduling != report.Plan.Scheduling || canonicalSeed != report.Plan.Seed || !reflect.DeepEqual(canonicalCatalog, catalog) {
+			canonicalDigest = report.Plan.Digest
+		} else if canonicalDigest != report.Plan.Digest || shardCount != report.Plan.ShardCount || canonicalScheduling != report.Plan.Scheduling || canonicalSeed != report.Plan.Seed || !reflect.DeepEqual(canonicalCatalog, catalog) {
 			return summary, fmt.Errorf("incompatible shard selections or catalogs in run %s", report.RunID)
 		}
 		if shards[report.Plan.ShardIndex] {

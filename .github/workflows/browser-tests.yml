@@ -12,14 +12,15 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  browser:
+  discover:
+    name: Plan browser cases from audited timings
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      BROWSER_DIRECTORY: ${{ github.workspace }}/.browser-runs
-      BROWSER_RUN_ID: browser-${{ github.run_id }}-${{ github.run_attempt }}
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      compatibility: ${{ steps.history.outputs.compatibility }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -40,6 +41,83 @@ jobs:
         with:
           name: ${{ inputs.candidate_artifact }}
           path: candidate-artifacts
+      - name: Collect the complete browser inventory
+        working-directory: frontend-react
+        env:
+          BROWSER_INVENTORY_PATH: ${{ github.workspace }}/.browser-plan/inventory.json
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec node --test browser/shardReporter.test.mjs
+          pnpm exec playwright test --list --reporter=./browser/shardReporter.ts
+      - name: Restore one comparable timing snapshot
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          compatibility=$(uv run --no-project python scripts/ci/timing_history.py fingerprint \
+            --file frontend-react/pnpm-lock.yaml --file Dockerfile \
+            --setting measurement=browser-v2 --setting workers=1 --setting recipe=world-v1 \
+            --setting fully_parallel=false)
+          echo "compatibility=$compatibility" >> "$GITHUB_OUTPUT"
+          uv run --no-project python scripts/ci/timing_history.py restore \
+            --component browser --profile default --compatibility "$compatibility" \
+            --output .browser-plan/history.json
+      - name: Derive bounded 300-second owned-world shards
+        id: plan
+        run: |
+          uv run --no-project python scripts/release/candidate.py verify \
+            --directory candidate-artifacts --revision "${{ inputs.source_sha }}"
+          matrix=$(uv run --no-project python scripts/ci/browser_shards.py plan \
+            --inventory .browser-plan/inventory.json --history .browser-plan/history.json \
+            --candidate candidate-artifacts/candidate.json --target 300 --max-shards 8 \
+            --output .browser-plan/plan.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: browser-test-plan
+          path: .browser-plan/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error
+
+  browser:
+    name: Browser owned-world shard ${{ matrix.shard }}
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    env:
+      BROWSER_DIRECTORY: ${{ github.workspace }}/.browser-runs
+      BROWSER_RUN_ID: browser-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+      BROWSER_OUTPUT_DIR: ${{ github.workspace }}/.browser-results/playwright
+      BROWSER_SHARD_REPORT: ${{ github.workspace }}/.browser-results/shard-report.json
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend-react/pnpm-lock.yaml
+      - uses: actions/download-artifact@v8
+        with:
+          name: browser-test-plan
+          path: .browser-plan
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.candidate_artifact }}
+          path: candidate-artifacts
       - name: Load the qualified candidate inputs
         run: |
           sudo apt-get update
@@ -48,16 +126,22 @@ jobs:
           uv run --no-project python scripts/release/candidate.py load --directory candidate-artifacts --tag mc-admin:browser --output "$RUNNER_TEMP/browser-candidate.json"
           chmod +x candidate-artifacts/mc-admin-e2e
           echo "BROWSER_IMAGE=$(python -c 'import json; print(json.load(open("candidate-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
+      - name: Select assigned full browser identities
+        run: |
+          uv run --no-project python scripts/ci/browser_shards.py select \
+            --plan .browser-plan/plan.json --shard "${{ matrix.shard }}" --output .browser-selection
+          cat .browser-selection/environment.txt >> "$GITHUB_ENV"
       - name: Install pinned frontend and Chromium dependencies
         working-directory: frontend-react
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
-      - name: Run browser journeys against the owned application
+      - name: Run assigned browser cases against an independent owned world
         working-directory: frontend-react
         run: |
           ../candidate-artifacts/mc-admin-e2e browser --backend-image "$BROWSER_IMAGE" \
-            --output "$BROWSER_DIRECTORY" --run-id "$BROWSER_RUN_ID" -- pnpm test:browser
+            --output "$BROWSER_DIRECTORY" --run-id "$BROWSER_RUN_ID" -- \
+            pnpm exec playwright test --test-list=../.browser-selection/test-list.txt
       - name: Recover owned browser resources
         if: always()
         run: |
@@ -69,19 +153,89 @@ jobs:
           uv run --no-project python scripts/release/candidate.py evidence \
             --directory candidate-artifacts --revision "${{ inputs.source_sha }}" \
             --runtime-kind browser --run-directory "$BROWSER_DIRECTORY/$BROWSER_RUN_ID" \
-            --browser-report frontend-react/test-results/browser/results.json --output browser-evidence.json
-      - name: Upload explicit browser reports and redacted application evidence
+            --browser-report .browser-results/playwright/results.json \
+            --output .browser-results/candidate-evidence.json
+      - name: Collect explicit redacted fixture evidence
+        if: always()
+        run: |
+          mkdir -p .browser-results
+          for filename in manifest.json fixture-result.json; do
+            if [ -f "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$filename" ]; then
+              cp "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$filename" .browser-results/
+            fi
+          done
+          for dirname in cases environments; do
+            if [ -d "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$dirname" ]; then
+              cp -r "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$dirname" .browser-results/
+            fi
+          done
+      - name: Upload browser shard outcomes and redacted evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-results
-          overwrite: true
-          if-no-files-found: error
+          name: browser-results-${{ matrix.shard }}
+          path: .browser-results/
+          include-hidden-files: true
           retention-days: 7
-          path: |
-            frontend-react/test-results/browser/
-            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/manifest.json
-            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/fixture-result.json
-            browser-evidence.json
-            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/cases/
-            ${{ env.BROWSER_DIRECTORY }}/${{ env.BROWSER_RUN_ID }}/environments/
+          if-no-files-found: error
+
+  audit:
+    name: Audit complete browser coverage and learn costs
+    if: ${{ always() && needs.discover.result == 'success' }}
+    needs: [discover, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: browser-test-plan
+          path: .browser-plan
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.candidate_artifact }}
+          path: candidate-artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: browser-results-*
+          path: browser-reports
+          merge-multiple: false
+      - name: Audit exact-once current cases, plan, candidate and cleanup
+        run: |
+          uv run --no-project python scripts/ci/browser_shards.py audit \
+            --inventory .browser-plan/inventory.json --plan .browser-plan/plan.json \
+            --candidate candidate-artifacts/candidate.json --output .browser-audit \
+            browser-reports/browser-results-*
+          cat .browser-audit/browser-audit.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Require all browser shards to succeed
+        env:
+          EXECUTION_RESULT: ${{ needs.browser.result }}
+        run: test "$EXECUTION_RESULT" = success
+      - name: Publish audited timing history
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          uv run --no-project python scripts/ci/timing_history.py publish \
+            --component browser --profile default --compatibility "${{ needs.discover.outputs.compatibility }}" \
+            --costs .browser-audit/costs.json --output .browser-history/history.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: timing-history-browser
+          path: .browser-history/history.json
+          include-hidden-files: true
+          retention-days: 90
+          if-no-files-found: error
+      - name: Upload exact browser coverage audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-coverage
+          path: .browser-audit/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn

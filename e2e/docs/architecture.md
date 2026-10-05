@@ -7,7 +7,10 @@ The application image is an input artifact. The runner provisions and observes d
 ```mermaid
 flowchart TD
     CLI[CLI: selection and plan] --> Catalog[Domain case catalog]
-    CLI --> Runner[Execution engine]
+    Catalog --> Plan[Immutable current-profile plan]
+    History[Audited timing snapshot] --> Plan
+    CLI --> Plan
+    Plan --> Runner[Execution engine]
     Runner --> Factory[Environment factory]
     Factory --> Providers[Dependency-ordered providers]
     Providers --> Platform[Docker, ports and ownership journal]
@@ -18,17 +21,20 @@ flowchart TD
     Backend --> Docker[Real Minecraft containers]
     Backend --> Restic[Real Restic repository]
     Runner --> Evidence[JSON, JUnit, traces and logs]
+    Plan --> Audit[Expected coverage and owned cleanup audit]
+    Evidence --> Audit
+    Audit --> History
 ```
 
 | Package | Responsibility |
 | --- | --- |
 | `cmd/mc-admin-e2e` | CLI options, signals, preflight and final reporting |
-| `internal/engine` | Catalog validation, deterministic grouping/sharding, workers, case lifecycle and reports |
+| `internal/engine` | Catalog validation, immutable automatic plans, lifecycle costs, capacity-aware grouping/sharding, workers and reports |
 | `internal/environment` | Provider graph, resource access, verification and reverse-order cleanup |
 | `internal/platform` | Local Docker commands, host port leases, run locks and durable cleanup journal |
 | `internal/api` | Network transport, cookies/CSRF, bounded polling, asynchronous protocol completion |
 | `internal/evidence` | Redaction and bounded structured evidence |
-| `internal/coverage` | Deployed API schema matching, response observations and complete shard/case accounting |
+| `internal/coverage` | Deployed API observations, independently required catalog/plan accounting and owned local/cloud cleanup audits |
 | `internal/fixtures` | MC Admin-specific providers and reusable data/session helpers |
 | `suites/<domain>` | Feature assertions and domain-local helpers |
 
@@ -46,6 +52,7 @@ An `environment.Provider` has an ID, dependency IDs, `Setup`, and optional `Veri
 | `running-v1` | Stopped server + startup + healthy status and RCON verification | Observations that need an already running server |
 | `backup-v1` | Stopped server + private initialized Restic repository | Snapshot and restoration scenarios |
 | `world-v1` | Running server + private Restic repository | Actual mcmap rendering, world previews/restores and pruning |
+| `connectivity-v1` | Host-network backend + leased ports + running Minecraft | Router traffic and real DNS-to-Minecraft connectivity |
 
 Providers register cleanup immediately as resources are acquired, before any later operation can fail. Cleanup runs in reverse registration order and attempts all registered callbacks even if one returns an error or panics. A setup failure returns the partially built environment so the runner can capture diagnostics and reclaim it. Provider prerequisites and baseline creation are infrastructure; business actions whose behavior is under test belong in the scenario itself.
 
@@ -71,13 +78,17 @@ A worker exclusively owns its environment. Compatible reusable cases execute seq
 
 ## Execution and scheduling
 
-The planner validates the complete catalog, sorts stable IDs, intersects selection filters, and groups reusable cases by recipe and fresh cases by ID. Groups are indivisible scheduling units. Historical costs come from the embedded `suites/costs.json`; the engine receives a generic cost profile without importing suite names. A missing case cost falls back to its recipe cost, then the positive profile default. Timing history influences placement only: it never determines which cases exist or are selected.
+The planner validates the complete catalog and sorts stable IDs. Direct filtered runs intersect suite/tag/case selectors and use the committed `suites/costs.json` fallback. CI selects a current profile: `regression` requires ordinary regression; `qualification` independently adds every current Huawei case; `smoke`, `mojang` and explicit `dnspod` retain their own inventories. Costs and historical entries never determine which cases exist or are required. A missing case cost falls back to its recipe cost, then the positive profile default.
 
-Deterministic allocation places Minecraft groups first, then other groups, in descending estimated worker cost with stable group-key ties. Each placement minimizes the greater of predicted worker work divided by the worker limit and Minecraft slot-seconds divided by the slot limit; ties prefer less Minecraft work, then less total work, then the lower shard index. Reuse group costs include all member cases. All shards of the same executable, selection, cost profile and capacity configuration cover every selected case exactly once. A large atomic group still limits balance; do not add feature-specific logic to the scheduler or weaken isolation to split it.
+Reusable cases form atomic recipe groups; Fresh cases form individual groups. `--no-reuse` makes every case its own Fresh group and can change placement and shard count. Historical group estimates retain the greater of the surviving members' estimates and the measured full-group lifecycle floor, then add estimates for new members. Removing the member charged for setup or final teardown therefore cannot erase that fixture cost.
 
-A seed shuffles group and within-group priority after assignment. `plan.json` records the selected catalog, per-case estimates and Minecraft requirements, all assignments, this shard's priority order, and the scheduling algorithm, cost-profile SHA-256 and capacity limits. Actual concurrent start order follows resource availability and completion; the recorded priority remains reproducible. `--no-reuse` changes environment allocation only, retaining group membership and shard assignment.
+`ci-plan` freezes source SHA, application image ID, executable digest, current profile/catalog, historical source, costs, seed, reuse policy and resource limits in one run-level plan. Every shard validates and executes this plan. Ordinary and Huawei capabilities receive separate assignments within that same plan; ordinary jobs have no Huawei credentials, and cloud jobs use the protected `dns-e2e` Environment. CI allows at most 16 total shards, eight ordinary jobs and one cloud job concurrent, with two workers and one Minecraft slot per runner.
 
-The dispatcher admits the first resource-ready group in seeded priority order. A group waiting for Minecraft capacity does not occupy a worker or prevent a later ordinary group from starting. Workers cap live environments; the dispatcher conservatively accounts for a group's declared Minecraft capacity through its final teardown, including no-reuse execution and failure-driven environment replacement. The factory still reserves actual environment capacity before setup and retains it until teardown. Its weighted reservation is serialized to avoid partial-acquisition deadlocks. Oversized groups fail explicitly without allocating environments. Cancellation preserves a failed result for every pending case and drains active groups through independent cleanup contexts. Budgets are local to a runner, so a shared host still needs suitable CI-level concurrency and capacity.
+Automatic allocation targets 300 seconds of fixture initialization, case work and cleanup. It places indivisible groups using predicted completion time under worker and Minecraft-slot capacity, adding the fixed final-cleanup/recovery estimate to each shard. It increases shard count within the configured bound when more capacity can meet the target, preserves oversized groups, and records estimated shard durations and oversized/fixed-overhead reasons. If fixed overhead alone prevents the target, it uses one shard per required capability. The soft target does not shorten scenario deadlines or turn a successful scenario into a failure. Direct plans with an explicit shard count retain deterministic worker/Minecraft load balancing.
+
+A seed shuffles group and within-group priority after assignment. Per-run `plan.json` records the complete selected catalog, assignments, this shard's priority order, scheduling cost SHA-256 and resource limits, bound to the immutable run-level digest. Actual concurrent start order follows resource availability and completion; the recorded priority remains reproducible.
+
+The dispatcher admits the first resource-ready group in seeded priority order. A group waiting for Minecraft capacity does not occupy a worker or prevent a later ordinary group from starting. Workers cap live environments; the dispatcher conservatively accounts for a group's declared Minecraft capacity through its final teardown, including no-reuse execution and failure-driven environment replacement. The factory still reserves actual environment capacity before setup and retains it until teardown. Its weighted reservation is serialized to avoid partial-acquisition deadlocks. A group exceeding declared Minecraft capacity fails without allocating an environment; a lifecycle estimate exceeding 300 seconds remains runnable and reported. Cancellation preserves a failed result for every pending case and drains active groups through independent cleanup contexts. Budgets are local to a runner, so a shared host still needs suitable CI-level concurrency and capacity.
 
 The lifecycle is capacity reservation → setup → case → case compensation → reuse verification → retirement/next case. Reservation uses the run deadline; the setup deadline starts after capacity is acquired. The engine retains the reservation until environment teardown finishes, including failed setup. Each stage has structured failure reporting. Setup and execution honor their respective context deadlines. Compensation, verification, diagnostic capture and teardown each receive an independent bounded context using the cleanup timeout, even after cancellation; diagnostic capture cannot exhaust teardown's budget. A phase returning nil after its deadline still fails. All network calls, subprocesses and polling must propagate context; a Go callback that ignores cancellation cannot be forcibly interrupted by the runner, so CI job timeouts remain the outer limit. Fatal HTTP errors stop polling; only an expected not-yet-ready state is retried. A failed scenario is never automatically rerun.
 
@@ -91,7 +102,11 @@ A failed, panicking or expired environment teardown cannot confirm that its cont
 
 The initial cost profile identifies successful runs 36148282102 and 36155392209. Its per-case estimate is the mean of each recorded duration minus the interval from case start to the first environment provider trace, with zero subtraction for reused cases. This removes reservation delay approximately, along with small recorder initialization overhead. Those source runners omitted final reusable-group teardown; their estimates remain suitable for atomic recipe groups but are not exact lifecycle measurements. Recipe fallback costs are the median observed active proxy per recipe, floored at 15 seconds; a new recipe uses 60 seconds.
 
-Review weight updates from multiple successful runs using the precise phase fields. Exclude scheduler queue and factory reservation waits, retain setup/scenario/cleanup costs, aggregate reuse members before assessing their placement, and document source run URLs and measurement changes in the profile. Unknown and obsolete timing entries never change catalog discovery. The profile is compiled into the same candidate executable consumed by all shards, so no external mutable timing service or runtime override can produce different assignments within a qualification.
+Audited `api-lifecycle-v2` history sums setup, scenario, case compensation, verification, diagnostics and teardown for each case, excluding queue and reservation waits. It also retains group membership and full-group lifecycle totals. Run-level `preparation_seconds` records Docker preflight and image pulls separately, outside the execution target. Final `cleanup_seconds` plus the measured unconditional recovery in `recovery.json` supply a conservative maximum fixed overhead per shard. Checkout, dependency installation and OCI loading are outside this budget.
+
+The shared history transport restores one latest comparable successful audited artifact from the same branch, then main. Compatibility covers dependency/Docker inputs, measurement version, fixture recipes, reuse policy and worker/Minecraft limits; reuse-disabled execution has a separate profile. The frozen plan records the selected run/attempt/SHA/branch and artifact source. Missing, expired, incompatible or invalid history uses the positive committed fallback. All shards consume the same plan instead of consulting mutable history during execution.
+
+`ci-audit` independently rebuilds the required current profile and assignments from the executable, verifies exact-once passed results and operation evidence, and requires candidate-bound local cleanup. Cloud cases additionally require distinct Fresh environments, initial case receipts and matching fully cleaned owned scopes. Only successful shard jobs and the complete aggregate audit publish `timing-history-api/history.json` for 90 days. Measured history changes estimates and placement; new or obsolete entries cannot change discovery.
 
 ## Real API assertions
 
@@ -121,7 +136,7 @@ Legacy schedule cases stop their deployment, downgrade with shipped Alembic,
 and insert representative rows using standard SQLite; assertions use public
 schedule and execution-history APIs after normal startup.
 
-Each environment captures `/api/openapi.json` from the mounted API application. `coverage` applies its server path prefix and adds the three WebSocket routes, then matches only case traces against operations. Passed 2xx/101 observations, 4xx rejection assertions and failed-case observations remain separate. Reports check immutable image/schema/catalog compatibility, scheduling configuration and seed identity, and complete, duplicate-free selected case/shard results. Legacy reports without scheduling metadata remain readable but cannot be combined with weighted-plan reports. Route visitation is an inventory check, not behavioral coverage or proof of every input combination; the feature mapping describes actual assertions.
+Each environment captures `/api/openapi.json` from the mounted API application. `coverage` applies its server path prefix and adds the three WebSocket routes, then matches only case traces against operations. Passed 2xx/101 observations, 4xx rejection assertions and failed-case observations remain separate. Reports check immutable image/schema/catalog compatibility, scheduling configuration and seed identity, and complete, duplicate-free selected case/shard results. CI's `ci-audit` also validates the independently required current profile and immutable plan, so ordinary selected reports cannot substitute for complete Huawei qualification. Legacy reports without scheduling metadata remain readable but cannot be combined with weighted-plan reports. Route visitation is an inventory check, not behavioral coverage or proof of every input combination; the feature mapping describes actual assertions.
 
 ## Resource ownership and recovery
 
@@ -141,4 +156,4 @@ Explicit DNS qualification owns a unique descendant of an authorized parent in a
 4. Register compensation at allocation time for clean reuse. Register any new credential with the redactor before transport/logging. Do not introduce a feature branch into the engine or a generic YAML scenario language.
 5. Update `coverage.md`; run framework checks when infrastructure changes, then the affected real cases independently and with `--no-reuse`. For reusable cases also shuffle the relevant group.
 
-The CI matrix is a shard count, not a list of suite directories. New cases require no workflow edits. Heavy/external scenarios can use another tag and appropriate CI resources without expanding the execution kernel.
+The CI matrix derives from the immutable current-catalog plan, not suite directories. New cases require no directory-specific matrix edits. Declare an execution capability for protected provider cases; every current Huawei case automatically joins complete qualification while ordinary PR regression stays credential-free. Heavy or external scenarios retain appropriate recipes, tags and isolation without expanding the execution kernel.

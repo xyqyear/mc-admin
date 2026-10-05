@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: application-release-${{ github.ref }}
@@ -38,9 +39,11 @@ jobs:
   api:
     needs: candidate
     uses: ./.github/workflows/e2e-tests.yml
+    secrets: inherit
     with:
       source_sha: ${{ github.sha }}
       candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+      qualification: true
 
   browser:
     needs: candidate
@@ -49,17 +52,9 @@ jobs:
       source_sha: ${{ github.sha }}
       candidate_artifact: ${{ needs.candidate.outputs.artifact }}
 
-  dns:
-    needs: candidate
-    uses: ./.github/workflows/dns-tests.yml
-    secrets: inherit
-    with:
-      source_sha: ${{ github.sha }}
-      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
-
   qualification:
     if: always()
-    needs: [candidate, static, backend, api, browser, dns]
+    needs: [candidate, static, backend, api, browser]
     outputs:
       artifact: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
     runs-on: ubuntu-latest

@@ -81,38 +81,119 @@ def positive_cost(value: Any) -> float:
     return float(value)
 
 
-def plan(manifest: dict[str, Any], weights: dict[str, Any], count: int = 4) -> dict[str, Any]:
-    if isinstance(count, bool) or count < 1:
-        raise ValueError("Shard count must be positive")
-    default = positive_cost(weights["default_seconds"])
-    costs = {file: positive_cost(value) for file, value in weights["files"].items()}
+def nonnegative_cost(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        raise ValueError("Session overhead must be finite nonnegative seconds")
+    return float(value)
+
+
+def planning_weights(manifest: dict[str, Any], fallback: dict[str, Any],
+                     history: dict[str, Any] | None) -> tuple[dict[str, Any], str]:
+    default = positive_cost(fallback["default_seconds"])
+    files = {file: positive_cost(value) for file, value in fallback["files"].items()}
+    overhead = nonnegative_cost(fallback.get("session_overhead_seconds", 10))
+    weights = {**fallback, "default_seconds": default, "files": files, "session_overhead_seconds": overhead}
+    if not history:
+        return weights, "missing"
+    try:
+        if (type(history["schema_version"]) is not int or history["schema_version"] != 1 or history.get("audited") is not True
+                or history["component"] != "backend" or history["profile"] != "default"):
+            raise ValueError("Unrelated backend history")
+        costs = history["costs"]
+        default = positive_cost(costs["default_seconds"])
+        overhead = nonnegative_cost(costs.get("session_overhead_seconds", 10))
+        measured = {file: positive_cost(value) for file, value in costs["files"].items()}
+        files = {**weights["files"], **measured}
+        if "nodes" in costs:
+            nodes = {nodeid: positive_cost(value) for nodeid, value in costs["nodes"].items()}
+            current: dict[str, list[str]] = {}
+            for nodeid in selected(manifest):
+                current.setdefault(nodeid.split("::", 1)[0], []).append(nodeid)
+            for file, nodeids in current.items():
+                retained = math.fsum(nodes[nodeid] for nodeid in nodeids if nodeid in nodes)
+                added = default * sum(nodeid not in nodes for nodeid in nodeids)
+                files[file] = max(measured.get(file, 0), retained) + added
+        return {**costs, "default_seconds": default, "files": files,
+                "session_overhead_seconds": overhead, "source": history["source"]}, "restored"
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return weights, "invalid"
+
+
+def allocate_atoms(atoms: list[tuple[float, list[str]]], count: int) -> list[dict[str, Any]]:
+    buckets: list[dict[str, Any]] = [{"files": [], "estimated_seconds": 0.0} for _ in range(count)]
+    for cost, files in atoms:
+        index = min(range(count), key=lambda index: (buckets[index]["estimated_seconds"], index))
+        buckets[index]["files"].extend(files)
+        buckets[index]["estimated_seconds"] += cost
+    return buckets
+
+
+def plan(manifest: dict[str, Any], weights: dict[str, Any], *, target_seconds: float = 300,
+         max_shards: int = 32, history: dict[str, Any] | None = None) -> dict[str, Any]:
+    target = positive_cost(target_seconds)
+    if type(max_shards) is not int or max_shards < 1:
+        raise ValueError("Maximum shard count must be a positive integer")
+    weights, history_status = planning_weights(manifest, weights, history)
+    default = weights["default_seconds"]
+    overhead = weights["session_overhead_seconds"]
+    execution_budget = target - overhead
+    costs = weights["files"]
     atoms = atomic_files(manifest)
     if not atoms:
         raise ValueError("Cannot plan an empty selected inventory")
-    buckets: list[dict[str, Any]] = [
-        {"index": index + 1, "files": [], "estimated_seconds": 0.0} for index in range(min(count, len(atoms)))
-    ]
-    weighted = [(sum(costs.get(file, default) for file in files), files) for files in atoms]
-    for cost, files in sorted(weighted, key=lambda item: (-item[0], item[1])):
-        bucket = min(buckets, key=lambda shard: (shard["estimated_seconds"], shard["index"]))
-        bucket["files"].extend(files)
-        bucket["estimated_seconds"] += cost
+    weighted = sorted([(math.fsum(costs.get(file, default) for file in files), files) for files in atoms],
+                      key=lambda item: (-item[0], item[1]))
+    atomic_budget = execution_budget if execution_budget > 0 else target
+    oversized = [(cost, files) for cost, files in weighted if cost > atomic_budget]
+    ordinary = [(cost, files) for cost, files in weighted if cost <= atomic_budget]
+    limit = min(max_shards, len(atoms))
+    limited = len(oversized) + bool(ordinary) > limit
+    if execution_budget <= 0:
+        requested = max(len(oversized) + bool(ordinary), math.ceil(math.fsum(cost for cost, _ in weighted) / target))
+        limited = requested > limit
+        buckets = allocate_atoms(weighted, min(requested, limit))
+    elif limited:
+        buckets = allocate_atoms(weighted, limit)
+    else:
+        buckets = [{"files": list(files), "estimated_seconds": cost} for cost, files in oversized]
+        if ordinary:
+            available = min(limit - len(oversized), len(ordinary))
+            first = min(available, max(1, math.ceil(math.fsum(cost for cost, _ in ordinary) / execution_budget)))
+            packed = allocate_atoms(ordinary, first)
+            for count in range(first + 1, available + 1):
+                if max(bucket["estimated_seconds"] for bucket in packed) <= execution_budget:
+                    break
+                packed = allocate_atoms(ordinary, count)
+            limited = max(bucket["estimated_seconds"] for bucket in packed) > execution_budget
+            buckets.extend(packed)
     records = inventory(manifest)
     wanted = selected(manifest)
-    for bucket in buckets:
+    for index, bucket in enumerate(buckets, start=1):
+        bucket["index"] = index
         bucket["files"].sort()
         bucket["nodeids"] = sorted(nodeid for nodeid in wanted if nodeid.split("::", 1)[0] in bucket["files"])
         bucket["capabilities"] = sorted({name for nodeid in bucket["nodeids"] for name in records[nodeid]["capabilities"]})
-        bucket["estimated_seconds"] = round(bucket["estimated_seconds"], 6)
+        bucket["estimated_seconds"] = round(bucket["estimated_seconds"] + overhead, 6)
+    reasons = ((["fixed_overhead"] if execution_budget <= 0 else [])
+               + (["oversized_unit"] if oversized else []) + (["shard_limit"] if limited else []))
     result = {"schema_version": 1, "inventory_sha256": inventory_digest(manifest),
               "weights_sha256": digest(weights), "weights_source": weights.get("source", {}),
+              "history_sha256": digest(history) if history_status == "restored" else None,
+              "history_status": history_status, "target_seconds": target, "max_shards": max_shards,
+              "session_overhead_seconds": overhead,
+              "total_estimated_seconds": round(math.fsum(cost for cost, _ in weighted) + overhead * len(buckets), 6),
+              "largest_atomic_seconds": round(weighted[0][0] + overhead, 6),
+              "target_met": not reasons, "unmet_target_reasons": reasons,
+              "oversized_units": [{"files": files, "estimated_seconds": round(cost + overhead, 6)}
+                                  for cost, files in oversized],
               "shard_count": len(buckets), "shards": buckets}
     validate_plan(manifest, result)
     return result
 
 
 def plan_matrix(value: dict[str, Any]) -> dict[str, Any]:
-    return {"include": [{"test_shard": shard["index"], "capabilities": shard["capabilities"]}
+    return {"include": [{"test_shard": shard["index"], "shard_count": value["shard_count"],
+                         "capabilities": shard["capabilities"]}
                         for shard in value["shards"]]}
 
 
@@ -162,6 +243,7 @@ def audit_execution(manifests: list[dict[str, Any]], reports: list[dict[str, Any
             raise ValueError("Test execution did not complete successfully")
         if report.get("collection_errors"):
             raise ValueError("Test collection reported errors")
+        nonnegative_cost(report.get("session_seconds"))
         phases: dict[str, list[str]] = {}
         for event in report["phases"]:
             if event["outcome"] != "passed" or "wasxfail" in event:
@@ -214,13 +296,33 @@ def audit(expected: dict[str, Any], shards: list[dict[str, Any]], *,
         audit_execution(shards, timings)
 
 
+def measured_weights(expected: dict[str, Any], shards: list[dict[str, Any]],
+                     test_plan: dict[str, Any], reports: list[dict[str, Any]]) -> dict[str, Any]:
+    audit(expected, shards, test_plan=test_plan, timings=reports)
+    phases: dict[str, list[float]] = {}
+    for report in reports:
+        for event in report["phases"]:
+            phases.setdefault(event["nodeid"], []).append(event["duration_seconds"])
+    nodes = {nodeid: max(math.fsum(values), 0.000001) for nodeid, values in sorted(phases.items())}
+    files: dict[str, list[float]] = {}
+    for nodeid, seconds in nodes.items():
+        files.setdefault(nodeid.split("::", 1)[0], []).append(seconds)
+    overhead = max(max(0, report["session_seconds"] - math.fsum(event["duration_seconds"] for event in report["phases"]))
+                   for report in reports)
+    return {"schema_version": 1, "source": {"measurement": "backend-phase-v2"}, "default_seconds": 15.0,
+            "session_overhead_seconds": overhead,
+            "files": {file: math.fsum(values) for file, values in sorted(files.items())}, "nodes": nodes}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("matrix", "plan", "audit"))
     parser.add_argument("manifest", type=Path)
     parser.add_argument("shards", nargs="*", type=Path)
     parser.add_argument("--weights", type=Path)
-    parser.add_argument("--shards", type=int, default=4, dest="shard_count")
+    parser.add_argument("--history", type=Path)
+    parser.add_argument("--target-seconds", type=float, default=300)
+    parser.add_argument("--max-shards", type=int, default=32)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--plan", type=Path)
     parser.add_argument("--timings", nargs="+", type=Path)
@@ -231,7 +333,9 @@ def main() -> None:
     elif args.command == "plan":
         if args.weights is None or args.output is None:
             parser.error("plan requires --weights and --output")
-        value = plan(expected, json.loads(args.weights.read_text()), args.shard_count)
+        history = json.loads(args.history.read_text()) if args.history else None
+        value = plan(expected, json.loads(args.weights.read_text()), target_seconds=args.target_seconds,
+                     max_shards=args.max_shards, history=history)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(value, indent=2) + "\n")
         print(json.dumps(plan_matrix(value), separators=(",", ":")))

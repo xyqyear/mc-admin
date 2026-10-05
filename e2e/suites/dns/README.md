@@ -6,7 +6,7 @@
 
 This fixture generates its own short-lived certificate, appends it only to the owned backend container's CA bundle, and maps the provider hostname only in that container's `/etc/hosts`. Its HTTPS/control/router-edge ports bind loopback in the backend's private network namespace. No host trust, host name mapping, host port, cloud account or application implementation is modified. The helper container is registered in the environment ownership journal before creation and removed with the deployment. A failed bind fails the fixture; it never stops an unknown process. The helper implements the documented DNSPod response envelope and record calls but does not qualify cloud authentication, propagation, quotas or asynchronous provider jobs; those require the external scenarios below.
 
-The DNSPod and Huawei scenarios have `external,dns` tags. They require an explicitly supplied test-domain configuration; missing configuration fails the scenario and never becomes a skip. Only the selected provider's object is required:
+The DNSPod and Huawei scenarios have `external,dns` tags and belong to the unified API catalog. Ordinary regression excludes these cloud scenarios. Complete `qualification` independently requires every current Huawei case; DNSPod remains an explicit manual profile. They require an authorized test-domain configuration; missing configuration fails the scenario and never becomes a skip. Only the selected provider's object is required:
 
 ```json
 {
@@ -35,9 +35,11 @@ The domain must already exist in that provider's public DNS service. The supplie
 
 ```bash
 mc-admin-e2e run --backend-image mc-admin:e2e \
-  --tag external --case '^dns\.dnspod-' \
+  --tag external --case '^dns\.dnspod-reconciliation$' \
   --external-config /private/path/external.json
 ```
+
+This local example selects the reconciliation case only when it is related to the change. Keep explicit anchored case IDs for local validation; complete provider qualification belongs to CI.
 
 Each scenario uses an API-created server and its Compose game-port mapping, a real digest-pinned mc-router container, and the actual provider. A running Minecraft process is unnecessary for this routing-control contract. The router's API shares the private backend network namespace and is bound to loopback. The scenario tests enabled state, non-mutating previews, A/AAAA/SRV creation, idempotency, configuration refresh, upstream router drift, value/port updates, CNAME conversion, address removal, and the enabled DNS self-check.
 
@@ -57,7 +59,11 @@ Recovery locks the manifest and refuses a scope while a matching environment con
 
 `dns.huawei-minecraft-connectivity` verifies cloud records through independent SDK reads and authoritative DNS over TCP, checks initial recursive SRV resolution, then uses actual SRV/A answers to connect to the router and verify the unique Minecraft MOTD. It checks startup repair, automatic create/remove/sync triggers, changed router/SRV port and preservation for stopped ACTIVE servers. Unique run names avoid previous-run caches; subsequent changes use authoritative answers because recursive caches may retain prior TTLs. The router destination is the runner's loopback address, so Internet inbound firewalls/NAT and external player reachability remain outside this contract.
 
-`dns-tests.yml` runs Huawei qualification on main changes, daily, manually and as a required same-candidate release gate. The protected `dns-e2e` GitHub Environment stores `HUAWEICLOUD_AK`/`HUAWEICLOUD_SK`; credentials are injected only into cloud execution and unconditional recovery steps. Allow only main, release tags and explicitly authorized development branches in that Environment. The cloud IAM identity is restricted to the dedicated test zone. Missing credentials are failures, never skips. Ordinary PR regression receives no Huawei credentials. DNSPod remains an explicit manual selection using `E2E_EXTERNAL_CONFIG`.
+The unified `e2e-tests.yml` API workflow runs complete `qualification` on main changes, daily, explicit manual selection and release's same-candidate `qualification: true` gate. One immutable current-catalog plan separates ordinary and Huawei assignments, with at most 16 total shards, eight ordinary jobs and one cloud job concurrent. Each runner retains two workers and one Minecraft slot; Huawei cases use distinct Fresh environments. The 300-second soft execution target includes fixture initialization and cleanup, while preflight/image preparation and CI installation are measured or handled separately. Oversized lifecycle groups retain their full deadlines.
+
+The protected `dns-e2e` GitHub Environment stores `HUAWEICLOUD_AK`/`HUAWEICLOUD_SK`; credentials are injected only into cloud execution and unconditional recovery steps. Allow only main, release tags and explicitly authorized development branches in that Environment. The cloud IAM identity is restricted to the dedicated test zone. Missing credentials are failures, never skips. Ordinary PR regression receives no cloud credentials. DNSPod remains an explicit manual selection using `E2E_EXTERNAL_CONFIG`.
+
+The final API audit independently requires every current Huawei case, exact-once successful results, matching source/image/executable/plan identities and cloud manifests bound to their initial case receipts. Missing, failed, skipped, unexpected or uncleared scopes fail qualification even if Docker cleanup succeeded. Compatible audited history is restored once from the same branch, then main, and frozen into the plan; it affects costs and placement only. History publication follows complete API coverage and verified local/cloud cleanup, retaining measurement and source identities for subsequent runs. Historical verification records retain their original workflow and shard evidence.
 
 The router image currently returns route objects containing `backend` and `scalingTarget`; MC Admin normalizes these to its public string-valued route map and also supports legacy strings. This format is documented by [mc-router's REST API](https://github.com/itzg/mc-router#rest-api).
 

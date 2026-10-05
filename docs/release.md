@@ -4,7 +4,7 @@ The application is built once as a single-platform `linux/amd64` OCI archive. St
 
 ## Workflow graph
 
-`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API, browser and Huawei DNS workflows. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
+`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API and browser workflows. API qualification includes every current Huawei DNS scenario and verified cloud recovery in its aggregate gate. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
 
 The immutable `application-candidate` artifact contains:
 
@@ -12,9 +12,9 @@ The immutable `application-candidate` artifact contains:
 - `candidate.json`: source revision, dirty flag, source fingerprint, archive checksum, OCI manifest digest, image config digest and Go executable checksum.
 - `mc-admin-e2e`: the executable built and tested from that revision.
 
-API, browser and Huawei DNS jobs validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each job then compares its actual run manifest and result with the candidate identity and requires owned cleanup to have finished. Browser evidence additionally requires a nonempty Playwright result with no failed, flaky or skipped journeys. API shard and selected-case completeness remain enforced by the runner's coverage audit; the number of observed HTTP routes is diagnostic, not an assertion-coverage threshold.
+API and browser shards validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each shard compares its actual manifest and result with the candidate identity and requires owned cleanup. Aggregate audits require the complete current inventory and exact-once successful execution under the shared immutable plan. Browser reports cannot contain failed, flaky or skipped journeys. API qualification independently requires all current Huawei cases and their verified owned cloud scopes; local Docker cleanup cannot establish cloud cleanup. Observed HTTP route counts are diagnostic, not an assertion-coverage threshold.
 
-The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`, `dns`) with every result equal to `success`. Missing, failed, cancelled and skipped jobs cannot produce a qualification receipt. Both the backend collection audit and API coverage audit also explicitly require their execution matrices to succeed.
+The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`) with every result equal to `success`. The API caller explicitly requests complete qualification, including protected Huawei execution. Missing, failed, cancelled and skipped required execution cannot produce a receipt. Backend, API and browser aggregate audits require their complete matrices to succeed before publishing scheduling history.
 
 Only the promotion job has `packages: write`. It requires successful qualification and a semantic version tag. Tag pushes qualify and promote; manual dispatch defaults to qualification only, and its `publish` option is effective only for a semantic version tag ref. Promotion revalidates the candidate and receipt, copies with `skopeo copy --preserve-digests`, and reads back every destination's raw manifest to compare its digest. A registry that requires a manifest rewrite causes failure. Images and build cache are not pushed to GHCR during candidate construction.
 
@@ -55,7 +55,7 @@ uv run --project backend python scripts/release/candidate.py load \
   --directory /tmp/mc-admin-candidate --output /tmp/mc-admin-candidate-loaded.json
 ```
 
-Run API, browser, workload and deployment checks against the returned `local_image_id`. Keep the OCI manifest digest and source fingerprint alongside those reports. This local dirty-source evidence cannot satisfy the CI `verify --revision <SHA>` requirement, which demands the matching clean checkout.
+Run only change-related API, browser, workload or deployment checks against the returned `local_image_id`. Keep the OCI manifest digest and source fingerprint alongside those reports. Complete qualification requires GitHub Actions for the latest SHA. This local dirty-source evidence cannot satisfy the CI `verify --revision <SHA>` requirement, which demands the matching clean checkout.
 
 ## Executable gate checks
 
@@ -63,7 +63,7 @@ Run API, browser, workload and deployment checks against the returned `local_ima
 
 ```bash
 cd backend
-uv run pytest tests/ci tests/testing/test_isolation.py
+uv run pytest tests/ci/test_release_gates.py
 cd ..
 uv run --project backend python -m scripts.release.verify_local \
   --output /tmp/mc-admin-local-promotion.json

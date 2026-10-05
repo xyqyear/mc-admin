@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from tests.support.environment import configure_test_environment
 from tests.support.timing import TimingRecorder
 
 # Collection has an explicit owner separate from every test runtime.
+_session_started = time.perf_counter()
 _environment = configure_test_environment()
 _inventory: pytest.StashKey[list[dict[str, Any]]] = pytest.StashKey()
 _binary_environment = {
@@ -39,7 +41,7 @@ def pytest_configure(config: pytest.Config) -> None:
         config.stash[_plan] = json.loads(Path(path).read_text())
     output = config.getoption("--timing-report")
     if output:
-        config.pluginmanager.register(TimingRecorder(Path(output), collection_manifest), "mc-admin-timing")
+        config.pluginmanager.register(TimingRecorder(Path(output), collection_manifest, started=_session_started), "mc-admin-timing")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:

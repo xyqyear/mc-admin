@@ -11,12 +11,12 @@ import (
 
 func Cases(r fixtures.Recipes) []engine.Case {
 	return []engine.Case{
-		{ID: "dns.huawei-minecraft-connectivity", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Connectivity, Isolation: engine.Fresh, Timeout: 15 * time.Minute, Run: cloudTraffic},
+		{ID: "dns.huawei-minecraft-connectivity", Capability: "huawei", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Connectivity, Isolation: engine.Fresh, Timeout: 15 * time.Minute, Run: cloudTraffic},
 		{ID: "dns.router-minecraft-traffic", Suite: "dns", Tags: []string{"regression"}, Recipe: r.Connectivity, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: routerTraffic},
 		{ID: "dns.owned-edge-reconciliation", Suite: "dns", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: ownedReconciliation},
 		{ID: "dns.disabled-and-validation", Suite: "dns", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: time.Minute, Run: disabled},
-		{ID: "dns.dnspod-reconciliation", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("dnspod")},
-		{ID: "dns.huawei-reconciliation", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("huawei")},
+		{ID: "dns.dnspod-reconciliation", Capability: "dnspod", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("dnspod")},
+		{ID: "dns.huawei-reconciliation", Capability: "huawei", Suite: "dns", Tags: []string{"external", "dns"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: external("huawei")},
 	}
 }
 

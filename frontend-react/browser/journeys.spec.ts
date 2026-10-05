@@ -388,5 +388,5 @@ test.describe('owned administration journeys', () => {
       await api.json('/api/config/modules/mcmap', 'PUT', config)
     }
   })
-  for (const { name, run } of process.env.BROWSER_REVERSE_ORDER === '1' ? [...journeys].reverse() : journeys) test(name, run)
+  for (const { name, run } of process.env.BROWSER_REVERSE_ORDER === '1' ? [...journeys].reverse() : journeys) test(name, { annotation: { type: 'shard_isolation', description: 'independent' } }, run)
 })

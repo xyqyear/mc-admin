@@ -20,16 +20,18 @@ const (
 )
 
 type Case struct {
-	ID        string
-	Suite     string
-	Tags      []string
-	Recipe    *environment.Recipe
-	Isolation Isolation
-	Timeout   time.Duration
-	Run       func(context.Context, *Scope) error
+	Capability string
+	ID         string
+	Suite      string
+	Tags       []string
+	Recipe     *environment.Recipe
+	Isolation  Isolation
+	Timeout    time.Duration
+	Run        func(context.Context, *Scope) error
 }
 
 type Selection struct {
+	NoReuse        bool
 	Suite          string
 	Match          string
 	Tag            string
@@ -42,6 +44,7 @@ type Selection struct {
 }
 
 type Entry struct {
+	Capability       string    `json:"capability,omitempty"`
 	ID               string    `json:"id"`
 	Suite            string    `json:"suite"`
 	Tags             []string  `json:"tags"`
@@ -58,6 +61,7 @@ type Group struct {
 	Cases []Case
 }
 type Plan struct {
+	Digest     string     `json:"digest,omitempty"`
 	Seed       uint64     `json:"seed"`
 	ShardIndex int        `json:"shard_index"`
 	ShardCount int        `json:"shard_count"`
@@ -131,11 +135,11 @@ func BuildPlan(catalog []Case, selection Selection) (Plan, error) {
 			}
 		}
 		key := "recipe:" + test.Recipe.ID
-		if test.Isolation == Fresh {
+		if test.Isolation == Fresh || selection.NoReuse {
 			key = "case:" + test.ID
 		}
 		groups[key] = append(groups[key], test)
-		plan.Catalog = append(plan.Catalog, Entry{ID: test.ID, Suite: test.Suite, Tags: test.Tags, Recipe: test.Recipe.ID, Isolation: test.Isolation, Timeout: test.Timeout.String(), EstimatedSeconds: profile.estimate(test), MinecraftSlots: test.Recipe.MinecraftSlots})
+		plan.Catalog = append(plan.Catalog, Entry{ID: test.ID, Capability: test.Capability, Suite: test.Suite, Tags: test.Tags, Recipe: test.Recipe.ID, Isolation: test.Isolation, Timeout: test.Timeout.String(), EstimatedSeconds: profile.estimate(test), MinecraftSlots: test.Recipe.MinecraftSlots})
 	}
 	if len(plan.Catalog) == 0 {
 		return plan, fmt.Errorf("selection matched no cases")
@@ -144,7 +148,7 @@ func BuildPlan(catalog []Case, selection Selection) (Plan, error) {
 	for index := range plan.Catalog {
 		entry := &plan.Catalog[index]
 		key := "recipe:" + entry.Recipe
-		if entry.Isolation == Fresh {
+		if entry.Isolation == Fresh || selection.NoReuse {
 			key = "case:" + entry.ID
 		}
 		entry.Shard = assignments[key]

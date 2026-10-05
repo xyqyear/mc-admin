@@ -14,7 +14,7 @@ BROWSER_OUTPUT_DIR=/tmp/browser-report \
   --grep 'lifecycle acceptance stays blocked until task status confirms completion$'
 ```
 
-This example selects the lifecycle acceptance journey; choose the explicit related titles for the actual change. Unfiltered `pnpm test:browser` is the CI entry point for complete browser qualification. The complete GitHub Actions gates must pass for the latest commit SHA under `../AGENTS.md` and the [repository rules](../../AGENTS.md).
+This example selects the lifecycle acceptance journey; choose the explicit related titles for the actual change. Unfiltered `pnpm test:browser` is a full-suite CI command. Complete qualification uses the frozen case assignments described below. The complete GitHub Actions gates must pass for the latest commit SHA under `../AGENTS.md` and the [repository rules](../../AGENTS.md).
 
 The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owned URL, credentials, server path and image/environment/manifest identities. Tests validate its local URL, directory ownership and private permissions. Never publish the runtime directory or private fixture. Publish the runner's redacted report/cleanup evidence and the Playwright results/report/artifacts; traces belong to short-lived test credentials and should still have restricted retention.
 
@@ -25,6 +25,16 @@ The restore journey holds the real map-status request until the completed histor
 The restore journey and lifecycle fixture use `browser/cleanup.ts` to attempt every declared cleanup without replacing the original assertion failure. If both the journey and cleanup fail, the report includes their original stacks, with the journey failure first; a cleanup-only failure still fails the case. The wrapper separately reclaims the owned deployment and records that outcome in its manifest.
 
 `MC_ADMIN_BROWSER_CLIENT_METADATA` optionally names a JSON file with `{path,url,version,sha1,size}` for an official Minecraft client. Tests verify the official download host, SHA1 and byte count before copying it into the owned server's map cache. Production palette generation and rendering still run normally. This fixture avoids repeated external downloads; it never supplies fabricated JARs, palettes or PNGs. Without it, the application downloads its normal dependency.
+
+## Timed CI shards
+
+The browser workflow collects every current Playwright case before planning, without launching Chromium or creating a world. `browser/shardReporter.ts` records project, file relative to Playwright's `rootDir`, and the full title path. The seven loop-declared journeys share a source line, so line numbers cannot select them independently. Frozen `--test-list` entries use these complete identities. The separate Node reporter tests are excluded from Playwright collection.
+
+The workflow restores costs through the shared timing-history transport; `scripts/ci/browser_shards.py` chooses up to eight shards, with at most four jobs concurrent. Each job uses its own Go wrapper, run ID, world and cleanup journal; Playwright keeps one worker, no retries and serial execution. Unmarked cases in the same file form an atomic group. Explicit `shard_group` annotations join shared fixture or serial cases; only cases declaring `shard_isolation=independent` may split from their file. The current journeys and observations make that declaration and retain their own cleanup.
+
+The 300-second soft target covers wrapper world setup, the child Playwright command and owned cleanup. It excludes checkout, dependency installation, candidate OCI loading and Chromium installation. `fixture-result.json` contains separate `setup_seconds`, `command_seconds` and `cleanup_seconds`; Playwright case durations include their test fixtures, and the command residual accounts for runner and shared hook overhead. History repeats setup, cleanup and command overhead in each proposed shard. Missing history or new cases use positive fallback costs. Oversized atomic groups, fixed overhead that already exceeds the target, and the shard limit are reported without shortening test deadlines. When fixed overhead alone prevents the target, the planner uses one world rather than multiplying that overhead.
+
+`browser-test-plan` freezes the complete inventory, historical source and plan. `browser-results-N` retains case results and redacted wrapper/candidate evidence for seven days. The aggregate audit requires every current case exactly once, matching plan/history/candidate identities, passed outcomes without retries, distinct owned runs and complete cleanup. Only a successful audit and successful shard jobs publish `timing-history-browser/history.json` for 90 days. The next compatible run restores that evidence once; timing history changes placement and estimates, never the current inventory. Compatibility includes the dependency lockfile, Dockerfile, world recipe, measurement version and worker policy. `browser-coverage` retains the aggregate audit for 14 days.
 
 ## Comparable observations
 
