@@ -27,4 +27,4 @@
 - [x] 5.1 Update AGENTS and CI/release/component design documentation to match the implemented contracts.
 - [x] 5.2 Independently review cross-family history, coverage, DNS authorization and oversized-budget behavior; fix findings.
 - [x] 5.3 Commit and push the implementation; run complete non-publishing qualification for the latest SHA and wait through one persistent command.
-- [ ] 5.4 Confirm all required gates, exact coverage and cleanup succeed and report the exact commit and Actions evidence.
+- [x] 5.4 Confirm all required gates, exact coverage and cleanup succeed and report the exact commit and Actions evidence.
