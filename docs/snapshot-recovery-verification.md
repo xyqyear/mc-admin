@@ -1,6 +1,6 @@
 # 统一快照恢复：交付验证
 
-开发分支为 `feat/unify-snapshot-recovery`。本记录区分已经通过的实现批次、部署演练和最终分支资格；合并 main、发布镜像与归档变更另需用户授权。
+开发分支为 `feat/unify-snapshot-recovery`。本记录区分已经通过的实现批次、部署演练和最终分支资格；完成的设计与任务清单保存在 `openspec/changes/archive/2026-10-06-unify-snapshot-recovery/`，发布镜像需用户授权。
 
 ## 完整 CI
 

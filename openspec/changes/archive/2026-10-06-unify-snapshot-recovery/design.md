@@ -1,14 +1,14 @@
 ## Context
 
-动机和范围见 [proposal.md](proposal.md)。本文件记录已审核的设计约束；实施与验证状态见 [tasks.md](tasks.md)，当前模块结构和交付证据见 [路线图](../../../docs/snapshot-recovery-roadmap.md)。
+动机和范围见 [proposal.md](proposal.md)。本文件记录已审核的设计约束；实施与验证状态见 [tasks.md](tasks.md)，当前模块结构和交付证据见 [路线图](../../../../docs/snapshot-recovery-roadmap.md)。
 
 当前代码已有可复用的基础，不需要重建任务调度和 Restic 封装：
 
-- [快照设计](../../../backend/docs/snapshots.md)：路径规划、当前忽略规则与源快照排除记录的合并、空目录和缺失目标语义。
-- [世界恢复设计](../../../backend/docs/world-restore.md)：世界/维度/区域/区块选择、安全快照、附属目录和恢复历史。
-- [操作协调](../../../backend/docs/operations.md)：持久化操作记录、资源占用、取消收尾及崩溃后的恢复阻断。
-- [数据库迁移](../../../backend/docs/database-migrations.md)：迁移先于运行时生产者启动、单写入者约束。
-- [任务中心](../../../frontend-react/docs/task-center.md)与[前端数据架构](../../../frontend-react/docs/data-architecture.md)：任务观察、应用级结果同步和业务功能边界。
+- [快照设计](../../../../backend/docs/snapshots.md)：路径规划、当前忽略规则与源快照排除记录的合并、空目录和缺失目标语义。
+- [世界恢复设计](../../../../backend/docs/world-restore.md)：世界/维度/区域/区块选择、安全快照、附属目录和恢复历史。
+- [操作协调](../../../../backend/docs/operations.md)：持久化操作记录、资源占用、取消收尾及崩溃后的恢复阻断。
+- [数据库迁移](../../../../backend/docs/database-migrations.md)：迁移先于运行时生产者启动、单写入者约束。
+- [任务中心](../../../../frontend-react/docs/task-center.md)与[前端数据架构](../../../../frontend-react/docs/data-architecture.md)：任务观察、应用级结果同步和业务功能边界。
 
 主要缺口是编排重复：路径恢复由请求持有执行，缺少完整的业务恢复历史；世界恢复有单独的记录、预览和回滚流程。已有的 Restic 排除规划不能自然约束 mcmap 直接写入、缺失目标清理等所有路径。直接把两套入口包装成任务，会保留这些差异。
 

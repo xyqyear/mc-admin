@@ -1,6 +1,6 @@
 # 第一轮实现与验证
 
-验证日期：2026-09-27。验证针对本轮实现，未执行版本发布。业务范围见 [非快照操作清单](../../../backend/docs/non-snapshot-operations.md)；[快照与恢复下一轮需求](../../../docs/snapshot-recovery-roadmap.md)保持为后续设计。
+验证日期：2026-09-27。验证针对本轮实现，未执行版本发布。业务范围见 [非快照操作清单](../../../../backend/docs/non-snapshot-operations.md)；[快照与恢复下一轮需求](../../../../docs/snapshot-recovery-roadmap.md)保持为后续设计。
 
 ## 实现边界
 

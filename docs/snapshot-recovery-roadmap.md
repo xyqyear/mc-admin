@@ -1,6 +1,6 @@
 # 快照与恢复系统
 
-文件管理器、地图和快照管理页共用创建、预览、恢复、回滚及仓库维护流程。实现与验证按 [任务清单](../openspec/changes/unify-snapshot-recovery/tasks.md) 推进；[行为规范](../openspec/specs/snapshot-recovery/spec.md) 是后续改动的验收依据。设计取舍与测试矩阵保存在 [详细设计](../openspec/changes/unify-snapshot-recovery/design.md)。
+文件管理器、地图和快照管理页共用创建、预览、恢复、回滚及仓库维护流程。已完成的实现与验证保存在归档 [任务清单](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/tasks.md)；[行为规范](../openspec/specs/snapshot-recovery/spec.md) 是后续改动的验收依据。设计取舍与测试矩阵保存在归档 [详细设计](../openspec/changes/archive/2026-10-06-unify-snapshot-recovery/design.md)。
 
 ## 用户可见的行为
 

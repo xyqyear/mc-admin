@@ -1,6 +1,6 @@
 # 第一轮：非快照耗时操作后台化
 
-状态：已实施并完成本地回归，验证范围和环境记录见 [`verification.md`](verification.md)。下一轮快照需求单独记录在 [`docs/snapshot-recovery-roadmap.md`](../../../docs/snapshot-recovery-roadmap.md)。
+状态：已实施并完成本地回归，验证范围和环境记录见 [`verification.md`](verification.md)。下一轮快照需求单独记录在 [`docs/snapshot-recovery-roadmap.md`](../../../../docs/snapshot-recovery-roadmap.md)。
 
 ## 用户能看到的变化
 
