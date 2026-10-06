@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ...config import get_settings
 from ...dynamic_config.schemas import BaseConfigSchema
+from ...errors import log_safe_error
 from ...logger import get_logger
 from ...minecraft import get_docker_mc_manager
 from ...minecraft.paths import ServerPathError
@@ -20,6 +21,7 @@ from ...world import (
     GLOBAL_LOCK_KEY,
     get_server_operation_lock,
 )
+from ..errors import cron_error_message, cron_value_error
 from ..types import ExecutionContext
 
 
@@ -119,7 +121,7 @@ class BackupJobParams(BaseConfigSchema):
             or (isinstance(param, str) and param.strip() == "")
             for param in retention_params
         ):
-            raise ValueError("启用forget时至少需要指定一个保留策略参数")
+            raise cron_value_error("启用forget时至少需要指定一个保留策略参数")
 
         return self
 
@@ -128,7 +130,7 @@ class BackupJobParams(BaseConfigSchema):
     def validate_path_requires_server_id(cls, v, info):
         """Validate that path cannot be specified without server_id"""
         if v is not None and info.data.get("server_id") is None:
-            raise ValueError("不能在未指定server_id的情况下指定路径")
+            raise cron_value_error("不能在未指定server_id的情况下指定路径")
         return v
 
 
@@ -154,7 +156,7 @@ async def _send_uptimekuma_notification(
         ping: Running time in seconds
     """
     logger = get_logger()
-    context.log(f"发送 Uptime Kuma 通知到: {uptimekuma_url}")
+    context.log("发送 Uptime Kuma 通知")
 
     params = {
         "status": "up" if ok else "down",
@@ -166,11 +168,12 @@ async def _send_uptimekuma_notification(
         async with httpx2.AsyncClient(timeout=10) as client:
             response = await client.get(uptimekuma_url, params=params)
     except httpx2.HTTPError as e:
-        context.log(f"发送 Uptime Kuma 通知失败: {e!s}")
+        log_safe_error(e, "Uptime Kuma notification failed", logger=logger)
+        context.log("发送 Uptime Kuma 通知失败")
         return
-    except Exception as e:
-        logger.exception("Operation _send_uptimekuma_notification failed")
-        context.log(f"Uptime Kuma 通知时发生未知错误: {e!s}")
+    except Exception as e:  # noqa: BLE001 - notification failures cannot replace the backup outcome
+        log_safe_error(e, "Uptime Kuma notification failed", logger=logger)
+        context.log("Uptime Kuma 通知时发生未知错误")
         return
 
     if response.status_code == 200:
@@ -190,7 +193,7 @@ async def _resolve_backup_path(server_id: str | None, path: str | None) -> Path:
     except ServerPathError:
         raise
     except HTTPException as error:
-        raise ValueError(str(error.detail)) from error
+        raise cron_value_error(str(error.detail), public_message="备份路径无效") from error
     return paths[0]
 
 
@@ -279,7 +282,7 @@ async def backup_cronjob(context: ExecutionContext):
         except HTTPException as error:
             if error.status_code != 423:
                 raise
-            await skip_busy(str(error.detail))
+            await skip_busy("服务器正在维护")
             return
 
         context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")
@@ -309,7 +312,7 @@ async def backup_cronjob(context: ExecutionContext):
             except HTTPException as error:
                 if error.status_code != 423:
                     raise
-                message = f"快照已创建，跳过保留策略清理：{error.detail}"
+                message = "快照已创建，跳过保留策略清理：备份仓库当前被占用"
                 context.skip(message)
                 if params.uptimekuma_url and params.uptimekuma_url.strip():
                     await _send_uptimekuma_notification(
@@ -317,9 +320,9 @@ async def backup_cronjob(context: ExecutionContext):
                         f"skipped: {message}", time.time() - start_time,
                     )
                 return
-            except Exception as e:
-                logger.exception("Operation backup_cronjob failed")
-                context.log(f"警告: 清理旧快照时出错: {e!s}")
+            except Exception as e:  # noqa: BLE001 - ordinary retention errors preserve a completed snapshot
+                log_safe_error(e, "Backup retention cleanup failed", logger=logger)
+                context.log(f"警告: 清理旧快照时出错: {cron_error_message(e)}")
                 # Don't fail the entire job if forget fails
 
         # Final success message
@@ -339,7 +342,7 @@ async def backup_cronjob(context: ExecutionContext):
             )
 
     except Exception as e:
-        error_msg = f"备份任务失败: {e!s}"
+        error_msg = f"备份任务失败: {cron_error_message(e)}"
 
         # Send Uptime Kuma notification for failure if configured
         if params.uptimekuma_url and params.uptimekuma_url.strip():

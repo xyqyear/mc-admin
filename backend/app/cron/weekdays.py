@@ -1,3 +1,5 @@
+from .errors import cron_value_error
+
 WEEKDAY_NAMES = {
     "sun": 0,
     "mon": 1,
@@ -101,4 +103,4 @@ def _parse_step(value: str, field: str) -> int:
 
 
 def _invalid_weekday(field: str) -> ValueError:
-    return ValueError(f"Cron 星期字段 '{field}' 无效")
+    return cron_value_error(f"Cron 星期字段 '{field}' 无效", public_message="Cron 星期字段无效")

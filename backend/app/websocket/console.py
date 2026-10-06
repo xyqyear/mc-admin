@@ -10,6 +10,7 @@ from typing import Any
 import docker
 from fastapi import WebSocket, WebSocketDisconnect
 
+from ..errors import log_safe_error
 from ..logger import get_logger, log_exception
 from ..minecraft import MCInstance
 from ..operations.finalization import finalize
@@ -53,9 +54,9 @@ class ConsoleWebSocketHandler:
             await finalize(self._initialize_connection(cols, rows))
             await self._handle_messages()
         except WebSocketDisconnect:
-            print(f"WebSocket disconnected for server {server_id}")
-        except Exception as e:
-            logger.exception("Console connection failed")
+            logger.info("Console disconnected")
+        except Exception as e:  # noqa: BLE001 - failed setup must release every acquired console resource
+            log_safe_error(e, "Console connection failed", logger=logger)
             await self._handle_connection_error(e)
         finally:
             await finalize(self._cleanup())
@@ -111,9 +112,9 @@ class ConsoleWebSocketHandler:
             else:
                 await self._send_dict({"type": "info", "content": "暂无最近日志"})
 
-        except Exception as e:
-            logger.exception("Cannot read console history")
-            await self._send_error(f"获取历史日志失败: {e}")
+        except Exception as e:  # noqa: BLE001 - history failure must leave live console IO available
+            log_safe_error(e, "Cannot read console history", logger=logger)
+            await self._send_error("获取历史日志失败，请重试")
 
     async def _socket_read_loop(self):
         """Read from attach socket and send data immediately for raw I/O."""
@@ -131,10 +132,10 @@ class ConsoleWebSocketHandler:
 
             except BlockingIOError:
                 await asyncio.sleep(0.01)
-            except Exception as e:
-                logger.debug("Console stream read failed", exc_info=True)
+            except Exception as e:  # noqa: BLE001 - SDK read failure must close the stream through normal cleanup
+                log_safe_error(e, "Console stream read failed", logger=logger)
                 if not self._closed:
-                    await self._send_error(f"Stream error: {e}")
+                    await self._send_error("控制台日志连接中断，请重新连接")
                 break
 
     async def _handle_messages(self):
@@ -182,9 +183,9 @@ class ConsoleWebSocketHandler:
             await loop.sock_sendall(
                 self._socket._sock, raw_data.encode("utf-8")
             )
-        except Exception as e:
-            logger.exception("Cannot send console input")
-            await self._send_dict({"type": "info", "message": f"发送输入失败: {e}"})
+        except Exception as e:  # noqa: BLE001 - failed input must leave the next WebSocket message usable
+            log_safe_error(e, "Cannot send console input", logger=logger)
+            await self._send_dict({"type": "info", "message": "发送输入失败，请重试"})
 
     async def _handle_resize(self, data: dict):
         """Resize container TTY to match client terminal size."""
@@ -208,8 +209,8 @@ class ConsoleWebSocketHandler:
             await asyncio.to_thread(
                 self._docker_client.resize, self._container_id, rows, cols
             )
-        except Exception:
-            logger.exception("Failed to resize TTY")
+        except Exception as error:  # noqa: BLE001 - unsupported resizing must not terminate console IO
+            log_safe_error(error, "Failed to resize TTY", logger=logger)
 
     async def _send_error(self, message: str):
         """Send error message."""
@@ -219,14 +220,14 @@ class ConsoleWebSocketHandler:
         """Handle connection errors."""
         logger = get_logger()
         try:
-            await self._send_error(f"Connection error: {error!s}")
-        except Exception:
-            logger.debug("Cannot send console connection error", exc_info=True)
+            await self._send_error("控制台连接失败，请重新连接")
+        except Exception as send_error:  # noqa: BLE001 - failed error delivery must still close the connection
+            log_safe_error(send_error, "Cannot send console connection error", logger=logger)
         finally:
             try:
                 await self.websocket.close()
-            except Exception:
-                logger.debug("Cannot close failed console connection", exc_info=True)
+            except Exception as close_error:  # noqa: BLE001 - a disconnected transport may reject close
+                log_safe_error(close_error, "Cannot close failed console connection", logger=logger)
 
     @log_exception("Failed to send data over WebSocket")
     async def _send_dict(self, data: dict):
@@ -240,8 +241,8 @@ class ConsoleWebSocketHandler:
             self._closed = True
             try:
                 await self.websocket.close()
-            except Exception:
-                logger.debug("Cannot close timed-out console connection", exc_info=True)
+            except Exception as error:  # noqa: BLE001 - close failure must not replace the original send timeout
+                log_safe_error(error, "Cannot close timed-out console connection", logger=logger)
             raise
 
     async def _cleanup(self):
@@ -260,13 +261,13 @@ class ConsoleWebSocketHandler:
         if socket is not None:
             try:
                 await asyncio.to_thread(socket.close)
-            except Exception:
-                logger.warning("Cannot close console socket", exc_info=True)
+            except Exception as error:  # noqa: BLE001 - socket cleanup must not prevent Docker client cleanup
+                log_safe_error(error, "Cannot close console socket", logger=logger)
 
         docker_client = self._docker_client
         self._docker_client = None
         if docker_client is not None:
             try:
                 await asyncio.to_thread(docker_client.close)
-            except Exception:
-                logger.warning("Cannot close console Docker client", exc_info=True)
+            except Exception as error:  # noqa: BLE001 - cleanup must preserve the connection's original outcome
+                log_safe_error(error, "Cannot close console Docker client", logger=logger)

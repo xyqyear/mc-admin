@@ -10,6 +10,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .logger import get_logger
+from .runtime_logging import OwnedLogger
 
 INTERNAL_ERROR_MESSAGE = "服务器内部错误，请稍后重试"
 
@@ -39,8 +40,9 @@ def public_error_code(error: Exception) -> str | None:
     return code if isinstance(code, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code) else None
 
 
-def log_safe_error(error: Exception, context: str) -> None:
-    logger = get_logger()
+def log_safe_error(error: Exception, context: str, *, logger: OwnedLogger | None = None) -> None:
+    if logger is None:
+        logger = get_logger()
     frames = ", ".join(
         f"{frame.name}:{frame.lineno}"
         for frame in extract_tb(error.__traceback__)[-10:]

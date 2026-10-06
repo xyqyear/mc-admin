@@ -4,6 +4,7 @@ Cron job management API endpoints.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
+from pydantic import ValidationError
 
 from app.auth.schemas import UserPublic
 from app.cron.models import CronJobStatus
@@ -18,7 +19,10 @@ from ..cron.api_models import (
     UpdateCronJobRequest,
 )
 from ..cron.bindings import binding_issue_message
+from ..cron.errors import cron_error_message
 from ..dependencies import get_current_user
+from ..dynamic_config.schemas import BaseConfigSchema
+from ..errors import log_safe_error
 from ..logger import get_logger
 
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -38,6 +42,45 @@ def _cron_value_error_status(error: ValueError) -> int:
     ):
         return http_status.HTTP_409_CONFLICT
     return http_status.HTTP_400_BAD_REQUEST
+
+
+def _cron_validation_detail(error: Exception, schema: type[BaseConfigSchema]) -> str:
+    if not isinstance(error, ValidationError):
+        return "任务参数无效"
+    diagnostics = []
+    messages = {
+        "missing": "必填字段缺失", "int_parsing": "应为整数", "int_type": "应为整数",
+        "float_parsing": "应为数字", "float_type": "应为数字", "string_type": "应为字符串",
+        "bool_parsing": "应为布尔值", "bool_type": "应为布尔值", "list_type": "应为列表",
+        "literal_error": "应为允许的选项", "extra_forbidden": "存在不支持的字段",
+    }
+    bounds = {
+        "greater_than": ("exclusiveMinimum", "必须大于"),
+        "greater_than_equal": ("minimum", "必须大于或等于"),
+        "less_than": ("exclusiveMaximum", "必须小于"),
+        "less_than_equal": ("maximum", "必须小于或等于"),
+    }
+    properties = schema.model_json_schema().get("properties", {})
+    for entry in error.errors(include_input=False, include_url=False):
+        location = entry["loc"]
+        field = (
+            location[0]
+            if location and isinstance(location[0], str) and location[0] in schema.model_fields
+            else "参数"
+        )
+        field += "".join(f"[{index}]" for index in location[1:] if isinstance(index, int))
+        message = messages.get(entry["type"], "字段值无效")
+        context = entry.get("ctx", {})
+        if entry["type"] in bounds:
+            key, label = bounds[entry["type"]]
+            bound = properties.get(field, {}).get(key)
+            if isinstance(bound, (int, float)):
+                message = f"{label} {bound}"
+        cause = context.get("error")
+        if isinstance(cause, ValueError) and "cron_public_message" in vars(cause):
+            message = cron_error_message(cause)
+        diagnostics.append(f"{field}: {message}")
+    return "任务参数无效: " + "; ".join(diagnostics)
 
 
 @router.get("/registered", response_model=list[RegisteredCronJobResponse])
@@ -138,17 +181,17 @@ async def create_cronjob(
     if not schema_cls:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"定时任务类型 '{request.identifier}' 未注册",
+            detail="定时任务类型未注册",
         )
 
     # Validate parameters against schema
     try:
         params = schema_cls.model_validate(request.params)
-    except Exception as e:
-        logger.exception("定时任务参数校验失败: identifier=%s", request.identifier)
+    except Exception as e:  # noqa: BLE001 - parameter validation failures retain the HTTP 400 contract
+        log_safe_error(e, "Cron parameter validation failed", logger=logger)
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"任务参数无效: {e!s}",
+            detail=_cron_validation_detail(e, schema_cls),
         )
 
     # Create the cron job
@@ -165,13 +208,13 @@ async def create_cronjob(
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
-    except Exception as e:
-        logger.exception("创建定时任务失败: identifier=%s", request.identifier)
+    except Exception as e:  # noqa: BLE001 - unexpected creation errors retain a safe HTTP 500 response
+        log_safe_error(e, "Cron creation failed", logger=logger)
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"创建定时任务失败: {e!s}",
+            detail=f"创建定时任务失败: {cron_error_message(e)}",
         )
 
 
@@ -225,17 +268,17 @@ async def update_cronjob(
     if not schema_cls:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"定时任务类型 '{request.identifier}' 未注册",
+            detail="定时任务类型未注册",
         )
 
     # Validate parameters against schema
     try:
         params = schema_cls.model_validate(request.params)
-    except Exception as e:
-        logger.exception("定时任务参数校验失败: identifier=%s", request.identifier)
+    except Exception as e:  # noqa: BLE001 - parameter validation failures retain the HTTP 400 contract
+        log_safe_error(e, "Cron parameter validation failed", logger=logger)
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"任务参数无效: {e!s}",
+            detail=_cron_validation_detail(e, schema_cls),
         )
 
     # Update the cron job
@@ -252,13 +295,13 @@ async def update_cronjob(
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
-    except Exception as e:
-        logger.exception("更新定时任务失败: cronjob_id=%s", cronjob_id)
+    except Exception as e:  # noqa: BLE001 - unexpected update errors retain a safe HTTP 500 response
+        log_safe_error(e, "Cron update failed", logger=logger)
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新定时任务失败: {e!s}",
+            detail=f"更新定时任务失败: {cron_error_message(e)}",
         )
 
 
@@ -274,7 +317,7 @@ async def pause_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_use
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
     return {"message": "定时任务已暂停"}
 
@@ -291,7 +334,7 @@ async def resume_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
     return {"message": "定时任务已恢复"}
 
@@ -309,7 +352,7 @@ async def cancel_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_us
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
     return {"message": "定时任务已取消"}
 
@@ -328,7 +371,7 @@ async def get_cronjob_executions(
     except ValueError as e:
         raise HTTPException(
             status_code=_cron_value_error_status(e),
-            detail=str(e),
+            detail=cron_error_message(e),
         )
 
     return [
@@ -357,7 +400,7 @@ async def get_cronjob_next_run_time(
     try:
         next_run_time = await get_cron_manager().get_next_run_time(cronjob_id)
     except ValueError as e:
-        raise HTTPException(status_code=_cron_value_error_status(e), detail=str(e))
+        raise HTTPException(status_code=_cron_value_error_status(e), detail=cron_error_message(e))
 
     if next_run_time is None:
         raise HTTPException(

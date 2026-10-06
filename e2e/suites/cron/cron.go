@@ -15,6 +15,7 @@ func Cases(r fixtures.Recipes) []engine.Case {
 	return []engine.Case{
 		{ID: "cron.registration-and-invalid-history", Suite: "cron", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: registration},
 		{ID: "cron.configuration-and-weekdays", Suite: "cron", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: configuration},
+		{ID: "cron.safe-validation-errors", Suite: "cron", Tags: []string{"regression"}, Recipe: r.Base, Isolation: engine.Fresh, Timeout: time.Minute, Run: safeValidationErrors},
 		{ID: "cron.execution-and-recovery", Suite: "cron", Tags: []string{"regression", "restic"}, Recipe: r.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: execution},
 	}
 }

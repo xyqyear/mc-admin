@@ -41,57 +41,10 @@ def log_exception(
     prefix: str = "",
     default_return: Any = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Wrap a sync or async function: log exceptions and return ``default_return``."""
+    """Log safe failure context and return the configured fallback."""
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        sig = inspect.signature(func)
-        func_name = func.__qualname__
-
-        def format_args_kwargs(
-            args: tuple[Any, ...],
-            kwargs: dict[str, Any],
-        ) -> tuple[dict[str, Any], str]:
-            logger = get_logger()
-            try:
-                bound = sig.bind(*args, **kwargs)
-                bound.apply_defaults()
-                params = ", ".join(f"{k}={v!r}" for k, v in bound.arguments.items())
-                return bound.arguments, f"[{params}] " if params else ""
-            except Exception as e:
-                logger.warning(
-                    f"Failed to bind arguments for function {func_name}: {e}",
-                    stacklevel=4, exc_info=True)
-                parts = []
-                if args:
-                    parts.append(f"args={args!r}")
-                if kwargs:
-                    parts.append(f"kwargs={kwargs!r}")
-                return {}, f"[{', '.join(parts)}] " if parts else ""
-
-        def format_prefix(bound_args: dict) -> str:
-            logger = get_logger()
-            if not prefix:
-                return ""
-
-            if "{" in prefix and "}" in prefix:
-                try:
-                    formatted = prefix.format_map(bound_args)
-                    return f"{formatted}: "
-                except (KeyError, ValueError) as e:
-                    logger.warning(
-                        f"Failed to format prefix '{prefix}' with arguments: {e}",
-                        stacklevel=4,
-                    )
-                    return f"{prefix}: "
-            else:
-                return f"{prefix}: "
-
-        def format_failure_message(
-            error: Exception, args: tuple[Any, ...], kwargs: dict[str, Any]
-        ) -> str:
-            bound_args, args_str = format_args_kwargs(args, kwargs)
-            prefix_str = format_prefix(bound_args)
-            return f"{args_str}{prefix_str}{type(error).__name__}: {error}"
+        context = prefix or f"Operation {func.__qualname__} failed"
 
         if inspect.iscoroutinefunction(func):
 
@@ -100,12 +53,9 @@ def log_exception(
                 logger = get_logger()
                 try:
                     return await func(*args, **kwargs)
-                except Exception as error:
-                    message = format_failure_message(error, args, kwargs)
-                    logger.exception(
-                        message,
-                        stacklevel=2,
-                    )
+                except Exception as error:  # noqa: BLE001 - decorated operations preserve their configured failure return
+                    from .errors import log_safe_error
+                    log_safe_error(error, context, logger=logger)
                     return default_return
 
             return cast(Callable[P, R], async_wrapper)
@@ -117,12 +67,9 @@ def log_exception(
                 logger = get_logger()
                 try:
                     return func(*args, **kwargs)
-                except Exception as error:
-                    message = format_failure_message(error, args, kwargs)
-                    logger.exception(
-                        message,
-                        stacklevel=2,
-                    )
+                except Exception as error:  # noqa: BLE001 - decorated operations preserve their configured failure return
+                    from .errors import log_safe_error
+                    log_safe_error(error, context, logger=logger)
                     return default_return
 
             return cast(Callable[P, R], sync_wrapper)

@@ -300,3 +300,7 @@ executions failed and retains the journal's interrupted outcome without replay.
 Shutdown stops scheduling, cancels owned executions and waits for their cleanup
 before closing the database. Runtime shutdown then drains the remaining producers
 and request/task writers. See [runtime lifecycle](runtime.md).
+
+## 失败信息边界
+
+定时任务模型校验只公开字段与类型、可信 Schema 约束和业务定义的中文信息，不回显参数值或第三方异常正文。业务 ValueError 保留原有类型、内部字符串及 HTTP 状态分类，通过独立的公开消息供接口和执行记录展示。未知适配器错误使用固定中文消息，日志仅保留安全上下文、异常类型和调用位置；备份及 Uptime Kuma 通知不记录 URL 或凭据。取消、维护跳过、快照成功后的保留清理警告仍遵守各自的执行结果。

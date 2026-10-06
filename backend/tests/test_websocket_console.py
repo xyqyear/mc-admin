@@ -3,6 +3,7 @@ Tests for the WebSocket console endpoint with docker-py integration.
 Tests real-time console functionality with mocked dependencies.
 """
 import asyncio
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -133,6 +134,56 @@ def client(monkeypatch):
 
 def console_url(server_id: str, cols: int = 80, rows: int = 24) -> str:
     return f"/servers/{server_id}/console?cols={cols}&rows={rows}"
+
+
+@pytest.mark.parametrize("failure", ["history", "input", "resize", "connect", "stream"])
+def test_console_adapter_errors_are_safe_and_keep_frame_policy(client, mock_instance, caplog, failure):
+    secret = "synthetic-console-adapter-password"
+    server_id, instance = mock_instance
+    adapter = MockDockerAPIClient()
+    with (
+        patch_runtime_resource("docker_mc_manager") as manager,
+        patch("docker.APIClient", return_value=adapter) as constructor,
+        patch("app.websocket.console.ConsoleWebSocketHandler._socket_read_loop", mock_socket_read_loop)
+        if failure != "stream" else nullcontext(),
+        patch.object(asyncio.SelectorEventLoop, "sock_recv", new_callable=AsyncMock) as receiver,
+        patch.object(asyncio.SelectorEventLoop, "sock_sendall", new_callable=AsyncMock) as sender,
+    ):
+        manager.get_instance.return_value = instance
+        if failure == "history":
+            adapter.logs = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(secret))
+        elif failure == "input":
+            sender.side_effect = RuntimeError(secret)
+        elif failure == "resize":
+            adapter.resize = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(secret))
+        elif failure == "connect":
+            constructor.side_effect = RuntimeError(secret)
+        else:
+            receiver.side_effect = RuntimeError(secret)
+        with client.websocket_connect(console_url(server_id)) as websocket:
+            initial = websocket.receive_json()
+            if failure in {"history", "connect"}:
+                assert initial["type"] == "error"
+                assert secret not in initial["message"]
+            else:
+                assert initial["type"] == "log"
+            if failure == "connect":
+                with pytest.raises(WebSocketDisconnect):
+                    websocket.receive_json()
+            elif failure == "stream":
+                error = websocket.receive_json()
+                assert error == {"type": "error", "message": "控制台日志连接中断，请重新连接"}
+                wait_for_processed_messages(websocket)
+            else:
+                if failure == "input":
+                    websocket.send_json({"type": "input", "data": "list\n"})
+                    assert websocket.receive_json() == {"type": "info", "message": "发送输入失败，请重试"}
+                wait_for_processed_messages(websocket)
+    assert secret not in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+    if failure != "connect":
+        assert adapter._socket.close_calls == 1 and adapter.close_calls == 1
 
 
 class TestWebSocketConsole:

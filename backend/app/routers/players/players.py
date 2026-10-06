@@ -14,8 +14,8 @@ from app.auth.schemas import UserPublic
 
 from ...db.database import get_async_session, get_db
 from ...dependencies import get_current_user
+from ...errors import log_safe_error
 from ...logger import get_logger
-from ...player_locations import normalize_uuid
 from ...players import get_player_service
 from ...players.api_models import (
     PlayerMapProfileResponse,
@@ -40,6 +40,7 @@ from ...players.crud.query.player_query import (
     get_all_players_summary,
     get_player_detail_by_uuid,
 )
+from ...player_locations import normalize_uuid
 from ...players.identity_resolver import is_online_uuid
 from ...players.skin_fetcher import get_skin_fetcher
 from ...utils.sse import sse_response
@@ -269,9 +270,9 @@ async def stream_player_map_profiles(
                 request,
             ):
                 yield event
-        except Exception as e:
-            logger.exception("player profile stream failed")
-            yield _error_event(str(e))
+        except Exception as e:  # noqa: BLE001 - an accepted stream reports adapter failures as a terminal event
+            log_safe_error(e, "Player profile stream failed", logger=logger)
+            yield _error_event("玩家资料加载失败，请重试")
 
     return sse_response(event_gen())
 

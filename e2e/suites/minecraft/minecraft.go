@@ -18,6 +18,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "minecraft.overview", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: overview},
 		{ID: "minecraft.rcon-and-files", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: observe},
 		{ID: "minecraft.console-and-runtime-controls", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: consoleAndControls},
+		{ID: "minecraft.console-safe-adapter-errors", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: consoleSafeAdapterErrors},
 		{ID: "minecraft.stopped-and-invalid-requests", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: time.Minute, Run: negativeRequests},
 		{ID: "minecraft.scheduled-restart", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: scheduledRestart},
 		{ID: "minecraft.exact-restart-schedules", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: exactRestartSchedules},

@@ -5,9 +5,14 @@ from unittest.mock import DEFAULT, MagicMock
 
 import pytest
 
+from app.runtime import Runtime
 from app.runtime_resources import current_runtime
 
 _MISSING = object()
+
+
+def replace_runtime_resource(runtime: Runtime, name: str, value: Any) -> None:
+    runtime.resources[name] = value
 
 
 def set_runtime_resource(monkeypatch: pytest.MonkeyPatch, name: str, value: Any) -> None:

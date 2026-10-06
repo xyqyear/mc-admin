@@ -9,6 +9,7 @@ from app.cron.models import CronJob
 from app.servers.models import Server, ServerStatus
 
 from ..dynamic_config.schemas import BaseConfigSchema
+from .errors import cron_value_error
 
 RESTART_PURPOSE = "restart"
 
@@ -54,10 +55,10 @@ async def validate_managed_update(
         return
     problem = await managed_binding_problem(session, job)
     if problem:
-        raise ValueError(f"{problem}；请核对后取消该计划，并在服务器页面重新创建")
+        raise cron_value_error(f"{problem}；请核对后取消该计划，并在服务器页面重新创建")
     server = await session.get(Server, job.managed_server_generation)
     if identifier != "restart_server" or server is None or getattr(params, "server_id", None) != server.server_id:
-        raise ValueError("受管重启计划不能修改任务类型或服务器归属；请另建独立定时任务")
+        raise cron_value_error("受管重启计划不能修改任务类型或服务器归属；请另建独立定时任务")
 
 
 class RetainedCronParams(BaseConfigSchema):

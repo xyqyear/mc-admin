@@ -14,7 +14,7 @@ from app.cron.models import CronJobStatus, ExecutionStatus
 
 from ..db.database import get_async_session
 from ..dynamic_config.schemas import BaseConfigSchema
-from ..errors import log_safe_error, public_error_message
+from ..errors import log_safe_error
 from ..logger import get_logger
 from ..operations.context import record_phase
 from ..operations.coordinator import ResourceClaim, ResourceKind
@@ -29,6 +29,7 @@ from .bindings import (
     read_cron_params,
     validate_managed_update,
 )
+from .errors import cron_error_message, cron_value_error
 from .models import CronJob
 from .registration import definition_version, retained_params
 from .registry import get_cron_registry
@@ -85,9 +86,9 @@ class CronManager:
         async with self._configuration_lock:
             registration = get_cron_registry().get_cronjob(identifier)
             if not registration:
-                raise ValueError(f"定时任务类型 '{identifier}' 未注册")
+                raise cron_value_error(f"定时任务类型 '{identifier}' 未注册", public_message='定时任务类型未注册')
             if registration.is_system and not is_system:
-                raise ValueError(f"系统定时任务类型 '{identifier}' 不能手动创建")
+                raise cron_value_error(f"系统定时任务类型 '{identifier}' 不能手动创建", public_message='系统定时任务类型不能手动创建')
 
             if cronjob_id is None:
                 cronjob_id = f"{identifier}_{secrets.token_urlsafe(8)}"
@@ -101,9 +102,9 @@ class CronManager:
                 if existing:
                     await validate_managed_update(session, existing, identifier, params)
                     if managed_server_generation is not None and existing.managed_server_generation != managed_server_generation:
-                        raise ValueError("受管计划不能转移到其他服务器实例")
+                        raise cron_value_error("受管计划不能转移到其他服务器实例")
                     if existing.is_system and existing.identifier != identifier:
-                        raise ValueError("系统定时任务不能修改任务类型")
+                        raise cron_value_error("系统定时任务不能修改任务类型")
 
                     await crud.update_cronjob(
                         session,
@@ -146,7 +147,7 @@ class CronManager:
                 "restart_server", params, cron, name=name, managed_server_generation=generation,
             )
         except IntegrityError as exc:
-            raise ValueError("当前服务器已存在受管重启计划，请刷新后重试") from exc
+            raise cron_value_error("当前服务器已存在受管重启计划，请刷新后重试") from exc
 
     async def update_cronjob(
         self,
@@ -159,7 +160,7 @@ class CronManager:
     ) -> None:
         async with self._configuration_lock:
             if not get_cron_registry().is_registered(identifier):
-                raise ValueError(f"定时任务类型 '{identifier}' 未注册")
+                raise cron_value_error(f"定时任务类型 '{identifier}' 未注册", public_message='定时任务类型未注册')
 
             self._build_cron_trigger(cron, second)
 
@@ -167,12 +168,12 @@ class CronManager:
                 existing = await crud.get_cronjob(session, cronjob_id)
 
                 if not existing:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
                 await validate_managed_update(session, existing, identifier, params)
 
                 if existing.is_system and existing.identifier != identifier:
-                    raise ValueError("系统定时任务不能修改任务类型")
+                    raise cron_value_error("系统定时任务不能修改任务类型")
 
                 current_status = existing.status
 
@@ -201,13 +202,13 @@ class CronManager:
                 cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
                 if not cronjob_row:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
                 if cronjob_row.is_system:
-                    raise ValueError(f"系统定时任务 '{cronjob_id}' 不能暂停")
+                    raise cron_value_error(f"系统定时任务 '{cronjob_id}' 不能暂停", public_message='系统定时任务不能暂停')
 
                 if not cronjob_row.status == CronJobStatus.ACTIVE:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 未处于运行中，不能暂停")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 未处于运行中，不能暂停", public_message='定时任务未处于运行中，不能暂停')
 
                 await crud.update_cronjob(
                     session, cronjob_id, status=CronJobStatus.PAUSED
@@ -223,18 +224,18 @@ class CronManager:
                 cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
                 if not cronjob_row:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
                 if cronjob_row.status == CronJobStatus.ACTIVE and self.scheduler.get_job(cronjob_id) is not None and cronjob_id not in self._registration_errors:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 已在运行中")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 已在运行中", public_message='定时任务已在运行中')
 
                 problem = await managed_binding_problem(session, cronjob_row)
                 if problem:
-                    raise ValueError(f"{problem}；不能恢复该计划，请核对后取消并重新创建")
+                    raise cron_value_error(f"{problem}；不能恢复该计划，请核对后取消并重新创建")
 
                 schema_cls = get_cron_registry().get_schema_class(cronjob_row.identifier)
                 if not schema_cls:
-                    raise ValueError(f"定时任务类型 '{cronjob_row.identifier}' 未注册")
+                    raise cron_value_error(f"定时任务类型 '{cronjob_row.identifier}' 未注册", public_message='定时任务类型未注册')
 
                 params = read_cron_params(cronjob_row, schema_cls)
                 self._build_cron_trigger(cronjob_row.cron, cronjob_row.second)
@@ -255,13 +256,13 @@ class CronManager:
                 cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
                 if not cronjob_row:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
                 if cronjob_row.is_system:
-                    raise ValueError(f"系统定时任务 '{cronjob_id}' 不能取消")
+                    raise cron_value_error(f"系统定时任务 '{cronjob_id}' 不能取消", public_message='系统定时任务不能取消')
 
                 if cronjob_row.status == CronJobStatus.CANCELLED:
-                    raise ValueError(f"定时任务 '{cronjob_id}' 已取消")
+                    raise cron_value_error(f"定时任务 '{cronjob_id}' 已取消", public_message='定时任务已取消')
 
                 await crud.update_cronjob(
                     session, cronjob_id, status=CronJobStatus.CANCELLED
@@ -321,7 +322,7 @@ class CronManager:
             if job is not None:
                 problem = await managed_binding_problem(session, job)
                 if problem:
-                    raise ValueError(problem)
+                    raise cron_value_error(problem)
             job_id = job.cronjob_id if job is not None else None
         return await self.get_cronjob_config(job_id) if job_id is not None else None
 
@@ -345,7 +346,7 @@ class CronManager:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
-                raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
             executions = await crud.get_execution_history(
                 session, cronjob_id, limit
@@ -370,18 +371,18 @@ class CronManager:
             cronjob_row = await crud.get_cronjob(session, cronjob_id)
 
             if not cronjob_row:
-                raise ValueError(f"定时任务 '{cronjob_id}' 不存在")
+                raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
             if cronjob_row.status != CronJobStatus.ACTIVE:
-                raise ValueError(f"定时任务 '{cronjob_id}' 未处于运行中")
+                raise cron_value_error(f"定时任务 '{cronjob_id}' 未处于运行中", public_message='定时任务未处于运行中')
 
         scheduler_job = self.scheduler.get_job(cronjob_id)
         if scheduler_job is None:
-            raise ValueError(f"调度器中不存在定时任务 '{cronjob_id}'")
+            raise cron_value_error(f"调度器中不存在定时任务 '{cronjob_id}'", public_message='定时任务不存在')
         if cronjob_id in self._registration_errors or scheduler_job.kwargs.get("definition_token") != definition_version(
             cronjob_row.identifier, cronjob_row.params_json, cronjob_row.cron, cronjob_row.second,
         ):
-            raise ValueError("定时任务未成功注册，不能提供下次运行时间")
+            raise cron_value_error("定时任务未成功注册，不能提供下次运行时间")
 
         return getattr(scheduler_job, "next_run_time", None)
 
@@ -397,7 +398,7 @@ class CronManager:
 
         cronjob_registration = get_cron_registry().get_cronjob(identifier)
         if not cronjob_registration:
-            raise ValueError(f"定时任务类型 '{identifier}' 未注册")
+            raise cron_value_error(f"定时任务类型 '{identifier}' 未注册", public_message='定时任务类型未注册')
 
         cronjob_function = cronjob_registration.function
 
@@ -423,9 +424,7 @@ class CronManager:
     ) -> CronTrigger:
         cron_parts = cron.strip().split()
         if len(cron_parts) != 5:
-            raise ValueError(
-                "Cron 表达式必须包含 5 个字段（分钟 小时 日期 月份 星期）"
-            )
+            raise cron_value_error("Cron 表达式必须包含 5 个字段（分钟 小时 日期 月份 星期）")
 
         return CronTrigger(
             second=second,
@@ -508,7 +507,7 @@ class CronManager:
         except Exception as e:  # noqa: BLE001 - persist a safe failure for every scheduled invocation
             log_safe_error(e, "Cron job failed")
             context.status = ExecutionStatus.FAILED
-            context.log(f"定时任务执行失败: {public_error_message(e)}")
+            context.log(f"定时任务执行失败: {cron_error_message(e)}")
         finally:
             context.ended_at = datetime.now(UTC)
             if context.ended_at and context.started_at:
@@ -578,13 +577,9 @@ class CronManager:
                 continue
 
             if registration.default_cron is None:
-                raise ValueError(
-                    f"系统定时任务 '{identifier}' 必须定义默认 Cron 表达式"
-                )
+                raise cron_value_error(f"系统定时任务 '{identifier}' 必须定义默认 Cron 表达式", public_message='系统定时任务必须定义默认 Cron 表达式')
             if registration.default_params is None:
-                raise ValueError(
-                    f"系统定时任务 '{identifier}' 必须定义默认参数"
-                )
+                raise cron_value_error(f"系统定时任务 '{identifier}' 必须定义默认参数", public_message='系统定时任务必须定义默认参数')
 
             cronjob_id = f"system:{identifier}"
             async with get_async_session() as session:
@@ -611,10 +606,8 @@ class CronManager:
                     continue
 
                 if existing.identifier != identifier:
-                    raise ValueError(
-                        f"系统定时任务 '{cronjob_id}' 的任务类型是 "
-                        f"'{existing.identifier}'，期望为 '{identifier}'"
-                    )
+                    raise cron_value_error(f"系统定时任务 '{cronjob_id}' 的任务类型是 "
+                        f"'{existing.identifier}'，期望为 '{identifier}'", public_message='系统定时任务的任务类型与注册定义不一致')
 
                 if not existing.is_system:
                     await crud.update_cronjob(session, cronjob_id, is_system=True)
@@ -630,13 +623,8 @@ class CronManager:
                         params = registration.schema_cls.model_validate_json(
                             existing.params_json
                         )
-                    except Exception as exc:
-                        logger.warning(
-                            "repairing system cron job %s params from defaults: %s",
-                            cronjob_id,
-                            exc,
-                            exc_info=True,
-                        )
+                    except Exception as exc:  # noqa: BLE001 - retained invalid system parameters are repaired from defaults
+                        log_safe_error(exc, "Repairing system cron parameters from defaults", logger=logger)
                         params = registration.default_params
                         await crud.update_cronjob(
                             session,
@@ -647,13 +635,8 @@ class CronManager:
                     second = existing.second
                     try:
                         self._build_cron_trigger(cron, second)
-                    except Exception as exc:
-                        logger.warning(
-                            "repairing system cron job %s schedule from defaults: %s",
-                            cronjob_id,
-                            exc,
-                            exc_info=True,
-                        )
+                    except Exception as exc:  # noqa: BLE001 - retained invalid system schedules are repaired from defaults
+                        log_safe_error(exc, "Repairing system cron schedule from defaults", logger=logger)
                         cron = registration.default_cron
                         second = registration.default_second
                         await crud.update_cronjob(
