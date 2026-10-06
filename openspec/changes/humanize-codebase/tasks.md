@@ -83,6 +83,6 @@
 
 - [x] 6.1 Synchronize current-state docs, AGENTS.md, behavior specs and API E2E coverage.
 - [x] 6.2 Complete independent implementation review and fix cycles until stable.
-- [ ] 6.3 Run affected targeted tests and required backend/frontend/Go static and build checks.
+- [x] 6.3 Run affected targeted tests and required backend/frontend/Go static and build checks.
 - [ ] 6.4 Commit atomic changes, push the branch and qualify every required gate for the latest SHA with publish=false.
 - [ ] 6.5 Record finding dispositions, validation evidence, line delta, commit SHA and qualification link.
