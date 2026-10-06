@@ -44,11 +44,6 @@ export interface ConvertToTemplateResponse {
   skipped_rebuild: boolean;
 }
 
-export interface CheckConversionRequest {
-  template_id: number;
-  variable_values: Record<string, unknown>;
-}
-
 export interface CheckConversionResponse {
   version: string;
   requires_rebuild: boolean;

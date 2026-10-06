@@ -16,10 +16,6 @@ export interface ConfigData {
   schema_version: string
 }
 
-export interface ConfigUpdateRequest {
-  config_data: Record<string, any>
-}
-
 export interface ConfigUpdateResponse {
   success: boolean
   message: string

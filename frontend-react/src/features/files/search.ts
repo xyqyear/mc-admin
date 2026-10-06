@@ -99,12 +99,3 @@ export function searchFiles<T extends { name: string }>(
     })
     .filter(file => file.matchResult?.isMatch)
 }
-
-export function isValidRegex(pattern: string): boolean {
-  try {
-    new RegExp(pattern)
-    return true
-  } catch {
-    return false
-  }
-}

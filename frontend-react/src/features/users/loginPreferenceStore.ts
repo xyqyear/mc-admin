@@ -29,6 +29,3 @@ export const useLoginPreferenceStore = create<LoginPreferenceStore>()(
     }
   )
 );
-
-export const useLoginPreference = () =>
-  useLoginPreferenceStore((state) => state.loginPreference);

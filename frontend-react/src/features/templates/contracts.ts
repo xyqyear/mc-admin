@@ -1,5 +1,4 @@
 
-export type VariableType = "int" | "float" | "string" | "enum" | "bool";
 
 export interface IntVariableDefinition {
   type: "int";

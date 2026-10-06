@@ -98,7 +98,3 @@ export const useDownloadManager = () => {
     executeDownload,
   }
 }
-
-export const simpleDownload = (blob: Blob, filename: string): void => {
-  triggerBrowserDownload(blob, filename)
-}

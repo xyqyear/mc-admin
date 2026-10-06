@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { useShallow } from 'zustand/shallow'
 
 import {
   DEFAULT_TASK_CENTER_TRIGGER_POSITION,
@@ -43,22 +42,3 @@ export const useTaskCenterStore = create<TaskCenterState>()(
     }
   )
 )
-
-export const useTaskCenterOpen = () =>
-  useTaskCenterStore((state) => state.isOpen)
-
-export const useTaskCenterActiveTab = () =>
-  useTaskCenterStore((state) => state.activeTab)
-
-export const useTaskCenterTriggerPosition = () =>
-  useTaskCenterStore((state) => state.triggerPosition)
-
-export const useTaskCenterActions = () =>
-  useTaskCenterStore(
-    useShallow((state) => ({
-      setOpen: state.setOpen,
-      toggleOpen: state.toggleOpen,
-      setActiveTab: state.setActiveTab,
-      setTriggerPosition: state.setTriggerPosition,
-    }))
-  )

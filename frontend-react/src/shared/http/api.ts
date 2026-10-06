@@ -43,12 +43,6 @@ export const createApiError = (data: unknown, status?: number, code?: string, fa
   return Object.assign(new Error(message), { name: 'ApiError', status, code, detail });
 };
 
-export interface ApiResponse<T = any> {
-  data: T;
-  message?: string;
-  success: boolean;
-}
-
 export const AUTH_EXPIRED_EVENT = "mc-admin-auth-expired";
 export const CSRF_COOKIE_NAME = "mc_admin_csrf";
 export const CSRF_HEADER_NAME = "X-CSRF-Token";

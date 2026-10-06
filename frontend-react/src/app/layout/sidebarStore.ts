@@ -52,12 +52,6 @@ export const useSidebarStore = create<SidebarStore>()(
   )
 );
 
-export const useSidebarOpenKeys = () =>
-  useSidebarStore((state) => state.openKeys);
-
-export const useSidebarCollapsed = () =>
-  useSidebarStore((state) => state.collapsed);
-
 export const getOpenKeysFromPath = (pathname: string): string[] => {
   const openKeys: string[] = [];
 

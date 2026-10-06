@@ -113,11 +113,6 @@ export const useDownloadStore = create<DownloadState>()(
 )
 
 export const useDownloadTasks = () => useDownloadStore(state => state.tasks)
-export const useActiveDownloadTasks = () => useDownloadStore(
-  useShallow(state =>
-    state.tasks.filter(task => task.status === 'downloading')
-  )
-)
 export const useDownloadActions = () => useDownloadStore(
   useShallow(state => ({
     addTask: state.addTask,

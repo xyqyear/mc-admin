@@ -31,13 +31,6 @@ export function blockToChunk(b: BlockCoord): ChunkCoord {
   }
 }
 
-export function blockToRegion(b: BlockCoord): RegionCoord {
-  return {
-    rx: floorDiv(b.bx, BLOCKS_PER_REGION),
-    rz: floorDiv(b.bz, BLOCKS_PER_REGION),
-  }
-}
-
 export function chunkToRegion(c: ChunkCoord): RegionCoord {
   return {
     rx: floorDiv(c.cx, CHUNKS_PER_REGION),
@@ -49,13 +42,6 @@ export function chunkToBlock(c: ChunkCoord): BlockCoord {
   return {
     bx: c.cx * BLOCKS_PER_CHUNK,
     bz: c.cz * BLOCKS_PER_CHUNK,
-  }
-}
-
-export function regionToBlock(r: RegionCoord): BlockCoord {
-  return {
-    bx: r.rx * BLOCKS_PER_REGION,
-    bz: r.rz * BLOCKS_PER_REGION,
   }
 }
 
