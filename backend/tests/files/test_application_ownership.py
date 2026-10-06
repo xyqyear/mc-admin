@@ -44,6 +44,7 @@ from app.snapshots import ResticClient, SnapshotService
 from app.snapshots.application import SnapshotMaintenanceConflict
 from app.snapshots.commands import SnapshotCommands
 from app.snapshots.scopes import PathsScope
+from app.utils import async_fs
 from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
 from tests.support.runtime import replace_runtime_resource, set_runtime_resource
@@ -211,29 +212,41 @@ async def test_upload_conflict_keeps_session_and_cancellation_preserves_finished
         assert not (data / "world" / "new.txt").exists()
 
     entered, release = asyncio.Event(), asyncio.Event()
-    original = multi_file._write_file
+    original = async_fs.chown
 
-    async def write_then_pause(file, target, root):
-        await original(file, target, root)
-        entered.set()
-        await release.wait()
+    async def chown_then_pause(path, uid, gid):
+        await original(path, uid, gid)
+        if path == data / "world" / "new.txt":
+            entered.set()
+            await release.wait()
 
-    monkeypatch.setattr(multi_file, "write_file", write_then_pause)
+    monkeypatch.setattr(async_fs, "chown", chown_then_pause)
     files.append(UploadFile(filename="later.txt", file=io.BytesIO(b"second")))
     task = asyncio.create_task(app.upload(upload.session_id, "/", files))
     try:
         await asyncio.wait_for(entered.wait(), 5)
+        assert (data / "world" / "new.txt").read_bytes() == b"first"
         task.cancel()
         await asyncio.sleep(0)
         assert not task.done()
-        with pytest.raises(HTTPException):
+        with pytest.raises(HTTPException) as conflict:
             await app.delete("world")
+        assert conflict.value.status_code == 423
     finally:
+        if not task.cancelling():
+            task.cancel()
         release.set()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(asyncio.shield(task), 5)
     assert (data / "world" / "new.txt").read_bytes() == b"first"
     assert not (data / "later.txt").exists()
+    assert not get_operation_coordinator().is_occupied(ResourceClaim(ResourceKind.FILES, "first", "data/world"))
+    with pytest.raises(HTTPException) as consumed:
+        multi_file.require_upload_session(upload.session_id)
+    assert consumed.value.status_code == 404
+    record = next(record for record in await file_application.journal.list() if record.kind == "file_upload")
+    assert record.origin == "request" and record.state == OperationState.INTERRUPTED
+    assert record.writers_stopped and record.ownership_known
 
 
 async def test_ownership_task_holds_real_data_scope_until_external_command_finishes(file_application, monkeypatch):
