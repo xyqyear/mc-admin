@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import IO, Any
 
 REQUIRED_GATES = frozenset({"candidate", "static", "backend", "api", "browser"})
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -57,7 +57,7 @@ def inspect_archive(path: Path) -> dict[str, str]:
     with tarfile.open(path, "r:*") as archive:
         members = {member.name.removeprefix("./"): member for member in archive.getmembers()}
 
-        def member_stream(name: str) -> BinaryIO:
+        def member_stream(name: str) -> IO[bytes]:
             member = members[name]
             if not member.isfile():
                 raise ValueError(f"OCI member is not a regular file: {name}")
@@ -66,7 +66,7 @@ def inspect_archive(path: Path) -> dict[str, str]:
                 raise ValueError(f"Missing OCI member: {name}")
             return stream
 
-        def blob_stream(descriptor: dict[str, Any]) -> BinaryIO:
+        def blob_stream(descriptor: dict[str, Any]) -> IO[bytes]:
             value = descriptor["digest"]
             if not DIGEST.fullmatch(value):
                 raise ValueError("Unsupported OCI digest")
