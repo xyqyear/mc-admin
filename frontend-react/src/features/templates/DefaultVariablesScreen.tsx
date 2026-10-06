@@ -24,7 +24,7 @@ import {
   convertToApiFormat,
 } from "@/features/templates/ui/index"
 import { useDefaultVariables } from "@/features/templates/queries"
-import { useTemplateMutations } from "@/features/templates/commands"
+import { useUpdateDefaultVariables } from '@/features/templates/commands';
 import { useEditorDraft } from '@/shared/hooks/useEditorDraft'
 import type { VariableDefinition } from '@/features/templates/contracts';
 
@@ -32,7 +32,6 @@ const DefaultVariables: React.FC = () => {
   const navigate = useNavigate()
 
   const { data: defaultVariablesData, isLoading, error, refetch } = useDefaultVariables()
-  const { useUpdateDefaultVariables } = useTemplateMutations()
   const updateMutation = useUpdateDefaultVariables()
 
   const remoteVariables = useMemo(() => defaultVariablesData ? convertToFormData(defaultVariablesData.variable_definitions) : undefined, [defaultVariablesData])

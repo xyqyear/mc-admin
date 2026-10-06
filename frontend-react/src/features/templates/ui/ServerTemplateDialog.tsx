@@ -28,7 +28,7 @@ import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 
 import { DataTable } from '@/shared/components/DataTable'
 import { SortableHeader } from '@/shared/components/SortableHeader'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServers } from '@/features/servers/queries';
 import type { ServerListItem } from '@/features/servers/contracts';
 
 interface ServerTemplateDialogProps {
@@ -48,7 +48,6 @@ const ServerTemplateDialog: React.FC<ServerTemplateDialogProps> = ({
   description = "选择现有服务器作为模板，使用其 Docker Compose 配置创建新服务器",
   selectButtonText = "使用模板"
 }) => {
-  const { useServers } = useServerQueries()
   const { data: servers, isLoading: serversLoading } = useServers({
     enabled: open
   })

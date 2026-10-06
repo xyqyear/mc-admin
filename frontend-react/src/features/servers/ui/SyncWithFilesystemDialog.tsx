@@ -16,7 +16,7 @@ import {
 import { ScrollArea } from '@/shared/ui/scroll-area'
 import { Separator } from '@/shared/ui/separator'
 import { Spinner } from '@/shared/ui/spinner'
-import { useServerMutations } from '@/features/servers/commands'
+import { useSyncServers } from '@/features/servers/commands';
 import type { SyncDryRunEntry, SyncEntryError } from '@/features/servers/lifecycleContracts'
 
 interface SyncWithFilesystemDialogProps {
@@ -28,7 +28,6 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
   open,
   onClose,
 }) => {
-  const { useSyncServers } = useServerMutations()
   const syncMutation = useSyncServers()
 
   const [preview, setPreview] = useState<SyncDryRunEntry[]>([])

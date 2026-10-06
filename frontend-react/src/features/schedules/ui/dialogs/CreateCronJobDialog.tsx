@@ -29,7 +29,7 @@ import { Field, FieldLabel, FieldError } from '@/shared/ui/field'
 import SchemaForm from '@/shared/forms/SchemaForm'
 import CronExpressionBuilder from '@/features/schedules/ui/CronExpressionBuilder'
 import { useRegisteredCronJobs, useCronJob } from '@/features/schedules/queries'
-import { useCronMutations } from '@/features/schedules/commands'
+import { useCreateCronJob, useUpdateCronJob } from '@/features/schedules/commands';
 import type { CreateCronJobRequest, UpdateCronJobRequest } from '@/features/schedules/contracts';
 
 const nameSchema = z.object({
@@ -69,7 +69,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
 
   const { data: registeredJobs, isLoading: jobsLoading } = useRegisteredCronJobs()
   const { data: cronJobData } = useCronJob(isEdit && cronjobId ? cronjobId : null)
-  const { useCreateCronJob, useUpdateCronJob } = useCronMutations()
   const createMutation = useCreateCronJob()
   const updateMutation = useUpdateCronJob()
 

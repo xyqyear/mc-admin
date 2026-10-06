@@ -55,7 +55,7 @@ import {
 import { useTheme } from '@/shared/theme-provider'
 import { cn } from '@/shared/lib/utils'
 import { useSidebarStore } from '@/app/layout/sidebarStore'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServers } from '@/features/servers/queries';
 import { useCurrentUser } from '@/features/users/queries'
 import { useSelfCheckHealth } from '@/features/health/useSelfCheckHealth'
 import { authApi } from '@/features/users/auth'
@@ -74,8 +74,6 @@ const AppSidebar: React.FC = () => {
   const { toggleSidebar, state: sidebarState } = useSidebar()
   const { theme, setTheme } = useTheme()
   const isDark = theme !== 'light'
-
-  const { useServers } = useServerQueries()
   const serversQuery = useServers()
   const servers = serversQuery.data || []
   const selfCheckHealth = useSelfCheckHealth()

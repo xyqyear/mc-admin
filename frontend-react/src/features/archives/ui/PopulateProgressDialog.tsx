@@ -5,7 +5,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { Progress } from '@/shared/ui/progress'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useTask } from '@/features/tasks/queries';
 import React, { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
@@ -24,8 +24,6 @@ const PopulateProgressDialog: React.FC<PopulateProgressDialogProps> = ({
   onComplete,
 }) => {
   const handled = useRef<string | null>(null)
-
-  const { useTask } = useTaskQueries()
   const { data: task } = useTask(taskId || '')
 
   useEffect(() => {

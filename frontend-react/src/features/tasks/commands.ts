@@ -52,43 +52,36 @@ export async function waitForTaskResult<T>(
     void client.invalidateQueries({ queryKey: queryKeys.operations.all })
   }
 }
-
-export const useTaskMutations = () => {
+export const useCancelTask = () => {
   const queryClient = useQueryClient()
-
-  const useCancelTask = () => {
-    return useMutation({
-      mutationFn: taskApi.cancelTask,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
-  const useDeleteTask = () => {
-    return useMutation({
-      mutationFn: taskApi.deleteTask,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
-  const useClearCompletedTasks = () => {
-    return useMutation({
-      mutationFn: taskApi.clearCompletedTasks,
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
-      },
-    })
-  }
-
-  return {
-    useCancelTask,
-    useDeleteTask,
-    useClearCompletedTasks,
-  }
+  return useMutation({
+    mutationFn: taskApi.cancelTask,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+    },
+  })
 }
+
+export const useDeleteTask = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: taskApi.deleteTask,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+    },
+  })
+}
+
+export const useClearCompletedTasks = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: taskApi.clearCompletedTasks,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
+    },
+  })
+}
+
 
 export function openTaskCenter() {
   useTaskCenterStore.getState().setActiveTab('background')

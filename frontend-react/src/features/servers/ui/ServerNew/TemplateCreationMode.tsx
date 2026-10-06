@@ -25,7 +25,7 @@ import RjsfForm from '@/shared/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 import { useTemplates, useTemplateSchema } from '@/features/templates/queries'
-import { useTemplateMutations } from '@/features/templates/commands'
+import { usePreviewRenderedYaml } from '@/features/templates/commands';
 
 interface TemplateCreationModeProps {
   selectedTemplateId: number | null
@@ -47,8 +47,6 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates()
   const { data: templateSchema, isLoading: schemaLoading } = useTemplateSchema(selectedTemplateId)
-
-  const { usePreviewRenderedYaml } = useTemplateMutations()
   const previewMutation = usePreviewRenderedYaml()
 
   const handleTemplateFormChange = (data: { formData?: Record<string, unknown> }) => {

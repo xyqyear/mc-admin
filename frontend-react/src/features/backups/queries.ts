@@ -41,27 +41,22 @@ export function useRestorationHistory(serverId?: string, offset = 0, enabled = t
     refetchInterval: query => query.state.data?.restorations.some(row => row.status === 'pending' || row.status === 'running') ? 2000 : false,
   });
 }
-export const useSnapshotQueries = () => {
-  const useGlobalSnapshots = (options?: Partial<Omit<ReturnType<typeof globalSnapshotsQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...globalSnapshotsQueryOptions(), ...options });
-  };
-  const useSnapshotsForPath = (serverId: string | null, path: string | null, enabled: boolean = true, options?: Partial<Omit<ReturnType<typeof snapshotsForPathQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...snapshotsForPathQueryOptions(serverId, path, enabled), ...options });
-  };
-  const useBackupRepositoryUsage = (options?: Partial<Omit<ReturnType<typeof backupRepositoryUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...backupRepositoryUsageQueryOptions(), ...options });
-  };
-  // Locks are manually fetched (admin action), not polled.
-  const useSnapshotLocks = (enabled: boolean = false, options?: Partial<Omit<ReturnType<typeof snapshotLocksQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...snapshotLocksQueryOptions(enabled), ...options });
-  };
-  return {
-    useGlobalSnapshots,
-    useSnapshotsForPath,
-    useBackupRepositoryUsage,
-    useSnapshotLocks,
-  };
+export const useGlobalSnapshots = (options?: Partial<Omit<ReturnType<typeof globalSnapshotsQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...globalSnapshotsQueryOptions(), ...options });
 };
+
+export const useSnapshotsForPath = (serverId: string | null, path: string | null, enabled: boolean = true, options?: Partial<Omit<ReturnType<typeof snapshotsForPathQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...snapshotsForPathQueryOptions(serverId, path, enabled), ...options });
+};
+
+export const useBackupRepositoryUsage = (options?: Partial<Omit<ReturnType<typeof backupRepositoryUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...backupRepositoryUsageQueryOptions(), ...options });
+};
+
+export const useSnapshotLocks = (enabled: boolean = false, options?: Partial<Omit<ReturnType<typeof snapshotLocksQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...snapshotLocksQueryOptions(enabled), ...options });
+};
+
 export const globalSnapshotsQueryOptions = () => {
   return queryOptions({
     queryKey: queryKeys.snapshots.global(),

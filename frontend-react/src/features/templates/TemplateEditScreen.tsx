@@ -32,7 +32,7 @@ import {
   useTemplate,
   useDefaultVariables,
 } from "@/features/templates/queries"
-import { useTemplateMutations } from "@/features/templates/commands"
+import { useCreateTemplate, useUpdateTemplate } from '@/features/templates/commands';
 import { useEditorDraft } from '@/shared/hooks/useEditorDraft'
 import type { VariableDefinition, TemplateCreateRequest, TemplateUpdateRequest } from '@/features/templates/contracts';
 
@@ -77,8 +77,6 @@ const TemplateEdit: React.FC = () => {
   const setDescription = (description: string) => editor.setDraft({ ...form, description })
   const setYamlContent = (yamlContent: string) => editor.setDraft({ ...form, yamlContent })
   const setVariables = (variables: VariableFormData[]) => editor.setDraft({ ...form, variables })
-
-  const { useCreateTemplate, useUpdateTemplate } = useTemplateMutations()
   const createMutation = useCreateTemplate()
   const updateMutation = useUpdateTemplate()
 

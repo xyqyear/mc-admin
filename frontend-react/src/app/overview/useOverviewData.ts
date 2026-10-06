@@ -1,8 +1,8 @@
 import type { ServerDiskUsageResponse } from '@/features/servers/contracts';
 import { serverOnlinePlayersQueryOptions } from "@/features/players/queries";
-import { serverCpuPercentQueryOptions, serverMemoryQueryOptions, serverDiskUsageQueryOptions, serverMaintenanceQueryOptions, serverStatusesQueryOptions, useServerQueries } from "@/features/servers/queries";
-import { useSnapshotQueries } from "@/features/backups/queries";
-import { useSystemQueries } from "@/features/system/queries";
+import { serverCpuPercentQueryOptions, serverMemoryQueryOptions, serverDiskUsageQueryOptions, serverMaintenanceQueryOptions, serverStatusesQueryOptions, useServers } from '@/features/servers/queries';
+import { useBackupRepositoryUsage } from '@/features/backups/queries';
+import { useSystemInfo, useSystemCpuPercent, useSystemDiskUsage } from '@/features/system/queries';
 import type { ServerStatus } from "@/features/servers/contracts";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -10,9 +10,6 @@ import { useMemo } from "react";
 // server list grows; a single useQuery for statuses avoids dynamic-hook errors
 // when the list shrinks.
 export const useOverviewData = () => {
-  const { useServers } = useServerQueries();
-  const { useSystemInfo, useSystemCpuPercent, useSystemDiskUsage } = useSystemQueries();
-  const { useBackupRepositoryUsage } = useSnapshotQueries();
   const serversQuery = useServers();
   const systemQuery = useSystemInfo();
   const systemCpuQuery = useSystemCpuPercent();

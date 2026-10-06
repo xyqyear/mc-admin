@@ -31,7 +31,7 @@ import RjsfForm from '@/shared/forms/rjsfTheme'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 import { useTemplates } from '@/features/templates/queries'
-import { useTemplateMutations } from '@/features/templates/commands'
+import { usePreviewRenderedYaml } from '@/features/templates/commands';
 import type { ExtractVariablesResponse } from '@/features/configuration/contracts'
 import RebuildProgressDialog from '@/features/configuration/components/RebuildProgressDialog'
 import { cn } from '@/shared/lib/utils'
@@ -100,7 +100,6 @@ const ConvertModeEditor: React.FC<ConvertModeDialogProps> = ({
     convertToTemplate: convertToTemplateMutation,
     checkConversion: checkConversionMutation,
   } = useConfigurationCommands(serverId)
-  const { usePreviewRenderedYaml } = useTemplateMutations()
   const previewRenderedYamlMutation = usePreviewRenderedYaml()
   const refresh = async () => {
     const result = await composeQuery.refetch({ throwOnError: true })

@@ -51,8 +51,7 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
     void check()
   }
 
-  const handleConflictTreeCheck = (checked: React.Key[] | { checked: React.Key[]; halfChecked: React.Key[] }) => {
-    const checkedKeys = Array.isArray(checked) ? checked : checked.checked
+  const handleConflictTreeCheck = (checkedKeys: React.Key[]) => {
     const newDecisions: Record<string, boolean> = {}
 
     uploadState.conflicts.forEach(conflict => {

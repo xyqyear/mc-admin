@@ -31,7 +31,7 @@ import PlayerCleanupDialog from '@/features/players/ui/PlayerCleanupDialog';
 import PlayerDetailDialog from '@/features/players/ui/PlayerDetailDialog';
 import { MCAvatar } from '@/features/players/ui/MCAvatar';
 import { useAllPlayers } from '@/features/players/queries';
-import { useServerQueries } from '@/features/servers/queries';
+import { useServers } from '@/features/servers/queries';
 import type { PlayerCleanupKind, PlayerSummary } from '@/features/players/contracts';
 import { formatDuration, formatUUID } from '@/shared/utils/formatUtils';
 
@@ -137,8 +137,6 @@ const PlayerManagement: React.FC = () => {
     { id: 'last_seen', desc: true },
   ]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 });
-
-  const { useServers } = useServerQueries();
   const { data: servers = [] } = useServers();
 
   const {

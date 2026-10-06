@@ -33,7 +33,7 @@ import { EmptyState } from "@/shared/components/EmptyState"
 import { RefreshButton } from "@/shared/components/RefreshButton"
 import { useConfirm } from "@/shared/hooks/useConfirm"
 import { useTemplates } from "@/features/templates/queries"
-import { useTemplateMutations } from "@/features/templates/commands"
+import { useDeleteTemplate } from '@/features/templates/commands';
 import type { TemplateListItem } from '@/features/templates/contracts';
 
 const TemplateList: React.FC = () => {
@@ -56,8 +56,6 @@ const TemplateList: React.FC = () => {
       toast.error("刷新失败")
     }
   }
-
-  const { useDeleteTemplate } = useTemplateMutations()
   const deleteMutation = useDeleteTemplate()
 
   const [sorting, setSorting] = useState<SortingState>([])

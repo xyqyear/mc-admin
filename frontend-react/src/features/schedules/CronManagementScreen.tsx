@@ -28,7 +28,7 @@ import { DataTable } from '@/shared/components/DataTable'
 import { RefreshButton } from '@/shared/components/RefreshButton'
 import { EmptyState } from '@/shared/components/EmptyState'
 import { useRegisteredCronJobs, useAllCronJobs } from '@/features/schedules/queries'
-import { useCronMutations } from '@/features/schedules/commands'
+import { usePauseCronJob, useResumeCronJob, useCancelCronJob } from '@/features/schedules/commands';
 import { CreateCronJobDialog, CronJobDetailDialog } from '@/features/schedules/ui/dialogs/index'
 import { CronJobStatusTag, NextRunTimeCell, CronExpressionDisplay, CronJobFilters } from '@/features/schedules/ui/index'
 import { useConfirm } from '@/shared/hooks/useConfirm'
@@ -59,7 +59,6 @@ const CronManagement: React.FC = () => {
       toast.error('刷新失败')
     }
   }
-  const { usePauseCronJob, useResumeCronJob, useCancelCronJob } = useCronMutations()
 
   const pauseMutation = usePauseCronJob()
   const resumeMutation = useResumeCronJob()

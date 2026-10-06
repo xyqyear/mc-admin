@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 
 import LoadingSpinner from '@/shared/layout/LoadingSpinner'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServerInfo } from '@/features/servers/queries';
 import { useQuery } from '@tanstack/react-query'
 import { useServerTemplatePreview, useServerTemplateConfig } from '@/features/configuration/queries'
 import TemplateMode from '@/features/configuration/components/TemplateMode'
@@ -31,8 +31,6 @@ const ConfigurationEditor: React.FC<{ id: string | undefined }> = ({ id }) => {
   const { data: templateConfig, dataUpdatedAt: templateReadAt, isLoading: templateConfigLoading, error: templateConfigError, refetch: refetchTemplateConfig } = useServerTemplateConfig(
     isTemplateBased ? id || null : null
   )
-
-  const { useServerInfo } = useServerQueries()
   const { data: serverInfo, isLoading: serverLoading, error: serverErrorMessage } = useServerInfo(id || '')
   const composeQuery = useQuery(composeOptions(id || ''))
   const composeContent = composeQuery.data?.yaml_content ?? ''

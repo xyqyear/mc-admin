@@ -6,10 +6,10 @@ import ServerOperationButtons from '@/features/servers/ui/ServerOperationButtons
 
 const maintenance = vi.hoisted(() => ({ active: false }))
 vi.mock('@/features/servers/queries', () => ({
-  useServerQueries: () => ({ useServerMaintenance: () => ({ data: maintenance }) }),
+  useServerMaintenance: () => ({ data: maintenance }),
 }))
 vi.mock('@/features/servers/commands', () => ({
-  useServerMutations: () => ({ useServerOperation: () => ({ isPending: false, mutate: vi.fn() }) }),
+  useServerOperation: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 vi.mock('@/features/servers/ui/ServerOperationConfirmDialog', () => ({
   useServerOperationConfirm: () => ({ showConfirm: vi.fn(), confirmDialog: null }),

@@ -1,5 +1,5 @@
 import { usePlayerMapProfiles, useServerOnlinePlayers } from '@/features/players/queries'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServerStatus, useServerInfo } from '@/features/servers/queries';
 import { readHashUrlParams, replaceHashUrlParams, useHashUrlParams, type HashUrlParamsUpdater } from '@/shared/hooks/useHashUrlParams'
 import { queryKeys } from '@/shared/http/api'
 import { useQueryClient } from '@tanstack/react-query'
@@ -52,7 +52,6 @@ export function useWorldMapController(serverId: string) {
 
   const layoutQ = useWorldLayout(serverId)
   const labelsQ = useWorldDimensionLabels(serverId)
-  const { useServerStatus, useServerInfo } = useServerQueries()
   const statusQ = useServerStatus(serverId)
   const serverInfoQ = useServerInfo(serverId)
   const serverStopped = statusQ.data ? STOPPED_STATUSES.has(statusQ.data) : false

@@ -1,6 +1,5 @@
-import { useServerQueries } from "@/features/servers/queries";
+import { useServerInfo, useServerStatus, useServerCpuPercent, useServerMemory, useServerIOStats, useServerDiskUsage, useRestartSchedule } from '@/features/servers/queries';
 export const useServerDetailData = (serverId: string) => {
-  const { useServerInfo, useServerStatus, useServerCpuPercent, useServerMemory, useServerIOStats, useServerDiskUsage, useRestartSchedule, } = useServerQueries();
   const configQuery = useServerInfo(serverId);
   const statusQuery = useServerStatus(serverId);
   const cpuQuery = useServerCpuPercent(serverId, statusQuery.data);

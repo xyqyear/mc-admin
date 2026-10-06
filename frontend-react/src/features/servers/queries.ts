@@ -4,48 +4,40 @@ import { serverApi } from "@/features/servers/api";
 import type { ServerStatus } from "@/features/servers/contracts";
 import { queryKeys } from "@/shared/http/api";
 import { useQuery } from "@tanstack/react-query";
-export const useServerQueries = () => {
-  const useServers = (options?: Partial<Omit<ReturnType<typeof serversQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serversQueryOptions(), ...options });
-  };
-  const useServerInfo = (id: string, options?: Partial<Omit<ReturnType<typeof serverInfoQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverInfoQueryOptions(id), ...options });
-  };
-  const useServerStatus = (id: string, options?: Partial<Omit<ReturnType<typeof serverStatusQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverStatusQueryOptions(id), ...options });
-  };
-  const useServerMaintenance = (id: string, options?: Partial<Omit<ReturnType<typeof serverMaintenanceQueryOptions>, 'queryKey' | 'queryFn'>>) => useQuery({ ...serverMaintenanceQueryOptions(id), ...options });
-  // CPU/memory/I/O endpoints reject non-RUNNING/STARTING/HEALTHY states with 409.
-  // Gate via `enabled` and skip retries on 409 so the query goes idle promptly
-  // when the server stops.
-  const useServerCpuPercent = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverCpuPercentQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverCpuPercentQueryOptions(id, status), ...options });
-  };
-  const useServerMemory = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverMemoryQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverMemoryQueryOptions(id, status), ...options });
-  };
-  const useServerIOStats = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverIOStatsQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverIOStatsQueryOptions(id, status), ...options });
-  };
-  // Disk usage is filesystem-level and remains available regardless of runtime state.
-  const useServerDiskUsage = (id: string, options?: Partial<Omit<ReturnType<typeof serverDiskUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...serverDiskUsageQueryOptions(id), ...options });
-  };
-  const useRestartSchedule = (id: string, options?: Partial<Omit<ReturnType<typeof restartScheduleQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...restartScheduleQueryOptions(id), ...options });
-  };
-  return {
-    useServers,
-    useServerInfo,
-    useServerStatus,
-    useServerMaintenance,
-    useServerCpuPercent,
-    useServerMemory,
-    useServerIOStats,
-    useServerDiskUsage,
-    useRestartSchedule,
-  };
+export const useServers = (options?: Partial<Omit<ReturnType<typeof serversQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serversQueryOptions(), ...options });
 };
+
+export const useServerInfo = (id: string, options?: Partial<Omit<ReturnType<typeof serverInfoQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverInfoQueryOptions(id), ...options });
+};
+
+export const useServerStatus = (id: string, options?: Partial<Omit<ReturnType<typeof serverStatusQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverStatusQueryOptions(id), ...options });
+};
+
+export const useServerMaintenance = (id: string, options?: Partial<Omit<ReturnType<typeof serverMaintenanceQueryOptions>, 'queryKey' | 'queryFn'>>) => useQuery({ ...serverMaintenanceQueryOptions(id), ...options });
+
+export const useServerCpuPercent = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverCpuPercentQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverCpuPercentQueryOptions(id, status), ...options });
+};
+
+export const useServerMemory = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverMemoryQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverMemoryQueryOptions(id, status), ...options });
+};
+
+export const useServerIOStats = (id: string, status?: ServerStatus, options?: Partial<Omit<ReturnType<typeof serverIOStatsQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverIOStatsQueryOptions(id, status), ...options });
+};
+
+export const useServerDiskUsage = (id: string, options?: Partial<Omit<ReturnType<typeof serverDiskUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...serverDiskUsageQueryOptions(id), ...options });
+};
+
+export const useRestartSchedule = (id: string, options?: Partial<Omit<ReturnType<typeof restartScheduleQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...restartScheduleQueryOptions(id), ...options });
+};
+
 export const serversQueryOptions = () => {
   return queryOptions({
     queryKey: queryKeys.servers(),

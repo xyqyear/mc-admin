@@ -15,13 +15,11 @@ import ServerIOStatsCard from '@/features/servers/ui/ServerIOStatsCard'
 import OnlinePlayersCard from '@/features/players/ui/OnlinePlayersCard'
 import ServerRestartScheduleCard from '@/features/servers/ui/ServerRestartScheduleCard'
 import { useServerDetailData } from '@/features/servers/useServerDetailData'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServers } from '@/features/servers/queries';
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-
-  const { useServers } = useServerQueries()
   const allServersQuery = useServers()
 
   const {

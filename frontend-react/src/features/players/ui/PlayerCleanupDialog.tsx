@@ -27,7 +27,7 @@ import { EmptyState } from '@/shared/components/EmptyState'
 import {
   usePlayerCleanupPreview,
 } from '@/features/players/queries'
-import { usePlayerMutations } from '@/features/players/commands'
+import { useDeletePlayerCleanup } from '@/features/players/commands';
 import type { PlayerCleanupCandidate, PlayerCleanupKind } from '@/features/players/contracts';
 import { formatUUID } from '@/shared/utils/formatUtils'
 
@@ -73,7 +73,6 @@ const PlayerCleanupDialog: React.FC<PlayerCleanupDialogProps> = ({
 }) => {
   const copy = kind ? cleanupCopy[kind] : cleanupCopy.offline_uuid
   const previewQuery = usePlayerCleanupPreview(kind, open)
-  const { useDeletePlayerCleanup } = usePlayerMutations()
   const deleteCleanupMutation = useDeletePlayerCleanup()
 
   const candidates = previewQuery.data?.candidates ?? []

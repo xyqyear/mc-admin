@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/shared/ui/tooltip'
 import { useTaskCenterStore } from '@/features/tasks/panelStore'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useActiveTasks } from '@/features/tasks/queries';
 import { useDownloadTasks } from '@/features/tasks/downloadStore'
 import {
   clampTaskCenterTriggerPosition,
@@ -29,7 +29,6 @@ const DRAG_THRESHOLD = 4
 const TaskCenterTrigger: React.FC = () => {
   const { isOpen, toggleOpen, triggerPosition, setTriggerPosition } =
     useTaskCenterStore()
-  const { useActiveTasks } = useTaskQueries()
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
   const [displayPosition, setDisplayPosition] = useState(triggerPosition)

@@ -24,7 +24,7 @@ import {
 } from '@/shared/ui/dialog'
 
 import type { FileSearchRequest, SearchFileItem } from '@/features/files/contracts'
-import { useFileMutations } from '@/features/files/commands'
+import { useSearchFiles } from '@/features/files/commands';
 import FileSearchResultTree from '@/features/files/components/FileSearchResultTree'
 
 const sizeUnits = [
@@ -64,9 +64,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [currentRegex, setCurrentRegex] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
-
-  const { useSearchFiles } = useFileMutations(serverId)
-  const searchFilesMutation = useSearchFiles()
+  const searchFilesMutation = useSearchFiles(serverId)
 
   useEffect(() => {
     if (open && searchInputRef.current) {

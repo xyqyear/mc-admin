@@ -15,7 +15,7 @@ import {
 } from '@/shared/ui/dialog'
 import { Field, FieldLabel, FieldError } from '@/shared/ui/field'
 
-import { useArchiveMutations } from '@/features/archives/commands'
+import { useRenameItem } from '@/features/archives/commands';
 import type { ArchiveFileItem } from '@/features/archives/contracts';
 
 const renameSchema = z.object({
@@ -39,7 +39,6 @@ const ArchiveRenameDialog: React.FC<ArchiveRenameDialogProps> = ({
   file,
   onClose,
 }) => {
-  const { useRenameItem } = useArchiveMutations()
   const renameItemMutation = useRenameItem()
 
   const form = useForm<RenameFormData>({

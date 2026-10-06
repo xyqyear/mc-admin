@@ -1,11 +1,11 @@
-import { useArchiveMutations } from '@/features/archives/commands'
-import { useServerMutations } from '@/features/servers/commands'
-import { useTaskQueries } from '@/features/tasks/queries'
-import { useServerQueries } from '@/features/servers/queries'
+import { useCreateArchive, useArchiveDownload } from '@/features/archives/commands';
+import { usePopulateServer } from '@/features/servers/commands';
+import { useTask } from '@/features/tasks/queries';
+import { useServerInfo } from '@/features/servers/queries';
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useFileMutations } from '@/features/files/commands'
+import { useCreateFile, useDeleteFile, useBulkDeleteFiles, useRenameFile, useRestoreFileOwnership, useFileDownload } from '@/features/files/commands';
 import type { FileSearchBoxRef } from '@/features/files/components/FileSearchBox'
 import type { FileItem } from '@/features/files/contracts'
 import { useFileList } from '@/features/files/queries'
@@ -16,8 +16,6 @@ import { usePageDragUpload } from '@/shared/hooks/usePageDragUpload'
 
 export function useFileBrowser(id: string | undefined) {
   const { confirm, confirmDialog } = useConfirm()
-
-  const { useServerInfo } = useServerQueries()
   const { data: serverInfo } = useServerInfo(id || "")
   const hasServerInfo = !!serverInfo
 
@@ -36,29 +34,16 @@ export function useFileBrowser(id: string | undefined) {
     const filteredItems = searchFiles(fileData.items, searchQuery, useRegex)
     return { ...fileData, items: filteredItems }
   }, [fileData, searchQuery, useRegex])
+  const { downloadFile } = useFileDownload(id);
 
-  const {
-    useCreateFile,
-    useDeleteFile,
-    useBulkDeleteFiles,
-    useRenameFile,
-    useRestoreFileOwnership,
-    downloadFile
-  } = useFileMutations(id)
-
-  const createFileMutation = useCreateFile()
-  const deleteFileMutation = useDeleteFile()
-  const bulkDeleteMutation = useBulkDeleteFiles()
-  const renameFileMutation = useRenameFile()
-  const restoreOwnershipMutation = useRestoreFileOwnership()
-
-  const { usePopulateServer } = useServerMutations()
+  const createFileMutation = useCreateFile(id)
+  const deleteFileMutation = useDeleteFile(id)
+  const bulkDeleteMutation = useBulkDeleteFiles(id)
+  const renameFileMutation = useRenameFile(id)
+  const restoreOwnershipMutation = useRestoreFileOwnership(id)
   const populateServerMutation = usePopulateServer()
-
-  const { useCreateArchive, downloadFile: downloadArchiveFile } = useArchiveMutations()
+  const { downloadFile: downloadArchiveFile } = useArchiveDownload();
   const createArchiveMutation = useCreateArchive()
-
-  const { useTask } = useTaskQueries()
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isMultiFileUploadDialogOpen, setIsMultiFileUploadDialogOpen] = useState(false)

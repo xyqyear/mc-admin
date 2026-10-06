@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useEditorDraft } from '@/shared/hooks/useEditorDraft'
 import { useFileContent } from '@/features/files/queries'
-import { useFileMutations } from '@/features/files/commands'
+import { useUpdateFile } from '@/features/files/commands';
 import { detectFileLanguage, getComposeOverrideWarning, getLanguageEditorOptions, isFileEditable } from '@/features/files/editingConfig'
 import type { FileItem } from '@/features/files/contracts'
 
@@ -10,8 +10,7 @@ export function useFileEditor(serverId: string | undefined) {
   const [editingFile, setEditingFile] = useState<FileItem | null>(null)
   const [isDiffDialogOpen, setIsDiffDialogOpen] = useState(false)
   const contentQuery = useFileContent(serverId, editingFile?.path ?? null)
-  const { useUpdateFile } = useFileMutations(serverId)
-  const updateFileMutation = useUpdateFile()
+  const updateFileMutation = useUpdateFile(serverId)
   const target = editingFile ? `${serverId}:${editingFile.path}` : null
   const currentTarget = useRef(target)
   currentTarget.current = target

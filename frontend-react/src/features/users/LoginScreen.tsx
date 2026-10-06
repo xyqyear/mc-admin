@@ -11,7 +11,7 @@ import { Field, FieldLabel, FieldError } from '@/shared/ui/field'
 import { Alert, AlertDescription } from '@/shared/ui/alert'
 import { Progress } from '@/shared/ui/progress'
 import { Spinner } from '@/shared/ui/spinner'
-import { useAuthMutations } from '@/features/users/authCommands'
+import { useLogin } from '@/features/users/authCommands';
 import { useCodeLoginWebsocket } from '@/features/users/useCodeLoginWebsocket'
 import { useLoginPreferenceStore } from '@/features/users/loginPreferenceStore'
 
@@ -24,7 +24,6 @@ type LoginFormData = z.infer<typeof loginSchema>
 
 const Login = () => {
   const { loginPreference, setLoginPreference } = useLoginPreferenceStore()
-  const { useLogin } = useAuthMutations()
   const loginMutation = useLogin()
 
   const {

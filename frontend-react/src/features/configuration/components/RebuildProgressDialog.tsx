@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useTask } from '@/features/tasks/queries';
 
 interface RebuildProgressDialogProps {
   open: boolean
@@ -25,8 +25,6 @@ const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
   onComplete,
 }) => {
   const handledTask = useRef<string | null>(null)
-
-  const { useTask } = useTaskQueries()
   const { data: task } = useTask(taskId || '')
 
   useEffect(() => {

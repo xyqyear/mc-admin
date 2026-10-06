@@ -32,10 +32,10 @@ import {
   useSelfCheckRun,
   useSelfCheckStatus,
 } from '@/features/health/queries'
-import { useSelfCheckMutations } from '@/features/health/commands'
+import { useRunSelfCheckItem } from '@/features/health/commands';
 import { selfCheckApi } from '@/features/health/api'
 import { waitForTaskResult } from '@/features/tasks/commands'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useActiveTasks } from '@/features/tasks/queries';
 import type { SelfCheckCatalogItem, SelfCheckCurrentState, SelfCheckFinding, SelfCheckStatusResponse, SelfCheckRunDetail, SelfCheckRunResult, SelfCheckRunStatus, SelfCheckRunSummaryRecord, SelfCheckSeverity, SelfCheckSummary } from '@/features/health/contracts';
 import { queryKeys } from '@/shared/http/api'
 import { formatDateTime } from '@/shared/utils/formatUtils'
@@ -497,9 +497,7 @@ function HistoryRow({
 const SelfCheck: React.FC = () => {
   const queryClient = useQueryClient()
   const statusQuery = useSelfCheckStatus()
-  const { useRunSelfCheckItem } = useSelfCheckMutations()
   const runItemMutation = useRunSelfCheckItem()
-  const { useActiveTasks } = useTaskQueries()
   const activeTasks = useActiveTasks()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)

@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import CronManagementScreen from '@/features/schedules/CronManagementScreen'
 import { ServerRestartScheduleCard } from '@/features/servers/ui/ServerRestartScheduleCard'
-import { useServerQueries } from '@/features/servers/queries'
+import { useRestartSchedule } from '@/features/servers/queries';
 import type { CronJob } from '@/features/schedules/contracts'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
@@ -30,7 +30,6 @@ beforeEach(() => {
 })
 afterEach(() => { client.clear(); server.resetHandlers() })
 function ScheduleCard() {
-  const { useRestartSchedule } = useServerQueries()
   const schedule = useRestartSchedule('alpha')
   return <ServerRestartScheduleCard serverId="alpha" restartSchedule={schedule.data} isLoading={schedule.isLoading} error={schedule.error} />
 }

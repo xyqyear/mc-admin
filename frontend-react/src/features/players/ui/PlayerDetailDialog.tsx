@@ -37,7 +37,7 @@ import {
   usePlayerAchievements,
 } from '@/features/players/queries';
 import type { SessionInfo, ChatMessageInfo, AchievementInfo } from '@/features/players/contracts';
-import { usePlayerMutations } from '@/features/players/commands';
+import { useRefreshPlayerSkin } from '@/features/players/commands';
 import LoadingSpinner from '@/shared/layout/LoadingSpinner';
 import { MCAvatar } from '@/features/players/ui/MCAvatar';
 import { ServerNameTag } from '@/features/servers/ui/ServerNameTag';
@@ -193,7 +193,6 @@ export const PlayerDetailDialog: React.FC<PlayerDetailDialogProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [skinPreviewOpen, setSkinPreviewOpen] = useState(false);
-  const { useRefreshPlayerSkin } = usePlayerMutations();
   const refreshPlayerSkinMutation = useRefreshPlayerSkin();
 
   const { data: player, isLoading: playerLoading } = usePlayerByUUID(uuid);

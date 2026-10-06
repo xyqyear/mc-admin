@@ -3,14 +3,12 @@ import { Inbox, Trash2 } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
-import { useTaskQueries } from '@/features/tasks/queries'
-import { useTaskMutations } from '@/features/tasks/commands'
+import { useTasks } from '@/features/tasks/queries';
+import { useCancelTask, useDeleteTask, useClearCompletedTasks } from '@/features/tasks/commands';
 import BackgroundTaskItem from '@/features/tasks/ui/BackgroundTaskItem'
 import type { BackgroundTask } from '@/features/tasks/contracts'
 
 const BackgroundTaskList: React.FC = () => {
-  const { useTasks } = useTaskQueries()
-  const { useCancelTask, useDeleteTask, useClearCompletedTasks } = useTaskMutations()
   const { data, isLoading } = useTasks()
   const cancelTask = useCancelTask()
   const deleteTask = useDeleteTask()

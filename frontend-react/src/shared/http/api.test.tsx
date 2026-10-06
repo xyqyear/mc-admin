@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { AxiosError } from 'axios'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { api, AUTH_EXPIRED_EVENT } from '@/shared/http/api'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServerCpuPercent } from '@/features/servers/queries';
 import { createTestClient, httpResponse } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
@@ -54,7 +54,7 @@ it.each([401, 403, 409, 422, 500, 'network'] as const)('uses normalized errors f
     if (status === 'network') throw new AxiosError('Network Error', 'ERR_NETWORK', config)
     return httpResponse(config, { detail: '暂时不可用' }, status)
   })
-  const { result } = renderHook(() => useServerQueries().useServerCpuPercent('server', 'RUNNING', {
+  const { result } = renderHook(() => useServerCpuPercent('server', 'RUNNING', {
     retryDelay: 0, refetchInterval: false,
   }), { wrapper: ({ children }) => <TestProviders client={client}>{children}</TestProviders> })
   await waitFor(() => expect(result.current.isError).toBe(true))

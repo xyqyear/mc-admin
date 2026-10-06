@@ -44,8 +44,8 @@ import { StatusBadge } from '@/shared/components/StatusBadge'
 import { RefreshButton } from '@/shared/components/RefreshButton'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import type { Snapshot } from '@/features/backups/contracts';
-import { useSnapshotQueries } from '@/features/backups/queries'
-import { useSnapshotMutations, useCreateSnapshot } from '@/features/backups/commands'
+import { useGlobalSnapshots, useSnapshotLocks } from '@/features/backups/queries';
+import { useCreateSnapshot, useDeleteSnapshot, useUnlockRepository } from '@/features/backups/commands';
 import { formatDateTime } from '@/shared/utils/formatUtils'
 
 const columns: ColumnDef<Snapshot, any>[] = [
@@ -107,8 +107,6 @@ const columns: ColumnDef<Snapshot, any>[] = [
 ]
 
 const Snapshots: React.FC = () => {
-  const { useGlobalSnapshots, useSnapshotLocks } = useSnapshotQueries()
-  const { useDeleteSnapshot, useUnlockRepository } = useSnapshotMutations()
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 

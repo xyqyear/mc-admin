@@ -5,6 +5,7 @@ const featureEntries = {
   health: ['useSelfCheckHealth'],
   servers: ['presentation'],
   tasks: ['downloads'],
+  players: ['identity'],
 }
 const screenEntries = new Set([
   'archives/ArchiveManagementScreen', 'backups/SnapshotsScreen',

@@ -5,11 +5,11 @@ import { useNavigate } from 'react-router';
 
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { useServerMutations } from '@/features/servers/commands';
+import { useServerOperation } from '@/features/servers/commands';
 import { useServerOperationConfirm } from '@/features/servers/ui/ServerOperationConfirmDialog';
 import { serverStatusUtils } from '@/features/servers/presentation';
 import type { ServerStatus } from '@/features/servers/contracts';
-import { useServerQueries } from '@/features/servers/queries';
+import { useServerMaintenance } from '@/features/servers/queries';
 
 interface ServerOperationButtonsProps {
   serverId: string;
@@ -27,10 +27,8 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   maintenanceActive = false
 }) => {
   const navigate = useNavigate();
-  const { useServerOperation } = useServerMutations();
   const serverOperationMutation = useServerOperation();
   const { showConfirm, confirmDialog } = useServerOperationConfirm();
-  const { useServerMaintenance } = useServerQueries();
   const maintenance = useServerMaintenance(serverId);
 
   const isPending = serverOperationMutation.isPending || Boolean(maintenance.data?.task_id);

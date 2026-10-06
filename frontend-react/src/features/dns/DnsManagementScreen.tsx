@@ -33,7 +33,7 @@ import { RefreshButton } from '@/shared/components/RefreshButton'
 import { useDNSStatus, useDNSEnabled, useDNSRecords, useRouterRoutes } from '@/features/dns/queries'
 import { useUpdateDNS, useRefreshDNSData } from '@/features/dns/commands'
 import type { DNSRecord, DNSStatusResponse } from '@/features/dns/contracts'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useActiveTasks } from '@/features/tasks/queries';
 import { openTaskCenter } from '@/features/tasks/commands'
 
 const dnsRecordsColumns: ColumnDef<DNSRecord, any>[] = [
@@ -116,7 +116,7 @@ const DnsManagement: React.FC = () => {
   const { data: routerRoutes, isLoading: routesLoading, error: routesError } = useRouterRoutes(isDNSEnabled)
 
   const updateDNSMutation = useUpdateDNS()
-  const { data: activeTasks } = useTaskQueries().useActiveTasks()
+  const { data: activeTasks } = useActiveTasks()
   const activeUpdate = activeTasks?.find(task => task.taskType === 'dns_update')
   const isUpdating = updateDNSMutation.isPending || !!activeUpdate
   const refreshDataMutation = useRefreshDNSData()

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useTaskMutations, waitForTaskResult } from '@/features/tasks/commands'
+import { waitForTaskResult, useCancelTask } from '@/features/tasks/commands';
 import { getErrorMessage, getErrorStatus } from '@/shared/http/api'
 import { snapshotApi } from './api'
 import type { SnapshotPreviewRequest, SnapshotPreviewResult } from './contracts'
@@ -19,7 +19,7 @@ const initial: PreviewState = { active: false, taskId: null, result: null, progr
 export function useSnapshotPreview(request: SnapshotPreviewRequest | null) {
   const client = useQueryClient()
   const [state, setState] = useState<PreviewState>(initial)
-  const cancel = useTaskMutations().useCancelTask()
+  const cancel = useCancelTask()
   const readyId = useRef<string | null>(null)
 
   useEffect(() => {

@@ -32,17 +32,15 @@ import DragDropOverlay from '@/shared/components/DragDropOverlay'
 import ArchiveUploadDialog from '@/features/archives/ui/ArchiveUploadDialog'
 import ArchiveRenameDialog from '@/features/archives/ui/ArchiveRenameDialog'
 import { useConfirm } from '@/shared/hooks/useConfirm'
-import { useArchiveQueries } from '@/features/archives/queries'
-import { useArchiveMutations } from '@/features/archives/commands'
+import { useArchiveFileList } from '@/features/archives/queries';
+import { useDeleteItem, useArchiveDownload } from '@/features/archives/commands';
 import { formatFileSize, formatDate, naturalCompare } from '@/shared/utils/formatUtils'
 import { usePageDragUpload } from '@/shared/hooks/usePageDragUpload'
 import type { ArchiveFileItem } from '@/features/archives/contracts';
 
 const ArchiveManagement: React.FC = () => {
   const { confirm, confirmDialog } = useConfirm()
-
-  const { useArchiveFileList } = useArchiveQueries()
-  const { useDeleteItem, downloadFile } = useArchiveMutations()
+  const { downloadFile } = useArchiveDownload();
 
   const { data: fileData, isLoading, isFetching, refetch } = useArchiveFileList()
   const archiveFiles = useMemo(() => fileData?.items || [], [fileData?.items])

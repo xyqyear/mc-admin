@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/shared/http/api'
-import { useTaskQueries, taskQueryKeys } from '@/features/tasks/queries'
+import { taskQueryKeys, useTask } from '@/features/tasks/queries';
 import { snapshotApi } from './api'
 import { useActiveRestorations } from './queries'
 import type { RestoreProgressState, SnapshotScope, SnapshotTaskAccepted } from './contracts'
@@ -34,7 +34,7 @@ export function useSnapshotOperation(scope: SnapshotScope | null, options: {
     !dismissed.current.has(row.operation_id) && (options.resumeAny || scopeKey(row.scope) === scopeKey(scope)))
   const taskId = accepted?.task_id ?? observedId ?? pending?.operation_id ?? ''
   useEffect(() => { if (taskId) setObservedId(taskId) }, [taskId])
-  const task = useTaskQueries().useTask(taskId)
+  const task = useTask(taskId)
   const terminal = task.data && ['completed', 'failed', 'cancelled'].includes(task.data.status)
   useEffect(() => { if (terminal) submittingRef.current = false }, [terminal])
   const checking = enabled && (!discovery.isFetchedAfterMount || discovery.isError)

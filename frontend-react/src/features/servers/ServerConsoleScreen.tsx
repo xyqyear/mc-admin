@@ -12,7 +12,7 @@ import {
 import { Card, CardHeader, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { useServerQueries } from '@/features/servers/queries';
+import { useServerStatus, useServerInfo } from '@/features/servers/queries';
 import { useServerConsoleWebSocket } from '@/features/servers/useServerConsoleWebSocket';
 import type { WebSocketMessage } from '@/features/servers/useServerConsoleWebSocket';
 import PageHeader from '@/shared/layout/PageHeader';
@@ -38,8 +38,6 @@ const ServerConsole: React.FC = () => {
   const serverId = id || '';
   const terminalRef = useRef<ServerTerminalRef>(null);
   const [terminalReady, setTerminalReady] = useState(false);
-
-  const { useServerStatus, useServerInfo } = useServerQueries();
   const { data: serverStatus } = useServerStatus(serverId);
   const { data: serverInfo, isLoading: serverInfoLoading, isError: serverInfoError } = useServerInfo(serverId);
 

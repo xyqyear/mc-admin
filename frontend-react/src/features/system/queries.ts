@@ -2,24 +2,18 @@ import { queryOptions } from '@tanstack/react-query';
 import { systemApi } from "@/features/system/api";
 import { queryKeys } from "@/shared/http/api";
 import { useQuery } from "@tanstack/react-query";
-export const useSystemQueries = () => {
-  const useSystemInfo = (options?: Partial<Omit<ReturnType<typeof systemInfoQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...systemInfoQueryOptions(), ...options });
-  };
-  // Backend computes CPU% over a short sampling window (~1-2s), so polling
-  // tighter than ~3s would show stale or noisy data.
-  const useSystemCpuPercent = (options?: Partial<Omit<ReturnType<typeof systemCpuPercentQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...systemCpuPercentQueryOptions(), ...options });
-  };
-  const useSystemDiskUsage = (options?: Partial<Omit<ReturnType<typeof systemDiskUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
-    return useQuery({ ...systemDiskUsageQueryOptions(), ...options });
-  };
-  return {
-    useSystemInfo,
-    useSystemCpuPercent,
-    useSystemDiskUsage,
-  };
+export const useSystemInfo = (options?: Partial<Omit<ReturnType<typeof systemInfoQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...systemInfoQueryOptions(), ...options });
 };
+
+export const useSystemCpuPercent = (options?: Partial<Omit<ReturnType<typeof systemCpuPercentQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...systemCpuPercentQueryOptions(), ...options });
+};
+
+export const useSystemDiskUsage = (options?: Partial<Omit<ReturnType<typeof systemDiskUsageQueryOptions>, 'queryKey' | 'queryFn'>>) => {
+  return useQuery({ ...systemDiskUsageQueryOptions(), ...options });
+};
+
 export const systemInfoQueryOptions = () => {
   return queryOptions({
     queryKey: queryKeys.system.info(),

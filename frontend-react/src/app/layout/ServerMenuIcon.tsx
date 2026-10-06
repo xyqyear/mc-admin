@@ -1,6 +1,6 @@
 import React from 'react'
 import { Monitor } from 'lucide-react'
-import { useServerQueries } from '@/features/servers/queries'
+import { useServerStatus } from '@/features/servers/queries';
 import ServerStateIcon from '@/features/servers/ui/ServerStateIcon'
 
 interface ServerMenuIconProps {
@@ -8,7 +8,6 @@ interface ServerMenuIconProps {
 }
 
 const ServerMenuIcon: React.FC<ServerMenuIconProps> = ({ serverId }) => {
-  const { useServerStatus } = useServerQueries()
   const statusQuery = useServerStatus(serverId)
 
   if (statusQuery.isError || !statusQuery.data) {

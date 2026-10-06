@@ -5,7 +5,7 @@ import { Card, CardHeader, CardContent, CardTitle } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useTaskCenterStore } from '@/features/tasks/panelStore'
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useActiveTasks } from '@/features/tasks/queries';
 import { useDownloadTasks } from '@/features/tasks/downloadStore'
 import BackgroundTaskList from '@/features/tasks/ui/BackgroundTaskList'
 import DownloadTaskList from '@/features/tasks/ui/DownloadTaskList'
@@ -19,7 +19,6 @@ const TaskCenterPanel: React.FC = () => {
     setOpen,
     setActiveTab,
   } = useTaskCenterStore()
-  const { useActiveTasks } = useTaskQueries()
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
   const [viewportSize, setViewportSize] = React.useState(() => ({

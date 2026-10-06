@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { fileSnapshotScope, useCreateSnapshot, useSnapshotOperation } from '@/features/backups/commands'
 import type { SnapshotPreviewRequest, SnapshotScope } from '@/features/backups/contracts'
-import { useSnapshotQueries, useSnapshotTarget } from '@/features/backups/queries'
+import { useSnapshotTarget, useSnapshotsForPath } from '@/features/backups/queries';
 import { SnapshotPreviewDialog } from '@/features/backups/ui/SnapshotPreviewDialog'
 import { RestorationHistoryDialog } from '@/features/backups/ui/RestorationHistoryDialog'
 import { SnapshotCreateDialog } from '@/features/backups/ui/SnapshotCreateDialog'
@@ -15,7 +15,7 @@ export function FileSnapshotRecovery({ serverId, children }: { serverId: string;
   const scope = fileSnapshotScope(serverId, [path ?? '/'])
   const operation = useSnapshotOperation(scope, { resumeAny: true })
   const target = useSnapshotTarget(path ? scope : null)
-  const snapshots = useSnapshotQueries().useSnapshotsForPath(serverId, path, !!path)
+  const snapshots = useSnapshotsForPath(serverId, path, !!path)
   const creation = useCreateSnapshot()
   const [createRequest, setCreateRequest] = useState<{ scope: SnapshotScope; label: string } | null>(null)
   const close = () => { if (!operation.state.active) { operation.reset(); setPath(null) } }

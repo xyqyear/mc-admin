@@ -30,46 +30,39 @@ export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotS
     ? { kind: 'paths', server_id: serverId, paths: paths.map(path => path.replace(/^\/+/, '') || '.') }
     : { kind: 'server', server_id: serverId };
 }
-
-export const useSnapshotMutations = () => {
+export const useDeleteSnapshot = () => {
   const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => waitForTaskResult<DeleteSnapshotResponse>(queryClient, await snapshotApi.deleteSnapshot(id)),
+    onSuccess: (data: DeleteSnapshotResponse) => {
+      toast.success(data.message);
 
-  const useDeleteSnapshot = () => {
-    return useMutation({
-      mutationFn: async (id: string) => waitForTaskResult<DeleteSnapshotResponse>(queryClient, await snapshotApi.deleteSnapshot(id)),
-      onSuccess: (data: DeleteSnapshotResponse) => {
-        toast.success(data.message);
-
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.all,
-        });
-      },
-      onError: (error: ApiError) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`快照删除失败: ${errorDetail}`);
-      },
-    });
-  };
-
-  const useUnlockRepository = () => {
-    return useMutation({
-      mutationFn: async () => waitForTaskResult<UnlockResponse>(queryClient, await snapshotApi.unlockRepository()),
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.snapshots.locks(),
-        });
-      },
-      onError: (error: ApiError) => {
-        const errorDetail = error?.message || "未知错误";
-        toast.error(`仓库解锁失败: ${errorDetail}`);
-      },
-    });
-  };
-
-  return {
-    useDeleteSnapshot,
-    useUnlockRepository,
-  };
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.snapshots.all,
+      });
+    },
+    onError: (error: ApiError) => {
+      const errorDetail = error?.message || "未知错误";
+      toast.error(`快照删除失败: ${errorDetail}`);
+    },
+  });
 };
+
+export const useUnlockRepository = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => waitForTaskResult<UnlockResponse>(queryClient, await snapshotApi.unlockRepository()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.snapshots.locks(),
+      });
+    },
+    onError: (error: ApiError) => {
+      const errorDetail = error?.message || "未知错误";
+      toast.error(`仓库解锁失败: ${errorDetail}`);
+    },
+  });
+};
+
 
 export { useSnapshotPreview } from './useSnapshotPreview'

@@ -27,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 
 import { DataTable } from '@/shared/components/DataTable'
 import { SortableHeader } from '@/shared/components/SortableHeader'
-import { useArchiveQueries } from '@/features/archives/queries'
+import { useArchiveFileList } from '@/features/archives/queries';
 import { formatFileSize, formatDate } from '@/shared/utils/formatUtils'
 import type { ArchiveFileItem } from '@/features/archives/contracts';
 
@@ -51,7 +51,6 @@ const ArchiveSelectionDialog: React.FC<ArchiveSelectionDialogProps> = ({
   selectButtonType = 'primary',
 }) => {
   const navigate = useNavigate()
-  const { useArchiveFileList } = useArchiveQueries()
   const { data: fileData, isLoading } = useArchiveFileList('/', open)
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null)

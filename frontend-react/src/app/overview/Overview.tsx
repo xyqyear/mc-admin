@@ -32,7 +32,7 @@ import ServerCountCard from '@/app/overview/components/ServerCountCard'
 import ServerStateTag from '@/features/servers/ui/ServerStateTag'
 import type { ServerStatus } from '@/features/servers/contracts'
 import { useOverviewData } from '@/app/overview/useOverviewData'
-import { useServerMutations } from '@/features/servers/commands'
+import { useServerOperation } from '@/features/servers/commands';
 import { useCurrentUser } from '@/features/users/queries'
 import { UserRole } from '@/features/users/contracts'
 import { serverStatusUtils } from '@/features/servers/presentation'
@@ -65,8 +65,6 @@ const Overview: React.FC = () => {
     error,
     refetch,
   } = useOverviewData()
-
-  const { useServerOperation } = useServerMutations()
   const serverOperationMutation = useServerOperation()
 
   const { data: currentUser } = useCurrentUser()

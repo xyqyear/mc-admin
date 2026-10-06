@@ -9,7 +9,7 @@ import { Spinner } from '@/shared/ui/spinner'
 import CronExpressionDisplay from '@/features/schedules/ui/CronExpressionDisplay'
 import type { RestartScheduleResponse } from '@/features/servers/contracts';
 import { CronJobStatusTag } from '@/features/schedules/ui/index'
-import { useServerMutations } from '@/features/servers/commands'
+import { useCreateOrUpdateRestartSchedule } from '@/features/servers/commands';
 import { useConfirm } from '@/shared/hooks/useConfirm'
 
 interface ServerRestartScheduleCardProps {
@@ -28,7 +28,7 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
   className
 }) => {
   const navigate = useNavigate()
-  const createSchedule = useServerMutations().useCreateOrUpdateRestartSchedule()
+  const createSchedule = useCreateOrUpdateRestartSchedule()
   const { confirm, confirmDialog } = useConfirm()
 
   const handleNavigateToCronManagement = () => {

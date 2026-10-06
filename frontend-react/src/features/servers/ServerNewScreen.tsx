@@ -17,13 +17,13 @@ import { Switch } from '@/shared/ui/switch'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 
-import { useTaskQueries } from '@/features/tasks/queries'
+import { useActiveTasks } from '@/features/tasks/queries';
 import { openTaskCenter } from '@/features/tasks/commands'
 import PageHeader from '@/shared/layout/PageHeader'
 import ArchiveSelectionDialog from '@/features/archives/ui/ArchiveSelectionDialog'
 import PopulateProgressDialog from '@/features/archives/ui/PopulateProgressDialog'
 import { TemplateCreationMode, TraditionalCreationMode } from '@/features/servers/ui/ServerNew/index'
-import { useServerMutations } from '@/features/servers/commands'
+import { useCreateServer, usePopulateServer } from '@/features/servers/commands';
 import { useTemplateSchema, useAvailablePorts } from '@/features/templates/queries'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
@@ -33,7 +33,6 @@ type CreationMode = 'traditional' | 'template'
 
 const ServerNew: React.FC = () => {
   const navigate = useNavigate()
-  const { useActiveTasks } = useTaskQueries()
   const activeTasks = useActiveTasks()
 
   const [creationMode, setCreationMode] = useState<CreationMode>('template')
@@ -55,8 +54,6 @@ const ServerNew: React.FC = () => {
 
   const { data: templateSchema } = useTemplateSchema(selectedTemplateId)
   const { data: availablePorts } = useAvailablePorts(creationMode === 'template')
-
-  const { useCreateServer, usePopulateServer } = useServerMutations()
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
 
