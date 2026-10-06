@@ -18,7 +18,7 @@ Standalone ordinary push/PR runs use component-specific concurrency groups and c
 
 ## Historical feedback
 
-`scripts/ci/timing_history.py` restores a read-only historical artifact once during family planning. It prefers the latest compatible successfully audited sample on the current branch, then trusted main. The envelope identifies its family, execution profile, measurement/configuration fingerprint and source run, attempt, commit and branch. Compatibility covers fixture/resource/measurement configuration and pinned inputs, not the source SHA, so costs can inform later commits. Expired, malformed, incompatible or absent history uses explicit positive fallback estimates.
+`scripts/ci/timing_history.py` restores a read-only historical artifact once during family planning. It selects the latest compatible successfully audited sample across trusted branches in the same repository, ordered by artifact creation time. Forks, expired artifacts and the current run are excluded, and the recorded source must match the artifact. The envelope identifies its family, execution profile, measurement/configuration fingerprint and source run, attempt, commit and branch. Compatibility covers fixture/resource/measurement configuration and pinned inputs, not the source SHA, so costs can inform later commits. Expired, malformed, incompatible or absent history uses explicit positive fallback estimates.
 
 Planning freezes the restored snapshot and its identity before generating the current immutable plan. Every shard executes that plan; independent shards never each choose a different latest history. History affects costs and placement only. The current collected catalog and execution policy independently determine completeness and required scenarios.
 

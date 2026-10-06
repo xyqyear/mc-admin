@@ -7,7 +7,11 @@ Use measured execution history to shorten complete backend, API and browser vali
 ## Requirements
 
 ### Requirement: Automatic planning from comparable successful history
-The system SHALL build each test family's current plan from its complete current inventory and the latest available comparable, successfully audited execution history. Historical data SHALL affect costs and placement only. Missing history and new tests SHALL use positive fallback estimates.
+The system SHALL build each test family's current plan from its complete current inventory and the latest available comparable, successfully audited execution history across trusted branches in the same repository, ordered by artifact creation time. Historical sources SHALL match the requested family, execution profile and compatibility fingerprint, and their recorded run, commit and branch SHALL match the artifact. Expired artifacts, fork sources and the current run SHALL be excluded. Historical data SHALL affect costs and placement only. Missing history and new tests SHALL use positive fallback estimates.
+
+#### Scenario: A newer compatible history comes from another branch
+- **WHEN** another trusted repository branch has published a newer compatible, successfully audited history than the current branch or main
+- **THEN** the planner selects that newer history while deriving required cases from the current inventory
 
 #### Scenario: A new case has no historical sample
 - **WHEN** the current inventory contains a case absent from the restored history

@@ -12,14 +12,14 @@ history = runpy.run_path(str(Path(__file__).resolve().parents[3] / "scripts/ci/t
 CONTEXT = "b" * 64
 
 
-def envelope(branch="feature", run="42"):
-    return history["publish"]("backend", "default", CONTEXT, {"default_seconds": 15, "files": {"tests/a.py": 12}}, {
+def envelope(branch="feature", run="42", component="backend", profile="default"):
+    return history["publish"](component, profile, CONTEXT, {"default_seconds": 15, "files": {"tests/a.py": 12}}, {
         "GITHUB_RUN_ID": run, "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SHA": "a" * 40, "GITHUB_REF_NAME": branch,
     })
 
 
-def artifact(identity, branch="feature", run=42, **changes):
-    return {"id": identity, "name": "timing-history-backend", "expired": False, "created_at": f"2026-10-05T12:00:{identity:02d}Z",
+def artifact(identity, branch="feature", run=42, component="backend", **changes):
+    return {"id": identity, "name": f"timing-history-{component}", "expired": False, "created_at": f"2026-10-05T12:00:{identity:02d}Z",
             "workflow_run": {"id": run, "head_branch": branch, "head_sha": "a" * 40, "repository_id": 1, "head_repository_id": 1},
             **changes}
 
@@ -40,31 +40,108 @@ class SavedHistory:
         return copy.deepcopy(self.values[record["id"]])
 
 
-def test_restore_prefers_latest_comparable_branch_sample_and_freezes_identity():
-    incompatible = {**envelope(), "compatibility": "c" * 64}
-    failed = {**envelope(), "audited": False}
-    source_mismatch = {**envelope(), "source": {**envelope()["source"], "sha": "d" * 40}}
+@pytest.mark.parametrize("component", ["backend", "api", "browser"])
+def test_restore_uses_latest_repository_sample_and_freezes_identity(component):
     client = SavedHistory(
-        [artifact(1, "main", 21), artifact(2), artifact(3), artifact(4), artifact(5)],
-        {1: envelope("main", "21"), 2: envelope(), 3: incompatible, 4: failed, 5: source_mismatch},
+        [artifact(5, component=component), artifact(2, "main", 21, component),
+         artifact(3, "release", 33, component, created_at="2026-10-05T12:00:06Z"),
+         artifact(4, "cleanup", 44, component, created_at="2026-10-05T12:00:06Z")],
+        {2: envelope("main", "21", component), 3: envelope("release", "33", component),
+         4: envelope("cleanup", "44", component), 5: envelope(component=component)},
     )
-    value = history["restore"](client, "backend", "default", CONTEXT, "feature")
+    value = history["restore"](client, component, "default", CONTEXT)
+    assert value["source"]["branch"] == "cleanup"
+    assert value["source"]["run_id"] == "44"
+    assert value["artifact"] == {"id": 4, "digest": None, "repository": "owner/repo"}
+    assert client.downloads == [4]
+
+
+def test_restore_skips_newer_invalid_samples_for_compatible_other_branch():
+    incompatible = {**envelope("feature", "43"), "compatibility": "c" * 64}
+    failed = {**envelope("release", "44"), "audited": False}
+    source_mismatch = {**envelope("hotfix", "45"), "source": {**envelope("hotfix", "45")["source"], "sha": "d" * 40}}
+    client = SavedHistory(
+        [artifact(1, "main", 21), artifact(2, "cleanup"), artifact(3, "feature", 43),
+         artifact(4, "release", 44), artifact(5, "hotfix", 45)],
+        {1: envelope("main", "21"), 2: envelope("cleanup"), 3: incompatible, 4: failed, 5: source_mismatch},
+    )
+    value = history["restore"](client, "backend", "default", CONTEXT)
     assert value["source"]["run_id"] == "42"
+    assert value["source"]["branch"] == "cleanup"
     assert value["artifact"] == {"id": 2, "digest": None, "repository": "owner/repo"}
     assert client.downloads == [5, 4, 3, 2]
 
 
-def test_restore_falls_back_to_main_without_learning_expired_fork_or_current_run():
+def test_restore_excludes_expired_fork_current_run_and_other_component():
     fork = artifact(3)
     fork["workflow_run"]["head_repository_id"] = 2
     client = SavedHistory(
-        [artifact(1, "main", 21), artifact(2, expired=True), fork, artifact(4, run=99)],
-        {1: envelope("main", "21")},
+        [artifact(1, "trusted-other", 21), artifact(2, expired=True), fork, artifact(4, run=99),
+         artifact(5, component="api")],
+        {1: envelope("trusted-other", "21")},
     )
-    value = history["restore"](client, "backend", "default", CONTEXT, "feature", current_run="99")
-    assert value["source"]["branch"] == "main"
+    value = history["restore"](client, "backend", "default", CONTEXT, current_run="99")
+    assert value["source"]["branch"] == "trusted-other"
     assert client.downloads == [1]
-    assert history["restore"](SavedHistory([], {}), "backend", "default", CONTEXT, "feature") == {}
+    assert history["restore"](SavedHistory([], {}), "backend", "default", CONTEXT) == {}
+
+
+@pytest.mark.parametrize("change", [{"run_id": "43"}, {"sha": "d" * 40}, {"branch": "forged"}])
+def test_restore_rejects_history_source_mismatch(change):
+    forged = envelope()
+    forged["source"].update(change)
+    client = SavedHistory(
+        [artifact(1, "trusted-other", 21), artifact(2)],
+        {1: envelope("trusted-other", "21"), 2: forged},
+    )
+    value = history["restore"](client, "backend", "default", CONTEXT)
+    assert value["source"]["branch"] == "trusted-other"
+    assert client.downloads == [2, 1]
+
+
+@pytest.mark.parametrize("component,profile,other_profile", [
+    ("backend", "default", "no-reuse"), ("api", "qualification", "regression"),
+    ("api", "qualification", "qualification-no-reuse"), ("browser", "default", "other"),
+])
+def test_restore_keeps_execution_profiles_isolated(component, profile, other_profile):
+    client = SavedHistory(
+        [artifact(1, "trusted-other", 21, component), artifact(2, component=component)],
+        {1: envelope("trusted-other", "21", component, profile),
+         2: envelope(component=component, profile=other_profile)},
+    )
+    value = history["restore"](client, component, profile, CONTEXT)
+    assert value["source"]["branch"] == "trusted-other"
+    assert value["profile"] == profile
+    assert client.downloads == [2, 1]
+
+
+def test_restore_searches_past_ten_incompatible_samples_across_branches():
+    client = SavedHistory(
+        [artifact(1, "main", 21), artifact(2, "other-feature", 22),
+         *[artifact(identity, "recent-feature") for identity in range(3, 13)]],
+        {1: envelope("main", "21"), 2: envelope("other-feature", "22"),
+         **{identity: {**envelope("recent-feature"), "compatibility": "c" * 64} for identity in range(3, 13)}},
+    )
+    value = history["restore"](client, "backend", "default", CONTEXT)
+    assert value["source"]["branch"] == "other-feature"
+    assert value["artifact"]["id"] == 2
+    assert client.downloads == list(range(12, 1, -1))
+
+
+def test_artifact_inventory_bounds_repository_search_to_three_pages(monkeypatch):
+    client = history["GitHubHistory"]("owner/repo")
+    requests = []
+
+    def response(endpoint):
+        requests.append(endpoint)
+        return json.dumps({"artifacts": [{"id": identity} for identity in range(1, 101)]}).encode()
+
+    monkeypatch.setattr(client, "api", response)
+    assert len(client.artifacts("backend")) == 300
+    assert requests == [
+        f"repos/owner/repo/actions/artifacts?name=timing-history-backend&per_page=100&page={page}"
+        for page in (1, 2, 3)
+    ]
 
 
 @pytest.mark.parametrize("change", [

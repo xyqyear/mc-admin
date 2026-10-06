@@ -104,35 +104,34 @@ class GitHubHistory:
 
 
 def restore(client: GitHubHistory, component: str, profile: str, compatibility: str,
-            branch: str, current_run: str = "") -> dict[str, Any]:
+            current_run: str = "") -> dict[str, Any]:
     artifacts = client.artifacts(component)
-    for candidate_branch in dict.fromkeys((branch, "main")):
-        candidates = []
-        for artifact in artifacts:
-            if not isinstance(artifact, dict):
-                continue
-            run = artifact.get("workflow_run") or {}
-            if not isinstance(run, dict):
-                continue
-            if (artifact.get("name") == f"timing-history-{component}" and artifact.get("expired") is False
-                    and run.get("head_branch") == candidate_branch and str(run.get("id")) != current_run
-                    and run.get("repository_id") == run.get("head_repository_id") and run.get("repository_id") is not None):
-                candidates.append(artifact)
-        candidates.sort(key=lambda item: (item.get("created_at", ""), item.get("id", 0)), reverse=True)
-        for artifact in candidates[:10]:
-            try:
-                value = client.download(artifact)
-                validate(value, component, profile, compatibility)
-                run = artifact["workflow_run"]
-                source = value["source"]
-                if (source["run_id"], source["sha"], source["branch"]) != (str(run["id"]), run["head_sha"], candidate_branch):
-                    raise ValueError("Timing source differs from its artifact")
-            except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, subprocess.TimeoutExpired):
-                print(f"Timing history: ignore unavailable or incompatible artifact {artifact.get('id')}", file=sys.stderr)
-                continue
-            value["artifact"] = {"id": artifact["id"], "digest": artifact.get("digest"), "repository": client.repository}
-            print(f"Timing history: restored {component}/{profile} from run {source['run_id']} on {candidate_branch}", file=sys.stderr)
-            return value
+    candidates = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        run = artifact.get("workflow_run") or {}
+        if not isinstance(run, dict):
+            continue
+        if (artifact.get("name") == f"timing-history-{component}" and artifact.get("expired") is False
+                and str(run.get("id")) != current_run
+                and run.get("repository_id") == run.get("head_repository_id") and run.get("repository_id") is not None):
+            candidates.append(artifact)
+    candidates.sort(key=lambda item: (item.get("created_at", ""), item.get("id", 0)), reverse=True)
+    for artifact in candidates:
+        try:
+            value = client.download(artifact)
+            validate(value, component, profile, compatibility)
+            run = artifact["workflow_run"]
+            source = value["source"]
+            if (source["run_id"], source["sha"], source["branch"]) != (str(run["id"]), run["head_sha"], run["head_branch"]):
+                raise ValueError("Timing source differs from its artifact")
+        except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, subprocess.TimeoutExpired):
+            print(f"Timing history: ignore unavailable or incompatible artifact {artifact.get('id')}", file=sys.stderr)
+            continue
+        value["artifact"] = {"id": artifact["id"], "digest": artifact.get("digest"), "repository": client.repository}
+        print(f"Timing history: restored {component}/{profile} from run {source['run_id']} on {source['branch']}", file=sys.stderr)
+        return value
     print(f"Timing history: no comparable {component}/{profile} sample; use fallback estimates", file=sys.stderr)
     return {}
 
@@ -156,7 +155,6 @@ def main() -> None:
         options.add_argument("--output", type=Path, required=True)
         if command == "restore":
             options.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
-            options.add_argument("--branch", default=os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME", ""))
         else:
             options.add_argument("--costs", type=Path, required=True)
     arguments = parser.parse_args()
@@ -168,7 +166,7 @@ def main() -> None:
     else:
         try:
             value = restore(GitHubHistory(arguments.repository), arguments.component, arguments.profile,
-                            arguments.compatibility, arguments.branch, os.environ.get("GITHUB_RUN_ID", ""))
+                            arguments.compatibility, os.environ.get("GITHUB_RUN_ID", ""))
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
             print("Timing history: restore unavailable; use fallback estimates", file=sys.stderr)
             value = {}
