@@ -702,12 +702,28 @@
       "path": "/api/servers/{server_id}/files/create"
     },
     {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/servers/{server_id}/files/delete-batch"
+    },
+    {
       "cookie_csrf": false,
       "declared_authorization": [
         "session_or_master"
       ],
       "method": "GET",
       "path": "/api/servers/{server_id}/files/download"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/servers/{server_id}/files/download-manifest"
     },
     {
       "cookie_csrf": true,
@@ -1124,6 +1140,14 @@
       ],
       "method": "DELETE",
       "path": "/api/snapshots/{snapshot_id}"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/snapshots/{snapshot_id}/note"
     },
     {
       "cookie_csrf": false,
@@ -2202,6 +2226,58 @@
           "title": "ComposeConfig",
           "type": "object"
         },
+        "CreateArchiveRequest": {
+          "properties": {
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "paths": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paths"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id"
+          ],
+          "title": "CreateArchiveRequest",
+          "type": "object"
+        },
+        "CreateArchiveResponse": {
+          "properties": {
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "CreateArchiveResponse",
+          "type": "object"
+        },
         "CreateServerRequest": {
           "description": "Request model for server creation.\n\nSupports two modes:\n- Traditional mode: Provide yaml_content directly\n- Template mode: Provide template_id and variable_values\n\nOptionally bundles a restart schedule, eliminating the need for a\nfollow-up POST /restart-schedule round-trip.",
           "properties": {
@@ -2256,6 +2332,12 @@
         "CreateSnapshotRequest": {
           "additionalProperties": false,
           "properties": {
+            "note": {
+              "default": "",
+              "maxLength": 500,
+              "title": "Note",
+              "type": "string"
+            },
             "scope": {
               "discriminator": {
                 "mapping": {
@@ -2287,6 +2369,127 @@
             "scope"
           ],
           "title": "CreateSnapshotRequest",
+          "type": "object"
+        },
+        "DownloadManifestEntry": {
+          "properties": {
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "size": {
+              "title": "Size",
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "file",
+                "directory"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "type",
+            "size"
+          ],
+          "title": "DownloadManifestEntry",
+          "type": "object"
+        },
+        "DownloadManifestError": {
+          "properties": {
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "message"
+          ],
+          "title": "DownloadManifestError",
+          "type": "object"
+        },
+        "DownloadManifestRequest": {
+          "properties": {
+            "cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            },
+            "limit": {
+              "default": 200,
+              "maximum": 500.0,
+              "minimum": 1.0,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Paths",
+              "type": "array"
+            }
+          },
+          "required": [
+            "paths"
+          ],
+          "title": "DownloadManifestRequest",
+          "type": "object"
+        },
+        "DownloadManifestResponse": {
+          "properties": {
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/DownloadManifestEntry"
+              },
+              "title": "Entries",
+              "type": "array"
+            },
+            "errors": {
+              "items": {
+                "$ref": "#/components/schemas/DownloadManifestError"
+              },
+              "title": "Errors",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Cursor"
+            },
+            "server_generation": {
+              "title": "Server Generation",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "server_generation",
+            "entries",
+            "errors",
+            "next_cursor"
+          ],
+          "title": "DownloadManifestResponse",
           "type": "object"
         },
         "FileContent": {
@@ -2358,6 +2561,23 @@
             "current_path"
           ],
           "title": "FileListResponse",
+          "type": "object"
+        },
+        "FilePathsRequest": {
+          "properties": {
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Paths",
+              "type": "array"
+            }
+          },
+          "required": [
+            "paths"
+          ],
+          "title": "FilePathsRequest",
           "type": "object"
         },
         "GlobalScope": {
@@ -2511,6 +2731,11 @@
             },
             "id": {
               "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "default": "",
+              "title": "Note",
               "type": "string"
             },
             "paths": {
@@ -3135,6 +3360,21 @@
           "title": "TaskType",
           "type": "string"
         },
+        "UpdateSnapshotNoteRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "note": {
+              "maxLength": 500,
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "note"
+          ],
+          "title": "UpdateSnapshotNoteRequest",
+          "type": "object"
+        },
         "UserPublic": {
           "properties": {
             "created_at": {
@@ -3405,6 +3645,76 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/FileListResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/archive/compress": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateArchiveRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CreateArchiveResponse"
                   }
                 }
               },
@@ -4779,6 +5089,256 @@
           }
         }
       },
+      "/servers/{server_id}/files/delete-batch": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePathsRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}/files/download": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "path",
+              "required": true,
+              "schema": {
+                "title": "Path",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "expected_generation",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Expected Generation"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}/files/download-manifest": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadManifestRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DownloadManifestResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/servers/{server_id}/maintenance": {
         "get": {
           "parameters": [
@@ -5752,6 +6312,86 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SnapshotTargetCheck"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots/{snapshot_id}/note": {
+        "put": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "snapshot_id",
+              "required": true,
+              "schema": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Snapshot Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateSnapshotNoteRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ResticSnapshot"
                   }
                 }
               },

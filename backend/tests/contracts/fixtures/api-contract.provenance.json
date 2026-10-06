@@ -1,6 +1,6 @@
 {
-  "base_commit": "b4a83a8ec0e057d9e2b4c93abbe05f7bb2a227e5",
-  "source": "Reviewed working tree for background-non-snapshot-operations",
-  "captured_on": "2026-09-27",
-  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance; public event and task payload schemas"
+  "base_commit": "3537e7da23811b56a68dcd417c6e404f93c60a7a",
+  "source": "Reviewed working tree for add-file-batch-operations",
+  "captured_on": "2026-10-07",
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance, file batch deletion, paginated download manifests, generation-bound downloads, multi-path compression and snapshot notes; public event and task payload schemas"
 }
